@@ -42,9 +42,10 @@ public sealed class AccessibilityScanTests
         yield return ["ConfigPage", "config", "ConfigPageMarker"];
         yield return ["ConnectionPage", "connection", "ConnectionPageMarker"];
         yield return ["CronPage", "cron", "CronPageMarker"];
+        yield return ["DashboardsPage", "dashboards", "DashboardsOpenConnection"];
         yield return ["DebugPage", "debug", "DebugPageMarker"];
+        yield return ["SystemsPage", "systems", "SystemsPageMarker"];
         yield return ["AboutPage", "about", "AboutPageMarker"];
-        yield return ["InstancesPage", "instances", "InstancesPageMarker"];
         yield return ["NotificationsPage", "notifications", "NotificationsPageMarker"];
         yield return ["PermissionsPage", "permissions", "PermissionsPageMarker"];
         yield return ["SandboxPage", "sandbox", "SandboxPageMarker"];
@@ -142,6 +143,21 @@ public sealed class AccessibilityScanTests
         }
         Assert.Null(hub.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    [Trait("Category", "Accessibility")]
+    public async Task AutomationsDisconnected_PassesAccessibilityInBothThemes(string theme)
+    {
+        using var fixture = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "cron");
+        await fixture.NavigateAsync("cron", "CronPage", "CronPageMarker");
+        var hub = AutomationElement.FromHandle(fixture.HubWindowHandle);
+        Assert.NotNull(hub.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "AutomationsOpenConnection")));
+        AxeHelper.AssertNoAccessibilityErrors(hub.Current.ProcessId, fixture.HubWindowHandle,
+            context: $"Disconnected Automations {theme}");
     }
 
     private static async Task<AutomationElement> WaitForOnscreenLayoutAsync(

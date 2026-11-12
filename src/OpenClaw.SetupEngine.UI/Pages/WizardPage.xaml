@@ -33,7 +33,7 @@
                     BorderThickness="1"
                     BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                     Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                <StackPanel Spacing="16">
+                <StackPanel x:Name="StepInputsPanel" Spacing="16">
                     <TextBlock x:Name="TitleText" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                     <RichTextBlock x:Name="MessageBlock" Visibility="Collapsed"
                                    IsTextSelectionEnabled="True" TextWrapping="Wrap"

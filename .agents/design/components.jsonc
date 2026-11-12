@@ -697,7 +697,7 @@
     },
     {
       "name": "ComposerPickerOptions",
-      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with 12px (`lg`) overlay corners (ChatPickerFlyoutStyle, #1459) and `md` shadow. Rows have 4px (`sm`) corners and full-row hover/pressed fills through `subtleHover`/`subtlePressed` (SubtleFillColorSecondary/Tertiary, the light/dark MenuFlyoutItem state resources). Pointer exit restores transparent fill without changing selection or geometry. Each row reserves a 16px leading glyph column; the selected row keeps its `accent` Segoe Fluent Icons CheckMark (U+E73E), not a radio dot. The check uses the existing 12px Fluent-glyph typography token, without raw style overriding its width or color. High-contrast subtle fills remain transparent under the current token contract; native MenuFlyout system-highlight overrides are not reproduced. This preview retains a representative checked row, not persistent model selection. Because `on.click.open` targets take no props, all triggers show the same representative model list; the searchable model flyout and effort slider/gauge remain app behavior.",
+      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with 12px (`lg`) overlay corners (ChatPickerFlyoutStyle, #1459) and `md` shadow. Rows have 4px (`sm`) corners and full-row hover/pressed fills through `subtleHover`/`subtlePressed` (SubtleFillColorSecondary/Tertiary, the light/dark MenuFlyoutItem state resources). Pointer exit restores transparent fill without changing selection or geometry. Each row reserves a 16px leading glyph column; the selected row keeps its `accentText` Segoe Fluent Icons CheckMark (U+E73E), not a radio dot. The check uses the existing 12px Fluent-glyph typography token, without raw style overriding its width or color. High-contrast subtle fills remain transparent under the current token contract; native MenuFlyout system-highlight overrides are not reproduced. This preview retains a representative checked row, not persistent model selection. Because `on.click.open` targets take no props, all triggers show the same representative model list; the searchable model flyout and effort slider/gauge remain app behavior.",
       "root": {
         "id": "composer-picker-options",
         "el": "div",
@@ -717,7 +717,7 @@
               "hoverPressed": { "background": "subtlePressed" }
             },
             "children": [
-              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 }, "appearance": { "textStyle": "chatChevron", "color": "accent", "textAlign": "center" }, "children": ["\uE73E"] },
+              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 }, "appearance": { "textStyle": "chatChevron", "color": "accentText", "textAlign": "center" }, "children": ["\uE73E"] },
               "Claude Sonnet 5"
             ]
           },
@@ -758,7 +758,7 @@
     },
     {
       "name": "ChatBubble",
-      "note": "Bubbleless assistant turn from ReactorChatTimeline and ChatMarkdownPresentation at production 9e4999c6. This reference shows the below-960px chat viewport variant without an avatar, at the 736px prose cap (768 minus two 16px insets). Native prose is 14/21, with 16px between blocks and 4px vertical content padding. The footer is sender, time, model and usage at 12/18, followed by 32x32 Copy and Read aloud controls with 14px Fluent glyphs. Copy is always visible. Read aloud previews the native 70% resting opacity through chatReadAloudText, returning to full alpha over the button; native row-level hover is not represented. Native avatars appear in a separate 44px gutter above the 960px breakpoint; do not replace the production logo with an invented sparkle. ChatTextBrush and ChatSecondaryTextBrush preserve alpha. The native source remains authoritative for Markdown, responsive layout, clipboard and speech behavior.",
+      "note": "Bubbleless assistant turn from ReactorChatTimeline and ChatMarkdownPresentation at production 9e4999c6. This reference shows the below-960px chat viewport variant without an avatar, at the 736px prose cap (768 minus two 16px insets). Native prose is 14/21, with 8px between blocks and 4px vertical content padding. The footer is sender, time, model and usage at 12/18, followed by 32x32 Copy and Read aloud controls with 14px Fluent glyphs. Copy is always visible. Read aloud previews the native 70% resting opacity through chatReadAloudText, returning to full alpha over the button; native row-level hover is not represented. Native avatars appear in a separate 44px gutter above the 960px breakpoint; do not replace the production logo with an invented sparkle. ChatTextBrush and ChatSecondaryTextBrush preserve alpha. The native source remains authoritative for Markdown, responsive layout, clipboard and speech behavior.",
       "props": {
         "sender": "Assistant",
         "time": "2:14 PM",
@@ -899,9 +899,9 @@
     },
     {
       "name": "ChatComposer",
-      "note": "Workspace composer from ReactorChatComposer at production 9e4999c6, measured against the Release app and fixture Gateway. Reference width 768px, resting outer height 112px, 20px radius, 1px ChatStrokeBrush, native alpha-preserving ChatComposerBrush card fill. Inner padding is 16,12,16,8; input is at least 44px tall with 16px text and no padding, fill, border or accent underline, including focus. Stack gap 8px. Attach is the native paperclip U+E723, not Add. Workspace omits the session selector; model and effort align right before Voice and circular 32px Send. Toolbar glyphs are native 16px Segoe Fluent Icons. Preview contains a draft so Send is enabled; typing does not send, auto-grow, or update Send eligibility. Empty/disabled, Stop, narrow gauge, native flyouts and dynamic input behavior remain production responsibilities. At native widths <=560 effort uses a 44px gauge; the installed renderer cannot express that responsive switch. The reading cap, 40px/12px outer gutters and 12px vertical margin belong to the host, not this isolated writing-surface component.",
+      "note": "Workspace composer from ReactorChatComposer at production 9e4999c6, measured against the Release app and fixture Gateway. Reference width 768px, resting outer height 112px, 20px radius, 1px ChatStrokeBrush, native alpha-preserving ChatComposerBrush card fill. Inner padding is 16,12,16,8; input is at least 44px tall with 14px text and no padding, fill, border or accent underline, including focus. Stack gap 8px. Attach is the native Add (\"+\") glyph U+E710 at 14px. Workspace omits the session selector; model and effort align right before Voice and a compact 24px Send disc with a 12px arrow inside a 32px target (Stop shows a filled 10px square). The Node Sandbox shield follows Attach in production but is omitted from this preview. Other toolbar glyphs are native 16px Segoe Fluent Icons. Preview contains a draft so Send is enabled; typing does not send, auto-grow, or update Send eligibility. Empty/disabled, Stop, narrow gauge, native flyouts and dynamic input behavior remain production responsibilities. At native widths <=560 effort uses a 44px gauge; the installed renderer cannot express that responsive switch. The reading cap, 40px/12px outer gutters and 12px vertical margin belong to the host, not this isolated writing-surface component.",
       "props": {
-        "placeholder": "Message Assistant (Enter to send)",
+        "placeholder": "Message Assistant",
         "draft": "Draft for visual comparison",
         "model": "Fixture Browse",
         "effort": "off"
@@ -1008,7 +1008,7 @@
                         "el": "span",
                         "attrs": { "aria-hidden": "true" },
                         "appearance": { "textStyle": "chatIcon" },
-                        "children": [ "\uE723" ]
+                        "children": [ "\uE710" ]
                       }
                     ]
                   }

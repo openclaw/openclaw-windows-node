@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Globalization;
 
 namespace OpenClaw.TestSupport.Gateway;
 
@@ -65,6 +66,34 @@ public sealed partial class GatewayScenario
                 new { date = "2026-10-30", totalCost = 0.50 }
             },
             totals = new { input = 0, output = 0, cacheRead = 0, cacheWrite = 0, totalTokens = 0, totalCost = firstDayCost + 0.50, missingCostEntries = 0 }
+        };
+    }
+
+    private object AccessibilitySessionsUsage(JsonElement parameters)
+    {
+        ValidateProperties(parameters, "startDate", "endDate", "agentScope", "agentId", "mode", "timeZone", "utcOffset",
+            "groupBy", "limit", "projection", "offset", "query", "sort", "sortDirection", "key");
+        var start = DateOnly.ParseExact(RequiredString(parameters, "startDate"), "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var end = DateOnly.ParseExact(RequiredString(parameters, "endDate"), "yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var days = end.DayNumber - start.DayNumber + 1;
+        var changed = Volatile.Read(ref _accessibilityUsageRevision) != 0;
+        var cost = (days == 7 ? 0.75 : 1.25) * (changed ? 2 : 1);
+        return new
+        {
+            startDate = start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            endDate = end.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            sessions = new[] { new { key = "agent:fixture:usage", label = "Fixture usage",
+                usage = new { totalTokens = 0, totalCost = cost + 0.5 } } },
+            totals = new { totalTokens = 0, totalCost = cost + 0.5 },
+            aggregates = new
+            {
+                sessionCount = 1,
+                costDaily = new[]
+                {
+                    new { date = end.AddDays(-1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), totalTokens = 0, totalCost = cost },
+                    new { date = end.AddDays(-2).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), totalTokens = 0, totalCost = 0.5 },
+                },
+            },
         };
     }
 }

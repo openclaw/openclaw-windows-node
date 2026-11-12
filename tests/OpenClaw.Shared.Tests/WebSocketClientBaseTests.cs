@@ -5,11 +5,14 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace OpenClaw.Shared.Tests;
 
@@ -90,10 +93,12 @@ public class TestWebSocketClient : WebSocketClientBase
 }
 
 [Collection("WebSocketClientBase")]
-public class WebSocketClientBaseTests
+public class WebSocketClientBaseTests(ITestOutputHelper output)
 {
     private readonly TestLogger _logger = new();
     private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
+    private const string BackoffCleanupExceptionTypeKey = "BackoffProbeCleanupExceptionType";
+    private const string BackoffDiagnosticExceptionTypeKey = "BackoffProbeDiagnosticExceptionType";
 
     [Theory]
     [InlineData(false, null)]
@@ -521,36 +526,185 @@ public class WebSocketClientBaseTests
     public async Task ConnectAsync_TimedOutRetry_DoesNotDisposeNewerConnectionDuringBackoff()
     {
         using var server = new ControlledUpgradeWebSocketServer(stalledUpgradeCount: 1);
-        using var client = new TestWebSocketClient(server.WebSocketUrl, "token", _logger)
-        {
-            TestConnectAttemptTimeout = TimeSpan.FromMilliseconds(250),
-        };
+        using var releaseRetry = new ManualResetEventSlim();
+        using var client = new HeldRetryWebSocketClient(server.WebSocketUrl, "token", releaseRetry, _logger);
         var statuses = new ConcurrentQueue<ConnectionStatus>();
         client.StatusChanged += (_, status) => statuses.Enqueue(status);
 
-        var timedOutConnect = client.ConnectAsync();
-        await server.FirstRequestReceived.WaitAsync(TimeSpan.FromSeconds(2));
-        await timedOutConnect.WaitAsync(TimeSpan.FromSeconds(2));
-        var errorStatusesAfterTimeout =
-            statuses.Count(status => status == ConnectionStatus.Error);
-        Assert.True(errorStatusesAfterTimeout >= 1);
+        // The delay policy is synchronous. Holding it must not block the test
+        // synchronization context that needs to establish the manual socket and release it.
+        var prerequisites = new List<BackoffPrerequisiteObservation>();
+        var firstConnectTask = Task.Run(client.ConnectAsync);
+        await RunBackoffProbeWithCleanupAsync(async () =>
+        {
+            var staleGeneration = await ObserveInitialBackoffPrerequisitesAsync(
+                server.FirstRequestReceived, client.RetryEntered, server.FirstStalledClientClosed,
+                (phase, edge, error) => prerequisites.Add(CaptureBackoffPrerequisite(
+                    server, client, firstConnectTask, phase, edge, error)));
+            Assert.False(firstConnectTask.IsCompleted);
+            Assert.True(client.IsRetryHeld);
+            Assert.Equal(staleGeneration, client.CurrentGeneration);
+            Assert.Equal(1, statuses.Count(status => status == ConnectionStatus.Error));
+            Assert.Equal(1, server.RequestCount);
+            Assert.Contains(client.SafeObservations, item => item.Generation == staleGeneration &&
+                item.Phase == nameof(GatewayHandshakePhase.Failed) && item.ExceptionType == nameof(TimeoutException));
 
-        var currentConnect = client.ConnectAsync();
-        await server.UpgradeCompleted.WaitAsync(TimeSpan.FromSeconds(2));
-        await currentConnect.WaitAsync(TimeSpan.FromSeconds(2));
-        await Task.Delay(TimeSpan.FromMilliseconds(1500));
+            var manualConnect = client.ConnectAsync();
+            var manualGeneration = client.CurrentGeneration;
+            Assert.True(manualGeneration > staleGeneration);
+            await manualConnect.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+            // A normal ConnectAsync return and the server's global upgrade signal are
+            // not success receipts. Only this held-gate manual generation may establish it.
+            Assert.True(client.IsRetryHeld);
+            Assert.True(client.HasCurrentEstablishedConnection(manualGeneration));
+            Assert.Equal(manualGeneration, Assert.Single(client.ConnectedGenerations));
+            Assert.Equal(2, client.TransportObservations.Count(item => item.Phase == GatewayHandshakePhase.TransportConnecting));
+            Assert.Equal(1, statuses.Count(status => status == ConnectionStatus.Error));
+            Assert.Equal(2, server.RequestCount);
 
-        Assert.True(client.TestIsConnected);
-        Assert.Equal(1, client.OnConnectedCallCount);
-        Assert.Equal(2, server.RequestCount);
-        Assert.Equal(
-            errorStatusesAfterTimeout,
-            statuses.Count(status => status == ConnectionStatus.Error));
+            Assert.Null(client.ReconnectAuthorizationAsync);
+            client.ReleaseRetry();
+            // This synchronous policy returns zero. With no authorization callback,
+            // the initial retry reaches its post-delay owner check before this task returns.
+            await firstConnectTask.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+            client.RecordInitialConnectCompletion();
+            Assert.True(client.RetryDelayReturned);
+            Assert.False(client.IsRetryHeld);
+            Assert.True(client.HasCurrentEstablishedConnection(manualGeneration));
+            Assert.Equal(1, client.OnConnectedCallCount);
+            Assert.Equal(2, server.RequestCount);
+            Assert.Equal(1, statuses.Count(status => status == ConnectionStatus.Error));
 
-        await server.SendTextAsync("current-socket-message");
-        await WaitForConditionAsync(
-            () => client.ProcessedMessages.Contains("current-socket-message"),
-            TimeSpan.FromSeconds(2));
+            using var messageDeadline = new CancellationTokenSource(HeldRetryWebSocketClient.ObservationTimeout);
+            await server.SendTextAsync("current-socket-message", messageDeadline.Token);
+            Assert.Equal(manualGeneration, await client.MessageReceivedGeneration.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout));
+            Assert.Contains("current-socket-message", client.ProcessedMessages);
+            Assert.True(client.HasCurrentEstablishedConnection(manualGeneration));
+            Assert.Equal(1, client.OnConnectedCallCount);
+            Assert.Equal(2, server.RequestCount);
+            Assert.Equal(1, statuses.Count(status => status == ConnectionStatus.Error));
+        }, () => ReleaseAndObserveTimedOutRetryAsync(client, firstConnectTask),
+            cleanupType => WriteBackoffProbeDiagnostics(client, cleanupType, prerequisites));
+    }
+
+    [Fact]
+    public async Task ConnectAsync_ManualFailureBeforeHeaders_CannotSatisfyHeldRetryHealthyPrerequisite()
+    {
+        using var server = new ControlledUpgradeWebSocketServer(stalledUpgradeCount: 1);
+        using var releaseRetry = new ManualResetEventSlim();
+        using var client = new HeldRetryWebSocketClient(server.WebSocketUrl, "token", releaseRetry, _logger);
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
+        client.StatusChanged += (_, status) => statuses.Enqueue(status);
+
+        var prerequisites = new List<BackoffPrerequisiteObservation>();
+        var firstConnectTask = Task.Run(client.ConnectAsync);
+        await RunBackoffProbeWithCleanupAsync(async () =>
+        {
+            var staleGeneration = await ObserveInitialBackoffPrerequisitesAsync(
+                server.FirstRequestReceived, client.RetryEntered, server.FirstStalledClientClosed,
+                (phase, edge, error) => prerequisites.Add(CaptureBackoffPrerequisite(
+                    server, client, firstConnectTask, phase, edge, error)));
+            Assert.True(client.IsRetryHeld);
+            Assert.Equal(staleGeneration, client.CurrentGeneration);
+            Assert.Equal(1, statuses.Count(status => status == ConnectionStatus.Error));
+            Assert.Equal(1, server.RequestCount);
+            Assert.Contains(client.SafeObservations, item => item.Generation == staleGeneration &&
+                item.Phase == nameof(GatewayHandshakePhase.Failed) && item.ExceptionType == nameof(TimeoutException));
+            server.RejectConnectionsBeforeHeaders = true;
+
+            var manualConnect = client.ConnectAsync();
+            var manualGeneration = client.CurrentGeneration;
+            Assert.True(manualGeneration > staleGeneration);
+            await server.ConnectionClosedBeforeHeaders.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+            await manualConnect.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+
+            Assert.True(manualConnect.IsCompletedSuccessfully); // Deliberately not a connection-success oracle.
+            Assert.True(client.IsRetryHeld);
+            Assert.False(firstConnectTask.IsCompleted);
+            Assert.Equal(manualGeneration, client.CurrentGeneration);
+            Assert.False(client.HasCurrentEstablishedConnection(manualGeneration));
+            Assert.Empty(client.ConnectedGenerations);
+            Assert.Equal(0, client.OnConnectedCallCount);
+            Assert.Equal(1, server.RequestCount); // The manual transport failed before a counted HTTP request.
+            Assert.Equal(2, statuses.Count(status => status == ConnectionStatus.Error));
+            Assert.Equal(2, client.TransportObservations.Count(item => item.Phase == GatewayHandshakePhase.TransportConnecting));
+            Assert.Contains(client.SafeObservations, item => item.Generation == manualGeneration &&
+                item.Phase == nameof(GatewayHandshakePhase.Failed) && item.ExceptionType is not null);
+            Assert.False(server.UpgradeCompleted.IsCompleted);
+        }, () => ReleaseAndObserveTimedOutRetryAsync(client, firstConnectTask),
+            cleanupType => WriteBackoffProbeDiagnostics(client, cleanupType, prerequisites));
+    }
+
+    [Theory]
+    [InlineData(true, "timeout", false, "XunitException", "TimeoutException")]
+    [InlineData(true, "fault", false, "XunitException", "IOException")]
+    [InlineData(false, "timeout", false, "TimeoutException", "TimeoutException")]
+    [InlineData(false, "fault", false, "IOException", "IOException")]
+    [InlineData(true, "sync-fault", true, "XunitException", "IOException")]
+    [InlineData(false, "fault", true, "IOException", "IOException")]
+    [InlineData(false, "ok", true, "InvalidOperationException", null)]
+    [InlineData(false, "ok", false, null, null)]
+    public async Task BackoffProbeCleanup_PreservesFailureIdentityAndSeparateTypeOnlyDiagnostics(
+        bool bodyFails, string cleanupOutcome, bool diagnosticFails,
+        string? expectedFailureType, string? expectedCleanupType)
+    {
+        var primary = new Xunit.Sdk.XunitException("Primary assertion sentinel");
+        var cleanupFault = new IOException("Cleanup content must not be recorded");
+        var diagnosticFault = new InvalidOperationException("Diagnostic content must not be recorded");
+        var pending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Exercise an actual expired WaitAsync, not a sleep or a different live transport deadline.
+        var cleanupTask = cleanupOutcome switch
+        {
+            "timeout" => pending.Task.WaitAsync(TimeSpan.Zero),
+            "fault" => Task.FromException(cleanupFault),
+            "ok" or "sync-fault" => Task.CompletedTask,
+            _ => throw new ArgumentOutOfRangeException(nameof(cleanupOutcome)),
+        };
+        var bodyCalls = 0;
+        var cleanupCalls = 0;
+        var diagnosticCalls = 0;
+        string? recordedCleanupType = "unobserved";
+        try
+        {
+            var observed = await Record.ExceptionAsync(() => RunBackoffProbeWithCleanupAsync(
+                () =>
+                {
+                    bodyCalls++;
+                    return bodyFails ? Task.FromException(primary) : Task.CompletedTask;
+                }, () =>
+                {
+                    cleanupCalls++;
+                    if (cleanupOutcome == "sync-fault") throw cleanupFault;
+                    return cleanupTask;
+                }, cleanupType =>
+                {
+                    diagnosticCalls++;
+                    recordedCleanupType = cleanupType;
+                    if (diagnosticFails) throw diagnosticFault;
+                }));
+            Assert.Equal(1, bodyCalls);
+            Assert.Equal(1, cleanupCalls);
+            Assert.Equal(1, diagnosticCalls);
+            Assert.Equal(expectedCleanupType, recordedCleanupType);
+            if (expectedFailureType is null)
+            {
+                Assert.Null(observed);
+                return;
+            }
+            Assert.NotNull(observed);
+            Assert.Equal(expectedFailureType, observed.GetType().Name);
+            if (bodyFails) Assert.Same(primary, observed);
+            else if (cleanupOutcome == "fault") Assert.Same(cleanupFault, observed);
+            else if (cleanupOutcome == "timeout") Assert.Same(cleanupTask.Exception!.InnerException, observed);
+            else Assert.Same(diagnosticFault, observed);
+            if (expectedCleanupType is null) Assert.False(observed.Data.Contains(BackoffCleanupExceptionTypeKey));
+            else Assert.Equal(expectedCleanupType, Assert.IsType<string>(observed.Data[BackoffCleanupExceptionTypeKey]));
+            if (diagnosticFails)
+                Assert.Equal("InvalidOperationException", Assert.IsType<string>(observed.Data[BackoffDiagnosticExceptionTypeKey]));
+            else Assert.False(observed.Data.Contains(BackoffDiagnosticExceptionTypeKey));
+            Assert.Equal((expectedCleanupType is null ? 0 : 1) + (diagnosticFails ? 1 : 0), observed.Data.Count);
+        }
+        finally { pending.TrySetResult(); }
     }
 
     [Fact]
@@ -893,6 +1047,154 @@ public class WebSocketClientBaseTests
         client.Dispose();
     }
 
+    [Fact]
+    public async Task BackoffPrerequisites_RecordFixedOrderAndSerializeOnlySafeFields()
+    {
+        var observations = new List<BackoffPrerequisiteObservation>();
+        var generation = await ObserveInitialBackoffPrerequisitesAsync(
+            Task.CompletedTask, Task.FromResult(7L), Task.CompletedTask,
+            (phase, edge, error) => observations.Add(new(phase, edge, int.MaxValue, 1, 7, true,
+                "RanToCompletion", "RanToCompletion", "RanToCompletion", "WaitingForActivation", error?.GetType().Name)));
+        Assert.Equal(7L, generation);
+        Assert.Equal(new[]
+        {
+            "FirstRequestReceived:enter", "FirstRequestReceived:return",
+            "RetryEntered:enter", "RetryEntered:return",
+            "FirstStalledClientClosed:enter", "FirstStalledClientClosed:return"
+        }, observations.Select(item => $"{item.Prerequisite}:{item.Edge}"));
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(observations[^1]));
+        Assert.Equal(new[] { "Prerequisite", "Edge", "ElapsedMs", "RequestCount", "Generation", "RetryHeld",
+            "FirstRequestStatus", "RetryEntryStatus", "FirstClosedStatus", "InitialConnectStatus", "ExceptionType" },
+            document.RootElement.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(int.MaxValue, document.RootElement.GetProperty("ElapsedMs").GetInt32());
+        Assert.Equal("WaitingForActivation", document.RootElement.GetProperty("InitialConnectStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, document.RootElement.GetProperty("ExceptionType").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("FirstRequestReceived")]
+    [InlineData("RetryEntered")]
+    [InlineData("FirstStalledClientClosed")]
+    public async Task BackoffPrerequisites_CaptureTimeoutBeforeCleanupAndPreserveItWhenObservationFails(string phase)
+    {
+        // Pre-faulted tasks keep this failure-policy control pure. The real socket cases own timeout proof.
+        var primary = new TimeoutException("SECRET prerequisite failure detail");
+        Task first = phase == "FirstRequestReceived" ? Task.FromException(primary) : Task.CompletedTask;
+        var retry = phase == "RetryEntered" ? Task.FromException<long>(primary) : Task.FromResult(7L);
+        Task closed = phase == "FirstStalledClientClosed" ? Task.FromException(primary) : Task.CompletedTask;
+        var held = true;
+        var observations = new List<BackoffPrerequisiteObservation>();
+        var observed = await Record.ExceptionAsync(() => RunBackoffProbeWithCleanupAsync(
+            () => ObserveInitialBackoffPrerequisitesAsync(first, retry, closed, (name, edge, error) =>
+            {
+                observations.Add(new(name, edge, 0, 1, 7, held, first.Status.ToString(), retry.Status.ToString(),
+                    closed.Status.ToString(), "WaitingForActivation", error?.GetType().Name));
+                if (edge == "timeout") throw new InvalidOperationException("SECRET observer failure detail");
+            }),
+            () => { held = false; return Task.CompletedTask; },
+            _ => { }));
+
+        Assert.Same(primary, observed);
+        Assert.False(held);
+        Assert.All(observations, item => Assert.True(item.RetryHeld));
+        Assert.Equal((phase, "timeout", "TimeoutException"),
+            (observations[^1].Prerequisite, observations[^1].Edge, observations[^1].ExceptionType));
+        Assert.Equal("InvalidOperationException", Assert.IsType<string>(primary.Data[BackoffDiagnosticExceptionTypeKey]));
+        Assert.DoesNotContain("SECRET", JsonSerializer.Serialize(observations));
+    }
+
+    private sealed record BackoffPrerequisiteObservation(
+        string Prerequisite, string Edge, int ElapsedMs, int RequestCount, long Generation, bool RetryHeld,
+        string FirstRequestStatus, string RetryEntryStatus, string FirstClosedStatus, string InitialConnectStatus,
+        string? ExceptionType);
+
+    private static BackoffPrerequisiteObservation CaptureBackoffPrerequisite(
+        ControlledUpgradeWebSocketServer server, HeldRetryWebSocketClient client, Task firstConnect,
+        string prerequisite, string edge, Exception? error) => new(
+            prerequisite, edge, client.ObservationElapsedMs, server.RequestCount, client.CurrentGeneration, client.IsRetryHeld,
+            server.FirstRequestReceived.Status.ToString(), client.RetryEntered.Status.ToString(),
+            server.FirstStalledClientClosed.Status.ToString(), firstConnect.Status.ToString(), error?.GetType().Name);
+
+    // Exactly the original three waits, in their original order and with the original budget.
+    // Snapshot only existing task/counter state; no network work or extra wait is introduced.
+    private static async Task<long> ObserveInitialBackoffPrerequisitesAsync(
+        Task firstRequest, Task<long> retryEntered, Task firstClosed, Action<string, string, Exception?> observe)
+    {
+        var phase = "FirstRequestReceived";
+        try
+        {
+            observe(phase, "enter", null);
+            await firstRequest.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+            observe(phase, "return", null);
+            phase = "RetryEntered";
+            observe(phase, "enter", null);
+            var generation = await retryEntered.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+            observe(phase, "return", null);
+            phase = "FirstStalledClientClosed";
+            observe(phase, "enter", null);
+            await firstClosed.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+            observe(phase, "return", null);
+            return generation;
+        }
+        catch (Exception error)
+        {
+            // Capture the failed prerequisite before the outer owner releases the retry gate.
+            try { observe(phase, error is TimeoutException ? "timeout" : "fault", error); }
+            catch (Exception diagnosticError)
+            {
+                error.Data[BackoffDiagnosticExceptionTypeKey] = diagnosticError.GetType().Name;
+            }
+            throw;
+        }
+    }
+
+    private static async Task RunBackoffProbeWithCleanupAsync(
+        Func<Task> body, Func<Task> cleanup, Action<string?> writeDiagnostics)
+    {
+        ExceptionDispatchInfo? primary = null;
+        Exception? cleanupFailure = null;
+        Exception? diagnosticFailure = null;
+        try { await body(); }
+        catch (Exception error) { primary = ExceptionDispatchInfo.Capture(error); }
+        finally
+        {
+            // Catch delegate entry as well as awaited failure. Diagnostics must report
+            // the actual cleanup outcome and cannot replace an earlier failed assertion.
+            try { await cleanup(); }
+            catch (Exception error) { cleanupFailure = error; }
+            try { writeDiagnostics(cleanupFailure?.GetType().Name); }
+            catch (Exception error) { diagnosticFailure = error; }
+        }
+        var failure = primary?.SourceException ?? cleanupFailure ?? diagnosticFailure;
+        if (failure is null) return;
+        // Retain separate type-only evidence even when the output writer itself failed.
+        if (cleanupFailure is not null) failure.Data[BackoffCleanupExceptionTypeKey] = cleanupFailure.GetType().Name;
+        if (diagnosticFailure is not null) failure.Data[BackoffDiagnosticExceptionTypeKey] = diagnosticFailure.GetType().Name;
+        (primary ?? ExceptionDispatchInfo.Capture(failure)).Throw();
+    }
+
+    private static async Task ReleaseAndObserveTimedOutRetryAsync(HeldRetryWebSocketClient client, Task firstConnectTask)
+    {
+        // Cleanup only: the manual prerequisite and healthy stale-owner check above
+        // ran with automatic recovery enabled. Always unblock and observe the original call.
+        client.AutoReconnectEnabled = false;
+        client.ReleaseRetry();
+        await firstConnectTask.WaitAsync(HeldRetryWebSocketClient.ObservationTimeout);
+        client.RecordInitialConnectCompletion();
+    }
+
+    private void WriteBackoffProbeDiagnostics(HeldRetryWebSocketClient client, string? cleanupExceptionType,
+        IReadOnlyList<BackoffPrerequisiteObservation> prerequisites)
+    {
+        output.WriteLine($"generation={client.CurrentGeneration} phase=ProbeCleanup exceptionType={cleanupExceptionType ?? "none"}");
+        // These immutable snapshots were taken before cleanup, not reconstructed from released gates.
+        foreach (var prerequisite in prerequisites)
+            output.WriteLine("backoffPrerequisite=" + JsonSerializer.Serialize(prerequisite));
+        foreach (var observation in client.SafeObservations)
+            output.WriteLine($"generation={observation.Generation} phase={observation.Phase} " +
+                $"exceptionType={observation.ExceptionType ?? "none"} elapsedMs={observation.ElapsedMs}");
+    }
+
     private static async Task WaitForConditionAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var start = DateTime.UtcNow;
@@ -910,6 +1212,111 @@ public class WebSocketClientBaseTests
 [CollectionDefinition("WebSocketClientBase", DisableParallelization = true)]
 public sealed class WebSocketClientBaseTestCollection
 {
+}
+
+/// <summary>Holds the first real retry at the existing synchronous delay-policy seam.
+/// The test supplies the release gate and proves a specific manual socket before releasing it.</summary>
+internal sealed class HeldRetryWebSocketClient : TestWebSocketClient
+{
+    public static readonly TimeSpan ObservationTimeout = TimeSpan.FromSeconds(2);
+    private readonly System.Diagnostics.Stopwatch _observationClock = System.Diagnostics.Stopwatch.StartNew();
+    private readonly ManualResetEventSlim _releaseRetry;
+    private readonly TaskCompletionSource<long> _retryEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<long> _messageReceived = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private long _heldGeneration;
+    private long _initialGeneration;
+    private int _retryHeld;
+    private int _retryDelayReturned;
+    private int _releaseRecorded;
+    private int _initialCompletionRecorded;
+
+    public ConcurrentQueue<long> ConnectedGenerations { get; } = new();
+    public ConcurrentQueue<(long Generation, string Phase, string? ExceptionType, int ElapsedMs)> SafeObservations { get; } = new();
+    public int ObservationElapsedMs => (int)Math.Min(_observationClock.ElapsedMilliseconds, int.MaxValue);
+    public Task<long> RetryEntered => _retryEntered.Task;
+    public Task<long> MessageReceivedGeneration => _messageReceived.Task;
+    public long CurrentGeneration => CurrentConnectionGeneration;
+    public bool IsRetryHeld => Volatile.Read(ref _retryHeld) != 0 && !_releaseRetry.IsSet;
+    public bool RetryDelayReturned => Volatile.Read(ref _retryDelayReturned) != 0;
+
+    public HeldRetryWebSocketClient(string url, string token, ManualResetEventSlim releaseRetry, IOpenClawLogger logger)
+        : base(url, token, logger)
+    {
+        _releaseRetry = releaseRetry;
+        TestConnectAttemptTimeout = TimeSpan.FromMilliseconds(250);
+    }
+
+    private void RecordObservation(long generation, string phase, string? exceptionType) =>
+        SafeObservations.Enqueue((generation, phase, exceptionType, ObservationElapsedMs));
+
+    public bool HasCurrentEstablishedConnection(long generation) =>
+        CurrentGeneration == generation && TestIsConnected && ConnectedGenerations.Contains(generation) &&
+        TransportObservations.Any(item => item.Generation == generation && item.Phase == GatewayHandshakePhase.TransportConnected) &&
+        !TransportObservations.Any(item => item.Generation == generation && item.Phase == GatewayHandshakePhase.Failed);
+
+    protected override int? GetReconnectDelayMs(long sourceConnectionGeneration)
+    {
+        if (Interlocked.CompareExchange(ref _heldGeneration, sourceConnectionGeneration, 0) != 0)
+            return base.GetReconnectDelayMs(sourceConnectionGeneration);
+        Volatile.Write(ref _retryHeld, 1);
+        RecordObservation(sourceConnectionGeneration, "RetryDelayEntered", null);
+        _retryEntered.TrySetResult(sourceConnectionGeneration);
+        try
+        {
+            if (!_releaseRetry.Wait(ObservationTimeout))
+                throw new TimeoutException("The test-owned stale retry gate was not released.");
+            return 0;
+        }
+        catch (Exception error)
+        {
+            RecordObservation(sourceConnectionGeneration, "RetryDelayFailed", error.GetType().Name);
+            throw;
+        }
+        finally
+        {
+            Volatile.Write(ref _retryHeld, 0);
+            Volatile.Write(ref _retryDelayReturned, 1);
+            RecordObservation(sourceConnectionGeneration, "RetryDelayReturned", null);
+        }
+    }
+
+    public void ReleaseRetry()
+    {
+        if (Interlocked.Exchange(ref _releaseRecorded, 1) == 0)
+            RecordObservation(Interlocked.Read(ref _heldGeneration), "RetryReleaseRequested", null);
+        _releaseRetry.Set();
+    }
+
+    public void RecordInitialConnectCompletion()
+    {
+        if (Interlocked.Exchange(ref _initialCompletionRecorded, 1) == 0)
+            RecordObservation(Interlocked.Read(ref _initialGeneration), "InitialConnectCompletionObserved", null);
+    }
+
+    protected override void OnTransportObservation(long generation, GatewayHandshakePhase phase,
+        Exception? error = null, GatewayErrorKind? failureKind = null)
+    {
+        base.OnTransportObservation(generation, phase, error, failureKind);
+        if (phase == GatewayHandshakePhase.TransportConnecting)
+            Interlocked.CompareExchange(ref _initialGeneration, generation, 0);
+        RecordObservation(generation, phase.ToString(), error?.GetType().Name);
+    }
+
+    protected override Task OnConnectedAsync()
+    {
+        var completed = base.OnConnectedAsync();
+        var generation = CurrentGeneration;
+        ConnectedGenerations.Enqueue(generation);
+        RecordObservation(generation, "OnConnected", null);
+        return completed;
+    }
+
+    protected override async Task ProcessMessageForConnectionAsync(string json, long sourceConnectionGeneration)
+    {
+        await base.ProcessMessageForConnectionAsync(json, sourceConnectionGeneration);
+        RecordObservation(sourceConnectionGeneration, "MessageReceived", null);
+        _messageReceived.TrySetResult(sourceConnectionGeneration);
+    }
 }
 
 internal sealed class BlockingFirstConnectClient : WebSocketClientBase
@@ -1337,14 +1744,23 @@ internal sealed class ControlledUpgradeWebSocketServer : IDisposable
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<WebSocket> _upgradeCompleted =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _connectionClosedBeforeHeaders =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task _acceptLoop;
     private int _requestCount;
+    private int _rejectConnectionsBeforeHeaders;
 
     public string WebSocketUrl { get; }
     public int RequestCount => Volatile.Read(ref _requestCount);
     public Task FirstRequestReceived => _firstRequestReceived.Task;
     public Task FirstStalledClientClosed => _firstStalledClientClosed.Task;
     public Task UpgradeCompleted => _upgradeCompleted.Task;
+    public Task ConnectionClosedBeforeHeaders => _connectionClosedBeforeHeaders.Task;
+    public bool RejectConnectionsBeforeHeaders
+    {
+        get => Volatile.Read(ref _rejectConnectionsBeforeHeaders) != 0;
+        set => Volatile.Write(ref _rejectConnectionsBeforeHeaders, value ? 1 : 0);
+    }
 
     public ControlledUpgradeWebSocketServer(int stalledUpgradeCount)
         : this(requestNumber =>
@@ -1380,7 +1796,8 @@ internal sealed class ControlledUpgradeWebSocketServer : IDisposable
         _listener.Start();
         var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
         WebSocketUrl = $"ws://127.0.0.1:{port}/";
-        _acceptLoop = Task.Run(AcceptLoopAsync);
+        // Post the first accept before the client starts; avoid an extra thread-pool startup hop.
+        _acceptLoop = AcceptLoopAsync();
     }
 
     private async Task AcceptLoopAsync()
@@ -1390,7 +1807,8 @@ internal sealed class ControlledUpgradeWebSocketServer : IDisposable
             TcpClient client;
             try
             {
-                client = await _listener.AcceptTcpClientAsync(_cts.Token);
+                // The old Task.Run pump did not capture the test synchronization context.
+                client = await _listener.AcceptTcpClientAsync(_cts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -1416,6 +1834,14 @@ internal sealed class ControlledUpgradeWebSocketServer : IDisposable
         var stalled = false;
         try
         {
+            // Opt-in negative control: no HTTP headers are read or counted. Keep
+            // rejecting while armed, including any HTTP-layer retry of that attempt.
+            if (RejectConnectionsBeforeHeaders)
+            {
+                client.Dispose();
+                _connectionClosedBeforeHeaders.TrySetResult();
+                return;
+            }
             var stream = client.GetStream();
             var request = await ReadHttpHeadersAsync(stream, _cts.Token);
             requestNumber = Interlocked.Increment(ref _requestCount);

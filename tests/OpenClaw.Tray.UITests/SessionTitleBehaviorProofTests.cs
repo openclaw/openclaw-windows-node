@@ -114,10 +114,10 @@ public sealed class SessionTitleBehaviorProofTests
         var row = FindAncestor(titleElement!, ControlType.ListItem);
         Assert.NotNull(row);
 
-        var buttonCondition = new AndCondition(
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-            new PropertyCondition(AutomationElement.NameProperty, "Open in chat"));
-        var button = row!.FindFirst(TreeScope.Descendants, buttonCondition);
+        var buttons = row!.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button));
+        var button = buttons.Cast<AutomationElement>().FirstOrDefault(candidate =>
+            candidate.Current.AutomationId.StartsWith("SessionsHubOpen:", StringComparison.Ordinal));
         Assert.NotNull(button);
         Assert.True(button!.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern));
         Assert.IsType<InvokePattern>(pattern).Invoke();

@@ -116,6 +116,30 @@ public sealed class AccessibilityAppFixture : IDisposable
         }
     }
 
+    internal async Task SendNotificationAsync(string title, string body)
+    {
+        // Populate the ordinary in-app inbox through its shipped MCP producer, not host warnings.
+        var tokenPath = Path.Combine(_dataDirectory, "mcp-token.txt");
+        var stopwatch = Stopwatch.StartNew();
+        while (!File.Exists(tokenPath) && stopwatch.Elapsed < StartupTimeout)
+        {
+            EnsureTargetIsAlive();
+            await Task.Delay(100);
+        }
+        EnsureTargetIsAlive();
+        var token = (await File.ReadAllTextAsync(tokenPath)).Trim();
+        if (token.Length == 0)
+            throw new InvalidOperationException("The isolated app did not publish an MCP credential.");
+        using var client = new OpenClaw.TestSupport.McpClient($"http://127.0.0.1:{_mcpPort}/mcp", token);
+        using var tools = await client.ListToolsAsync();
+        if (!tools.RootElement.GetProperty("result").GetProperty("tools").EnumerateArray()
+            .Any(tool => tool.GetProperty("name").GetString() == "system.notify"))
+            throw new InvalidOperationException("The isolated app did not expose system.notify.");
+        using var result = await client.CallToolExpectSuccessAsync("system.notify", new { title, body, sound = false });
+        if (!result.RootElement.GetProperty("sent").GetBoolean())
+            throw new InvalidOperationException("The isolated app did not admit the notification.");
+    }
+
     public async Task NavigateAsync(
         string pageTag,
         string expectedPageName,
@@ -164,7 +188,7 @@ public sealed class AccessibilityAppFixture : IDisposable
         }
     }
 
-    public string? CaptureHubScreenshotIfRequested()
+    public string? CaptureHubScreenshotIfRequested(bool preserveWindowState = false)
     {
         var configuredPath = Environment.GetEnvironmentVariable("OPENCLAW_UI_SCREENSHOT_PATH");
         if (string.IsNullOrWhiteSpace(configuredPath))
@@ -174,7 +198,8 @@ public sealed class AccessibilityAppFixture : IDisposable
         var foreground = false;
         for (var attempt = 0; attempt < 20; attempt++)
         {
-            _ = ShowWindow(HubWindowHandle, ShowMaximized);
+            if (!preserveWindowState)
+                _ = ShowWindow(HubWindowHandle, ShowMaximized);
             _ = BringWindowToTop(HubWindowHandle);
             _ = SetForegroundWindow(HubWindowHandle);
             if (GetForegroundWindow() == HubWindowHandle)

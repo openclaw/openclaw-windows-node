@@ -6,7 +6,7 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
-    public void ActiveSavedGatewayRemoval_RecordsUserDisconnectIntentBeforeRemovingRecord()
+    public void ActiveSavedGatewayRemoval_RecordsPinnedUserIntentAfterSavingRemoval()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var source = File.ReadAllText(Path.Combine(
@@ -15,10 +15,43 @@ public sealed class AppRefactorContractTests
 
         // Retire when saved-row removal has a behavioral seam independent of the native dialog.
         AssertInOrder(removal,
+            "_gatewayRegistry?.RemoveAndSave(gwId)",
             "if (wasActive && _connectionManager != null)",
-            "await _connectionManager.DisconnectByUserAsync()",
-            "_gatewayRegistry?.Remove(gwId)");
+            "await _connectionManager.DisconnectByUserAsync(gwId)");
         Assert.DoesNotContain("_connectionManager.DisconnectAsync()", removal);
+    }
+
+    [Fact]
+    public void AutomationsOverview_HasOneLazyHostOwnerBoundToTheLiveClientAndDisposedBeforeGateway()
+    {
+        var source = ReadAppSources();
+        Assert.Single(Regex.Matches(source, @"new OpenClaw\.Shared\.Cron\.AutomationsOverviewSource\("));
+        Assert.Contains("internal OpenClaw.Shared.Cron.AutomationsOverviewSource AutomationsOverview", source);
+        Assert.DoesNotContain("_automationsOverview?.RefreshAsync", source);
+        Assert.DoesNotContain("_automationsOverview.RefreshAsync", source);
+        foreach (var hook in new[] { "OnOperatorClientChanged", "OnManagerStateChanged" })
+            Assert.Contains("_automationsOverview?.SetConnection(GatewayClient);", ExtractMethod(source, hook));
+        AssertInOrder(source, "automationsOverview.Dispose();", "await connectionManager.DisposeAsync();");
+
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Pages", "CronPage.xaml.cs"));
+        Assert.Contains("overviewSource: CurrentApp.AutomationsOverview", page);
+        Assert.DoesNotContain("new AutomationsOverviewSource", page);
+    }
+
+    [Fact]
+    public void NodeService_ShutsDownProducersBeforeReleasingExecutorCleanupLeases()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
+        var teardown = ExtractMethod(source, "DisposeCoreAsync");
+        var release = teardown.IndexOf("_sandboxExecutor?.Dispose()", StringComparison.Ordinal);
+        Assert.True(release >= 0);
+        foreach (var producer in new[] { "await StopMcpServerAsync()", "await _uploadRetention.DisposeAsync()", "DetachClientHandlers(client)" })
+        {
+            var stop = teardown.IndexOf(producer, StringComparison.Ordinal);
+            Assert.True(stop >= 0 && stop < release, $"{producer} must precede executor cleanup release.");
+        }
     }
 
     [Fact]
@@ -574,7 +607,10 @@ public sealed class AppRefactorContractTests
     public void Dashboard_SurfacesSshTunnelConfigurationFailure()
     {
         var source = ReadAppSources();
-        var method = ExtractMethod(source, "OpenDashboard");
+        var entry = ExtractMethod(source, "OpenDashboard");
+        Assert.Contains("TryOpenDashboardAsync(path)", entry);
+        Assert.Contains("AsyncEventHandlerGuard.Run(", entry);
+        var method = ExtractMethod(source, "TryOpenDashboardAsync");
 
         Assert.Contains("CreateDashboardLauncher(", method);
         var launcher = source[source.IndexOf("private GatewayDashboardLauncher CreateDashboardLauncher", StringComparison.Ordinal)..];
@@ -1493,7 +1529,30 @@ public sealed class AppRefactorContractTests
             "setupWindow.Closed += OnSetupClosed",
             "CompleteSetupCloseAsync(setupWindow)",
             "await setupWindow.CleanupCompleted",
-            "_setupWindow = null");
+            "_setupWindow = null",
+            "TryAdoptExternalSnapshot()",
+            "ExternalSnapshotAdoption.UnsavedEdits",
+            "NotifySetupRegistryRecovery()",
+            "ExternalSnapshotAdoption.Adopted",
+            "ReconcileSetupConnectionAsync(before, registry.GetActive())");
+    }
+
+    [Fact]
+    public void SavedGatewayRemoval_SavesBeforeDisconnectingTheActiveConnection()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var connectionPage = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var remove = ExtractMethod(connectionPage, "OnSavedRowRemoveAsync");
+        AssertInOrder(
+            remove,
+            "_gatewayRegistry?.RemoveAndSave(gwId)",
+            "return;",
+            "await _connectionManager.DisconnectByUserAsync(gwId)");
     }
 
     [Fact]
@@ -1699,10 +1758,9 @@ public sealed class AppRefactorContractTests
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
         var reset = ExtractMethod(source, "ResetInputs");
 
-        // The "More ▾" overflow button is a sibling of SelectOptions in the shared
-        // StackPanel, so ResetInputs must remove it between steps or it leaks forward.
+        // The XAML owner must remove More even before the page joins the live tree.
         Assert.Contains("_moreOptionsButton", reset);
-        Assert.Contains("morePanel.Children.Remove(_moreOptionsButton)", reset);
+        Assert.Contains("StepInputsPanel.Children.Remove(_moreOptionsButton)", reset);
         Assert.Contains("_moreOptionsButton = null", reset);
     }
 

@@ -8,6 +8,135 @@ public class ChatTimelineReducerTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void HandoffReceipt_RequiresActualCallInputAndExactRunAndSuccessfulOutcome(bool outcomeFirst)
+    {
+        var start = new ChatToolStartEvent("sessions_yield", "sessions_yield", ToolCallId: "t", RunId: "r",
+            HandoffInput: new("sessions_yield", false));
+        var output = new ChatToolOutputEvent("receipt", "t", "r", new("sessions_yield", "Waiting"));
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, outcomeFirst ? output : start);
+        state = ChatTimelineReducer.Apply(state, outcomeFirst ? start : output);
+        Assert.Equal("Waiting", Assert.Single(state.Entries).ConfirmedHandoff!.Acknowledgment);
+
+        var wrongRun = ChatTimelineReducer.Apply(ChatTimelineReducer.Apply(ChatTimelineState.Initial(), start),
+            output with { RunId = "other" });
+        Assert.Null(Assert.Single(wrongRun.Entries).ConfirmedHandoff);
+        var missingInput = ChatTimelineReducer.Apply(ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            start with { HandoffInput = null }), output);
+        Assert.Null(Assert.Single(missingInput.Entries).ConfirmedHandoff);
+        var lookalike = ChatTimelineReducer.Apply(ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            start with { ToolName = "custom.sessions_yield" }), output);
+        Assert.Null(Assert.Single(lookalike.Entries).ConfirmedHandoff);
+        var unkeyed = ChatTimelineReducer.Apply(ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            start with { ToolCallId = null }), output with { ToolCallId = null });
+        Assert.Null(Assert.Single(unkeyed.Entries).ConfirmedHandoff);
+        var failed = ChatTimelineReducer.Apply(state, new ChatToolErrorEvent("failed", "t", "r"));
+        Assert.Null(Assert.Single(failed.Entries).ConfirmedHandoff);
+    }
+
+    [Fact]
+    public void UnidentifiedMixedPhasePrefixGrowthUpdatesExistingStreamWithoutInventingIdentity()
+    {
+        var state = ChatTimelineState.Initial();
+        foreach (var commentary in new[] { "Checking", "Checking files" })
+        {
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent(commentary,
+                IsStreaming: true, Presentation: new(Phase: "commentary", RunId: "r"), IsContentPart: true));
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Answer",
+                IsStreaming: true, Presentation: new(Phase: "final_answer", RunId: "r"), IsContentPart: true));
+        }
+        Assert.Equal(["Checking files", "Answer"], state.Entries.Select(entry => entry.Text));
+        Assert.All(state.Entries, entry => Assert.Null(entry.Presentation!.BlockId));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Replacement",
+            IsStreaming: true, Presentation: new(RunId: "r"), ReplacesStreamText: true));
+        var replacement = Assert.Single(state.Entries);
+        Assert.Equal("Replacement", replacement.Text);
+        Assert.Null(replacement.Presentation!.Phase);
+    }
+
+    [Fact]
+    public void UnsignedReplacementCannotEraseOtherRunsOrCrossUserBoundary()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageEvent("Other run", IsStreaming: true, Presentation: new(RunId: "other")));
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("next"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Current", IsStreaming: true,
+            Presentation: new(RunId: "r")));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("New", IsStreaming: true,
+            Presentation: new(RunId: "r"), ReplacesStreamText: true));
+        Assert.Equal(["Other run", "next", "New"], state.Entries.Select(entry => entry.Text));
+    }
+
+    [Fact]
+    public void UnidentifiedCumulativePartConsumesOrderedPrefixesWithoutDuplicatingEarlierSegments()
+    {
+        var commentary = new OpenClaw.Shared.ChatMessagePresentation(Phase: "commentary", RunId: "r");
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageEvent("Checking", IsStreaming: true, Presentation: commentary, IsContentPart: true));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("read", "read", ToolCallId: "t", RunId: "r"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("ok", "t", "r"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("files", IsStreaming: true, Presentation: commentary, IsContentPart: true));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Answer", IsStreaming: true,
+                Presentation: new(Phase: "final_answer", RunId: "r"), IsContentPart: true));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Checking files now", IsStreaming: true, Presentation: commentary, IsContentPart: true));
+        Assert.Equal(["Checking", "read", "files now", "Answer"], state.Entries.Select(entry => entry.Text));
+    }
+
+    [Fact]
+    public void PhasedSnapshots_DoNotStripAnotherPhaseOrMergeDifferentRunReplies()
+    {
+        var state = ChatTimelineState.Initial();
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Shared prefix",
+            Presentation: new(Phase: "commentary", RunId: "r")));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Shared prefix answer",
+            Presentation: new(Phase: "final_answer", RunId: "r")));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Shared prefix answer",
+            Presentation: new(Phase: "final_answer", RunId: "other")));
+        Assert.Equal(["Shared prefix", "Shared prefix answer", "Shared prefix answer"],
+            state.Entries.Select(entry => entry.Text));
+    }
+
+    [Fact]
+    public void PhasedSnapshots_RepeatEarlierUnidentifiedPhaseWithoutDuplicatingOrInventingMetadata()
+    {
+        var state = ChatTimelineState.Initial();
+        foreach (var answer in new[] { "Ans", "Answer" })
+        {
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Checking",
+                IsStreaming: true, Presentation: new(Phase: "commentary", RunId: "r"), IsContentPart: true));
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent(answer,
+                IsStreaming: true, Presentation: new(Phase: "final_answer", RunId: "r"), IsContentPart: true));
+        }
+        Assert.Equal(["Checking", "Answer"], state.Entries.Select(entry => entry.Text));
+        Assert.All(state.Entries, entry => Assert.Null(entry.Presentation!.BlockId));
+    }
+
+    [Fact]
+    public void PhasedSnapshots_AgentPreviewAdoptsSuppliedBlockIdentityAndLaterPhaseCorrection()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageDeltaEvent("Checking", new(Phase: "commentary", RunId: "r")));
+        var id = state.Entries[0].Id;
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Checking complete",
+            Presentation: new(Phase: "commentary", RunId: "r", MessageId: "m", BlockId: "b")));
+        Assert.Equal(id, Assert.Single(state.Entries).Id);
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Answer",
+            Presentation: new(Phase: "final_answer", RunId: "r", MessageId: "m", BlockId: "b")));
+        Assert.Equal("final_answer", Assert.Single(state.Entries).Presentation!.Phase);
+        Assert.Equal(id, state.Entries[0].Id);
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("next"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("New answer",
+            Presentation: new(Phase: "final_answer", RunId: "r", MessageId: "m", BlockId: "b")));
+        Assert.Equal(3, state.Entries.Count);
+        Assert.Equal("Answer", state.Entries[0].Text);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void BackgroundFinal_PreservesActiveTurnAndCannotReconcileIntoItsAnswer(bool hasStream)
     {
         var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "New question", "nonce");
@@ -138,6 +267,40 @@ public class ChatTimelineReducerTests
         Assert.Single(updated.Entries);
         Assert.Equal("final", updated.Entries[0].Text);
         Assert.False(updated.Entries[0].IsStreaming);
+    }
+
+    [Fact]
+    public void CompletedAssistant_ReconciliationPreservesInactiveTurnAndTiming()
+    {
+        var started = DateTimeOffset.UtcNow;
+        var ended = started.AddSeconds(1);
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageDeltaEvent("partial"), started);
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), ended);
+
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("complete", ReconcilePrevious: true, ActivatesTurn: false),
+            ended.AddSeconds(1));
+
+        Assert.False(updated.TurnActive);
+        Assert.Equal(started, updated.TurnStartedAt);
+        Assert.Equal(ended, updated.TurnEndedAt);
+        Assert.Equal("complete", Assert.Single(updated.Entries).Text);
+        Assert.False(updated.Entries[0].IsStreaming);
+    }
+
+    [Fact]
+    public void InterruptedLiveLegacyToolCannotRecoverWithoutRunIdentity()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatToolStartEvent("read", "read", ToolCallId: "read-1"));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        var updated = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("late output", ToolCallId: "read-1"));
+
+        Assert.False(updated.TurnActive);
+        Assert.Equal(ChatToolCallStatus.Interrupted, Assert.Single(updated.Entries).ToolResult);
+        Assert.Equal("late output", updated.Entries[0].ToolOutput);
     }
 
     [Fact]
