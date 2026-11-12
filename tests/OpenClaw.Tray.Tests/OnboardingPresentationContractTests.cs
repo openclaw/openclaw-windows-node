@@ -113,7 +113,7 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void DashboardAction_LivesInConnectionCardAndRetainsCompactFlyoutShortcut()
+    public void DashboardAction_LivesInConnectionCard()
     {
         var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
         var dashboard = Assert.Single(document.Descendants(),
@@ -123,10 +123,6 @@ public sealed class OnboardingPresentationContractTests
             element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard()",
             Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs"));
-        Assert.Contains("ChatFlyoutDashboardButton",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\ChatWindow.xaml"));
-        Assert.Contains("((IAppCommands)Application.Current).OpenDashboard()",
-            Read(@"src\OpenClaw.Tray.WinUI\Windows\ChatWindow.xaml.cs"));
     }
 
     [Fact]
@@ -158,59 +154,6 @@ public sealed class OnboardingPresentationContractTests
         Assert.Contains("Assert.Equal(handle, GetForegroundWindow())", capture);
         Assert.Contains("bounds.IntersectsWith(other.Rectangle)", capture);
         Assert.Contains("Assert.Equal(bounds, AssertCaptureTarget(window))", capture);
-    }
-
-    [Fact]
-    public void AiGroups_KeepManualInputInlineAndMoreLimitedToAuthentication()
-    {
-        var xaml = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml");
-        var source = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiSetupPage.xaml.cs");
-        var groups = new[] { "LocalAiSection", "CandidatesSection", "UnavailableSection",
-            "PrepareSection", "SignInSection", "MoreExpander", "RecommendedSection", "ApiKeySection", "ApiKeyForm" };
-        var offsets = groups.Select(name => xaml.IndexOf($"x:Name=\"{name}\"", StringComparison.Ordinal)).ToArray();
-        Assert.All(offsets, offset => Assert.True(offset >= 0));
-        Assert.Equal(offsets.Order(), offsets);
-        Assert.Contains("MoreSignInChoices.ItemsSource = ProviderRows(_presentation.MoreSignIn, GatewayAiSetupChoiceKind.Auth)", source);
-        Assert.Contains("ApiKeyForm.StartBringIntoView()", source);
-        Assert.Contains("ApiProviderPicker.SelectedIndex = -1", source);
-        Assert.Contains("ApiKeyForm.Visibility = Visible(_presentation.ShowApiKeyForm)", source);
-        Assert.Contains("RecommendedInstalls.ItemsSource = ProviderRows(_presentation.RecommendedInstalls, GatewayAiSetupChoiceKind.Prepare)", source);
-        Assert.Contains("SetupLocalization.GetString(\"Onboarding_AiSetup_\" + key)", source);
-        Assert.DoesNotContain("WizardPanel", xaml);
-        Assert.DoesNotContain("new ContentDialog", source);
-        Assert.DoesNotContain("x:Name=\"LocalAiHeading\"", xaml);
-        Assert.DoesNotContain("x:Name=\"LocalAiExplanation\"", xaml);
-        Assert.Contains("snapshot.ShowLocalChoice", source);
-        Assert.Contains("FluentIconCatalog.Key", source);
-        Assert.Contains("ApiProviderPicker.SelectedItem is ChoiceRow row && CanConnectManual()", source);
-        Assert.Contains("SelectChoice(row);", source);
-        Assert.Contains("selected.Id != row.Id || selected.ModelRef != row.ModelRef", source);
-        var document = XDocument.Parse(xaml);
-        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        XElement Named(string name) => Assert.Single(document.Descendants(),
-            element => (string?)element.Attribute(x + "Name") == name);
-        Assert.Equal("SettingsCard", Named("ApiKeysButton").Name.LocalName);
-        Assert.Equal("StackPanel", Named("ApiKeysButton").Parent!.Name.LocalName);
-        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "ListView");
-        Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "ContinueButton");
-        Assert.DoesNotContain(Named("ApiKeysButton").Ancestors(), element => element == Named("SignInSection"));
-        Assert.DoesNotContain(Named("ApiKeyForm").Ancestors(), element => element == Named("SignInSection"));
-        Assert.Contains(Named("ApiKeysButton").Ancestors(), element => element == Named("ApiKeySection"));
-        Assert.Contains(Named("ApiKeyForm").Ancestors(), element => element == Named("ApiKeySection"));
-        Assert.Contains(Named("MoreExpander").Ancestors(), element => element == Named("ProviderGroup"));
-        Assert.Contains(Named("FeaturedSignInChoices").Ancestors(), element => element == Named("ProviderGroup"));
-        Assert.Equal("SettingsExpander", Named("RecommendedSection").Name.LocalName);
-        Assert.Equal("False", (string?)Named("RecommendedSection").Attribute("IsExpanded"));
-        Assert.Equal("PasswordBox", Named("ApiKeyInput").Name.LocalName);
-        Assert.Equal("ManualConnect_Click", (string?)Named("ApiKeyConnectButton").Attribute("Click"));
-        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "AdaptiveTrigger");
-        Assert.Equal("ApiKeyFields_SizeChanged", (string?)Named("ApiKeyFields").Attribute("SizeChanged"));
-        Assert.Contains("e.NewSize.Width >= 560", source);
-        Assert.Equal("CheckBox", Named("CatalogPreference").Name.LocalName);
-        Assert.Equal("False", (string?)Named("CatalogPreference").Attribute("IsChecked"));
-        Assert.Contains("? CatalogPreference.IsChecked == true : (bool?)null", source);
-        Assert.DoesNotContain(Named("ApiKeyFields").Descendants(),
-            element => element.Attribute("Height") is not null || element.Attribute("FontSize") is not null);
     }
 
     [Fact]
@@ -270,7 +213,10 @@ public sealed class OnboardingPresentationContractTests
         Assert.Contains("AccessDraft.TryAcceptNativeConnection(route, result)", window);
         Assert.Contains("RootFrame.Content is SetupNativeConnectionPage nativePage", window);
         Assert.Contains("nativePage.DisposeAsync().AsTask()", window);
-        Assert.True(window.IndexOf("await _nativePageCleanupTask", StringComparison.Ordinal) <
+        Assert.Contains("await Task.WhenAll(\n                                " +
+            "_nativePageCleanupTask, _aiPageCleanupTask, _preparationTask,",
+            window.Replace("\r\n", "\n", StringComparison.Ordinal));
+        Assert.True(window.IndexOf("_localAiTransitionTask ?? Task.CompletedTask", StringComparison.Ordinal) <
             window.IndexOf("_setupLock?.Dispose()", StringComparison.Ordinal));
         Assert.Contains("AccessDraft?.ClearNativeConnectionSecrets()", window);
         Assert.DoesNotContain("new GatewayConnectionManager", window);

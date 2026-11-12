@@ -1,6 +1,6 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -55,42 +55,40 @@ internal sealed class WindowsManagedLocalGatewayPortPlatform : IManagedLocalGate
     public string? GetProcessCommandLine(int processId) =>
         WindowsTcpListenerSnapshot.GetProcessCommandLine(processId);
 
-    public WslRelayTrustResult InspectWslRelayBinary(string processPath) =>
-        EvaluateWslRelayBinary(processPath, WindowsAuthenticodeVerifier.VerifyMicrosoftSignedFile);
+    // Known admin-protected WSL install locations. Some genuine WSL relays are unsigned.
+    // A relay elsewhere is only a warning when the expected distro owns the guest port.
+    // That guest check does not prove the Windows listener forwards to that distro.
+    // Under WindowsApps, only the root of Microsoft's WSL package qualifies; the publisher ID suffix
+    // keeps other packaged apps from shipping their own wslrelay.exe.
+    private const string WslPackageNamePrefix = "MicrosoftCorporationII.WindowsSubsystemForLinux_";
+    private const string MicrosoftPublisherIdSuffix = "_8wekyb3d8bbwe";
 
-    internal static WslRelayTrustResult EvaluateWslRelayBinary(
-        string processPath,
-        Func<string, AuthenticodeTrustResult> verifySignature)
+    public WslRelayTrustResult InspectWslRelayBinary(string processPath)
     {
         try
         {
             var fullPath = Path.GetFullPath(processPath);
             var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
             var systemRoot = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-            var canonicalProgramFiles = Path.Combine(programFiles, "WSL", "wslrelay.exe");
-            var canonicalSystem = Path.Combine(systemRoot, "System32", "wslrelay.exe");
-            var windowsAppsRoot = Path.Combine(programFiles, "WindowsApps") + Path.DirectorySeparatorChar;
-            var isCanonical =
-                string.Equals(fullPath, canonicalProgramFiles, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(fullPath, canonicalSystem, StringComparison.OrdinalIgnoreCase) ||
-                (fullPath.StartsWith(windowsAppsRoot, StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(Path.GetFileName(fullPath), "wslrelay.exe", StringComparison.OrdinalIgnoreCase));
-            if (!isCanonical)
-            {
-                return WslRelayTrustResult.Rejected(
-                    "WSL relay executable path is not canonical.");
-            }
-
-            var signature = verifySignature(fullPath);
-            return signature.IsTrusted
+            var directory = Path.GetDirectoryName(fullPath);
+            var packageFolder = Path.GetFileName(directory);
+            var isInstalled =
+                string.Equals(fullPath, Path.Combine(programFiles, "WSL", "wslrelay.exe"), StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(fullPath, Path.Combine(systemRoot, "System32", "wslrelay.exe"), StringComparison.OrdinalIgnoreCase) ||
+                (string.Equals(Path.GetFileName(fullPath), "wslrelay.exe", StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(Path.GetDirectoryName(directory), Path.Combine(programFiles, "WindowsApps"), StringComparison.OrdinalIgnoreCase) &&
+                 packageFolder is not null &&
+                 packageFolder.StartsWith(WslPackageNamePrefix, StringComparison.OrdinalIgnoreCase) &&
+                 packageFolder.EndsWith(MicrosoftPublisherIdSuffix, StringComparison.OrdinalIgnoreCase));
+            return isInstalled
                 ? WslRelayTrustResult.Trusted()
                 : WslRelayTrustResult.Rejected(
-                    signature.Detail ?? "WSL relay Authenticode verification failed.");
+                    $"WSL relay at '{fullPath}' is outside the trusted WSL install locations " +
+                    @"(Program Files\WSL, System32, or the Microsoft WSL package).");
         }
         catch
         {
-            return WslRelayTrustResult.Rejected(
-                "WSL relay Authenticode verification could not complete.");
+            return WslRelayTrustResult.Rejected("WSL relay executable path could not be resolved.");
         }
     }
 
@@ -258,9 +256,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
     private readonly IManagedLocalGatewayPortPlatform _platform;
     private readonly IOpenClawLogger _logger;
     private readonly Func<string> _getUserProfilePath;
-    private readonly ConcurrentDictionary<ProvenanceCacheKey, GatewayEndpointProvenance>
-        _lastProvenance = new();
-    private readonly record struct ProvenanceCacheKey(string GatewayId, string Url);
+    private readonly ConcurrentDictionary<string, byte> _warnedRelayPaths = new(StringComparer.OrdinalIgnoreCase);
 
     internal ManagedLocalGatewayPortProvenanceService(
         IManagedLocalGatewayPortPlatform platform,
@@ -290,9 +286,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             return new(GatewayEndpointProvenanceKind.UnknownListener, 0,
                 Detail: "Native Gateway ownership must be verified by its Companion runtime, not WSL.");
         }
-        var result = InspectCore(record);
-        _lastProvenance[new ProvenanceCacheKey(record.Id, record.Url)] = result;
-        return result;
+        return InspectCore(record);
     }
 
     public bool IsStrongCredentialAllowed(GatewayRecord record, GatewayCredential credential)
@@ -308,60 +302,12 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             record.SshTunnel is null &&
             (record.IsLocal || GatewayRecordEditing.ResolveManagedDistroName(record) is not null) &&
             GatewayRecordEditing.IsLoopbackEndpoint(record.Url);
-        if (!needsProof)
-            return true;
-
-        if (!_lastProvenance.TryGetValue(
-                new ProvenanceCacheKey(record.Id, record.Url),
-                out var cached) ||
-            cached.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway ||
-            !Uri.TryCreate(record.Url, UriKind.Absolute, out var uri) ||
-            GatewayRecordEditing.ResolveManagedDistroName(record) is not { } managedDistroName)
-        {
-            return false;
-        }
-
-        var currentSnapshot = _platform.CaptureListeners();
-        if (!HasRequiredAddressFamilies(currentSnapshot, uri))
-            return false;
-        var current = currentSnapshot.Listeners
-            .Where(listener => listener.Port == uri.Port && AcceptsHost(listener.Address, uri.Host))
-            .ToArray();
-
-        if (HasNoWindowsProcessIdentity(cached))
-        {
-            if (current.Length != 0 ||
-                !_platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port))
-            {
-                return false;
-            }
-
-            return ListenerSnapshotStillCurrent(current, uri);
-        }
-
-        if (cached.ProcessId is not int expectedPid ||
-            cached.ProcessStartTimeUtc is not DateTime expectedStart ||
-            string.IsNullOrWhiteSpace(cached.ProcessPath))
-        {
-            return false;
-        }
-
-        if (current.Length == 0 ||
-            !current.All(listener =>
-                listener.ProcessId == expectedPid &&
-                listener.ProcessStartTimeUtc == expectedStart &&
-                string.Equals(
-                    listener.ProcessPath,
-                    cached.ProcessPath,
-                    StringComparison.OrdinalIgnoreCase)))
-        {
-            return false;
-        }
-
-        return _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
+        // Recheck the endpoint at handoff time rather than trusting an earlier result.
+        return !needsProof ||
+            InspectCore(record, requireRelayIdentity: true).Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway;
     }
 
-    private GatewayEndpointProvenance InspectCore(GatewayRecord record)
+    private GatewayEndpointProvenance InspectCore(GatewayRecord record, bool requireRelayIdentity = false)
     {
         if (record.SshTunnel is not null ||
             GatewayRecordEditing.ResolveManagedDistroName(record) is not { } managedDistroName ||
@@ -404,6 +350,22 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 Detail: $"Expected WSL gateway owns port {uri.Port} without a Windows relay listener.");
         }
 
+        var firstListener = listeners[0];
+        if (requireRelayIdentity &&
+            (firstListener.ProcessId <= 0 ||
+             firstListener.ProcessStartTimeUtc is null ||
+             string.IsNullOrWhiteSpace(firstListener.ProcessPath) ||
+             listeners.Any(listener =>
+                 listener.ProcessId != firstListener.ProcessId ||
+                 listener.ProcessStartTimeUtc != firstListener.ProcessStartTimeUtc ||
+                 !string.Equals(listener.ProcessPath, firstListener.ProcessPath, StringComparison.OrdinalIgnoreCase))))
+        {
+            return new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.UnknownListener,
+                uri.Port,
+                Detail: "Windows relay listener identity was incomplete or inconsistent.");
+        }
+
         var relayTrustByPath = listeners
             .Where(listener =>
                 string.Equals(listener.ProcessName, "wslrelay", StringComparison.OrdinalIgnoreCase) &&
@@ -415,7 +377,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 path => _platform.InspectWslRelayBinary(path),
                 StringComparer.OrdinalIgnoreCase);
         var expectedDistroListening =
-            relayTrustByPath.Values.Any(result => result.IsTrusted) &&
+            relayTrustByPath.Count > 0 &&
             _platform.IsExpectedWslGatewayListening(managedDistroName, uri.Port);
         var classified = listeners
             .Select(listener => ClassifyListener(
@@ -438,7 +400,8 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ExpectedManagedGateway))
         {
             var first = classified[0];
-            return first with { Detail = $"Expected WSL relay owns loopback port {uri.Port}." };
+            var relayWarning = classified.Select(item => item.Detail).FirstOrDefault(detail => detail is not null);
+            return first with { Detail = relayWarning ?? $"Expected WSL relay owns loopback port {uri.Port}." };
         }
 
         if (classified.All(item => item.Kind == GatewayEndpointProvenanceKind.ConflictingOpenClawGateway) &&
@@ -572,15 +535,24 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             relayPath is not null &&
             relayTrustByPath.TryGetValue(relayPath, out relayTrust);
         var trustedRelay = hasRelayTrust && relayTrust.IsTrusted;
-        if (isWslRelay && trustedRelay && expectedDistroListening)
+        if (isWslRelay && hasRelayTrust && expectedDistroListening)
         {
+            string? warning = null;
+            if (!trustedRelay)
+            {
+                warning = $"{relayTrust.Detail} Continuing because distro '{managedDistroName}' confirms it owns port {port}.";
+                if (_warnedRelayPaths.TryAdd(relayPath!, 0))
+                    _logger.Warn($"[GatewayPort] {warning}");
+            }
+
             return new GatewayEndpointProvenance(
                 GatewayEndpointProvenanceKind.ExpectedManagedGateway,
                 port,
                 listener.ProcessId,
                 listener.ProcessName,
                 listener.ProcessStartTimeUtc,
-                listener.ProcessPath);
+                listener.ProcessPath,
+                Detail: warning);
         }
 
         var taskName = $"OpenClaw Gateway ({managedDistroName})";
@@ -601,8 +573,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             ? relayPath is null
                 ? "WSL relay executable path could not be read."
                 : !trustedRelay
-                    ? relayTrust.Detail ??
-                        "WSL relay Authenticode verification failed."
+                    ? relayTrust.Detail ?? "WSL relay executable is not trusted."
                     : $"Expected distro '{managedDistroName}' does not report its systemd gateway MainPID owning port {port}."
             : "Process is not a verified managed WSL relay or proven obsolete OpenClaw gateway.";
         return new GatewayEndpointProvenance(
@@ -689,13 +660,6 @@ public sealed class ManagedLocalGatewayPortProvenanceService
         left.Kind == GatewayEndpointProvenanceKind.ConflictingOpenClawGateway &&
         left.ProcessId == right.ProcessId &&
         left.ProcessStartTimeUtc == right.ProcessStartTimeUtc;
-
-    private static bool HasNoWindowsProcessIdentity(GatewayEndpointProvenance provenance) =>
-        provenance.ProcessId is null &&
-        provenance.ProcessName is null &&
-        provenance.ProcessStartTimeUtc is null &&
-        provenance.ProcessPath is null &&
-        provenance.ScheduledTaskName is null;
 
     private static bool AcceptsHost(IPAddress listenerAddress, string host)
     {

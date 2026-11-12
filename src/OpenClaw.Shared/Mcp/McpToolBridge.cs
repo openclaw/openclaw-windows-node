@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.Shared.FileTransfer;
 
 namespace OpenClaw.Shared.Mcp;
 
@@ -28,12 +29,14 @@ public class McpToolBridge
     private readonly string _serverName;
     private readonly string _serverVersion;
     private readonly InvocationCancellationRegistry _activeRequests;
+    internal McpFileChannels FileChannels { get; } = new();
 
     public event EventHandler<NodeToolTelemetryCompletion>? ToolTelemetryCompleted;
 
     private static readonly JsonSerializerOptions PayloadJsonOptions = new()
     {
         WriteIndented = false,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
     public McpToolBridge(
@@ -93,7 +96,8 @@ public class McpToolBridge
     internal async Task<McpTransportResponse> HandleTransportRequestAsync(
         string requestBody,
         CancellationToken cancellationToken,
-        ActivityContext linkedContext = default)
+        ActivityContext linkedContext = default,
+        long? authenticatedFileEpoch = null)
     {
         JsonDocument doc;
         try
@@ -143,7 +147,11 @@ public class McpToolBridge
 
             try
             {
-                object? result = method switch
+                object? result = method.StartsWith(McpFileChannels.MethodPrefix, StringComparison.Ordinal)
+                    ? authenticatedFileEpoch.HasValue
+                        ? FileChannels.Control(method, paramsElement, authenticatedFileEpoch.Value)
+                        : throw new McpToolException("File channels require an authenticated HTTP listener.", NodeToolErrorCategory.InvalidRequest)
+                    : method switch
                 {
                     "initialize" => HandleInitialize(),
                     "ping" => new { },
@@ -154,7 +162,8 @@ public class McpToolBridge
                         paramsElement,
                         requestKey,
                         cancellationToken,
-                        invocation!),
+                        invocation!,
+                        authenticatedFileEpoch),
                     // Some clients (notably Cursor) probe these on startup. Returning
                     // empty lists is friendlier than MethodNotFound — both feature sets
                     // are deferred but compatible by being absent rather than failing.
@@ -166,6 +175,7 @@ public class McpToolBridge
                 if (result is McpToolCallResult toolCall)
                 {
                     result = toolCall.Result;
+                    terminalExecutionMode = toolCall.ExecutionMode;
                     if (toolCall.Diagnostic != null)
                     {
                         terminalOutcome = NodeToolOutcome.Failure;
@@ -181,6 +191,12 @@ public class McpToolBridge
                 responseBody = hasId
                     ? WriteError(idElement, JsonRpcErrorCode.MethodNotFound, ex.Message)
                     : null;
+            }
+            catch (FileCommandException ex)
+            {
+                terminalOutcome = NodeToolOutcome.Failure;
+                terminalCategory = NodeToolErrorCategory.InvalidRequest;
+                responseBody = hasId ? WriteToolError(idElement, $"{ex.Code}: {ex.Message}") : null;
             }
             catch (McpToolException ex)
             {
@@ -234,6 +250,10 @@ public class McpToolBridge
         capabilities = new
         {
             tools = new { listChanged = false },
+            experimental = new Dictionary<string, object>
+            {
+                ["openclaw/file-channel"] = new { v = 1, maxTransfers = 4, fragmentBytes = FileFrameChannel.FragmentBytes }
+            },
         },
         serverInfo = new
         {
@@ -284,11 +304,27 @@ public class McpToolBridge
     /// </summary>
     private static readonly Dictionary<string, string> CommandDescriptions = new(StringComparer.Ordinal)
     {
+        ["file.stat"] =
+            "Inspect a file or directory through the shared Node Sandbox. Args: path (required), expectedCanonicalPath, expectedBinding, preflightOnly. Returns {ok,path,type,size,mtimeMs,binding}. Reparse points and followSymlinks:true are unsupported. Policy changes affect new operations only. Positively unsupported Windows runs uncontained; SDK errors never downgrade.",
+        ["file.fetch"] =
+            "Read a file through the shared Node Sandbox. Args: path (required), maxBytes (default 8 MiB, unary capped at 16 MiB), preflightOnly, expectedCanonicalPath, expectedBinding, followSymlinks. Unary returns {ok,path,size,mimeType,base64,sha256,binding}. transport:'binary' requires an authenticated framed channel, explicit positive maxBytes and an existing binding; sends up to 1 MiB messages after start and waits for ack after each.",
+        ["dir.list"] =
+            "List directory entries through the shared Node Sandbox. Args: path (required), maxEntries (default 200, capped at 5000), pageToken, preflightOnly, followSymlinks, expectedCanonicalPath, expectedBinding. Returns path, entries, nextPageToken and binding.",
+        ["dir.fetch"] =
+            "Return a bounded gzip-tar directory archive through the shared Node Sandbox. Args: path (required), maxBytes (default 8 MiB, capped at 16 MiB), preflightOnly, expectedCanonicalPath, expectedBinding. Returns tarBase64, tarBytes, sha256, fileCount, entries and binding. At most 5000 descendants and 64 MiB expanded contents; the saved transfer budget may narrow these limits.",
+        ["file.write"] =
+            "Write up to 16 MiB decoded canonical base64 through the shared Node Sandbox. Args: path and contentBase64 (required), overwrite (default false), createParents, rejectHardlinks, expectedCanonicalPath, expectedBinding, expectedSha256, preflightOnly. Returns {ok,path,size,sha256,overwritten,binding}. Base64url and unpadded canonical input are accepted. No shell approval or separate file permission switch.",
+        ["file.create"] =
+            "Create a new file from an authenticated framed channel through the shared Node Sandbox. Args: path, sizeBytes and expectedSha256 (required), maxBytes (default 50 MiB), expectedCanonicalPath, expectedBinding, createParents, preflightOnly. Preflight needs no channel. Send at most 1 MiB per message, wait for ack, then send an empty message as EOF. Returns status:'created' with size/sha256 or status:'exists' without them; exists does not verify old content. Never overwrites.",
+        ["fs.listDir"] =
+            "List directory navigation entries through the shared Node Sandbox. Args: path (optional). Remote Gateway callers require genuine Gateway admin authorization; local MCP uses its bearer. No elevation or widening of Sandbox grants. Failures use the outer node error envelope.",
+        ["terminal.upload"] =
+            "Stage a retained upload through the shared Node Sandbox. Args: name and contentBase64 (required, canonical padded standard base64, up to 16 MiB decoded). Returns {path,size}. This raw node command does not need a terminal session. Remote Gateway callers require genuine admin authorization. Failures use the outer node error envelope.",
         // system.*
         ["system.notify"] =
             "Show a Windows toast notification on the node. Args: title (string, default 'OpenClaw'), body (string), subtitle (string), sound (bool, default true). Returns { sent: true }.",
         ["system.run"] =
-            "Execute canonical argv on the Windows node host. Args: command (string[] argv, required), rawCommand (string, optional display metadata), cwd (string), timeoutMs (int, default 30000). Non-empty custom env is not supported. Shell commands must name their wrapper explicitly, for example [\"cmd.exe\",\"/d\",\"/s\",\"/c\",\"echo hello\"]. Subject to the local exec approval policy. Returns { stdout, stderr, exitCode, timedOut, success, durationMs }.",
+            "Execute approved canonical argv through MXC on supported Windows. Positively unsupported Windows runs uncontained with a persistent warning; sandbox file/network/clipboard/UI restrictions are not enforced. Unknown/failed probes, missing SDK components, policy or spawn errors never downgrade. Args: command (string[] argv, required), rawCommand (string, optional display metadata), cwd (string, must be inside effective grants when contained; omitted uses private scratch), timeoutMs (int, default 30000). Non-empty custom env is not supported. Shell commands name their wrapper explicitly, for example [\"cmd.exe\",\"/d\",\"/s\",\"/c\",\"echo hello\"]. Contained Balanced reads the OS user profile and resolved redirected personal folders; Open reads/writes that same scope. Protected roots are excluded; whole drives and other users are not granted. External projects and selected write exceptions need explicit Custom grants. Every mode retains approvals, prelaunch revalidation, bounded output and deadlines. Unsupported contained policy or unresolved required roots is a tool error. Exited commands return { stdout, stderr, exitCode, timedOut, success, durationMs }. Cancellation terminates the owned process; settings affect new commands only.",
         ["system.run.prepare"] =
             "Pre-flight a system.run invocation: returns the parsed execution plan (argv, cwd, rawCommand, agentId, sessionKey) without running anything. The gateway uses this to build its approval context before the actual run.",
         ["system.which"] =
@@ -348,9 +384,9 @@ public class McpToolBridge
 
         // tts.*
         ["tts.speak"] =
-            "Speak text aloud on the Windows node. Args: text (string, required), provider ('piper'|'windows'|'elevenlabs'|'minimax', optional; omit to use the configured TtsProvider setting, default 'piper' for fresh installs), voiceId (string, optional; overrides the per-provider configured voice), model (string, optional, cloud providers only), interrupt (bool, default false; interrupts any in-progress playback). When provider is omitted and the configured provider isn't usable (no cloud key, Piper voice not downloaded), the node falls back to Windows TTS so playback still happens. Explicit provider requests stay strict and do not silently reroute. Returns { spoken, provider (the provider that actually spoke), requestedProvider, fellBack, contentType, durationMs }.",
+            "Speak text aloud on the Windows node. Args: text (string, required), provider ('kokoro'|'piper'|'windows'|'elevenlabs'|'minimax', optional; omit to use the configured TtsProvider setting, default 'kokoro' for fresh installs), voiceId (string, optional; overrides the per-provider configured voice), model (string, optional, cloud providers only), interrupt (bool, default false; interrupts any in-progress playback). When provider is omitted and the configured provider isn't usable (no cloud key, Kokoro voice pack or Piper voice not downloaded), the node falls back to Windows TTS so playback still happens. Explicit provider requests stay strict and do not silently reroute. Returns { spoken, provider (the provider that actually spoke), requestedProvider, fellBack, contentType, durationMs }.",
         ["tts.status"] =
-            "Report TTS provider readiness. No args. Returns { configuredProvider, effectiveProvider (the provider that would run now after fallback), willFallBack (bool), providers: [{ provider ('piper'|'windows'|'elevenlabs'|'minimax'), readiness ('ready'|'needs-api-key'|'needs-voice'|'voice-not-downloaded'|'unavailable'), isReady (bool) }] }. Carries no PII (no voice ids, no key fragments, no device names). Requires NodeTtsEnabled.",
+            "Report TTS provider readiness. No args. Returns { configuredProvider, effectiveProvider (the provider that would run now after fallback), willFallBack (bool), providers: [{ provider ('kokoro'|'piper'|'windows'|'elevenlabs'|'minimax'), readiness ('ready'|'needs-api-key'|'needs-voice'|'voice-not-downloaded'|'unavailable'), isReady (bool) }] }. Carries no PII (no voice ids, no key fragments, no device names). Requires NodeTtsEnabled.",
 
         // ollama.* — inference against a separately installed Windows Ollama service.
         // Default-off; any paired active gateway (local or remote) may invoke it. Requires NodeOllamaInferenceEnabled.
@@ -378,7 +414,7 @@ public class McpToolBridge
         ["app.menu"] =
             "Get tray menu state (status including overallState/nodeState/nodeError, session count, node count). Returns array of menu items.",
         ["app.search"] =
-            "Search the command palette and return matching commands. Args: query (string, required). Returns array of { Title, Subtitle, Icon }.",
+            "Search locally available navigation destinations without opening them or making Gateway requests. Args: query (string, required). Returns up to 10 { Title, Subtitle, Icon, Group, OpensDashboard, HasDashboardCounterpart }. Message snippets are excluded; settings results navigate rather than toggle.",
         ["app.dashboard.url"] =
             "Build the same gateway dashboard URL the tray opens. Args: path (string, optional). Returns { url, credentialSource, usesSharedGatewayToken, hasTokenQuery }.",
         ["app.chat.snapshot"] =
@@ -455,7 +491,8 @@ public class McpToolBridge
         JsonElement parameters,
         string? requestKey,
         CancellationToken cancellationToken,
-        NodeToolInvocation telemetry)
+        NodeToolInvocation telemetry,
+        long? authenticatedFileEpoch)
     {
         if (parameters.ValueKind != JsonValueKind.Object)
             throw new McpToolException(
@@ -504,6 +541,17 @@ public class McpToolBridge
             Args = args,
             Telemetry = telemetry,
         };
+        McpFileChannels.Lease? fileLease = null;
+        if (parameters.TryGetProperty("_meta", out var meta) && meta.ValueKind == JsonValueKind.Object &&
+            meta.TryGetProperty(McpFileChannels.MetadataKey, out var fileMeta))
+        {
+            if (!authenticatedFileEpoch.HasValue) throw McpFileChannels.Invalid();
+            fileLease = FileChannels.Attach(fileMeta, name, requestKey, authenticatedFileEpoch.Value);
+            request.FileChannel = fileLease.Channel;
+        }
+        using var fileLifetime = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, fileLease?.Channel.Token ?? cancellationToken);
+        cancellationToken = fileLifetime.Token;
 
         _logger.Debug($"[MCP] tools/call {name}");
         // Pass the cancellation token through. Capabilities that override the
@@ -594,13 +642,19 @@ public class McpToolBridge
         {
             cancelledByCaller = invocation?.CancelledByCaller == true;
             invocation?.Dispose();
+            if (fileLease != null)
+            {
+                fileLease.Complete();
+                await fileLease.Channel.DisposeAsync();
+            }
         }
 
-        if (!response.Ok)
+        if (!response.Ok || response.FileOutcome is { Ok: false })
         {
             var diagnostic = response.Diagnostic ??
-                new NodeToolDiagnostic(NodeToolErrorCategory.CapabilityFailure);
-            var error = response.Error ?? "tool execution failed";
+                new NodeToolDiagnostic(NodeToolErrorCategory.CapabilityFailure, FileOutcomeTelemetry.ExecutionMode(response));
+            var error = response.FileOutcome is { Ok: false } failure
+                ? $"{failure.Code}: {failure.Message}" : response.Error ?? "tool execution failed";
             var outcome = NodeToolOutcome.Failure;
             if (error == "cancelled" &&
                 executionToken.IsCancellationRequested &&
@@ -634,7 +688,7 @@ public class McpToolBridge
             executeActivity,
             responseOutcome,
             response.Diagnostic?.ErrorCategory ?? NodeToolErrorCategory.None,
-            response.Diagnostic?.ExecutionMode,
+            response.Diagnostic?.ExecutionMode ?? FileOutcomeTelemetry.ExecutionMode(response),
             sandboxDenialReason: response.Diagnostic?.SandboxDenialReason);
 
         var payloadJson = response.Payload is null
@@ -650,10 +704,10 @@ public class McpToolBridge
                 },
                 isError = false,
             },
-            response.Diagnostic);
+            response.Diagnostic, FileOutcomeTelemetry.ExecutionMode(response));
     }
 
-    private static string GetRequestKey(JsonElement requestId) =>
+    internal static string GetRequestKey(JsonElement requestId) =>
         requestId.ValueKind switch
         {
             JsonValueKind.String => $"string:{requestId.GetString()}",
@@ -707,7 +761,7 @@ public class McpToolBridge
     private static string WriteResult(JsonElement? id, object result)
     {
         using var ms = new MemoryStream();
-        using (var w = new Utf8JsonWriter(ms))
+        using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Encoder = PayloadJsonOptions.Encoder }))
         {
             w.WriteStartObject();
             w.WriteString("jsonrpc", "2.0");
@@ -819,7 +873,7 @@ public class McpToolBridge
         }
     }
 
-    private sealed record McpToolCallResult(object Result, NodeToolDiagnostic? Diagnostic);
+    private sealed record McpToolCallResult(object Result, NodeToolDiagnostic? Diagnostic, NodeToolExecutionMode? ExecutionMode = null);
 
     private void CompleteToolTelemetry(
         NodeToolInvocation telemetry,

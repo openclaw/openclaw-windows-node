@@ -67,6 +67,11 @@ if ($certificate.Thumbprint -ne $CertificateThumbprint -or $certificate.Subject 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead($package.FullName)
 try {
+    foreach ($entry in $archive.Entries) {
+        if ($entry.FullName.Replace('\', '/') -match '^tools/mxc/(x64|arm64)/(wxc-exec\.exe|wslcsdk\.dll)$') {
+            throw "The Dev package contains obsolete MXC payload: $($entry.FullName)"
+        }
+    }
     foreach ($entry in @('AppxManifest.xml', 'AppxSignature.p7x', 'OpenClaw.Tray.WinUI.exe', 'OpenClaw.Tray.WinUI.dll', 'coreclr.dll')) {
         if ($null -eq $archive.GetEntry($entry)) { throw "The Dev package is missing $entry." }
     }

@@ -62,22 +62,23 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     private readonly List<string> _operationLog = new();
 
     public List<string> Navigations { get; } = new();
+    public List<string?> DashboardPaths { get; } = new();
     public IReadOnlyList<string> OperationLog => _operationLog;
     public bool Disposed { get; private set; }
     public int ReconnectCount { get; private set; }
-    public int ShowChatCount { get; private set; }
     public int ShowOnboardingCount { get; private set; }
     public int ShowLocalAiSetupCount { get; private set; }
     public int OpenLocalAiLogsCount { get; private set; }
 
     public void ClearOperationLog() => _operationLog.Clear();
 
-    public void OpenDashboard(string? path = null) { }
+    public void OpenDashboard(string? path = null) => DashboardPaths.Add(path);
+    public Task<bool> TryOpenDashboardAsync(string? path = null) => Task.FromResult(false);
     public void Navigate(string pageTag) => Navigations.Add(pageTag);
+    public Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null) => Task.FromResult(false);
     public void Reconnect() => ReconnectCount++;
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
-    public void ShowChat() => ShowChatCount++;
     public void CheckForUpdates() { }
     public void ShowOnboarding() => ShowOnboardingCount++;
     public void ShowLocalAiSetup() => ShowLocalAiSetupCount++;
@@ -143,11 +144,12 @@ internal sealed class SelfWritingAppCommands : IAppCommands
     }
 
     public void OpenDashboard(string? path = null) { }
+    public Task<bool> TryOpenDashboardAsync(string? path = null) => Task.FromResult(false);
     public void Navigate(string pageTag) { }
+    public Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null) => Task.FromResult(false);
     public void Reconnect() { }
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
-    public void ShowChat() { }
     public void CheckForUpdates() { }
     public void ShowOnboarding() { }
     public void ShowLocalAiSetup() { }

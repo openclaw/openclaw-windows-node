@@ -54,7 +54,16 @@ $triggerPaths = [System.Collections.Generic.HashSet[string]]::new(
     "scripts/test-ci-gate-results.ps1",
     "scripts/validate-agent-skills.ps1",
     "scripts/test-agent-skills-validator.ps1",
-    "scripts/test-ci-workflow-contract.ps1"
+    "scripts/test-ci-workflow-contract.ps1",
+    "scripts/run-proof-tests.ps1",
+    "scripts/Invoke-CiTest.ps1",
+    "scripts/TestResultContract.ps1",
+    "scripts/ProofEvidence.ps1",
+    "scripts/validate-proof-evidence.ps1",
+    "scripts/test-proof-evidence.ps1",
+    "scripts/MarkdownValidation.ps1",
+    "scripts/setup-dev.ps1",
+    "scripts/test-agent-readiness.ps1"
 ) | ForEach-Object { [void]$triggerPaths.Add($_) }
 
 try {

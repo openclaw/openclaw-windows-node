@@ -55,6 +55,7 @@ public sealed partial class WizardPage : Page
     private readonly Dictionary<string, int> _stepVisits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WizardOptionValue> _options = [];
     private volatile bool _expectedTerminalRestart;
+    private readonly WizardAnswerGate _answerGate = new();
     // "More ▾" overflow toggle lives as a sibling of SelectOptions, so track it to remove between steps.
     private Button? _moreOptionsButton;
     // wizard.payload frames do not include plugin console output, so tail the gateway log inline.
@@ -623,8 +624,7 @@ public sealed partial class WizardPage : Page
                 moreButton.Click += (_, _) =>
                 {
                     // Remove the More button
-                    if (moreButton.Parent is Panel parent)
-                        parent.Children.Remove(moreButton);
+                    StepInputsPanel.Children.Remove(moreButton);
                     if (ReferenceEquals(_moreOptionsButton, moreButton))
                         _moreOptionsButton = null;
 
@@ -645,14 +645,10 @@ public sealed partial class WizardPage : Page
                         }
                     }
                 };
-                // Insert the button after SelectOptions in the parent StackPanel
-                var parentPanel = SelectOptions.Parent as Panel;
-                if (parentPanel != null)
-                {
-                    var idx = parentPanel.Children.IndexOf(SelectOptions);
-                    parentPanel.Children.Insert(idx + 1, moreButton);
-                    _moreOptionsButton = moreButton;
-                }
+                // Parent is unavailable before the page joins WinUI's live tree.
+                var idx = StepInputsPanel.Children.IndexOf(SelectOptions);
+                StepInputsPanel.Children.Insert(idx + 1, moreButton);
+                _moreOptionsButton = moreButton;
             }
 
             var initialValue = WizardAnswerBuilder.ValueKeys(initial).FirstOrDefault();
@@ -807,6 +803,8 @@ public sealed partial class WizardPage : Page
     {
         var connection = _connection;
         if (connection is null) return;
+        if (!_answerGate.TryBegin(out var answerLease))
+            return;
 
         var generation = _operationGeneration;
         try
@@ -831,12 +829,20 @@ public sealed partial class WizardPage : Page
             if (generation != _operationGeneration) return;
             await EnterWizardErrorAsync(ex.Message);
         }
+        finally
+        {
+            if (_answerGate.End(answerLease) && generation == _operationGeneration)
+                UpdateContinueState();
+        }
     }
 
     private async Task ExpandMoreOptionsAsync(string moreValue, List<WizardOptionValue> previousSkipOptions)
     {
         var connection = _connection;
         if (connection is null) return;
+        if (!_answerGate.TryBegin(out var answerLease))
+            return;
+        UpdateContinueState();
 
         var generation = _operationGeneration;
         try
@@ -894,6 +900,11 @@ public sealed partial class WizardPage : Page
             if (generation != _operationGeneration) return;
             await EnterWizardErrorAsync(ex.Message);
         }
+        finally
+        {
+            if (_answerGate.End(answerLease) && generation == _operationGeneration)
+                UpdateContinueState();
+        }
     }
 
     private void StartOver_Click(object sender, RoutedEventArgs e) =>
@@ -930,6 +941,7 @@ public sealed partial class WizardPage : Page
         var generation = _operationGeneration;
         var answeredQuestion = "";
         string? answeredLabel = null;
+        long answerLease = 0;
         try
         {
             object? answerValue = null;
@@ -944,6 +956,9 @@ public sealed partial class WizardPage : Page
                 UpdateContinueState();
                 return;
             }
+
+            if (!_answerGate.TryBegin(out answerLease))
+                return;
 
             SetBusy(skip ? "Skipping..." : "Submitting...");
             // The console banner shows output that arrived between the last payload
@@ -1038,6 +1053,8 @@ public sealed partial class WizardPage : Page
         }
         finally
         {
+            if (_answerGate.End(answerLease) && generation == _operationGeneration)
+                UpdateContinueState();
             if (generation == _operationGeneration)
                 _expectedTerminalRestart = false;
         }
@@ -1222,6 +1239,12 @@ public sealed partial class WizardPage : Page
 
     private void UpdateContinueState()
     {
+        if (!_answerGate.AllowsContinue)
+        {
+            PrimaryButton.IsEnabled = false;
+            return;
+        }
+
         if (_errorState || !WizardSelection.RequiresAnswer(_stepType))
             return;
 
@@ -1252,8 +1275,8 @@ public sealed partial class WizardPage : Page
 
     private void ResetInputs()
     {
-        if (_moreOptionsButton?.Parent is Panel morePanel)
-            morePanel.Children.Remove(_moreOptionsButton);
+        if (_moreOptionsButton is not null)
+            StepInputsPanel.Children.Remove(_moreOptionsButton);
         _moreOptionsButton = null;
         SelectOptions.Items.Clear();
         SelectOptions.Visibility = Visibility.Collapsed;
@@ -1818,7 +1841,11 @@ public sealed partial class WizardPage : Page
             await DisconnectAsync(connection);
     }
 
-    private int AdvanceOperationGeneration() => unchecked(++_operationGeneration);
+    private int AdvanceOperationGeneration()
+    {
+        _answerGate.Invalidate();
+        return unchecked(++_operationGeneration);
+    }
 
     private void ShowRecoveryActions()
     {

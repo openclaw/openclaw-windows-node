@@ -114,6 +114,11 @@ public sealed class VersioningContractTests
         Assert.Contains("Deferring alpha release because main already has unpublished non-alpha tag", dailyWorkflow);
         Assert.Contains("steps.previous_release.outputs.changed == 'true'", dailyWorkflow);
         Assert.Contains("versionSpec: '6.8.x'", dailyWorkflow);
+        Assert.Contains("gh api repos/openclaw/openclaw/releases/latest", dailyWorkflow);
+        Assert.Contains("./scripts/Resolve-DailyAlphaVersion.ps1", dailyWorkflow);
+        Assert.Contains("GITVERSION_SEMVER: ${{ steps.gitversion.outputs.semVer }}", dailyWorkflow);
+        Assert.Contains("GATEWAY_TAG: ${{ steps.gateway_release.outputs.tag }}", dailyWorkflow);
+        Assert.Contains("SEMVER: ${{ steps.alpha_version.outputs.semVer }}", dailyWorkflow);
         Assert.Contains("-alpha\\.[0-9]+", dailyWorkflow);
         Assert.Contains("latest_alpha_tag", dailyWorkflow);
         Assert.Contains("git tag --merged HEAD", dailyWorkflow);
@@ -144,6 +149,7 @@ public sealed class VersioningContractTests
         Assert.Contains("if gh api --method DELETE", releaseWorkflow);
         Assert.Contains("will retry after the next alpha publication", releaseWorkflow);
         Assert.Contains("gh api --method DELETE", releaseWorkflow);
+        Assert.Contains("./scripts/test-daily-alpha-version.ps1", releaseWorkflow);
     }
 
     [Fact]

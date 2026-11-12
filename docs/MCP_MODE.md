@@ -1,14 +1,19 @@
 # Local MCP Mode
 
-**Status:** Implemented (initial cut). See `src/OpenClaw.Shared/Mcp/`, `src/OpenClaw.Shared/Mcp/McpHttpServer.cs`, and the Settings UI MCP section.
+**Status:** Implemented. For the common development/debugging path, start with
+the [local MCP guide](../.agents/skills/windows-app-mcp/SKILL.md). This page
+describes the transport, authentication, mode matrix, and implementation contract.
 
 ## Summary
 
-The Windows tray app now ships a **local Model Context Protocol (MCP) server** alongside its existing OpenClaw gateway client. The same node capabilities the agent reaches over the OpenClaw gateway WebSocket - `system.*`, `screen.*`, `canvas.*`, `camera.*`, `location.get`, `tts.*`, `stt.*`, `device.*`, and `browser.proxy` - are advertised, on the same machine, as MCP tools over `http://127.0.0.1:8765/`. Local-only `app.*` and `app.connection.*` tools are also exposed to MCP clients for tray automation and connection/pairing workflows; those are not registered with the remote gateway node transport.
+The Windows tray app now ships a **local Model Context Protocol (MCP) server** alongside its existing OpenClaw gateway client. Node capabilities the agent reaches over the OpenClaw gateway WebSocket (`system.*`, `screen.*`, `canvas.*`, `camera.*`, `location.get`, `tts.*`, `stt.*`, and `device.*`) are advertised, on the same machine, as MCP tools over `http://127.0.0.1:8765/`. `browser.proxy` is not in that MCP-only set. `BrowserProxyActivation` registers it only when the toggle is on, a gateway client is attached, the shared gateway token is set, and the browser endpoint is verified. Local-only `app.*` and `app.connection.*` tools are also exposed to MCP clients for tray automation and connection/pairing workflows. Those are not registered with the remote gateway node transport.
 
 This means any local MCP client (Claude Desktop, Claude Code, Cursor, an MCP-aware CLI, a custom dev script) can reach into the running tray and drive Windows-native capabilities directly, without an OpenClaw gateway in the loop. The tray app can run in **MCP-only mode** with no gateway connection at all.
 
-The implementation is structured so that **adding a new node capability automatically exposes it via MCP** - no MCP-side code changes required. That is the central design constraint and the main reason we built MCP in-process rather than as a separate adapter.
+MCP and Gateway node mode share capability dispatch rather than maintaining
+separate implementations. A new command still needs registration, curated MCP
+descriptions, the shipped `winnode` reference, tests, and applicable live proof.
+Follow the [new-command checklist](../AGENTS.md#ui-mcp-and-pr-proof).
 
 ## Goals
 
@@ -19,7 +24,8 @@ The implementation is structured so that **adding a new node capability automati
 ## Non-goals (for this iteration)
 
 - **No remote authentication.** Loopback bind + Origin/Host checks keep the endpoint unreachable from any other machine. A local bearer token guards against untrusted local processes on the same box (see [Authentication](#authentication) below). We will revisit ACLs / multi-user when we want remote MCP, multiple users on one box, or shared dev VMs.
-- **No SSE / streaming.** Plain JSON-RPC request/response is enough for the synchronous capabilities we have today.
+- **No SSE or second listener.** Unary calls remain plain JSON-RPC. Optional file
+  duplex uses the authenticated bounded polling extension below.
 - **No per-tool input schemas.** Capabilities don't expose schemas; MCP `inputSchema` is permissive (`{type: "object", additionalProperties: true}`). When/if `INodeCapability` grows a schema property, the MCP bridge picks it up with no other changes.
 - **No port configuration UI.** Default `8765` is hardcoded. Easy to lift into `SettingsManager` later.
 
@@ -66,6 +72,15 @@ The capability list lives on `NodeService`, *not* on `WindowsNodeClient`. That s
 
 The bridge takes a `Func<IReadOnlyList<INodeCapability>>` rather than a snapshot. Every `tools/list` re-reads the live list. This is what guarantees zero-cost capability addition - register a new capability after server start and it appears on the next `tools/list`.
 
+The System tools permission is also read live by the retained system capability.
+Turning it Off removes `system.run` and `system.run.prepare` from local discovery
+and rejects new calls without waiting for Gateway reconnect to rebuild registration.
+Re-enabling takes effect only after settings persistence succeeds, so a failed
+save cannot temporarily grant execution permission.
+Approved requests recheck this permission after authorization and at the runner's
+prelaunch revalidation boundary. This does not terminate an already-running command;
+cancellation remains a separate operation.
+
 Cancellation is cooperative and uses the same `CancellationToken` capability
 contract as the gateway transport. Screen and camera operations propagate the
 token through recording consent/countdown, camera admission, capture waits, and
@@ -77,6 +92,92 @@ no command-specific transport deadlines are applied.
 `OpenClaw.Shared/Mcp/McpHttpServer.cs` is `System.Net.HttpListener` bound to `http://127.0.0.1:8765/`. Loopback-only by construction; not reachable from any other machine even with firewall holes. A defensive `IPAddress.IsLoopback` check on each request acts as belt-and-suspenders.
 
 `GET /` returns a friendly text probe. `POST /` is JSON-RPC. Anything else → `405`. When a bearer token is configured, every verb must pass the token gate before method dispatch.
+
+### File channel extension v1
+
+This OpenClaw-specific extension is advertised by `initialize` under
+`capabilities.experimental["openclaw/file-channel"]`. It is not an MCP standard.
+The existing authenticated HTTP listener serves it; no SSE, second port, or
+WebSocket binary frames are involved. Clients not implementing it retain unary
+file commands and preflight. Explicit binary/create execution requires a channel.
+
+1. Call `openclaw/files/open` with
+   `{v:1,command:"file.fetch"|"file.create",requestId:"unique-call-id",timeoutMs:60000}`.
+   Retain the unpredictable `lease` from the response.
+2. Attach once to the real `tools/call` with that exact JSON-RPC request ID and
+   command. Put `{v:1,lease}` in `params._meta["openclaw/file-channel"]`, **not**
+   inside canonical command `arguments`.
+3. Call `openclaw/files/poll` with `{v:1,lease,ack:0}`. Polls return immediately
+   with `{v:1,frames:[{seq,payloadJSON}],completed}`. Each subsequent `ack` is the
+   next output sequence after consumed frames. Unacknowledged frames are retained;
+   retry a lost poll with the same cursor. Polls are not long-lived handlers.
+4. Feed received JSON strings to the v1 framing parser. Send framed input with
+   `openclaw/files/input` and `{v:1,lease,seq:0,payloadJSON:"..."}`. Input sequence
+   increases per frame. Retrying the immediately preceding identical input is
+   idempotent; changed or out-of-order input closes the transfer.
+5. Call `openclaw/files/close` with `{v:1,lease}` on completion or cancellation.
+   Timeout (at most ten minutes), token replacement, profile/server teardown also
+   cancel channels. Sandbox settings changes do not cancel admitted work.
+
+The HTTP server snapshots the bearer and file-channel epoch as one immutable
+authentication generation. Rotation first invalidates existing channels, then
+publishes the replacement generation. Requests holding an older snapshot cannot
+open or attach channels in the new generation, including requests concurrent
+with rotation.
+
+Frames match upstream `82df040c9c584fce0decbac9ebf260ec134e04c4`:
+`{v:1,kind:"ready"}` or
+`{v:1,kind:"data",message:0,index:0,last:true,data:"canonical-padded-base64"}`.
+Exact keys, safe integer counters, strict ordering, 8192-byte nonfinal fragments
+and a 16384-byte UTF-8 wire cap are enforced. File logical messages cap at 1 MiB.
+Pre-listener buffering caps at eight messages and 1 MiB including unfinished
+messages; active asynchronous delivery caps at eight messages and 2 MiB.
+Readiness is sent only after the worker registers its listener. Fetch receives
+opaque UTF-8 `start`, then repeatedly emits a nonempty logical message of up to
+1 MiB and waits for an opaque UTF-8 `ack` before reading the next chunk. The client
+must acknowledge every logical message, including the last, independently of
+the wire-frame polling cursor above. An empty file still requires `start` but
+emits no data messages and expects no `ack`. Fetch completes with the command
+result; it does not send an empty EOF message. Create receives messages, ACKs
+each nonempty one, and verifies size/hash at empty-message EOF. The client need
+not send reciprocal readiness.
+
+Gateway output sends at most sixteen ordered wire frames before waiting for
+all correlated progress responses. Readiness still waits for its response before
+delivering buffered input. Heartbeats share the same sequence and send gate.
+This does not change the wire format or the logical-message `ack` requirement.
+Local MCP retains its existing cursor-based backpressure.
+
+There are four leases/streaming handlers, sixteen ordinary tool handlers, eight
+independent control handlers, and thirty-two bounded ingress readers. Authentication
+and bounded parsing precede classification; full tool slots cannot consume the
+control slots needed for ACK/cancellation. Each output queue retains at most
+sixteen wire frames and backpressures producers until a poll acknowledges them.
+
+Normal bodies remain capped at 4 MiB. A client declaring an implemented file
+command in `X-OpenClaw-File-Command` gets a file-specific bounded allowance
+(`FileTransportJson.EnvelopeBytes`); the parsed `tools/call` command must match.
+Only two unary file envelopes/results can be retained concurrently; declared
+streaming calls release that reservation after their bounded metadata is parsed.
+Responses use a
+separate bounded file allowance accounting for base64 and nested MCP text.
+The file response bound does not apply to other tools; their previous response
+contract remains unchanged. File requests cannot escape their depth/size bounds
+through generic JSON fallback. Gateway file results use the same command-specific
+classification, including unary/preflight calls. Generic Gateway results retain
+their original serializer casing, depth and escaping. Invalid or oversized file
+result serialization settles the invoke with an explicit error on either
+Gateway invoke envelope.
+`winnode` sends this declaration automatically for file calls and supports
+`--input-file` / no-clobber `--output-file`; see its shipped command reference.
+
+Gateway transport uses the same frame parser with correlated
+`node.invoke.progress` RPC acknowledgments, ordered `node.invoke.input` events
+(`id`, not `invokeId`), and separate `node.invoke.cancel` events. Five-second
+empty progress heartbeats share the progress sequence. Connection generation,
+target node, deadline and cancellation are checked independently from file
+arguments. Plugin inner failures remain unchanged on the Gateway wire but count
+as telemetry failures and MCP `isError`, giving the CLI a nonzero exit.
 
 ## Authentication
 
@@ -92,7 +193,12 @@ The HTTP transport requires a bearer token on every request. Defense-in-depth on
 
 **On the wire.** Every request must carry `Authorization: Bearer <token>` when the server has a configured token. Missing or wrong token → `401 Unauthorized` with no body. `GET /` remains a "yes I'm here" probe after auth passes.
 
-**How users find it.** Settings → Developer Mode → MCP section shows the live token (masked, with Reveal/Copy buttons) and the storage path. For agents that read from disk (Claude Code, custom scripts), pointing them at `McpTokenPath` is preferable to embedding the token in their prompt or config - the path is stable, the token is a secret. For agents that only accept literal bearer values in config (Claude Desktop, Cursor), use Copy.
+**How users find it.** Settings > Permissions > Integrations > Local MCP Server
+shows the endpoint and status, with **Copy token** and **Copy URL** actions.
+Agents should read the selected profile's token file without printing it rather
+than placing the token in a prompt or command line. For clients that require a
+literal bearer value in configuration, use Copy token and keep that
+configuration private.
 
 ### Settings model
 
@@ -110,7 +216,9 @@ public bool EnableMcpServer { get; set; }     // run local MCP HTTP server
 | true | false | Gateway node, no MCP |
 | true | true | Gateway node + MCP |
 
-Settings UI exposes both toggles in the Advanced section, with the live MCP endpoint URL and current status (`Listening` / `Stopped - save and restart to start` / `Disabled`).
+The Local MCP Server control lives in Permissions > Integrations. Its endpoint
+and status describe the actual selected app instance. The two flags above remain
+independent; a running MCP-only listener is not evidence of Gateway pairing.
 
 A legacy `McpOnlyMode` field is migrated automatically on load and never re-written.
 
@@ -120,15 +228,15 @@ MCP startup is reported from the actual listener state. `NodeService.McpStartupE
 
 ### Testing
 
-The tray's most interesting code lives in capabilities: `system.run` (LocalCommandRunner + the V2 exec-approval coordinator), `screen.snapshot` (Windows.Graphics.Capture + GraphicsCapturePicker), `canvas.*` (WebView2 with trusted origin enforcement), `camera.snap`/`camera.clip` (MediaCapture + consent prompt), and `location.get` (Windows.Devices.Geolocation). All of that has nontrivial Windows-only behavior and almost none of it is currently exercised end-to-end without first standing up a gateway and authenticating.
+The tray's most interesting code lives in capabilities: `system.run` (official MXC SDK execution on supported Windows, positive unsupported-OS compatibility, and the V2 exec-approval coordinator), `screen.snapshot` (Windows.Graphics.Capture + GraphicsCapturePicker), `canvas.*` (WebView2 with trusted origin enforcement), `camera.snap`/`camera.clip` (MediaCapture + consent prompt), and `location.get` (Windows.Devices.Geolocation). These have Windows-only behavior; unit tests do not substitute for native runtime proof.
 
 Local MCP changes that. Concrete benefits:
 
 - **Manual smoke tests in seconds.** `curl -s -X POST http://127.0.0.1:8765/ -H "Authorization: Bearer <token>" -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'` validates that the capability dispatch path works, the WinUI dispatcher marshaling is correct, the result shape matches expectations. No gateway, no gateway token, no pairing, no SSH tunnel.
 - **Reproducible bug reports.** A repro becomes a `tools/call` body the bug filer can paste verbatim. No "what was the gateway doing at the time."
-- **Integration tests against a real instance.** A future `tests/integration/` project can spin up the tray in MCP-only mode, fire JSON-RPC, assert results. The same test bodies a developer runs by hand are the same ones CI runs. (Harnessing WinUI itself in CI is harder, but the bridge logic - `McpToolBridge` - is already covered by `McpToolBridgeTests` with no UI involvement.)
+- **Integration tests against a real instance.** `tests/OpenClaw.Tray.IntegrationTests` (for example `McpHttpServerIntegrationTests`) spawns the tray and drives MCP JSON-RPC over HTTP when `OPENCLAW_RUN_INTEGRATION=1`. The same requests a developer runs by hand are the ones these tests send. The bridge logic - `McpToolBridge` - is also covered by `McpToolBridgeTests` with no UI involvement.
 - **Coverage for the dispatch path itself.** `WindowsNodeClient`'s capability-routing logic (`CanHandle` → `ExecuteAsync`) was previously only exercised against a live gateway. The MCP server hits the same code paths, so any local MCP test is implicit coverage of the gateway dispatch.
-- **Bridge unit tests already exist.** `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` (9 cases) covers initialize, tools/list, runtime capability registration, tool calls, unknown tools, capability failures, JSON-RPC unknown method, notifications, and parse errors. These are pure C# unit tests with fake capabilities - no HTTP, no UI, no gateway.
+- **Bridge unit tests already exist.** `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` covers initialize, tools/list, runtime capability registration, tool calls, unknown tools, capability failures, JSON-RPC unknown method, notifications, and parse errors. These are pure C# unit tests with fake capabilities - no HTTP, no UI, no gateway.
 
 ### Access from CLIs and agents
 
@@ -170,7 +278,7 @@ Gateway/node command groups currently include:
 - `tts.speak`, `tts.status`
 - `location.get`
 - `device.info`, `device.status`
-- `browser.proxy`
+- `browser.proxy` (omitted from `tools/list` until `BrowserProxyActivation` is `RegistrationBlock.None`: toggle on, gateway client attached, shared gateway token set, browser endpoint verified. MCP-only mode has no gateway client, so `winnode --command browser.proxy` returns `Unknown tool: browser.proxy`.)
 
 Local MCP-only app control commands currently include:
 
@@ -237,6 +345,22 @@ The server is built on several defensive layers, not just one. Loopback alone is
 5. **Concurrency cap.** A semaphore limits in-flight handlers to 8. A misbehaving local client cannot pin every threadpool thread on long-running screen/camera calls.
 6. **Capability-level controls remain in force.** The V2 exec-approval coordinator still gates `system.run`. Camera and screen capture still go through Windows consent flows. MCP doesn't bypass any of those.
 
+`system.run` uses MXC on supported Windows. A positive unsupported-Windows OS
+verdict instead selects approved direct uncontained execution, with a persistent
+Node Sandbox warning and disabled permission controls. Sandbox file/network/
+clipboard/UI restrictions are not enforced there; command approvals, deadlines,
+bounded output and prelaunch revalidation remain active. SDK failures, unknown
+probes, unsupported scopes and stale
+permissions return an MCP tool result with `isError=true`, not a success-shaped
+exit payload. A process that actually exits nonzero retains the existing
+`stdout`, `stderr`, `exitCode`, `timedOut`, `success`, `durationMs` payload.
+Cancellation propagates through the V2 prompt and revalidation to explicit
+contained-process termination. A late native launch remains owned until its
+streams, process and scratch are safely disposed. No policy-change global
+cancellation is performed. Balanced/Open scope is the OS user profile plus
+resolved redirected personal folders, not a drive or all users. Custom project
+grants are explicit. No volume-root readonly grants are added.
+
 **Authentication is local bearer-token based.** The token is persistent, generated by the tray, stored in the current user's OpenClawTray data directory, and verified before MCP method dispatch. It is defense-in-depth rather than a hard sandbox boundary: a malicious process already running as the same user may still be able to read user-profile files or invoke native APIs directly. If we need stronger isolation for shared machines or low-trust local processes, the next step is scoped or per-call tokens issued by the tray, not URL ACLs or HTTPS - both add deployment pain without solving the same-user trust problem.
 
 ### Verifying the gate
@@ -286,7 +410,7 @@ These are reasonable next steps but explicitly out of scope for the initial impl
 | `src/OpenClaw.Tray.WinUI/Services/SettingsManager.cs` | In-memory settings model + load/save. Migrates legacy `McpOnlyMode`. |
 | `src/OpenClaw.Tray.WinUI/Pages/SettingsPage.xaml(.cs)` | Settings UI surface hosted by `HubWindow`. |
 | `src/OpenClaw.Tray.WinUI/App.xaml.cs` | Bootstraps `NodeService` based on the new mode matrix. |
-| `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` | 9 unit tests for the bridge. |
+| `tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs` | Unit tests for the bridge. |
 
 ## Quick verification
 
@@ -310,7 +434,11 @@ curl -s -X POST http://127.0.0.1:8765/ `
 ```
 
 For a simpler local CLI smoke test, run `winnode --list-tools`; it loads the
-same token file automatically.
+same token file automatically. A connection refused on port 8765 means the
+tray is not listening. Do not reinstall `winnode`. Start the tray with
+`EnableMcpServer` true, set `OPENCLAW_TRAY_DATA_DIR` for both the tray and
+`winnode`, and wait until `mcp-token.txt` exists and the port accepts a
+connection. `OPENCLAW_SKIP_UPDATE_CHECK=1` skips the startup update check.
 
 For agent-driven validation, use the repo-local skill
 `.agents/skills/openclaw-proof-validation/SKILL.md`. MCP/node changes need live

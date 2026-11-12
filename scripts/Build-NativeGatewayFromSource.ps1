@@ -4,8 +4,10 @@
     register it side by side with any Microsoft Store Gateway.
 
 .DESCRIPTION
-    Builds OpenClaw from an openclaw/openclaw ref (default main), a local checkout, or a
-    prebuilt openclaw.tgz, then packages it with openclaw/openclaw-windows-packaging and
+    Packages npm latest by default, or builds OpenClaw from an explicit openclaw/openclaw
+    ref, a local checkout, or a prebuilt openclaw.tgz, using openclaw/openclaw-windows-packaging.
+    Use -GatewayChannel Packaged to reuse the payload from a published packaging release.
+    The helper
     registers it as a Developer Mode loose layout under the patched identity
     OpenClawFoundation.OpenClawGateway-<Patch> (commands openclaw-<Patch> and clawctl-<Patch>).
 
@@ -26,7 +28,19 @@
     packageManager. Node.js must be win32/<Architecture>.
 
 .PARAMETER OpenClawRef
-    Branch, tag, or full SHA of https://github.com/openclaw/openclaw.git. Default: main.
+    Explicit branch, tag, or full SHA of https://github.com/openclaw/openclaw.git.
+
+.PARAMETER OpenClawNpmVersion
+    npm latest, extended-stable, or an exact stable version. Defaults to latest when
+    no source input is supplied. The archive's npm integrity and build identity are verified.
+
+.PARAMETER GatewayChannel
+    Latest (default) packages npm latest. Packaged reuses the exact released MSIX
+    application payload and builds the development launcher from its packaging commit.
+
+.PARAMETER PackagingRelease
+    Exact packaging release tag for -GatewayChannel Packaged. Omit to select the latest
+    published non-prerelease GitHub release. This is not a claim of Store availability.
 
 .PARAMETER OpenClawSourceDirectory
     Existing local openclaw checkout to build as-is. Uncommitted changes are allowed.
@@ -41,7 +55,9 @@
     Existing packaging checkout, used as-is (no fetch or checkout).
 
 .PARAMETER Patch
-    Patched identity suffix: 1 to 15 letters, digits, or hyphens, lowercased. Default: source.
+    Patched identity suffix: 1 to 15 letters, digits, or hyphens, lowercased.
+    Defaults to npm-latest, packaged, or source according to the selected input.
+    Unregister requires an explicit patch.
 
 .PARAMETER Architecture
     x64 or arm64. Default: this device's OS architecture.
@@ -58,14 +74,18 @@
 
 .EXAMPLE
     .\scripts\Build-NativeGatewayFromSource.ps1
-    Build main and register OpenClawFoundation.OpenClawGateway-source.
+    Package npm latest and register OpenClawFoundation.OpenClawGateway-npm-latest.
+
+.EXAMPLE
+    .\scripts\Build-NativeGatewayFromSource.ps1 -GatewayChannel Packaged -PackagingRelease v2026.9.9-msix.0
+    Reuse the published Gateway payload under the separate packaged identity.
 
 .EXAMPLE
     .\scripts\Build-NativeGatewayFromSource.ps1 -OpenClawSourceDirectory D:\src\openclaw -Patch mywork
     Build a local checkout, including uncommitted changes, as openclaw-mywork / clawctl-mywork.
 
 .EXAMPLE
-    .\scripts\Build-NativeGatewayFromSource.ps1 -Unregister -Patch source
+    .\scripts\Build-NativeGatewayFromSource.ps1 -Unregister -Patch npm-latest
     Remove the registration created by the first example.
 #>
 
@@ -74,7 +94,19 @@
 [CmdletBinding(DefaultParameterSetName = 'Build')]
 param(
     [Parameter(ParameterSetName = 'Build')]
-    [string]$OpenClawRef = 'main',
+    [string]$OpenClawRef,
+
+    [Parameter(ParameterSetName = 'Build')]
+    [ValidatePattern('\A(?:latest|extended-stable|\d{4}\.(?:[1-9]|1[0-2])\.\d+(?:-\d+)?)\z')]
+    [string]$OpenClawNpmVersion,
+
+    [Parameter(ParameterSetName = 'Build')]
+    [ValidateSet('Latest', 'Packaged')]
+    [string]$GatewayChannel,
+
+    [Parameter(ParameterSetName = 'Build')]
+    [ValidatePattern('\Av\d{4}\.\d{1,2}\.\d+(?:-\d+)?-msix\.\d+\z')]
+    [string]$PackagingRelease,
 
     [Parameter(ParameterSetName = 'Build')]
     [string]$OpenClawSourceDirectory,
@@ -87,7 +119,7 @@ param(
 
     [string]$PackagingDirectory,
 
-    [string]$Patch = 'source',
+    [string]$Patch,
 
     [ValidateSet('x64', 'arm64')]
     [string]$Architecture,
@@ -104,6 +136,8 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'NativeGatewaySourceBuild.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GatewayNpmRelease.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'GatewayPackagedRelease.psm1') -Force
 
 $openClawUrl = 'https://github.com/openclaw/openclaw.git'
 $packagingUrl = 'https://github.com/openclaw/openclaw-windows-packaging.git'
@@ -165,16 +199,11 @@ if (-not $IsWindows) {
     throw 'The native Gateway can only be built and registered on Windows.'
 }
 
-$Patch = $Patch.ToLowerInvariant()
-if ($Patch -cnotmatch '^[a-z0-9](?:[a-z0-9-]{0,13}[a-z0-9])?$') {
-    throw '-Patch must be 1 to 15 letters, digits, or hyphens, starting and ending with a letter or digit.'
+$inputSelection = Resolve-GatewayBuildInput -Parameters $PSBoundParameters
+if ($inputSelection.NpmVersion) {
+    $OpenClawNpmVersion = $inputSelection.NpmVersion
 }
-
-$sourceSelectors = @('OpenClawRef', 'OpenClawSourceDirectory', 'OpenClawPackageDirectory') |
-    Where-Object { $PSBoundParameters.ContainsKey($_) }
-if (@($sourceSelectors).Count -gt 1) {
-    throw 'Pass at most one of -OpenClawRef, -OpenClawSourceDirectory, and -OpenClawPackageDirectory.'
-}
+$Patch = $inputSelection.Patch
 
 if (-not $Architecture) {
     $Architecture = switch ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture) {
@@ -239,14 +268,30 @@ if (Test-Path -LiteralPath $packagingRoot) {
 # --- Build: tools ------------------------------------------------------------------------------
 
 Assert-Command 'git' 'Install Git for Windows.'
-# Build-Payload.ps1 always installs and inspects the payload with local Node.js, even for a prebuilt package.
-Assert-Command 'node' 'Install Node.js 24.16 or later.'
-if (-not $OpenClawPackageDirectory) {
-    Assert-Command 'pnpm' 'Install pnpm with: npm install -g pnpm'
+if ($inputSelection.Channel -eq 'Packaged') {
+    Assert-Command 'gh' 'Install and authenticate the GitHub CLI.'
+    $releaseArguments = @{ Architecture = $Architecture }
+    if ($PackagingRelease) { $releaseArguments.PackagingRelease = $PackagingRelease }
+    $packagedRelease = Resolve-PackagedGatewayRelease @releaseArguments
+    $archiveDirectory = Join-Path $WorkRoot 'releases'
+    Initialize-NativeGatewayDirectory $archiveDirectory
+    Assert-NativeGatewayTreeAcl $archiveDirectory
+    $packagedArchive = Save-PackagedGatewayArchive -Release $packagedRelease -Directory $archiveDirectory
+    $packagedMetadata = Get-PackagedGatewayMetadata -Release $packagedRelease -ArchivePath $packagedArchive
+    $PackagingRef = $packagedMetadata.packagingCommit
+    Write-Host "Packaged Gateway: $($packagedMetadata.packagingRelease), payload $($packagedMetadata.version) ($($packagedMetadata.gatewayCommit))"
 }
-$nodeTarget = Get-NativeOutput 'node -p' { node -p "process.platform + '/' + process.arch" }
-if ($nodeTarget -cne "win32/$Architecture") {
-    throw "Node.js must be win32/$Architecture to build the $Architecture payload; found $nodeTarget."
+else {
+    # Source/npm payload composition uses local Node.js. Released payloads already
+    # include their dependencies; deployment obtains their recorded Node runtime.
+    Assert-Command 'node' 'Install Node.js 24.16 or later.'
+    if (-not $OpenClawPackageDirectory -and -not $OpenClawNpmVersion) {
+        Assert-Command 'pnpm' 'Install pnpm with: npm install -g pnpm'
+    }
+    $nodeTarget = Get-NativeOutput 'node -p' { node -p "process.platform + '/' + process.arch" }
+    if ($nodeTarget -cne "win32/$Architecture") {
+        throw "Node.js must be win32/$Architecture to build the $Architecture payload; found $nodeTarget."
+    }
 }
 
 # --- Build: packaging checkout -----------------------------------------------------------------
@@ -263,9 +308,38 @@ if ($packagingDirty) {
 
 # --- Build: source identity ----------------------------------------------------------------------
 
+if ($inputSelection.Channel -eq 'Packaged') {
+    $commit = $packagedMetadata.gatewayCommit
+    $version = $packagedMetadata.version
+    $payloadDir = Join-Path $WorkRoot "payloads\$Architecture\msix-$($packagedRelease.assetSha256)"
+    Initialize-NativeGatewayDirectory (Split-Path $payloadDir -Parent)
+    if (Test-Path -LiteralPath $payloadDir) {
+        Assert-NativeGatewayTreeAcl $payloadDir
+        $cached = Get-Content -LiteralPath (Join-Path $payloadDir 'packaging-release.json') -Raw | ConvertFrom-Json
+        foreach ($field in @('assetSha256', 'packagingRelease', 'packagingCommit', 'gatewayCommit', 'version', 'architecture', 'nodeVersion')) {
+            if ($cached.$field -cne $packagedMetadata.$field) { throw "Cached packaged Gateway has mismatched $field." }
+        }
+        Assert-PackagedGatewayPayload -Release $packagedRelease -ArchivePath $packagedArchive -PayloadDirectory $payloadDir
+        Write-Host "Reusing released payload $payloadDir"
+    }
+    else {
+        $null = Expand-PackagedGatewayPayload -Release $packagedRelease -ArchivePath $packagedArchive -OutputDirectory $payloadDir
+    }
+}
+else {
 $sourceRoot = $null
 $dirty = $false
 $packageSha = $null
+if ($OpenClawNpmVersion) {
+    Assert-Command 'tar' 'Install the Windows tar utility.'
+    $release = Resolve-GatewayNpmRelease -Selector $OpenClawNpmVersion
+    Write-Host "Resolved npm $($release.selector) to OpenClaw $($release.version)"
+    Initialize-NativeGatewayDirectory (Join-Path $WorkRoot 'packages')
+    $OpenClawPackageDirectory = Join-Path $WorkRoot "packages\npm-$($release.version)"
+    Initialize-NativeGatewayDirectory $OpenClawPackageDirectory
+    Assert-NativeGatewayTreeAcl $OpenClawPackageDirectory
+    Save-GatewayNpmPackage -Release $release -PackageDirectory $OpenClawPackageDirectory
+}
 if ($OpenClawPackageDirectory) {
     $packageDir = (Resolve-Path -LiteralPath $OpenClawPackageDirectory).Path
     Assert-NativeGatewayTreeAcl $packageDir
@@ -328,7 +402,7 @@ elseif ($Force) {
     "$baseId-$stamp"
 }
 elseif ($OpenClawPackageDirectory) {
-    "$baseId-$($packageSha.Substring(0, 12))"
+    "$baseId-$($packageSha.Substring(0, 12))-n$($sourceJson.nodeVersion)"
 }
 else {
     $baseId
@@ -418,6 +492,7 @@ if (-not $reuse) {
         $env:RUNNER_TEMP = $previousRunnerTemp
         Remove-Item -LiteralPath $runnerTemp -Recurse -Force
     }
+}
 }
 
 # --- Build: deploy -----------------------------------------------------------------------------

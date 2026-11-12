@@ -5,6 +5,55 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class GatewayConnectionValidatorTests
 {
+    [Theory]
+    [InlineData(true, ConnectionStatus.Disconnected)]
+    [InlineData(true, ConnectionStatus.Error)]
+    [InlineData(false, ConnectionStatus.Disconnected)]
+    [InlineData(false, ConnectionStatus.Error)]
+    public async Task Handshake_PreservesPairingRequiredAcrossTerminalStatus(
+        bool pairingRequired, ConnectionStatus terminalStatus)
+    {
+        using var server = new SilentWebSocketServer();
+        using var identity = new TempDirectory();
+        using var client = new PairingValidationClient(
+            $"ws://127.0.0.1:{server.Port}", identity.Path, pairingRequired, terminalStatus);
+
+        var result = await GatewayConnectionValidator.RunHandshakeAsync(client, CancellationToken.None);
+
+        Assert.Equal(SetupCodeOutcome.ConnectionFailed, result.Outcome);
+        Assert.Equal(pairingRequired ? GatewayErrorKind.PairingRequired : GatewayErrorKind.Unknown,
+            result.ErrorKind);
+        Assert.Equal(pairingRequired
+            ? "Gateway authentication failed or device approval is required."
+            : "Gateway connection check failed.", result.ErrorMessage);
+        Assert.False(result.GatewayCommitted);
+        Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(identity.Path));
+    }
+
+    // Exercise the production error parser and validator subscriptions in a deterministic order.
+    // The existing silent loopback fixture supplies only the transport upgrade, not pairing policy.
+    private sealed class PairingValidationClient(
+        string url, string identityPath, bool pairingRequired, ConnectionStatus terminalStatus)
+        : OpenClawGatewayClient(url, "test-token", NullLogger.Instance, identityPath: identityPath)
+    {
+        protected override async Task OnConnectedAsync()
+        {
+            await base.OnConnectedAsync();
+            if (pairingRequired)
+            {
+                using var error = System.Text.Json.JsonDocument.Parse(
+                    """{"error":{"code":"NOT_PAIRED","message":"Approval needed","details":{"code":"PAIRING_REQUIRED","requestId":"test-pairing-request"}}}""");
+                var handle = typeof(OpenClawGatewayClient).GetMethod("HandleRequestError",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                handle.Invoke(this, ["connect", error.RootElement, 0L]);
+            }
+            RaiseStatusChanged(terminalStatus);
+            // Leave pairing sockets open to verify cleanup cannot replace the captured hint.
+            if (!pairingRequired)
+                Dispose();
+        }
+    }
+
     [Fact]
     public void StagedIdentity_CopyUsesProtectedSensitiveFileAcl()
     {

@@ -132,4 +132,61 @@ public class ChatUsageFormatterTests
             contextPercent: 17,
             fallbackContextTokens: 400_000));
     }
+
+    [Fact]
+    public void ResolveContext_UsesLatestAssistantMetadataLikeUsagePill()
+    {
+        var thread = new ChatThread { Id = "main", Title = "Main", TotalTokens = 1_000, ContextTokens = 400_000 };
+        var entries = new[] { new ChatTimelineItem("a1", ChatTimelineItemKind.Assistant, "hello") };
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["a1"] = new(Timestamp: DateTimeOffset.Now, Model: "gpt-5.5", ResponseTokens: 68_000, ContextTokens: 400_000, ContextPercent: 17),
+        };
+
+        Assert.Equal(new ChatContextUsage(68_000, 400_000, 17), ChatUsageFormatter.ResolveContext(entries, metadata, thread));
+    }
+
+    [Fact]
+    public void ResolveContext_ReturnsNullWithoutKnownContextWindow()
+    {
+        Assert.Null(ChatUsageFormatter.ResolveContext(null, null, new ChatThread { Id = "main", Title = "Main" }));
+        Assert.Null(ChatUsageFormatter.ResolveContext(null, null, new ChatThread { Id = "main", Title = "Main", TotalTokens = 500 }));
+    }
+
+    [Theory]
+    [InlineData(800, 0)]
+    [InlineData(null, 80)]
+    public void ResolveContext_KeepsLatestRunCountersWithTheirContextMeasurement(int? input, int output)
+    {
+        var thread = new ChatThread
+        {
+            Id = "main", Title = "Main", TotalTokens = 500, ContextTokens = 5_000,
+            InputTokens = 400, OutputTokens = 100,
+        };
+        var entries = new[] { new ChatTimelineItem("latest", ChatTimelineItemKind.Assistant, "reply") };
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["latest"] = new(Timestamp: null, Model: null,
+                InputTokens: input, OutputTokens: output, ResponseTokens: 1_000, ContextTokens: 5_000),
+        };
+
+        var context = Assert.IsType<ChatContextUsage>(ChatUsageFormatter.ResolveContext(entries, metadata, thread));
+        Assert.Equal(1_000, context.UsedTokens);
+        Assert.Equal((long?)input, context.InputTokens);
+        Assert.Equal(output, context.OutputTokens);
+    }
+
+    [Fact]
+    public void ResolveContext_FallsBackToWholeThreadMeasurementWithoutMessageUsage()
+    {
+        var thread = new ChatThread
+        {
+            Id = "main", Title = "Main", TotalTokens = 900, ContextTokens = 5_000,
+            InputTokens = 200, OutputTokens = 0,
+        };
+        var context = Assert.IsType<ChatContextUsage>(ChatUsageFormatter.ResolveContext(null, null, thread));
+        Assert.Equal(900, context.UsedTokens);
+        Assert.Equal(200, context.InputTokens);
+        Assert.Equal(0, context.OutputTokens);
+    }
 }

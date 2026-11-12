@@ -209,6 +209,7 @@ internal static class ChatContentFormatting
         ChatThinkingEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatReasoningEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatReasoningDeltaEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatReasoningStreamEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatMessageEvent e => e with
         {
             Text = TruncateForChatEntry(e.Text),
@@ -221,6 +222,8 @@ internal static class ChatContentFormatting
             ToolName = TruncateForChatEntry(e.ToolName)
         },
         ChatToolOutputEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatToolProgressEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatProgressEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatToolErrorEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatStatusEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatErrorEvent e => e with { Text = TruncateForChatEntry(e.Text) },

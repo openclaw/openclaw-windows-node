@@ -55,24 +55,36 @@
   },
   "clientFoundationCommit": "2cae69ba",
   "_clientFoundationCommitNote": "The commit on main that introduced the typed gateway protocol client (OpenClawGatewayClient.Protocol.cs + GatewayProtocolModels.cs) this guard cross-checks.",
-  "snapshotUpdated": "2026-07-13",
+  "snapshotUpdated": "2026-11-06",
   "scopePrefixes": ["sessions.", "agents.files.", "commands."],
   "methods": [
+    {
+      "method": "sessions.search",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": ["query", "limit", "scope"],
+      "responseEnvelope": ["results"],
+      "responseEnvelopeSource": "Task<GatewaySearchResult> SearchSessionsAsync(",
+      "responseFields": ["sessionKey", "sessionId", "messageId", "role", "timestamp", "snippet", "score"],
+      "notes": "Verified against v2026.10.9 (8b18b5578f66eab1501cba4cef2310d88bfb9a41), packages/gateway-protocol/src/schema/sessions-search.ts. Scope cannot be combined with top-level agentId/sessionKeys. Optional response sessions, indexing, truncated and archivedTranscriptsExcluded."
+    },
     {
       "method": "sessions.list",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["agentId", "archived"],
+      "requestFields": ["agentId", "includeDerivedTitles", "search", "limit", "includeGlobal", "includeUnknown", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock"],
+      "_note": "The Sessions page also sends archived, offset and source through SessionListQuery.ToParameters (Shared/Sessions), which this construction-region guard does not scan; the fixture validates them.",
       "responseEnvelope": ["sessions"],
       "responseEnvelopeSource": "TryGetSessionsPayload(JsonElement payload",
       "responseFields": [
-        "key", "isMain", "status", "hasActiveRun", "model", "label", "channel", "displayName",
+        "key", "isMain", "status", "hasActiveRun", "hasActiveSubagentRun", "providerReview", "model", "label", "channel", "displayName",
         "derivedTitle", "modelProvider", "provider", "subject", "groupChannel", "room",
-        "space", "chatType", "execNode", "parentSessionKey", "spawnDepth", "origin",
-        "worktree", "classification", "agentId", "accountId", "peerKind", "isBackground", "sessionId", "thinkingLevel", "verboseLevel",
+        "space", "chatType", "execNode", "placement", "parentSessionKey", "spawnDepth", "origin",
+        "worktree", "classification", "agentId", "accountId", "peerKind", "isBackground", "sessionId", "thinkingLevel", "reasoningLevel", "reasoningDefault", "verboseLevel",
         "systemSent", "abortedLastRun", "inputTokens", "outputTokens", "totalTokens",
-        "contextTokens", "updatedAt", "startedAt", "pinned", "pinnedAt", "unread", "markedUnreadAt", "createdAt", "archived"
-      ]
+        "contextTokens", "updatedAt", "startedAt", "endedAt", "lastRunId", "runtimeMs", "pinned", "pinnedAt", "unread", "markedUnreadAt", "createdAt", "archived"
+      ],
+      "notes": "Optional terminal-run duration and reasoning preferences verified at b896457970bfa1b2cef23ea16f3731ba73436b0c: src/config/sessions/session-run-lifecycle-projection.ts, src/gateway/session-utils-row.ts, ui/src/pages/chat/chat-turn-presentation.ts and ui/src/pages/chat/chat-reasoning.ts. Child liveness and detail-only providerReview verified in packages/gateway-protocol/src/session-row-fields.ts and schema/sessions-provider-review.ts at the same commit. Compact omission is not a deletion receipt. Missing fields remain unavailable; runtimeMs is consumed only for an exact terminal run/session match."
     },
     {
       "method": "sessions.subscribe",
@@ -102,14 +114,25 @@
       "requestFields": ["keys", "limit", "maxChars"]
     },
     {
+      "method": "sessions.usage",
+      "kind": "request",
+      "windowsUsage": "used",
+      "requestFields": [
+        "startDate", "endDate", "agentId", "agentScope", "mode", "timeZone", "utcOffset", "groupBy",
+        "key", "limit", "projection", "query", "offset", "sort", "sortDirection"
+      ],
+      "requestFieldsSource": "public Dictionary<string, object?> ToParameters(",
+      "_note": "Unadvertised upstream (core-descriptors advertise:false). SessionsUsageQuery sends the subset of the web client's requestSessionUsage the native page uses; creator, day/hour/session selection, recent keys and context weight are left to the web page. The deprecated range/includeHistorical inputs are intentionally not sent."
+    },
+    {
       "method": "sessions.patch",
       "kind": "request",
       "windowsUsage": "used",
       "requestFields": [
         "key", "model", "thinkingLevel", "fastMode", "verboseLevel", "traceLevel",
         "reasoningLevel", "responseUsage", "elevatedLevel", "execHost", "execSecurity",
-        "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "pinned",
-        "unread", "archived", "expectedMarkedUnreadAt"
+        "execAsk", "execNode", "sendPolicy", "groupActivation", "label", "category", "pinned",
+        "unread", "archived", "expectedMarkedUnreadAt", "expectedSessionId"
       ],
       "requestFieldsSource": "ToPayload(string key",
       "_note": "Extended field set built by SessionPatch.ToPayload (strict additionalProperties:false upstream). The exact wire key allowlist is also asserted at runtime by GatewayProtocolModelsTests.SessionPatch_ToPayload_EmitsOnlyKnownGatewaySchemaFields.",
@@ -151,7 +174,8 @@
       "method": "sessions.delete",
       "kind": "request",
       "windowsUsage": "used",
-      "requestFields": ["key", "deleteTranscript"]
+      "requestFields": ["key", "deleteTranscript", "agentId", "expectedSessionId", "archivedOnly"],
+      "_note": "archivedOnly restricts the delete to archived rows (operator.write); without it upstream requires operator.admin. expectedSessionId is the compare-and-delete guard."
     },
     {
       "method": "sessions.compact",

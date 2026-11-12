@@ -8,7 +8,7 @@ public sealed class ProviderArtworkSourceContractTests
     {
         var page = Read("src", "OpenClaw.SetupEngine.UI", "Pages", "AiSetupPage.xaml.cs");
         Assert.Contains("candidate.BrandId, candidate.Icon, candidate.Kind", page);
-        Assert.Contains("MetadataActionLabel: option.ActionLabel", page);
+        Assert.Contains("MetadataActionLabel: localService ? S(\"ManualConnect\") : option.ActionLabel", page);
         Assert.Contains("Icon: option.Icon, ProviderKind: option.Kind", page);
         Assert.Contains("_artworkSession.Dispose();", page);
         Assert.DoesNotContain("new HttpClient", page);

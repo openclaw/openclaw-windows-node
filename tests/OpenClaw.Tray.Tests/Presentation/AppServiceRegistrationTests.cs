@@ -99,7 +99,7 @@ public sealed class AppServiceRegistrationTests
         // Proves the fail-fast property the host-composition call sites rely on:
         // if IChatComposerFactory were ever NOT registered (a genuine composition
         // bug), GetRequiredService throws rather than silently yielding null, which
-        // is what lets ChatPage/ChatWindow surface the failure through the app's
+        // is what lets ChatPage surface the failure through the app's
         // existing unhandled-exception/crash-log path instead of conflating it with
         // the "disconnected, no provider yet" placeholder.
         var temp = new TempDir();

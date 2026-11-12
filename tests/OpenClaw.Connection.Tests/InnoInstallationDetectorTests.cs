@@ -168,14 +168,14 @@ public sealed class InnoInstallationDetectorTests
     [InlineData(Machine.Arm64, "arm64")]
     public void DefaultProductionInstallation_IsDetected(Machine machine, string architecture)    {
         using var fixture = new Fixture();
-        fixture.Source.Binary = new(machine, "2026.9.17.0");
+        fixture.Source.Binary = new(machine, "2026.9.17.0", "2026.9.17+fixture");
 
         var result = fixture.Detect();
 
         Assert.Equal(InnoInstallationStatus.Detected, result.Status);
         Assert.Equal(new InnoInstallation(fixture.InstallDirectory,
             fixture.Payload("OpenClaw.Tray.WinUI.exe"), fixture.Payload("unins000.exe"),
-            architecture, new Version(2026, 9, 17, 0)), result.Installation);
+            architecture, new Version(2026, 9, 17, 0), fixture.Registration.DisplayName), result.Installation);
         Assert.Null(result.Reason);
         Assert.Equal(4, fixture.Source.RegistryReads.Count);
     }
@@ -191,7 +191,7 @@ public sealed class InnoInstallationDetectorTests
             "OpenClaw Companion version 2026.9.5.0", $"\"{fixture.Payload("unins000.exe")}\"");
         using (var production = registry.Root.CreateSubKey(InnoInstallationDetector.UninstallKey))
             WriteRegistration(production, registration);
-        fixture.Source.Binary = new(Machine.Amd64, "2026.9.5.0");
+        fixture.Source.Binary = new(Machine.Amd64, "2026.9.5.0", "2026.9.5.0+fixture");
         var detector = new InnoInstallationDetector(fixture.Temp.Path, fixture.Logger, registry.Source(fixture.Source));
 
         var result = detector.Detect();
@@ -199,8 +199,9 @@ public sealed class InnoInstallationDetectorTests
         Assert.Equal(InnoInstallationStatus.Detected, result.Status);
         Assert.Equal(new InnoInstallation(fixture.InstallDirectory,
             fixture.Payload("OpenClaw.Tray.WinUI.exe"), fixture.Payload("unins000.exe"),
-            "x64", new Version(2026, 9, 5, 0)), result.Installation);
+            "x64", new Version(2026, 9, 5, 0), registration.DisplayName), result.Installation);
         Assert.Empty(fixture.Logger.Warnings);
+        Assert.False(result.RequiresInstallerRepair);
     }
 
     [Fact]
@@ -257,6 +258,7 @@ public sealed class InnoInstallationDetectorTests
         using var fixture = new Fixture();
         File.Delete(fixture.Payload(name));
         fixture.AssertUnsupported();
+        Assert.True(fixture.Detect().RequiresInstallerRepair);
     }
 
     [Fact]
@@ -390,6 +392,55 @@ public sealed class InnoInstallationDetectorTests
         Assert.Null(result.RegisteredVersion);
     }
 
+    [Fact]
+    public void StableCorrectionRegistration_MatchesBaseExecutableFileVersion()
+    {
+        using var fixture = new Fixture();
+        fixture.Registration = fixture.Registration with
+        {
+            DisplayVersion = "2026.9.17-1",
+            DisplayName = "OpenClaw Companion version 2026.9.17-1",
+        };
+        fixture.Source.Binary = fixture.Source.Binary with
+        {
+            ProductVersion = "2026.9.17-1+0123456789abcdef",
+        };
+
+        var result = fixture.Detect();
+
+        Assert.Equal(InnoInstallationStatus.Detected, result.Status);
+        Assert.Equal(new Version(2026, 9, 17, 1), result.Installation!.Version);
+        Assert.Equal("OpenClaw Companion version 2026.9.17-1", result.Installation.DisplayName);
+    }
+
+    [Theory]
+    [InlineData("2026.9.17")]
+    [InlineData("2026.9.17-2")]
+    [InlineData("2026.9.17-alpha.1")]
+    public void StableCorrectionRegistration_RejectsDifferentProductRelease(string productVersion)
+    {
+        using var fixture = new Fixture();
+        fixture.Registration = fixture.Registration with
+        {
+            DisplayVersion = "2026.9.17-1",
+            DisplayName = "OpenClaw Companion version 2026.9.17-1",
+        };
+        fixture.Source.Binary = fixture.Source.Binary with { ProductVersion = productVersion };
+
+        fixture.AssertUnsupported();
+    }
+
+    [Theory]
+    [InlineData("2026.9.17-1+abcdef")]
+    [InlineData("2026.9.17-alpha.1+abcdef")]
+    public void BaseRegistration_RejectsSuffixedProductRelease(string productVersion)
+    {
+        using var fixture = new Fixture();
+        fixture.Source.Binary = fixture.Source.Binary with { ProductVersion = productVersion };
+
+        fixture.AssertUnsupported();
+    }
+
     /// <summary>
     /// The counterpart: a refusal that has nothing to do with the version must not borrow the
     /// update guidance, or every unsupported installation would be told to update.
@@ -492,6 +543,7 @@ public sealed class InnoInstallationDetectorTests
         using var fixture = new Fixture();
         fixture.Registration = fixture.Registration with { DisplayName = name, Publisher = publisher };
         fixture.AssertUnsupported();
+        Assert.False(fixture.Detect().RequiresInstallerRepair);
     }
 
     [Theory]
@@ -597,7 +649,9 @@ public sealed class InnoInstallationDetectorTests
 
         var evidence = new InnoInstallationReadSource().ReadExecutable(path);
         Assert.Equal(machine, evidence.Machine);
-        Assert.Equal(FileVersionInfo.GetVersionInfo(path).FileVersion, evidence.Version);
+        var expected = FileVersionInfo.GetVersionInfo(path);
+        Assert.Equal(expected.FileVersion, evidence.Version);
+        Assert.Equal(expected.ProductVersion, evidence.ProductVersion);
     }
 
     [Fact]
@@ -888,7 +942,8 @@ public sealed class InnoInstallationDetectorTests
         public Dictionary<(RegistryHive, RegistryView), InnoInstallationRegistration> Registrations { get; } = new();
         public List<(RegistryHive, RegistryView)> RegistryReads { get; } = [];
         public List<string> FileReads { get; } = [];
-        public InnoInstallationExecutable Binary { get; set; } = new(Machine.Amd64, "2026.9.17.0");
+        public InnoInstallationExecutable Binary { get; set; } =
+            new(Machine.Amd64, "2026.9.17.0", "2026.9.17+fixture");
         public Exception? RegistryError { get; set; }
         public RegistryHive? ErrorHive { get; set; }
         public Exception? FileError { get; set; }

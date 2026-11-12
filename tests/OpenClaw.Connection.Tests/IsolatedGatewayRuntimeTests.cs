@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
@@ -28,6 +29,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     };
     private readonly List<string> _calls = [];
     private readonly List<(string Family, string Command)> _packageCalls = [];
+    private readonly RecordingLogger _log = new();
     private readonly IsolatedGatewayRuntime _runtime;
     private WindowsTcpListenerInfo[] _listeners =
         [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
@@ -51,6 +53,11 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private bool _configMissing;
     private string _restoredToken = "fixture-token";
     private Action? _duringSetup;
+    private bool _supportsLaunchReceipts;
+    private string? _launchAttemptId;
+    private bool _adoptStart;
+    private bool _loseStartAcknowledgement;
+    private bool _refuseConditionalStop;
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -68,8 +75,10 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 if (_duringStatus is not null) await _duringStatus(ct);
                 _beforeStatus?.Invoke();
             }
-            if (args.SequenceEqual(["gateway-service", "start", "--json"]))
+            if (args.Take(2).SequenceEqual(["gateway-service", "start"]))
             {
+                if (_supportsLaunchReceipts && !_adoptStart)
+                    _launchAttemptId = args[3];
                 if (_duringStart is not null) await _duringStart(ct);
                 _clock.Advance(_startDuration);
                 if (_failStart)
@@ -80,6 +89,8 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 if (_listenOnStart)
                     _listeners = [.. _listeners.Where(l => l.Port != port),
                         new(IPAddress.Loopback, port, processId, "fixture", null)];
+                if (_loseStartAcknowledgement)
+                    throw new TimeoutException("fixture lost start acknowledgement");
             }
             if (args.SequenceEqual(["setup", "--json"]))
             {
@@ -102,10 +113,28 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                         companion = new { port = Port, token = _restoredToken }
                     }));
             }
-            if (args.SequenceEqual(["gateway-service", "stop", "--json"]))
+            if (args.Take(2).SequenceEqual(["gateway-service", "stop"]))
             {
                 if (_stopFailure is not null)
                     throw _stopFailure;
+                if (args.Contains("--if-attempt-id"))
+                {
+                    bool refused = _refuseConditionalStop || args[3] != _launchAttemptId;
+                    if (!refused)
+                    {
+                        _state = "stopped";
+                        _listeners = [];
+                    }
+                    return new NativeGatewayCommandResult(refused ? 1 : 0, JsonSerializer.Serialize(new
+                    {
+                        ok = !refused, schemaVersion = 1, command = "gateway-service stop",
+                        integration = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } },
+                        gateway = new { launch = new { version = 1, attemptId = args[3],
+                            stopOutcome = refused ? "refused" : "stopped",
+                            refusal = _refuseConditionalStop ? "ownership-unverified" : "attempt-mismatch" } },
+                        error = new { type = "launch_ownership_refused" }
+                    }));
+                }
                 if (!_stopKeepsRunning)
                 {
                     if (other) _otherState = "stopped";
@@ -143,13 +172,95 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 response["session"] = new { state = _sessionState };
             if (_sessionState == "stale")
                 response["error"] = new { message = "The isolated session is stale." };
+            if (_supportsLaunchReceipts)
+            {
+                response["integration"] = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } };
+                var gatewayJson = JsonSerializer.SerializeToNode(gateway)!.AsObject();
+                if (_launchAttemptId is not null)
+                {
+                    var launch = new JsonObject { ["version"] = 1, ["attemptId"] = _launchAttemptId };
+                    if (args[1] == "start") launch["disposition"] = _adoptStart ? "adopted" : "created";
+                    gatewayJson["launch"] = launch;
+                }
+                response["gateway"] = gatewayJson;
+            }
             return new NativeGatewayCommandResult(_sessionState == "stale" ? 1 : 0,
                 JsonSerializer.Serialize(response));
         });
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
             () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
             () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
-            _ => true, timeProvider: _clock);
+            _ => true, timeProvider: _clock, logger: _log);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReceiptCreatedStartRetainsPreselectedIdAcrossLostAcknowledgement(bool lostAcknowledgement)
+    {
+        _supportsLaunchReceipts = true;
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        _loseStartAcknowledgement = lostAcknowledgement;
+        if (lostAcknowledgement)
+            await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => _runtime.EnsureRunningAsync(_record, default));
+        else
+        {
+            await _runtime.EnsureRunningAsync(_record, default);
+            await _runtime.StopAsync(default);
+        }
+
+        var start = Assert.Single(_calls, call => call.StartsWith("gateway-service start "));
+        var id = start.Split(' ')[3];
+        Assert.True(Guid.TryParseExact(id, "N", out var guid));
+        Assert.NotEqual(Guid.Empty, guid);
+        Assert.Equal(id, _launchAttemptId);
+        Assert.Single(_calls, $"gateway-service stop --if-attempt-id {id} --json");
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AdoptedReceiptNeverConfersDetachOrRollbackOwnership(bool invalidListener)
+    {
+        _supportsLaunchReceipts = true;
+        _launchAttemptId = "11111111111111111111111111111111";
+        _adoptStart = true;
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        if (invalidListener)
+        {
+            _hostSequence = 99;
+            await Assert.ThrowsAsync<NativeGatewayListenerException>(() => _runtime.EnsureRunningAsync(_record, default));
+        }
+        else
+            await _runtime.EnsureRunningAsync(_record, default);
+        await _runtime.StopAsync(default);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop "));
+        Assert.Equal("running", _state);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReplacementOrUnverifiedOwnershipRefusesCleanupWithoutUnconditionalFallback(bool unverified)
+    {
+        _supportsLaunchReceipts = true;
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        await _runtime.EnsureRunningAsync(_record, default);
+        if (unverified) _refuseConditionalStop = true;
+        else _launchAttemptId = "22222222222222222222222222222222";
+
+        var error = await Assert.ThrowsAsync<AggregateException>(() => _runtime.StopAsync(default));
+        Assert.IsType<NativeGatewayLaunchOwnershipException>(Assert.Single(error.InnerExceptions));
+        Assert.Equal("running", _state);
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        await _runtime.ReleaseAsync(default);
     }
 
     [Fact]
@@ -254,7 +365,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _listenOnStart = true;
         _duringStart = _ =>
         {
-            _clock.Advance(TimeSpan.FromSeconds(179));
+            _clock.Advance(IsolatedGatewayRuntime.StartupTimeout - TimeSpan.FromSeconds(1));
             _duringStatus = ct => expire
                 ? Task.Delay(Timeout.Infinite, ct)
                 : Task.Delay(TimeSpan.FromSeconds(8), _clock, ct);
@@ -298,7 +409,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             ct.ThrowIfCancellationRequested();
             return Task.CompletedTask;
         };
-        _startDuration = TimeSpan.FromSeconds(179);
+        _startDuration = IsolatedGatewayRuntime.StartupTimeout - TimeSpan.FromSeconds(1);
         using var outer = new CancellationTokenSource(NativeGatewayEndpointSecurity.CredentialHandoffTimeout, _clock);
         var authorization = NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, outer.Token);
         if (allowed)
@@ -371,7 +482,8 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         var result = await authorization.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(result.Allowed);
         Assert.Equal(GatewayErrorKind.Network, result.FailureKind);
-        Assert.Contains("startup or listener confirmation timed out", result.Detail);
+        Assert.Contains("did not finish its start request", result.Detail);
+        Assert.Contains("Last status: gateway stopped", result.Detail);
         Assert.DoesNotContain("fixture-token", result.Detail);
     }
 
@@ -480,6 +592,49 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task SlowOwnedStartReachingListenerAtTwoHundredTenSecondsIsNotRolledBack()
+    {
+        // #1969: on a slow host the package acknowledged the launch after its ~90 s listener
+        // wait, stayed unhealthy while bootstrapping, and was listening at ~210 s.
+        var acknowledged = TimeSpan.FromSeconds(90);
+        var listening = TimeSpan.FromSeconds(210);
+        var poll = TimeSpan.FromSeconds(2);
+        _state = "stopped";
+        _listeners = [];
+        _startState = "unhealthy";
+        _startDuration = acknowledged;
+        using var pollScheduled = new SemaphoreSlim(0);
+        _clock.TimerScheduled += due =>
+        {
+            if (due == poll) pollScheduled.Release();
+        };
+        var start = _runtime.EnsureRunningAsync(_record, default);
+        int polls = (int)((listening - acknowledged) / poll);
+        for (var i = 0; i < polls; i++)
+        {
+            var scheduled = pollScheduled.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.WhenAny(scheduled, start);
+            if (start.IsCompleted)
+                await start; // Surfaces a premature timeout and rollback.
+            Assert.True(await scheduled);
+            if (i == polls - 1)
+                _beforeStatus = () =>
+                {
+                    _state = "running";
+                    _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+                };
+            _clock.Advance(poll);
+        }
+        await start.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(listening.Ticks, _clock.GetTimestamp());
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        _beforeStatus = null;
+    }
+
+    [Fact]
     public async Task PendingStartDeadlineIncludesStartCommandAndRollsBackExactlyOnce()
     {
         _state = "stopped";
@@ -487,11 +642,95 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _startState = "starting";
         _startDuration = TimeSpan.FromSeconds(90);
         var start = _runtime.EnsureRunningAsync(_record, default);
-        _clock.Advance(TimeSpan.FromSeconds(90));
+        _clock.Advance(IsolatedGatewayRuntime.StartupTimeout - _startDuration);
 
-        await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(NativeGatewayStartupTimeoutPhase.Readiness, error.Phase);
+        Assert.Equal("starting", error.LastStatus?.State);
+        Assert.Contains("gateway starting", error.Message);
         Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task ReadinessTimeoutReportsTokenShapedReasonCode()
+    {
+        _state = "stopped";
+        _listeners = [];
+        _startState = "unhealthy";
+        _configMissing = true;
+        _startDuration = TimeSpan.FromSeconds(90);
+        var start = _runtime.EnsureRunningAsync(_record, default);
+        _clock.Advance(IsolatedGatewayRuntime.StartupTimeout - _startDuration);
+
+        var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal(NativeGatewayStartupTimeoutPhase.Readiness, error.Phase);
+        Assert.Equal("config-file-missing", error.LastStatus!.ReadinessReason);
+        Assert.Contains("readiness absent (config-file-missing)", error.Message);
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+    }
+
+    [Theory]
+    [InlineData("Token abc is invalid", false)]
+    [InlineData("gateway-mode-local", true)]
+    [InlineData("-x", false)]
+    public void StatusDescriptionDropsNonCodeReasons(string reason, bool shown)
+    {
+        var text = new IsolatedGatewayStatus("unhealthy", null, null, [], "running", "not-ready", reason).Describe();
+        Assert.StartsWith("gateway unhealthy, session running, readiness not-ready", text);
+        if (shown)
+            Assert.EndsWith($"({reason})", text);
+        else
+            Assert.DoesNotContain(reason, text);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("  ", null)]
+    [InlineData("abc", null)]
+    [InlineData("-5", null)]
+    [InlineData("29", null)]
+    [InlineData("3601", null)]
+    [InlineData("1.5", null)]
+    [InlineData("30", 30)]
+    [InlineData(" 600 ", 600)]
+    [InlineData("3600", 3600)]
+    public void StartupTimeoutOverrideAcceptsOnlyBoundedWholeSeconds(string? raw, int? expectedSeconds)
+    {
+        var expected = TimeSpan.FromSeconds(expectedSeconds ?? IsolatedGatewayRuntime.DefaultStartupTimeoutSeconds);
+        Assert.Equal(expected, IsolatedGatewayRuntime.ResolveStartupTimeout(raw));
+    }
+
+    [Fact]
+    public async Task PrestartConflictNamesTheSquattingProcessWithoutClaimingItsIdentity()
+    {
+        _state = "stopped";
+        _listeners = [new(IPAddress.Loopback, Port, 4567, "squatter", null)];
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.EnsureRunningAsync(_record, default));
+
+        Assert.Contains("squatter (PID 4567)", error.Provenance.Detail);
+        Assert.Null(error.Provenance.ProcessId);
+    }
+
+    [Fact]
+    public async Task MixedVerifiedAndUnverifiedListenersNameTheFailingOne()
+    {
+        _state = "running";
+        // The attested IPv4 listener is legitimate; the IPv6 listener belongs to another process.
+        _listeners =
+        [
+            new(IPAddress.Loopback, Port, ProcessId, "fixture", null),
+            new(IPAddress.IPv6Loopback, Port, 4567, "stray", null)
+        ];
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.EnsureRunningAsync(_record, default));
+
+        Assert.Contains("stray (PID 4567)", error.Provenance.Detail);
+        Assert.DoesNotContain("fixture", error.Provenance.Detail, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -618,6 +857,23 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
 
         Assert.Contains("gateway-service start --json", _calls);
         Assert.Contains("gateway-service stop --json", _calls);
+    }
+
+    [Fact]
+    public async Task ReleasedServiceKeepsRunningForItsNextOwner()
+    {
+        _state = "not-started";
+        _listeners = [];
+        _listenOnStart = true;
+
+        await _runtime.EnsureRunningAsync(_record, CancellationToken.None);
+        await _runtime.ReleaseAsync(CancellationToken.None);
+        await _runtime.StopAsync(CancellationToken.None);
+        await _runtime.DisposeAsync();
+
+        Assert.Contains("gateway-service start --json", _calls);
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        Assert.Equal("running", _state);
     }
 
     [Fact]
@@ -910,5 +1166,15 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             Task.FromResult(packages[0]);
         public Task<NativeGatewayPackage> ResolveAsync(string family, CancellationToken cancellationToken) =>
             Task.FromResult(packages.Single(package => package.PackageFamilyName == family));
+    }
+
+    private sealed class RecordingLogger : IOpenClawLogger
+    {
+        public List<string> InfoLines { get; } = [];
+        public List<string> Warnings { get; } = [];
+        public void Info(string message) => InfoLines.Add(message);
+        public void Debug(string message) { }
+        public void Warn(string message) => Warnings.Add(message);
+        public void Error(string message, Exception? ex = null) { }
     }
 }

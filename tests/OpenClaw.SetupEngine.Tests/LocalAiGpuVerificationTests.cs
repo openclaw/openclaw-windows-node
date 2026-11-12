@@ -63,6 +63,59 @@ public class LocalAiGpuVerificationTests
     }
 
     [Fact]
+    public void ParseGpuLoadEvidence_BoltDraftDoesNotReplaceTargetEvidence()
+    {
+        const string log = """
+            [123] srv    load_model: loading model 'bolt.gguf'
+            [123] load_tensors: offloaded 89/89 layers to GPU
+            [123] load_tensors:        CUDA0 model buffer size = 20446.77 MiB
+            [123] common_speculative_init_result: loading draft model 'lilicorr.gguf'
+            [123] load_tensors: offloaded 6/6 layers to GPU
+            [123] load_tensors:        CUDA0 model buffer size = 944.48 MiB
+            """;
+
+        LocalAiGpuLogEvidence evidence = WindowsLocalAiGpuEvidenceProbe.ParseGpuLoadEvidence(log);
+
+        Assert.Equal(89, evidence.OffloadedLayers);
+        Assert.Equal(89, evidence.TotalLayers);
+        Assert.Equal(21_439_992_299L, evidence.CudaModelBufferBytes);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(80)]
+    public void ParseGpuLoadEvidence_FullDraftCannotProvePartialTargetOffload(int offloaded)
+    {
+        string log = $"""
+            srv    load_model: loading model 'bolt.gguf'
+            load_tensors: offloaded {offloaded}/89 layers to GPU
+            load_tensors:        CUDA0 model buffer size = 19000.00 MiB
+            common_speculative_init_result: loading draft model 'lilicorr.gguf'
+            load_tensors: offloaded 6/6 layers to GPU
+            load_tensors:        CUDA0 model buffer size = 944.48 MiB
+            """;
+
+        Assert.Throws<InvalidDataException>(() =>
+            WindowsLocalAiGpuEvidenceProbe.ParseGpuLoadEvidence(log));
+    }
+
+    [Fact]
+    public void ParseGpuLoadEvidence_OldFullLoadCannotProveLatestPartialLoad()
+    {
+        const string log = """
+            [123] srv    load_model: loading model 'bolt.gguf'
+            [123] load_tensors: offloaded 89/89 layers to GPU
+            [123] load_tensors:        CUDA0 model buffer size = 20446.77 MiB
+            [456] srv    load_model: loading model 'bolt.gguf'
+            [456] load_tensors: offloaded 80/89 layers to GPU
+            [456] load_tensors:        CUDA0 model buffer size = 19000.00 MiB
+            """;
+
+        Assert.Throws<InvalidDataException>(() =>
+            WindowsLocalAiGpuEvidenceProbe.ParseGpuLoadEvidence(log));
+    }
+
+    [Fact]
     public void ResolveGpuMemoryEvidence_SkipsPostLoadProbeWhenCudaBufferIsReported()
     {
         const long totalBytes = 48L * 1024 * 1024 * 1024;

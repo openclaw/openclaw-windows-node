@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using OpenClaw.Shared.ExecApprovals;
 using OpenClaw.Shared.Telemetry;
+using OpenClaw.Shared.Mxc;
 
 namespace OpenClaw.Shared.Capabilities;
 
@@ -13,6 +14,8 @@ namespace OpenClaw.Shared.Capabilities;
 /// </summary>
 public class SystemCapability : NodeCapabilityBase
 {
+    private const string SystemRunDeniedErrorCode = "SYSTEM_RUN_DENIED";
+
     public override string Category => "system";
 
     private const int DefaultRunTimeoutMs = 30_000;
@@ -36,10 +39,10 @@ public class SystemCapability : NodeCapabilityBase
         "system.execApprovals.set"
     };
 
-    private readonly bool _includeRunCommands;
+    private readonly Func<bool> _includeRunCommands;
 
     public override IReadOnlyList<string> Commands =>
-        _includeRunCommands ? _commandsWithRun : _commandsWithoutRun;
+        _includeRunCommands() ? _commandsWithRun : _commandsWithoutRun;
 
     // Event to let UI handle the actual notification display
     public event EventHandler<SystemNotifyArgs>? NotifyRequested;
@@ -60,9 +63,18 @@ public class SystemCapability : NodeCapabilityBase
     /// unaffected. Wired from the tray "Run system tools" permission toggle
     /// via <c>NodeCapabilityGating.ShouldRegisterSystemRun</c>.
     /// </param>
-    public SystemCapability(IOpenClawLogger logger, bool includeRunCommands = true) : base(logger)
+    public SystemCapability(IOpenClawLogger logger, bool includeRunCommands = true)
+        : this(logger, () => includeRunCommands)
     {
-        _includeRunCommands = includeRunCommands;
+    }
+
+    /// <summary>
+    /// Read the current permission during discovery, dispatch and prelaunch
+    /// revalidation, including while a transport still holds this capability.
+    /// </summary>
+    public SystemCapability(IOpenClawLogger logger, Func<bool> includeRunCommands) : base(logger)
+    {
+        _includeRunCommands = includeRunCommands ?? throw new ArgumentNullException(nameof(includeRunCommands));
     }
 
     /// <summary>
@@ -86,24 +98,29 @@ public class SystemCapability : NodeCapabilityBase
         _v2Handler = handler;
     }
     
-    public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request)
+    public override Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request) =>
+        ExecuteAsync(request, CancellationToken.None);
+
+    public override async Task<NodeInvokeResponse> ExecuteAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         // "Run system tools" kill switch — applied before approval dispatch
         // so stale gateway allowlists and cached MCP clients still see the
         // capability as disabled when the user turned it off.
-        if (!_includeRunCommands &&
+        if (!_includeRunCommands() &&
             (request.Command == "system.run" || request.Command == "system.run.prepare"))
         {
             Logger.Info($"[system.run] rejected: 'Run system tools' is disabled (command={request.Command})");
             return ErrorWithDiagnostic(
                 "system.run is disabled by user setting (Permissions → Run system tools).",
-                NodeToolErrorCategory.PermissionDenied);
+                NodeToolErrorCategory.PermissionDenied,
+                errorCode: SystemRunDeniedErrorCode);
         }
 
         return request.Command switch
         {
             "system.notify" => await HandleNotifyAsync(request),
-            "system.run" => await HandleRunAsync(request),
+            "system.run" => await HandleRunAsync(request, cancellationToken),
             "system.run.prepare" => HandleRunPrepare(request),
             "system.which" => HandleWhich(request),
             "system.execApprovals.get" => await HandleExecApprovalsGetAsync(),
@@ -224,8 +241,9 @@ public class SystemCapability : NodeCapabilityBase
         });
     }
     
-    private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request)
+    private async Task<NodeInvokeResponse> HandleRunAsync(NodeInvokeRequest request, CancellationToken cancellationToken)
     {
+        var expectedPolicy = (_commandRunner as MxcCommandRunner)?.CapturePolicy();
         var correlationId = Guid.NewGuid().ToString("N")[..8];
         var v2Handler = _v2Handler;
         request.Telemetry?.SetApprovalPipeline(NodeToolApprovalPipeline.V2);
@@ -236,30 +254,19 @@ public class SystemCapability : NodeCapabilityBase
             GetTelemetryParentContext(request));
         ExecApprovalV2Result v2Result;
         Type? approvalErrorType = null;
-        if (_commandRunner is IDirectArgvSupportAwareCommandRunner argvAware
-            && !argvAware.CanExecuteDirectArgv())
-        {
-            // Fail closed before evaluation when a runner explicitly reports
-            // that it cannot preserve an approved direct argv.
-            v2Result = ExecApprovalV2Result.Unavailable(
-                "system.run cannot execute the approved direct argv with the active command runner");
-        }
-        else
-        {
             try
             {
-                v2Result = await v2Handler.HandleAsync(request, correlationId);
+                v2Result = await v2Handler.HandleAsync(request, correlationId, cancellationToken);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 Logger.Error($"[system.run] corr={correlationId} path=v2 handler threw", ex);
                 v2Result = ExecApprovalV2Result.ValidationFailed("Handler exception");
                 approvalErrorType = ex.GetType();
             }
-        }
-
         var approvalCategory = approvalErrorType == null
-            ? MapV2ErrorCategory(v2Result.Code)
+            ? MapV2ErrorCategory(v2Result)
             : NodeToolErrorCategory.InternalFailure;
         Logger.Info($"[system.run] corr={correlationId} decision={v2Result.Code} reason={v2Result.Reason}");
         NodeToolInvocation.CompleteChild(
@@ -275,10 +282,11 @@ public class SystemCapability : NodeCapabilityBase
             ExecApprovalRevalidationResult revalidation;
             try
             {
-                revalidation = await v2Handler.RevalidateAsync(
+                revalidation = await RevalidateRunApprovalAsync(v2Handler,
                     approvedExecution,
-                    correlationId);
+                    correlationId, cancellationToken);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex)
             {
                 Logger.Error(
@@ -296,13 +304,17 @@ public class SystemCapability : NodeCapabilityBase
                     $"reason={revalidation.Reason}");
                 return ErrorWithDiagnostic(
                     $"exec-approvals-v2: ValidationFailed ({revalidation.Reason})",
-                    NodeToolErrorCategory.ExecPolicyDenied);
+                    revalidation.IsPolicyDenial
+                        ? NodeToolErrorCategory.ExecPolicyDenied : NodeToolErrorCategory.InternalFailure,
+                    errorCode: revalidation.IsPolicyDenial ? SystemRunDeniedErrorCode : null);
             }
 
-            return await RunApprovedAsync(approvedExecution, correlationId, request);
+            return await RunApprovedAsync(approvedExecution, correlationId, request, v2Handler, expectedPolicy, cancellationToken);
         }
 
         var response = Error($"exec-approvals-v2: {v2Result.Code} ({v2Result.Reason})");
+        if (v2Result.IsDefiniteDenial)
+            response.ErrorCode = SystemRunDeniedErrorCode;
         if (approvalCategory != NodeToolErrorCategory.None)
             response.Diagnostic = new NodeToolDiagnostic(approvalCategory);
         return response;
@@ -311,11 +323,29 @@ public class SystemCapability : NodeCapabilityBase
     private NodeInvokeResponse ErrorWithDiagnostic(
         string message,
         NodeToolErrorCategory errorCategory,
-        NodeToolExecutionMode? executionMode = null)
+        NodeToolExecutionMode? executionMode = null,
+        string? errorCode = null)
     {
         var response = Error(message);
+        response.ErrorCode = errorCode;
         response.Diagnostic = new NodeToolDiagnostic(errorCategory, executionMode);
         return response;
+    }
+
+    private async ValueTask<ExecApprovalRevalidationResult> RevalidateRunApprovalAsync(
+        IExecApprovalV2Handler handler,
+        ExecApprovedExecution execution,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!_includeRunCommands())
+            return ExecApprovalRevalidationResult.PolicyDenied("system-run-disabled");
+
+        var result = await handler.RevalidateAsync(execution, correlationId, cancellationToken);
+        return _includeRunCommands()
+            ? result
+            : ExecApprovalRevalidationResult.PolicyDenied("system-run-disabled");
     }
 
     private static System.Diagnostics.ActivityContext? GetTelemetryParentContext(
@@ -335,13 +365,9 @@ public class SystemCapability : NodeCapabilityBase
             : NodeToolErrorCategory.CommandFailed;
     }
 
-    private static NodeToolErrorCategory MapV2ErrorCategory(ExecApprovalV2Code code) =>
-        code switch
+    private static NodeToolErrorCategory MapV2ErrorCategory(ExecApprovalV2Result result) =>
+        result.IsDefiniteDenial ? NodeToolErrorCategory.ExecPolicyDenied : result.Code switch
         {
-            ExecApprovalV2Code.SecurityDeny
-                or ExecApprovalV2Code.AskDeny
-                or ExecApprovalV2Code.AllowlistMiss
-                or ExecApprovalV2Code.UserDenied => NodeToolErrorCategory.ExecPolicyDenied,
             ExecApprovalV2Code.ValidationFailed => NodeToolErrorCategory.InvalidRequest,
             ExecApprovalV2Code.ResolutionFailed => NodeToolErrorCategory.CommandUnavailable,
             ExecApprovalV2Code.Unavailable => NodeToolErrorCategory.CapabilityUnavailable,
@@ -360,7 +386,10 @@ public class SystemCapability : NodeCapabilityBase
     private async Task<NodeInvokeResponse> RunApprovedAsync(
         ExecApprovedExecution execution,
         string correlationId,
-        NodeInvokeRequest request)
+        NodeInvokeRequest request,
+        IExecApprovalV2Handler approvalHandler,
+        string? expectedPolicy,
+        CancellationToken cancellationToken)
     {
         var runSpan = request.Telemetry?.StartChild(
             NodeToolInvocation.SystemRunRunSpanName,
@@ -382,10 +411,13 @@ public class SystemCapability : NodeCapabilityBase
             commandRequest.Telemetry = request.Telemetry;
             commandRequest.TelemetryParentContext =
                 runSpan?.Context ?? request.Telemetry?.Context ?? default;
-            var result = await _commandRunner.RunAsync(commandRequest);
+            commandRequest.ExpectedMxcPolicy = expectedPolicy;
+            commandRequest.RevalidateApproval = token =>
+                RevalidateRunApprovalAsync(approvalHandler, execution, correlationId, token);
+            var result = await _commandRunner.RunAsync(commandRequest, cancellationToken);
             Logger.Info($"[system.run] corr={correlationId} path=v2 executed exit={result.ExitCode} timedOut={result.TimedOut}");
 
-            var executionMode = result.ExecutionMode ?? NodeToolExecutionMode.Host;
+            var executionMode = result.ExecutionMode;
             var errorCategory = ClassifyCommandResult(result);
             if (result.SandboxDenialReason.HasValue)
                 request.Telemetry?.SetSandboxDenialReason(result.SandboxDenialReason.Value);
@@ -398,6 +430,11 @@ public class SystemCapability : NodeCapabilityBase
                 executionMode,
                 sandboxDenialReason: result.SandboxDenialReason);
 
+            if (errorCategory is NodeToolErrorCategory.NodeBusy or NodeToolErrorCategory.SandboxDenied or NodeToolErrorCategory.SandboxUnavailable or
+                NodeToolErrorCategory.SandboxFailure or NodeToolErrorCategory.ExecPolicyDenied or NodeToolErrorCategory.CommandUnavailable or
+                NodeToolErrorCategory.InternalFailure)
+                return ErrorWithDiagnostic(result.Stderr, errorCategory, executionMode,
+                    errorCode: errorCategory == NodeToolErrorCategory.ExecPolicyDenied ? SystemRunDeniedErrorCode : null);
             var response = Success(new
             {
                 stdout = result.Stdout,
@@ -416,6 +453,7 @@ public class SystemCapability : NodeCapabilityBase
             }
             return response;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex)
         {
             Logger.Error($"[system.run] corr={correlationId} path=v2 execution failed", ex);

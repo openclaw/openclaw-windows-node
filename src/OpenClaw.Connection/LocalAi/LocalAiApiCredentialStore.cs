@@ -50,9 +50,17 @@ public sealed class LocalAiApiCredentialStore(LocalAiPaths paths)
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static string Read(string path)
     {
-        if (new FileInfo(path).Length is < 1 or > 4096)
-            throw new InvalidDataException("The protected Local AI API credential is invalid.");
-        byte[] plain = ProtectedData.Unprotect(File.ReadAllBytes(path), Entropy, DataProtectionScope.CurrentUser);
+        byte[] protectedBytes;
+        // The published name can be visible before the rename's DELETE handle closes.
+        using (var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
+        {
+            long length = file.Length;
+            if (length is < 1 or > 4096)
+                throw new InvalidDataException("The protected Local AI API credential is invalid.");
+            protectedBytes = new byte[(int)length];
+            file.ReadExactly(protectedBytes);
+        }
+        byte[] plain = ProtectedData.Unprotect(protectedBytes, Entropy, DataProtectionScope.CurrentUser);
         try
         {
             if (plain.Length != 32)

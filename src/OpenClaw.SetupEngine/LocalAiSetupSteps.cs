@@ -1,3 +1,13 @@
+// <summary>
+// Defines the ordered Local AI setup pipeline from hardware qualification through receipt persistence
+// and native plus WSL inference proof. The setup runner invokes these steps transactionally and their
+// rollback methods preserve receipt and router ownership invariants.
+// Usage:
+//   pipeline.Add(new PreflightLocalAiHardwareStep(probe));
+//   pipeline.Add(new AcquireLocalAiModelStep(acquirer));
+//   // The setup runner calls ExecuteAsync and invokes RollbackAsync in reverse on failure.
+// </summary>
+
 using System.Collections.Immutable;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -31,7 +41,8 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
-    public override Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
+    /// <summary>Qualifies hardware and records the selected Local AI plan in setup context.</summary>
+    public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
 
@@ -42,9 +53,9 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
         }
         catch (Exception ex)
         {
-            return Task.FromResult(StepResult.Terminal(
+            return StepResult.Terminal(
                 "Local AI hardware detection failed. No setup changes were made.",
-                ex));
+                ex);
         }
 
         string? selectedModelId = ctx.Config.LocalAi.SelectedModelId;
@@ -56,26 +67,50 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 StringComparison.OrdinalIgnoreCase)
                 ? LocalInferenceEligibility.EvaluateInstalled(hardware, selectedModelId)
                 : LocalInferenceEligibility.Evaluate(hardware, selectedModelId);
+        // Headless --config setup cannot carry the UI-only receipt hint. The
+        // stored receipt owns an installed Bolt or custom recipe and its exact context.
+        if (LocalModelCatalog.RequiresRecordedProfile(selectedModelId))
+        {
+            try
+            {
+                var installed = await new LocalAiManifestStore(new LocalAiPaths(ctx.LocalDataDir)).LoadAsync(ct);
+                if (installed is not null)
+                {
+                    if (!string.Equals(installed.Manifest.ModelCatalogId, selectedModelId, StringComparison.OrdinalIgnoreCase))
+                        return StepResult.Terminal("The installed Local AI model does not match the selected model.");
+                    eligibility = LocalInferenceEligibility.EvaluateRecordedProfile(hardware,
+                        LlamaServerRouterConfiguration.ResolveInstalledPlan(installed));
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
+            {
+                return StepResult.Terminal("The installed Local AI receipt could not be qualified.", ex);
+            }
+        }
         ctx.LocalAiHardware = hardware;
         ctx.LocalAiEligibility = eligibility;
-        ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;
+        if (!LocalModelCatalog.RequiresRecordedProfile(selectedModelId))
+            ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan?.Profile.Id;
 
-        if (eligibility.Status == LocalInferenceEligibilityStatus.Unsupported)
+        if (!eligibility.CanOffer)
         {
-            return Task.FromResult(StepResult.Terminal(
+            if (eligibility.Status == LocalInferenceEligibilityStatus.EligibleButBusy)
+                return StepResult.Terminal("The selected Local AI profile no longer fits available memory. Free memory and recheck before continuing.");
+            return StepResult.Terminal(
                 $"This system does not meet the Local AI requirements " +
-                $"({eligibility.FailureCode}, {eligibility.SelectionFailureCode})."));
+                $"({eligibility.FailureCode}, {eligibility.SelectionFailureCode}).");
         }
 
         if (eligibility.Plan is null || eligibility.SelectedGpu is null)
         {
-            return Task.FromResult(StepResult.Terminal(
-                "Local AI compatibility was inconclusive. No setup changes were made."));
+            return StepResult.Terminal(
+                "Local AI compatibility was inconclusive. No setup changes were made.");
         }
 
         if (!LocalAiPortPolicy.TryValidate(ctx.Config.LocalAi.Port, out string? portError))
-            return Task.FromResult(StepResult.Terminal(portError ?? "Local inference port selection failed."));
+            return StepResult.Terminal(portError ?? "Local inference port selection failed.");
 
+        ctx.Config.LocalAi.SelectedProfileId = eligibility.Plan.Profile.Id;
         ctx.LocalAiPort = ctx.Config.LocalAi.Port;
         ctx.Logger.Info(
             "Selected qualified Local AI plan",
@@ -88,8 +123,8 @@ public sealed class PreflightLocalAiHardwareStep : SetupStep
                 requestedPort = ctx.Config.LocalAi.Port,
             });
 
-        return Task.FromResult(StepResult.Ok(
-            $"Selected {eligibility.Plan.Model.DisplayName} for {eligibility.SelectedGpu.Name}."));
+        return StepResult.Ok(
+            $"Selected {eligibility.Plan.Model.DisplayName} for {eligibility.SelectedGpu.Name}.");
     }
 }
 
@@ -117,6 +152,7 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Applies the user-approved WSL networking configuration needed by Local AI.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         IWslGlobalConfigManager manager = _managerFactory(ctx);
@@ -178,6 +214,7 @@ public sealed class ConfigureLocalAiWslNetworkingStep : SetupStep
         return StepResult.Ok("WSL mirrored networking is enabled.");
     }
 
+    /// <summary>Restores the pre-setup networking state only when this step still owns the change.</summary>
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         IWslGlobalConfigManager manager = _managerFactory(ctx);
@@ -250,6 +287,7 @@ public sealed class ReconcileLocalAiInstallationStep : SetupStep
     public override RetryPolicy Retry => RetryPolicy.None;
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Reuses or repairs the receipt-owned Local AI installation for the selected plan.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiEligibility?.Plan is not { } plan ||
@@ -363,6 +401,7 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Acquires the selected llama-server runtime archives into setup context.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiRuntimeInstall is { CreatedThisRun: false })
@@ -427,6 +466,7 @@ public sealed class AcquireLocalAiRuntimeStep : SetupStep
         }
     }
 
+    /// <summary>Removes runtime artifacts created by this step when the setup transaction rolls back.</summary>
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -479,6 +519,7 @@ public sealed class AcquireLocalAiModelStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Acquires the selected model and optional recipe assets into setup context.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiModelInstall is { CreatedThisRun: false })
@@ -558,6 +599,7 @@ public sealed class AcquireLocalAiModelStep : SetupStep
         }
     }
 
+    /// <summary>Removes model artifacts created by this step when setup rolls back.</summary>
     public override Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
@@ -591,6 +633,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Writes the verified Local AI receipt and records it for dependent setup steps.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiResolvedInstall is not null && !ctx.LocalAiManifestCreatedThisRun)
@@ -652,79 +695,27 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         }
 
         ImmutableArray<LocalAiAssetReceipt> runtimeAssets;
+        LocalAiInstallManifest manifest;
         try
         {
-            runtimeAssets = BuildRuntimeReceipts(plan.Runtime, runtimeInstall);
+            runtimeAssets = LocalAiManifestFactory.BuildRuntimeReceipts(plan.Runtime, runtimeInstall);
+            manifest = LocalAiManifestFactory.Create(
+                paths,
+                plan,
+                gpuId,
+                requestedPort,
+                plan.Runtime.ReleaseTag,
+                plan.Runtime.Id,
+                LocalAiManifestFactory.ArchitectureName(plan.Runtime.Architecture),
+                Path.GetRelativePath(paths.RootDirectory, runtimeInstall.ExecutablePath),
+                runtimeAssets,
+                modelInstall,
+                ctx.LocalAiAdditionalModelInstalls);
         }
         catch (InvalidDataException ex)
         {
             return StepResult.Terminal(ex.Message, ex);
         }
-
-        ImmutableArray<PinnedArtifact> additionalArtifacts = AcquireLocalAiModelStep.AdditionalArtifacts(plan.Model);
-        if (additionalArtifacts.Length != ctx.LocalAiAdditionalModelInstalls.Length)
-        {
-            return StepResult.Terminal(
-                "The Local AI installation receipt requires a completed additional-asset acquisition step.");
-        }
-
-        var additionalModelAssets = ImmutableArray.CreateBuilder<LocalAiAssetReceipt>(additionalArtifacts.Length);
-        var additionalModelPaths = ImmutableArray.CreateBuilder<string>(additionalArtifacts.Length);
-        for (int i = 0; i < additionalArtifacts.Length; i++)
-        {
-            PinnedArtifact artifact = additionalArtifacts[i];
-            additionalModelAssets.Add(new LocalAiAssetReceipt
-            {
-                FileName = Path.GetFileName(artifact.RelativePath),
-                SourceUrl = artifact.DownloadUri.AbsoluteUri,
-                SizeBytes = artifact.SizeBytes,
-                Sha256 = artifact.Sha256.Value,
-            });
-            additionalModelPaths.Add(ctx.LocalAiAdditionalModelInstalls[i].ModelPath);
-        }
-
-        LocalAiInstallManifest manifest = new()
-        {
-            SchemaVersion = additionalArtifacts.IsEmpty
-                ? LocalAiInstallManifest.HubCacheReceiptSchemaVersion
-                : LocalAiInstallManifest.AdditionalAssetsSchemaVersion,
-            EngineVersion = plan.Runtime.ReleaseTag,
-            Architecture = plan.Runtime.Architecture switch
-            {
-                Architecture.X64 => "x64",
-                Architecture.Arm64 => "arm64",
-                _ => throw new InvalidDataException("The selected Local AI runtime architecture is unsupported."),
-            },
-            RuntimeId = plan.Runtime.Id,
-            ModelCatalogId = plan.Model.Id,
-            SelectedGpuId = gpuId,
-            ExecutablePath = Path.GetRelativePath(paths.RootDirectory, runtimeInstall.ExecutablePath),
-            RuntimeAssets = runtimeAssets,
-            ModelPath = Path.GetRelativePath(paths.RootDirectory, modelInstall.LegacyModelPath),
-            ModelCacheRoot = modelInstall.CacheRoot,
-            CachedModelPath = modelInstall.ModelPath,
-            ModelId = $"{modelSource.RepositoryId}@{modelSource.RevisionSha}",
-            ModelAlias = plan.Model.Id,
-            ModelAsset = new LocalAiAssetReceipt
-            {
-                FileName = Path.GetFileName(plan.Model.Weights.RelativePath),
-                SourceUrl = plan.Model.Weights.DownloadUri.AbsoluteUri,
-                SizeBytes = plan.Model.Weights.SizeBytes,
-                Sha256 = plan.Model.Weights.Sha256.Value,
-            },
-            // Leave these at their unset default (not an explicitly-built empty
-            // array) when there is nothing to add, so schema-4 manifests omit
-            // them from JSON entirely -- see the properties' remarks.
-            AdditionalModelAssets = additionalArtifacts.IsEmpty ? default : additionalModelAssets.MoveToImmutable(),
-            AdditionalModelPaths = additionalArtifacts.IsEmpty ? default : additionalModelPaths.MoveToImmutable(),
-            RequestedPort = requestedPort,
-            Endpoint = null,
-            ContextLength = plan.Profile.ContextTokens,
-            KeyCachePrecision = plan.Profile.KeyCachePrecision,
-            ValueCachePrecision = plan.Profile.ValueCachePrecision,
-            DraftKeyCachePrecision = plan.Profile.DraftKeyCachePrecision,
-            DraftValueCachePrecision = plan.Profile.DraftValueCachePrecision,
-        };
         if (originalInstall is not null)
         {
             manifest = originalInstall.Manifest with
@@ -743,6 +734,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
                 ModelId = manifest.ModelId,
                 ModelAlias = manifest.ModelAlias,
                 ModelAsset = manifest.ModelAsset,
+                CustomModel = manifest.CustomModel,
                 AdditionalModelAssets = manifest.AdditionalModelAssets,
                 AdditionalModelPaths = manifest.AdditionalModelPaths,
                 RequestedPort = manifest.RequestedPort,
@@ -769,6 +761,7 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         }
     }
 
+    /// <summary>Restores or removes receipt state according to the transaction rollback outcome.</summary>
     public override async Task RollbackAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.IsUninstalling)
@@ -837,40 +830,6 @@ public sealed class PersistLocalAiManifestStep : SetupStep
         ctx.LocalAiManifestCreatedThisRun = false;
         ctx.LocalAiUpgradeOriginalInstall = null;
     }
-
-    private static ImmutableArray<LocalAiAssetReceipt> BuildRuntimeReceipts(
-        LlamaRuntimeVariant runtime,
-        LlamaRuntimeInstallResult install)
-    {
-        if (install.VerifiedArchives.Count != runtime.Artifacts.Count)
-            throw new InvalidDataException("The installed llama-server archive receipt set is incomplete.");
-
-        var receipts = ImmutableArray.CreateBuilder<LocalAiAssetReceipt>(runtime.Artifacts.Count);
-        foreach (PinnedArtifact artifact in runtime.Artifacts)
-        {
-            string fileName = Path.GetFileName(artifact.RelativePath);
-            LocalAiVerifiedArchive verified = install.VerifiedArchives.SingleOrDefault(
-                candidate => string.Equals(candidate.FileName, fileName, StringComparison.Ordinal))
-                ?? throw new InvalidDataException(
-                    $"The installed llama-server archive receipt for '{fileName}' is missing.");
-            if (verified.SizeBytes != artifact.SizeBytes ||
-                !string.Equals(verified.Sha256, artifact.Sha256.Value, StringComparison.Ordinal))
-            {
-                throw new InvalidDataException(
-                    $"The installed llama-server archive receipt for '{fileName}' does not match its pin.");
-            }
-
-            receipts.Add(new LocalAiAssetReceipt
-            {
-                FileName = fileName,
-                SourceUrl = artifact.DownloadUri.AbsoluteUri,
-                SizeBytes = verified.SizeBytes,
-                Sha256 = verified.Sha256,
-            });
-        }
-
-        return receipts.MoveToImmutable();
-    }
 }
 
 /// <summary>Starts the companion-owned llama-server router without preloading a model.</summary>
@@ -893,6 +852,7 @@ public sealed class StartLocalAiRuntimeStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Starts the receipt-owned router and records its runtime handle in setup context.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiResolvedInstall is null)
@@ -1003,6 +963,7 @@ public sealed class VerifyLocalAiInferenceStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Proves the selected model can load and serve through the managed router.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiRuntime is not { } runtime ||
@@ -1114,6 +1075,7 @@ public sealed class VerifyLocalAiWslStep : SetupStep
 
     public override bool CanSkip(SetupContext ctx) => !ctx.Config.LocalAi.Enabled;
 
+    /// <summary>Proves the app-owned WSL distribution can reach the native Local AI router.</summary>
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
     {
         if (ctx.LocalAiResolvedInstall is not { Endpoint: { } endpoint } install ||

@@ -1,5 +1,14 @@
+// <summary>
+// Evaluates whether a pinned local inference plan fits the observed hardware and runtime prerequisites.
+// Stable total memory chooses capacity while free memory only reports launch readiness, never a new model.
+// Usage:
+//   LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(hardware, requestedModelId);
+//   if (result.CanInstall) Install(result.Plan!);
+// </summary>
+
 namespace OpenClaw.Shared.Inference.Catalog;
 
+/// <summary>Classifies whether a local inference plan can be installed or is temporarily busy.</summary>
 public enum LocalInferenceEligibilityStatus
 {
     Eligible = 0,
@@ -7,6 +16,7 @@ public enum LocalInferenceEligibilityStatus
     Unsupported = 2,
 }
 
+/// <summary>Identifies the stable reason local inference cannot be selected or installed.</summary>
 public enum LocalInferenceEligibilityFailureCode
 {
     None = 0,
@@ -15,8 +25,12 @@ public enum LocalInferenceEligibilityFailureCode
     InsufficientGpuMemory = 3,
     DriverTooOld = 4,
     CudaCapabilityTooLow = 5,
+    InsufficientSystemMemory = 6,
+    InsufficientDiskSpace = 7,
+    ModelNotQualifiedForDevice = 8,
 }
 
+/// <summary>Reports eligibility, the selected plan when available, and capacity evidence for presentation.</summary>
 public sealed record LocalInferenceEligibilityResult(
     LocalInferenceEligibilityStatus Status,
     LocalInferenceEligibilityFailureCode FailureCode,
@@ -26,23 +40,32 @@ public sealed record LocalInferenceEligibilityResult(
     long RequiredTotalMemoryBytes,
     long? DetectedTotalMemoryBytes,
     long RequiredFreeMemoryBytes,
-    long? AvailableFreeMemoryBytes)
+    long? AvailableFreeMemoryBytes,
+    long RequiredSystemMemoryBytes = 0,
+    long? DetectedSystemMemoryBytes = null,
+    long RequiredDiskBytes = 0,
+    long? AvailableDiskBytes = null)
 {
     public bool CanInstall => Status is
         LocalInferenceEligibilityStatus.Eligible or
         LocalInferenceEligibilityStatus.EligibleButBusy;
+
+    /// <summary>Bolt requires a currently fitting 128K-or-larger profile before fresh selection.</summary>
+    public bool CanOffer => CanInstall &&
+        (Plan is not { } plan || !LocalInferenceQualificationPolicy.IsNemotronBolt(plan.Model) ||
+            (Status == LocalInferenceEligibilityStatus.Eligible &&
+             plan.Profile.ContextTokens >= LocalModelCatalog.ReducedContextTokens));
 }
 
 /// <summary>
-/// Applies the pinned model capacity, driver, and CUDA guardrails after catalog
-/// selection. Total GPU memory is stable capacity. Free GPU memory is launch
-/// readiness and never changes the selected model automatically.
+/// Applies catalog selection and hardware guardrails to determine local inference eligibility.
 /// </summary>
 public static class LocalInferenceEligibility
 {
     public const long RuntimeWorkspaceReserveBytes = LocalModelCatalog.RuntimeWorkspaceReserveBytes;
     public static Version MinimumNvidiaDriverVersion { get; } = new(615, 0);
 
+    /// <summary>Returns the GPU memory required by a model profile, including its runtime reservation.</summary>
     public static long GetRequiredMemoryBytes(
         LocalModelInfo model,
         LocalInferenceRunProfile profile) =>
@@ -64,10 +87,25 @@ public static class LocalInferenceEligibility
     /// </remarks>
     public static LocalInferenceEligibilityResult EvaluateForConfiguredAvailability(
         HostHardwareInfo hardware,
-        string? configuredModelId)
+        string? configuredModelId,
+        bool hasInstalledReceipt = false,
+        LocalInferencePlan? installedPlan = null)
     {
         ArgumentNullException.ThrowIfNull(hardware);
         LocalInferenceEligibilityResult device = Evaluate(hardware);
+        if (!device.CanInstall && installedPlan?.Model.CustomRecipe is not null)
+        {
+            LocalInferenceEligibilityResult custom = EvaluateRecordedProfile(hardware, installedPlan);
+            if (custom.CanInstall)
+                return custom;
+        }
+        if (!device.CanInstall && hasInstalledReceipt && !string.IsNullOrWhiteSpace(configuredModelId) &&
+            !LocalCustomModel.IsCustomId(configuredModelId))
+        {
+            LocalInferenceEligibilityResult installed = EvaluateInstalled(hardware, configuredModelId);
+            if (installed.CanInstall)
+                return installed;
+        }
         if (device.CanInstall ||
             device.SelectionFailureCode != LocalInferenceSelectionFailureCode.NotRecommendedForSku ||
             string.IsNullOrWhiteSpace(configuredModelId))
@@ -78,6 +116,7 @@ public static class LocalInferenceEligibility
         return Evaluate(hardware, configuredModelId);
     }
 
+    /// <summary>Selects and evaluates a catalog model against the supplied hardware snapshot.</summary>
     public static LocalInferenceEligibilityResult Evaluate(
         HostHardwareInfo hardware,
         string? requestedModelId = null)
@@ -85,6 +124,24 @@ public static class LocalInferenceEligibility
         ArgumentNullException.ThrowIfNull(hardware);
 
         return Evaluate(hardware, LocalInferenceSelector.Select(hardware, requestedModelId));
+    }
+
+    /// <summary>Evaluates a user-supplied Hugging Face model with the catalog capacity rules.</summary>
+    public static LocalInferenceEligibilityResult EvaluateCustom(HostHardwareInfo hardware, LocalModelInfo model)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        return Evaluate(hardware, LocalInferenceSelector.SelectCustom(hardware, model));
+    }
+
+    /// <summary>The catalog models this PC can be offered, each with its selected plan.</summary>
+    public static IReadOnlyList<LocalInferencePlan> OfferedPlans(Func<string, LocalInferenceEligibilityResult> evaluate)
+    {
+        ArgumentNullException.ThrowIfNull(evaluate);
+        return LocalModelCatalog.Models
+            .Select(model => evaluate(model.Id))
+            .Where(eligibility => eligibility.CanOffer && eligibility.Plan is not null)
+            .Select(eligibility => eligibility.Plan!)
+            .ToArray();
     }
 
     /// <summary>
@@ -96,12 +153,26 @@ public static class LocalInferenceEligibility
         string installedModelId)
     {
         ArgumentNullException.ThrowIfNull(hardware);
-        return Evaluate(hardware, LocalInferenceSelector.SelectInstalled(hardware, installedModelId));
+        return Evaluate(hardware, LocalInferenceSelector.SelectInstalled(hardware, installedModelId), installed: true);
+    }
+
+    /// <summary>Rechecks an already-qualified receipt plan without selecting a different profile or adapter.</summary>
+    public static LocalInferenceEligibilityResult EvaluateRecordedProfile(
+        HostHardwareInfo hardware,
+        LocalInferencePlan recordedPlan)
+    {
+        ArgumentNullException.ThrowIfNull(hardware);
+        ArgumentNullException.ThrowIfNull(recordedPlan);
+        if (hardware.CpuArchitecture != recordedPlan.Runtime.Architecture)
+            return Unsupported(LocalInferenceEligibilityFailureCode.CatalogSelectionFailed,
+                LocalInferenceSelectionFailureCode.RuntimeUnavailable);
+        return Evaluate(hardware, LocalInferenceSelectionResult.Selected(recordedPlan), installed: true);
     }
 
     private static LocalInferenceEligibilityResult Evaluate(
         HostHardwareInfo hardware,
-        LocalInferenceSelectionResult selection)
+        LocalInferenceSelectionResult selection,
+        bool installed = false)
     {
         if (!selection.IsSelected || selection.Plan is null)
         {
@@ -120,7 +191,7 @@ public static class LocalInferenceEligibility
             ? hardware.NvidiaGpus.Where(gpu => string.Equals(gpu.StableId, boundId, StringComparison.Ordinal))
             : hardware.NvidiaGpus;
         CandidateAssessment? selected = candidateGpus
-            .Select(gpu => Assess(gpu, plan.Runtime, requiredMemoryBytes))
+            .Select(gpu => Assess(hardware, gpu, plan, requiredMemoryBytes))
             .OrderBy(candidate => StatusRank(candidate.Status))
             .ThenBy(candidate => DefinitivenessRank(candidate.FailureCode))
             .ThenByDescending(candidate => candidate.FreeMemoryBytes.HasValue)
@@ -133,16 +204,25 @@ public static class LocalInferenceEligibility
         if (selected is null)
             return Unsupported(LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete);
 
+        var managedProfile = new LocalManagedInferenceProfile(plan.Runtime, plan.Model, plan.Profile);
+        LocalInferenceEligibilityFailureCode resourceFailure = managedProfile.CheckHostResources(hardware, installed);
+        bool resourcesBlocked = selected.Status != LocalInferenceEligibilityStatus.Unsupported &&
+            resourceFailure != LocalInferenceEligibilityFailureCode.None;
+
         return new LocalInferenceEligibilityResult(
-            selected.Status,
-            selected.FailureCode,
+            resourcesBlocked ? LocalInferenceEligibilityStatus.Unsupported : selected.Status,
+            resourcesBlocked ? resourceFailure : selected.FailureCode,
             LocalInferenceSelectionFailureCode.None,
             plan,
             selected.Gpu,
             requiredMemoryBytes,
             selected.TotalMemoryBytes > 0 ? selected.TotalMemoryBytes : null,
             requiredMemoryBytes,
-            selected.FreeMemoryBytes);
+            selected.FreeMemoryBytes,
+            managedProfile.MinimumSystemMemoryBytes,
+            hardware.TotalPhysicalMemoryBytes,
+            installed ? 0 : managedProfile.RequiredDiskBytes(hardware),
+            hardware.LocalAiDiskSpace?.AvailableBytes);
     }
 
     private static LocalInferenceEligibilityResult Unsupported(
@@ -161,17 +241,31 @@ public static class LocalInferenceEligibility
             selectedGpu is null ? null : LocalInferenceQualificationPolicy.GetEffectiveFreeMemoryBytes(selectedGpu));
 
     private static CandidateAssessment Assess(
+        HostHardwareInfo hardware,
         GpuInfo gpu,
-        LlamaRuntimeVariant runtime,
+        LocalInferencePlan plan,
         long requiredMemoryBytes)
     {
+        LlamaRuntimeVariant runtime = plan.Runtime;
         long totalMemoryBytes = LocalInferenceQualificationPolicy.GetEffectiveTotalMemoryBytes(gpu);
-        long? freeMemoryBytes = LocalInferenceQualificationPolicy.GetEffectiveFreeMemoryBytes(gpu);
-        if (!LocalInferenceQualificationPolicy.HasCompleteFacts(gpu))
+        long? freeMemoryBytes = LocalInferenceQualificationPolicy.GetCurrentFreeMemoryBytes(hardware, gpu, plan.Model);
+        bool isBolt = LocalInferenceQualificationPolicy.IsNemotronBolt(plan.Model);
+        if (!LocalInferenceQualificationPolicy.HasCompleteFacts(gpu) ||
+            (isBolt && (freeMemoryBytes is null || string.IsNullOrWhiteSpace(gpu.Name) ||
+                string.Equals(gpu.Name, CudaHostHardwareProbe.UnidentifiedGpuName, StringComparison.Ordinal))))
         {
             return UnsupportedCandidate(
                 gpu,
                 LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete,
+                totalMemoryBytes,
+                freeMemoryBytes);
+        }
+
+        if (isBolt && !LocalInferenceQualificationPolicy.IsQualifiedBoltGpu(gpu))
+        {
+            return UnsupportedCandidate(
+                gpu,
+                LocalInferenceEligibilityFailureCode.ModelNotQualifiedForDevice,
                 totalMemoryBytes,
                 freeMemoryBytes);
         }

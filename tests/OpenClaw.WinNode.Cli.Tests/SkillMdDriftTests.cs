@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mcp;
+using OpenClaw.Shared.FileTransfer;
 
 namespace OpenClaw.WinNode.Cli.Tests;
 
@@ -23,7 +24,7 @@ public class SkillMdDriftTests
     {
         var skillMdPath = LocateSkillMd();
         var content = File.ReadAllText(skillMdPath);
-        Assert.Contains("\"provider\": \"piper|windows|elevenlabs|minimax\"", content);
+        Assert.Contains("\"provider\": \"kokoro|piper|windows|elevenlabs|minimax\"", content);
 
         var documented = ParseCommandHeadings(content);
         var canonical = new HashSet<string>(McpToolBridge.KnownCommands, StringComparer.Ordinal);
@@ -100,6 +101,7 @@ public class SkillMdDriftTests
             new CameraCapability(NullLogger.Instance),
             new CanvasCapability(NullLogger.Instance),
             new DeviceCapability(NullLogger.Instance, provider),
+            new FileCapability(NullLogger.Instance, null!),
             new LocationCapability(NullLogger.Instance),
             new ScreenCapability(NullLogger.Instance),
             new SttCapability(NullLogger.Instance),

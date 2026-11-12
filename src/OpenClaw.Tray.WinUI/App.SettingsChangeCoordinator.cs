@@ -65,7 +65,11 @@ public partial class App
         new(
             new SettingsChangeEffects(
                 settings => _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled),
-                settings => OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls),
+                settings =>
+                {
+                    OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls);
+                    OpenClawTray.Chat.OpenClawReactorChatRoot.SetThinkingVisible(settings.ShowChatThinking);
+                },
                 SyncActiveGatewayBrowserProxyForward,
                 PublishSandboxRiskNotificationIfNeeded,
                 PrepareFullReconnect,
@@ -86,8 +90,6 @@ public partial class App
         // Status is updated by OnManagerStateChanged when reconnect starts.
         UpdateTrayIcon();
 
-        // Reset the chat window because it has a stale URL or token.
-        _windowManager?.ResetChatForCredentialChange();
     }
 
     // Handle the MCP server lifecycle separately from gateway reconnects because MCP-only mode

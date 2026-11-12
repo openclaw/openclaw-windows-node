@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenClawTray.Controls.SettingsShellView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:OpenClawTray.Controls"
+    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+
+    <Grid x:Name="RootGrid">
+        <Grid x:Name="NavContentHost" SizeChanged="OnNavContentHostSizeChanged">
+            <Grid.Clip>
+                <RectangleGeometry x:Name="NavContentClip"/>
+            </Grid.Clip>
+            <NavigationView x:Uid="HubWindow_MainNavigation" x:Name="NavView"
+                            IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+                            IsPaneToggleButtonVisible="False" PaneDisplayMode="Left"
+                            SelectionChanged="NavView_SelectionChanged">
+                <NavigationView.Resources>
+                    <Thickness x:Key="NavigationViewPaneContentGridMargin">0,56,0,0</Thickness>
+                    <Thickness x:Key="NavigationViewBorderThickness">0</Thickness>
+                    <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
+                    <SvgImageSource x:Key="Connection_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Connection.svg"/>
+                    <SvgImageSource x:Key="Sessions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sessions.svg"/>
+                    <SvgImageSource x:Key="Instances_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Instances.svg"/>
+                    <SvgImageSource x:Key="Agents_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Agents.svg"/>
+                    <SvgImageSource x:Key="Config_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Config.svg"/>
+                    <SvgImageSource x:Key="Usage_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Usage.svg"/>
+                    <SvgImageSource x:Key="Cron_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Cron.svg"/>
+                    <SvgImageSource x:Key="LocalAi_Icon" UriSource="ms-appx:///Assets/SidebarIcons/LocalAi.svg"/>
+                    <SvgImageSource x:Key="Model_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Model.svg"/>
+                    <SvgImageSource x:Key="Voice_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Voice.svg"/>
+                    <SvgImageSource x:Key="Settings_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Settings.svg"/>
+                    <SvgImageSource x:Key="Permissions_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Permissions.svg"/>
+                    <SvgImageSource x:Key="Sandbox_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Sandbox.svg"/>
+                    <SvgImageSource x:Key="Activity_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Activity.svg"/>
+                    <SvgImageSource x:Key="Debug_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Debug.svg"/>
+                    <SvgImageSource x:Key="Info_Icon" UriSource="ms-appx:///Assets/SidebarIcons/Info.svg"/>
+                </NavigationView.Resources>
+                <!-- Full Settings only: a pinned page beside the Workspace sidebar hides this pane.
+                     Labels come from resources in code; the compact rail keeps only the arrow. -->
+                <NavigationView.PaneCustomContent>
+                    <StackPanel x:Name="SettingsPaneHeader" Margin="0,0,0,4">
+                        <Button x:Name="BackToAppButton" Click="OnBackToAppClick"
+                                AutomationProperties.AutomationId="SettingsBackToApp"
+                                Height="36" Margin="4,0,4,0" Padding="0"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                Style="{StaticResource SubtleButtonStyle}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="40"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <FontIcon Glyph="&#xE72B;" FontSize="16" AutomationProperties.AccessibilityView="Raw"/>
+                                <TextBlock x:Name="BackToAppLabel" Grid.Column="1" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
+                                <Border x:Name="BackToAppKeyHint" Grid.Column="2" Margin="8,0,8,0" Padding="6,0,6,1"
+                                        VerticalAlignment="Center" BorderThickness="1"
+                                        BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                        CornerRadius="{StaticResource ControlCornerRadius}"
+                                        AutomationProperties.AccessibilityView="Raw">
+                                    <TextBlock x:Name="BackToAppKeyHintText" Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </Border>
+                            </Grid>
+                        </Button>
+                        <TextBlock x:Name="SettingsTitle" Margin="16,8,16,4"
+                                   Style="{StaticResource SubtitleTextBlockStyle}" TextTrimming="CharacterEllipsis"
+                                   AutomationProperties.AutomationId="SettingsTitle"
+                                   AutomationProperties.HeadingLevel="Level1"/>
+                    </StackPanel>
+                </NavigationView.PaneCustomContent>
+                <NavigationView.MenuItems>
+                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_87" x:Name="NavGatewayHeader" Content="Gateway"/>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_88" Tag="connection" Content="Connection"
+                                        AutomationProperties.AutomationId="SettingsNavConnection">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Connection_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_112" x:Name="NavInstances" Tag="systems" Content="Systems">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Instances_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_124" x:Name="NavCron" Tag="cron" Content="Automations">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Cron_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_121" x:Name="NavUsage" Tag="usage" Content="Usage">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Usage_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_118" x:Name="NavConfig" Tag="config" Content="Config">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Config_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_Model" Content="Agents and Tools"/>
+                    <NavigationViewItem x:Uid="AgentsNavItem" x:Name="AgentsNavItem" Content="Agents" SelectsOnInvoked="False" IsExpanded="True">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                        <NavigationViewItem.MenuItems>
+                            <NavigationViewItem x:Uid="DefaultAgentNavItem" x:Name="DefaultAgentNavItem" Content="main" Tag="agent:main">
+                                <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Agents_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                            </NavigationViewItem>
+                        </NavigationViewItem.MenuItems>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_91" x:Name="NavSessions" Tag="sessions" Content="Sessions">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sessions_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_DefaultModel" Tag="model" Content="Models">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Model_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_LocalAi" Tag="local-ai" Content="Local AI">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource LocalAi_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItemHeader x:Uid="HubWindow_NavigationViewItemHeader_129" Content="This Computer"/>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Voice" Tag="voice" Content="Voice &amp; Audio">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Voice_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_136" Tag="permissions" Content="Permissions">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Permissions_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_Sandbox" Tag="sandbox" Content="Sandbox">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Sandbox_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItemHeader x:Uid="HubWindow_SystemHeader" Content="System"/>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_133" Tag="settings" Content="General"
+                                        AutomationProperties.AutomationId="SettingsNavGeneral">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Settings_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_NavigationViewItem_145" x:Name="NavDiagnostics" Tag="debug" Content="Diagnostics"
+                                        AutomationProperties.AutomationId="SettingsNavDiagnostics">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Debug_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                    <NavigationViewItem x:Uid="HubWindow_AboutItem" Tag="about" Content="About"
+                                        AutomationProperties.AutomationId="SettingsNavAbout">
+                        <NavigationViewItem.Icon><ImageIcon Source="{StaticResource Info_Icon}" AutomationProperties.AccessibilityView="Raw"/></NavigationViewItem.Icon>
+                    </NavigationViewItem>
+                </NavigationView.MenuItems>
+                <NavigationView.PaneFooter>
+                    <controls:WorkspacePaneFooter x:Name="PaneFooterControl" AutomationIdPrefix="Settings"/>
+                </NavigationView.PaneFooter>
+
+            <Frame x:Name="ContentFrame" Navigated="OnContentFrameNavigated" NavigationFailed="OnContentFrameNavigationFailed">
+                <Frame.ContentTransitions>
+                    <TransitionCollection>
+                        <NavigationThemeTransition/>
+                    </TransitionCollection>
+                </Frame.ContentTransitions>
+            </Frame>
+        </NavigationView>
+        <Grid x:Name="SettingsNavigationToolbar" Width="{x:Bind NavView.OpenPaneLength, Mode=OneWay}"
+              Height="40" Margin="0,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top">
+        <Button x:Uid="NavPaneToggleButton" x:Name="NavPaneToggleButton"
+                AutomationProperties.AutomationId="SettingsTogglePane"
+                AutomationProperties.Name="Toggle navigation pane"
+                ToolTipService.ToolTip="Toggle navigation pane"
+                Width="40" Height="40" Padding="0" Margin="4,0,0,0"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Style="{StaticResource SubtleButtonStyle}" Click="OnNavPaneToggleButtonClick">
+            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+        </Button>
+        <StackPanel x:Name="SettingsNavigationActions" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Spacing="8" Margin="0,0,12,0">
+            <Button x:Name="SettingsSearchButton" Width="40" Height="40"
+                    Style="{StaticResource SubtleButtonStyle}"
+                    AutomationProperties.AutomationId="SettingsSearch">
+                <FontIcon Glyph="&#xE721;" FontSize="16"/>
+                <Button.Flyout>
+                    <Flyout x:Name="CommandSearchFlyout" Placement="BottomEdgeAlignedLeft"
+                            Opening="OnCommandSearchOpening" Opened="OnCommandSearchOpened"
+                            Closed="OnCommandSearchClosed">
+                        <controls:SearchHost x:Name="SettingsSearchHost"/>
+                    </Flyout>
+                </Button.Flyout>
+            </Button>
+        </StackPanel>
+        </Grid>
+        </Grid>
+
+        <!-- Floating notification banner: lives in the content row (Row 2) and is
+             declared after NavContentHost so it overlays the top of the content
+             area instead of pushing the title bar / content down. The wrapper grid
+             pins it to the right ~2/5 of the content width so it never reaches into
+             the navigation pane. Multi-line messages grow the banner taller. -->
+        <Grid VerticalAlignment="Top">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="3*"/>
+                <ColumnDefinition Width="2*"/>
+            </Grid.ColumnDefinitions>
+            <InfoBar x:Name="AppNotificationInfoBar"
+                     Grid.Column="1"
+                     Margin="12,8,12,0"
+                     IsOpen="False"
+                     Visibility="Collapsed"
+                     IsClosable="True"
+                     Closed="OnAppNotificationInfoBarClosed">
+                <!-- Native InfoBar Title/Message (set in RenderAppNotification) plus
+                     a standard ActionButton. The InfoBar itself wraps long messages
+                     and moves the action button below the text responsively. -->
+                <InfoBar.ActionButton>
+                    <Button x:Name="AppNotificationActionButton"
+                            Visibility="Collapsed"
+                            Click="OnAppNotificationActionButtonClick"/>
+                </InfoBar.ActionButton>
+            </InfoBar>
+        </Grid>
+
+    </Grid>
+</UserControl>

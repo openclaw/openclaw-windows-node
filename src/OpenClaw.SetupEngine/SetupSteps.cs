@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
@@ -214,17 +215,17 @@ internal static class WslInstallSupport
 }
 
 // Adapter to bridge SetupLogger → IOpenClawLogger for WebSocket clients
-internal sealed class SetupOpenClawLogger(SetupLogger logger) : IOpenClawLogger
+internal sealed class SetupOpenClawLogger(SetupLogger logger, string prefix = "[WS] ") : IOpenClawLogger
 {
-    public void Info(string message) => logger.Info($"[WS] {message}");
-    public void Debug(string message) => logger.Debug($"[WS] {message}");
+    public void Info(string message) => logger.Info($"{prefix}{message}");
+    public void Debug(string message) => logger.Debug($"{prefix}{message}");
     // Trace intentionally drops to the default no-op: setup-engine sessions
     // are short-lived and don't normally drive agent-event traffic, and there
     // is no OPENCLAW_TRAY_TRACE-style opt-in gate available here. Letting the
     // interface default (no-op) apply keeps verbose lines out of setup logs.
     public void Trace(string message) { }
-    public void Warn(string message) => logger.Warn($"[WS] {message}");
-    public void Error(string message, Exception? ex = null) => logger.Error($"[WS] {message}{(ex != null ? $": {ex}" : "")}");
+    public void Warn(string message) => logger.Warn($"{prefix}{message}");
+    public void Error(string message, Exception? ex = null) => logger.Error($"{prefix}{message}{(ex != null ? $": {ex}" : "")}");
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -240,34 +241,110 @@ internal static class SetupPairingCredentialPolicy
         ctx.SharedGatewayToken ?? ctx.BootstrapToken;
 }
 
+/// <summary>
+/// Windows-side counterpart of <see cref="StartGatewayStep.WaitForHealthAsync"/>: confirms the
+/// gateway is reachable through the URL Companion pairs with, and waits while it still reports
+/// startup in progress there. It sends no credentials; callers run
+/// <see cref="PairOperatorStep.EnsurePairingEndpointTrustedAsync"/> before any credential handoff.
+/// </summary>
 internal static class WindowsGatewayReachability
 {
+    /// <summary>Environment variable overriding <see cref="DefaultTimeoutSeconds"/>; unset or
+    /// blank silently keeps the default, and other invalid values warn and fall back. The
+    /// unit is seconds. The name is deliberately short enough to stay below the shared
+    /// log sanitizer's 43-char base64url redaction so the warning keeps the variable name.</summary>
+    internal const string TimeoutEnvironmentVariable = "OPENCLAW_SETUP_REACHABILITY_TIMEOUT";
+
+    /// <summary>Default bound for each pre-pairing <c>/startupz</c> probe (whole exchange:
+    /// connect + TLS + response). Generous so a slow WSL port-forward proxy or a cold
+    /// remote endpoint (e.g. Tailscale Serve) is not misjudged as unreachable. The overall
+    /// wait for a gateway still reporting startup stays bounded by
+    /// <c>Gateway.HealthTimeoutSeconds</c>.</summary>
+    internal const int DefaultTimeoutSeconds = 30;
+    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
+
     public static async Task<StepResult> VerifyAsync(SetupContext ctx, string pairingRole, CancellationToken ct)
     {
-        try
+        using var http = new HttpClient { Timeout = ResolveTimeout(ctx.Logger) };
+        var probeUri = BuildStartupProbeUri(ctx.GatewayUrl!);
+        var timeoutSeconds = ctx.Config.Gateway.HealthTimeoutSeconds;
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(timeoutSeconds);
+
+        while (true)
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            var healthUri = BuildHealthUri(ctx.GatewayUrl!);
-            var resp = await http.GetAsync(healthUri, ct);
-            ctx.Logger.Debug($"Gateway health check: HTTP {(int)resp.StatusCode}");
-            return StepResult.Ok();
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return StepResult.Fail($"Gateway not reachable before {pairingRole} pairing: {ex.Message}");
+            int status;
+            bool isJson;
+            string body;
+            try
+            {
+                using var resp = await http.GetAsync(probeUri, ct);
+                status = (int)resp.StatusCode;
+                isJson = string.Equals(
+                    resp.Content.Headers.ContentType?.MediaType, "application/json", StringComparison.OrdinalIgnoreCase);
+                body = status == 503 && isJson ? await resp.Content.ReadAsStringAsync(ct) : "";
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                return StepResult.Fail($"Gateway not reachable before {pairingRole} pairing: {ex.Message}");
+            }
+
+            if (status == 200 && isJson)
+            {
+                ctx.Logger.Info("Gateway startup probe from Windows reports started (/startupz HTTP 200)");
+                return StepResult.Ok();
+            }
+
+            if (status != 503 || !isJson)
+            {
+                // Gateways before 2026.8.1 and remote ingress (Tailscale) do not serve the probe;
+                // any HTTP answer still proves Windows can reach the endpoint.
+                ctx.Logger.Debug($"Gateway reachable from Windows (HTTP {status}); /startupz is not a startup probe on this endpoint");
+                return StepResult.Ok();
+            }
+
+            var detail = StartGatewayStep.BoundedProbeBody(body);
+            if (DateTimeOffset.UtcNow >= deadline)
+            {
+                return StepResult.Fail(
+                    $"Gateway did not finish starting before {pairingRole} pairing within {timeoutSeconds}s " +
+                    $"(last /startupz from Windows: HTTP 503 {detail})");
+            }
+
+            ctx.Logger.Debug($"Gateway still starting as seen from Windows (/startupz HTTP 503 {detail})");
+            await Task.Delay(PollInterval, ct);
         }
     }
 
-    internal static Uri BuildHealthUri(string gatewayUrl)
+    internal static TimeSpan ResolveTimeout(SetupLogger? logger = null)
+    {
+        var raw = Environment.GetEnvironmentVariable(TimeoutEnvironmentVariable);
+        if (string.IsNullOrWhiteSpace(raw))
+            return TimeSpan.FromSeconds(DefaultTimeoutSeconds);
+
+        // HttpClient.Timeout throws for values above int.MaxValue milliseconds, which
+        // VerifyAsync would misreport as "gateway not reachable"; reject those here.
+        if (int.TryParse(raw.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out var seconds) &&
+            seconds > 0 && seconds <= int.MaxValue / 1000)
+        {
+            return TimeSpan.FromSeconds(seconds);
+        }
+
+        logger?.Warn(
+            $"Ignoring {TimeoutEnvironmentVariable}='{raw}': expected a positive integer of at most " +
+            $"{int.MaxValue / 1000}s. Using the default {DefaultTimeoutSeconds}s gateway reachability timeout.");
+        return TimeSpan.FromSeconds(DefaultTimeoutSeconds);
+    }
+
+    internal static Uri BuildStartupProbeUri(string gatewayUrl)
     {
         var gatewayUri = new Uri(gatewayUrl);
         var scheme = gatewayUri.Scheme.Equals("wss", StringComparison.OrdinalIgnoreCase)
             ? Uri.UriSchemeHttps
             : Uri.UriSchemeHttp;
-        return new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port }.Uri;
+        return new UriBuilder(gatewayUri) { Scheme = scheme, Port = gatewayUri.Port, Path = "/startupz", Query = "" }.Uri;
     }
 }

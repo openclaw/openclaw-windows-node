@@ -160,7 +160,7 @@
           "id": "run-arm64-tray",
           "kind": "repository",
           "path": "run-app-local.ps1",
-          "command": ".\\run-app-local.ps1 -NoBuild -Configuration Release -RuntimeIdentifier win-arm64 -Isolated -AllowNonMain",
+          "command": ".\\run-app-local.ps1 -NoBuild -Configuration Release -RuntimeIdentifier win-arm64 -Isolated",
           "purpose": "Launch the current native tray build with isolated state.",
           "evidence": "Capture process architecture and consented screenshots of the tray, Settings, and a WebView2-backed surface."
         }
@@ -361,7 +361,7 @@
           "id": "run-gateway-product-path",
           "kind": "proof-test",
           "path": "scripts\\run-proof-tests.ps1",
-          "command": "$env:OPENCLAW_RUN_E2E = '1'; .\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.E2ETests\\OpenClaw.E2ETests.csproj' -Filter 'FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests' -ResultName 'gateway-setup-connect' -RuntimeIdentifier win-x64",
+          "command": "$env:OPENCLAW_RUN_E2E = '1'; $env:OPENCLAW_RUN_OLLAMA_E2E = '1'; .\\scripts\\run-proof-tests.ps1 -Project 'tests\\OpenClaw.E2ETests\\OpenClaw.E2ETests.csproj' -Filter 'FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests' -ResultName 'gateway-setup-connect' -RuntimeIdentifier win-x64",
           "purpose": "Run the current real WSL Gateway setup, bootstrap, pairing, and node invocation E2E class.",
           "evidence": "Publish the nonzero test count, gateway-setup-connect.trx, and redacted loopback diagnostics emitted by the E2E run."
         }
@@ -417,7 +417,7 @@
           "id": "launch-isolated-tray",
           "kind": "repository",
           "path": "run-app-local.ps1",
-          "command": ".\\run-app-local.ps1 -Isolated -AllowNonMain",
+          "command": ".\\run-app-local.ps1 -Isolated",
           "purpose": "Launch the current worktree build without mutating real tray settings.",
           "evidence": "Record the commit, isolated data directory class, process start result, and consented screenshots of the changed state."
         },

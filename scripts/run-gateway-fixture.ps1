@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Launch the real app against a synthetic, read-only Gateway. Ctrl+C cleans up this run.
+Launch the real app against a synthetic Gateway. Ctrl+C cleans up this run.
 .DESCRIPTION
 Build the app first. AppPath is required so this command never selects an installed
 app or a stale build implicitly. The app must advertise fixture isolation support.
@@ -10,15 +10,31 @@ param(
     [Parameter(Mandatory)]
     [string]$AppPath,
     [string]$ArtifactsDirectory,
+    [ValidateSet('multi-session-browse', 'chat-interactive', 'automations', 'context-usage-snapshots', 'dashboards', 'usage-analytics', 'systems-inventory', 'systems-empty', 'sessions-hub', 'sessions-hub-readonly')]
+    [string]$Scenario = 'multi-session-browse',
+    [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'tool-powershell', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
+    [string]$Interaction,
+    [ValidateSet('populated', 'empty', 'partial', 'legacy', 'released')]
+    [string]$UsageMode,
     [ValidateRange(0, 86400)]
     [int]$DurationSeconds = 0,
     [ValidateSet('Debug', 'Release')]
-    [string]$Configuration = 'Debug'
+    [string]$Configuration = 'Debug',
+    [ValidateSet('Light', 'Dark')]
+    [string]$Theme = 'Light'
 )
 $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot '..\tests\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj'
 $resolvedApp = (Resolve-Path -LiteralPath $AppPath).Path
-$hostArgs = @('--app', $resolvedApp)
+$hostArgs = @('--app', $resolvedApp, '--scenario', $Scenario, '--theme', $Theme)
+if ($Interaction) {
+    if ($Scenario -ne 'chat-interactive') { throw '-Interaction requires -Scenario chat-interactive.' }
+    $hostArgs += @('--interaction', $Interaction)
+}
+if ($UsageMode) {
+    if ($Scenario -ne 'usage-analytics') { throw '-UsageMode requires -Scenario usage-analytics.' }
+    $hostArgs += @('--usage-mode', $UsageMode)
+}
 if ($ArtifactsDirectory) {
     $hostArgs += @('--artifacts', [IO.Path]::GetFullPath($ArtifactsDirectory))
 }

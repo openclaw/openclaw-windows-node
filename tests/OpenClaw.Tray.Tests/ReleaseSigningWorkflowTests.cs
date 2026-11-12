@@ -3,6 +3,49 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ReleaseSigningWorkflowTests
 {
     [Fact]
+    public void FixedWorkerSigningPrecedesManifestEmbeddingInEveryDistribution()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var workflow = File.ReadAllText(Path.Combine(root, ".github", "workflows", "ci.yml"));
+        var targets = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "FileWorker.Build.targets"));
+        var signing = workflow[workflow.IndexOf("  sign-cleanup-host:", StringComparison.Ordinal)..
+            workflow.IndexOf("  build-x64:", StringComparison.Ordinal)];
+        Assert.True(signing.IndexOf("name: Publish fixed workers before signing", StringComparison.Ordinal) <
+            signing.IndexOf("name: Sign fixed workers before manifest generation", StringComparison.Ordinal));
+        Assert.True(signing.IndexOf("name: Sign fixed workers before manifest generation", StringComparison.Ordinal) <
+            signing.IndexOf("name: Verify signed workers and generate manifests", StringComparison.Ordinal));
+        Assert.Contains("@('OpenClaw.FileWorker.exe', 'OpenClaw.FileWorker.dll')", signing);
+        Assert.Contains("-RequireSignedWorker", signing);
+        Assert.Contains("files-folder: signing-file-workers", signing);
+        Assert.Contains("files-folder-depth: 1", signing);
+        Assert.Contains(@"-Path ""signing-file-workers\$rid-$binary"" -Target ""signed-file-workers\$rid\$binary""", signing);
+        foreach (var job in new[] { "build-x64", "build-arm64", "build-msix" })
+        {
+            var start = workflow.IndexOf($"  {job}:", StringComparison.Ordinal);
+            var next = System.Text.RegularExpressions.Regex.Match(workflow[(start + 1)..], @"(?m)^  [a-z][a-z0-9-]+:");
+            var block = workflow[start..(start + 1 + next.Index)];
+            Assert.Contains("RequireSignedFileWorker:", block);
+            var rid = job switch
+            {
+                "build-x64" => "win-x64",
+                "build-arm64" => "win-arm64",
+                _ => "win-${{ matrix.architecture }}",
+            };
+            Assert.Contains("path: ${{ runner.temp }}\\signed-file-workers", block);
+            Assert.Contains($"\"OpenClawSignedFileWorkerPath=$env:RUNNER_TEMP\\signed-file-workers\\{rid}\" >> $env:GITHUB_ENV", block);
+            Assert.DoesNotContain("OpenClawSignedFileWorkerPath:", block);
+            Assert.True(block.IndexOf("name: Download signed fixed workers", StringComparison.Ordinal) <
+                block.IndexOf("name: Bind signed fixed worker path", StringComparison.Ordinal));
+            Assert.Contains("name: openclaw-signed-file-workers", block);
+        }
+        Assert.Contains("Condition=\"'$(OpenClawSignedFileWorkerPath)' == ''\"", targets);
+        Assert.Contains("'$(RequireSignedFileWorker)' == 'true' and '$(OpenClawSignedFileWorkerPath)' == ''", targets);
+        Assert.Contains("-RequireSignedWorker", targets);
+        var verifier = File.ReadAllText(Path.Combine(root, "scripts", "Test-ReleaseExecutableSignatures.ps1"));
+        Assert.Contains(@"^Workers\\FileWorker\\win-(x64|arm64)\\[0-9a-f]{32}\\OpenClaw\.FileWorker\.(exe|dll)$", verifier);
+    }
+
+    [Fact]
     public void ReleaseWorkflow_SignsOnlyOpenClawOwnedPayloadBinaries()
     {
         var workflow = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), ".github", "workflows", "ci.yml"));
@@ -61,7 +104,8 @@ public sealed class ReleaseSigningWorkflowTests
         Assert.Contains("SetupEngine\\OpenClaw.SetupEngine.UI.exe should not be present", verifier);
         Assert.Contains(@"(^|\\)createdump\.exe$", verifier);
         Assert.Contains(@"(^|\\)RestartAgent\.exe$", verifier);
-        Assert.Contains(@"^tools\\mxc\\[^\\]+\\wxc-exec\.exe$", verifier);
+        Assert.Contains(@"^(plm|wxc-wslc-daemon)\.exe$", verifier);
+        Assert.Contains("@(\"plm.exe\", \"wxc-wslc-daemon.exe\")", verifier);
         Assert.Contains("Unknown executable in release payload", verifier);
         Assert.Contains("Unknown OpenClaw binary in release payload", verifier);
         Assert.Contains("$OpenClawSignerSubject", verifier);
@@ -168,7 +212,8 @@ public sealed class ReleaseSigningWorkflowTests
 
         var preparationJob = workflow[preparationStart..releaseStart];
         var releaseJob = workflow[releaseStart..];
-        Assert.Contains("needs: [change-classification, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]", preparationJob);
+        Assert.Contains("needs: [change-classification, fast-validation, metadata, reserve-msix-version, proof-pool-contracts, core-tests, tray-tests, build-x64, build-arm64]", preparationJob);
+        Assert.Contains("needs.fast-validation.result == 'success'", preparationJob);
         Assert.DoesNotContain("ci-gate", preparationJob);
         Assert.Contains("name: Sign Installers", preparationJob);
         Assert.Contains("name: Upload prepared release assets", preparationJob);
@@ -186,7 +231,11 @@ public sealed class ReleaseSigningWorkflowTests
     {
         var start = workflow.IndexOf("    - name: Create Release", StringComparison.Ordinal);
         Assert.True(start >= 0, "Could not find Create Release step.");
-        return workflow[start..];
+        var nextBoundary = System.Text.RegularExpressions.Regex.Match(
+            workflow[(start + 1)..], @"(?m)^(?:    - |  [A-Za-z0-9_-]+:)");
+        return nextBoundary.Success
+            ? workflow[start..(start + 1 + nextBoundary.Index)]
+            : workflow[start..];
     }
 
 }

@@ -1,6 +1,17 @@
+// <summary>
+// Hosts the Local AI selection and consent surface in the setup access flow. SetupWindow initializes
+// it with the current draft, then deactivates it when navigation ends so pending hardware probes cannot
+// update an inactive page. The control writes selections only to the draft configuration and raises StateChanged.
+// Usage:
+//   localAiSetupControl.Initialize(draft, recovery, pinModel);
+//   // Host the control on the capabilities-review-consent page and call Deactivate when leaving it.
+//   localAiSetupControl.StateChanged += (_, _) => UpdatePrimaryButton();
+// </summary>
+
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.Connection.LocalAi;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
@@ -9,6 +20,9 @@ using System.Diagnostics;
 
 namespace OpenClaw.SetupEngine.UI.Controls;
 
+/// <summary>
+/// Presents draft-backed Local AI availability, model selection, networking consent, and recovery state.
+/// </summary>
 public sealed partial class LocalAiSetupControl : UserControl
 {
     private SetupConfig? _config;
@@ -26,6 +40,7 @@ public sealed partial class LocalAiSetupControl : UserControl
     private bool _forceLocalAiNetworkingConsent;
     private bool _localAiRecoveryOnly;
     private bool _localAiRecoveryModelPinned;
+    private LocalInferencePlan? _localAiPinnedPlan;
 
     public event EventHandler? StateChanged;
 
@@ -35,6 +50,7 @@ public sealed partial class LocalAiSetupControl : UserControl
         Unloaded += (_, _) => Deactivate();
     }
 
+    /// <summary>Initializes this hosted control for the current setup draft and begins availability probing.</summary>
     internal void Initialize(SetupAccessDraft draft, bool recovery, bool pinModel)
     {
         _draft = draft;
@@ -42,12 +58,14 @@ public sealed partial class LocalAiSetupControl : UserControl
         _setupWindow = SetupWindow.Active;
         _localAiRecoveryOnly = recovery;
         _localAiRecoveryModelPinned = pinModel;
+        _localAiPinnedPlan = null;
         _forceLocalAiNetworkingConsent = SetupPreview.RequestedPage == "capabilities-review-consent";
         AsyncEventHandlerGuard.Run(
             () => InitializeLocalAiReviewAsync(_forceLocalAiNetworkingConsent),
             NullLogger.Instance, nameof(InitializeLocalAiReviewAsync));
     }
 
+    /// <summary>Cancels in-flight availability work when the host stops displaying this control.</summary>
     internal void Deactivate()
     {
         _localAiAvailability.CancelCurrent();
@@ -62,6 +80,7 @@ public sealed partial class LocalAiSetupControl : UserControl
         LocalAiSetupAvailabilitySnapshot checking =
             startedAvailability ?? _localAiAvailability.StartProbe();
         ShowLocalAiAvailabilityChecking(checking);
+        LocalAiProfileSelectionText.Visibility = Visibility.Collapsed;
         SetupWindow? setupWindow = _setupWindow;
         Task<HostHardwareInfo> hardwareTask = setupWindow is not null
             ? setupWindow.GetLocalAiHardwareAsync(forceRefresh: refreshHardwareProbe)
@@ -69,6 +88,7 @@ public sealed partial class LocalAiSetupControl : UserControl
 
         string? hardwareReason = null;
         LocalInferenceEligibilityResult? eligibility = null;
+        bool canRecheckHardware = false;
         try
         {
             HostHardwareInfo hardware = await hardwareTask;
@@ -81,7 +101,12 @@ public sealed partial class LocalAiSetupControl : UserControl
             // an otherwise-capable device look unavailable and hide the badge/option; it only
             // means the configured model needs to fall back to a valid one below.
             LocalInferenceEligibilityResult deviceEligibility = LocalInferenceEligibility.Evaluate(_localAiHardware);
-            if (deviceEligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
+            LocalInferenceEligibilityResult availability =
+                LocalInferenceEligibility.EvaluateForConfiguredAvailability(
+                    _localAiHardware,
+                    _config!.LocalAi.SelectedModelId,
+                    hasInstalledReceipt: _localAiRecoveryModelPinned);
+            if (availability.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete)
             {
                 // Incomplete facts (a partial/transient CUDA read) are inconclusive, not a
                 // definitive "this device cannot run Local AI". Report it the same way as a
@@ -96,22 +121,20 @@ public sealed partial class LocalAiSetupControl : UserControl
                 }
                 return;
             }
+            if (LocalInferenceProfileRecommendation.From(deviceEligibility) is { } recommendation)
+            {
+                LocalAiProfileSelectionText.Text = SetupLocalization.Format("LocalAi_ProfileFallback",
+                    recommendation.PreferredModelName, recommendation.SelectedModelName, recommendation.ContextTokens);
+                LocalAiProfileSelectionText.Visibility = Visibility.Visible;
+            }
             _localAiRecommendedModelId = deviceEligibility.CanInstall
                 ? deviceEligibility.Plan?.Model.Id
                 : null;
 
-            // A SKU with no recommended default (RTX Spark 32 GB) still runs an already
-            // configured model. Gate availability on that configured selection when there is
-            // one, so rerunning setup does not switch Local AI off on a working machine.
-            // _localAiRecommendedModelId stays null so nothing is labelled Recommended.
-            LocalInferenceEligibilityResult availability =
-                LocalInferenceEligibility.EvaluateForConfiguredAvailability(
-                    _localAiHardware,
-                    _config!.LocalAi.SelectedModelId);
-
             if (!availability.CanInstall || availability.Plan is null || availability.SelectedGpu is null)
             {
                 hardwareReason = DescribeLocalAiUnavailable(availability);
+                canRecheckHardware = availability.FailureCode == LocalInferenceEligibilityFailureCode.InsufficientDiskSpace;
             }
             else
             {
@@ -124,8 +147,21 @@ public sealed partial class LocalAiSetupControl : UserControl
                 // still work once the GPU frees up, and CanInstall already covers that case.
                 if (_config.LocalAi.SelectedModelId is { } selectedModelId)
                 {
+                    if (_localAiRecoveryModelPinned &&
+                        LocalModelCatalog.RequiresRecordedProfile(selectedModelId))
+                    {
+                        var installed = await new LocalAiManifestStore(new LocalAiPaths(
+                            setupWindow?.LocalDataDir ?? SetupContext.ResolveLocalDataDir())).LoadAsync();
+                        if (!CanApplyLocalAiAvailability(checking.Generation, setupWindow))
+                            return;
+                        if (installed is not null && string.Equals(installed.Manifest.ModelCatalogId,
+                                selectedModelId, StringComparison.OrdinalIgnoreCase))
+                            _config.LocalAi.PinnedPlan = _localAiPinnedPlan = LlamaServerRouterConfiguration.ResolveInstalledPlan(installed);
+                    }
                     LocalInferenceEligibilityResult selectedEligibility =
-                        _localAiRecoveryModelPinned
+                        _localAiPinnedPlan is { } pinnedPlan
+                            ? LocalInferenceEligibility.EvaluateRecordedProfile(_localAiHardware, pinnedPlan)
+                            : _localAiRecoveryModelPinned
                             ? LocalInferenceEligibility.EvaluateInstalled(_localAiHardware, selectedModelId)
                             : LocalInferenceEligibility.Evaluate(_localAiHardware, selectedModelId);
                     if (_localAiRecoveryModelPinned)
@@ -134,12 +170,16 @@ public sealed partial class LocalAiSetupControl : UserControl
                     }
                     else if (!selectedEligibility.CanInstall)
                     {
-                        _config.LocalAi.SelectedModelId = null;
+                        // Temporary memory pressure must retain the user's explicit Bolt choice.
+                        if (!string.Equals(selectedModelId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+                            _config.LocalAi.SelectedModelId = null;
                     }
                 }
                 _config.LocalAi.SelectedModelId ??= _localAiRecommendedModelId ?? availability.Plan.Model.Id;
 
-                eligibility ??= _localAiRecoveryModelPinned
+                eligibility ??= _localAiPinnedPlan is { } recordedPlan
+                    ? LocalInferenceEligibility.EvaluateRecordedProfile(_localAiHardware, recordedPlan)
+                    : _localAiRecoveryModelPinned
                     ? LocalInferenceEligibility.EvaluateInstalled(
                         _localAiHardware,
                         _config.LocalAi.SelectedModelId!)
@@ -193,23 +233,31 @@ public sealed partial class LocalAiSetupControl : UserControl
             if (_localAiAvailability.TryApplyUnsupported(
                     checking.Generation,
                     unavailableReason,
-                    out var unavailableSnapshot))
+                    out var unavailableSnapshot,
+                    isRecoverable: canRecheckHardware))
             {
                 ShowLocalAiUnavailable(unavailableSnapshot);
             }
             return;
         }
 
-        if (!_localAiAvailability.TryApplyAvailable(checking.Generation, out var availableSnapshot))
+        var boltAvailability = LocalInferenceEligibility.Evaluate(_localAiHardware!, LocalModelCatalog.NemotronBoltModelId);
+        bool canRecheckCapacity = boltAvailability.Status == LocalInferenceEligibilityStatus.EligibleButBusy ||
+            boltAvailability.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete ||
+            (_localAiPinnedPlan is not null &&
+             (eligibility!.Status == LocalInferenceEligibilityStatus.EligibleButBusy ||
+              eligibility.FailureCode == LocalInferenceEligibilityFailureCode.HardwareFactsIncomplete));
+        if (!_localAiAvailability.TryApplyAvailable(checking.Generation, out var availableSnapshot, canRecheckCapacity))
             return;
         Debug.Assert(eligibility is not null);
         ApplyLocalAiAvailabilityChrome(availableSnapshot);
         LocalAiInstallReviewCard.Visibility = Visibility.Visible;
         LocalAiToggle.Visibility = Visibility.Visible;
         SetLocalAiOptionAvailability(isAvailable: true);
-        _localAiSelectionEligible = eligibility.CanInstall;
-        _config!.LocalAi.SelectedModelId ??= eligibility.Plan!.Model.Id;
-        _config.LocalAi.SelectedProfileId = eligibility.Plan!.Profile.Id;
+        _localAiSelectionEligible = eligibility.CanOffer;
+        _config!.LocalAi.SelectedModelId ??= eligibility.Plan?.Model.Id;
+        if (eligibility.CanOffer && eligibility.Plan is { } selectedPlan)
+            _config.LocalAi.SelectedProfileId = selectedPlan.Profile.Id;
         PopulateLocalAiModels();
         _suppressLocalAiToggle = true;
         LocalAiToggle.IsOn = _config!.LocalAi.Enabled;
@@ -306,6 +354,7 @@ public sealed partial class LocalAiSetupControl : UserControl
         UpdatePrimaryButtonState();
     }
 
+    /// <summary>Maps Local AI eligibility diagnostics to the localized reason displayed by the setup surface.</summary>
     internal static string DescribeLocalAiUnavailable(LocalInferenceEligibilityResult eligibility)
     {
         LocalInferenceUnavailableReason reason = LocalInferenceEligibilityDiagnostics.GetUnavailableReason(eligibility);
@@ -327,6 +376,10 @@ public sealed partial class LocalAiSetupControl : UserControl
                     reason.DetectedGigabytes is { } detected
                         ? FormatGigabytes(detected)
                         : SetupLocalization.GetString("LocalAi_Reason_UnknownMemoryAmount")),
+            LocalInferenceUnavailableReasonKind.InsufficientSystemMemory =>
+                SetupLocalization.Format("LocalAi_Reason_InsufficientSystemMemory", FormatGigabytes(reason.RequiredSystemGigabytes)),
+            LocalInferenceUnavailableReasonKind.InsufficientDiskSpace =>
+                SetupLocalization.Format("LocalAi_Reason_InsufficientDiskSpace", FormatGigabytes(reason.RequiredDiskGigabytes)),
             LocalInferenceUnavailableReasonKind.DriverTooOld =>
                 SetupLocalization.Format(
                     "LocalAi_Reason_DriverTooOld",
@@ -365,12 +418,12 @@ public sealed partial class LocalAiSetupControl : UserControl
         LocalAiUnavailableDetailsButton.Visibility =
             string.IsNullOrWhiteSpace(_localAiUnavailableReason) ? Visibility.Collapsed : Visibility.Visible;
         LocalAiAvailabilityRecoveryPanel.Visibility =
-            snapshot.IsChecking || snapshot.IsUnknown ? Visibility.Visible : Visibility.Collapsed;
+            snapshot.IsChecking || snapshot.CanRecheck ? Visibility.Visible : Visibility.Collapsed;
         LocalAiAvailabilityProgressRing.IsActive = snapshot.IsChecking;
         LocalAiAvailabilityProgressRing.Visibility =
             snapshot.IsChecking ? Visibility.Visible : Visibility.Collapsed;
         LocalAiRecheckAvailabilityButton.Visibility =
-            snapshot.IsUnknown ? Visibility.Visible : Visibility.Collapsed;
+            snapshot.CanRecheck ? Visibility.Visible : Visibility.Collapsed;
         LocalAiRecheckAvailabilityButton.IsEnabled = snapshot.CanRecheck;
     }
 
@@ -420,11 +473,11 @@ public sealed partial class LocalAiSetupControl : UserControl
     {
         _suppressLocalAiSelection = true;
         LocalAiModelSelector.Items.Clear();
-        int selectedIndex = 0;
-        (LocalModelInfo Model, LocalInferencePlan Plan)[] fittingModels = LocalModelCatalog.Models
-            .Select(model => (Model: model, Eligibility: LocalInferenceEligibility.Evaluate(_localAiHardware!, model.Id)))
-            .Where(candidate => candidate.Eligibility.CanInstall && candidate.Eligibility.Plan is not null)
-            .Select(candidate => (candidate.Model, candidate.Eligibility.Plan!))
+        int selectedIndex = -1;
+        LocalInferencePlan[] offered = LocalInferenceEligibility.OfferedPlans(EvaluateLocalAiModel).ToArray();
+        (LocalModelInfo Model, LocalInferencePlan Plan)[] fittingModels =
+            (_localAiPinnedPlan is { Model.CustomRecipe: not null } pinned ? offered.Prepend(pinned) : offered)
+            .Select(plan => (plan.Model, plan))
             .ToArray();
         for (int index = 0; index < fittingModels.Length; index++)
         {
@@ -446,6 +499,9 @@ public sealed partial class LocalAiSetupControl : UserControl
             if (string.Equals(selectedModelId, model.Id, StringComparison.OrdinalIgnoreCase))
                 selectedIndex = index;
         }
+        if (selectedIndex < 0 && !string.Equals(_config!.LocalAi.SelectedModelId,
+                LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+            selectedIndex = Array.FindIndex(fittingModels, candidate => candidate.Model.Id != LocalModelCatalog.NemotronBoltModelId);
         LocalAiModelSelector.SelectedIndex = selectedIndex;
         _suppressLocalAiSelection = false;
     }
@@ -508,10 +564,13 @@ public sealed partial class LocalAiSetupControl : UserControl
         if (_localAiHardware is null ||
             LocalAiModelSelector.SelectedItem is not ComboBoxItem { Tag: string modelId })
         {
+            _localAiSelectionEligible = false;
+            LocalAiHardwareStatusText.Text = SetupLocalization.GetString("Onboarding_V2_ModelNotQualified");
+            UpdatePrimaryButtonState();
             return;
         }
 
-        LocalInferenceEligibilityResult eligibility = LocalInferenceEligibility.Evaluate(_localAiHardware, modelId);
+        LocalInferenceEligibilityResult eligibility = EvaluateLocalAiModel(modelId);
         if (eligibility.Plan is not { } plan || eligibility.SelectedGpu is not { } gpu)
         {
             _localAiSelectionEligible = false;
@@ -521,7 +580,7 @@ public sealed partial class LocalAiSetupControl : UserControl
             return;
         }
 
-        _localAiSelectionEligible = eligibility.CanInstall;
+        _localAiSelectionEligible = eligibility.CanOffer;
         _config!.LocalAi.SelectedProfileId = plan.Profile.Id;
         LocalAiHardwareStatusText.Text = eligibility.Status switch
         {
@@ -539,6 +598,11 @@ public sealed partial class LocalAiSetupControl : UserControl
     }
 
     private void UpdatePrimaryButtonState() => PublishState();
+
+    private LocalInferenceEligibilityResult EvaluateLocalAiModel(string modelId) =>
+        _localAiPinnedPlan is { } plan && string.Equals(plan.Model.Id, modelId, StringComparison.OrdinalIgnoreCase)
+            ? LocalInferenceEligibility.EvaluateRecordedProfile(_localAiHardware!, plan)
+            : LocalInferenceEligibility.Evaluate(_localAiHardware!, modelId);
 
     private void PublishState()
     {

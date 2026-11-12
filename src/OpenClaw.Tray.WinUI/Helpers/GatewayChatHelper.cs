@@ -4,11 +4,8 @@ using OpenClaw.Shared;
 namespace OpenClawTray.Helpers;
 
 /// <summary>
-/// Helper for WebView2-hosted gateway chat. Used today only by the
-/// Onboarding flow's WebView2 overlay (the Hub Chat tab and tray
-/// ChatWindow popup use the native Reactor surface with
-/// <c>OpenClawTray.Chat.OpenClawReactorChatRoot</c> and <c>OpenClawChatDataProvider</c>).
-/// Retire this helper when the onboarding chat surface is migrated too.
+/// URL construction and WebView2 initialization for Workspace's optional
+/// Gateway Chat renderer. Native chat uses the Reactor host instead.
 /// </summary>
 public static class GatewayChatHelper
 {
@@ -18,7 +15,7 @@ public static class GatewayChatHelper
     /// <summary>
     /// Build the HTTP(S) chat URL from a WebSocket gateway URL.
     /// Delegates to <see cref="GatewayChatUrlBuilder"/>; kept here so the
-    /// existing onboarding callsite signature is preserved.
+    /// Workspace callsite reports the builder's actionable error.
     /// </summary>
     public static bool TryBuildChatUrl(
         string gatewayUrl,

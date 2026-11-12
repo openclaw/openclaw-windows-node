@@ -121,7 +121,7 @@ public sealed class InnoInstallationDetector : IInnoInstallationDetector
                     // to update instead of declaring the installation unsupportable.
                     return Unsupported(
                         $"The required Inno payload {name} is missing or is not an ordinary file.", version,
-                        sourcePayloadPresent);
+                        sourcePayloadPresent, requiresInstallerRepair: true);
                 }
             }
 
@@ -139,13 +139,13 @@ public sealed class InnoInstallationDetector : IInnoInstallationDetector
             if (architecture is null)
                 return Unsupported("The installed executable has an unsupported PE architecture.",
                     sourcePayloadPresent: sourcePayloadPresent);
-            if (!MigrationVersionPolicy.TryParseReleaseVersion(binary.Version, out var binaryVersion) ||
-                binaryVersion != version)
+            if (!MigrationVersionPolicy.IsExecutableVersionCompatible(
+                registration.DisplayVersion!, binary.Version, binary.ProductVersion))
                 return Unsupported("The executable file version does not match the registered release version.",
                     sourcePayloadPresent: sourcePayloadPresent);
 
             return new(InnoInstallationStatus.Detected,
-                new(_installDirectory, executable, uninstaller, architecture, version),
+                new(_installDirectory, executable, uninstaller, architecture, version, registration.DisplayName),
                 SourcePayloadPresent: true);
         }
         catch (InvalidDataException ex)
@@ -216,12 +216,13 @@ public sealed class InnoInstallationDetector : IInnoInstallationDetector
 
     private InnoInstallationDetection Unsupported(
         string reason, Version? registeredVersion = null, bool sourcePayloadPresent = false,
-        bool registeredVersionUnsupported = false)
+        bool registeredVersionUnsupported = false, bool requiresInstallerRepair = false)
     {
         _logger.Warn(reason);
         return new(InnoInstallationStatus.Unsupported, Reason: reason,
             RegisteredVersion: registeredVersion, SourcePayloadPresent: sourcePayloadPresent,
-            RegisteredVersionUnsupported: registeredVersionUnsupported);
+            RegisteredVersionUnsupported: registeredVersionUnsupported,
+            RequiresInstallerRepair: requiresInstallerRepair);
     }
 }
 
@@ -229,7 +230,10 @@ internal sealed record InnoInstallationRegistration(
     string? InstallLocation, string? DisplayVersion, string? Publisher,
     string? DisplayName, string? UninstallString);
 
-internal sealed record InnoInstallationExecutable(Machine Machine, string? Version);
+internal sealed record InnoInstallationExecutable(
+    Machine Machine,
+    string? Version,
+    string? ProductVersion);
 
 internal interface IInnoInstallationReadSource
 {
@@ -314,7 +318,8 @@ internal sealed class InnoInstallationReadSource : IInnoInstallationReadSource
         if (headers.CoffHeader.Machine is Machine.Amd64 or Machine.Arm64 &&
             headers.PEHeader.Magic != PEMagic.PE32Plus)
             throw new InvalidDataException("The installed executable PE headers are inconsistent.");
-        return new(headers.CoffHeader.Machine, FileVersionInfo.GetVersionInfo(path).FileVersion);
+        var version = FileVersionInfo.GetVersionInfo(path);
+        return new(headers.CoffHeader.Machine, version.FileVersion, version.ProductVersion);
     }
 
     private static RegistryKey? OpenRegistration(RegistryHive hive, RegistryView view)

@@ -58,39 +58,7 @@ function Normalize-VisibleText([string]$value) {
     return (($value -replace "[\r\n]+", " ") -replace "\s+", " ").Trim()
 }
 
-function ConvertTo-GitHubAnchor([string]$heading) {
-    $value = $heading.ToLowerInvariant()
-    $value = [regex]::Replace($value, "<[^>]+>", "")
-    $value = $value -replace "[`*_~]", ""
-    $value = [regex]::Replace($value, "[^\p{L}\p{Nd}\s\-_]", "")
-    $value = [regex]::Replace($value, "\s", "-")
-    return $value
-}
-
-function Get-MarkdownAnchors([string]$path) {
-    $anchors = [System.Collections.Generic.HashSet[string]]::new(
-        [System.StringComparer]::OrdinalIgnoreCase)
-    $counts = @{}
-
-    foreach ($line in [System.IO.File]::ReadLines($path)) {
-        $match = [regex]::Match($line, "^\s{0,3}#{1,6}\s+(?<heading>.+?)\s*#*\s*$")
-        if (-not $match.Success) {
-            continue
-        }
-
-        $baseAnchor = ConvertTo-GitHubAnchor $match.Groups["heading"].Value
-        if ([string]::IsNullOrWhiteSpace($baseAnchor)) {
-            continue
-        }
-
-        $count = if ($counts.ContainsKey($baseAnchor)) { [int]$counts[$baseAnchor] } else { 0 }
-        $anchor = if ($count -eq 0) { $baseAnchor } else { "$baseAnchor-$count" }
-        $counts[$baseAnchor] = $count + 1
-        [void]$anchors.Add($anchor)
-    }
-
-    return $anchors
-}
+. (Join-Path $scriptRoot "MarkdownValidation.ps1")
 
 $gitMarkdownPaths = @(
     & git -C $repoRootPath ls-files --cached --others --exclude-standard -- "*.md"

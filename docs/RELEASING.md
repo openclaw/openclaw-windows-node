@@ -18,6 +18,38 @@ packages with their matching public certificates, provenance metadata, and
 installation instructions. Unsigned Store packages stay in Actions for manual
 Partner Center submission.
 
+## Gateway compatibility channels
+
+Keep Companion development and compatibility fixes on one branch. There is no
+separate `release/extended-stable` branch to synchronize. Native development
+defaults to npm `latest`; `-GatewayChannel Packaged` on
+`scripts\Build-NativeGatewayFromSource.ps1` or `run-app-local.ps1` selects the latest
+published `openclaw/openclaw-windows-packaging` release while retaining MSIX isolation.
+Use `-PackagingRelease <tag>` to select a specific native shipping baseline.
+Native Packaged reads the actual Gateway identity from the digest-verified released
+MSIX and reuses its application bytes, with a development launcher rebuilt from
+the exact packaging release commit. Do not infer the payload version from the
+MSIX tag or moving `release-policy.json`: packaging may ship an older Gateway
+under a newer MSIX version. GitHub publication does not establish Store rollout
+availability.
+
+WSL setup already follows npm `latest`, so its CI does not duplicate tests against
+the native packaging baseline. CI resolves npm Latest once per workflow and runs
+each selected setup/connect, revocation and network recovery job once against
+that exact version. Each job's `gateway-release.json` artifact records the npm
+selector, version, integrity and tarball URL. WSL CI does not download a packaging
+MSIX or accept a `packaging_release` input.
+
+Native Latest/Packaged runtime CI is still missing. Unit/helper and upstream
+packaging checks do not prove real isolated-session Gateway startup, pairing or
+recovery. That coverage requires a capability-qualified Windows client host and
+dedicated native runtime jobs, not a second WSL npm version. See the
+[development/CI matrix](../DEVELOPMENT.md#gateway-development-and-ci-matrix).
+
+Store Gateway packaging and release policy remain
+owned by `openclaw/openclaw-windows-packaging`; these development switches neither
+replace the installed Store package nor change WSL setup's npm-latest default.
+
 ## Inno-to-Store migration foundation
 
 Issue #1374 is delivered in two PRs: the preservation/startup foundation, then
@@ -37,8 +69,12 @@ Local AI payload. Its protected intent is stored under
 `%APPDATA%\OpenClawTray\store-migration\intent.dpapi`. Repeating preparation with
 unchanged state reuses the unexpired intent. Intent expires after 30 days; only
 new consent may renew it. Corrupt records require explicit recovery rather than
-silent replacement. Preparation is serialized and writes via a flushed sibling
-temporary file followed by atomic rename.
+silent replacement. The inventory includes saved Gateway identity directories and
+the credential-free `gateways\native-setup-draft.json` recovery descriptor; other
+unexpected files in that directory fail closed. Atomic-write temporary siblings
+for that descriptor are non-state and ignored only when their names contain the
+expected 32-digit lowercase hexadecimal identifier. Preparation is serialized and writes
+via a flushed sibling temporary file followed by atomic rename.
 
 `completed.dpapi` is a separate receipt, written only after exclusive source
 ownership, a fresh strict inventory matching the protected intent, and canonical
@@ -224,10 +260,15 @@ continue to normal startup, because refusing to launch cannot repair either one.
 Still confirm before the tag that the released Inno installer registers
 `DisplayVersion` `2026.9.5` and `DisplayName` `OpenClaw Companion version 2026.9.5`.
 Both are refused, and each produces a different message, so check for the right one.
-A prerelease suffix is a version refusal: that user is told to update the previous app
-to a supported version first. A mismatched name is an unsupported installation: that
-user is told migration is unavailable. Neither is offered migration, so the registered
-values still have to be exact.
+An alpha or other unsupported prerelease suffix is a version refusal: that user is told
+to update the previous app to a supported version first. The repository's numeric
+stable-correction form, such as `2026.9.8-1`, is accepted and ordered after its
+unsuffixed base; its executable file version remains the base numeric version
+(`2026.9.8.0`) while its product version must identify the exact correction.
+Build properties remain numeric, so pin a correction as `X.Y.Z.N` when a correction
+must be the minimum source (for example, `2026.9.8.1` for `2026.9.8-1`). A mismatched
+name is an unsupported installation: that user is told migration is unavailable.
+Refused sources are not offered migration, so the registered values still have to be exact.
 
 ### Developer migration test package
 
@@ -441,6 +482,11 @@ creation does not trigger another tag-push workflow. Do not replace it with a
 PAT or dispatch CI on the old candidate tag: that would execute the historical
 workflow instead of the selected pipeline.
 
+Tray UI crash diagnostics are pipeline-owned. Promotions fetch the metadata
+helper from the pinned dispatch SHA into a separate sparse checkout after the
+UI tests. The alpha checkout still owns the app and tests, even when it predates
+that helper. Ordinary CI uses the helper from its normal source checkout.
+
 The existing MSIX allocator reserves a new package version for the stable tag,
 shared by both architectures. Promotion rechecks candidate eligibility and
 approval protection, then the allocator verifies the existing same-base alpha
@@ -466,23 +512,24 @@ For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
 
-Ordinary same-repository publication uses `GITHUB_TOKEN` with **Contents: write**.
-An extra publication credential is needed only when the candidate adds or
-modifies files under `.github/workflows/` relative to current main. Older product
-code or workflow deletions alone do not require it. The publication owner checks
-complete Git trees before creating any public tag and fails closed if that
-permission check cannot complete. GitHub's
-[release API authorization contract](https://docs.github.com/en/rest/releases/releases#update-a-release)
-requires **Workflows: write** for that historical-workflow exception, which
-`GITHUB_TOKEN` cannot receive. For those candidates only, configure
-`STABLE_RELEASE_TOKEN` as an environment secret in `stable-release`, using a
-GitHub App installation token or fine-grained token restricted to this repository
-with **Contents: write** and **Workflows: write**. The protected token is used
-only for draft creation and final release publication, never for Git refs,
-candidate builds, or eligibility checks. Tag creation and asset uploads continue
-to use `GITHUB_TOKEN`, so historical tag workflows are not triggered. Missing or
-malformed exception credentials, or substituted workflow tokens, block before
-tag creation. Protected publication approval is required in both cases.
+Promotion publication uses only `GITHUB_TOKEN` with **Contents: write**. No PAT,
+GitHub App key, or separate release-token secret is required by the workflow.
+The approved alpha SHA and pipeline SHA are pinned in `promotion.json`; moving
+main forward does not impose a workflow-file equality requirement. The existing
+ancestry check still requires the pinned pipeline to remain on main's history.
+
+Publication creates and verifies the annotated stable tag at the exact alpha
+SHA before creating the release. The release request specifies that existing
+tag and omits `target_commitish`, which GitHub documents as unused for existing
+tags. Release notes still explicitly compare the previous stable with the alpha
+SHA. Tag creation, asset uploads, and publication all use `GITHUB_TOKEN`, so
+creating the stable tag does not trigger historical tag workflows.
+
+The local checks prove the request shape and race handling, not GitHub's live
+permission decision. If GitHub rejects tag creation or release publication,
+stop and inspect that API failure; do not move the alpha or stable tag, switch
+the source to main, or mint broader credentials automatically. The token-only
+path with differing historical workflow files needs live Actions verification.
 
 Approval publishes the exact prepared artifact ID, not a rebuild. Under the
 shared release-publication lock, CI rechecks source tags, Latest ordering,
@@ -585,6 +632,25 @@ modify, resubmit, or claim acceptance of the package already in Microsoft Store.
    ```
 
 ## Release channel policy
+
+### Fixed file-worker signing
+
+The `sign-cleanup-host` job also publishes the x64 and ARM64 fixed file workers
+and signs only their first-party EXE/DLL files on the x64 signing runner. It
+verifies their release signer before generating each payload manifest.
+The portable/Inno and MSIX build jobs download those complete signed payloads
+and set `OpenClawSignedFileWorkerPath` to the matching RID directory.
+`RequireSignedFileWorker=true` rejects missing or unsigned input before
+Companion embeds its manifest. Ordinary non-release builds still publish a
+local unsigned worker.
+
+Do not sign or republish the worker after manifest generation: either changes
+the bytes checked by Companion's embedded digests. Final release signing covers
+the app binaries separately and verifies the already-signed worker in its
+manifest-addressed slot. Signed-package and native runtime proof remain separate
+release obligations.
+
+### Tag channels
 
 Stable, stable-correction, and alpha tags use the same signed CI release pipeline:
 
@@ -689,14 +755,14 @@ extract the matching architecture archive and follow its instructions,
 including explicitly trusting the included public certificate.
 
 Unsigned Store submission packages, the multi-architecture bundle, and their
-metadata remain Actions artifacts only. Upload the unsigned bundle to Partner
-Center for one architecture-selecting submission. No production signing step
-is applied to those Store inputs.
+metadata remain Actions artifacts only. Use [Store submission](MICROSOFT_STORE.md)
+to upload the validated unsigned bundle from a successful release run. No
+production signing step is applied to those Store inputs.
 
-Store distribution remains paused: automatic Partner Center submission,
+Automatic Partner Center submission is staged behind `MSSTORE_ENABLED`.
 Store-signed retrieval and publication, and official lifecycle acceptance
-remain follow-up work in #1375. Release submission artifacts do not clear those
-rollout gates.
+remain release gates tracked in #1375. Submission automation and release
+artifacts do not clear those rollout gates.
 
 Store versions still end in `.0`. Official tagged builds now reserve distinct
 package versions as described below; reruns reuse the same reservation.
@@ -810,6 +876,27 @@ Running **Build and Test** manually on a branch is still build-only. Running
 it on an eligible alpha tag uses the same tagged release path. No new
 unreviewed-branch or MSIX-only version allocator is introduced.
 
+## Retired npm MXC payload upgrade cleanup
+
+The 0.8 npm bridge shipped exactly `wxc-exec.exe` and `wslcsdk.dll` under
+`tools\mxc\x64` and `tools\mxc\arm64`. Inno removes those four known files,
+then removes only empty known directories. It does not remove unknown files,
+user settings, gateways, credentials, approvals or unrelated Node installations.
+The new SDK's app-root `wslcsdk.dll` is required and must remain.
+
+Portable ZIPs are also in-app Updatum payloads. Updatum 1.3.4 copies over the
+destination with robocopy `/E /COPY:DAT` (or xcopy), not a mirror; destination-only
+legacy files survive. The new unpackaged app therefore delegates idempotent
+exact-file cleanup to `LegacyMxcFiles` after primary-instance admission. It
+refuses reparse traversal and logs coarse failures. Packaged app versions are
+OS-managed and are never deleted by this cleanup.
+
+Build/publish targets remove these exact stale artifacts from incremental output,
+and Store/Dev package verification and release signature classification reject
+them if present. Run `.\scripts\test-legacy-mxc-payload.ps1` and
+`.\scripts\test-msix-ci-artifacts.ps1` for synthetic fixtures. These checks do not
+substitute for a real old-to-new installer/in-app update smoke.
+
 ## Binary signing policy
 
 Only OpenClaw-owned binaries should be signed by the OpenClaw release signing
@@ -825,13 +912,23 @@ OpenClaw-owned binaries:
 - `OpenClaw.SetupEngine.dll`
 - `OpenClaw.Shared.dll`
 - `OpenClawTray.FunctionalUI.dll`
+- `OpenClaw.GatewayCleanupHost.exe` embedded inside `OpenClaw.SetupEngine.dll`
 
 Third-party/runtime executables that must not be OpenClaw-signed:
 
-- `tools\mxc\<arch>\wxc-exec.exe`
+- `plm.exe`
+- `wxc-wslc-daemon.exe`
 - `createdump.exe`
 - `RestartAgent.exe`
 - `SetupEngine\RestartAgent.exe`
+
+The exact `Microsoft.Mxc.Sdk` 1.0.0 NuGet dependency supplies both supported RIDs
+(`win-x64`, `win-arm64`). Published app roots must contain
+`Microsoft.Mxc.Sdk.dll`, `mxc_ffi.dll`, `wslcsdk.dll`, `plm.exe` and
+`wxc-wslc-daemon.exe`. Neither MXC helper may be signed with an OpenClaw
+certificate. Root npm manifests, EXE discovery and `tools\mxc` copy targets are
+retired. Actual MSIX, installer, SAC and ARM64 native proof remain separate
+release gates; an x64 build is not evidence for those gates.
 
 CI enforces this with `scripts\Test-ReleaseExecutableSignatures.ps1`. The
 verifier inspects every shipped `.exe` and `.dll`, fails closed on unknown
@@ -882,6 +979,28 @@ registration should have a federated credential for:
 
 ## How CI signs payload binaries
 
+On release tags and alpha promotion builds, `sign-cleanup-host` first builds the
+AnyCPU .NET Framework cleanup executable and signs it through the existing
+protected `release-signing` environment. The x64, ARM64 and Store/Dev MSIX build
+jobs download that same signed artifact before compiling SetupEngine.
+`OpenClawSignedCleanupHostPath` selects those bytes instead of rebuilding the
+helper through its project reference. Non-dev Release builds default to
+`RequireSignedCleanupHost=true` and reject a missing signing input; any supplied
+signing input must have a valid Authenticode signature. Debug and Dev builds
+retain the unsigned project-reference path. Non-published PR release smoke and
+MSIX fixture builds explicitly set `RequireSignedCleanupHost=false`; the same
+override is available for intentional unsigned local Release testing, not
+release publication.
+
+SetupEngine verifies the input before embedding and checks the actual compiled
+resource afterward for a matching hash and valid signature. The release payload
+verifier also extracts that resource and requires the expected OpenClaw signer.
+Signing only the outer DLL or MSIX does not sign an embedded executable. Do not
+post-sign a loose helper and assume the previously embedded bytes changed.
+`scripts\test-cleanup-host-signing.ps1` exercises the real build with an existing
+OS-signed fixture, unsigned development output, missing/unsigned signing inputs
+and mismatched resource bytes, without creating certificates or changing trust.
+
 The release workflow does not recursively sign every `.exe`. Instead it creates
 temporary signing input directories with hardlinks to only the OpenClaw-owned
 executables and DLLs from the x64 and ARM64 payloads, then runs Azure Artifact
@@ -898,6 +1017,7 @@ For release tags, the **Build and Test** workflow should run:
 
 - `change-classification` with the `full` result
 - `fast-validation`
+- `sign-cleanup-host` before release payload compilation
 - `test`
 - `e2etests` shards: `setup-connect`, `revocation-recovery`, and `network-recovery`
 - `build` matrix entries shown by GitHub as `build (win-x64)` and `build (win-arm64)`
@@ -990,3 +1110,7 @@ only receive a stable tag through the controlled promotion workflow above.
   `X.Y.Z-alpha.(N+1)`.
 - CI computes GitVersion outputs for artifact naming, while product builds use
   GitVersion-backed assembly metadata.
+
+## Automated Store submission
+
+See [Microsoft Store submission](MICROSOFT_STORE.md) for protected OIDC setup, manual submission from an existing release run, automatic activation, and recovery. Automatic submission remains off until the repository variable `MSSTORE_ENABLED` is `true`; the existing release and artifact handoffs are unchanged.

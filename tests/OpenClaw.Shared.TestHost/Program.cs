@@ -1,8 +1,11 @@
 using OpenClaw.Shared;
+using OpenClaw.Shared.Capabilities;
+using OpenClaw.TestSupport;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text;
 using System.Text.Json;
+using OpenClaw.Shared.FileTransfer;
 
 if (args is ["--echo-args", .. var echoedArgs])
 {
@@ -13,6 +16,93 @@ if (args is ["--echo-args", .. var echoedArgs])
 if (args is ["--process-fixture", .. var fixtureArgs])
 {
     return await RunProcessFixtureAsync(fixtureArgs);
+}
+
+Assembly cacheAssembly = Assembly.GetExecutingAssembly();
+if (args is ["--file-worker-cache-manifest", var fixtureProduct, var fixtureCache, var fixtureManifest, var fixtureMode])
+{
+    cacheAssembly = new CacheManifestAssembly(File.ReadAllBytes(fixtureManifest));
+    args = ["--file-worker-cache", fixtureProduct, fixtureCache, fixtureMode];
+}
+if (args is ["--file-worker-cache", var productDirectory, var cacheRoot, var cacheMode])
+{
+    using var watcher = cacheMode == "crash-preparation" ? new FileSystemWatcher(cacheRoot) : null;
+    if (watcher is not null)
+    {
+        watcher.Created += (_, e) =>
+        {
+            if (e.Name?.StartsWith("win-", StringComparison.Ordinal) == true)
+                Process.GetCurrentProcess().Kill();
+        };
+        watcher.EnableRaisingEvents = true;
+    }
+    try
+    {
+        // Reuse the existing filesystem-boundary constructor without adding a product test API.
+        var constructor = typeof(InstalledFileWorkerResolver).GetConstructor(
+            BindingFlags.NonPublic | BindingFlags.Instance, null, [typeof(Assembly), typeof(string)], null)!;
+        var resolver = (InstalledFileWorkerResolver)constructor.Invoke([cacheAssembly, productDirectory]);
+        using var lease = resolver.Resolve(cacheRoot);
+        Console.WriteLine(lease.PayloadDirectory);
+        Console.Out.Flush();
+        await Console.In.ReadLineAsync();
+        return 0;
+    }
+    catch (NotSupportedException ex)
+    {
+        Console.Error.WriteLine(ex.Message);
+        return 2;
+    }
+}
+
+if (args is [var transport, var gatewayPortText, var proxyMode]
+    && transport is "--browser-proxy" or "--board-document"
+    && int.TryParse(gatewayPortText, out var gatewayPort)
+    && proxyMode is "production" or "default-handler")
+{
+    var destination = new Uri($"http://127.0.0.1:{gatewayPort + 2}/" +
+        (transport == "--board-document" ? "__openclaw__/board/k/w/index.html?bt=synthetic-view-ticket" : "tabs"));
+    var expectedProxy = new Uri(Environment.GetEnvironmentVariable("HTTP_PROXY")
+        ?? throw new InvalidOperationException("The proxy fixture requires HTTP_PROXY."));
+    // Initialize the cached proxy before the capability, so the old transport cannot pass by accident.
+    if (HttpClient.DefaultProxy.IsBypassed(destination)
+        || HttpClient.DefaultProxy.GetProxy(destination) != expectedProxy)
+    {
+        Console.Error.WriteLine("The process proxy fixture is not effective for loopback.");
+        return 65;
+    }
+
+    if (transport == "--board-document")
+    {
+        using var loader = new OpenClaw.Shared.Dashboards.BoardWidgetDocumentLoader(
+            proxyMode == "default-handler" ? new HttpClientHandler() : null);
+        try
+        {
+            var document = await loader.LoadAsync(destination, CancellationToken.None);
+            Console.WriteLine(document);
+            return document == "<!doctype html><p>synthetic board</p>" ? 0 : 1;
+        }
+        catch (OpenClaw.Shared.Dashboards.BoardWidgetDocumentException ex)
+        {
+            Console.Error.WriteLine(ex.Failure);
+            return 1;
+        }
+    }
+
+    var capability = new BrowserProxyCapability(
+        NullLogger.Instance,
+        $"ws://127.0.0.1:{gatewayPort}",
+        "synthetic-browser-token",
+        proxyMode == "default-handler" ? new HttpClientHandler() : null);
+    using var parameters = JsonDocument.Parse("""{"path":"/tabs","timeoutMs":5000}""");
+    var result = await capability.ExecuteAsync(new NodeInvokeRequest
+    {
+        Id = "isolated-browser-proxy",
+        Command = "browser.proxy",
+        Args = parameters.RootElement.Clone()
+    });
+    Console.WriteLine(JsonSerializer.Serialize(result));
+    return result.Ok ? 0 : 1;
 }
 
 if (args is ["-xjf", var fixtureArchive, "-C", var fixtureDestination, "--strip-components=1"]
@@ -123,11 +213,25 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         return 0;
     }
 
-    if (args is ["inherit-handles-identity", var identityChildHoldText, var identityPidFile]
+    if (args is ["inherit-handles-identity", var identityChildHoldText, var identityPidFile, .. var gateArgs]
+        && gateArgs.Length <= 1
         && int.TryParse(identityChildHoldText, out var identityChildHoldMs))
     {
-        using var child = StartSelf("--process-fixture", "hold", identityChildHoldMs.ToString());
+        using var child = StartSelf(
+            "--process-fixture",
+            gateArgs.Length == 0 ? "hold" : "hold-silent",
+            identityChildHoldMs.ToString());
         WriteProcessIdentity(identityPidFile, child);
+        if (gateArgs is [var releasePath])
+        {
+            var wait = Stopwatch.StartNew();
+            while (!File.Exists(releasePath))
+            {
+                if (wait.Elapsed > TimeSpan.FromSeconds(10))
+                    throw new TimeoutException("Process fixture launcher release gate was not opened.");
+                await Task.Delay(10);
+            }
+        }
         Console.Out.Write("parent-stdout");
         Console.Error.Write("parent-stderr");
         return 0;
@@ -141,6 +245,40 @@ static async Task<int> RunProcessFixtureAsync(string[] args)
         WriteProcessIdentity(sizedPidFile, child);
         Console.Out.Write(new string('o', outputLength));
         Console.Error.Write(new string('e', outputLength));
+        Console.Out.Flush();
+        Console.Error.Flush();
+        return 0;
+    }
+
+    if (args is ["inherit-mxc-pipes", var mxcIdentity, var pipe, var lengthText, var mxcReleasePath] &&
+        int.TryParse(lengthText, out var length))
+    {
+        using var child = StartSelfWithRedirection(pipe == "stderr", pipe == "stdout",
+            "--process-fixture", "hold-silent", "60000");
+        WriteProcessIdentity(mxcIdentity, child);
+        using var parent = Process.GetCurrentProcess();
+        File.WriteAllText(mxcIdentity + ".json", JsonSerializer.Serialize(new
+        {
+            RunId = Path.GetFileNameWithoutExtension(mxcIdentity), Ports = Array.Empty<int>(),
+            Processes = new[] { parent, child }.Select(p => new
+            {
+                Pid = p.Id, StartTimeUtc = p.StartTime.ToUniversalTime(),
+                Executable = ProcessImagePath.Read(p.SafeHandle),
+                CommandLine = p.Id == Environment.ProcessId ? Environment.CommandLine : "--process-fixture hold-silent 60000",
+            }).ToArray(),
+            DataRoots = new[] { "OPENCLAW_TRAY_DATA_DIR", "OPENCLAW_TRAY_APPDATA_DIR", "OPENCLAW_TRAY_LOCALAPPDATA_DIR" }
+                .Select(Environment.GetEnvironmentVariable).ToArray(),
+        }));
+        WriteProcessIdentity(mxcIdentity + ".parent", parent);
+        var wait = Stopwatch.StartNew();
+        while (!File.Exists(mxcReleasePath))
+        {
+            if (wait.Elapsed > TimeSpan.FromSeconds(10))
+                throw new TimeoutException("MXC pipe fixture launcher release gate was not opened.");
+            await Task.Delay(10);
+        }
+        Console.Out.Write(new string('o', length));
+        Console.Error.Write(new string('e', length));
         Console.Out.Flush();
         Console.Error.Flush();
         return 0;
@@ -165,7 +303,9 @@ static void WriteProcessIdentity(string path, Process process)
     File.Move(temporaryPath, path, overwrite: true);
 }
 
-static Process StartSelf(params string[] arguments)
+static Process StartSelf(params string[] arguments) => StartSelfWithRedirection(false, false, arguments);
+
+static Process StartSelfWithRedirection(bool redirectOutput, bool redirectError, params string[] arguments)
 {
     var processPath = Environment.ProcessPath
         ?? throw new InvalidOperationException("Current process path is unavailable.");
@@ -174,6 +314,8 @@ static Process StartSelf(params string[] arguments)
         FileName = processPath,
         UseShellExecute = false,
         CreateNoWindow = true,
+        RedirectStandardOutput = redirectOutput,
+        RedirectStandardError = redirectError,
     };
 
     if (string.Equals(

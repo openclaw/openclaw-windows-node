@@ -65,33 +65,35 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     [Theory]
     [InlineData(SetupGatewayRoute.Native)]
     [InlineData(SetupGatewayRoute.ManagedWsl)]
-    public async Task Capabilities_ConsentPrecedesNativeInstallationOnly(SetupGatewayRoute route)
+    public async Task Capabilities_ShowPresetsWithoutGatewayInstallationDisclosure(SetupGatewayRoute route)
     {
         await WithWindowAsync(async (window, frame, data) =>
         {
             window.SelectGatewayRoute(route);
             window.NavigateToCapabilities();
             var page = await MountedPageAsync<CapabilitiesPage>(window, frame);
-            var consent = Find<TextBlock>(page, "NativeInstallConsent");
+            Assert.Null(page.FindName("NativeInstallConsent"));
+            var selector = Find<ListView>(page, "ProfileSelector");
             var next = Find<Button>(page, "ContinueButton");
             var native = route == SetupGatewayRoute.Native;
-            Assert.Equal(native ? Visibility.Visible : Visibility.Collapsed, consent.Visibility);
+            Assert.Equal(3, selector.Items.Count);
             Assert.Equal(native ? "Set up gateway" : "Next", next.Content);
             Assert.Same(page, frame.Content);
             Assert.False(File.Exists(Path.Combine(data, "gateways.json")));
             Assert.False(window.AccessDraft.WslInspectionComplete);
             if (native)
             {
-                Assert.Contains("WinGet", consent.Text);
-                Assert.Contains("accept the package and Store source agreements", consent.Text);
                 var scale = page.XamlRoot.RasterizationScale;
                 window.AppWindow.Resize(new((int)Math.Ceiling(720 * scale), (int)Math.Ceiling(560 * scale)));
                 await ui.YieldToRenderAsync();
-                await BringIntoViewportAsync(page, consent);
-                AssertFullyVisible(consent, PageScroll(page));
+                foreach (var item in selector.Items)
+                {
+                    var choice = Assert.IsType<ListViewItem>(item);
+                    await BringIntoViewportAsync(page, choice);
+                    AssertFullyVisible(choice, PageScroll(page));
+                }
                 AssertFullyVisible(next, Assert.IsType<Grid>(window.Content));
-                Assert.False(consent.IsTextTrimmed);
-                await SavePageProofAsync(window, page, "native-winget-consent-before-install");
+                await SavePageProofAsync(window, page, "native-capabilities-without-install-disclosure");
             }
         });
     }
@@ -527,6 +529,24 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     }
 
     [Fact]
+    public async Task NormalGatewayReview_HidesCompetingLocalAiSelectionWithoutChangingTheDraft()
+    {
+        await WithWindowAsync(async (window, frame, _) =>
+        {
+            RecordInspection(window.AccessDraft, replacement: false);
+            Assert.False(window.AccessDraft.Config.LocalAi.Enabled);
+            window.NavigateToGatewaySetup();
+            var review = await MountedPageAsync<GatewaySetupPage>(window, frame);
+            await ui.YieldToRenderAsync();
+
+            Assert.Equal(Visibility.Collapsed, Find<SettingsCard>(review, "LocalAiCard").Visibility);
+            Assert.False(window.AccessDraft.Config.LocalAi.Enabled);
+            Assert.Same(review, frame.Content);
+            Assert.True(FooterButton(review, next: true).IsEnabled);
+        });
+    }
+
+    [Fact]
     public async Task ReplacementConsent_IsInlineAndNeverInstallsOrNavigatesOnCheck()
     {
         await WithWindowAsync(async (window, frame, _) =>
@@ -814,6 +834,9 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             AssertNativeConnectionLabels(editor);
             Find<TextBox>(editor, "AddressInput").Text = "wss://mounted-flow.invalid";
             Find<PasswordBox>(editor, "TokenInput").Password = "synthetic-unsent-test-token";
+            // Text/password change events are queued. Settle the draft before the
+            // fake checks complete inline and cancellation first yields to them.
+            await ui.YieldToRenderAsync();
             Invoke(Find<Button>(editor, "CheckButton"));
             await WaitAsync(() => host.Checks.Count == 1 && Find<Button>(editor, "CheckButton").IsEnabled, "fake Check");
             Assert.Empty(host.Connects);
@@ -1060,6 +1083,51 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             : "";
         return $"page={page.GetType().Name} title={Text("TitleText")} subtitle={Text("SubtitleText")} " +
             $"status={Text("StatusText")} error={Text("ErrorText")} primary={primary}";
+    }
+
+    [Theory]
+    [InlineData(SetupGatewayRoute.Existing, 0)]
+    [InlineData(SetupGatewayRoute.Remote, 1)]
+    public async Task NativeEditor_FailureRemainsVisibleWithoutScrolling(SetupGatewayRoute route, int choiceIndex)
+    {
+        var host = new FailingNativeHost();
+        await WithWindowAsync(async (window, frame, data) =>
+        {
+            window.NavigateToAdvancedSetup();
+            var choices = await MountedPageAsync<AdvancedSetupPage>(window, frame);
+            await InvokeCardAsync(window, choices,
+                TestSupport.FindDescendants<SettingsCard>(choices).ElementAt(choiceIndex), route + "_Click");
+            var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
+            var scale = editor.XamlRoot.RasterizationScale;
+            window.AppWindow.Resize(new((int)(480 * scale), (int)(640 * scale)));
+            await ui.YieldToRenderAsync();
+            Find<TextBox>(editor, "AddressInput").Text = "wss://mounted-flow.invalid";
+            await ui.YieldToRenderAsync();
+            Invoke(Find<Button>(editor, "CheckButton"));
+            await WaitAsync(() => host.Checks.Count == 1 && Find<Button>(editor, "CheckButton").IsEnabled, "failed Check");
+            var failure = Find<InfoBar>(editor, "ResultBar");
+            failure.ApplyTemplate();
+            editor.InvalidateMeasure();
+            editor.UpdateLayout();
+            await ui.YieldToRenderAsync();
+            editor.UpdateLayout();
+            Assert.True(failure.IsOpen);
+            Assert.Equal("Synthetic check failure. No Gateway was contacted.", failure.Message);
+            var bounds = Bounds(failure, editor);
+            var footer = Bounds(Find<Grid>(editor, "NavigationFooter"), editor);
+            Assert.True(bounds.Height > 0 && bounds.Top >= 0 && bounds.Bottom <= footer.Top + 0.1,
+                $"Failure must be visible above the actions without scrolling. Failure: {bounds}; footer: {footer}.");
+            await MountedControlCapture.OptionalAsync(window, $"native-editor-failure-{route}");
+            for (var ancestor = VisualTreeHelper.GetParent(failure); ancestor is not null;
+                ancestor = VisualTreeHelper.GetParent(ancestor))
+            {
+                if (ancestor is ScrollViewer viewport)
+                    AssertFullyVisible(failure, viewport);
+            }
+            Assert.Same(editor, frame.Content);
+            Assert.False(window.AccessDraft.GatewayAvailable);
+            Assert.False(File.Exists(Path.Combine(data, "gateways.json")));
+        }, host);
     }
 
     private static void AssertNativeConnectionText(string suffix, object actual)

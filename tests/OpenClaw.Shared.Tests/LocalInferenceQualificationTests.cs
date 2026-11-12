@@ -611,14 +611,15 @@ public class LocalInferenceQualificationTests
     }
 
     [Fact]
-    public void Evaluate_UnsetModelRejects16GiBCapacity()
+    public void Evaluate_UnsetModelSelectsLowMemoryProfileFor16GiBCapacity()
     {
         LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(
-            Hardware(RuntimeArchitecture.X64, Gpu("NVIDIA arbitrary adapter", "GPU-16", 16, 16)));
+            Hardware(RuntimeArchitecture.X64, Gpu("NVIDIA arbitrary adapter", "GPU-16", 16, 16)) with
+            { LocalAiDiskSpace = new(20 * GiB, 20 * GiB, true) });
 
-        Assert.Equal(LocalInferenceEligibilityStatus.Unsupported, result.Status);
-        Assert.Equal(LocalInferenceEligibilityFailureCode.InsufficientGpuMemory, result.FailureCode);
-        Assert.Equal(LocalModelCatalog.Qwen38_27BModelId, result.Plan?.Model.Id);
+        Assert.Equal(LocalInferenceEligibilityStatus.Eligible, result.Status);
+        Assert.Equal(LocalInferenceEligibilityFailureCode.None, result.FailureCode);
+        Assert.Equal(LocalModelCatalog.Bonsai2ModelId, result.Plan?.Model.Id);
         Assert.DoesNotContain(LocalModelCatalog.Models, model => model.Id == "qwen3.5-9b-mtp-q4-k-m");
     }
 

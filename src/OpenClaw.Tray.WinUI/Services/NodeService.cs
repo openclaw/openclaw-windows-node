@@ -96,6 +96,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private OllamaInferenceBackend? _ollamaBackend;
     private TextToSpeechService? _textToSpeechService;
     private VoiceService? _voiceService;
+    private readonly Func<IOpenClawLogger, SettingsManager, VoiceService>? _voiceServiceFactory;
     private readonly string _dataPath;
     // Identity store location for the role-aware DeviceIdentity. Defaults to
     // _dataPath when no separate path is supplied (preserves existing test
@@ -212,7 +213,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         Func<SshTunnelConfig?>? activeGatewayTunnelResolver = null,
         Func<string?>? activeGatewayUrlResolver = null,
         Func<Uri, CancellationToken, Task<bool>>? browserControlAuthorization = null,
-        ExecApprovalsStore? execApprovalsStore = null)
+        ExecApprovalsStore? execApprovalsStore = null,
+        Func<IOpenClawLogger, SettingsManager, VoiceService>? voiceServiceFactory = null)
     {
         _logger = logger;
         _dispatcherQueue = dispatcherQueue;
@@ -224,6 +226,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         _activeGatewayUrlResolver = activeGatewayUrlResolver;
         _browserControlAuthorization = browserControlAuthorization;
         _execApprovalsStore = execApprovalsStore;
+        _voiceServiceFactory = voiceServiceFactory;
         _settings = settings;
         _enableMcpServer = enableMcpServer;
         _screenCaptureService = new ScreenCaptureService(logger);
@@ -318,9 +321,20 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         // stay registered regardless.
         _systemCapability = new SystemCapability(
             _logger,
-            includeRunCommands: NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
+            includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
+        _fileOperations ??= new OpenClaw.Shared.FileTransfer.FileOperations(_sandboxExecutor!);
+        if (_uploadRetention is null)
+        {
+            var settingsDirectory = _settings?.SettingsDirectory ?? SettingsManager.SettingsDirectoryPath;
+            _uploadRetention = new OpenClaw.Shared.FileTransfer.UploadRetentionCoordinator(
+                _fileOperations, System.IO.Path.Combine(settingsDirectory, "upload-roots.json"), _logger);
+            _uploadRetention.Changed += OnUploadCleanupChanged;
+            _uploadRetention.Start();
+            if (_settings is not null) _settings.Saved += OnUploadSettingsSaved;
+        }
+        Register(new OpenClaw.Shared.FileTransfer.FileCapability(_logger, _fileOperations));
         // One coordinator per service lifetime (it serializes approvals with a
         // per-instance semaphore). Construction failures are not sticky, so a
         // later rebuild retries while this capability remains fail closed.
@@ -333,7 +347,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
         {
-            _canvasCapability = new CanvasCapability(_logger);
+            _canvasCapability = new CanvasCapability(_logger, _fileOperations!.ReadContentAsync);
             _canvasCapability.PresentRequested += OnCanvasPresent;
             _canvasCapability.HideRequested += OnCanvasHide;
             _canvasCapability.NavigateRequested += OnCanvasNavigate;
@@ -390,7 +404,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // handlers return a clear error pointing the caller at the
             // Voice Settings page; there is no automatic fallback.
             var settings = _settings ?? throw new InvalidOperationException("Settings are required to register speech-to-text.");
-            _voiceService ??= new VoiceService(_logger, settings);
+            _voiceService ??= _voiceServiceFactory?.Invoke(_logger, settings)
+                ?? new VoiceService(_logger, settings);
             _sttCapability = new SttCapability(_logger);
             _sttCapability.TranscribeRequested += OnSttTranscribeAsync;
             _sttCapability.ListenRequested += OnSttListenAsync;
@@ -452,7 +467,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 useSshTunnel: tunnelState.Enabled,
                 sshTunnelLocalPort: tunnelState.LocalPort,
                 allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback,
-                authorizeEndpointAsync: _browserControlAuthorization);
+                authorizeEndpointAsync: _browserControlAuthorization,
+                readFile: _fileOperations!.ReadContentAsync);
             Register(_browserProxyCapability);
         }
         else if (browserProxyBlock != BrowserProxyActivation.RegistrationBlock.ToggleDisabled)
@@ -647,103 +663,34 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
-    /// Build the <see cref="ICommandRunner"/> for system.run. Returns an
-    /// <see cref="MxcCommandRunner"/> wrapping <see cref="DirectAppContainerExecutor"/>.
-    /// The runner honors <see cref="SettingsData.SystemRunSandboxEnabled"/>
-    /// by attempting MXC containment when available, preserving compatibility
-    /// host fallback when MXC is unavailable unless strict fallback blocking is
-    /// enabled, and rejecting unsupported sandbox request features while
-    /// sandboxing remains enabled.
+    /// Composes MXC execution with fresh platform protection. Only unsupported Windows uses host compatibility.
     /// </summary>
     private ICommandRunner BuildSystemRunRunner()
     {
-        var hostRunner = new LocalCommandRunner(_logger);
-        var executor = new DirectAppContainerExecutor(GetOrProbeMxcAvailability, _logger);
-
-        // Do NOT probe synchronously here: this runs while _capabilitiesLock is held
-        // (RegisterCapabilities), and a blocking wxc-exec --probe (~15s) would stall
-        // capability registration / reconnect. Log from a non-blocking peek; the
-        // first real probe happens lazily on the first system.run via the
-        // availability gate / executor provider below (off any of our locks).
-        var peeked = PeekMxcAvailability();
-        if (peeked is null)
-        {
-            _logger.Info(
-                $"[mxc] system.run runner = MxcCommandRunner " +
-                $"(executor={executor.Name}; MXC availability probe deferred to first use; " +
-                $"sandboxEnabled={(_settings?.SystemRunSandboxEnabled ?? true)})");
-        }
-        else if (peeked.CanRunSystemRunSandbox)
-        {
-            _logger.Info(
-                $"[mxc] system.run runner = MxcCommandRunner " +
-                $"(executor={executor.Name}, sandboxEnabled={(_settings?.SystemRunSandboxEnabled ?? true)})");
-        }
-        else
-        {
-            // Supported BaseContainer process containment is unavailable. The runner's top-level
-            // !_isSandboxAvailable() guard will either block or use the
-            // compatibility host fallback, depending on settings. The executor is
-            // constructed only to satisfy the constructor contract and is never
-            // invoked.
-            var reason = string.Join("; ", peeked.SystemRunSandboxUnsupportedReasons);
-            var unavailableMode = (_settings?.SystemRunBlockHostFallbackWhenMxcUnavailable ?? false)
-                ? "commands will be blocked by strict fallback settings"
-                : "commands will run through host fallback";
-            _logger.Info($"[mxc] system.run runner = MxcCommandRunner (BaseContainer unavailable, {unavailableMode}: {reason})");
-        }
-
-        var settingsDirectory = SettingsManager.SettingsDirectoryPath;
-        return new MxcCommandRunner(
-            executor,
-            hostRunner,
-            () => SnapshotSettings(),
+        // Admission is deferred, never probed under the capability-registration lock.
+        var settingsDirectory = _settings?.SettingsDirectory ?? SettingsManager.SettingsDirectoryPath;
+        _sandboxExecutor ??= new NodeSandboxExecutor(
+            _settings?.SandboxPolicies ?? new NodeSandboxPolicyStore(new SettingsData()),
             () => settingsDirectory,
-            // Re-probe on demand when sandbox availability is checked: returns the
-            // cached definitive verdict, or re-probes (single-flight) after a
-            // transient error / a prior SandboxUnavailableException-driven invalidation.
-            () => GetOrProbeMxcAvailability().CanRunSystemRunSandbox,
-            invalidateAvailability: InvalidateMxcAvailability,
-            _logger);
+            GetOrProbeMxcAvailability,
+            _logger,
+            contextProvider: () => MxcWindowsRequestContext.Capture(settingsDirectory),
+            fileWorker: new OpenClaw.Shared.FileTransfer.InstalledFileWorkerResolver(typeof(NodeService).Assembly));
+        return new MxcCommandRunner(_sandboxExecutor);
     }
 
-    /// <summary>
-    /// Snapshot the live <see cref="SettingsManager"/> into the wire-shaped
-    /// <see cref="SettingsData"/> that MxcCommandRunner / MxcPolicyBuilder consume.
-    /// Defensive default keeps sandbox enabled if _settings is null.
-    /// </summary>
-    private SettingsData SnapshotSettings()
+    private NodeSandboxExecutor? _sandboxExecutor;
+    private OpenClaw.Shared.FileTransfer.FileOperations? _fileOperations;
+    private OpenClaw.Shared.FileTransfer.UploadRetentionCoordinator? _uploadRetention;
+    public string? UploadCleanupBlockedReason => _uploadRetention?.BlockedReason;
+    public event Action? UploadCleanupChanged;
+    private void OnUploadCleanupChanged()
     {
-        if (_settings is null)
-            return new SettingsData
-            {
-                SystemRunSandboxEnabled = true,
-                SystemRunBlockHostFallbackWhenMxcUnavailable = false,
-                SystemRunAllowOutbound = false,
-                SystemRunAllowWindowsUi = false,
-            };
-
-        return new SettingsData
-        {
-            SystemRunSandboxEnabled = _settings.SystemRunSandboxEnabled,
-            SystemRunBlockHostFallbackWhenMxcUnavailable = _settings.SystemRunBlockHostFallbackWhenMxcUnavailable,
-            SystemRunAllowOutbound = _settings.SystemRunAllowOutbound,
-            SystemRunAllowWindowsUi = _settings.SystemRunAllowWindowsUi,
-            // Sandbox page fields — read by MxcPolicyBuilder.ForSystemRun.
-            SandboxClipboard = _settings.SandboxClipboard,
-            SandboxDocumentsAccess = _settings.SandboxDocumentsAccess,
-            SandboxDownloadsAccess = _settings.SandboxDownloadsAccess,
-            SandboxDesktopAccess = _settings.SandboxDesktopAccess,
-            // Deep-copy each SandboxCustomFolder so a concurrent UI thread mutation of
-            // Access (between snapshot and policy build) can't race with us. The class
-            // is mutable so a shallow copy of the list would share references.
-            SandboxCustomFolders = _settings.SandboxCustomFolders is { Count: > 0 } src
-                ? src.Select(f => new SandboxCustomFolder { Path = f.Path, Access = f.Access }).ToList()
-                : null,
-            SandboxTimeoutMs = _settings.SandboxTimeoutMs,
-            SandboxMaxOutputBytes = _settings.SandboxMaxOutputBytes,
-        };
+        if (_uploadRetention?.BlockedReason is not null)
+            _logger.Warn("[files] operation=upload-cleanup outcome=blocked action=review-sandbox-settings retryCompletedUpload=false");
+        UploadCleanupChanged?.Invoke();
     }
+    private void OnUploadSettingsSaved(object? sender, EventArgs args) => _uploadRetention?.Refresh(recoverRoots: true);
 
     private MxcAvailability? _mxcAvailability;
     private DateTime _mxcNextProbeAllowedAtUtc;
@@ -752,7 +699,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Minimum interval before re-probing after a transient probe error. Bounds the
-    /// cost of re-spawning <c>wxc-exec --probe</c> while a probe error persists,
+    /// cost of retrying the native SDK probe while a load/probe error persists,
     /// while still letting a momentary glitch self-heal quickly.
     /// </summary>
     private static readonly TimeSpan MxcProbeRetryInterval = TimeSpan.FromSeconds(5);
@@ -765,7 +712,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     /// doesn't pin the whole process to uncontained execution.
     /// </summary>
     /// <remarks>
-    /// The blocking probe (<c>wxc-exec --probe</c>, up to ~15s) is NEVER run while
+    /// The native SDK probe is NEVER run while
     /// holding <see cref="_mxcAvailabilityLock"/>: concurrent callers share a single
     /// in-flight probe (single-flight) and wait on it OUTSIDE the lock, so a slow
     /// probe can't serialize unrelated callers or stall lock users. The retry window
@@ -809,7 +756,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             // poison the single-flight slot or leak out of the shared task.
             _logger.Warn($"[mxc] availability probe threw unexpectedly: {ex.GetType().Name}: {ex.Message}");
             result = new MxcAvailability(
-                false, false, false, null,
+                false, false, false,
                 new[] { "MXC availability probe failed unexpectedly." }, probeErrored: true);
         }
 
@@ -2613,6 +2560,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         await StopMcpServerAsync().ConfigureAwait(false);
+        if (_settings is not null) _settings.Saved -= OnUploadSettingsSaved;
+        if (_uploadRetention is not null)
+        {
+            _uploadRetention.Changed -= OnUploadCleanupChanged;
+            try { await _uploadRetention.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger.Debug($"NodeService: Dispose UploadRetentionCoordinator failed: {ex.GetType().Name}"); }
+        }
 
         WindowsNodeClient? client;
         lock (_clientLock)
@@ -2627,6 +2581,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         // Best-effort disposal during teardown; surface failures at Debug for diagnostics
         // but never let a cleanup throw block the rest of the teardown chain.
+        try { _sandboxExecutor?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose NodeSandboxExecutor failed: {ex.Message}"); }
         try { _cameraCaptureService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose CameraCaptureService failed: {ex.Message}"); }
         try { _screenRecordingService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose ScreenRecordingService failed: {ex.Message}"); }
         try { _textToSpeechService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose TextToSpeechService failed: {ex.Message}"); }

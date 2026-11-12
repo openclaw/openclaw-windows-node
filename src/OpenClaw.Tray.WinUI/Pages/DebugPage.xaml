@@ -58,6 +58,7 @@
                                Margin="0,0,0,2"/>
                     <TextBlock x:Uid="DiagnosticsPage_Subtitle"
                                Text="Inspect, export, and troubleshoot your OpenClaw installation."
+                               TextWrapping="Wrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Margin="0,0,0,12"/>
@@ -324,7 +325,7 @@
                                               Text="Protocol"
                                               Style="{StaticResource CaptionTextBlockStyle}"
                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                   <StackPanel Orientation="Horizontal"
+                                   <StackPanel x:Name="TelemetryProtocols" Orientation="Horizontal"
                                                Spacing="16">
                                        <RadioButton x:Uid="DiagnosticsPage_OpenTelemetryProtocolGrpc"
                                                     x:Name="OpenTelemetryProtocolGrpcButton"
@@ -344,7 +345,7 @@
                                           MinHeight="20"
                                           Style="{StaticResource CaptionTextBlockStyle}"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                               <StackPanel Orientation="Horizontal"
+                               <StackPanel x:Name="TelemetryActions" Orientation="Horizontal"
                                            Spacing="8">
                                    <Button x:Uid="DiagnosticsPage_SaveOpenTelemetryEndpointButton"
                                            x:Name="SaveOpenTelemetryEndpointButton"
@@ -368,32 +369,21 @@
 
                     <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_ChatOverrides"
                                              Header="Chat surface overrides"
-                                             Description="Per-surface override of the chat UI. Resets when OpenClaw restarts.">
+                                             Description="Override the Workspace chat UI. Resets when OpenClaw restarts.">
                         <toolkit:SettingsExpander.HeaderIcon>
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.Chat, Mode=OneTime}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                         </toolkit:SettingsExpander.HeaderIcon>
                         <toolkit:SettingsExpander.Items>
-                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_HubChat"
-                                                  Header="Hub chat tab">
-                                <ComboBox x:Name="HubChatOverrideCombo"
-                                          MinWidth="220"
-                                          AutomationProperties.AutomationId="DebugPageHubChatOverride"
-                                          SelectionChanged="OnHubChatOverrideChanged">
+                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_WorkspaceChat"
+                                                  Header="Workspace chat">
+                                <ComboBox x:Name="ChatOverrideCombo"
+                                          MaxWidth="220" HorizontalAlignment="Stretch"
+                                          AutomationProperties.AutomationId="DebugPageChatOverride"
+                                          SelectionChanged="OnChatOverrideChanged">
                                     <ComboBoxItem x:Uid="DebugPage_NoOverride" Content="No override" Tag="NoOverride"/>
                                     <ComboBoxItem x:Uid="DebugPage_ForceGatewayChatUI" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
                                     <ComboBoxItem x:Uid="DebugPage_ForceCompanionChatUI" Content="Force Companion Chat UI" Tag="ForceNative"/>
-                                </ComboBox>
-                            </toolkit:SettingsCard>
-                            <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_TrayChat"
-                                                  Header="Tray chat popup">
-                                <ComboBox x:Name="TrayChatOverrideCombo"
-                                          MinWidth="220"
-                                          AutomationProperties.AutomationId="DebugPageTrayChatOverride"
-                                          SelectionChanged="OnTrayChatOverrideChanged">
-                                    <ComboBoxItem x:Uid="DebugPage_NoOverride2" Content="No override" Tag="NoOverride"/>
-                                    <ComboBoxItem x:Uid="DebugPage_ForceGatewayChatUI2" Content="Force Gateway Chat UI" Tag="ForceLegacy"/>
-                                    <ComboBoxItem x:Uid="DebugPage_ForceCompanionChatUI2" Content="Force Companion Chat UI" Tag="ForceNative"/>
                                 </ComboBox>
                             </toolkit:SettingsCard>
                         </toolkit:SettingsExpander.Items>
@@ -438,6 +428,7 @@
                         </StackPanel>
                     </HyperlinkButton>
                     <TextBlock x:Name="DetailTitle"
+                               TextWrapping="Wrap"
                                Style="{StaticResource SubtitleTextBlockStyle}"
                                AutomationProperties.HeadingLevel="Level1"/>
                     <TextBlock x:Name="DetailCaption"
@@ -446,7 +437,7 @@
                                TextWrapping="Wrap"/>
                 </StackPanel>
 
-                <StackPanel Grid.Row="1"
+                <StackPanel x:Name="DetailActions" Grid.Row="1"
                             Orientation="Horizontal"
                             Spacing="8">
                     <Button x:Name="DetailRefreshButton"

@@ -11,6 +11,9 @@ namespace OpenClaw.GatewayFixtureHost;
 /// <summary>Owns synthetic app state. No installed settings or identities are imported.</summary>
 public sealed class GatewayFixtureProfile : IDisposable
 {
+    private const double DefaultCleanupTimeoutSeconds = 10;
+    private const string CleanupTimeoutEnvironmentVariable = "OPENCLAW_GATEWAY_FIXTURE_CLEANUP_TIMEOUT_SECONDS";
+    private static readonly TimeSpan CleanupPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly TempDirectory _directory;
     private bool _disposed;
 
@@ -23,10 +26,18 @@ public sealed class GatewayFixtureProfile : IDisposable
     public string GatewayId { get; } = Guid.NewGuid().ToString();
     public Uri GatewayEndpoint { get; }
 
-    public GatewayFixtureProfile(Uri endpoint, string token)
+    public bool NodeBrowserProxyEnabled { get; }
+    public bool ConnectGateway { get; }
+
+    public GatewayFixtureProfile(Uri endpoint, string token, bool enableNodeBrowserProxy = false,
+        string appTheme = "Light", bool connectGateway = true)
     {
         ValidateEndpoint(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
+        if (enableNodeBrowserProxy && !connectGateway)
+            throw new ArgumentException("Browser proxy proof requires a connected Gateway.", nameof(connectGateway));
+        NodeBrowserProxyEnabled = enableNodeBrowserProxy;
+        ConnectGateway = connectGateway;
         GatewayEndpoint = endpoint;
         _directory = new TempDirectory("openclaw-gateway-fixture-");
         try
@@ -39,7 +50,7 @@ public sealed class GatewayFixtureProfile : IDisposable
             {
                 GatewayUrl = endpoint.AbsoluteUri,
                 EnableMcpServer = true,
-                EnableNodeMode = false,
+                EnableNodeMode = enableNodeBrowserProxy,
                 AutoStart = false,
                 GlobalHotkeyEnabled = false,
                 ShowNotifications = false,
@@ -49,7 +60,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 HasInjectedFirstRunBootstrap = true,
                 EnableManagedLocalGatewayAutoRepair = false,
                 NodeSystemRunEnabled = false,
-                NodeBrowserProxyEnabled = false,
+                NodeBrowserProxyEnabled = enableNodeBrowserProxy,
                 NodeCanvasEnabled = false,
                 NodeScreenEnabled = false,
                 NodeCameraEnabled = false,
@@ -61,7 +72,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 VoiceAudioFeedback = false,
                 UseLegacyWebChat = false,
                 ShowCompletedSessions = true,
-                AppTheme = "Light",
+                AppTheme = appTheme,
                 OpenTelemetryEndpoint = null
             };
             File.WriteAllText(Path.Combine(DataDirectory, "settings.json"), settings.ToJson());
@@ -71,7 +82,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 Id = GatewayId,
                 Url = endpoint.AbsoluteUri,
                 FriendlyName = $"Fixture Gateway ({RunId[..8]})",
-                SharedGatewayToken = token,
+                SharedGatewayToken = connectGateway ? token : null,
                 // This is an unmanaged test server, not a provisioned WSL Gateway.
                 // Do not claim managed ownership or bypass its credential-provenance checks.
                 IsLocal = false
@@ -86,7 +97,8 @@ public sealed class GatewayFixtureProfile : IDisposable
         }
     }
 
-    public ProcessStartInfo CreateStartInfo(string appPath, int mcpPort, string? postSetupLaunch = null)
+    public ProcessStartInfo CreateStartInfo(string appPath, int mcpPort, string? postSetupLaunch = null,
+        bool postSetupRestart = false)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (mcpPort is < 1 or > 65535 || mcpPort == GatewayEndpoint.Port || mcpPort is 8765 or 18789)
@@ -111,9 +123,13 @@ public sealed class GatewayFixtureProfile : IDisposable
         start.Environment["OPENCLAW_LANGUAGE"] = "en-US";
         if (postSetupLaunch is not null)
         {
+            if (postSetupRestart)
+                start.ArgumentList.Add("--post-setup-restart");
             start.ArgumentList.Add("--post-setup-launch");
             start.ArgumentList.Add(postSetupLaunch);
         }
+        else if (postSetupRestart)
+            throw new ArgumentException("A restart proof requires an explicit setup handoff.", nameof(postSetupLaunch));
         return start;
     }
 
@@ -154,9 +170,42 @@ public sealed class GatewayFixtureProfile : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true;
-        EnsureNoReparsePoints(RunDirectory);
-        Directory.Delete(RunDirectory, recursive: true);
+        var configuredTimeout = Environment.GetEnvironmentVariable(CleanupTimeoutEnvironmentVariable);
+        var seconds = string.IsNullOrWhiteSpace(configuredTimeout)
+            ? DefaultCleanupTimeoutSeconds
+            : double.Parse(configuredTimeout, CultureInfo.InvariantCulture);
+        if (!double.IsFinite(seconds) || seconds <= 0)
+            throw new InvalidOperationException($"{CleanupTimeoutEnvironmentVariable} must be a positive finite number.");
+        var timeout = TimeSpan.FromSeconds(seconds);
+        var elapsed = Stopwatch.StartNew();
+        while (true)
+        {
+            try
+            {
+                EnsureNoReparsePoints(RunDirectory);
+                Directory.Delete(RunDirectory, recursive: true);
+                _disposed = true;
+                return;
+            }
+            catch (DirectoryNotFoundException) when (!Directory.Exists(RunDirectory))
+            {
+                _disposed = true;
+                return;
+            }
+            catch (FileNotFoundException) when (!Directory.Exists(RunDirectory))
+            {
+                _disposed = true;
+                return;
+            }
+            catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33)
+            {
+                // Process exit can precede release of the final Windows log handle.
+                var remaining = timeout - elapsed.Elapsed;
+                if (remaining <= TimeSpan.Zero)
+                    throw new TimeoutException($"Timed out waiting to remove the locked fixture profile: {RunDirectory}", ex);
+                Thread.Sleep(remaining < CleanupPollInterval ? remaining : CleanupPollInterval);
+            }
+        }
     }
 
     private static void EnsureNoReparsePoints(string directory)
@@ -165,11 +214,33 @@ public sealed class GatewayFixtureProfile : IDisposable
             throw new IOException("Refusing fixture cleanup through a reparse point.");
         foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
         {
-            var attributes = File.GetAttributes(entry);
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(entry);
+            }
+            catch (FileNotFoundException)
+            {
+                // WebView2 may remove a temporary file after enumeration.
+                continue;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
             if ((attributes & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Refusing fixture cleanup containing a reparse point.");
             if ((attributes & FileAttributes.Directory) != 0)
-                EnsureNoReparsePoints(entry);
+            {
+                try
+                {
+                    EnsureNoReparsePoints(entry);
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    // The enumerated child directory has already disappeared.
+                }
+            }
         }
     }
 }
