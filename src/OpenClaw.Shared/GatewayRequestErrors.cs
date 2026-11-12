@@ -12,11 +12,13 @@ public static class GatewayRequestErrors
     private static readonly HashSet<string> AllowedCodes = new(StringComparer.Ordinal)
     {
         "INVALID_REQUEST", "UNAVAILABLE", "FORBIDDEN", "UNAUTHORIZED", "NOT_LINKED", "NOT_PAIRED", "AGENT_TIMEOUT",
+        Cron.CronProtocol.JobChangedCode, Cron.CronProtocol.JobNotFoundCode,
     };
 
     private static readonly HashSet<string> AllowedDetailCodes = new(StringComparer.Ordinal)
     {
         "AUTHENTICATED_PROFILE_UNAVAILABLE", "MISSING_SCOPE",
+        Cron.CronProtocol.JobChangedCode, Cron.CronProtocol.JobNotFoundCode,
     };
 
     private const string CodeKey = "openclaw.gateway.error.code";
@@ -45,4 +47,10 @@ public static class GatewayRequestErrors
         detailCode = null;
         return false;
     }
+
+    /// <summary>Allowlisted top-level <c>error.code</c>; unknown Gateway codes return <c>UNKNOWN</c>.</summary>
+    public static string? Code(Exception exception) => exception.Data[CodeKey] as string;
+
+    /// <summary>Allowlisted nested <c>error.details.code</c>.</summary>
+    public static string? DetailCode(Exception exception) => exception.Data[DetailCodeKey] as string;
 }

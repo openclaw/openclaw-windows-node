@@ -7,6 +7,51 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ChatPlacementHistoryProjectionTests
 {
     [Fact]
+    public void ChildActivityRequiresLiveFactsAndKeepsExactParentIdentity()
+    {
+        var input = Input(ConnectionStatus.Connected) with
+        {
+            Sessions =
+            [
+                new() { Key = "parent", HasActiveRun = false, HasActiveSubagentRun = true },
+                new() { Key = "child", ParentSessionKey = "parent", HasActiveRun = true, CurrentActivity = "Checking results" },
+                new() { Key = "old", ParentSessionKey = "PARENT", HasActiveRun = false, CurrentActivity = "Stale activity" },
+            ],
+        };
+        var threads = ChatSnapshotProjector.Project(input).Threads;
+        Assert.True(threads[0].WaitingForSubagents);
+        Assert.Equal("parent", threads[1].ParentSessionKey);
+        Assert.Equal("Checking results", threads[1].CurrentActivity);
+        Assert.Null(threads[2].CurrentActivity);
+    }
+
+    [Fact]
+    public void OlderHistoryPreservesActiveRowsAndRevisionWhileRetiringResetCursor()
+    {
+        var history = new ChatHistoryState();
+        var token = history.CreateCommitToken("main", 0);
+        history.MarkCommitted(token, "instance", "older-1");
+        Assert.Equal(new ChatHistoryPageRequest("older-1", "instance"), history.OlderPage("main"));
+        var revision = history.Revision("main");
+        history.MarkCommitted(token, "instance", "older-2", olderPage: true);
+        Assert.Equal(revision, history.Revision("main"));
+        history.ClearSessionForReset("main");
+        Assert.Null(history.OlderPage("main"));
+        Assert.Empty(history.SnapshotOlderHistoryThreads());
+
+        var prior = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatMessageDeltaEvent("Active answer"));
+        var active = Assert.Single(prior.Entries);
+        var earlier = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatUserMessageEvent("Older question"));
+        var (merged, _) = ChatHistoryState.PrependOlderPage(new("instance", earlier,
+            new Dictionary<string, ChatEntryMetadata>(), 0), prior, new Dictionary<string, ChatEntryMetadata>());
+        Assert.Equal(["Older question", "Active answer"], merged.Entries.Select(entry => entry.Text));
+        Assert.Same(active, merged.Entries[1]);
+        Assert.Equal(prior.ActiveAssistantId, merged.ActiveAssistantId);
+        Assert.True(merged.TurnActive);
+        Assert.Equal(2, merged.Entries.Select(entry => entry.Id).Distinct().Count());
+    }
+
+    [Fact]
     public void HistoryState_SnapshotDoesNotExposeMutableLoadedThreads()
     {
         var history = new ChatHistoryState();

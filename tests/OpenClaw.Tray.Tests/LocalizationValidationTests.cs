@@ -27,6 +27,11 @@ public class LocalizationValidationTests
 
     private static readonly HashSet<string> InvariantOrDeferredResourceKeys = new(StringComparer.Ordinal)
     {
+        // Usage page symbols: the lower-bound sign, the unavailable-value placeholder and
+        // the UTC abbreviation read the same in every supported language.
+        "Usage_AtLeastFormat",
+        "Usage_EmptyValue",
+        "Usage_TimeZone_Utc",
         // Custom model provider API types are protocol product names, and the
         // provider/model ID placeholders are literal identifier examples.
         "DefaultModelPage_CustomApiAnthropic.Content",
@@ -64,6 +69,8 @@ public class LocalizationValidationTests
         "VoiceOverlayWindow_winexWindowEx_2.Title",
         // Brand name — identical across all locales.
         "ConnectionPage_TopologyTailscale",
+        // Board widget content-kind chip: the HTML file-format name.
+        "Dashboards_Widget_KindHtml",
         // Canonical product surface name, shared with the existing Dashboard action.
         "ChatDashboardButton.Content",
         // Native engine executable/product name. Keep the exact llama-server
@@ -84,6 +91,10 @@ public class LocalizationValidationTests
         // Punctuation-only layout format; localized parts are supplied by
         // separate placeholders and should keep the same visual separator.
         "ConfigPage_AccessSummaryFormat",
+        // Inbox layout formats: a localized label/title plus a count or state
+        // supplied by separate, already localized placeholders.
+        "Inbox_TabCountFormat",
+        "Inbox_RowAutomationNameFormat",
         // NodesPage detail labels — "Version", "Hardware", and "PATH" are
         // technical loanwords that read the same in every supported locale
         // in this app's audience. Translating them adds no clarity and
@@ -230,14 +241,6 @@ public class LocalizationValidationTests
         "ConfigPage_ReconnectDialogBody",
         "ConfigPage_ReconnectDialogTitle",
         "ConfigPage_ReconnectDialogWaiting",
-        "CronPage_AmericaChicago.Content",
-        "CronPage_AmericaDenver.Content",
-        "CronPage_AmericaLosAngeles.Content",
-        "CronPage_AmericaNewYork.Content",
-        "CronPage_AsiaTokyo.Content",
-        "CronPage_EuropeBerlin.Content",
-        "CronPage_EuropeLondon.Content",
-        "CronPage_UTC.Content",
         "SandboxPage_16MiB.Content",
         "SandboxPage_1MiB.Content",
         "SandboxPage_64MiB.Content",
@@ -245,19 +248,10 @@ public class LocalizationValidationTests
         // Canonical product surface name, unchanged across locales.
         "SandboxPage_Title.Text",
         "SandboxPage_OneDrive.Text",
-        // SessionsPage runtime accessibility strings — seeded English-only across
-        // all 5 locales using the deferred-translation pattern. These are
-        // tooltip / AutomationProperties.Name overrides on the OpenChat button.
-        // Same precedent as the PermissionsPage / InstancesPage / ConfigPage
-        // runtime keys above.
-        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip",
-        "SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         // CronPage / InfoBar / HubWindow nav / CommandCenter runtime strings —
         // seeded English-only across all 5 locales using the deferred-translation
         // pattern. Fetched at runtime via LocalizationHelper. Same precedent as
         // the PermissionsPage / InstancesPage / SessionsPage runtime keys above.
-        "CronPage_JobCompleted",
-        "CronPage_JobCompletedRanSuccessfully",
         "ConfigPage_CheckingConfigPermissions",
         "ConfigPage_ConfigUnavailable",
         "ConfigPage_ConfigIsReadOnly",
@@ -289,8 +283,6 @@ public class LocalizationValidationTests
         "Command_GoToWorkspace_Subtitle",
         "Command_GoToChannels_Title",
         "Command_GoToChannels_Subtitle",
-        "Command_GoToInstances_Title",
-        "Command_GoToInstances_Subtitle",
         "Command_GoToConfig_Title",
         "Command_GoToConfig_Subtitle",
         "Command_GoToUsage_Title",
@@ -619,6 +611,43 @@ public class LocalizationValidationTests
         "pt-br",
     };
 
+    /// <summary>
+    /// Automations values that are correctly spelled the same as English in some locales:
+    /// unit abbreviations, format-only strings and loanwords such as Agent, Prompt or Webhook.
+    /// Each entry lists exactly the locales that keep the English value.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> AutomationsIdenticalLocales = new(StringComparer.Ordinal)
+    {
+        ["Automations_AgentScope"] = ["nl-nl"],
+        ["Automations_DeliveryMode_Webhook"] = ["fr-fr", "pt-br", "zh-cn", "zh-tw"],
+        ["Automations_Duration_Hours"] = ["fr-fr", "pt-br"],
+        ["Automations_Duration_Milliseconds"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Duration_Minutes"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Duration_Seconds"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Field_Agent"] = ["fr-fr", "nl-nl"],
+        ["Automations_Field_DeliveryMode"] = ["fr-fr"],
+        ["Automations_Field_Destination"] = ["fr-fr"],
+        ["Automations_Field_Expression"] = ["fr-fr"],
+        ["Automations_Field_Model"] = ["nl-nl"],
+        ["Automations_Field_Options"] = ["fr-fr"],
+        ["Automations_Field_Payload"] = ["nl-nl"],
+        ["Automations_Field_Prompt"] = ["nl-nl", "pt-br"],
+        ["Automations_Field_RunDate"] = ["fr-fr"],
+        ["Automations_Field_WebhookUrl"] = ["zh-cn", "zh-tw"],
+        ["Automations_Kind_Every"] = ["nl-nl"],
+        ["Automations_Notice_JobMessage"] = ["nl-nl", "pt-br"],
+        ["Automations_Payload_Script"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Relative_Days"] = ["nl-nl", "pt-br"],
+        ["Automations_Relative_Hours"] = ["fr-fr", "pt-br"],
+        ["Automations_Relative_Minutes"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Review_SummaryEnd"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Review_SummaryJoin"] = ["fr-fr", "nl-nl", "pt-br"],
+        ["Automations_Schedule_WithTimezone"] = ["fr-fr", "nl-nl", "pt-br", "zh-tw"],
+        ["Automations_Session_Named"] = ["fr-fr"],
+        ["Automations_State_Active"] = ["fr-fr"],
+        ["Automations_Unit_Minutes"] = ["fr-fr"],
+    };
+
     private static bool IsInvariantOrDeferred(string key, string value) =>
         InvariantOrDeferredResourceKeys.Contains(key)
         || IsInvariantValue(value)
@@ -627,15 +656,14 @@ public class LocalizationValidationTests
         // Approved Workspace copy is seeded consistently in English while
         // locale review is pending, matching the existing deferred-copy policy.
         || key.StartsWith("WorkspaceShell_", StringComparison.Ordinal)
-        // Title-bar status pill + notifications bell flyout strings. Seeded
-        // English-only across all five .resw files using the deferred-translation
-        // pattern; translations land in a follow-up.
+        // Title-bar status pill strings. Seeded English-only across all five
+        // .resw files using the deferred-translation pattern; translations
+        // land in a follow-up.
         || key.StartsWith("HubWindow_StatusFlyout_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_StatusPill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Pill_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Role_", StringComparison.Ordinal)
         || key.StartsWith("HubWindow_Bell_", StringComparison.Ordinal)
-        || key.StartsWith("NotificationsFlyout_", StringComparison.Ordinal)
         // V2 onboarding redesign strings (V2_*) are intentionally English-only at first
         // ship. They live in V2Strings.DefaultEnUs and the cutover seeded them into all
         // five .resw files with English values. Translations land in a follow-up.
@@ -977,6 +1005,66 @@ public class LocalizationValidationTests
     }
 
     [Fact]
+    public void SessionsHub_AllRuntimeReferencesResolveInEveryLocale()
+    {
+        var keys = ReadSessionsHubReferences();
+        Assert.Contains("SessionsHub_CloudWorker", keys);
+        Assert.Contains("SessionsHub_Overrides", keys);
+        Assert.Contains("SessionsPage_Status_Ready", keys);
+        var failures = new List<string>();
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
+        {
+            var locale = Path.GetFileName(localeDir);
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+            failures.AddRange(keys
+                .Where(key => !resources.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value))
+                .Select(key => $"{locale}: missing {key}"));
+        }
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
+    }
+
+    private static string[] ReadSessionsHubReferences()
+    {
+        const string prefix = "SessionsHub_";
+        var sources = Directory.GetFiles(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Sessions"), "*.cs").Select(File.ReadAllText).ToArray();
+        // A missing key renders as fallback text instead of throwing, so follow every T/F call
+        // site; otherwise catalog entries lost in a merge surface only in mounted UI tests.
+        Assert.Contains(sources, source => source.Contains(
+            "internal static string T(string key) => LocalizationHelper.GetString(\"SessionsHub_\" + key);",
+            StringComparison.Ordinal));
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var unclassified = new List<string>();
+        foreach (var source in sources)
+        {
+            foreach (Match call in Regex.Matches(source, """(?<!\w)[TF]\((?<arg>[^)]*)"""))
+            {
+                var arg = call.Groups["arg"].Value.Trim();
+                if (Regex.IsMatch(arg, """^(string key\b|key$|key,)"""))
+                    continue;
+                if (Regex.Match(arg, """^"(?<key>\w+)"\s*(,|$)""") is { Success: true } literal)
+                {
+                    keys.Add(prefix + literal.Groups["key"].Value);
+                }
+                else if (Regex.Match(arg, """\?\s*"(?<a>\w+)"\s*:\s*"(?<b>\w+)"$""") is { Success: true } choice)
+                {
+                    keys.Add(prefix + choice.Groups["a"].Value);
+                    keys.Add(prefix + choice.Groups["b"].Value);
+                }
+                else
+                {
+                    unclassified.Add(arg);
+                }
+            }
+            foreach (Match call in Regex.Matches(source, """LocalizationHelper\.GetString\("(?<key>[^"]+)"\)"""))
+                keys.Add(call.Groups["key"].Value);
+        }
+        Assert.True(unclassified.Count == 0,
+            "Update this source contract for new Sessions localization call shapes: " + string.Join("; ", unclassified));
+        return keys.ToArray();
+    }
+
+    [Fact]
     public void NoLocale_HasDuplicateKeys()
     {
         var stringsDir = GetStringsDirectory();
@@ -1124,7 +1212,7 @@ public class LocalizationValidationTests
 
             if (identicalLocales.Count != localeResw.Count)
             {
-                // These ordinary words are spelled identically in these languages.
+                // These ordinary words and compact duration units are identical in these languages.
                 string[] naturalLoanwordLocales = key switch
                 {
                     "Onboarding_V2_LocalAiModel.Header" or "HubWindow_NavigationViewItemHeader_Model.Content" or
@@ -1133,17 +1221,36 @@ public class LocalizationValidationTests
                     "Onboarding_V2_ProfileFullTitle.Text" or "SandboxPage_PresetOpen.Text" => ["nl-nl"],
                     "Onboarding_V2_Microphone" or "Onboarding_V2_Notifications"
                         or "HubWindow_NavigationViewItem_145.Content"
-                        or "WorkspaceShell_NotificationsButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" => ["fr-fr"],
+                        or "Inbox_TabMentions" => ["fr-fr"],
                     "Onboarding_V2_Tokens" => ["nl-nl", "pt-br"],
+                    "Dashboards_Title" or "HubWindow_NavDashboards.Content" or "Dashboards_Live" => ["nl-nl"],
+                    // Usage page cognates: the natural term in these languages.
+                    "Usage_Metric_Tokens" => ["nl-nl", "pt-br"],
+                    "Usage_Overview_Messages" or "Usage_Overview_Sessions" or "Usage_Sessions_Title" or "Usage_Options" => ["fr-fr"],
+                    "Usage_Facet_agent" or "Usage_Contributors_Agent" => ["fr-fr", "nl-nl"],
+                    "Usage_Facet_model" => ["nl-nl"],
+                    "Systems_Capability_Browser" or "Systems_Capability_Camera" => ["nl-nl"],
+                    "Systems_Capability_Canvas" => ["nl-nl", "pt-br"],
+                    "Systems_Capability_Notifications" or "Systems_Diagnostics" => ["fr-fr"],
+                    "Systems_Age_Days" => ["nl-nl", "pt-br"],
+                    "Systems_Age_Hours" => ["fr-fr", "pt-br"],
+                    "Systems_Age_Minutes" or "Systems_Age_Seconds" => ["fr-fr", "nl-nl", "pt-br"],
+                    "Systems_Stats_Title" => ["nl-nl"],
+                    "Systems_Number_0" => ["pt-br"],
+                    "Systems_Number_6" => ["fr-fr"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
                         "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
                     "Search_Dashboard_Plugins" => ["pt-br"],
                     "Search_Dashboard_Secrets" => ["fr-fr"],
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],
+                    // The web's lowercase code-block label is the same word in French and Dutch.
+                    "Chat_Code_LanguageFallback" => ["fr-fr", "nl-nl"],
                     // Key-cap label printed on those locales' keyboards; French keyboards print "Échap".
                     "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],
                 };
+                if (AutomationsIdenticalLocales.TryGetValue(key, out var automationsLocales))
+                    naturalLoanwordLocales = automationsLocales;
                 if (naturalLoanwordLocales.Length > 0 &&
                     identicalLocales.Order().SequenceEqual(naturalLoanwordLocales.Order()))
                     continue;

@@ -251,6 +251,24 @@ public sealed class WorkspaceNavigationTests
         Assert.False(history.CanGoForward);
     }
 
+    [Theory]
+    [InlineData("dashboards")]
+    [InlineData("dashboards?session=agent%3Amain%3Adashboard%3Aops&agent=main")]
+    public void DashboardsRoutes_AlwaysUseStandalonePagePresentation_AndShareWorkspaceHistory(string tag)
+    {
+        var destination = WorkspaceDestination.Settings(tag);
+        Assert.True(destination.Embedded);
+        Assert.Equal(tag, destination.CompanionTag);
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "kept-chat"));
+        history.Navigate(destination);
+        Assert.True(history.GoBack());
+        Assert.Equal("kept-chat", history.Current.SessionKey);
+        Assert.True(history.GoForward());
+        Assert.Equal(destination, history.Current);
+        Assert.False(WorkspaceDestination.Settings("connection").Embedded);
+    }
+
     [Fact]
     public void Settings_ReturnsToExactPriorChat_AndForwardRestoresSection()
     {
@@ -896,12 +914,20 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("56", (string?)slot.Attribute("Height"));
         var collapse = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "CollapsePaneButton");
         Assert.Same(reopen.Parent, collapse.Parent);
-        var chrome = reopen.Parent!;
+        var chrome = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "PaneToggleChrome");
         var settings = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SettingsSection");
+        var history = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "SettingsHistoryBar");
+        Assert.Same(chrome, reopen.Parent);
         Assert.Same(settings.Parent, chrome.Parent);
+        Assert.Same(navigation.Parent!.Parent, chrome.Parent);
+        var layers = chrome.Parent!.Elements().ToList();
+        Assert.True(layers.IndexOf(settings) < layers.IndexOf(chrome));
+        Assert.True(layers.IndexOf(chrome) < layers.IndexOf(history));
+        Assert.Equal("1", (string?)chrome.Attribute("Grid.Row"));
         Assert.Equal("{Binding Visibility, ElementName=NavigationSection}", (string?)chrome.Attribute("Visibility"));
         Assert.Equal("48", (string?)chrome.Attribute("Width"));
         Assert.Equal("56", (string?)chrome.Attribute("Height"));
+        Assert.Null(chrome.Attribute("Background"));
         Assert.True(settings.ElementsAfterSelf().Contains(chrome),
             "Pane buttons must stay above full-frame page backdrops.");
         Assert.Equal((string?)collapse.Attribute("Margin"), (string?)reopen.Attribute("Margin"));
@@ -1072,7 +1098,11 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("2", (string?)bell.Attribute("Grid.Column"));
         Assert.Equal("OnDashboardClick", (string?)dashboard.Attribute("Click"));
         Assert.Equal("WorkspaceShell_DashboardButton", (string?)dashboard.Attribute(x + "Uid"));
-        Assert.Null(bell.Attribute("Click"));
+        Assert.Equal("OnNotificationsClick", (string?)bell.Attribute("Click"));
+        var footerCode = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
+        Assert.Contains("new FlyoutShowRequest(NotificationsFlyout, ReopenNotifications)", footerCode);
+        Assert.Contains("_notificationsShow.DeferUntilClosed();", footerCode);
+        Assert.Contains("_notificationsShow.Cancel();", footerCode);
         var flyout = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "Flyout");
         Assert.Equal("OnNotificationsOpening", (string?)flyout.Attribute("Opening"));
         Assert.Equal("OnNotificationsClosed", (string?)flyout.Attribute("Closed"));
@@ -1088,7 +1118,12 @@ public sealed class WorkspaceNavigationTests
         var bellGlyph = Assert.Single(bell.Descendants(), element => element.Name.LocalName == "FontIcon");
         Assert.Equal("\uEA8F", (string?)bellGlyph.Attribute("Glyph"));
         Assert.Null(bellGlyph.Attribute("Foreground"));
-        Assert.Single(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
+        // The Inbox badge keeps both tones as ThemeResource-bound borders: accent, and caution while an approval waits.
+        var badges = bell.Descendants().Where(element => element.Name.LocalName == "Border").ToList();
+        Assert.Equal(["NotificationsBadge", "NotificationsAttentionBadge"], badges.Select(element => (string?)element.Attribute(x + "Name")));
+        Assert.Equal("{ThemeResource AccentFillColorDefaultBrush}", (string?)badges[0].Attribute("Background"));
+        Assert.Equal("{ThemeResource SystemFillColorCautionBrush}", (string?)badges[1].Attribute("Background"));
+        Assert.DoesNotContain(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
         Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName is "ImageIcon" or "SvgImageSource");
         Assert.Equal(new[] { "OwnerAvatarStatusDot", "OwnerStatusDot" },
             owner.Descendants().Where(element => element.Name.LocalName == "FontIcon")
@@ -1100,12 +1135,17 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("footer.DashboardRequested += (_, _) => OpenDashboard();", code);
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard(path ?? ResolveDashboardPath())", code);
         Assert.Contains("destination.SessionKey ?? _chat.CurrentSessionKey", code);
-        Assert.Contains("OpenCompanion(CompanionPageId.Usage)", code);
-        Assert.Contains("OpenDashboard(\"channels\")", code);
+        Assert.Contains("OpenCompanion(model.SettingsTarget)", code);
+        Assert.Contains("OpenDashboard(WorkspaceAccountMenu.PairDeviceDashboardPath)", code);
         Assert.Contains("OpenCompanion(CompanionPageId.About)", code);
-        Assert.Contains("Add(\"GetApps\", () => _ = OpenLinkAsync(\"https://docs.openclaw.ai/platforms\")", code);
+        Assert.Contains("MenuItem(\"GetApps\", null, null, () => _ = OpenLinkAsync(\"https://docs.openclaw.ai/platforms\"))", code);
         Assert.Contains("OpenLinkAsync(\"https://github.com/openclaw/openclaw-windows-node\")", code);
         Assert.Contains("help.Items.Add(github)", code);
+        // Usage left the account menu; it stays in Settings navigation and search.
+        Assert.DoesNotContain("OpenCompanion(CompanionPageId.Usage)", code);
+        Assert.Equal(new[] { "OwnerUpdateDot" },
+            owner.Descendants().Where(element => element.Name.LocalName == "Ellipse")
+                .Select(element => (string?)element.Attribute(x + "Name")));
         Assert.DoesNotContain("WebView", File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml")));
     }
 
@@ -1123,6 +1163,68 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains(root.Descendants(), element =>
             (string?)element.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "Root" &&
             (string?)element.Attribute("PreviewKeyDown") == "OnKeyDown");
+    }
+
+    [Fact]
+    public void AccountMenuGatewayList_UsesOneIconColumn_WithoutRadioCheckColumn()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var gateways = code[code.IndexOf("private void PopulateGatewayMenu(", StringComparison.Ordinal)..];
+        gateways = gateways[..gateways.IndexOf("private static MenuFlyoutItem MenuItem(", StringComparison.Ordinal)];
+        Assert.DoesNotContain("RadioMenuFlyoutItem", gateways);
+        Assert.DoesNotContain("ToggleMenuFlyoutItem", gateways);
+        Assert.Contains("item.Icon = new FontIcon { Style = ChatFooter.BadgeStyle(model.StatusAccent) };", gateways);
+    }
+
+    [Fact]
+    public void AccountMenuMetadata_IsNotExposedAsKeyboardShortcuts()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var menu = code[code.IndexOf("private void PopulateOwnerMenu(", StringComparison.Ordinal)..];
+        menu = menu[..menu.IndexOf("private void OpenAddGateway()", StringComparison.Ordinal)];
+        Assert.DoesNotMatch(@"KeyboardAcceleratorTextOverride\s*=\s*(saved\.|statusLabel|AppVersionInfo\.)", menu);
+    }
+
+    [Fact]
+    public void AccountMenuCurrentGateway_HasExplicitAccessibleStateAndDescription()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var gateways = code[code.IndexOf("private void PopulateGatewayMenu(", StringComparison.Ordinal)..];
+        gateways = gateways[..gateways.IndexOf("private static MenuFlyoutItem MenuItem(", StringComparison.Ordinal)];
+        Assert.Contains("AutomationProperties.SetItemStatus(item, Text(\"AccountCurrentGateway\"));", gateways);
+        Assert.Contains("\"WorkspaceShell_AccountCurrentGatewayStatusFormat\"", gateways);
+    }
+
+    [Fact]
+    public void AccountMenuAddGateway_KeepsAnAddOrEditFormAlreadyInProgress()
+    {
+        var page = File.ReadAllText(Source("Pages", "ConnectionPage.xaml.cs"));
+        var begin = page[page.IndexOf("internal void BeginAddGateway()", StringComparison.Ordinal)..];
+        begin = begin[..begin.IndexOf("private void OnEnterAddGateway(", StringComparison.Ordinal)];
+        Assert.Contains("if (_userIntent == UserIntent.AddingGateway) return;", begin);
+        Assert.Contains("OnEnterAddGateway(this, new RoutedEventArgs());", begin);
+        Assert.True(begin.IndexOf("return;", StringComparison.Ordinal) < begin.IndexOf("OnEnterAddGateway(", StringComparison.Ordinal),
+            "An in-progress Add or Edit form must be kept before the reset path runs.");
+        Assert.Contains("page.BeginAddGateway()", File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs")));
+        // Re-navigating to the Connection page rebuilds it, so an open page is reused instead.
+        var window = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var open = window[window.IndexOf("private void OpenAddGateway()", StringComparison.Ordinal)..];
+        Assert.True(open.IndexOf("current.BeginAddGateway();", StringComparison.Ordinal) <
+            open.IndexOf("OpenCompanion(CompanionPageId.Connection);", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SettingsShortcut_IsCtrlComma_AndMatchesTheAccountMenuHint()
+    {
+        var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("SettingsShortcutKey = (global::Windows.System.VirtualKey)188;", code);
+        Assert.Contains("SettingsShortcutText = \"Ctrl+,\";", code);
+        var handler = code[code.IndexOf("private void OnKeyDown(", StringComparison.Ordinal)..];
+        Assert.Contains("else if (ctrl && !shift && !alt && e.Key == SettingsShortcutKey)", handler);
+        Assert.Contains("if (!e.KeyStatus.WasKeyDown) OpenCompanion(CompanionPageId.Settings);", handler);
+        Assert.Contains("KeyboardAcceleratorTextOverride = model.SettingsTarget == CompanionPageId.Settings ? SettingsShortcutText : \"\"", code);
+        // A stale open menu must not reconnect a connection that already recovered.
+        Assert.Contains("if (WorkspaceAccountMenu.NeedsRetry(CurrentApp.ConnectionManager?.CurrentSnapshot?.OverallState, _state.Status))", code);
     }
 
     [Theory]
@@ -1242,8 +1344,7 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("OwnerAvatarStatusDot.Style = style;", footer);
         Assert.Contains("(Style)Resources[$\"ConnectionBadge{accent}\"]", footer);
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("var badge = ChatFooter.BadgeStyle(accent);", code);
-        Assert.Contains("icon.Style = badge;", code);
+        Assert.Contains("Icon = new FontIcon { Style = ChatFooter.BadgeStyle(model.StatusAccent) }", code);
         foreach (var accent in new[] { "Neutral", "Success", "Caution", "Critical" })
         {
             var style = doc.Descendants().Single(element => (string?)element.Attribute(x + "Key") == $"ConnectionBadge{accent}");

@@ -120,6 +120,16 @@ public sealed class GatewayFixtureProfileTests
     }
 
     [Fact]
+    public void CleanupAcceptsAnAlreadyRemovedOwnedProfileRoot()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        Directory.Delete(root, recursive: true);
+        profile.Dispose();
+        Assert.False(Directory.Exists(root));
+    }
+
+    [Fact]
     public async Task CleanupWaitsForTransientLogSharingLock()
     {
         var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");

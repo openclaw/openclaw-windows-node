@@ -75,7 +75,7 @@ public sealed class AppNotificationInfoBarPresenterTests
         var presentation = presenter.Present(
             Snapshot(
                 Notification("warning", AppNotificationSeverity.Warning),
-                Notification("info", AppNotificationSeverity.Informational)),
+                Notification("error", AppNotificationSeverity.Error)),
             null,
             false,
             currentTag,
@@ -85,6 +85,23 @@ public sealed class AppNotificationInfoBarPresenterTests
         Assert.Equal("Show more", presentation.Action.Label);
         Assert.Null(presentation.Action.Route);
         Assert.Equal(expected, presentation.Action.IsEnabled);
+    }
+
+    [Fact]
+    public void Present_DoesNotOfferShowMoreForNotificationsTheInboxExcludes()
+    {
+        var presenter = new AppNotificationInfoBarPresenter();
+        var presentation = presenter.Present(
+            Snapshot(
+                Notification("warning", AppNotificationSeverity.Warning),
+                Notification("info", AppNotificationSeverity.Informational)),
+            null,
+            false,
+            null,
+            "Show more");
+
+        Assert.True(presentation.IsVisible);
+        Assert.Equal(AppNotificationInfoBarActionKind.None, presentation.Action.Kind);
     }
 
     [Fact]

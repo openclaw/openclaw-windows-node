@@ -317,6 +317,100 @@ public sealed class AxeHelperTests
         Assert.Empty(scans);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ScopeExclusionCannotInspectOrHideIncompleteResults(bool incompleteFirst)
+    {
+        var incomplete = new ScanResult();
+        var stale = LayoutError();
+        var scans = new Queue<ScanOutput?>(
+            [incompleteFirst ? Scan(incomplete, stale) : Scan(stale, incomplete)]);
+
+        var failure = Assert.Throws<FailException>(() =>
+            AxeHelper.AssertScan(
+                () => scans.Dequeue(),
+                TargetProcessId,
+                () => throw new InvalidOperationException("Incomplete results must not retry."),
+                new HashSet<RuleId>(),
+                null,
+                scopeExclusion: error =>
+                {
+                    // The incomplete result must never reach an exclusion callback.
+                    Assert.Same(stale, error);
+                    return true;
+                }));
+
+        Assert.Contains("1 violation(s)", failure.Message);
+        Assert.Contains("incomplete scan metadata", failure.Message);
+        Assert.Empty(scans);
+    }
+
+    [Fact]
+    public void ScopeExclusionsApplyBeforeRetryAndAgainToTheSecondScan()
+    {
+        var scoped = Error();
+        scoped.Rule.ID = RuleId.BoundingRectangleNotNull;
+        var scans = new Queue<ScanOutput?>(
+            [Scan(scoped, LayoutError()), Scan(scoped)]);
+
+        AxeHelper.AssertScan(
+            () => scans.Dequeue(),
+            TargetProcessId,
+            OwnedHub,
+            new HashSet<RuleId>(),
+            null,
+            scopeExclusion: error => error.Rule.ID == RuleId.BoundingRectangleNotNull);
+
+        // Without filtering the first scan, the non-layout result prevents retry.
+        // Without filtering the second scan, the persistent scoped result fails.
+        Assert.Empty(scans);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("count")]
+    [InlineData("incompleteExcludedRule")]
+    public void ScopeExclusionsCannotHideMalformedSecondScan(string malformed)
+    {
+        var scoped = Error();
+        scoped.Rule.ID = RuleId.BoundingRectangleNotNull;
+        var incomplete = new ScanResult();
+        SetMetadata(incomplete, nameof(ScanResult.Rule), new RuleInfo
+        {
+            ID = RuleId.NameIsInformative,
+            Description = "Names must be informative.",
+        });
+        var second = malformed switch
+        {
+            "null" => null,
+            // This complete result would be scope-excluded, but the original
+            // count mismatch must fail before the callback sees it.
+            "count" => new ScanOutput([Window([scoped], 0)]),
+            _ => Scan(incomplete),
+        };
+        var scans = new Queue<ScanOutput?>([Scan(LayoutError()), second]);
+
+        var failure = Assert.Throws<FailException>(() =>
+            AxeHelper.AssertScan(
+                () => scans.Dequeue(),
+                TargetProcessId,
+                OwnedHub,
+                new HashSet<RuleId> { RuleId.NameIsInformative },
+                null,
+                scopeExclusion: error =>
+                {
+                    // Neither malformed window metadata nor an incomplete result
+                    // may be converted into a clean scan by scope filtering.
+                    Assert.NotNull(error.Element);
+                    Assert.NotNull(error.Element.Properties);
+                    return error.Rule.ID != RuleId.ClickablePointOnScreen;
+                }));
+
+        Assert.Contains("metadata", failure.Message);
+        Assert.Empty(scans);
+    }
+
     private static void AssertLayoutFailure(Func<AxeHelper.ILayoutElement> getHub)
     {
         var scans = new Queue<ScanOutput?>([Scan(LayoutError())]);

@@ -29,6 +29,7 @@ public sealed partial class GatewayFixtureUiTests
 
             // WindowManager publishes the real Dashboard failure reminder with a Connection
             // route. The existing browser boundary supplies only the external launch refusal.
+            await ExpandNotificationReminderAsync(run, "Slack channel needs attention", "Open Channels");
             ArmSimulatedBrowserFailure(run);
             Invoke(Assert.Single(FindButtons(run, "Open Channels")));
             await WaitUiAsync(run, () => FindText(run, DashboardFailureMessage) is { Current.IsOffscreen: false } &&
@@ -44,7 +45,8 @@ public sealed partial class GatewayFixtureUiTests
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
                 new PropertyCondition(AutomationElement.NameProperty, "Close")))
                 .Cast<AutomationElement>(), button => !button.Current.IsOffscreen && button.Current.IsEnabled);
-            Assert.Equal(run.AppProcessId, close.Current.ProcessId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, close, run.AppProcessId),
+                "The recovery dialog action must belong to its retained native window.");
             Invoke(close);
             await WaitUiAsync(run, () => FindButtons(run, RetryButtonName).Count == 0, "recovery dialog closed without retry");
 
@@ -52,6 +54,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, inboxMarker) is { Current.IsOffscreen: false } &&
                 FindButtons(run, failureDismissLabel).Count == 1 && FindButtons(run, slackDismissLabel).Count == 1,
                 "Dashboard and unrelated Slack reminders retained in the original inbox");
+            await ExpandNotificationReminderAsync(run, "Dashboard", "Connection");
             var failureRow = Assert.Single(FindButtons(run, failureDismissLabel));
             while (failureRow.Current.ControlType != ControlType.ListItem)
                 failureRow = TreeWalker.ControlViewWalker.GetParent(failureRow)
@@ -66,7 +69,7 @@ public sealed partial class GatewayFixtureUiTests
             await CaptureIfRequestedAsync(run, "native-notification-before-connection.png");
 
             // Invoke the uniquely scoped native action through UI Automation.
-            // This must traverse NotificationsPage -> TryNavigateAsync -> native admission.
+            // This must traverse the shared InboxView -> TryNavigateAsync -> native admission.
             Invoke(connection);
             await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, connectionMarker) is
                 { Current.IsOffscreen: false }, "Connection visibly mounted in the original window");
@@ -79,6 +82,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, inboxMarker) is { Current.IsOffscreen: false } &&
                 FindButtons(run, failureDismissLabel).Count == 0, "admitted Dashboard reminder removed from the inbox");
             Assert.Single(FindButtons(run, slackDismissLabel));
+            await ExpandNotificationReminderAsync(run, "Slack channel needs attention", "Open Channels");
             Assert.Single(FindButtons(run, "Open Channels"));
             AssertDashboardLaunches(run, DashboardOutcome.SimulatedFailure);
             await CaptureIfRequestedAsync(run, "native-notification-only-slack-retained.png");

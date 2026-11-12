@@ -188,7 +188,7 @@ public sealed class AccessibilityAppFixture : IDisposable
         }
     }
 
-    public string? CaptureHubScreenshotIfRequested()
+    public string? CaptureHubScreenshotIfRequested(bool preserveWindowState = false)
     {
         var configuredPath = Environment.GetEnvironmentVariable("OPENCLAW_UI_SCREENSHOT_PATH");
         if (string.IsNullOrWhiteSpace(configuredPath))
@@ -198,7 +198,8 @@ public sealed class AccessibilityAppFixture : IDisposable
         var foreground = false;
         for (var attempt = 0; attempt < 20; attempt++)
         {
-            _ = ShowWindow(HubWindowHandle, ShowMaximized);
+            if (!preserveWindowState)
+                _ = ShowWindow(HubWindowHandle, ShowMaximized);
             _ = BringWindowToTop(HubWindowHandle);
             _ = SetForegroundWindow(HubWindowHandle);
             if (GetForegroundWindow() == HubWindowHandle)
