@@ -50,8 +50,6 @@ public sealed partial class GatewayFixtureUiTests
             }
             catch
             {
-                // Preserve the original assertion failure. Emit only fixture-owned
-                // geometry and whitelisted state, never a UI tree or chat contents.
                 await WriteReaderBoundaryAsync(run, reader, "offline-anchor-failure", includeProviderSnapshot: true);
                 throw;
             }
@@ -135,8 +133,6 @@ public sealed partial class GatewayFixtureUiTests
     {
         try
         {
-            // The ordinal identifies known synthetic fixture data without exporting
-            // arbitrary UI text. The expected offsets are the original captured anchor.
             const string prefix = "Fixture long message ";
             var fixtureOrdinal = anchor.Text.StartsWith(prefix, StringComparison.Ordinal)
                 && anchor.Text.Length >= prefix.Length + 3
@@ -186,8 +182,6 @@ public sealed partial class GatewayFixtureUiTests
                 historyReplies = CompletedReaderHistoryReplies(run)
             }));
             if (!includeProviderSnapshot) return;
-            // This existing supporting read runs only after the failed assertion,
-            // so it cannot refresh history and rescue the boundary under test.
             var snapshot = await run.InvokeAsync("app.chat.snapshot", new { threadId = GatewayScenario.LongSessionKey });
             var available = snapshot.TryGetProperty("composeTarget", out var target);
             WriteReaderDiagnostic("SYNTHETIC disconnect-reader-provider " + JsonSerializer.Serialize(new
@@ -203,7 +197,6 @@ public sealed partial class GatewayFixtureUiTests
         }
         catch (Exception diagnosticError)
         {
-            // No exception message: UIA/MCP errors can contain arbitrary content.
             WriteReaderDiagnostic($"SYNTHETIC disconnect-reader stage={stage}; diagnostic-unavailable={diagnosticError.GetType().Name}");
         }
     }
@@ -211,8 +204,6 @@ public sealed partial class GatewayFixtureUiTests
     private void WriteReaderDiagnostic(string value)
     {
         output.WriteLine(value);
-        // xUnit includes ITestOutputHelper in failed results only. Keep this
-        // bounded synthetic sequence inspectable in CI for passing cases too.
         Console.WriteLine(value);
     }
 
@@ -245,9 +236,6 @@ public sealed partial class GatewayFixtureUiTests
     {
         const int maxReaderPages = 30;
         const double readerTargetPercent = 80;
-        // UIA SetScrollPercent over a still-realizing virtualized extent reported
-        // 50% -> 0% in the original CI run. Drive ordinary page-up semantics only
-        // after the actual tail is visible, and await each native scroll effect.
         for (var page = 0; page < maxReaderPages; page++)
         {
             var before = TimelineScroll(run).Current.VerticalScrollPercent;

@@ -30,7 +30,6 @@ internal static class GatewayFixtureRenderObservation
     }
 }
 
-/// <summary>Receipts acknowledge real native work; they cannot request or suppress navigation.</summary>
 internal sealed class GatewayFixturePositioningState
 {
     private readonly HashSet<int> _nativeScrolls = [];
@@ -65,8 +64,6 @@ internal sealed class GatewayFixturePositioningState
             Invalidate();
             return;
         }
-        // A second actual composition frame acknowledges the geometry after the
-        // idle frame, not a millisecond window or a caller-supplied ready flag.
         if (_renderedIdleFrame) _completedRequestKey = _requestKey;
         _renderedIdleFrame = true;
     }

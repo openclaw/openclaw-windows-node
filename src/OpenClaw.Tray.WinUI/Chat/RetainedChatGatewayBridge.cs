@@ -6,10 +6,6 @@ using OpenClawTray.Helpers;
 
 namespace OpenClawTray.Chat;
 
-/// <summary>
-/// Stable chat port over successive manager-owned connections. It retains no chat
-/// payloads and creates no client. Only the lifetime owner may attach a verified route.
-/// </summary>
 internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuestionGateway
 {
     private readonly object _gate = new();
@@ -30,7 +26,6 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
     internal bool IsBoundTo(IOperatorGatewayClient client) => Read(inner =>
         inner is GatewayClientChatBridge gateway && gateway.IsBoundTo(client), false);
 
-    // Takes ownership of the adapter, never of the connection manager's client.
     internal void Attach(IChatGatewayBridge? next)
     {
         IChatGatewayBridge? previous;
@@ -46,8 +41,6 @@ internal sealed class RetainedChatGatewayBridge : IChatGatewayBridge, IChatQuest
             var generation = ++_generation;
             cancellation = _cancellation;
             _cancellation = new();
-            // Cancellation is part of retiring the binding, before observers run
-            // or another serialized transport write can use the old authority.
             cancellation.Cancel();
             ToolDetailsInvalidated?.Invoke(this, EventArgs.Empty);
             StatusChanged?.Invoke(this, ConnectionStatus.Disconnected);

@@ -25,11 +25,6 @@ internal sealed record ChatConnectionAuthority(string GatewayId, string Endpoint
         !string.IsNullOrWhiteSpace(SigningDeviceId) && !string.IsNullOrWhiteSpace(ProfileId) && this == next;
 }
 
-/// <summary>
-/// UI-dispatched provider lifetime. Disconnect suspends its port, not its loaded
-/// conversation. A replacement route must independently confirm endpoint, signing
-/// device, profile and session identities before it can reuse that conversation.
-/// </summary>
 internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRecovery
 {
     private const int DefaultReadinessTimeoutMs = 12_000;
@@ -39,7 +34,6 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
     private GatewayRegistry? _registry;
     private GatewayRecord? _scope;
     private OpenClawGatewayClient? _client;
-    // Receive-loop invalidation precedes its queued UI notification.
     private volatile ChatConnectionAuthority? _authority;
     private CancellationTokenSource? _verification;
     private Action? _unsubscribe;
@@ -56,8 +50,6 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
     internal OpenClawChatDataProvider? Provider { get; private set; }
     public ChatVerificationState VerificationState { get; private set; }
 
-    // Only the already-confirmed ordinary conversation can supply an offline row.
-    // The live roster and creation readiness keep their independent authority gates.
     internal SessionInfo? RetainedNavigationSession(string? sessionKey) =>
         !_disposed && _authority is not null && CaptureScope() == _scope &&
         !_bridge.IsAttached && _client is not { IsConnectedToGateway: true }
@@ -93,9 +85,6 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
         _registry.Changed += OnRegistryChanged;
     }
 
-    // Friendly-name and last-connected bookkeeping do not change authority. The
-    // immutable record comparison also invalidates credential edits without any
-    // new credential-file read, token import or credential fallback.
     private GatewayRecord? CaptureScope() => _registry?.GetActive() is { } record
         ? record with { LastConnected = null, FriendlyName = null } : null;
 
@@ -196,8 +185,6 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
                 _version++;
             }
             Forget();
-            // Same-route bookkeeping may complete bootstrap while the accepted
-            // client stays alive. It can mount fresh data, never reuse the old provider.
             if (_client is { IsConnectedToGateway: true } client) BeginVerification(client, _version);
         });
     }
@@ -237,8 +224,6 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
             {
                 if (!Current(client, version) || token.IsCancellationRequested ||
                     client.ServerHandshakeGeneration != handshake || CaptureScope() != scope) return;
-                // A fresh profile response can disprove reuse before the roster
-                // completes. Do not retain that known-foreign history on timeout.
                 if (_authority?.CanRetain(authority) == false)
                 {
                     _authority = null;
@@ -251,8 +236,6 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
         catch (InvalidOperationException ex) when (authority is null &&
             ex.Message.Contains("unknown method", StringComparison.OrdinalIgnoreCase))
         {
-            // Only explicit unsupported-method compatibility admits fresh chat.
-            // Auth denials, timeouts and malformed rosters must remain blocked.
             Logger.Debug("[ChatConnection] Profile confirmation is unsupported; retained history cannot be reused.");
         }
         catch (TimeoutException) { timedOut = true; }
@@ -267,9 +250,6 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
                 client.ServerHandshakeGeneration != handshake || CaptureScope() != scope) return;
             if (rejected || timedOut)
             {
-                // A timeout does not disprove the previously confirmed identity.
-                // Keep readable state suspended, but retire this verification and
-                // require an explicit fresh check before any port can reattach.
                 if (rejected) Forget(); else CancelVerification();
                 SetVerificationState(ChatVerificationState.Failed);
                 return;
@@ -292,7 +272,7 @@ internal sealed class ChatProviderConnection : IDisposable, IChatVerificationRec
     private void Suspend()
     {
         try { _bridge.Attach(null); }
-        catch (ObjectDisposedException) { /* A concurrent authority change already retired this port. */ }
+        catch (ObjectDisposedException) {  }
     }
 
     private void CancelVerification()

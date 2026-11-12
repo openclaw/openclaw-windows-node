@@ -127,8 +127,6 @@ internal sealed class ChatConversationState
                 if (!hasContent && key != selected) continue;
                 var session = sessions.FirstOrDefault(candidate => candidate.Key == key);
                 if (session is null) return false;
-                // Live entries and a draft may precede the first history response.
-                // The prior authoritative roster can supply their immutable identity.
                 var previousId = _history.ResolveSessionId(key) ?? _presentation.FindSession(key)?.SessionId;
                 if (string.IsNullOrEmpty(previousId) || previousId != session.SessionId) return false;
             }
@@ -136,8 +134,6 @@ internal sealed class ChatConversationState
         }
     }
 
-    // Navigation may name a loaded conversation while its port is suspended.
-    // This is one defensive row, not a replacement authoritative roster.
     internal SessionInfo? RetainedNavigationSession(string? sessionKey)
     {
         lock (_gate)

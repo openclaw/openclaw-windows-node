@@ -251,8 +251,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatConnectio
     {
         cancellationToken.ThrowIfCancellationRequested();
         Questions?.Start();
-        // A retired transport has no roster. Re-entering the retained page must
-        // read the existing conversation state, not replace it with that empty cache.
         if (_bridge is RetainedChatGatewayBridge { IsAttached: false })
             return Task.FromResult(_state.RetainedSnapshot(ProjectionContext()));
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();

@@ -22,7 +22,6 @@ internal readonly record struct InitialTailNavigationRequest(int Version)
     }
 }
 
-/// <summary>Content refresh schedules positioning without changing reader navigation intent.</summary>
 internal readonly record struct TailNavigationIdentity(string RequestKey, string ExplicitRequestKey)
 {
     public static TailNavigationIdentity Create(string? sessionId, long generation, long historyRevision, long scrollToken) => new(
@@ -32,12 +31,8 @@ internal readonly record struct TailNavigationIdentity(string RequestKey, string
 
 internal static class TailNavigationPolicy
 {
-    // Composer/status height changes must not move an established reader.
-    // Keep native anchoring enabled in both modes, switching only with intent.
     public static double ViewportAnchorRatio(bool following) => following ? 1.0 : 0.0;
 
-    // Page navigation reattaches observation without converting a reader into
-    // a new initial tail request. Unfinished initial positioning still lands.
     public static bool ShouldPositionOnLoad(bool following, bool initialPending) => following || initialPending;
 
     public static bool ShouldNavigate(bool explicitNavigation, bool following, bool initialPending, bool hadValidTail) =>

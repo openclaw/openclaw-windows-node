@@ -4,7 +4,6 @@ using System.Text.Json;
 
 namespace OpenClawTray.Chat;
 
-/// <summary>Executes RPCs with cancellation reaching their final transport effect.</summary>
 internal interface IChatGatewayRequestScope
 {
     Task<T> RunWithRequestCancellationAsync<T>(CancellationToken cancellationToken, Func<Task<T>> operation);

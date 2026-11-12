@@ -9,7 +9,6 @@ using OpenClawTray.Chat;
 
 namespace OpenClaw.Tray.UITests;
 
-/// <summary>Exercises initial admission and retirement through the shipped viewport owner.</summary>
 [Collection(UICollection.Name)]
 public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
 {
@@ -36,8 +35,6 @@ public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
                 return Task.FromResult(version);
             });
 
-            // Drain the real dispatcher after unload. The retired initial request
-            // must not start a bring or turn the reader into a follower.
             await ui.YieldToRenderAsync();
             await ui.RunOnUIAsync(() =>
             {
@@ -141,8 +138,6 @@ public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
                 items = CreateReader();
                 mounted = AwaitReaderMountAsync(items, () => detachedHost.Children.Add(items), cancellation.Token);
             });
-            // Reproduce the former precondition deterministically: a dispatcher
-            // drain completes even though this native tree has not been loaded.
             await ui.YieldToRenderAsync();
             await ui.RunOnUIAsync(() =>
             {
@@ -162,7 +157,7 @@ public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
                 {
                     try { await mounted; }
                     catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-                    { /* Join the canceled test-owned wait; do not suppress timeout or assertion failures. */ }
+                    {  }
                 }
             }
             finally { await CleanupAsync(null); }
@@ -199,9 +194,6 @@ public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
         int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
 
-    // Must run on the fixture UI thread. Subscribe before insertion, then join
-    // actual native Loaded/layout readiness rather than assuming a queue drain
-    // scheduled the next XAML load pass. Every subscription is retired on failure.
     private static async Task AwaitReaderMountAsync(ItemsView items, Action attach, CancellationToken cancellationToken = default)
     {
         var mounted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -260,7 +252,6 @@ public sealed class InitialTailPositionerLifecycleTests(UIThreadFixture ui)
         ui.Container.Children.Clear();
     });
 
-    // Reflection reaches the real file-local owner, not a copied state machine.
     private sealed class Owner : IDisposable
     {
         private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;

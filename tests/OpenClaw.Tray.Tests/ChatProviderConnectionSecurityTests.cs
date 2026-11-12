@@ -48,8 +48,6 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             Assert.DoesNotContain(h.Server.Requests, request => request.Method == "chat.send");
             if (profileRead) h.Server.ReleaseUserProfiles(); else h.Server.ReleaseSessionList();
             held = false;
-            // Failed acknowledges the old owner completion. Join that exact
-            // released wire response before testing late delivery or starting retry.
             await h.JoinResponseAsync(expiredRead);
             Assert.False(h.IsBound);
             Assert.Equal(ChatVerificationState.Failed, h.Lifetime.VerificationState);
@@ -113,8 +111,6 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             {
                 await h.Server.PublishToolActivityAsync(GatewayScenario.OtherSessionKey);
                 await activity.Task.WaitAsync(Deadline);
-                // Receive-loop acknowledgement follows the cached event. Drain
-                // its already-posted UI work, not a fixed absence window.
                 await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
                 h.Drain();
                 Assert.False(h.IsBound, "A live cached roster must not reactivate a suspended binding before its requested listing responds.");
@@ -190,7 +186,6 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             sendLock.Release();
             held = false;
             Trace("serialized-send-lock-released");
-            // A subsequent response is a wire barrier behind the queued request.
             await h.Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
             Trace("health-response-acknowledged-after-settled-old-send");
             var staleWrites = h.Server.Requests.Count(request => request.Method == "chat.send");
@@ -288,8 +283,6 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
             var roster = await h.WaitForAuthorityRequestAsync("sessions.list", first);
             await h.ReleaseAndQueueVerificationCommitAsync(roster, h.Server.ReleaseSessionList);
             held = false;
-            // The exact verification's final UI commit is now queued. Invalidate
-            // before dispatching it, rather than guessing which two callbacks ran.
             await h.ChangeProfileAsync("fixture-after-queued-verification");
             h.Drain();
             Assert.False(reusedAfterInvalidation, "A queued UI commit must not revive the profile invalidated by the wire event.");
@@ -385,8 +378,6 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
 
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), "fixture-not-the-stored-shared-token");
         server.AcceptedDeviceToken = "fixture-stable-operator-token";
-        // Repoint only the in-memory route to an owned ephemeral server. The
-        // released stored bytes, token precedence and signing identity stay intact.
         registry.AddOrUpdate(record with { Url = server.Endpoint.AbsoluteUri });
         var queue = new ConcurrentQueue<Action>();
         using var lifetime = new ChatProviderConnection(action => queue.Enqueue(action), bridge =>
@@ -511,8 +502,6 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         }
         public async Task JoinResponseAsync(int index, bool dispatch = true)
         {
-            // Success is recorded after the response write. Only then can the
-            // subsequent health reply order the receive-loop parser behind it.
             await WaitWithoutDispatchAsync(() => Server.Requests[index].Outcome != "pending");
             Assert.Equal("ok", Server.Requests[index].Outcome);
             await Client.SendWizardRequestAsync("health", new { }).WaitAsync(Deadline);
@@ -520,12 +509,10 @@ public sealed partial class ChatProviderConnectionSecurityTests(ITestOutputHelpe
         }
         public async Task ReleaseAndQueueVerificationCommitAsync(int roster, Action release)
         {
-            Drain(); // The profile precheck was posted before this roster was sent.
+            Drain();
             Assert.Empty(_queue);
             release();
             await JoinResponseAsync(roster, dispatch: false);
-            // A roster response's owner continuation must actually have posted its
-            // final commit. Keep it queued so the test can retire its authority.
             await WaitForQueuedActionAsync();
         }
         public async Task ChangeProfileAsync(string profile)

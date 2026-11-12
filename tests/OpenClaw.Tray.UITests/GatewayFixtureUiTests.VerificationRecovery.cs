@@ -22,10 +22,6 @@ public sealed partial class GatewayFixtureUiTests
             await run.WaitForAsync(async () =>
                 (await run.InvokeAsync("app.status")).GetProperty("operatorState").GetString() == "Idle", "explicit manager disconnect before withholding roster");
             var firstRequest = run.Gateway.Requests.Count;
-            // Reconnect has independent SDK/Workspace roster reads. Hold all of
-            // them and observe the correlated authority read, not simply the next one.
-            // The fixture strips ambient OPENCLAW_* flags, so this exercises the
-            // actual 12-second production deadline, not an inherited test override.
             run.Gateway.HoldSessionListings();
             var rosterHeld = true;
             try
@@ -54,8 +50,6 @@ public sealed partial class GatewayFixtureUiTests
             }
             finally { if (rosterHeld) run.Gateway.ReleaseSessionListings(); }
 
-            // A known profile change discards old history. Its connected-but-unverified
-            // state uses the existing waiting/retry surface, not connection guidance.
             run.Gateway.HoldUserProfiles();
             var profileHeld = true;
             try

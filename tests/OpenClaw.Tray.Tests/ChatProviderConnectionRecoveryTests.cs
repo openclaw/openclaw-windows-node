@@ -55,8 +55,6 @@ public sealed partial class ChatProviderConnectionSecurityTests
                 h.Registry.SetActive("other");
                 break;
         }
-        // No queued UI callback has been drained. Retiring the transport now must
-        // not turn its known-revoked view back into legitimate offline continuity.
         h.Lifetime.SetClient(null);
         Assert.Null(h.Lifetime.RetainedNavigationSession(GatewayScenario.OtherSessionKey));
         h.Drain();
@@ -117,8 +115,6 @@ public sealed partial class ChatProviderConnectionSecurityTests
         var held = true;
         try
         {
-            // The SDK and Workspace can issue unscoped listing reads as well as
-            // the lifetime owner's correlated verification. Reproduce that ordering.
             await h.Client.RequestSessionsAsync();
             await h.PumpUntilAsync(() => h.Server.Requests.Skip(first).Any(r => r.Method == "sessions.list" && !r.AuthorityScoped && r.Outcome == "pending"));
             h.Lifetime.SetClient(h.Client);
@@ -191,8 +187,6 @@ public sealed partial class ChatProviderConnectionSecurityTests
                 case "auth": h.Lifetime.ObserveConnection(new GatewayConnectionSnapshot { GatewayId = h.Record.Id, OperatorErrorKind = GatewayErrorKind.Auth }); break;
                 case "dispose": h.Lifetime.Dispose(); break;
             }
-            // The released exact retry response and its final owner continuation
-            // are joined above. Dispatch that known commit only after invalidation.
             h.Drain();
             Assert.False(reusedAfterInvalidation);
             if (boundary == "profile")

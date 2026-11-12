@@ -1402,7 +1402,6 @@ public sealed class ChatTimelinePresentationTests
             < input.IndexOf("scrollView.VerticalAnchorRatio = 0;", StringComparison.Ordinal));
         Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private bool IsDisclosureHeader", "private void RestoreTailAnchor"));
 
-        // Leaving a disclosure restores reader/follower policy, not unconditional tail anchoring.
         var restore = Slice("private void RestoreTailAnchor", "private void OnReaderFocus");
         Assert.Contains("_disclosureAnchored = false;", restore);
         Assert.Contains("ApplyViewportAnchor();", restore);

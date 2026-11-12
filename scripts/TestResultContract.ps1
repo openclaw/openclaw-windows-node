@@ -103,7 +103,6 @@ function Read-TestResultContract {
     }
 }
 
-# Diagnostic names are not an acceptance result and never override the native exit code.
 function Get-FailedTestNames {
     param([string]$Path)
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }

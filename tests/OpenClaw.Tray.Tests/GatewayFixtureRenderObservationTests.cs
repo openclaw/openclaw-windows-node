@@ -65,7 +65,7 @@ public sealed class GatewayFixtureRenderObservationTests
         state.ScrollStarted(41);
         state.RenderedFrame(ownerPending: false, nativeIdle: true);
         Assert.False(Settled());
-        state.ScrollCompleted(99); // An unrelated completion cannot settle41.
+        state.ScrollCompleted(99);
         state.RenderedFrame(ownerPending: false, nativeIdle: true);
         Assert.False(Settled());
         state.ScrollCompleted(41);

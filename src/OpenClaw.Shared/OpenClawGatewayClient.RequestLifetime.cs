@@ -5,9 +5,6 @@ namespace OpenClaw.Shared;
 
 public partial class OpenClawGatewayClient
 {
-    // Request IDs are opaque protocol strings. A reserved namespace lets the
-    // response router reject retired scoped RPCs without an unbounded tombstone
-    // cache or changing legacy uncorrelated-response compatibility.
     private const string AuthorityRequestPrefix = "authority-rpc:";
     private readonly AsyncLocal<CancellationToken?> _requestCancellation = new();
     private string CreateResponseRequestId() =>
@@ -15,9 +12,6 @@ public partial class OpenClawGatewayClient
     private static bool IsAuthorityRequestId(string? requestId) =>
         requestId?.StartsWith(AuthorityRequestPrefix, StringComparison.Ordinal) == true;
 
-    // Application requests may have a shorter authority lifetime than the socket.
-    // Each async call flow receives its own token; other users of this manager-owned
-    // client and transport control/receive loops retain the normal client lifetime.
     protected new CancellationToken CancellationToken => _requestCancellation.Value ?? base.CancellationToken;
 
     /// <summary>
@@ -58,8 +52,6 @@ public partial class OpenClawGatewayClient
             if (snapshot.Length != rowCount || snapshot.Select(row => row.Key).Distinct(StringComparer.Ordinal).Count() != snapshot.Length)
                 throw new System.Text.Json.JsonException("Invalid authoritative sessions.list rows.");
             CancellationToken.ThrowIfCancellationRequested();
-            // Keep the existing SDK cache/event owner in sync, but return the
-            // detached reply projection even if live activity changes that cache.
             ParseSessions(payload);
             return snapshot;
         });

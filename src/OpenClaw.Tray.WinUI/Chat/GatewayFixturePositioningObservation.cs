@@ -5,7 +5,6 @@ using OpenClaw.Shared;
 
 namespace OpenClawTray.Chat;
 
-/// <summary>Passive extension of the fixture UIA receipt, never a positioning controller.</summary>
 internal sealed class GatewayFixturePositioningObservation : IDisposable
 {
     private readonly ItemsView _view;
