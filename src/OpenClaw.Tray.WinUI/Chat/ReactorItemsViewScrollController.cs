@@ -121,6 +121,9 @@ file sealed class InitialTailPositioner : IDisposable
     private const double FollowThreshold = 60;
     private const double TailVisibilityTolerance = 1;
     private const double OffsetCorrectionAnchorRatio = 0.5;
+    // Exactly 1 selects WinUI's extent-edge mode, which can undo an offset as virtual
+    // rows remeasure. The nearest interior point anchors content at its bottom instead.
+    private static readonly double TailAnchorRatio = Math.BitDecrement(1.0);
 
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
@@ -554,7 +557,7 @@ file sealed class InitialTailPositioner : IDisposable
         _scrollView = nextScrollView;
         if (_scrollView is not null)
         {
-            _scrollView.VerticalAnchorRatio = 1.0;
+            _scrollView.VerticalAnchorRatio = TailAnchorRatio;
             _scrollView.ViewChanged += OnViewChanged;
             _scrollView.StateChanged += OnScrollStateChanged;
             _scrollView.ExtentChanged += OnExtentChanged;
@@ -721,7 +724,7 @@ file sealed class InitialTailPositioner : IDisposable
         {
             if (_offsetCorrectionAnchorRequested is not null)
                 _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
-            _scrollView.VerticalAnchorRatio = 1.0;
+            _scrollView.VerticalAnchorRatio = TailAnchorRatio;
         }
         _offsetCorrectionAnchorRequested = null;
     }

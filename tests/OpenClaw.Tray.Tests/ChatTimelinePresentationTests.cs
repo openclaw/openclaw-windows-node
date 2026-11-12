@@ -118,7 +118,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = _readerBringCorrelationId is null && IsNearBottom(sender)", binding);
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
+        Assert.Contains("_scrollView.VerticalAnchorRatio = TailAnchorRatio", binding);
+        Assert.DoesNotContain("VerticalAnchorRatio = 1.0", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
         Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
@@ -194,7 +195,7 @@ public sealed class ChatTimelinePresentationTests
         var restore = Method(binding, "private void RestoreTailAnchor()", "private void OnReaderFocus(");
         Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", restore);
         Assert.Contains("_offsetCorrectionAnchorRequested = null", restore);
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", restore);
+        Assert.Contains("_scrollView.VerticalAnchorRatio = TailAnchorRatio", restore);
         var detach = Method(binding, "private void DetachScrollView()", "public void Dispose()");
         Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", detach);
         Assert.Contains("_offsetCorrectionAnchorRequested = null", detach);
@@ -1289,7 +1290,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private bool IsDisclosureHeader", "private void RestoreTailAnchor"));
 
         // Tail dispatch and ordinary no-motion input restore bottom anchoring.
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
+        Assert.Contains("_scrollView.VerticalAnchorRatio = TailAnchorRatio", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
         Assert.Contains("RestoreTailAnchor();", Slice("private void CancelPendingNavigation", "_version++"));
         Assert.Contains("RestoreTailAnchor();", Slice("private bool StartTailRequest", "private object? GetRequestItem"));
         Assert.Contains("RestoreTailAnchor();", Slice("// Reflow needs an offset correction", "scrollView.ScrollTo("));

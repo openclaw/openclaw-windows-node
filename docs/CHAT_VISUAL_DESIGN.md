@@ -391,8 +391,15 @@ the native anchor at an interior ratio until completion or cancellation.
 The anchor callback rechecks the navigation generation, row index and source
 identity without realizing another row. This avoids both disabled-anchor layout
 cycles and edge anchoring undoing the correction as the virtualized extent changes.
-Native bottom anchoring and the existing follow threshold are unchanged, except
-for that bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
+Normal bottom anchoring uses the nearest representable ratio below `1.0`
+(`Math.BitDecrement(1.0)`). This selects native content anchoring at the bottom,
+not WinUI's special extent-edge mode at exactly `1.0`, which can undo an offset
+as variable-height virtualized rows remeasure. The native scrollbar-end proof
+uses the same 900/1300-DIP window widths at every display scale; it still requires
+the actual final message to be visible without invoking **Jump to latest**.
+Streaming follow retains its exact-bottom assertions and introduces no extra
+scroll requests or extent-follow loop. The existing follow threshold is unchanged.
+Anchoring differs during the bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
 transcript then anchors to the top, so the header stays put and its details
 grow downward, as on the web. Any other reader input or programmatic tail scroll
 restores bottom anchoring.

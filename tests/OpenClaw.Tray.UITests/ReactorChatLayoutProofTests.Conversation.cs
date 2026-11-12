@@ -402,8 +402,8 @@ public sealed partial class ReactorChatLayoutProofTests
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await AwaitBottomAsync();
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => transcriptScroll.VerticalAnchorRatio == 1,
-                "bottom anchoring restored after the corrected jump"));
+                () => transcriptScroll.VerticalAnchorRatio > 0 && transcriptScroll.VerticalAnchorRatio < 1,
+                "content anchoring restored after the corrected jump"));
             await CaptureAsync(surface, "Feedback-resized-jump-latest");
 
             state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Reply after resized jump.", IsStreaming: true));
