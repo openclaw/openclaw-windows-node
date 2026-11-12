@@ -563,7 +563,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         UseEffect((Func<Action>)(() =>
         {
             if (inputControl.Current is { } anchor)
-                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible);
+                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible, windowed: props.Compact);
             else
                 CloseSlashPopup(slashPopup);
             return static () => { };
@@ -896,15 +896,18 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Ref<Microsoft.UI.Xaml.Controls.Primitives.Popup?> popupRef,
         TextBox anchor,
         FrameworkElement? content,
-        bool visible)
+        bool visible,
+        bool windowed)
     {
         var popup = popupRef.Current;
         if (popup is null)
         {
+            // The desktop lobster's host window is click-through and clipped to the mascot,
+            // so its quick chat needs a windowed popup that can leave those bounds.
             popup = new Microsoft.UI.Xaml.Controls.Primitives.Popup
             {
                 IsLightDismissEnabled = false,
-                ShouldConstrainToRootBounds = true,
+                ShouldConstrainToRootBounds = !windowed,
             };
             popupRef.Current = popup;
         }

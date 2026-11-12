@@ -45,7 +45,8 @@ public static class ReactorChatHostExtensions
         Action onSandboxSettingsClick,
         Action? onSessionNavigationStarting = null,
         Action<string, string?>? onSessionSelected = null,
-        Action<string>? onSpeechTargetChanged = null)
+        Action<string>? onSpeechTargetChanged = null,
+        Func<IDisposable>? beginModal = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);
@@ -75,6 +76,7 @@ public static class ReactorChatHostExtensions
                 XamlRoot = target.XamlRoot,
             };
             dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+            using var modal = beginModal?.Invoke();
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
 

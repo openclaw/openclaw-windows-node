@@ -147,7 +147,8 @@ internal sealed class DesktopCompanionChatHost : IDisposable
                     {
                         if (dedicated) _dedicatedSessions.Select(gatewayId, key);
                         else _replyKey = key;
-                    });
+                    },
+                    beginModal: _presentation.BeginModal);
                 mounted = _window.MountReactorChat(target, provider, composer,
                     initialThreadId: sessionKey, agentRosterSource: _app.AppState, compact: true);
                 if (dedicated) _dedicatedChat = mounted;

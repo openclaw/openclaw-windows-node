@@ -44,7 +44,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private PointInt32 _windowStart;
     private string? _notificationGatewayId;
     private (int Width, int Height, double Dpi, double MascotSize, bool Modal)? _regionLayout;
-    private bool _closed, _positioning, _dragged, _bubbleHovered;
+    private bool _closed, _positioning, _dragged, _bubbleHovered, _closeRequested, _nudge;
 
     public event EventHandler? HideRequested;
 
@@ -68,8 +68,10 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _host.Loaded += OnLoaded;
         _host.LayoutUpdated += OnHostLayoutUpdated;
         _host.KeyDown += OnKeyDown;
-        _bubbleHost.KeyDown += OnKeyDown;
+        _bubbleHost.KeyDown += OnBubbleKeyDown;
         _bubbleHost.SizeChanged += OnBubbleSizeChanged;
+        AppWindow.Changed += OnAppWindowChanged;
+        AppWindow.Closing += OnAppWindowClosing;
         _host.OnRenderComplete = (_, _, _) =>
         {
             if (_closed) return;
@@ -114,7 +116,21 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 
     void IDesktopCompanionView.Close()
     {
+        _closeRequested = true;
         if (!_closed) Close();
+    }
+
+    // A user close (Alt+F4) dismisses the bubble. Hiding the lobster is the Settings toggle's job.
+    private void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_closeRequested || _closed) return;
+        args.Cancel = true;
+        DismissBubble();
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (args.DidPositionChange || args.DidSizeChange) RefreshBubblePlacement();
     }
 
     public void Present(AppNotification? notification)
@@ -188,32 +204,51 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         if (_closed) return;
         var scale = _host.XamlRoot?.RasterizationScale ?? DesktopCompanionNative.GetDpiForWindow(_hwnd) / 96d;
         var layout = (Width: AppWindow.Size.Width, Height: AppWindow.Size.Height, Dpi: scale,
-            MascotSize: _presentation.MascotSize, Modal: _presentation.InputPrompt is not null);
+            MascotSize: _presentation.MascotSize, Modal: _presentation.IsModal);
         if (_regionLayout == layout) return;
         DesktopCompanionNative.SetRegion(_hwnd, layout.Width, layout.Height, layout.Dpi, layout.MascotSize,
             modal: layout.Modal);
         _regionLayout = layout;
+    }
+
+    private void OnPresentationChanged(object? sender, EventArgs args)
+    {
+        UpdateRegion();
         UpdateBubblePopup();
     }
 
-    private void OnPresentationChanged(object? sender, EventArgs args) => UpdateBubblePopup();
-
-    /// <summary>Anchors the popup bubble above the mascot, right-aligned to the overlay window.</summary>
+    /// <summary>
+    /// Anchors the popup bubble above the mascot, right-aligned to the overlay window. Geometry
+    /// comes from the native window size, because XAML layout lags a MoveAndResize.
+    /// </summary>
     private void UpdateBubblePopup()
     {
         if (_closed || _xamlRoot is null) return;
-        var visible = _presentation.IsChatOpen || _presentation.Notification is not null;
+        var visible = (_presentation.IsChatOpen || _presentation.Notification is not null) && !_presentation.IsModal;
         if (!visible)
         {
             _bubblePopup.IsOpen = false;
             return;
         }
-        _bubbleHost.Width = Math.Max(0, _host.ActualWidth - 8);
+        var scale = _xamlRoot.RasterizationScale;
+        var width = AppWindow.Size.Width / scale;
+        var height = AppWindow.Size.Height / scale;
+        var bottom = height - (_presentation.MascotSize - DesktopCompanionPresentation.BubbleOverlap) - 4;
+        _bubbleHost.Width = Math.Max(0, width - 8);
+        _bubbleHost.MaxHeight = Math.Max(0, bottom - 4);
         _bubblePopup.HorizontalOffset = 4;
-        _bubblePopup.VerticalOffset = Math.Max(
-            0, _host.ActualHeight - (_presentation.MascotSize - DesktopCompanionPresentation.BubbleOverlap) -
-            4 - _bubbleHost.ActualHeight);
+        _bubblePopup.VerticalOffset = Math.Max(0, bottom - _bubbleHost.ActualHeight);
         _bubblePopup.IsOpen = true;
+    }
+
+    // A windowed popup keeps its screen position until an offset changes, so a drag or a
+    // monitor change must nudge one to re-anchor it to the moved owner.
+    private void RefreshBubblePlacement()
+    {
+        if (_closed || !_bubblePopup.IsOpen) return;
+        UpdateBubblePopup();
+        _nudge = !_nudge;
+        _bubblePopup.HorizontalOffset = _nudge ? 4.01 : 4;
     }
 
     private void OnHostLayoutUpdated(object? sender, object args) => UpdateRegion();
@@ -263,7 +298,15 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _presentation.ShowChat(true);
         PositionInWorkArea();
         Activate();
-        _ = _chat.OpenAsync(sessionKey);
+        _ = OpenChatAndFocusAsync(sessionKey);
+    }
+
+    private async Task OpenChatAndFocusAsync(string? sessionKey)
+    {
+        await _chat.OpenAsync(sessionKey);
+        if (_closed || !_bubblePopup.IsOpen) return;
+        if (FocusManager.FindFirstFocusableElement(_bubbleHost) is UIElement first)
+            first.Focus(FocusState.Programmatic);
     }
 
     private void OnBubbleMounted(FrameworkElement element)
@@ -369,10 +412,20 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         args.Handled = true;
     }
 
+    // Menu keys in the composer keep their own text-box menu; only Escape is shared.
+    private void OnBubbleKeyDown(object sender, KeyRoutedEventArgs args)
+    {
+        if (args.Key != VirtualKey.Escape) return;
+        DismissBubble();
+        args.Handled = true;
+    }
+
     private void OnClosed(object sender, WindowEventArgs args)
     {
         if (_closed) return;
         _closed = true;
+        AppWindow.Changed -= OnAppWindowChanged;
+        AppWindow.Closing -= OnAppWindowClosing;
         _bubbleTimer.Stop();
         _bubbleTimer.Tick -= OnBubbleTimeout;
         _frameMonitor.Dispose();
@@ -382,7 +435,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _host.Loaded -= OnLoaded;
         _host.LayoutUpdated -= OnHostLayoutUpdated;
         _host.KeyDown -= OnKeyDown;
-        _bubbleHost.KeyDown -= OnKeyDown;
+        _bubbleHost.KeyDown -= OnBubbleKeyDown;
         _bubbleHost.SizeChanged -= OnBubbleSizeChanged;
         _presentation.Changed -= OnPresentationChanged;
         _bubblePopup.IsOpen = false;

@@ -27,6 +27,33 @@ internal sealed class DesktopCompanionPresentation
     public bool IsChatOpen { get; private set; }
     public long Revision { get; private set; }
     public DesktopCompanionInputPrompt? InputPrompt { get; private set; }
+    private int _modalDepth;
+
+    /// <summary>True while a prompt or chat dialog needs the whole overlay window, not just the mascot.</summary>
+    public bool IsModal => InputPrompt is not null || _modalDepth > 0;
+
+    /// <summary>Marks a dialog hosted in the overlay window; dispose to release it.</summary>
+    public IDisposable BeginModal()
+    {
+        _modalDepth++;
+        Revision++;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return new ModalScope(this);
+    }
+
+    private sealed class ModalScope(DesktopCompanionPresentation owner) : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            owner._modalDepth--;
+            owner.Revision++;
+            owner.Changed?.Invoke(owner, EventArgs.Empty);
+        }
+    }
 
     public void SetMascotSize(double size)
     {

@@ -57,8 +57,12 @@ internal static class DesktopCompanionNative
         const int windowCornerPreference = 33, doNotRound = 1;
         const int borderColor = 34, colorNone = unchecked((int)0xFFFFFFFE);
         Marshal.ThrowExceptionForHR(DwmSetWindowAttribute(hwnd, nonClientRenderingPolicy, renderingDisabled, sizeof(int)));
-        Marshal.ThrowExceptionForHR(DwmSetWindowAttribute(hwnd, windowCornerPreference, doNotRound, sizeof(int)));
-        Marshal.ThrowExceptionForHR(DwmSetWindowAttribute(hwnd, borderColor, colorNone, sizeof(int)));
+        // Corner and border attributes exist only on Windows 11; Windows 10 has square corners already.
+        if (OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+        {
+            Marshal.ThrowExceptionForHR(DwmSetWindowAttribute(hwnd, windowCornerPreference, doNotRound, sizeof(int)));
+            Marshal.ThrowExceptionForHR(DwmSetWindowAttribute(hwnd, borderColor, colorNone, sizeof(int)));
+        }
         const uint noSize = 1, noMove = 2, noZOrder = 4, noActivate = 0x10, frameChanged = 0x20;
         if (!SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, noSize | noMove | noZOrder | noActivate | frameChanged))
             throw new Win32Exception(Marshal.GetLastWin32Error());

@@ -569,16 +569,17 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 scroll.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                 scroll.VerticalContentAlignment = showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top;
             })
+            .MaxHeight(props.Compact ? 260 : double.PositiveInfinity)
             .IsVisible(composerVisible)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
         var conversation = Grid(
             [GridSize.Star()],
-            [showWelcome || props.Compact ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
+            [showWelcome ? GridSize.Auto : props.Compact ? (isEmptyConversation ? GridSize.Auto : GridSize.Star()) : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
             showWelcome || (props.Compact && isEmptyConversation)
                 ? Empty().Grid(row: 0)
                 : props.Compact
-                    ? Border(timelineElement).MaxHeight(240).Grid(row: 0)
+                    ? Border(timelineElement).Grid(row: 0)
                     : timelineElement.Grid(row: 0),
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
             ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
