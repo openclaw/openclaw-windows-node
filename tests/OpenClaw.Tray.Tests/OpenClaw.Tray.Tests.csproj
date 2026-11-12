@@ -82,6 +82,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatCompactionPresentation.cs" Link="Chat\ChatCompactionPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatHistoryReplayProjection.cs" Link="Chat\ChatHistoryReplayProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolActivityPresentation.cs" Link="Chat\ChatToolActivityPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolDetailRequest.cs" Link="Chat\ChatToolDetailRequest.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationPanelState.cs" Link="Chat\ChatConversationPanelState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\TailNavigationPolicy.cs" Link="Chat\TailNavigationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ReactorSlashCommandController.cs" Link="Chat\ReactorSlashCommandController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\NativeToolProjector.cs" Link="Chat\NativeToolProjector.cs" />
@@ -331,7 +333,6 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\WorkspaceSessionOperation.cs" Link="Services\WorkspaceSessionOperation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\DefaultModelGatewayWrite.cs" Link="Services\DefaultModelGatewayWrite.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ModelProviderGatewayService.cs" Link="Services\ModelProviderGatewayService.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ArchivedSessionsSource.cs" Link="Services\ArchivedSessionsSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNotificationInfoBarPresenter.cs" Link="Presentation\AppNotificationInfoBarPresenter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\InboxProjection.cs" Link="Presentation\InboxProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\InboxGatewayItems.cs" Link="Presentation\InboxGatewayItems.cs" />

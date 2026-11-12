@@ -1513,7 +1513,29 @@ public sealed class AppRefactorContractTests
             "setupWindow.Closed += OnSetupClosed",
             "CompleteSetupCloseAsync(setupWindow)",
             "await setupWindow.CleanupCompleted",
-            "_setupWindow = null");
+            "_setupWindow = null",
+            "TryAdoptExternalSnapshot()",
+            "ExternalSnapshotAdoption.UnsavedEdits",
+            "NotifySetupRegistryRecovery()",
+            "ExternalSnapshotAdoption.Adopted",
+            "ReconcileSetupConnectionAsync(before, registry.GetActive())");
+    }
+
+    [Fact]
+    public void SavedGatewayRemoval_SavesBeforeDisconnectingTheActiveConnection()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var connectionPage = File.ReadAllText(Path.Combine(
+            root,
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Pages",
+            "ConnectionPage.xaml.cs"));
+        var remove = ExtractMethod(connectionPage, "OnSavedRowRemoveAsync");
+        AssertInOrder(
+            remove,
+            "_gatewayRegistry?.RemoveAndSave(gwId)",
+            "await _connectionManager.DisconnectAsync()");
     }
 
     [Fact]
@@ -1719,10 +1741,9 @@ public sealed class AppRefactorContractTests
         var source = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages", "WizardPage.xaml.cs"));
         var reset = ExtractMethod(source, "ResetInputs");
 
-        // The "More ▾" overflow button is a sibling of SelectOptions in the shared
-        // StackPanel, so ResetInputs must remove it between steps or it leaks forward.
+        // The XAML owner must remove More even before the page joins the live tree.
         Assert.Contains("_moreOptionsButton", reset);
-        Assert.Contains("morePanel.Children.Remove(_moreOptionsButton)", reset);
+        Assert.Contains("StepInputsPanel.Children.Remove(_moreOptionsButton)", reset);
         Assert.Contains("_moreOptionsButton = null", reset);
     }
 

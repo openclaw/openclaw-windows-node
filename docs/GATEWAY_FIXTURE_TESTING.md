@@ -207,6 +207,36 @@ pending selection: returning Home retains the original conversation, while the
 created session remains available for explicit sidebar selection. No provider, transcript file, or real
 Gateway is involved; other mutations and unsupported creation parameters still fail.
 
+The opt-in `sessions-hub` scenario backs the Settings Sessions page. It adds 30
+synthetic sessions (categories, owners, a cloud worker, global, unknown and
+archived rows) to the browse set and accepts in-memory `sessions.list` filters
+and paging, `sessions.search` (including indexing and truncation states), patch,
+delete (including a preserved busy worktree), and the `worktrees.*` methods.
+`sessions-hub-readonly` grants only `operator.read` to show the limited page.
+`GatewayScenario.CreateSessionsHub(legacySessionsList: true)` rejects the
+`source`/`excludeDock` list params like Gateways before 2026.10.5 do. Run either
+interactively with `-Scenario sessions-hub` or `-Scenario sessions-hub-readonly`.
+
+Moving sessions between existing categories uses `sessions.patch`. Creating,
+renaming or deleting categories, assigning owners, changing session colors/icons,
+bulk deletion and stopping cloud workers stay in the web dashboard.
+Single-session archive, Undo and confirmed deletion remain native.
+
+Sessions regression tests also exercise failed-query row replacement, visible
+refresh errors, transcript query/scope invalidation and acknowledged label drafts
+through mounted native controls. They use the actual
+controller and small external-client proxies, without another app process.
+They also cover preserving identity-bound rename drafts across filters,
+wire-equivalent search edits, superseded or reopened Worktree branch lookups,
+single-delete confirmation during roster replacement, and mounted transcript
+scope text for global and unrouted sessions.
+Session details expand inside their native roster row at every window width.
+The list owns scrolling; wide rows use two detail columns, and narrower rows
+stack the same fields. Transcript **Show details** reveals the matching page
+and expands its group and row. It enables the completed/background display
+toggle when needed to show that explicitly requested result, for this visit only;
+the saved **Show completed** preference is unchanged.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request

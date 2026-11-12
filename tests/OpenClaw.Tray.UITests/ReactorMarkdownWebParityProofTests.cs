@@ -183,16 +183,17 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
             });
 
             // A High Contrast transition (which need not change ActualTheme) drops and then
-            // restores syntax, bold and inline-code highlighters on mounted Markdown.
-            var probe = ChatMarkdownPresentation.IsHighContrast;
+            // restores syntax, bold and inline-code highlighters on mounted Markdown. Drive the
+            // shared owner directly so a private Markdown contrast path cannot pass this proof.
+            var probe = ChatThemeChanges.IsHighContrast;
             try
             {
-                ChatMarkdownPresentation.IsHighContrast = static () => true;
-                ChatMarkdownPresentation.RefreshAfterContrastChange();
+                ChatThemeChanges.IsHighContrast = static () => true;
+                ChatThemeChanges.Refresh();
                 Assert.True(await PollAsync(() => FindDescendants<RichTextBlock>(root!).All(text => text.TextHighlighters.Count == 0)),
                     "High Contrast clears chat highlighters");
-                ChatMarkdownPresentation.IsHighContrast = static () => false;
-                ChatMarkdownPresentation.RefreshAfterContrastChange();
+                ChatThemeChanges.IsHighContrast = static () => false;
+                ChatThemeChanges.Refresh();
                 Assert.True(await PollAsync(() =>
                         FindDescendants<RichTextBlock>(root!).Any(text => Text(text) == TypeScript && text.TextHighlighters.Count > 0) &&
                         FindDescendants<RichTextBlock>(root!).Any(text =>
@@ -201,7 +202,7 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
             }
             finally
             {
-                ChatMarkdownPresentation.IsHighContrast = probe;
+                ChatThemeChanges.IsHighContrast = probe;
             }
 
             // Unmounting returns the code control to Reactor's pool without our highlighters.

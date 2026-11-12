@@ -27,6 +27,11 @@ not only for setup or a reported failure. Trace the existing producer contract
 and installed-version support before adding consumer behavior. Missing producer
 guarantees require an evidenced upstream proposal, not a local workaround.
 
+Do not create or maintain checked-in CI-failure or unresolved-issue backlogs.
+Investigate failures, fix their causes, and validate the repairs. Keep temporary
+tracking in session tooling, not repository files. Report genuine blockers
+directly; documenting a failure or deleting its record does not resolve it.
+
 | Task | Entry point |
 |---|---|
 | Generate, change, or review networking, IPC, or handoff behavior | [Network and handoff contracts](.agents/skills/network-handoff/SKILL.md), then the affected owner's guide |
