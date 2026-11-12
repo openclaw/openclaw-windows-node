@@ -266,10 +266,11 @@ Settings and search web destinations also use established routes, not Gateway
 release allowlists. Their route contracts are recorded in the
 [older route table](https://github.com/openclaw/openclaw/blob/3a9d69db306cd7f081e06254cb89c4bcc14a7107/ui/src/app-route-paths.ts)
 and [current released route table](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/app-route-paths.ts).
-Systems links use `/systems`, matching the native Systems page's Open in web
-action, not the separate Devices settings page. The current released route table
-defines `/systems`; the older table does not. Gateways without that page cannot
-provide an equivalent Systems destination.
+Systems links use `/systems`, the same route the native Systems page's Open in
+web action uses when the Gateway reports environments, not the separate Devices
+settings page. The current released route table defines `/systems`; the older
+table does not. Gateways without that page cannot provide an equivalent Systems
+destination, and their web app opens its default view for any route it lacks.
 These navigation contracts are not capability negotiation. Search still gates
 remote reads on advertised methods and operator permissions, fences stale
 connection/profile results, and limits admin-only destinations to administrators.

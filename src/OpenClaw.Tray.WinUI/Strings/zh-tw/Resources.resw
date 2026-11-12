@@ -7643,7 +7643,6 @@
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>入口網站</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作樹</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上傳檔案清理受阻</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>請檢查資料夾存取權和私人狀態資料的權限。恢復清理前，舊上傳檔案可能會繼續保留。請勿自動重試已完成的上傳。</value></data>

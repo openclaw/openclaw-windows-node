@@ -7643,7 +7643,6 @@
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>门户</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作树</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上传文件清理受阻</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>请检查文件夹访问权限和私有状态数据的权限。恢复清理前，旧上传文件可能会继续保留。请勿自动重试已完成的上传。</value></data>

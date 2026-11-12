@@ -7643,7 +7643,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portails</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Arbres de travail</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Le nettoyage des fichiers téléversés est bloqué</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Vérifiez l'accès aux dossiers et les autorisations des données privées. Les anciens fichiers peuvent subsister jusqu'au rétablissement du nettoyage. Ne relancez pas automatiquement les téléversements terminés.</value></data>
