@@ -177,7 +177,7 @@ static class FluentIconCatalog
             return;
         s_symbolThemeFallbackWarned = true;
 #if OPENCLAW_SETUP_UI
-        System.Diagnostics.Debug.WriteLine("FluentIconCatalog: " + reason);
+        global::System.Diagnostics.Debug.WriteLine("FluentIconCatalog: " + reason);
 #else
         OpenClawTray.Services.Logger.Warn("FluentIconCatalog: " + reason);
 #endif
