@@ -697,7 +697,7 @@
     },
     {
       "name": "ComposerPickerOptions",
-      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with 12px (`lg`) overlay corners (ChatPickerFlyoutStyle, #1459) and `md` shadow. Rows have 4px (`sm`) corners and full-row hover/pressed fills through `subtleHover`/`subtlePressed` (SubtleFillColorSecondary/Tertiary, the light/dark MenuFlyoutItem state resources). Pointer exit restores transparent fill without changing selection or geometry. Each row reserves a 16px leading glyph column; the selected row keeps its `accent` Segoe Fluent Icons CheckMark (U+E73E), not a radio dot. The check uses the existing 12px Fluent-glyph typography token, without raw style overriding its width or color. High-contrast subtle fills remain transparent under the current token contract; native MenuFlyout system-highlight overrides are not reproduced. This preview retains a representative checked row, not persistent model selection. Because `on.click.open` targets take no props, all triggers show the same representative model list; the searchable model flyout and effort slider/gauge remain app behavior.",
+      "note": "Representative single-select flyout for the subtle composer pickers (model, session, reasoning-effort). Ships as a WinUI Flyout of RadioMenuItem rows on a `surface` (CardBackgroundFillColorDefault) sheet with 12px (`lg`) overlay corners (ChatPickerFlyoutStyle, #1459) and `md` shadow. Rows have 4px (`sm`) corners and full-row hover/pressed fills through `subtleHover`/`subtlePressed` (SubtleFillColorSecondary/Tertiary, the light/dark MenuFlyoutItem state resources). Pointer exit restores transparent fill without changing selection or geometry. Each row reserves a 16px leading glyph column; the selected row keeps its `accentText` Segoe Fluent Icons CheckMark (U+E73E), not a radio dot. The check uses the existing 12px Fluent-glyph typography token, without raw style overriding its width or color. High-contrast subtle fills remain transparent under the current token contract; native MenuFlyout system-highlight overrides are not reproduced. This preview retains a representative checked row, not persistent model selection. Because `on.click.open` targets take no props, all triggers show the same representative model list; the searchable model flyout and effort slider/gauge remain app behavior.",
       "root": {
         "id": "composer-picker-options",
         "el": "div",
@@ -717,7 +717,7 @@
               "hoverPressed": { "background": "subtlePressed" }
             },
             "children": [
-              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 }, "appearance": { "textStyle": "chatChevron", "color": "accent", "textAlign": "center" }, "children": ["\uE73E"] },
+              { "id": "composer-option-sonnet-check", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 }, "appearance": { "textStyle": "chatChevron", "color": "accentText", "textAlign": "center" }, "children": ["\uE73E"] },
               "Claude Sonnet 5"
             ]
           },

@@ -124,7 +124,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     if (homeCandidate is null || defaultPin is null || pin is null || anchor is null || conversation is null || connection is null)
                         return false;
                     AutomationElement[] owners = [window, homeCandidate, defaultPin, pin, anchor, conversation, connection];
-                    if (owners.Any(element => element.Current.ProcessId != run.AppProcessId || element.Current.IsOffscreen)
+                    if (owners.Any(element => !NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId) ||
+                            element.Current.IsOffscreen)
                         || !pin.GetRuntimeId().SequenceEqual(connectionRow))
                         return false;
                     var homeRect = homeCandidate.Current.BoundingRectangle;
@@ -146,7 +147,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                     foreach (AutomationElement label in labels)
                     {
                         var bounds = label.Current.BoundingRectangle;
-                        if (label.Current.ProcessId != run.AppProcessId || label.Current.IsOffscreen || !Usable(bounds)
+                        if (!NativeUiOwnership.IsOwnedDescendant(window, label, run.AppProcessId) ||
+                            label.Current.IsOffscreen || !Usable(bounds)
                             || bounds.Top < anchorRect.Top || bounds.Bottom > anchorRect.Bottom
                             || bounds.Left < homeRect.Left || bounds.Right > anchorRect.Left)
                             continue;
@@ -1271,7 +1273,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     {
         run.EnsureRunning();
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);
-        Assert.Equal(run.AppProcessId, target.Current.ProcessId);
+        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, target, run.AppProcessId),
+            "Click target must belong to the verified native window.");
         var handle = new IntPtr(window.Current.NativeWindowHandle);
         Assert.True(SetForegroundWindow(handle), "Cannot foreground owned fixture window.");
         var previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
@@ -2034,7 +2037,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                         ownedWindowHandle != 0 && owner.NativeWindowHandle == ownedWindowHandle &&
                         owner.ControlType == ControlType.Window && owner.IsEnabled && !owner.IsOffscreen &&
                         windowRuntimeId.Length > 0 && selectorWindow.GetRuntimeId().SequenceEqual(windowRuntimeId) &&
-                        current.ProcessId == ownedProcessId && current.ControlType == ControlType.ComboBox &&
+                        NativeUiOwnership.IsOwnedDescendant(selectorWindow, selector, ownedProcessId) &&
+                        current.ControlType == ControlType.ComboBox &&
                         current.AutomationId == SessionAgentSelectorId && current.IsEnabled && !current.IsOffscreen &&
                         selectorRuntimeId.Length > 0 && selector.GetRuntimeId().SequenceEqual(selectorRuntimeId) &&
                         HasFiniteBounds(ownerBounds) && HasFiniteBounds(bounds) && ownerBounds.Contains(bounds);

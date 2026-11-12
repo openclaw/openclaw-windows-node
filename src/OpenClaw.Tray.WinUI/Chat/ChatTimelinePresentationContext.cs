@@ -45,4 +45,5 @@ public sealed record ChatTimelinePresentationContext(
     bool LoadingOlderHistory = false,
     ChatToolActivityExpansionState? ToolExpansionState = null,
     string UserDisplayName = "",
-    Microsoft.UI.Xaml.Media.ImageSource? UserProfilePicture = null);
+    Microsoft.UI.Xaml.Media.ImageSource? UserProfilePicture = null,
+    Action<ChatToolDetailRequest>? OnOpenToolDetails = null);

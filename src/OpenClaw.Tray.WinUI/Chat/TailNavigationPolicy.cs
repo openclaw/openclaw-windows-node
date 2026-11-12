@@ -24,6 +24,12 @@ internal readonly record struct InitialTailNavigationRequest(int Version)
 
 internal static class TailNavigationPolicy
 {
+    private const double TailVisibilityTolerance = 1;
+
+    // Unlike follow intent, landing must reject overshoot after the extent shrinks.
+    public static bool IsAtBottom(double verticalOffset, double scrollableHeight) =>
+        Math.Abs(scrollableHeight - verticalOffset) <= TailVisibilityTolerance;
+
     public static bool TryCapture(
         int tailIndex,
         string? displayedTailKey,

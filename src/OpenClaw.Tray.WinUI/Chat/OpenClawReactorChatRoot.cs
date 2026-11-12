@@ -47,6 +47,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
     private string? _pendingSelectedThreadId;
     private bool _initialSelectionApplied;
+    private readonly ChatConversationPanelState _panels = new();
 
     public static void SetToolCallsVisible(bool visible)
     {
@@ -77,6 +78,20 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     {
         var props = Props;
         var (snapshot, setSnapshot) = UseState<ChatDataSnapshot?>(null, threadSafe: true);
+        var latestSnapshot = UseRef<ChatDataSnapshot?>(null);
+        var (_, setPanelRevision) = UseState(0L, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            long revision = 0;
+            var native = props.Provider as OpenClawChatDataProvider;
+            void Invalidated(object? sender, EventArgs args) => setPanelRevision(Interlocked.Increment(ref revision));
+            if (native is not null) native.ToolDetailsInvalidated += Invalidated;
+            return () =>
+            {
+                if (native is not null) native.ToolDetailsInvalidated -= Invalidated;
+                _panels.Invalidate();
+            };
+        }), props.Provider);
         var (viewportWidth, setViewportWidth) = UseState(800d);
         var (viewportHeight, setViewportHeight) = UseState(620d);
         var (collapsedQuestionId, setCollapsedQuestionId) = UseState<string?>(null);
@@ -128,6 +143,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             var provider = props.Provider;
             EventHandler<ChatDataChangedEventArgs> onChanged = (_, args) =>
             {
+                latestSnapshot.Current = args.Snapshot;
                 setSnapshot(args.Snapshot);
                 if (args.Snapshot.ComposeTarget.SessionKey is { } composeKey
                     && args.Snapshot.Timelines.TryGetValue(composeKey, out var timeline)
@@ -146,7 +162,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             provider.Changed += onChanged;
             _ = LoadAsync(
                 provider,
-                setSnapshot,
+                value =>
+                {
+                    latestSnapshot.Current = value;
+                    setSnapshot(value);
+                },
                 () => selectedIdRef.Current,
                 next =>
                 {
@@ -283,6 +303,21 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             mediaResolver = dataProvider is null ? null : dataProvider.ResolveAssistantMediaAsync;
         Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
             fileDownloader = dataProvider is null ? null : dataProvider.DownloadAssistantFileAsync;
+        var panelSession = effectiveThread?.Id;
+        var panelConnection = nativeProvider?.ToolDetailsGeneration ?? 0;
+        var panelProfile = nativeProvider?.ToolDetailsProfileState ?? default;
+        bool PanelSourceCurrent() => selectedIdRef.Current == panelSession &&
+            (nativeProvider is null || panelProfile.IsAvailable &&
+                nativeProvider.ToolDetailsProfileState == panelProfile &&
+                nativeProvider.ToolDetailsGeneration == panelConnection) &&
+            latestSnapshot.Current is { } current &&
+            string.Equals(ToConnectionState(current.ConnectionStatus), "connected", StringComparison.Ordinal) &&
+            (nativeProvider is null || panelSession is not null && current.CurrentHistoryThreads?.Contains(panelSession) == true) &&
+            (panelSession is null || (current.TimelineGenerations?.GetValueOrDefault(panelSession) ?? 0) == timelineGeneration &&
+                (current.HistoryRevisions?.GetValueOrDefault(panelSession) ?? 0) == historyRevision);
+        _panels.Bind(props.Provider, panelSession, panelConnection, timelineGeneration, historyRevision,
+            entries, PanelSourceCurrent, panelProfile.Revision);
+        var panelRevision = _panels.Revision;
 
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
@@ -335,7 +370,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 : [],
             ProviderReview: isGatewayConnected ? effectiveThread?.ProviderReview : null,
             UserDisplayName: props.UserDisplayName,
-            UserProfilePicture: props.UserProfilePicture);
+            UserProfilePicture: props.UserProfilePicture,
+            OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
@@ -404,6 +440,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
         void SelectThread(string threadId)
         {
+            if (selectedIdRef.Current != threadId) _panels.Invalidate();
             _pendingSelectedThreadId = threadId;
             selectedIdRef.Current = threadId;
             setSelectedId(threadId);
@@ -537,7 +574,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 effectiveThread.Id,
                 contextUsage,
                 timeline.TurnActive));
-        return Grid(
+        var conversation = Grid(
             [GridSize.Star()],
             [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto, GridSize.Auto],
             showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
@@ -556,6 +593,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .VAlign(VerticalAlignment.Stretch)
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth, setViewportHeight))
             .OnUnmount(ChatVisuals.StopObserving);
+        return Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(
+            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps));
     }
 
     private static Element RenderLoading() =>

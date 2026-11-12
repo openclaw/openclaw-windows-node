@@ -3,7 +3,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorLight2}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorLight2}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
@@ -12,6 +11,10 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <!-- 82% primary + 18% secondary alpha: (0.82*255 + 0.18*197)/255. -->
+            <SolidColorBrush x:Key="ChatCommandOutputBrush" Color="{ThemeResource TextFillColorPrimary}" Opacity="0.9590588235294118" />
+            <SolidColorBrush x:Key="ChatToolActionHoverBrush" Color="{ThemeResource SubtleFillColorSecondary}" Opacity="0.7" />
+            <SolidColorBrush x:Key="ChatToolActionHoverForegroundBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF79C0FF" />
@@ -36,6 +39,9 @@
             <Style x:Key="ChatSecondaryRichTextStyle" TargetType="RichTextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
             </Style>
+            <Style x:Key="ChatCommandOutputRichTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatCommandOutputBrush}" />
+            </Style>
             <Style x:Key="ChatCodeTextStyle" TargetType="RichTextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
             </Style>
@@ -59,7 +65,6 @@
             </Style>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorDark1}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorDark1}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
@@ -68,6 +73,10 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <!-- 82% primary + 18% secondary alpha: (0.82*228 + 0.18*158)/228. -->
+            <SolidColorBrush x:Key="ChatCommandOutputBrush" Color="{ThemeResource TextFillColorPrimary}" Opacity="0.9447368421052632" />
+            <SolidColorBrush x:Key="ChatToolActionHoverBrush" Color="{ThemeResource SubtleFillColorSecondary}" Opacity="0.7" />
+            <SolidColorBrush x:Key="ChatToolActionHoverForegroundBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatProseTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF0550AE" />
@@ -92,6 +101,9 @@
             <Style x:Key="ChatSecondaryRichTextStyle" TargetType="RichTextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
             </Style>
+            <Style x:Key="ChatCommandOutputRichTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatCommandOutputBrush}" />
+            </Style>
             <Style x:Key="ChatCodeTextStyle" TargetType="RichTextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
             </Style>
@@ -115,7 +127,6 @@
             </Style>
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
-            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -123,6 +134,9 @@
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatCommandOutputBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatToolActionHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ChatToolActionHoverForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -147,6 +161,9 @@
             </Style>
             <Style x:Key="ChatSecondaryRichTextStyle" TargetType="RichTextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+            </Style>
+            <Style x:Key="ChatCommandOutputRichTextStyle" TargetType="RichTextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource ChatCommandOutputBrush}" />
             </Style>
             <Style x:Key="ChatCodeTextStyle" TargetType="RichTextBlock">
                 <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
@@ -346,7 +363,7 @@
         </Grid>
     </DataTemplate>
     <Style x:Key="ChatPickerAccentTextStyle" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{ThemeResource ChatPickerAccentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
     </Style>
     <Style x:Key="ChatSecondaryTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />

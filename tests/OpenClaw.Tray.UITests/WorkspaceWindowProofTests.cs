@@ -359,9 +359,9 @@ public sealed class WorkspaceWindowProofTests
                     if (page is null || button is null) return false;
                     var pageInfo = page.Current;
                     var buttonInfo = button.Current;
-                    if (pageInfo.ProcessId != ownedProcessId || pageInfo.IsOffscreen ||
+                    if (!NativeUiOwnership.IsOwnedDescendant(root, page, ownedProcessId) || pageInfo.IsOffscreen ||
                         !HasVisibleBounds(pageInfo.BoundingRectangle) ||
-                        buttonInfo.ProcessId != ownedProcessId || buttonInfo.ControlType != ControlType.Button ||
+                        !NativeUiOwnership.IsOwnedDescendant(root, button, ownedProcessId) || buttonInfo.ControlType != ControlType.Button ||
                         buttonInfo.IsOffscreen || !HasVisibleBounds(buttonInfo.BoundingRectangle) ||
                         buttonInfo.IsEnabled != expectedEnabled)
                         return false;
@@ -406,12 +406,19 @@ public sealed class WorkspaceWindowProofTests
             .Select(window => window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsSearchBox")))
             .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
-        Invoke(Find(root, "SettingsSearch"));
-        AutomationElement? readyInput = null;
-        await WaitUntilAsync(() => (readyInput = SearchBox()) is not null);
-        var input = readyInput!;
-        Assert.Equal(ControlType.Edit, input.Current.ControlType);
-        await WaitUntilAsync(() => input.Current.HasKeyboardFocus);
+        async Task<AutomationElement> WaitForSearchInputAsync()
+        {
+            AutomationElement? observedInput = null;
+            // Retain the successful observation rather than racing another UIA tree lookup.
+            await WaitUntilAsync(() => (observedInput = SearchBox()) is not null);
+            var readyInput = observedInput!;
+            Assert.Equal(ControlType.Edit, readyInput.Current.ControlType);
+            await WaitUntilAsync(() => readyInput.Current.HasKeyboardFocus);
+            return readyInput;
+        }
+
+        await InvokeWhenEnabledAsync(root, "SettingsSearch");
+        var input = await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("Go to General");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
@@ -429,14 +436,13 @@ public sealed class WorkspaceWindowProofTests
             .All(item => item.Current.BoundingRectangle.Top >= toggle.Bottom));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
-        await WaitUntilAsync(() => SearchBox() is not null);
-        await WaitUntilAsync(() => SearchBox() is { } searchInput && searchInput.Current.HasKeyboardFocus);
+        await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Assert.True(IsVisible(root, "SettingsPageMarker"));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitUntilAsync(() => SearchBox() is not null);
+        await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Invoke(Find(root, "SettingsTogglePane"));
@@ -448,7 +454,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitUntilAsync(() => SearchBox() is not null);
+        await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
@@ -653,7 +659,10 @@ public sealed class WorkspaceWindowProofTests
             if (element is null) return false;
             var info = element.Current;
             var bounds = info.BoundingRectangle;
-            return info.ProcessId == workspaceProcessId && !info.IsOffscreen && info.IsEnabled &&
+            return (ReferenceEquals(element, workspace)
+                ? info.ProcessId == workspaceProcessId
+                : NativeUiOwnership.IsOwnedDescendant(workspace, element, workspaceProcessId)) &&
+                !info.IsOffscreen && info.IsEnabled &&
                 HasInboxBounds(viewport) && HasInboxBounds(bounds) && viewport.Contains(bounds);
         }
 

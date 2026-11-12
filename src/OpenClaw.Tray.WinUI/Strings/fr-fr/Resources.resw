@@ -7651,7 +7651,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portails</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Arbres de travail</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Le nettoyage des fichiers téléversés est bloqué</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Vérifiez l'accès aux dossiers et les autorisations des données privées. Les anciens fichiers peuvent subsister jusqu'au rétablissement du nettoyage. Ne relancez pas automatiquement les téléversements terminés.</value></data>
@@ -9918,4 +9917,11 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Votre identité Tailscale n’a pas pu être vérifiée. Reconnectez cette passerelle. Les identifiants partagés ne seront pas utilisés.</value></data>
   <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Votre identité Tailscale doit être vérifiée à nouveau. Reconnectez cette passerelle. Les identifiants partagés ne seront pas utilisés.</value></data>
   <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>La connexion personnelle a échoué et la récupération n’a pas abouti. Vérifiez les paramètres de connexion avant de réessayer.</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Ouvrir les détails à côté de la conversation</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Détails de l’outil</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ces détails ne sont plus disponibles. Reconnectez-vous si nécessaire, puis rouvrez l’outil depuis la conversation actuelle.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionner le panneau de détails</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Utilisez les flèches gauche et droite pour redimensionner. Début sélectionne la largeur minimale ; Fin sélectionne la largeur maximale.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Revenir à la conversation</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher les détails</value></data>
 </root>

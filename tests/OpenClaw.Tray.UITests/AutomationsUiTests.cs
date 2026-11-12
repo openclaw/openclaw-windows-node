@@ -1560,21 +1560,24 @@ public sealed partial class GatewayFixtureUiTests
     /// <summary>Finds the marker's own template presenter, never an arbitrary nested scroller.</summary>
     private static AutomationElement? TryPageScrollPeer(GatewayFixtureRun run, bool dumpAncestors = false)
     {
-        var marker = FindById(run, "CronPageMarker");
+        var window = AutomationsWindow(run);
+        var marker = window.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "CronPageMarker"));
         if (marker is null) return null;
-        Assert.Equal(run.AppProcessId, marker.Current.ProcessId);
+        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, marker, run.AppProcessId),
+            "Automations page marker must belong to the retained native window.");
         var markerIdentity = marker.GetRuntimeId();
         bool IsMarker(AutomationElement? element) => element is not null
-            && element.Current.ProcessId == run.AppProcessId
+            && NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId)
             && element.GetRuntimeId().SequenceEqual(markerIdentity);
         bool IsOwnedTemplatePart(AutomationElement candidate)
         {
-            if (candidate.Current.ProcessId != run.AppProcessId) return false;
+            if (!NativeUiOwnership.IsOwnedDescendant(window, candidate, run.AppProcessId)) return false;
             var parent = TreeWalker.RawViewWalker.GetParent(candidate);
             if (IsMarker(parent)) return true;
             // WinUI's ScrollView template is PART_Root -> PART_ScrollPresenter.
             // The presentation Grid may be absent from UIA; no other ancestry is accepted.
-            if (parent is null || parent.Current.ProcessId != run.AppProcessId
+            if (parent is null || !NativeUiOwnership.IsOwnedDescendant(window, parent, run.AppProcessId)
                 || parent.Current.AutomationId != "PART_Root") return false;
             return IsMarker(TreeWalker.RawViewWalker.GetParent(parent));
         }

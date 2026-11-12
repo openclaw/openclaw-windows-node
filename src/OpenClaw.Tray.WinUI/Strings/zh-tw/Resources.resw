@@ -7651,7 +7651,6 @@
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>入口網站</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作樹</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>要求的項目已無法使用。</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>此閘道版本不支援部分控制面板頁面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：請先選擇助理。</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上傳檔案清理受阻</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>請檢查資料夾存取權和私人狀態資料的權限。恢復清理前，舊上傳檔案可能會繼續保留。請勿自動重試已完成的上傳。</value></data>
@@ -9918,4 +9917,11 @@
   <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>無法驗證你的 Tailscale 身分。請重新連線至此閘道。不會使用共用認證。</value></data>
   <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>需要重新驗證你的 Tailscale 身分。請重新連線至此閘道。不會使用共用認證。</value></data>
   <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>個人登入失敗，且復原未完成。請先檢查「連線」設定，再重試。</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁開啟詳細資料</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>工具詳細資料</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>這些詳細資料已無法使用。如有需要，請重新連線，然後從目前對話重新開啟工具。</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>調整詳細資料面板大小</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>使用左右方向鍵調整大小。Home 鍵選取最小寬度；End 鍵選取最大寬度。</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>返回對話</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>顯示詳細資料</value></data>
 </root>
