@@ -102,3 +102,21 @@ function Read-TestResultContract {
         outcome = if ($skipped) { 'passed-with-permitted-skips' } else { 'passed' }
     }
 }
+
+function Get-FailedTestNames {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+    $settings = [Xml.XmlReaderSettings]::new()
+    $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
+    $settings.XmlResolver = $null
+    $reader = [Xml.XmlReader]::Create($Path, $settings)
+    try {
+        $trx = [Xml.XmlDocument]::new()
+        $trx.XmlResolver = $null
+        $trx.Load($reader)
+    } finally { $reader.Dispose() }
+    foreach ($result in $trx.SelectNodes("//*[local-name()='UnitTestResult' and @outcome='Failed']")) {
+        $name = $result.GetAttribute('testName')
+        if (-not [string]::IsNullOrWhiteSpace($name)) { $name }
+    }
+}

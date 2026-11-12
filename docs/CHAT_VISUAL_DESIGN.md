@@ -378,16 +378,31 @@ It schedules retries after the rendering callback returns and fences them agains
 cancellation or replacement. If rows or the native scroll view disappear during
 initial positioning, it rearms when they return. Normal follow cannot interrupt
 initial positioning.
+Tail followers use stable native bottom anchoring and the existing follow
+threshold. A reader away from the tail uses stable native top anchoring, so
+composer or connection-status height changes do not move visible text relative
+to the viewport top. A reader-toggled disclosure also stays top-anchored while
+its details grow downward; clearing that disclosure override restores the
+anchor for the current follow mode. Explicit tail navigation restores bottom
+anchoring. Observation changes the ratio only on a mode transition, not by
+chasing each extent event.
+Reloading the same view reattaches observation without requesting the tail for
+an established reader. Followers and unfinished initial positioning retain
+the layout gate. Unload retires old callbacks and queues without discarding
+admitted initial positioning; cancellation, replacement and completion remain
+distinct boundaries.
 If a completed bring needs an offset correction, the current tail row remains
 the native anchor at an interior ratio until completion or cancellation.
 The anchor callback rechecks the navigation generation, row index and source
 identity without realizing another row. This avoids both disabled-anchor layout
 cycles and edge anchoring undoing the correction as the virtualized extent changes.
-Native bottom anchoring and the existing follow threshold are unchanged, except
-for that bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
-transcript then anchors to the top, so the header stays put and its details
-grow downward, as on the web. Any other reader input or programmatic tail scroll
-restores bottom anchoring.
+Native anchoring otherwise follows the current follow mode and threshold, except
+for that bounded correction and while a reader toggles a disclosure header by
+pointer, Enter or Space: the transcript then anchors to the top, so the header
+stays put and its details grow downward, as on the web. Any other reader input
+restores the anchor for the current follow mode; explicit tail navigation
+restores bottom anchoring. Observation changes the ratio only on a mode
+transition, not by chasing each extent event.
 Actual tail visibility is tracked separately from follow eligibility. The
 **Jump to latest** button stays mounted as an overlay, so showing it does not
 shrink the transcript viewport or move the composer.
@@ -485,6 +500,45 @@ Session summary metadata, such as a health payload's count, path and recent
 entries, does not replace the conversation roster. Only a session collection
 can remove absent rows; a genuine empty array or legacy empty map still clears
 the roster.
+An already-loaded ordinary native conversation remains in memory when its
+operator connection is temporarily lost or explicitly disconnected. The retained
+provider publishes the existing disconnected composer state instead of replacing
+the transcript with initial connection guidance. Offline ports reject mutations
+and cancel pending reads and writes through the client request lifetime. The
+transport rechecks cancellation under its send lock before writing. No transcript
+persistence cache is introduced. The sidebar may keep only that loaded conversation's
+selected row from the same confirmed provider while its port is suspended. This
+is read-only navigation, not a retained authoritative roster: AppState caches
+still clear, assistant/session creation still waits for current access, and an
+authoritative empty roster never falls back to the retained row. Known profile,
+Gateway or credential changes and manager-auth revocation invalidate that
+projection before queued UI work can publish it again.
+
+A replacement connection may reuse that provider only after fresh endpoint,
+local signing-device, authenticated `users.self` profile and session identities
+are confirmed. Session identities come from the correlated requested
+`sessions.list` response, not a cached roster notification from live activity.
+Retired scoped RPC replies are discarded before generic cache/event parsing.
+Gateway or credential-record changes, revocation, profile changes, and
+authoritative removal invalidate reuse. An older Gateway explicitly rejecting
+`users.self` as unsupported can mount fresh chat, but cannot reactivate retained
+history. Authentication failures, malformed rosters and timeouts do not take
+that compatibility fallback. A timed-out check keeps previously confirmed history
+readable and the port suspended. The existing composer connection-status area
+shows a localized failure and explicit retry; without a provider, the existing
+waiting/retry panel shows that state instead of initial connection guidance.
+Retry performs fresh verification on the same connected client, never changes
+the manager connection status, and cannot reactivate late canceled responses.
+Known profile/signing changes, malformed identity and revocation still discard
+old history. Setup-bound chat keeps its additional receipt/authority checks and
+hidden-host behavior; explicit recheck must validate that receipt and pass its
+exact manager client before retrying chat verification.
+
+`ExplicitDisconnectRetainsLoadedTranscriptDraftAndScrollAcrossRecovery` exercises
+the native Connection toggle, retained controls, draft, scroll and ordinary Send
+against the isolated Gateway fixture. It is a required interactive proof case,
+not a claim that native rendering or a live provider was tested on a non-Windows
+host.
 
 An authoritative empty conversation shows **Recent chats** instead of quick-start
 suggestions when the active agent has eligible conversations. The list includes

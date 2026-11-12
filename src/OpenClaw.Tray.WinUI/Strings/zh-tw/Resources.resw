@@ -9110,6 +9110,9 @@
   <data name="Usage_Export_Close" xml:space="preserve"><value>關閉</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>最近 7 天</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="Chat_Verification_Checking" xml:space="preserve"><value>Gateway 已連線。正在驗證聊天存取權限...</value></data>
+  <data name="Chat_Verification_Failed" xml:space="preserve"><value>Gateway 已連線，但無法驗證聊天存取權限。請重試。</value></data>
+  <data name="Chat_Verification_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="SessionsHub_ActionFailed" xml:space="preserve">
     <value>動作失敗</value>
   </data>

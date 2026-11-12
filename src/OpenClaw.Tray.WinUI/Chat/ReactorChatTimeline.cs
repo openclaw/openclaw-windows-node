@@ -184,8 +184,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             props.Timeline.TimelineGeneration,
             props.HistoryRevision,
             historyReady: props.Mode == ReactorChatTimelineMode.Timeline);
-        var initialTailRequestKey =
-            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}|{jumpRevision}";
+        var navigation = TailNavigationIdentity.Create(props.Timeline.SessionId,
+            props.Timeline.TimelineGeneration, props.HistoryRevision, props.Timeline.ScrollToBottomToken);
+        var initialTailRequestKey = $"{navigation.RequestKey}|{jumpRevision}";
+        var explicitTailRequestKey = $"{navigation.ExplicitRequestKey}|{jumpRevision}";
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
         var contentRevision = props.Timeline.Entries;
         if (atTail)
@@ -267,8 +269,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     rows.Count,
                     jumpRevision,
                     initialTailRequestKey,
+                    explicitTailRequestKey,
                     displayedTailKey,
-                    setAtTail)
+                    setAtTail,
+                    historyRevision: props.HistoryRevision)
                 .Grid(row: 1, column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
                 .AutomationName("Chat messages")

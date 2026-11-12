@@ -2146,7 +2146,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     }
 
     private static bool RenderConsumedHistory(GatewayFixtureRun run, string key,
-        VoiceTailNativeObservation? observation = null)
+        VoiceTailNativeObservation? observation = null, long? afterRevision = null)
     {
         var composer = FindById(run, "ChatComposerInput");
         if (observation is not null) observation.ComposerPresent = composer is not null;
@@ -2164,7 +2164,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             observation.SelectedThreadMatches = rendered.RootElement.TryGetProperty("selectedThreadId", out var selected)
                 && selected.ValueKind == JsonValueKind.String && selected.GetString() == key;
         }
-        return consumed;
+        return consumed && (afterRevision is null ||
+            rendered.RootElement.GetProperty("selectedThreadId").GetString() == key &&
+            rendered.RootElement.GetProperty("historyRevisions").TryGetProperty(key, out var revision) &&
+            revision.ValueKind == JsonValueKind.Number && revision.GetInt64() > afterRevision.Value);
     }
 
     private static void Invoke(AutomationElement element)
@@ -2802,13 +2805,17 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
 
-    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name, CancellationToken cancellationToken = default)
+    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name, params AutomationElement[] assertedElements) =>
+        CaptureIfRequestedAsync(run, name, CancellationToken.None, assertedElements);
+
+    private static Task CaptureIfRequestedAsync(GatewayFixtureRun run, string name, CancellationToken cancellationToken,
+        params AutomationElement[] assertedElements)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1")
             return Task.CompletedTask;
         OwnedWindowCapture.Save(run, AppWindows(run).OrderByDescending(window =>
-            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name, cancellationToken);
+            window.Current.BoundingRectangle.Width * window.Current.BoundingRectangle.Height).First(), name, cancellationToken, assertedElements);
         return Task.CompletedTask;
     }
 

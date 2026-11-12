@@ -16,10 +16,10 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private readonly Func<TtsSpeakArgs, CancellationToken, Task> _speakAsync;
     private readonly Action _stopPlayback;
     private readonly IOpenClawLogger _logger;
+    private readonly ChatProviderConnection _connection;
     private readonly Action<Action>? _post;
     private readonly object _gate = new();
     private readonly object _manualSpeechGate = new();
-    private OpenClawChatDataProvider? _provider;
     private TextToSpeechService? _fallbackTextToSpeech;
     private string? _lastManualSpeechText;
     private DateTimeOffset _lastManualSpeechAt;
@@ -95,6 +95,8 @@ public sealed class OpenClawChatCoordinator : IDisposable
         _gatewaySpeech = new(() => SpeechSetupReadiness.IsChatTtsPlaybackReady(_settings));
         _gatewaySpeech.Changed += PublishSpeechState;
         settings.Saved += OnSettingsSaved;
+        _connection = new ChatProviderConnection(post);
+        _connection.Changed += (_, _) => ProviderChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnSettingsSaved(object? sender, EventArgs e)
@@ -129,48 +131,21 @@ public sealed class OpenClawChatCoordinator : IDisposable
         PublishSpeechState(new(GatewaySpeechPhase.Idle));
     }
 
-    public OpenClawChatDataProvider? Provider
-    {
-        get
-        {
-            lock (_gate)
-            {
-                return _provider;
-            }
-        }
-    }
 
+    public OpenClawChatDataProvider? Provider => _connection.Provider;
+    internal OpenClaw.Shared.SessionInfo? RetainedNavigationSession(string? sessionKey) =>
+        _connection.RetainedNavigationSession(sessionKey);
+    public event EventHandler? ProviderChanged;
+    internal ChatVerificationState VerificationState => _connection.VerificationState;
+    internal bool RetryVerification(IOperatorGatewayClient? expectedClient = null) =>
+        _connection.RetryVerificationForClient(expectedClient);
+    internal void ConfigureRegistry(OpenClaw.Connection.GatewayRegistry registry) => _connection.ConfigureRegistry(registry);
+    internal void ObserveConnection(OpenClaw.Connection.GatewayConnectionSnapshot snapshot) => _connection.ObserveConnection(snapshot);
     public void SetOperatorClient(OpenClawGatewayClient? client)
     {
-        OpenClawChatDataProvider? oldProvider;
         _gatewaySpeech.SetClient(client);
         PublishSpeechState(new(GatewaySpeechPhase.Idle));
-
-        lock (_gate)
-        {
-            if (_disposed) return;
-            oldProvider = _provider;
-            _provider = null;
-        }
-
-        oldProvider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
-
-        if (client is null)
-        {
-            return;
-        }
-
-        var newProvider = new OpenClawChatDataProvider(new GatewayClientChatBridge(client), _post);
-        lock (_gate)
-        {
-            if (_disposed)
-            {
-                newProvider.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                return;
-            }
-
-            _provider = newProvider;
-        }
+        _connection.SetClient(client);
     }
 
     public Task SpeakChatTextAsync(string text)
@@ -352,7 +327,6 @@ public sealed class OpenClawChatCoordinator : IDisposable
 
     public void Dispose()
     {
-        OpenClawChatDataProvider? provider;
         TextToSpeechService? fallbackTextToSpeech;
         CancellationTokenSource speechCancellation;
 
@@ -360,9 +334,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
         {
             if (_disposed) return;
             speechCancellation = _speechCancellation;
-            provider = _provider;
             fallbackTextToSpeech = _fallbackTextToSpeech;
-            _provider = null;
             _fallbackTextToSpeech = null;
             _disposed = true;
         }
@@ -373,7 +345,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
         speechCancellation.Dispose();
         try { _stopPlayback(); }
         catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: StopSpeaking during disposal failed: {ex.Message}"); }
-        provider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _connection.Dispose();
         fallbackTextToSpeech?.Dispose();
     }
 }

@@ -16,7 +16,7 @@ using Xunit.Abstractions;
 namespace OpenClaw.Tray.Tests;
 
 [Collection("Chat telemetry")]
-public class OpenClawChatDataProviderTests(ITestOutputHelper output)
+public partial class OpenClawChatDataProviderTests(ITestOutputHelper output)
 {
     private static ChatHistoryInfo RecoveryHistory(bool truncated, string text, string messageId = "result-message",
         string callId = "call", string runId = "r")
@@ -377,8 +377,13 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         public void Dispose() => _listener.Dispose();
     }
 
-    private sealed class FakeBridge : IChatGatewayBridge
+    private sealed class FakeBridge : IChatGatewayBridge, IChatGatewayRequestScope
     {
+        public async Task<T> RunWithRequestCancellationAsync<T>(CancellationToken token, Func<Task<T>> operation)
+        {
+            token.ThrowIfCancellationRequested();
+            return await operation().WaitAsync(token);
+        }
         public bool IsConnected { get; set; }
         public ChatToolDetailsProfileState ToolDetailsProfileState { get; set; }
         public event EventHandler? ToolDetailsInvalidated;
@@ -386,6 +391,11 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         {
             ToolDetailsProfileState = profile;
             ToolDetailsInvalidated?.Invoke(this, EventArgs.Empty);
+        }
+        public Action CaptureToolDetailsInvalidation()
+        {
+            var captured = ToolDetailsInvalidated;
+            return () => captured?.Invoke(this, EventArgs.Empty);
         }
         public ConnectionStatus CurrentStatus { get; set; }
         public string? MainSessionKey { get; set; }

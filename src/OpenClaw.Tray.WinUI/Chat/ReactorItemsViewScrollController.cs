@@ -20,8 +20,10 @@ file sealed record ItemsViewVerticalScrollControllerElement(
     int ItemCount,
     int JumpRevision,
     string InitialTailRequestKey,
+    string ExplicitTailRequestKey,
     string? DisplayedTailKey,
-    Action<bool>? TailVisibilityChanged) : Element
+    Action<bool>? TailVisibilityChanged,
+    long HistoryRevision) : Element
 {
     static ItemsViewVerticalScrollControllerElement() =>
         ControlRegistry.RegisterDecorator<ItemsViewVerticalScrollControllerElement>(
@@ -63,6 +65,8 @@ file sealed class ItemsViewVerticalScrollControllerHandler
             element.ItemCount,
             element.InitialTailRequestKey,
             element.DisplayedTailKey,
+            explicitNavigation: false,
+            historyRevision: element.HistoryRevision,
             explicitJump: false);
         return positioner;
     }
@@ -95,6 +99,9 @@ file sealed class ItemsViewVerticalScrollControllerHandler
                     newElement.ItemCount,
                     newElement.InitialTailRequestKey,
                     newElement.DisplayedTailKey,
+                    explicitNavigation: !string.Equals(oldElement.ExplicitTailRequestKey,
+                        newElement.ExplicitTailRequestKey, StringComparison.Ordinal),
+                    historyRevision: newElement.HistoryRevision,
                     explicitJump: oldElement.JumpRevision != newElement.JumpRevision);
             else
                 positioner.UpdateTail(
@@ -154,12 +161,18 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _awaitingInitialRows;
     private readonly TailNavigationQueue _tailNavigationQueue = new();
     private bool _disposed;
+    private int _pendingDispatches;
+    private readonly GatewayFixturePositioningObservation? _fixtureObservation;
     internal Action<bool>? TailVisibilityChanged { get; set; }
     private bool? _reportedAtTail;
 
     public InitialTailPositioner(WinUIItemsView itemsView)
     {
         this.itemsView = itemsView;
+        _fixtureObservation = GatewayFixturePositioningObservation.Create(itemsView, () =>
+            _initialPending || _awaitingLayout || _awaitingScrollView is not null ||
+            _rendering is not null || _realizing is not null || _awaitingIdle ||
+            _tailNavigationQueue.IsScheduled || _pendingDispatches != 0);
         _cancelPointerNavigation = (_, _) => CancelPendingNavigation();
         _readerPointerPressed = (_, args) => OnReaderInput(args.OriginalSource, mayToggleDisclosure: true);
         _readerGettingFocus = OnReaderFocus;
@@ -177,25 +190,30 @@ file sealed class InitialTailPositioner : IDisposable
         int itemCount,
         string requestKey,
         string? displayedTailKey,
-        bool explicitJump)
+        bool explicitNavigation = true,
+        long historyRevision = 0,
+        bool explicitJump = false)
     {
         if (_disposed || string.Equals(_requestKey, requestKey, StringComparison.Ordinal))
             return;
 
+        var navigate = TailNavigationPolicy.ShouldNavigate(
+            explicitNavigation || explicitJump, _following, _initialPending, _valid);
         RestoreTailAnchor();
         _requestKey = requestKey;
+        _fixtureObservation?.Begin(requestKey, historyRevision);
         _version++;
         _reflowCorrection.Clear();
         DetachLayout();
         _tailIndex = tailIndex;
         _itemCount = itemCount;
         _displayedTailKey = displayedTailKey;
-        _following = true;
+        SetFollowing(navigate);
         _initialPending = false;
         _explicitJumpPending = explicitJump;
         _valid = TailNavigationPolicy.TryCapture(tailIndex, displayedTailKey, itemCount, out _);
-        _awaitingInitialRows = !_valid;
-        if (!_valid)
+        _awaitingInitialRows = !_valid && navigate;
+        if (!_valid || !navigate)
         {
             _explicitJumpPending = false;
             return;
@@ -203,7 +221,7 @@ file sealed class InitialTailPositioner : IDisposable
 
         _initialPending = true;
         if (itemsView.IsLoaded)
-            AwaitLayout(renderAfterLayout: explicitJump);
+            AwaitLayout(renderAfterLayout: _explicitJumpPending);
     }
 
     public void UpdateTail(int tailIndex, int itemCount, string? displayedTailKey)
@@ -249,6 +267,10 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnLoaded(object sender, RoutedEventArgs args)
     {
         if (!_valid)
+            return;
+
+        AttachScrollView();
+        if (!TailNavigationPolicy.ShouldPositionOnLoad(_following, _initialPending))
             return;
 
         _initialPending = true;
@@ -339,36 +361,44 @@ file sealed class InitialTailPositioner : IDisposable
     private void DispatchTailRequest(
         InitialTailNavigationRequest initialRequest, bool renderAfterLayout = false)
     {
+        _pendingDispatches++;
         if (!itemsView.DispatcherQueue.TryEnqueue(() =>
         {
-            if (_disposed || !_valid || !itemsView.IsLoaded || initialRequest.Version != _version
-                || !TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
-                return;
-
-            if (!initialRequest.TryResolve(
-                    _version, _tailIndex, _displayedTailKey, _itemCount, out var request))
-                return;
-
-            if (!renderAfterLayout)
-                ConfirmInitialLanding(initialRequest.Version, request);
-            else if (_scrollView is { IsLoaded: true } scrollView
-                && ReferenceEquals(scrollView, itemsView.ScrollView)
-                && TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount))
+            try
             {
-                if (_explicitJumpPending)
+                if (_disposed || !_valid || !itemsView.IsLoaded || initialRequest.Version != _version
+                    || !TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
+                    return;
+
+                if (!initialRequest.TryResolve(
+                        _version, _tailIndex, _displayedTailKey, _itemCount, out var request))
+                    return;
+
+                if (!renderAfterLayout)
                     ConfirmInitialLanding(initialRequest.Version, request);
-                else
+                else if (_scrollView is { IsLoaded: true } scrollView
+                    && ReferenceEquals(scrollView, itemsView.ScrollView)
+                    && TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount))
                 {
-                    // Reflow needs an offset correction, not another synchronous item realization.
-                    RestoreTailAnchor();
-                    scrollView.ScrollTo(scrollView.HorizontalOffset, scrollView.ScrollableHeight,
-                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                    if (_explicitJumpPending)
+                        ConfirmInitialLanding(initialRequest.Version, request);
+                    else
+                    {
+                        // Reflow needs an offset correction, not another synchronous item realization.
+                        RestoreTailAnchor();
+                        scrollView.ScrollTo(scrollView.HorizontalOffset, scrollView.ScrollableHeight,
+                            new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                    }
                 }
+                else
+                    AwaitLayout(renderAfterLayout);
             }
-            else
-                AwaitLayout(renderAfterLayout);
+            finally { _pendingDispatches--; }
         }))
+        {
+            _pendingDispatches--;
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
+        }
     }
 
     private void ConfirmInitialLanding(int version, TailNavigationRequest request)
@@ -496,7 +526,7 @@ file sealed class InitialTailPositioner : IDisposable
                 // Correct to the live extent within the existing retry budget, not the stale bring target.
                 // Keep the tail as the native anchor while recycled rows change the extent.
                 // Disabling anchoring can cycle layout; an edge anchor can undo the correction.
-                _following = true;
+                SetFollowing(true);
                 if (_offsetCorrectionAnchorRequested is not null)
                     scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
                 _offsetCorrectionAnchorRequested = (sender, args) =>
@@ -552,9 +582,10 @@ file sealed class InitialTailPositioner : IDisposable
 
         DetachScrollView();
         _scrollView = nextScrollView;
+        _fixtureObservation?.Attach(_scrollView);
         if (_scrollView is not null)
         {
-            _scrollView.VerticalAnchorRatio = 1.0;
+            ApplyViewportAnchor();
             _scrollView.ViewChanged += OnViewChanged;
             _scrollView.StateChanged += OnScrollStateChanged;
             _scrollView.ExtentChanged += OnExtentChanged;
@@ -717,13 +748,10 @@ file sealed class InitialTailPositioner : IDisposable
 
         _disclosureAnchored = false;
         _readerAnchored = false;
-        if (_scrollView is not null)
-        {
-            if (_offsetCorrectionAnchorRequested is not null)
-                _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
-            _scrollView.VerticalAnchorRatio = 1.0;
-        }
+        if (_scrollView is not null && _offsetCorrectionAnchorRequested is not null)
+            _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
         _offsetCorrectionAnchorRequested = null;
+        ApplyViewportAnchor();
     }
 
     private void OnReaderFocus(UIElement sender, GettingFocusEventArgs args)
@@ -748,7 +776,7 @@ file sealed class InitialTailPositioner : IDisposable
         _awaitingInitialRows = false;
         // Input without movement (copy, focus, wheel at the tail) keeps follow;
         // input that already left the tail stops it so the reader is not pulled back.
-        _following = _scrollView is { } scrollView && IsNearBottom(scrollView);
+        SetFollowing(_scrollView is { } scrollView && IsNearBottom(scrollView));
         ReportTailVisibility(_scrollView is { } currentScrollView && IsAtBottom(currentScrollView));
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
@@ -757,7 +785,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnViewChanged(WinUIScrollView sender, object args)
     {
-        _following = _readerBringCorrelationId is null && IsNearBottom(sender);
+        SetFollowing(_readerBringCorrelationId is null && IsNearBottom(sender));
         ReportTailVisibility(IsAtBottom(sender));
         _confirmation.GeometryChanged();
         if (_initialPending && ReferenceEquals(sender, _scrollView))
@@ -765,6 +793,25 @@ file sealed class InitialTailPositioner : IDisposable
             try { _confirmation.ObserveOffset(sender.VerticalOffset); }
             catch (Exception) { }
         }
+    }
+
+    private void SetFollowing(bool following)
+    {
+        if (_following == following)
+            return;
+
+        _following = following;
+        ApplyViewportAnchor();
+    }
+
+    private void ApplyViewportAnchor()
+    {
+        if (_scrollView is not null)
+            _scrollView.VerticalAnchorRatio = _disclosureAnchored
+                ? 0.0
+                : _offsetCorrectionAnchorRequested is not null
+                    ? OffsetCorrectionAnchorRatio
+                    : TailNavigationPolicy.ViewportAnchorRatio(_following);
     }
 
     private void ReportTailVisibility(bool atTail)
@@ -796,7 +843,7 @@ file sealed class InitialTailPositioner : IDisposable
         }))
         {
             _tailNavigationQueue.SchedulingFailed();
-            _following = false;
+            SetFollowing(false);
         }
     }
 
@@ -814,7 +861,7 @@ file sealed class InitialTailPositioner : IDisposable
             return false;
         }
 
-        _following = true;
+        SetFollowing(true);
         RestoreTailAnchor();
         if (scrollView.Content is not ItemsRepeater repeater)
             return false;
@@ -864,22 +911,30 @@ file sealed class InitialTailPositioner : IDisposable
                 return;
 
             DetachRealization();
+            _pendingDispatches++;
             if (!itemsView.DispatcherQueue.TryEnqueue(() =>
             {
-                if (_disposed || version != _version || realizationVersion != _realizationVersion || !itemsView.IsLoaded
-                    || !TailNavigationPolicy.CanDispatch(requiresFollowing, _following)
-                    || !ReferenceEquals(scrollView, itemsView.ScrollView)
-                    || !TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
-                    || repeater.GetElementIndex(target) != request.Index
-                    || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
-                    return;
-                target.StartBringIntoView(new BringIntoViewOptions
+                try
                 {
-                    AnimationDesired = false,
-                    VerticalAlignmentRatio = 1.0,
-                });
+                    if (_disposed || version != _version || realizationVersion != _realizationVersion || !itemsView.IsLoaded
+                        || !TailNavigationPolicy.CanDispatch(requiresFollowing, _following)
+                        || !ReferenceEquals(scrollView, itemsView.ScrollView)
+                        || !TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
+                        || repeater.GetElementIndex(target) != request.Index
+                        || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
+                        return;
+                    target.StartBringIntoView(new BringIntoViewOptions
+                    {
+                        AnimationDesired = false,
+                        VerticalAlignmentRatio = 1.0,
+                    });
+                }
+                finally { _pendingDispatches--; }
             }))
+            {
+                _pendingDispatches--;
                 OpenClawTray.Services.Logger.Warn("Chat tail realization could not be dispatched.");
+            }
         };
         CompositionTarget.Rendering += _realizing;
 
@@ -914,7 +969,6 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _version++;
-        _initialPending = false;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         DetachLayout();
@@ -976,6 +1030,7 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         _scrollView = null;
+        _fixtureObservation?.Attach(null);
         _disclosureAnchored = false;
         _readerAnchored = false;
         _readerBringCorrelationId = null;
@@ -989,6 +1044,7 @@ file sealed class InitialTailPositioner : IDisposable
             return;
 
         _disposed = true;
+        _fixtureObservation?.Dispose();
         TailVisibilityChanged = null;
         _version++;
         _reflowCorrection.Clear();
@@ -1015,8 +1071,10 @@ internal static class ItemsViewScrollControllerExtensions
         int itemCount,
         int jumpRevision,
         string initialTailRequestKey,
+        string explicitTailRequestKey,
         string? displayedTailKey,
-        Action<bool>? tailVisibilityChanged = null) =>
+        Action<bool>? tailVisibilityChanged = null,
+        long historyRevision = 0) =>
         new ItemsViewVerticalScrollControllerElement(
             itemsView,
             scrollBarRef,
@@ -1024,6 +1082,8 @@ internal static class ItemsViewScrollControllerExtensions
             itemCount,
             jumpRevision,
             initialTailRequestKey,
+            explicitTailRequestKey,
             displayedTailKey,
-            tailVisibilityChanged);
+            tailVisibilityChanged,
+            historyRevision);
 }

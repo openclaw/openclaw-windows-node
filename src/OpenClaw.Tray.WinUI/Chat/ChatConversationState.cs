@@ -113,6 +113,49 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal bool CanRetainHistory(SessionInfo[] sessions)
+    {
+        lock (_gate)
+        {
+            if (_disposed) return false;
+            var selected = _presentation.CachedLastChatState?.DefaultThreadId;
+            var queued = _queue.SnapshotMessages();
+            foreach (var (key, timeline) in _timelines)
+            {
+                var hasContent = timeline.HistoryLoaded || timeline.Entries.Count > 0 || timeline.TurnActive ||
+                    timeline.PendingPermission is not null || queued.TryGetValue(key, out var messages) && messages.Count > 0;
+                if (!hasContent && key != selected) continue;
+                var session = sessions.FirstOrDefault(candidate => candidate.Key == key);
+                if (session is null) return false;
+                var previousId = _history.ResolveSessionId(key) ?? _presentation.FindSession(key)?.SessionId;
+                if (string.IsNullOrEmpty(previousId) || previousId != session.SessionId) return false;
+            }
+            return true;
+        }
+    }
+
+    internal SessionInfo? RetainedNavigationSession(string? sessionKey)
+    {
+        lock (_gate)
+        {
+            if (_disposed || sessionKey is null || !_timelines.TryGetValue(sessionKey, out var timeline) ||
+                !timeline.HistoryLoaded && timeline.Entries.Count == 0) return null;
+            var session = _presentation.FindSession(sessionKey);
+            var identity = _history.ResolveSessionId(sessionKey) ?? session?.SessionId;
+            return session is not null && !string.IsNullOrEmpty(identity) && identity == session.SessionId
+                ? session.Clone() : null;
+        }
+    }
+
+    internal ChatDataSnapshot RetainedSnapshot(ChatProjectionContext context)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return BuildSnapshotLocked(context);
+        }
+    }
+
     internal ChatDataSnapshot Snapshot(ChatProjectionContext context)
     {
         lock (_gate)

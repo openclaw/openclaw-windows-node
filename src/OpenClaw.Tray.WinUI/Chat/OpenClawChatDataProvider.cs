@@ -106,7 +106,7 @@ public sealed record ChatAgentIdentity(
 /// subsequent <see cref="SendMessageAsync"/> calls.
 /// </para>
 /// </remarks>
-public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIdentitySource
+public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatConnectionBoundProvider, IChatAgentIdentitySource
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
     private readonly IChatGatewayBridge _bridge;
@@ -251,9 +251,23 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     {
         cancellationToken.ThrowIfCancellationRequested();
         Questions?.Start();
+        if (_bridge is RetainedChatGatewayBridge { IsAttached: false })
+            return Task.FromResult(_state.RetainedSnapshot(ProjectionContext()));
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
         return Task.FromResult(_state.Load(sessions, ProjectionContext()));
     }
+
+    bool IChatConnectionBoundProvider.IsBoundTo(IOperatorGatewayClient client) =>
+        _bridge is RetainedChatGatewayBridge retained ? retained.IsBoundTo(client) :
+        _bridge is GatewayClientChatBridge direct && direct.IsBoundTo(client);
+
+    internal bool CanRetainHistory(SessionInfo[] sessions) => _state.CanRetainHistory(sessions);
+    internal SessionInfo? RetainedNavigationSession(string? sessionKey) => _state.RetainedNavigationSession(sessionKey);
+    internal ChatVerificationState VerificationState =>
+        (_bridge as RetainedChatGatewayBridge)?.Recovery?.VerificationState ?? ChatVerificationState.None;
+    internal bool RetryVerification() => !_state.IsDisposed &&
+        (_bridge as RetainedChatGatewayBridge)?.Recovery?.RetryVerification() == true;
+    internal void NotifyVerificationChanged() => Publish(_state.RetainedSnapshot(ProjectionContext()));
 
     internal void RememberSelectedThread(string? threadId)
     {

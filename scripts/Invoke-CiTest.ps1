@@ -158,6 +158,11 @@ if ($script:testExitCode -ne 0) {
                 $_.Exception.GetType().Name, $script:testExitCode)
         }
     }
+    try {
+        foreach ($name in @(Get-FailedTestNames -Path $invocation.report)) {
+            Write-Host "CI failed test: $name"
+        }
+    } catch { Write-Warning "CI failed-test names are unavailable." }
     exit $script:testExitCode
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped:(-not $RequireAllTestsPassed)

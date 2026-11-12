@@ -9110,6 +9110,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Usage_Export_Close" xml:space="preserve"><value>Fermer</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>7 derniers jours</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>30 derniers jours</value></data>
+  <data name="Chat_Verification_Checking" xml:space="preserve"><value>La connexion à la passerelle est établie. Vérification de l’accès à la conversation...</value></data>
+  <data name="Chat_Verification_Failed" xml:space="preserve"><value>La passerelle est connectée, mais l’accès à la conversation n’a pas pu être vérifié. Réessayez.</value></data>
+  <data name="Chat_Verification_Retry" xml:space="preserve"><value>Réessayer</value></data>
   <data name="SessionsHub_ActionFailed" xml:space="preserve">
     <value>Échec de l'action</value>
   </data>

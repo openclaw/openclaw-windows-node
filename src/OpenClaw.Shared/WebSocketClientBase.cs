@@ -900,7 +900,8 @@ public abstract class WebSocketClientBase : IDisposable
         try
         {
             var ws = _webSocket;
-            if (ws?.State != WebSocketState.Open ||
+            if (linkedCancellation.IsCancellationRequested ||
+                ws?.State != WebSocketState.Open ||
                 !IsCurrentConnection(ws, expectedConnectionGeneration))
             {
                 return false;

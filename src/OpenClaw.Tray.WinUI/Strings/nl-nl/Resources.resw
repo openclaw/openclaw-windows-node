@@ -9111,6 +9111,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Usage_Export_Close" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>Afgelopen 7 dagen</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>Afgelopen 30 dagen</value></data>
+  <data name="Chat_Verification_Checking" xml:space="preserve"><value>De gateway is verbonden. Toegang tot de chat wordt gecontroleerd...</value></data>
+  <data name="Chat_Verification_Failed" xml:space="preserve"><value>De gateway is verbonden, maar de toegang tot de chat kon niet worden gecontroleerd. Probeer het opnieuw.</value></data>
+  <data name="Chat_Verification_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="SessionsHub_ActionFailed" xml:space="preserve">
     <value>Actie mislukt</value>
   </data>

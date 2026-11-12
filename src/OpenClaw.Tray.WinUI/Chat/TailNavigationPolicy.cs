@@ -22,8 +22,22 @@ internal readonly record struct InitialTailNavigationRequest(int Version)
     }
 }
 
+internal readonly record struct TailNavigationIdentity(string RequestKey, string ExplicitRequestKey)
+{
+    public static TailNavigationIdentity Create(string? sessionId, long generation, long historyRevision, long scrollToken) => new(
+        $"{sessionId ?? "none"}|{generation}|{historyRevision}|{scrollToken}",
+        $"{sessionId ?? "none"}|{generation}|{scrollToken}");
+}
+
 internal static class TailNavigationPolicy
 {
+    public static double ViewportAnchorRatio(bool following) => following ? 1.0 : 0.0;
+
+    public static bool ShouldPositionOnLoad(bool following, bool initialPending) => following || initialPending;
+
+    public static bool ShouldNavigate(bool explicitNavigation, bool following, bool initialPending, bool hadValidTail) =>
+        explicitNavigation || following || initialPending || !hadValidTail;
+
     public static bool TryCapture(
         int tailIndex,
         string? displayedTailKey,

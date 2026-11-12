@@ -548,22 +548,40 @@ public partial class OpenClawGatewayClient
 
     internal IReadOnlyList<SessionInfo> ParseDetachedSessionRows(JsonElement payload)
     {
-        if (!TryGetSessionsPayload(payload, out var rows) || rows.ValueKind != JsonValueKind.Array)
+        if (!TryGetSessionsPayload(payload, out var rows))
             return Array.Empty<SessionInfo>();
         var sessions = new List<SessionInfo>();
-        foreach (var item in rows.EnumerateArray())
+        if (rows.ValueKind == JsonValueKind.Array)
         {
-            if (item.ValueKind != JsonValueKind.Object)
-                continue;
-            var key = GetString(item, "key");
-            if (string.IsNullOrWhiteSpace(key))
-                continue;
-            var session = new SessionInfo { Key = key };
-            UpdateSessionMainStatus(session, key, item);
-            PopulateSessionFromObject(session, item, authoritativeSessionList: true);
-            sessions.Add(session);
+            foreach (var item in rows.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                    continue;
+                var key = GetString(item, "key");
+                if (!string.IsNullOrWhiteSpace(key))
+                    AddSession(key, item);
+            }
+        }
+        else if (rows.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in SessionRosterCollection.EnumerateLegacyRows(rows))
+            {
+                if (property.Value.ValueKind is JsonValueKind.Object or JsonValueKind.String)
+                    AddSession(property.Name, property.Value);
+            }
         }
         return sessions;
+
+        void AddSession(string key, JsonElement item)
+        {
+            var session = new SessionInfo { Key = key };
+            UpdateSessionMainStatus(session, key, item);
+            if (item.ValueKind == JsonValueKind.Object)
+                PopulateSessionFromObject(session, item, authoritativeSessionList: true);
+            else
+                session.DisplayName = item.GetString() ?? string.Empty;
+            sessions.Add(session);
+        }
     }
 
     public async Task<GatewaySearchResult> SearchSessionsAsync(

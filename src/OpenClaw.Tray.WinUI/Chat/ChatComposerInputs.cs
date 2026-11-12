@@ -47,6 +47,7 @@ internal sealed record ChatComposerInputs(
     bool SessionModelCatalogEligible = false,
     long ModelCatalogRevision = 0)
 {
+    internal ChatVerificationState VerificationState { get; init; }
     internal long Revision { get; init; }
     internal bool IsVisible { get; init; } = true;
     internal bool ShowPlacementPickers { get; init; }
@@ -61,6 +62,7 @@ internal sealed record ChatComposerInputs(
 
     internal bool HasSameProjection(ChatComposerInputs other) =>
         string.Equals(ConnectionState, other.ConnectionState, StringComparison.Ordinal)
+        && VerificationState == other.VerificationState
         && TurnActive == other.TurnActive
         && IsVisible == other.IsVisible
         && Equals(CurrentThread, other.CurrentThread)

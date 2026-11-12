@@ -484,6 +484,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     && nativeProvider?.SupportsSessionScopedModelCatalog == true,
                 ModelCatalogRevision: nativeProvider?.ModelCatalogRevision ?? 0)
             {
+                VerificationState = nativeProvider?.VerificationState ?? ChatVerificationState.None,
                 IsVisible = composerVisible,
                 ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
                 PlacementTargetIsEmpty = isEmptyConversation,

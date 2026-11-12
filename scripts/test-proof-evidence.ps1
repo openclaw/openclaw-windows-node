@@ -40,6 +40,22 @@ try {
     $invocation = New-TestInvocation -ResultsDirectory $root -TrxFileName 'winui-accessibility.trx'
     $report = $invocation.report
     $start = [DateTime]::Parse($invocation.startedUtc).ToUniversalTime()
+    $namesReport = Join-Path $root 'failed-names.trx'
+    @'
+<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010"><Results>
+<UnitTestResult outcome="Failed" testName="First failure" />
+<UnitTestResult outcome="Passed" testName="Passing control" />
+<UnitTestResult outcome="Failed" testName="Case &amp; name" />
+</Results></TestRun>
+'@ | Set-Content -LiteralPath $namesReport
+    $failedNames = @(Get-FailedTestNames -Path $namesReport)
+    if ($failedNames.Count -ne 2 -or $failedNames[0] -cne 'First failure' -or $failedNames[1] -cne 'Case & name') {
+        throw 'Failed-name diagnostics must include only failed cases and decode XML attributes.'
+    }
+    Set-Content -LiteralPath $namesReport -Value '<!DOCTYPE TestRun [<!ENTITY name "failure">]><TestRun/>'
+    Assert-Rejected { Get-FailedTestNames -Path $namesReport } 'DTD|Dtd'
+    Remove-Item -LiteralPath $namesReport
+    if (@(Get-FailedTestNames -Path $namesReport).Count -ne 0) { throw 'Missing diagnostics must not fabricate failed cases.' }
     Assert-Rejected { Read-TestResultContract $report $start 0 } 'missing'
     Set-Content $report '<not-xml'
     Assert-Rejected { Read-TestResultContract $report $start 0 } 'Load|XML|end of file|unexpected'

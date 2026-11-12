@@ -17,6 +17,7 @@ public sealed record GatewayFixtureRequest(
     bool AdvertisesExecApprovals = false,
     string? ModelCatalogView = null,
     bool? IncludeModelDetails = null,
+    bool AuthorityScoped = false,
     string? AgentId = null,
     bool IsUnscopedCronCatalogRead = false);
 
@@ -75,8 +76,15 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private int _chatEventSequence;
     private TaskCompletionSource? _nextSessionListGate;
     private TaskCompletionSource? _heldSessionList;
+    private JsonElement? _profilePayloadOverride;
     private TaskCompletionSource? _sessionListCaptured;
     private readonly Dictionary<string, Func<JsonElement, object>> _readResponses = new(StringComparer.Ordinal);
+    private TaskCompletionSource? _allSessionListsGate;
+    private TaskCompletionSource? _userProfilesGate;
+    private JsonElement? _sessionListOverride;
+    private string? _profileOverride;
+    private bool _profileUnsupported;
+    private bool _profileDenied;
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -512,6 +520,89 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    /// <summary>Hold profile responses while the authenticated socket stays alive.</summary>
+    public void HoldUserProfiles()
+    {
+        lock (_sync)
+        {
+            if (_userProfilesGate is not null) throw new InvalidOperationException("Profile responses are already held.");
+            _userProfilesGate = NewSignal();
+        }
+    }
+
+    public void ReleaseUserProfiles()
+    {
+        lock (_sync)
+        {
+            var held = _userProfilesGate ?? throw new InvalidOperationException("Profile responses are not held.");
+            _userProfilesGate = null;
+            held.TrySetResult();
+        }
+    }
+
+    /// <summary>Hold every listing response, including reconnect bootstrap reads.</summary>
+    public void HoldSessionListings()
+    {
+        lock (_sync)
+        {
+            if (_allSessionListsGate is not null) throw new InvalidOperationException("Session listings are already held.");
+            _allSessionListsGate = NewSignal();
+        }
+    }
+
+    public void ReleaseSessionListings()
+    {
+        lock (_sync)
+        {
+            var held = _allSessionListsGate ?? throw new InvalidOperationException("Session listings are not held.");
+            _allSessionListsGate = null;
+            held.TrySetResult();
+        }
+    }
+
+    /// <summary>Synthetic authoritative producer data, never a client-cache mutation.</summary>
+    public void SetSessionListing(JsonElement payload)
+    {
+        lock (_sync) _sessionListOverride = payload.Clone();
+    }
+
+    public void SetUserProfile(string profileId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(profileId);
+        lock (_sync) _profileOverride = profileId;
+    }
+
+    public void SetUserProfilePayload(JsonElement payload)
+    {
+        lock (_sync) _profilePayloadOverride = payload.Clone();
+    }
+
+    public void RejectUserProfileAsUnauthorized()
+    {
+        lock (_sync) _profileDenied = true;
+    }
+
+    public void RejectUserProfileAsUnsupported()
+    {
+        lock (_sync) _profileUnsupported = true;
+    }
+
+    public Task NotifyProfileIdentityChangedAsync(CancellationToken cancellationToken = default) =>
+        PublishEventAsync(new { type = "event", @event = "sessions.changed", payload = new { reason = "profile-identity" } }, cancellationToken);
+
+    public Task PublishToolActivityAsync(string sessionKey, CancellationToken cancellationToken = default)
+    {
+        if (!_scenario.ContainsSession(sessionKey)) throw new ArgumentException("Unknown fixture session.", nameof(sessionKey));
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "agent", payload = new
+            {
+                sessionKey, runId = "fixture-roster-activity", stream = "tool",
+                seq = Interlocked.Increment(ref _chatEventSequence), ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                data = new { phase = "start", name = "read", args = new { path = "/fixture/roster" } }
+            }
+        }, cancellationToken);
+    }
     /// <summary>Hold one listing snapshot while subsequent requests remain independent.</summary>
     public Task HoldNextSessionList()
     {
@@ -894,6 +985,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             && parameters.TryGetProperty("includeDetails", out var details)
                             && details.ValueKind is JsonValueKind.True or JsonValueKind.False
                                 ? details.GetBoolean() : null,
+                        id!.StartsWith("authority-rpc:", StringComparison.Ordinal),
                         // Agent scope is a synthetic fixture identifier, recorded to prove request scoping.
                         method!.StartsWith("cron.", StringComparison.Ordinal) ? ReadString(parameters, "agentId") : null,
                         method == "cron.list" && IsUnscopedCronCatalog(parameters));
@@ -959,7 +1051,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             : method == "agents.list" ? _agentsListGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
-                            : method == "sessions.list" ? _nextSessionListGate?.Task
+                            : method == "users.self" ? _userProfilesGate?.Task
+                            : method == "sessions.list" ? (_allSessionListsGate ?? _nextSessionListGate)?.Task
                             : method == "chat.history" && key is not null && _historyGates.TryGetValue(key, out var held)
                                 ? held.Task : null;
                         abortOutcome = method == "chat.abort" ? _chatAbortGate?.Task : null;
@@ -1066,6 +1159,17 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
                         Interactive is null ? null : Interactive.ContainsSession);
+                lock (_sync)
+                {
+                    if (method == "sessions.list" && _sessionListOverride is { } listing) payload = listing;
+                    if (method == "users.self")
+                    {
+                        if (_profileDenied) throw new FixtureRequestException("AUTH_FORBIDDEN", "operator.read scope required");
+                        if (_profileUnsupported) throw new FixtureRequestException("METHOD_NOT_FOUND", "unknown method: users.self");
+                        if (_profileOverride is { } profileId) payload = new { profile = new { id = profileId } };
+                        if (_profilePayloadOverride is { } profilePayload) payload = profilePayload;
+                    }
+                }
                 if (method == "exec.approval.resolve" && Interactive is null)
                 {
                     var approvalId = ReadString(parameters, "id");
@@ -1190,6 +1294,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         bool advertisesExecApprovals = false,
         string? modelCatalogView = null,
         bool? includeModelDetails = null,
+        bool authorityScoped = false,
         string? agentId = null,
         bool isUnscopedCronCatalogRead = false)
     {
@@ -1197,7 +1302,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         {
             var index = _requests.Count;
             _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId,
-                advertisesExecApprovals, modelCatalogView, includeModelDetails, agentId, isUnscopedCronCatalogRead));
+                advertisesExecApprovals, modelCatalogView, includeModelDetails, authorityScoped, agentId, isUnscopedCronCatalogRead));
             SignalRequestChanged();
             return index;
         }

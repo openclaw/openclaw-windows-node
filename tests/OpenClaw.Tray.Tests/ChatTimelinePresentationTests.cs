@@ -74,6 +74,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("annotatedScrollBarRef,", timeline);
         Assert.Contains("rows.Count - 1", timeline);
         Assert.Contains("rows.Count,", timeline);
+        Assert.Contains("TailNavigationIdentity.Create(", timeline);
         Assert.Contains("jumpRevision,", timeline);
         Assert.Contains("initialTailRequestKey", timeline);
         Assert.Contains("var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null", timeline);
@@ -99,8 +100,44 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain(".Current", binding);
     }
 
+    [Theory]
+    [InlineData("same", 7, 10, 5, false, false)]
+    [InlineData("same", 7, 11, 5, true, false)]
+    [InlineData("other", 7, 10, 5, true, true)]
+    [InlineData("same", 8, 10, 5, true, true)]
+    [InlineData("same", 7, 10, 6, true, true)]
+    public void HistoryAndNavigationIdentityProtectReaderIntent(string session, long generation,
+        long historyRevision, long scrollToken, bool schedulesPositioning, bool navigatesReader)
+    {
+        var before = TailNavigationIdentity.Create("same", 7, 10, 5);
+        var after = TailNavigationIdentity.Create(session, generation, historyRevision, scrollToken);
+        Assert.Equal(schedulesPositioning, before.RequestKey != after.RequestKey);
+        Assert.Equal(navigatesReader, before.ExplicitRequestKey != after.ExplicitRequestKey);
+        Assert.Equal(navigatesReader, TailNavigationPolicy.ShouldNavigate(
+            explicitNavigation: before.ExplicitRequestKey != after.ExplicitRequestKey,
+            following: false, initialPending: false, hadValidTail: true));
+    }
+
     [Fact]
-    public void ReactorTimeline_UsesStableBottomAnchoringAndDiscreteTailRequests()
+    public void TailNavigationPolicy_HistoryRefreshPreservesAnEstablishedReader()
+    {
+        Assert.False(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: true, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: true, following: false, initialPending: false, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: true, hadValidTail: true));
+        Assert.True(TailNavigationPolicy.ShouldNavigate(explicitNavigation: false, following: false, initialPending: false, hadValidTail: false));
+    }
+
+    [Theory]
+    [InlineData(false, 0.0)]
+    [InlineData(true, 1.0)]
+    public void ViewportAnchoringTracksReaderIntent(bool following, double expectedRatio)
+    {
+        Assert.Equal(expectedRatio, TailNavigationPolicy.ViewportAnchorRatio(following));
+    }
+
+    [Fact]
+    public void ReactorTimeline_UsesStableNativeAnchoringAndDiscreteTailRequests()
     {
         var binding = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -117,12 +154,16 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("itemsView.StartBringItemIntoView(", binding);
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
-        Assert.Contains("_following = _readerBringCorrelationId is null && IsNearBottom(sender)", binding);
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
+        Assert.Contains("SetFollowing(_readerBringCorrelationId is null && IsNearBottom(sender))", binding);
+        Assert.Matches(@"_scrollView.VerticalAnchorRatio = _disclosureAnchored\s*\? 0\.0\s*: _offsetCorrectionAnchorRequested is not null\s*\? OffsetCorrectionAnchorRatio\s*: TailNavigationPolicy.ViewportAnchorRatio\(_following\)", binding);
+        Assert.Contains("if (_following == following)", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
         Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
         Assert.Contains("_valid = TailNavigationPolicy.TryCapture", binding);
+        Assert.Contains("explicitNavigation || explicitJump, _following, _initialPending, _valid", binding);
+        Assert.Contains("oldElement.ExplicitTailRequestKey", binding);
+        Assert.Contains("newElement.ExplicitTailRequestKey", binding);
         Assert.Contains("_itemCount = itemCount", binding);
         Assert.Contains("TailNavigationPolicy.CanExecute(", binding);
         Assert.Contains("itemsView.Unloaded += OnUnloaded", binding);
@@ -157,8 +198,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("ApplyBottomAnchoring", binding);
 
         var viewChangedStart = binding.IndexOf("private void OnViewChanged", StringComparison.Ordinal);
-        var tailRequestStart = binding.IndexOf("private void QueueTailRequest", viewChangedStart, StringComparison.Ordinal);
-        var viewChanged = binding[viewChangedStart..tailRequestStart];
+        var followTransitionStart = binding.IndexOf("private void SetFollowing", viewChangedStart, StringComparison.Ordinal);
+        var viewChanged = binding[viewChangedStart..followTransitionStart];
         Assert.DoesNotContain("VerticalAnchorRatio", viewChanged);
         Assert.DoesNotContain("StartBringItemIntoView", viewChanged);
         Assert.DoesNotContain("ScrollTo(", viewChanged);
@@ -194,7 +235,11 @@ public sealed class ChatTimelinePresentationTests
         var restore = Method(binding, "private void RestoreTailAnchor()", "private void OnReaderFocus(");
         Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", restore);
         Assert.Contains("_offsetCorrectionAnchorRequested = null", restore);
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", restore);
+        Assert.Contains("ApplyViewportAnchor();", restore);
+        Assert.True(restore.IndexOf("_offsetCorrectionAnchorRequested = null", StringComparison.Ordinal) <
+            restore.IndexOf("ApplyViewportAnchor();", StringComparison.Ordinal));
+        Assert.Contains("private const double OffsetCorrectionAnchorRatio = 0.5", binding);
+        Assert.Matches(@"_offsetCorrectionAnchorRequested is not null\s*\? OffsetCorrectionAnchorRatio\s*: TailNavigationPolicy.ViewportAnchorRatio", binding);
         var detach = Method(binding, "private void DetachScrollView()", "public void Dispose()");
         Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", detach);
         Assert.Contains("_offsetCorrectionAnchorRequested = null", detach);
@@ -273,7 +318,8 @@ public sealed class ChatTimelinePresentationTests
 
         var requestStart = binding.IndexOf("public void Request(", StringComparison.Ordinal);
         var updateStart = binding.IndexOf("public void UpdateTail(", requestStart, StringComparison.Ordinal);
-        Assert.Contains("AwaitLayout(renderAfterLayout: explicitJump)", binding[requestStart..updateStart]);
+        Assert.Contains("_explicitJumpPending = explicitJump;", binding[requestStart..updateStart]);
+        Assert.Contains("AwaitLayout(renderAfterLayout: _explicitJumpPending)", binding[requestStart..updateStart]);
 
         var loadStart = binding.IndexOf("private void OnLoaded(", StringComparison.Ordinal);
         var attachStart = binding.IndexOf("private void AttachScrollView(", loadStart, StringComparison.Ordinal);
@@ -1264,6 +1310,74 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("itemsView.RemoveHandler(UIElement.PointerWheelChangedEvent", binding);
     }
 
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, true)]
+    public void TailNavigationPolicy_ReloadPositionsOnlyFollowingOrUnfinishedInitialHistory(
+        bool following, bool initialPending, bool expected)
+    {
+        Assert.Equal(expected, TailNavigationPolicy.ShouldPositionOnLoad(following, initialPending));
+    }
+
+    [Fact]
+    public void ReactorTimeline_ReloadPreservesReaderIntentAndReattachesNativeAnchoring()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        var start = binding.IndexOf("private void OnLoaded", StringComparison.Ordinal);
+        var end = binding.IndexOf("private void AwaitLayout", start, StringComparison.Ordinal);
+        var loaded = binding[start..end];
+        var navigation = loaded.IndexOf("_initialPending = true", StringComparison.Ordinal);
+
+        Assert.True(navigation > 0);
+        Assert.Matches(@"AttachScrollView\(\);\s*if \(!TailNavigationPolicy.ShouldPositionOnLoad\(_following, _initialPending\)\)\s*return;",
+            loaded[..navigation]);
+        Assert.Contains("AwaitLayout(renderAfterLayout: _explicitJumpPending)", loaded[navigation..]);
+    }
+
+    [Fact]
+    public void ReactorTimeline_InitialAdmissionSurvivesUnloadButNotUserCancellation()
+    {
+        var binding = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.Tray.WinUI", "Chat", "ReactorItemsViewScrollController.cs"));
+        string Section(string start, string end)
+        {
+            var first = binding.IndexOf(start, StringComparison.Ordinal);
+            Assert.True(first >= 0);
+            var last = binding.IndexOf(end, first, StringComparison.Ordinal);
+            Assert.True(last > first);
+            return binding[first..last];
+        }
+
+        var request = Section("public void Request(", "public void UpdateTail(");
+        var changed = Section("private void OnViewChanged", "private void SetFollowing");
+        var unloaded = Section("private void OnUnloaded", "private void DetachLayout");
+        var loaded = Section("private void OnLoaded", "private void AwaitLayout");
+        var canceled = Section("private void CancelPendingNavigation", "private void OnViewChanged");
+        var dispatched = Section("private void DispatchTailRequest", "private void AttachScrollView");
+
+        Assert.Contains("_initialPending = true;", request);
+        Assert.Contains("SetFollowing(_readerBringCorrelationId is null && IsNearBottom(sender))", changed);
+        Assert.DoesNotContain("_initialPending = false", changed);
+        Assert.DoesNotContain("_initialPending = false", unloaded);
+        Assert.Contains("_version++;", unloaded);
+        Assert.Contains("_tailNavigationQueue.Clear();", unloaded);
+        Assert.Contains("DetachLayout();", unloaded);
+        Assert.Contains("DetachScrollView();", unloaded);
+        Assert.Contains("ShouldPositionOnLoad(_following, _initialPending)", loaded);
+        Assert.Contains("_initialPending = false;", canceled);
+        Assert.Contains("_version++;", canceled);
+        Assert.Contains("initialRequest.Version != _version", dispatched);
+        Assert.Contains("ConfirmInitialLanding(initialRequest.Version, request)", dispatched);
+        var completed = Section("private void CompleteInitialLanding", "private void AttachScrollView");
+        Assert.Contains("_confirmation.Invalidate();", completed);
+        Assert.Contains("_initialPending = false;", completed);
+    }
+
     [Fact]
     public void ReactorTimeline_ReaderToggledDisclosureGrowsDownwardThenRestoresTailAnchor()
     {
@@ -1288,8 +1402,15 @@ public sealed class ChatTimelinePresentationTests
             < input.IndexOf("scrollView.VerticalAnchorRatio = 0;", StringComparison.Ordinal));
         Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private bool IsDisclosureHeader", "private void RestoreTailAnchor"));
 
-        // Tail dispatch and ordinary no-motion input restore bottom anchoring.
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
+        var restore = Slice("private void RestoreTailAnchor", "private void OnReaderFocus");
+        Assert.Contains("_disclosureAnchored = false;", restore);
+        Assert.Contains("ApplyViewportAnchor();", restore);
+        Assert.Contains("_readerAnchored = false;", restore);
+        Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", restore);
+        Assert.Contains("_offsetCorrectionAnchorRequested = null;", restore);
+        var startTail = Slice("private bool StartTailRequest", "private void DetachRealization");
+        Assert.True(startTail.IndexOf("SetFollowing(true);", StringComparison.Ordinal)
+            < startTail.IndexOf("RestoreTailAnchor();", StringComparison.Ordinal));
         Assert.Contains("RestoreTailAnchor();", Slice("private void CancelPendingNavigation", "_version++"));
         Assert.Contains("RestoreTailAnchor();", Slice("private bool StartTailRequest", "private object? GetRequestItem"));
         Assert.Contains("RestoreTailAnchor();", Slice("// Reflow needs an offset correction", "scrollView.ScrollTo("));
@@ -1411,8 +1532,8 @@ public sealed class ChatTimelinePresentationTests
         var cancelStart = binding.IndexOf("private void CancelPendingNavigation", StringComparison.Ordinal);
         var cancelEnd = binding.IndexOf("private void OnViewChanged", cancelStart, StringComparison.Ordinal);
         var cancel = binding[cancelStart..cancelEnd];
-        Assert.Contains("_following = _scrollView is { } scrollView && IsNearBottom(scrollView);", cancel);
-        Assert.DoesNotContain("_following = false;", cancel);
+        Assert.Contains("SetFollowing(_scrollView is { } scrollView && IsNearBottom(scrollView))", cancel);
+        Assert.DoesNotContain("SetFollowing(false)", cancel);
     }
 
     [Fact]
