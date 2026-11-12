@@ -145,6 +145,55 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Same(latestGeometry, Assert.Single(FindDescendants<ShapePath>(ring), path => path.Opacity == 1).Data);
                 Assert.Same(popup, Assert.IsType<Flyout>(ring.Flyout).Content);
             });
+            await ChangeFlyoutAsync(surface, "ChatContextUsage", false);
+            foreach (var percent in new[] { 100, 25 })
+            {
+                var previousPaths = await ui.RunOnUIAsync(() => Task.FromResult(
+                    FindDescendants<ShapePath>(FindControl<Button>(surface, "ChatContextUsage"))
+                        .Select(path => (Path: path, Geometry: path.Data)).ToArray()));
+                await ui.RunOnUIAsync(() => provider.Publish(snapshot));
+                await SettleAsync();
+                await ui.RunOnUIAsync(() => Assert.DoesNotContain(FindDescendants<Button>(surface),
+                    button => AutomationProperties.GetAutomationId(button) == "ChatContextUsage"));
+                await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+                {
+                    Threads = [snapshot.Threads[0] with { TotalTokens = percent * 100, ContextTokens = 10_000 }],
+                }));
+                await SettleAsync();
+                var restoredPaths = await ui.RunOnUIAsync(() =>
+                {
+                    var ring = FindControl<Button>(surface, "ChatContextUsage");
+                    Assert.EndsWith($"of 10.0K ({percent}%)", AutomationProperties.GetName(ring));
+                    var paths = FindDescendants<ShapePath>(ring).ToArray();
+                    Assert.Equal(2, paths.Length);
+                    foreach (var path in paths)
+                        foreach (var previous in previousPaths)
+                            if (!ReferenceEquals(path, previous.Path))
+                                Assert.NotSame(previous.Geometry, path.Data);
+                    var track = Assert.IsType<EllipseGeometry>(Assert.Single(paths, path => path.Opacity < 1).Data);
+                    var fill = Assert.Single(paths, path => path.Opacity == 1);
+                    if (percent == 100)
+                        Assert.Equal(track.Bounds, Assert.IsType<EllipseGeometry>(fill.Data).Bounds);
+                    else
+                    {
+                        var arc = Assert.IsType<ArcSegment>(Assert.Single(
+                            Assert.Single(Assert.IsType<PathGeometry>(fill.Data).Figures).Segments));
+                        Assert.Equal(new Windows.Foundation.Point(14.5, 8), arc.Point);
+                    }
+                    return Task.FromResult(paths.Select(path => (Path: path, Geometry: path.Data)).ToArray());
+                });
+                await ui.RunOnUIAsync(() => session.ViewModel.SetDraft($"Typing after restoring {percent}% context."));
+                await SettleAsync();
+                await ui.RunOnUIAsync(() =>
+                {
+                    var paths = FindDescendants<ShapePath>(FindControl<Button>(surface, "ChatContextUsage")).ToArray();
+                    foreach (var restored in restoredPaths)
+                    {
+                        Assert.Contains(restored.Path, paths);
+                        Assert.Same(restored.Geometry, restored.Path.Data);
+                    }
+                });
+            }
         });
     }
 

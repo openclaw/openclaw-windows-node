@@ -7,7 +7,9 @@ using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using static Microsoft.UI.Reactor.Factories;
+using ShapePath = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace OpenClawTray.Chat;
 
@@ -37,18 +39,21 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
     private const double PopoverWidth = 300;
     private const double PopoverPadding = 14;
 
+    private sealed class PathGeometryState
+    {
+        public int Percent { get; set; } = -1;
+        public Geometry? Geometry { get; set; }
+    }
+
+    private static readonly ConditionalWeakTable<ShapePath, PathGeometryState> s_geometry = new();
+
     /// <summary>Returns the toolbar ring, or an empty element when the window size is unknown.</summary>
     public override Element Render()
     {
-        var arc = UseRef((Percent: -1, Geometry: (Geometry?)null));
-        var track = UseRef<Geometry?>(null);
         if (Props.Usage is not { ContextTokens: > 0 } context)
             return Empty();
 
         var percent = Math.Clamp(context.Percent ?? 0, 0, 100);
-        if (arc.Current.Percent != percent)
-            arc.Current = (percent, CreateArc(percent));
-        track.Current ??= new EllipseGeometry { Center = new(8, 8), RadiusX = RingRadius, RadiusY = RingRadius };
         var used = ChatUsageFormatter.FormatCompact(context.UsedTokens);
         var limit = ChatUsageFormatter.FormatCompact(context.ContextTokens);
         var summary = string.Format(CultureInfo.CurrentCulture,
@@ -56,7 +61,7 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
             used, limit, percent);
         var open = Localized("Chat_ContextUsage_Open", "Open context usage details");
 
-        var trigger = Button(Ring(percent, track.Current, arc.Current.Geometry), () => { })
+        var trigger = Button(Ring(percent), () => { })
             .Resources(ChatVisuals.ToolbarButtonResources)
             .Width(32).Height(32).MinWidth(32).MinHeight(32)
             .Padding(0)
@@ -72,7 +77,7 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
             .VAlign(VerticalAlignment.Center);
     }
 
-    private static Element Ring(int percent, Geometry track, Geometry? arc)
+    private static Element Ring(int percent)
     {
         var tone = percent >= CriticalPercent ? "ChatContextRingCriticalStyle"
             : percent >= WarningPercent ? "ChatContextRingWarningStyle"
@@ -81,7 +86,7 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
                 Path2D().Width(RingSize).Height(RingSize).StrokeThickness(2.5).Opacity(0.22)
                     .Set(path =>
                     {
-                        path.Data = track;
+                        SetGeometry(path, 100);
                         path.Stretch = Stretch.None;
                         path.Style = (Style)Application.Current.Resources["ChatContextRingStyle"];
                         path.ClearValue(Microsoft.UI.Xaml.Shapes.Shape.StrokeProperty);
@@ -90,7 +95,7 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
                     .StrokeThickness(2.5).StrokeStartLineCap(PenLineCap.Round).StrokeEndLineCap(PenLineCap.Round)
                     .Set(path =>
                     {
-                        path.Data = arc;
+                        SetGeometry(path, percent);
                         path.Stretch = Stretch.None;
                         path.Style = (Style)Application.Current.Resources[tone];
                         path.ClearValue(Microsoft.UI.Xaml.Shapes.Shape.StrokeProperty);
@@ -98,6 +103,20 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
             .Width(RingSize).Height(RingSize)
             .AccessibilityView(AccessibilityView.Raw)
             .Set(grid => grid.IsHitTestVisible = false);
+    }
+
+    private static void SetGeometry(ShapePath path, int percent)
+    {
+        // A hidden ring may return on different pooled Paths. Geometry stays with
+        // its native owner, and a reset Data property invalidates the cached value.
+        var state = s_geometry.GetValue(path, static _ => new PathGeometryState());
+        if (state.Percent == percent && ReferenceEquals(path.Data, state.Geometry))
+            return;
+
+        var geometry = CreateArc(percent);
+        path.Data = geometry;
+        state.Percent = percent;
+        state.Geometry = geometry;
     }
 
     // Clockwise arc from twelve o'clock, matching the web SVG dial rotated by -90 degrees.
