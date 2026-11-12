@@ -1621,7 +1621,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 var window = FindHub(run);
                 var transform = (TransformPattern)window.GetCurrentPattern(TransformPattern.Pattern);
                 Assert.True(transform.Current.CanResize);
-                transform.Resize(name == "narrow" ? 900 : narrowWidth + 400, name == "narrow" ? 720 : 950);
+                // UIA sizes are physical pixels; exercise the same layout tiers at every DPI.
+                var scale = OwnedWindowCapture.OwnedDpiScale(run, window);
+                transform.Resize(name == "narrow" ? 900 * scale : narrowWidth + 400 * scale,
+                    (name == "narrow" ? 720 : 950) * scale);
                 await ScrollToAsync(run, 0);
                 await ScrollToAsync(run, 100);
                 try
@@ -1646,8 +1649,9 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 if (name == "narrow")
                     narrowWidth = bounds.Width;
                 else
-                    Assert.True(bounds.Width >= narrowWidth + 200, "The host did not provide two meaningfully different window widths.");
-                measurements.Add(new { name, width = bounds.Width, height = bounds.Height, finalMarker = GatewayScenario.LongHistoryFinalMarker });
+                    Assert.True(bounds.Width >= narrowWidth + 200 * scale, "The host did not provide two meaningfully different window widths.");
+                measurements.Add(new { name, width = bounds.Width, height = bounds.Height, dpiScale = scale,
+                    widthDips = bounds.Width / scale, finalMarker = GatewayScenario.LongHistoryFinalMarker });
                 await CaptureIfRequestedAsync(run, $"long-history-{name}.png");
             }
             await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "layout-proof.json"), JsonSerializer.Serialize(measurements));

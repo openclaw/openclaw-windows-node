@@ -386,14 +386,17 @@ public sealed class ReactorToolActivityProofTests
     }
 
     [Theory]
-    [InlineData(true, true, ChatToolCallStatus.InProgress, 1)]
-    [InlineData(true, true, ChatToolCallStatus.Success, 2)]
-    [InlineData(true, true, ChatToolCallStatus.Error, 2)]
-    [InlineData(true, false, ChatToolCallStatus.InProgress, 0)]
-    [InlineData(false, true, ChatToolCallStatus.Success, 1)]
-    [InlineData(false, false, ChatToolCallStatus.InProgress, 0)]
+    [InlineData(true, true, ChatToolCallStatus.InProgress, 1, false)]
+    [InlineData(true, true, ChatToolCallStatus.Success, 2, false)]
+    [InlineData(true, true, ChatToolCallStatus.Error, 2, false)]
+    [InlineData(true, false, ChatToolCallStatus.InProgress, 0, false)]
+    [InlineData(false, true, ChatToolCallStatus.Success, 1, false)]
+    [InlineData(false, false, ChatToolCallStatus.InProgress, 0, false)]
+    [InlineData(true, true, ChatToolCallStatus.Success, 2, true)]
+    [InlineData(true, true, ChatToolCallStatus.Error, 2, true)]
+    [InlineData(false, true, ChatToolCallStatus.InProgress, 0, true)]
     public async Task ToolDetails_UseDividersInsteadOfVisibleSectionHeadings(
-        bool hasInput, bool hasOutput, ChatToolCallStatus status, int expectedDividers)
+        bool hasInput, bool hasOutput, ChatToolCallStatus status, int expectedDividers, bool panel)
     {
         await _ui.RunOnUIAsync(() =>
         {
@@ -403,12 +406,16 @@ public sealed class ReactorToolActivityProofTests
             {
                 ToolArgs = hasInput ? new System.Text.Json.Nodes.JsonObject { ["command"] = "echo synthetic" } : null,
             };
-            var element = ToolCallCardRenderer.BuildStandalone(BuildTimeline([entry], 1), entry);
+            var context = BuildTimeline([entry], 1);
+            var element = panel
+                ? ToolCallCardRenderer.BuildPanelDetails(context, entry)
+                : ToolCallCardRenderer.BuildStandalone(context, entry);
             var root = host.Reconciler.Mount(element, static () => { });
             host.Content = root;
             try
             {
-                Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
+                if (!panel)
+                    Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
                 Assert.DoesNotContain(FindLogical<TextBlock>(root!),
                     text => text.Text is "TOOL INPUT" or "TOOL OUTPUT" or "TOOL ERROR");
                 var sections = FindLogical<ScrollViewer>(root!).ToArray();
@@ -424,12 +431,74 @@ public sealed class ReactorToolActivityProofTests
                     expectedLabels.Add(status == ChatToolCallStatus.Error ? "Tool error" : "Tool output");
                     expectedContent.Add("Synthetic output");
                 }
-                Assert.Equal(expectedLabels, sections.Select(AutomationProperties.GetName));
-                Assert.Equal(expectedContent, sections.Select(section =>
-                    CollectText(Assert.IsType<RichTextBlock>(section.Content))));
-                Assert.All(sections, section =>
-                    Assert.True(Assert.IsType<RichTextBlock>(section.Content).IsTextSelectionEnabled));
+                if (panel)
+                {
+                    Assert.Equal("ConversationToolDetailsReader",
+                        AutomationProperties.GetAutomationId(Assert.Single(sections)));
+                    Assert.True(double.IsPositiveInfinity(sections[0].MaxHeight));
+                    var text = FindLogical<RichTextBlock>(root!).ToArray();
+                    Assert.Equal(expectedLabels, text.Select(AutomationProperties.GetName));
+                    Assert.Equal(expectedContent, text.Select(CollectText));
+                    Assert.All(text, block => Assert.True(block.IsTextSelectionEnabled));
+                }
+                else
+                {
+                    Assert.Equal(expectedLabels, sections.Select(AutomationProperties.GetName));
+                    Assert.Equal(expectedContent, sections.Select(section =>
+                        CollectText(Assert.IsType<RichTextBlock>(section.Content))));
+                    Assert.All(sections, section =>
+                        Assert.True(Assert.IsType<RichTextBlock>(section.Content).IsTextSelectionEnabled));
+                }
                 Assert.Equal(expectedDividers, FindLogical<Border>(root!).Count(border => border.Height == 1));
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(ChatToolCallStatus.Success, false, "", false, false)]
+    [InlineData(ChatToolCallStatus.Error, false, "", false, false)]
+    [InlineData(ChatToolCallStatus.InProgress, false, "", false, false)]
+    [InlineData(ChatToolCallStatus.InProgress, true, "", false, true)]
+    [InlineData(ChatToolCallStatus.InProgress, false, "Live output", false, true)]
+    [InlineData(ChatToolCallStatus.Success, false, "Completed output", false, true)]
+    [InlineData(ChatToolCallStatus.Success, false, "", true, true)]
+    public async Task ToolWrapper_OffersOwnDetailsOnlyForDisplayContentOrTruncatedOutput(
+        ChatToolCallStatus status, bool input, string output, bool truncated, bool hasOwnDetails)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var wrapper = Tool("wrapper", "task", output, status) with
+            {
+                ToolInputDetails = input ? new("", "Inspect the file") : null,
+                ToolResultReference = truncated ? new("result", true) : null,
+            };
+            var child = Tool("child", "read_file", "Child output", ChatToolCallStatus.Success);
+            var context = BuildTimeline([wrapper, child], 1) with { OnOpenToolDetails = _ => { } };
+            var element = ToolCallCardRenderer.BuildStandalone(context, wrapper, children: [new(child, [])]);
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                Assert.Contains(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander) == "ChatToolCall_child");
+                Assert.Equal(hasOwnDetails, FindLogical<Expander>(root!).Any(expander =>
+                    AutomationProperties.GetName(expander) == "Tool input"));
+                Assert.Equal(hasOwnDetails, FindLogical<Button>(root!).Any(button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatToolDetails_wrapper"));
+                if (truncated)
+                    Assert.Contains(FindLogical<TextBlock>(root!), text =>
+                        AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
+                if (input)
+                    Assert.Contains(FindLogical<RichTextBlock>(root!), text => CollectText(text) == "Inspect the file");
+                if (output.Length > 0)
+                    Assert.Contains(FindLogical<RichTextBlock>(root!), text => CollectText(text) == output);
             }
             finally
             {

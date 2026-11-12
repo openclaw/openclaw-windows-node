@@ -5,8 +5,10 @@ using System.Globalization;
 
 namespace OpenClawTray.Chat;
 
-/// <summary>Resolved context-window usage; shared by the usage pill and the throughput strip.</summary>
-internal readonly record struct ChatContextUsage(long UsedTokens, long ContextTokens, int? Percent);
+/// <summary>Resolved context-window usage; shared by the usage pill and the composer context ring.</summary>
+internal readonly record struct ChatContextUsage(
+    long UsedTokens, long ContextTokens, int? Percent,
+    long? InputTokens = null, long? OutputTokens = null);
 
 public static class ChatUsageFormatter
 {
@@ -29,8 +31,8 @@ public static class ChatUsageFormatter
         => Render(Normalize(usedTokens, contextTokens, contextPercent));
 
     /// <summary>
-    /// Context usage for the throughput strip: the same source the usage pill uses, but only
-    /// when the window size is known so a bar can be drawn.
+    /// Context usage for the composer context ring: the same source the usage pill uses, but only
+    /// when the window size is known so a ring can be drawn.
     /// </summary>
     internal static ChatContextUsage? ResolveContext(
         IReadOnlyList<ChatTimelineItem>? entries,
@@ -38,18 +40,7 @@ public static class ChatUsageFormatter
         ChatThread? thread)
         => (ResolveLatest(entries, metadata) ?? Resolve(thread)) is { ContextTokens: > 0 } usage ? usage : null;
 
-    internal static string FormatThroughput(ChatThroughputStats stats, bool turnActive)
-    {
-        var current = turnActive && stats.LiveTokensPerSecond is { } live
-            ? "~" + Rate(live)
-            : stats.LatestTokensPerSecond is { } latest ? Rate(latest) : "—";
-        return $"{current} tps · μ {RateOrDash(stats.MeanTokensPerSecond)} · p95 {RateOrDash(stats.P95TokensPerSecond)}";
-    }
-
-    private static string Rate(double value)
-        => value.ToString(value >= 100 ? "0" : "0.0", CultureInfo.InvariantCulture);
-
-    private static string RateOrDash(double? value) => value is { } v ? Rate(v) : "—";
+    internal static string FormatCompact(long value) => FormatCount(value);
 
     private static ChatContextUsage? Resolve(ChatThread? thread)
     {
@@ -59,7 +50,12 @@ public static class ChatUsageFormatter
         if (usedTokens <= 0)
             usedTokens = thread.InputTokens + thread.OutputTokens;
 
-        return Normalize(usedTokens, thread.ContextTokens, null);
+        var usage = Normalize(usedTokens, thread.ContextTokens, null);
+        // Session counters are non-nullable. A missing pair is unknown, but a zero
+        // beside a populated counter is a valid measurement (for example zero output).
+        return usage is { } context && (thread.InputTokens > 0 || thread.OutputTokens > 0)
+            ? context with { InputTokens = thread.InputTokens, OutputTokens = thread.OutputTokens }
+            : usage;
     }
 
     private static ChatContextUsage? ResolveLatest(
@@ -82,9 +78,15 @@ public static class ChatUsageFormatter
     }
 
     private static ChatContextUsage? Resolve(ChatEntryMetadata? metadata)
-        => metadata is null
-            ? null
-            : Resolve(metadata.InputTokens, metadata.OutputTokens, metadata.ResponseTokens, metadata.ContextPercent, metadata.ContextTokens ?? 0);
+    {
+        if (metadata is null)
+            return null;
+        var usage = Resolve(metadata.InputTokens, metadata.OutputTokens, metadata.ResponseTokens,
+            metadata.ContextPercent, metadata.ContextTokens ?? 0);
+        return usage is { } context
+            ? context with { InputTokens = metadata.InputTokens, OutputTokens = metadata.OutputTokens }
+            : null;
+    }
 
     private static ChatContextUsage? Resolve(int? inputTokens, int? outputTokens, int? responseTokens, int? contextPercent, long fallbackContextTokens)
     {

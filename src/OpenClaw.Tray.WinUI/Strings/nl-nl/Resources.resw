@@ -2912,14 +2912,32 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Redenering</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>Tokens per seconde: laatste modelantwoord, gemiddelde (μ) en 95e percentiel (p95) van recente modelaanroepen in deze sessie. ~ geeft een live schatting tijdens het streamen aan.</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>Details van contextgebruik openen</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>Gebruik van het contextvenster</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>Contextgebruik van de sessie: {0} van {1} ({2}%)</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>Bericht aan assistent (Enter om te verzenden)</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>Contextvenster</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>Tokens van laatste uitvoering</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>Invoer</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>Uitvoer</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>Details van contextgebruik</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>Enter om te verzenden, Shift+Enter voor een nieuwe regel.</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>Bericht aan {0}</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>Verbinden…</value>
@@ -7559,7 +7577,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Instellingen voor sandboxomgeving</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>Beschikbaar</value>
+    <value>Ingeschakeld</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>Compatibiliteit</value>
@@ -7638,7 +7656,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portalen</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Werkbomen</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Uploads opruimen is geblokkeerd</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Controleer de maptoegang en machtigingen voor privégegevens. Oude uploads kunnen blijven staan totdat opruimen weer mogelijk is. Probeer voltooide uploads niet automatisch opnieuw.</value></data>
@@ -9955,4 +9972,11 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>Draait op deze pc</value></data>
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Externe Gateway verbonden</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Geverifieerd voor deze installatie</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Details naast het gesprek openen</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Tooldetails</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Deze details zijn niet meer beschikbaar. Maak indien nodig opnieuw verbinding en open de tool opnieuw vanuit het huidige gesprek.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Formaat van detailpaneel wijzigen</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Gebruik de pijltoetsen links en rechts om het formaat te wijzigen. Home kiest de minimale breedte; End kiest de maximale breedte.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Details weergeven</value></data>
 </root>

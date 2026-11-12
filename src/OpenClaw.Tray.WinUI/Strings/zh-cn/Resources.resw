@@ -2911,14 +2911,32 @@
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>每秒令牌数：本会话中最新模型响应、平均值 (μ) 以及近期模型调用的第 95 百分位数 (p95)。~ 表示流式传输期间的实时估算。</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>打开上下文使用详情</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>上下文窗口使用情况</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>会话上下文使用情况：{1} 中的 {0}（{2}%）</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>给助手发送消息（按 Enter 发送）</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>上下文窗口</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>最近一次运行的令牌</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>输入</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>输出</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>上下文使用详情</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>按 Enter 发送，按 Shift+Enter 换行。</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>给 {0} 发送消息</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>连接中…</value>
@@ -7558,7 +7576,7 @@
     <value>沙盒设置</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>可用</value>
+    <value>已开启</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>兼容模式</value>
@@ -7637,7 +7655,6 @@
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>门户</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作树</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上传文件清理受阻</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>请检查文件夹访问权限和私有状态数据的权限。恢复清理前，旧上传文件可能会继续保留。请勿自动重试已完成的上传。</value></data>
@@ -9954,4 +9971,11 @@
   <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>在这台电脑上运行</value></data>
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>远程 Gateway 已连接</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>已为此设置验证</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁打开详情</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>工具详情</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>这些详情已不可用。如有需要，请重新连接，然后从当前对话重新打开工具。</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>调整详情面板大小</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>使用左右方向键调整大小。Home 键选择最小宽度；End 键选择最大宽度。</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>返回对话</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>显示详情</value></data>
 </root>

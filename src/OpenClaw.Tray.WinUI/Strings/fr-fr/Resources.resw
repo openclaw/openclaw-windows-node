@@ -2911,14 +2911,32 @@ Utilisez l'une de ces options :
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raisonnement</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>Jetons par seconde : dernière réponse du modèle, moyenne (μ) et 95e centile (p95) des appels de modèle récents de cette session. ~ indique une estimation en direct pendant la diffusion.</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>Ouvrir les détails d'utilisation du contexte</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>Utilisation de la fenêtre de contexte</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>Utilisation du contexte de la session : {0} sur {1} ({2} %)</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>Envoyer un message à l'assistant (Entrée pour envoyer)</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>Fenêtre de contexte</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>Jetons de la dernière exécution</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>Entrée</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>Sortie</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>Détails d'utilisation du contexte</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne.</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>Envoyer un message à {0}</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>Connexion…</value>
@@ -7558,7 +7576,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Paramètres du bac à sable</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>Disponible</value>
+    <value>Activé</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>Compatibilité</value>
@@ -7637,7 +7655,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portails</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Arbres de travail</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>L&apos;élément demandé n&apos;est plus disponible ici.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Certaines destinations du tableau de bord ne sont pas disponibles pour cette version de la passerelle.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0} : choisissez d'abord un assistant.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Le nettoyage des fichiers téléversés est bloqué</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Vérifiez l'accès aux dossiers et les autorisations des données privées. Les anciens fichiers peuvent subsister jusqu'au rétablissement du nettoyage. Ne relancez pas automatiquement les téléversements terminés.</value></data>
@@ -9954,4 +9971,11 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>Exécuté sur ce PC</value></data>
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Gateway distant connecté</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Vérifié pour cette configuration</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Ouvrir les détails à côté de la conversation</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Détails de l’outil</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ces détails ne sont plus disponibles. Reconnectez-vous si nécessaire, puis rouvrez l’outil depuis la conversation actuelle.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionner le panneau de détails</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Utilisez les flèches gauche et droite pour redimensionner. Début sélectionne la largeur minimale ; Fin sélectionne la largeur maximale.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Revenir à la conversation</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher les détails</value></data>
 </root>
