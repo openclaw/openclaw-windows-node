@@ -785,7 +785,10 @@ jobs:
         "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
 
     - name: Run Tray UI Tests
-      timeout-minutes: 15
+      # Passing runs on 2026-11-12 took 13.1-15.1 minutes for 1,382 tests, and the
+      # suite grows with each native-proof addition. Keep about 10 minutes of headroom;
+      # -HangTimeoutSeconds still bounds a single stalled test.
+      timeout-minutes: 25
       env:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
