@@ -2930,14 +2930,32 @@ Use uma destas opções:
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Raciocínio</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>Tokens por segundo: última resposta do modelo, média (μ) e percentil 95 (p95) das chamadas de modelo recentes nesta sessão. ~ indica uma estimativa ao vivo durante a transmissão.</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>Abrir detalhes de uso do contexto</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>Uso da janela de contexto</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>Uso de contexto da sessão: {0} de {1} ({2}%)</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>Mensagem para o Assistant (Enter para enviar)</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>Janela de contexto</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>Tokens da última execução</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>Entrada</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>Saída</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>Detalhes de uso do contexto</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>Enter para enviar, Shift+Enter para uma nova linha.</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>Mensagem para {0}</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>Conectando…</value>
@@ -7617,7 +7635,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Configurações do ambiente restrito</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>Disponível</value>
+    <value>Ativado</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>Compatibilidade</value>

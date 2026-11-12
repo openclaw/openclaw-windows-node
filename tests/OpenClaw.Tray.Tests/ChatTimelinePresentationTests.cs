@@ -118,7 +118,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("VerticalAlignmentRatio = 1.0", binding);
         Assert.Contains("!string.Equals(_displayedTailKey, displayedTailKey, StringComparison.Ordinal)", binding);
         Assert.Contains("_following = _readerBringCorrelationId is null && IsNearBottom(sender)", binding);
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", binding);
+        Assert.Contains("_scrollView.VerticalAnchorRatio = TailAnchorRatio", binding);
+        Assert.DoesNotContain("VerticalAnchorRatio = 1.0", binding);
         Assert.Contains("_scrollView.VerticalAnchorRatio = double.NaN", binding);
         Assert.Contains("_tailNavigationQueue.Enqueue(version, request)", binding);
         Assert.Contains("_tailNavigationQueue.TryDequeue(_version, out var queuedRequest)", binding);
@@ -194,7 +195,7 @@ public sealed class ChatTimelinePresentationTests
         var restore = Method(binding, "private void RestoreTailAnchor()", "private void OnReaderFocus(");
         Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", restore);
         Assert.Contains("_offsetCorrectionAnchorRequested = null", restore);
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", restore);
+        Assert.Contains("_scrollView.VerticalAnchorRatio = TailAnchorRatio", restore);
         var detach = Method(binding, "private void DetachScrollView()", "public void Dispose()");
         Assert.Contains("_scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested", detach);
         Assert.Contains("_offsetCorrectionAnchorRequested = null", detach);
@@ -489,10 +490,50 @@ public sealed class ChatTimelinePresentationTests
     public void TailReflowCorrection_CancellationRejectsLateExtentChanges()
     {
         var correction = new TailReflowCorrection();
+        var revision = new object();
+        correction.ContentChanged(revision);
         correction.Arm();
         correction.Clear();
+        correction.ContentChanged(revision);
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false, readerOwnsAnchor: false);
 
         Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_StreamingGrowthUsesOneCorrectionPerContentRevision()
+    {
+        var correction = new TailReflowCorrection();
+        var revision = new object();
+        correction.ContentChanged(revision);
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false, readerOwnsAnchor: false);
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        correction.ContentChanged(revision);
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false, readerOwnsAnchor: false);
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.ContentChanged(new object());
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false, readerOwnsAnchor: false);
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Theory]
+    [InlineData(false, false, false, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, false, false, true)]
+    public void TailReflowCorrection_StreamingGrowthPreservesReaderTailAndInitialGates(
+        bool following, bool atBottom, bool initialPending, bool readerOwnsAnchor)
+    {
+        var correction = new TailReflowCorrection();
+        correction.ContentChanged(new object());
+        correction.ArmForExtentGrowth(following, atBottom, initialPending, readerOwnsAnchor);
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        correction.ArmForExtentGrowth(following: true, atBottom: false, initialPending: false, readerOwnsAnchor: false);
+        Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
     }
 
     [Fact]
@@ -1319,9 +1360,12 @@ public sealed class ChatTimelinePresentationTests
         Assert.True(input.IndexOf("CancelPendingNavigation();", StringComparison.Ordinal)
             < input.IndexOf("scrollView.VerticalAnchorRatio = 0;", StringComparison.Ordinal));
         Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private bool IsDisclosureHeader", "private void RestoreTailAnchor"));
+        var growth = Slice("private void OnExtentChanged", "private void ObserveGeometry");
+        Assert.Contains("_reflowCorrection.ArmForExtentGrowth(", growth);
+        Assert.Contains("_disclosureAnchored || _readerAnchored || _readerBringCorrelationId is not null", growth);
 
         // Tail dispatch and ordinary no-motion input restore bottom anchoring.
-        Assert.Contains("_scrollView.VerticalAnchorRatio = 1.0", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
+        Assert.Contains("_scrollView.VerticalAnchorRatio = TailAnchorRatio", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
         Assert.Contains("RestoreTailAnchor();", Slice("private void CancelPendingNavigation", "_version++"));
         Assert.Contains("RestoreTailAnchor();", Slice("private bool StartTailRequest", "private object? GetRequestItem"));
         Assert.Contains("RestoreTailAnchor();", Slice("// Reflow needs an offset correction", "scrollView.ScrollTo("));

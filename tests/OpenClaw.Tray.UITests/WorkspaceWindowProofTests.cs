@@ -1045,7 +1045,12 @@ public sealed class WorkspaceWindowProofTests
         ((WindowPattern)timeline.GetCurrentPattern(WindowPattern.Pattern)).Close();
         Assert.NotNull(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
 
-        var nativeNavigation = Find(workspaceElement, "WorkspaceNavigation");
+        AutomationElement? observedNavigation = null;
+        // Retain the successful observation while UIA settles after the secondary window closes.
+        await WaitUntilAsync(() =>
+            (observedNavigation = FindOrNull(workspaceElement, "WorkspaceNavigation")) is not null,
+            () => "Workspace navigation did not return after closing the connection timeline.");
+        var nativeNavigation = observedNavigation!;
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
         var clear = FindPopup(workspaceElement, "WorkspaceNotificationsClear");

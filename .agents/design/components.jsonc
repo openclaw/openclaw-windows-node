@@ -899,9 +899,9 @@
     },
     {
       "name": "ChatComposer",
-      "note": "Workspace composer from ReactorChatComposer at production 9e4999c6, measured against the Release app and fixture Gateway. Reference width 768px, resting outer height 112px, 20px radius, 1px ChatStrokeBrush, native alpha-preserving ChatComposerBrush card fill. Inner padding is 16,12,16,8; input is at least 44px tall with 16px text and no padding, fill, border or accent underline, including focus. Stack gap 8px. Attach is the native paperclip U+E723, not Add. Workspace omits the session selector; model and effort align right before Voice and circular 32px Send. Toolbar glyphs are native 16px Segoe Fluent Icons. Preview contains a draft so Send is enabled; typing does not send, auto-grow, or update Send eligibility. Empty/disabled, Stop, narrow gauge, native flyouts and dynamic input behavior remain production responsibilities. At native widths <=560 effort uses a 44px gauge; the installed renderer cannot express that responsive switch. The reading cap, 40px/12px outer gutters and 12px vertical margin belong to the host, not this isolated writing-surface component.",
+      "note": "Workspace composer from ReactorChatComposer at production 9e4999c6, measured against the Release app and fixture Gateway. Reference width 768px, resting outer height 112px, 20px radius, 1px ChatStrokeBrush, native alpha-preserving ChatComposerBrush card fill. Inner padding is 16,12,16,8; input is at least 44px tall with 14px text and no padding, fill, border or accent underline, including focus. Stack gap 8px. Attach is the native Add (\"+\") glyph U+E710 at 14px. Workspace omits the session selector; model and effort align right before Voice and a compact 24px Send disc with a 12px arrow inside a 32px target (Stop shows a filled 10px square). The Node Sandbox shield follows Attach in production but is omitted from this preview. Other toolbar glyphs are native 16px Segoe Fluent Icons. Preview contains a draft so Send is enabled; typing does not send, auto-grow, or update Send eligibility. Empty/disabled, Stop, narrow gauge, native flyouts and dynamic input behavior remain production responsibilities. At native widths <=560 effort uses a 44px gauge; the installed renderer cannot express that responsive switch. The reading cap, 40px/12px outer gutters and 12px vertical margin belong to the host, not this isolated writing-surface component.",
       "props": {
-        "placeholder": "Message Assistant (Enter to send)",
+        "placeholder": "Message Assistant",
         "draft": "Draft for visual comparison",
         "model": "Fixture Browse",
         "effort": "off"
@@ -1008,7 +1008,7 @@
                         "el": "span",
                         "attrs": { "aria-hidden": "true" },
                         "appearance": { "textStyle": "chatIcon" },
-                        "children": [ "\uE723" ]
+                        "children": [ "\uE710" ]
                       }
                     ]
                   }
