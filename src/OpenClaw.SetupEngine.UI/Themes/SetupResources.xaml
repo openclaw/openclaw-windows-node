@@ -206,6 +206,7 @@
     <Thickness x:Key="SetupGutterMargin">0,0,48,0</Thickness>
     <Thickness x:Key="SetupBodyMargin">0,24,0,16</Thickness>
     <x:Double x:Key="SetupContentMaxWidth">600</x:Double>
+    <x:Double x:Key="SetupFooterButtonMinWidth">180</x:Double>
 
     <Style x:Key="SetupHeroPanelStyle" TargetType="StackPanel">
         <Setter Property="Spacing" Value="10" />
@@ -220,12 +221,13 @@
         <Setter Property="HorizontalAlignment" Value="Right" />
         <Setter Property="VerticalAlignment" Value="Bottom" />
     </Style>
+    <!-- Paired footer actions share one minimum width so Back and Next match. -->
     <Style x:Key="SetupPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
-        <Setter Property="MinWidth" Value="180" />
+        <Setter Property="MinWidth" Value="{StaticResource SetupFooterButtonMinWidth}" />
         <Setter Property="MinHeight" Value="40" />
     </Style>
     <Style x:Key="SetupSecondaryButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
-        <Setter Property="MinWidth" Value="110" />
+        <Setter Property="MinWidth" Value="{StaticResource SetupFooterButtonMinWidth}" />
         <Setter Property="MinHeight" Value="40" />
     </Style>
     <!-- Text actions sit flush with the content edge; only the trailing side keeps padding. -->
