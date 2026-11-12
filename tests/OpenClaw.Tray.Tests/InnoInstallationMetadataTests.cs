@@ -20,7 +20,9 @@ public sealed class InnoInstallationMetadataTests
             using var fixture = new RegistrationFixture();
             var before = fixture.Snapshot();
 
-            Assert.Null(fixture.Owner.Refresh(Executable, version, false, false, false));
+            var refreshed = fixture.Owner.Refresh(Executable, version, false, false, false);
+            Assert.Equal(InnoMetadataRefreshOutcome.Refreshed, refreshed.Outcome);
+            Assert.Equal($"Installed apps registration refreshed from 2026.9.5-alpha.93 to {version}.", refreshed.Message);
 
             using var registration = fixture.Open();
             Assert.Equal(version, registration.GetValue("DisplayVersion"));
@@ -32,7 +34,8 @@ public sealed class InnoInstallationMetadataTests
             foreach (var name in before.Keys.Except(["DisplayVersion", "DisplayName"]))
                 Assert.Equal(before[name], after[name]);
 
-            Assert.Null(fixture.Owner.Refresh(Executable, version, false, false, false));
+            Assert.Equal(InnoMetadataRefreshOutcome.AlreadyCurrent,
+                fixture.Owner.Refresh(Executable, version, false, false, false).Outcome);
             Assert.Equal(after.OrderBy(pair => pair.Key), fixture.Snapshot().OrderBy(pair => pair.Key));
         }
     }
@@ -47,7 +50,8 @@ public sealed class InnoInstallationMetadataTests
                 registration.SetValue(changedField, changedField == "DisplayVersion"
                     ? "2026.9.8-2" : "OpenClaw Companion version 2026.9.8-2");
 
-            Assert.Null(fixture.Owner.Refresh(Executable, "2026.9.8-2", false, false, false));
+            Assert.Equal(InnoMetadataRefreshOutcome.Refreshed,
+                fixture.Owner.Refresh(Executable, "2026.9.8-2", false, false, false).Outcome);
             using var after = fixture.Open();
             Assert.Equal("2026.9.8-2", after.GetValue("DisplayVersion"));
             Assert.Equal("OpenClaw Companion version 2026.9.8-2", after.GetValue("DisplayName"));
@@ -68,7 +72,10 @@ public sealed class InnoInstallationMetadataTests
                     registration.SetValue(field, "different installation", RegistryValueKind.String);
             }
             var before = fixture.Snapshot();
-            Assert.Null(fixture.Owner.Refresh(Executable, "2026.9.8-2", false, false, false));
+            var result = fixture.Owner.Refresh(Executable, "2026.9.8-2", false, false, false);
+            // The startup log names the field that kept the registration unchanged.
+            Assert.Equal(InnoMetadataRefreshOutcome.Skipped, result.Outcome);
+            Assert.StartsWith($"Installed apps registration not refreshed: {field} ", result.Message);
             Assert.Equal(before.OrderBy(pair => pair.Key), fixture.Snapshot().OrderBy(pair => pair.Key));
         }
     }
@@ -78,7 +85,10 @@ public sealed class InnoInstallationMetadataTests
     {
         using var fixture = new RegistrationFixture();
         var before = fixture.Snapshot();
-        Assert.Null(fixture.Owner.Refresh(@"C:\Portable\OpenClaw.Tray.WinUI.exe", "2026.9.8-2", false, false, false));
+        var result = fixture.Owner.Refresh(@"C:\Portable\OpenClaw.Tray.WinUI.exe", "2026.9.8-2", false, false, false);
+        Assert.Equal(InnoMetadataRefreshOutcome.Skipped, result.Outcome);
+        Assert.Equal(@"Installed apps registration not refreshed: InstallLocation 'C:\OpenClaw Test Fixture\Companion\' " +
+                     @"is not the running folder 'C:\Portable'.", result.Message);
         Assert.Equal(before.OrderBy(pair => pair.Key), fixture.Snapshot().OrderBy(pair => pair.Key));
     }
 
@@ -86,16 +96,23 @@ public sealed class InnoInstallationMetadataTests
     public void PackagedDevAndIsolatedProcessesNeverOpenRegistration()
     {
         var owner = new InnoInstallationMetadata(() => throw new InvalidOperationException("Registry must not be opened"));
-        Assert.Null(owner.Refresh(Executable, "2026.9.8-2", true, false, false));
-        Assert.Null(owner.Refresh(Executable, "2026.9.8-2", false, true, false));
-        Assert.Null(owner.Refresh(Executable, "2026.9.8-2", false, false, true));
+        var skipped = new[]
+        {
+            owner.Refresh(Executable, "2026.9.8-2", true, false, false),
+            owner.Refresh(Executable, "2026.9.8-2", false, true, false),
+            owner.Refresh(Executable, "2026.9.8-2", false, false, true),
+        };
+        Assert.All(skipped, result => Assert.Equal(InnoMetadataRefreshOutcome.Skipped, result.Outcome));
+        Assert.Equal(skipped.Length, skipped.Select(result => result.Message).Distinct().Count());
     }
 
     [WindowsFact]
     public void MissingRegistrationIsNotCreated()
     {
         var owner = new InnoInstallationMetadata(() => null);
-        Assert.Null(owner.Refresh(Executable, "2026.9.8-2", false, false, false));
+        var result = owner.Refresh(Executable, "2026.9.8-2", false, false, false);
+        Assert.Equal(InnoMetadataRefreshOutcome.Skipped, result.Outcome);
+        Assert.Contains("no Inno Setup registration exists", result.Message);
     }
 
     [WindowsFact]
@@ -108,9 +125,9 @@ public sealed class InnoInstallationMetadataTests
         {
             var owner = new InnoInstallationMetadata(() => throw failure);
             var warning = owner.Refresh(Executable, "2026.9.8-2", false, false, false);
-            Assert.NotNull(warning);
-            Assert.Contains(failure.GetType().Name, warning);
-            Assert.Contains("repair the installation with Setup", warning);
+            Assert.True(warning.IsWarning);
+            Assert.Contains(failure.GetType().Name, warning.Message);
+            Assert.Contains("repair the installation with Setup", warning.Message);
         }
     }
 

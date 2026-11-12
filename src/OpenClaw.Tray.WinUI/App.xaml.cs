@@ -1154,11 +1154,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             activation.Kind));
         await _activationRouter.DispatchPlanAsync(launchPlan, this, CancellationToken.None);
 
-        var registrationWarning = new InnoInstallationMetadata().Refresh(
+        var registration = new InnoInstallationMetadata().Refresh(
             Environment.ProcessPath, AppVersionInfo.Version,
             PackageHelper.IsPackaged, AppIdentity.IsDev, AppIdentity.IsIsolated);
-        if (registrationWarning is not null)
-            Logger.Warn(registrationWarning);
+        if (registration.IsWarning)
+            Logger.Warn(registration.Message);
+        else
+            Logger.Info(registration.Message);
 
         Logger.Info("Application started (WinUI 3)");
     }
