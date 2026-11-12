@@ -119,7 +119,6 @@ file sealed class ItemsViewVerticalScrollControllerHandler
 file sealed class InitialTailPositioner : IDisposable
 {
     private const double FollowThreshold = 60;
-    private const double TailVisibilityTolerance = 1;
     private const double OffsetCorrectionAnchorRatio = 0.5;
 
     private readonly WinUIItemsView itemsView;
@@ -909,7 +908,7 @@ file sealed class InitialTailPositioner : IDisposable
         scrollView.ScrollableHeight - scrollView.VerticalOffset <= FollowThreshold;
 
     private static bool IsAtBottom(WinUIScrollView scrollView) =>
-        scrollView.ScrollableHeight - scrollView.VerticalOffset <= TailVisibilityTolerance;
+        TailNavigationPolicy.IsAtBottom(scrollView.VerticalOffset, scrollView.ScrollableHeight);
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {

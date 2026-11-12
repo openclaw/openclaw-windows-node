@@ -3,7 +3,6 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorLight2}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorLight2}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
@@ -66,7 +65,6 @@
             </Style>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemAccentColorDark1}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorDark1}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
@@ -129,7 +127,6 @@
             </Style>
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
-            <SolidColorBrush x:Key="ChatPickerAccentBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -366,7 +363,7 @@
         </Grid>
     </DataTemplate>
     <Style x:Key="ChatPickerAccentTextStyle" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{ThemeResource ChatPickerAccentBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
     </Style>
     <Style x:Key="ChatSecondaryTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />

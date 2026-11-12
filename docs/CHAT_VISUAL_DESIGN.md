@@ -140,7 +140,7 @@ web's highlight.js palette.
 | `ChatMutedTextStyle` | Native TextBlock binding to `ChatMutedTextBrush`, for list bullets |
 | `ChatQuestionCardStyle` | Native question Border bindings to card fill and question-specific stroke |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
-| `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
+| `ChatPickerAccentTextStyle` | Direct theme binding to native `AccentTextFillColorPrimaryBrush`, including its high-contrast mapping |
 | `ChatSandboxOnBrush` | Light/dark system accent variants; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
@@ -474,6 +474,9 @@ transcript then anchors to the top, so the header stays put and its details
 grow downward, as on the web. Any other reader input or programmatic tail scroll
 restores bottom anchoring.
 Actual tail visibility is tracked separately from follow eligibility. The
+landing predicate uses absolute distance to the current bottom, so an offset
+beyond a reduced extent does not count as landed. The wider follow-intent
+threshold and the existing correction budget remain unchanged.
 **Jump to latest** button stays mounted as an overlay, so showing it does not
 shrink the transcript viewport or move the composer.
 It is a 32-pixel circular native button with a 16-pixel Fluent down arrow,
