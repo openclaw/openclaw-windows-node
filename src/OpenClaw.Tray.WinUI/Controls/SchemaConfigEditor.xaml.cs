@@ -29,6 +29,7 @@ public sealed partial class SchemaConfigEditor : UserControl
     private bool _loading;
     private readonly Dictionary<string, object?> _changes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _validationErrors = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, FrameworkElement> _fields = new(StringComparer.Ordinal);
     private static readonly TimeSpan PatternValidationTimeout = TimeSpan.FromMilliseconds(200);
 
     private static readonly Regex CamelCaseSplitPattern = new(
@@ -53,6 +54,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         _config = config;
         _changes.Clear();
         _validationErrors.Clear();
+        _fields.Clear();
         FieldsPanel.Children.Clear();
 
         try
@@ -74,6 +76,16 @@ public sealed partial class SchemaConfigEditor : UserControl
 
     public Dictionary<string, object?> GetChanges() => new(_changes);
     public Dictionary<string, string> GetValidationErrors() => new(_validationErrors);
+
+    internal bool RevealField(string path)
+    {
+        if (!_fields.TryGetValue(path, out var field)) return false;
+        for (DependencyObject? parent = field; parent is not null; parent = VisualTreeHelper.GetParent(parent))
+            if (parent is Expander expander) expander.IsExpanded = true;
+        (VisualTreeHelper.GetParent(field) as FrameworkElement ?? field).StartBringIntoView();
+        if (field is Control control && control.IsEnabled) control.Focus(FocusState.Programmatic);
+        return true;
+    }
 
     /// <summary>
     /// JSON Schema's "type" keyword may be either a string ("object") or an
@@ -245,6 +257,11 @@ public sealed partial class SchemaConfigEditor : UserControl
         if (readOnly && control is Control readOnlyControl)
             readOnlyControl.IsEnabled = false;
 
+        if (control is FrameworkElement field)
+        {
+            _fields[path] = field;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(field, $"ConfigField:{path}");
+        }
         fieldPanel.Children.Add(control);
         if (!string.IsNullOrEmpty(description))
         {
@@ -276,7 +293,7 @@ public sealed partial class SchemaConfigEditor : UserControl
     private UIElement RenderEnumField(string path, string label,
         JsonElement enumEl, JsonElement config, Action<object?> onChanged)
     {
-        var combo = new ComboBox { Header = label, MinWidth = 200 };
+        var combo = new ComboBox { Header = label, HorizontalAlignment = HorizontalAlignment.Stretch };
 
         var currentVal = config.ValueKind == JsonValueKind.String ? config.GetString() : null;
         foreach (var item in enumEl.EnumerateArray())
@@ -314,7 +331,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         {
             Header = label,
             SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-            MinWidth = 200
+            HorizontalAlignment = HorizontalAlignment.Stretch
         };
         if (config.ValueKind == JsonValueKind.Number)
             numBox.Value = config.GetDouble();
@@ -334,7 +351,7 @@ public sealed partial class SchemaConfigEditor : UserControl
     private UIElement RenderStringField(string path, string label,
         JsonElement config, Action<object?> onChanged)
     {
-        var textBox = new TextBox { Header = label, MinWidth = 300 };
+        var textBox = new TextBox { Header = label, HorizontalAlignment = HorizontalAlignment.Stretch };
         if (config.ValueKind == JsonValueKind.String)
             textBox.Text = config.GetString() ?? "";
         else if (config.ValueKind != JsonValueKind.Undefined
@@ -355,7 +372,8 @@ public sealed partial class SchemaConfigEditor : UserControl
         var pwBox = new PasswordBox
         {
             Header = label,
-            Width = 350,
+            MaxWidth = 350,
+            HorizontalAlignment = HorizontalAlignment.Left,
             PlaceholderText = config.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(config.GetString())
                 ? "Leave blank to keep existing value"
                 : ""
@@ -573,7 +591,7 @@ public sealed partial class SchemaConfigEditor : UserControl
         var textBox = new TextBox
         {
             Text = value,
-            MinWidth = 250,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Height = 34,
             PlaceholderText = itemType switch
             {
@@ -596,7 +614,9 @@ public sealed partial class SchemaConfigEditor : UserControl
             Width = 34,
             Padding = new Thickness(0)
         };
-        ToolTipService.SetToolTip(removeBtn, "Remove item");
+        var removeLabel = LocalizationHelper.GetString("SchemaConfigEditor_RemoveItem");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(removeBtn, removeLabel);
+        ToolTipService.SetToolTip(removeBtn, removeLabel);
         removeBtn.Click += (s, e) =>
         {
             if (row.Parent is Border border)
@@ -851,7 +871,7 @@ public sealed partial class SchemaConfigEditor : UserControl
             Header = label,
             Text = FormatScalar(config),
             IsReadOnly = true,
-            MinWidth = 300,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             Foreground = SecondaryBrush
         };
     }
@@ -901,7 +921,7 @@ public sealed partial class SchemaConfigEditor : UserControl
                         Header = GetLabel(childPath, prop.Name),
                         Value = value.GetDouble(),
                         SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-                        MinWidth = 200
+                        HorizontalAlignment = HorizontalAlignment.Stretch
                     };
                     numBox.ValueChanged += (s, e) =>
                     {
@@ -919,7 +939,8 @@ public sealed partial class SchemaConfigEditor : UserControl
                         var pwBox = new PasswordBox
                         {
                             Header = GetLabel(childPath, prop.Name),
-                            Width = 350,
+                            MaxWidth = 350,
+                            HorizontalAlignment = HorizontalAlignment.Left,
                             PlaceholderText = hasExistingValue ? "Leave blank to keep existing value" : ""
                         };
                         pwBox.PasswordChanged += (s, e) =>
@@ -934,7 +955,7 @@ public sealed partial class SchemaConfigEditor : UserControl
                     }
                     else
                     {
-                        var textBox = new TextBox { Header = GetLabel(childPath, prop.Name), Text = value.GetString() ?? "", MinWidth = 300 };
+                        var textBox = new TextBox { Header = GetLabel(childPath, prop.Name), Text = value.GetString() ?? "", HorizontalAlignment = HorizontalAlignment.Stretch };
                         textBox.TextChanged += (s, e) =>
                         {
                             if (_loading) return;

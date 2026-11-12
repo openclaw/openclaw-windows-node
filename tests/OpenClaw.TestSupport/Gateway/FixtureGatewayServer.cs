@@ -16,7 +16,9 @@ public sealed record GatewayFixtureRequest(
     string? ApprovalId = null,
     bool AdvertisesExecApprovals = false,
     string? ModelCatalogView = null,
-    bool? IncludeModelDetails = null);
+    bool? IncludeModelDetails = null,
+    string? AgentId = null,
+    bool IsUnscopedCronCatalogRead = false);
 
 public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections);
 
@@ -26,9 +28,31 @@ public sealed record GatewayFixtureEvent(string Event, int DeliveredConnections)
 /// </summary>
 public sealed class FixtureGatewayServer : IAsyncDisposable
 {
+    /// <summary>
+    /// Request label for the one plain-HTTP route the fixture serves, the authenticated profile photo.
+    /// The colon is outside the WebSocket method alphabet, so it cannot collide with a Gateway method.
+    /// </summary>
+    public const string AvatarRequestMethod = "http:users.avatar";
+
+    /// <summary>
+    /// Flat colour of the authenticated scenario profile's photo. It is neither a Windows accent nor the
+    /// initials fallback, so finding it in a rendered window proves the photo was decoded.
+    /// </summary>
+    public const int OwnerAvatarRgb = 0x2ECC40;
+
+    private const string AvatarRoutePrefix = "/api/users/";
+    private const string AvatarRouteSuffix = "/avatar";
+    private const int MaximumRequestHeadBytes = 16 * 1024;
+
+    // An 8x8 PNG of OwnerAvatarRgb. A constant keeps this library free of an image-encoding dependency.
+    private static readonly byte[] OwnerAvatarPng = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEUlEQVR42mPQO+OAFTEMLQkAqApOgZtsmosAAAAASUVORK5CYII=");
+
     private readonly GatewayScenario _scenario;
     private readonly byte[] _tokenHash;
     private readonly TcpListener _listener;
+    private readonly TcpListener? _sandboxListener;
+    private readonly Task _sandboxLoop = Task.CompletedTask;
     private readonly CancellationTokenSource _lifetime;
     private readonly object _sync = new();
     private readonly List<Task> _connections = [];
@@ -39,13 +63,20 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private readonly HashSet<string> _issuedApprovalIds = new(StringComparer.Ordinal);
     private readonly Dictionary<int, ActiveConnection> _authenticatedConnections = [];
     private readonly Dictionary<string, TaskCompletionSource> _historyGates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, TaskCompletionSource> _responseGates = new(StringComparer.Ordinal);
     private TaskCompletionSource? _sessionMutationGate;
+    private TaskCompletionSource? _agentsListGate;
+    private JsonElement? _agentsRoster;
+    private bool _agentsListUnsupported;
+    private bool _systemsInventoryUnavailable;
     private TaskCompletionSource? _chatSendGate;
+    private TaskCompletionSource? _connectionHandshakeGate;
     private TaskCompletionSource<bool>? _chatAbortGate;
     private int _chatEventSequence;
     private TaskCompletionSource? _nextSessionListGate;
     private TaskCompletionSource? _heldSessionList;
     private TaskCompletionSource? _sessionListCaptured;
+    private readonly Dictionary<string, Func<JsonElement, object>> _readResponses = new(StringComparer.Ordinal);
     private readonly TaskCompletionSource _handshake = NewSignal();
     private readonly TaskCompletionSource _accepted = NewSignal();
     private TaskCompletionSource _requestChanged = NewSignal();
@@ -86,6 +117,12 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     /// </summary>
     public Action? DeviceTokenRejected { get; set; }
 
+    /// <summary>Pre-authentication startup rejections before this fixture admits an operator.</summary>
+    public int StartupRejectionsRemaining { get; set; }
+    public int StartupRetryAfterMs { get; set; } = 100;
+    public Action? StartupRejected { get; set; }
+    public bool CloseAfterStartupRejection { get; set; } = true;
+
     /// <summary>Connect attempts that presented no device token, so the shared credential was judged.</summary>
     public int SharedCredentialConnects => Volatile.Read(ref _sharedCredentialConnects);
 
@@ -120,6 +157,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         Endpoint = new Uri($"ws://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
+        if (scenario.Boards is { } boards)
+        {
+            // The widget sandbox proxy needs its own origin, like the Gateway's sandbox listener.
+            _sandboxListener = new TcpListener(IPAddress.Loopback, 0);
+            _sandboxListener.Start();
+            boards.SandboxPort = ((IPEndPoint)_sandboxListener.LocalEndpoint).Port;
+            _sandboxLoop = SandboxLoopAsync(_sandboxListener);
+        }
         _acceptLoop = AcceptLoopAsync();
     }
 
@@ -155,6 +200,40 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         // Zero recipients is expected during a scripted disconnect. Histories remain
         // authoritative for reconnect; never retain message or question content here.
         lock (_sync) _events.Add(new GatewayFixtureEvent(eventName, delivered));
+    }
+
+    private bool _refuseConnections;
+
+    /// <summary>Simulates an unreachable Gateway: new sockets are dropped and open ones are closed.</summary>
+    public Task GoOfflineAsync(CancellationToken cancellationToken = default)
+    {
+        Volatile.Write(ref _refuseConnections, true);
+        return CloseConnectionsAsync(cancellationToken);
+    }
+
+    /// <summary>Accepts connections again after <see cref="GoOfflineAsync"/>.</summary>
+    public void GoOnline() => Volatile.Write(ref _refuseConnections, false);
+
+    /// <summary>Holds new handshakes so native reconnect UI can be observed without racing the server.</summary>
+    public void HoldConnectionHandshakes()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_connectionHandshakeGate is not null)
+                throw new InvalidOperationException("Connection handshakes are already held.");
+            _connectionHandshakeGate = NewSignal();
+        }
+    }
+
+    public void ReleaseConnectionHandshakes()
+    {
+        lock (_sync)
+        {
+            var gate = _connectionHandshakeGate ?? throw new InvalidOperationException("Connection handshakes are not held.");
+            _connectionHandshakeGate = null;
+            gate.TrySetResult();
+        }
     }
 
     public async Task CloseConnectionsAsync(CancellationToken cancellationToken = default)
@@ -325,6 +404,22 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    public Task PublishChatSnapshotAsync(string sessionKey, string runId, string text,
+        bool includeRunId, CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "session.message",
+            payload = new
+            {
+                sessionKey, runId = includeRunId ? runId : null,
+                message = new { role = "assistant", content = text }
+            }
+        }, cancellationToken);
+    }
+
     private void ValidateChatRun(string sessionKey, string runId)
     {
         if (!_scenario.ContainsChatRun(sessionKey, runId))
@@ -347,6 +442,74 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 message = new { role = "assistant", content }
             }
         }, cancellationToken);
+    }
+
+    /// <summary>Hold replies for one method after the scenario has produced their payloads.</summary>
+    public void HoldResponses(string method)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (!_responseGates.TryAdd(method, NewSignal()))
+                throw new InvalidOperationException($"Responses for {method} are already held.");
+        }
+    }
+
+    public void ReleaseResponses(string method)
+    {
+        lock (_sync)
+        {
+            if (!_responseGates.Remove(method, out var gate))
+                throw new InvalidOperationException($"Responses for {method} are not held.");
+            gate.TrySetResult();
+        }
+    }
+
+    /// <summary>Replaces only the synthetic agents.list response; authentication remains unchanged.</summary>
+    public void SetAgentsRoster(JsonElement roster)
+    {
+        if (roster.ValueKind != JsonValueKind.Object ||
+            !roster.TryGetProperty("agents", out var agents) || agents.ValueKind != JsonValueKind.Array)
+            throw new ArgumentException("An agents roster object is required.", nameof(roster));
+        lock (_sync)
+            _agentsRoster = roster.Clone();
+    }
+
+    public void RejectAgentsListAsUnsupported()
+    {
+        lock (_sync)
+            _agentsListUnsupported = true;
+    }
+
+    /// <summary>Injects a real inventory-read failure for isolated Systems recovery proof.</summary>
+    public void SetSystemsInventoryUnavailable(bool unavailable)
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            _systemsInventoryUnavailable = unavailable;
+        }
+    }
+
+    public void HoldAgentsList()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+            if (_agentsListGate is not null)
+                throw new InvalidOperationException("An agents listing is already held.");
+            _agentsListGate = NewSignal();
+        }
+    }
+
+    public void ReleaseAgentsList()
+    {
+        lock (_sync)
+        {
+            var gate = _agentsListGate ?? throw new InvalidOperationException("No agents listing is held.");
+            _agentsListGate = null;
+            gate.TrySetResult();
+        }
     }
 
     /// <summary>Hold one listing snapshot while subsequent requests remain independent.</summary>
@@ -372,6 +535,37 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _sessionListCaptured = null;
             held.TrySetResult();
         }
+    }
+
+    public void OverrideSearchRead(string method, Func<JsonElement, object> response)
+    {
+        if (method is not ("skills.status" or "sessions.search" or "sessions.list"))
+            throw new ArgumentException("Only search reads may be overridden.", nameof(method));
+        lock (_sync) _readResponses[method] = response;
+    }
+
+    /// <summary>Supplies raw history or a bounded saved-message response without changing production projection.</summary>
+    public void OverrideChatRead(string method, Func<JsonElement, object> response)
+    {
+        if (method is not ("chat.history" or "chat.message.get"))
+            throw new ArgumentException("Only transcript reads may be overridden.", nameof(method));
+        lock (_sync) _readResponses[method] = response;
+    }
+
+    public void OverrideProfileRead(Func<JsonElement, object> response)
+    {
+        lock (_sync) _readResponses["users.self"] = response;
+    }
+
+    public Task PublishSelfProfileChangedAsync() =>
+        BroadcastAsync("sessions.changed", new { reason = "profile-identity" });
+
+    public void FailSearchRead(string method) => OverrideSearchRead(method, _ =>
+        throw new FixtureRequestException("FIXTURE_SEARCH_FAILURE", "Synthetic read failure."));
+
+    public void ClearSearchReadOverride(string method)
+    {
+        lock (_sync) _readResponses.Remove(method);
     }
 
     /// <summary>Releases the gate immediately. Await response/UI readiness separately after releasing.</summary>
@@ -430,6 +624,31 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             }
             await changed.WaitAsync(wait.Token);
         }
+    }
+
+    /// <summary>One canonical top-level exec request for the read-only Inbox scenario.
+    /// The authenticated transport is unchanged. This never issues a resolvable approval ID.</summary>
+    public async Task PublishInboxFeedApprovalAsync(CancellationToken cancellationToken = default)
+    {
+        var targets = AcquireConnections(onlyOpen: true);
+        try
+        {
+            if (targets.Length == 0)
+                throw new InvalidOperationException("No authenticated fixture connection is available.");
+            var payload = _scenario.CreateInboxLiveApproval();
+            await PublishEventAsync(targets, new { type = "event", @event = "exec.approval.requested", payload }, cancellationToken);
+            // PublishEventAsync returns after the first successful send, not a broadcast.
+            lock (_sync) _events.Add(new GatewayFixtureEvent("exec.approval.requested", 1));
+        }
+        finally { ReleaseConnections(targets); }
+    }
+
+    /// <summary>Invalidates synthetic scheduler reads through the real top-level cron event.</summary>
+    public Task PublishCronChangedAsync()
+    {
+        if (!_scenario.ReadMethods.Contains("cron.list", StringComparer.Ordinal))
+            throw new InvalidOperationException("The scenario has no scheduler inventory.");
+        return BroadcastAsync("cron", new { action = "updated" });
     }
 
     public async Task PublishAgentEventAsync(
@@ -527,6 +746,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             while (true)
             {
                 var tcp = await _listener.AcceptTcpClientAsync(_lifetime.Token);
+                if (Volatile.Read(ref _refuseConnections))
+                {
+                    tcp.Dispose();
+                    continue;
+                }
                 var id = Interlocked.Increment(ref _connectionCount);
                 lock (_sync)
                     _connections.Add(ServeConnectionAsync(tcp, id));
@@ -543,6 +767,43 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    private async Task SandboxLoopAsync(TcpListener listener)
+    {
+        try
+        {
+            while (true)
+            {
+                var tcp = await listener.AcceptTcpClientAsync(_lifetime.Token);
+                _ = ServeSandboxAsync(tcp);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (SocketException) when (_lifetime.IsCancellationRequested) { }
+        finally { listener.Stop(); }
+    }
+
+    private async Task ServeSandboxAsync(TcpClient tcp)
+    {
+        using (tcp)
+        {
+            try
+            {
+                var stream = tcp.GetStream();
+                var path = RequestPath(await ReadRequestHeadAsync(stream, _lifetime.Token));
+                if (path?.Split('?', 2)[0] == FixtureBoards.SandboxPath)
+                {
+                    if (_scenario.Boards!.BeforeSandboxResponse is { } beforeResponse)
+                        await beforeResponse(_lifetime.Token);
+                    await WriteHttpAsync(stream, 200, "text/html; charset=utf-8", FixtureBoards.SandboxDocument(),
+                        FixtureBoards.SandboxContentSecurityPolicy(), _lifetime.Token);
+                }
+                else
+                    await WriteHttpAsync(stream, 404, "text/plain", "Not Found", null, _lifetime.Token);
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or OperationCanceledException or SocketException) { }
+        }
+    }
+
     private async Task ServeConnectionAsync(TcpClient tcp, int connectionId)
     {
         using (tcp)
@@ -555,7 +816,19 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             ActiveConnection? activeConnection = null;
             try
             {
-                socket = await UpgradeAsync(tcp.GetStream(), connection.Token);
+                var stream = tcp.GetStream();
+                var head = await ReadRequestHeadAsync(stream, connection.Token);
+                if (_scenario.Boards is { } boards && RequestPath(head) is { } path &&
+                    path.StartsWith(FixtureBoards.BoardPathPrefix, StringComparison.Ordinal))
+                {
+                    // Ticketed widget documents share the Gateway origin, like the real board HTTP route.
+                    var (status, body) = boards.ServeWidget(path);
+                    await WriteHttpAsync(stream, status, "text/html; charset=utf-8", body, null, connection.Token);
+                    return;
+                }
+                if (await TryServeAvatarAsync(stream, head, connection.Token))
+                    return;
+                socket = await UpgradeAsync(stream, head, connection.Token);
                 var nonce = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
                 await SendAsync(socket, sendLock, new
                 {
@@ -620,7 +893,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         method == "models.list" && parameters.ValueKind == JsonValueKind.Object
                             && parameters.TryGetProperty("includeDetails", out var details)
                             && details.ValueKind is JsonValueKind.True or JsonValueKind.False
-                                ? details.GetBoolean() : null);
+                                ? details.GetBoolean() : null,
+                        // Agent scope is a synthetic fixture identifier, recorded to prove request scoping.
+                        method!.StartsWith("cron.", StringComparison.Ordinal) ? ReadString(parameters, "agentId") : null,
+                        method == "cron.list" && IsUnscopedCronCatalog(parameters));
                     if (!authenticated || method == "connect")
                     {
                         try
@@ -629,6 +905,30 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 throw new FixtureRequestException("INVALID_REQUEST", "Operator is already connected.");
                             if (method != "connect")
                                 throw new FixtureRequestException("AUTH_REQUIRED", "Operator connect is required before reading fixture data.");
+                            Task? handshakeGate;
+                            lock (_sync) handshakeGate = _connectionHandshakeGate?.Task;
+                            if (handshakeGate is not null) await handshakeGate.WaitAsync(connection.Token);
+                            if (StartupRejectionsRemaining > 0)
+                            {
+                                StartupRejectionsRemaining--;
+                                await SendAsync(socket, sendLock, new
+                                {
+                                    type = "res", id, ok = false,
+                                    error = new
+                                    {
+                                        code = "UNAVAILABLE", message = "Gateway starting", retryable = true,
+                                        retryAfterMs = StartupRetryAfterMs, details = new { reason = "startup-sidecars" }
+                                    }
+                                }, connection.Token);
+                                Complete(requestIndex, "error:UNAVAILABLE");
+                                StartupRejected?.Invoke();
+                                if (CloseAfterStartupRejection)
+                                {
+                                    await socket.CloseOutputAsync((WebSocketCloseStatus)1013, "gateway starting", connection.Token);
+                                    return;
+                                }
+                                continue;
+                            }
                             var role = Authenticate(parameters, nonce);
                             await SendAsync(socket, sendLock, new
                             {
@@ -644,7 +944,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         }
                         catch (FixtureRequestException ex)
                         {
-                            await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, connection.Token);
+                            await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, connection.Token, ex.DetailCode);
                             Complete(requestIndex, $"error:{ex.Code}");
                         }
                         continue;
@@ -656,6 +956,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                     {
                         gate = method is "sessions.patch" or "sessions.delete" or "sessions.create"
                             ? _sessionMutationGate?.Task
+                            : method == "agents.list" ? _agentsListGate?.Task
                             : method == "chat.send"
                                 ? _chatSendGate?.Task
                             : method == "sessions.list" ? _nextSessionListGate?.Task
@@ -663,13 +964,20 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 ? held.Task : null;
                         abortOutcome = method == "chat.abort" ? _chatAbortGate?.Task : null;
                         if (method == "sessions.list") _nextSessionListGate = null;
+                        if (_responseGates.TryGetValue(method!, out var responseGate))
+                        {
+                            if (gate is not null)
+                                throw new InvalidOperationException($"A response gate already applies to {method}.");
+                            gate = responseGate.Task;
+                        }
                     }
                     pending.RemoveAll(task => task.IsCompletedSuccessfully);
                     pending.Add(RespondAsync(socket, sendLock, id!, method!, parameters, requestIndex, connectionId,
                         gate, abortOutcome, connection.Token));
                 }
             }
-            catch (OperationCanceledException) when (connection.IsCancellationRequested) { }
+            catch (OperationCanceledException) when (connection.IsCancellationRequested ||
+                socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (WebSocketException) when (activeConnection is null ||
                 socket?.State is WebSocketState.Aborted or WebSocketState.Closed) { }
             catch (IOException) when (connection.IsCancellationRequested) { }
@@ -735,7 +1043,26 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                                 "Approval ID was not issued by the fixture.");
                     }
                 }
-                payload = Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
+                Func<JsonElement, object>? readResponse;
+                lock (_sync) _readResponses.TryGetValue(method, out readResponse);
+                if (method == "sessions.list" && !id.StartsWith("search:", StringComparison.Ordinal))
+                    readResponse = null;
+                JsonElement? agentsRoster;
+                bool agentsListUnsupported;
+                bool systemsInventoryUnavailable;
+                lock (_sync)
+                {
+                    agentsRoster = method == "agents.list" ? _agentsRoster : null;
+                    agentsListUnsupported = method == "agents.list" && _agentsListUnsupported;
+                    systemsInventoryUnavailable = method == "environments.list" && _systemsInventoryUnavailable;
+                }
+                if (agentsListUnsupported)
+                    throw new FixtureRequestException("INVALID_REQUEST", "unknown method: agents.list");
+                if (systemsInventoryUnavailable)
+                    throw new FixtureRequestException("UNAVAILABLE", "Fixture Systems inventory is temporarily unavailable.");
+                payload = readResponse is not null ? readResponse(parameters)
+                    : agentsRoster is { } roster ? roster
+                    : Interactive is not null && InteractiveGatewayRuntime.Methods.Contains(method, StringComparer.Ordinal)
                     ? await Interactive.RespondAsync(method, parameters, cancellationToken)
                     : _scenario.Respond(method, parameters,
                         Interactive is null ? null : Interactive.ContainsSession);
@@ -756,7 +1083,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                 if (gate is not null)
                     await gate.WaitAsync(cancellationToken);
                 Complete(requestIndex, $"error:{ex.Code}", ex.Unexpected);
-                await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, cancellationToken);
+                await SendErrorAsync(socket, sendLock, id, ex.Code, ex.Message, cancellationToken, ex.DetailCode);
                 return;
             }
             catch (InvalidOperationException) when (Interactive is not null
@@ -845,6 +1172,16 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         return role;
     }
 
+    // Only the shared paged-catalog wire shape. Missing agentId alone is NOT enough:
+    // typed page/global-overview queries retain their filters/sort and remain independently scoped.
+    // Record one safe boolean, never arbitrary parameters or a claimed caller identity.
+    private static bool IsUnscopedCronCatalog(JsonElement parameters) =>
+        parameters.ValueKind == JsonValueKind.Object
+        && parameters.EnumerateObject().Count() == 3
+        && parameters.TryGetProperty("includeDisabled", out var disabled) && disabled.ValueKind == JsonValueKind.True
+        && parameters.TryGetProperty("offset", out var offset) && offset.ValueKind == JsonValueKind.Number && offset.TryGetInt32(out var start) && start >= 0
+        && parameters.TryGetProperty("limit", out var limit) && limit.ValueKind == JsonValueKind.Number && limit.TryGetInt32(out var count) && count > 0 && count <= 200;
+
     private int Record(
         string method,
         string? key,
@@ -852,13 +1189,15 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         string? approvalId = null,
         bool advertisesExecApprovals = false,
         string? modelCatalogView = null,
-        bool? includeModelDetails = null)
+        bool? includeModelDetails = null,
+        string? agentId = null,
+        bool isUnscopedCronCatalogRead = false)
     {
         lock (_sync)
         {
             var index = _requests.Count;
             _requests.Add(new GatewayFixtureRequest(method, key, "pending", decision, approvalId,
-                advertisesExecApprovals, modelCatalogView, includeModelDetails));
+                advertisesExecApprovals, modelCatalogView, includeModelDetails, agentId, isUnscopedCronCatalogRead));
             SignalRequestChanged();
             return index;
         }
@@ -910,11 +1249,11 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         && method.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
 
     private static Task SendErrorAsync(
-        WebSocket socket, SemaphoreSlim sendLock, string? id, string code, string message, CancellationToken ct) =>
+        WebSocket socket, SemaphoreSlim sendLock, string? id, string code, string message, CancellationToken ct, string? detailCode = null) =>
         SendAsync(socket, sendLock, new
         {
             type = "res", id, ok = false,
-            error = new { code, message, details = new { code } }
+            error = new { code, message, details = new { code = detailCode ?? code } }
         }, ct);
 
     private static async Task SendAsync(WebSocket socket, SemaphoreSlim sendLock, object value, CancellationToken ct)
@@ -942,24 +1281,123 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
-    private static async Task<WebSocket> UpgradeAsync(NetworkStream stream, CancellationToken ct)
+    /// <summary>
+    /// Reads one HTTP request head, exactly through CRLFCRLF so a coalesced first WebSocket frame is not consumed.
+    /// Same bounded leaf as Shared.Tests LoopbackWebSocketServer.
+    /// </summary>
+    private static async Task<string[]> ReadRequestHeadAsync(NetworkStream stream, CancellationToken ct)
     {
-        // Same bounded HTTP upgrade leaf as Shared.Tests LoopbackWebSocketServer.
-        // Read exactly through CRLFCRLF so a coalesced first WebSocket frame is not consumed.
         var headers = new List<byte>();
         var next = new byte[1];
-        while (headers.Count < 16 * 1024)
+        while (headers.Count < MaximumRequestHeadBytes)
         {
             if (await stream.ReadAsync(next.AsMemory(), ct) == 0)
-                throw new EndOfStreamException("Connection ended during the fixture WebSocket upgrade.");
+                throw new EndOfStreamException("Connection ended during the fixture HTTP request head.");
             headers.Add(next[0]);
             if (headers.Count >= 4 && headers[^4] == '\r' && headers[^3] == '\n'
                 && headers[^2] == '\r' && headers[^1] == '\n')
                 break;
         }
-        if (headers.Count == 16 * 1024)
-            throw new InvalidDataException("Fixture WebSocket headers exceeded 16 KiB.");
-        var lines = Encoding.ASCII.GetString(headers.ToArray()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        if (headers.Count == MaximumRequestHeadBytes)
+            throw new InvalidDataException("Fixture HTTP request head exceeded 16 KiB.");
+        return Encoding.ASCII.GetString(headers.ToArray()).Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private static string? RequestPath(string[] lines)
+    {
+        var parts = lines.Length == 0 ? [] : lines[0].Split(' ');
+        return parts.Length == 3 && parts[0] == "GET" && parts[2] == "HTTP/1.1" ? parts[1] : null;
+    }
+
+    private static async Task WriteHttpAsync(
+        NetworkStream stream, int status, string contentType, string body, string? csp, CancellationToken ct)
+    {
+        var bytes = Encoding.UTF8.GetBytes(body);
+        var reason = status switch { 200 => "OK", 401 => "Unauthorized", 404 => "Not Found", _ => "Error" };
+        var head = $"HTTP/1.1 {status} {reason}\r\nContent-Type: {contentType}\r\nContent-Length: {bytes.Length}\r\n" +
+            "Cache-Control: no-store\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n" +
+            (csp is null ? "" : $"Content-Security-Policy: {csp}\r\n") + "\r\n";
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(head), ct);
+        await stream.WriteAsync(bytes, ct);
+        await stream.FlushAsync(ct);
+    }
+
+    /// <summary>
+    /// Serves the one plain-HTTP route the Companion window needs besides the WebSocket: the authenticated
+    /// scenario profile photo. Any other HTTP request is left for the upgrade check, which rejects and records it.
+    /// </summary>
+    private async Task<bool> TryServeAvatarAsync(NetworkStream stream, string[] head, CancellationToken ct)
+    {
+        if (!TryReadAvatarProfileId(head, out var profileId))
+            return false;
+
+        // Credentials are judged before the profile, so an unauthenticated caller learns nothing about which ids exist.
+        var (outcome, response) =
+            !HasAcceptedBearer(head) ? ("error:UNAUTHORIZED", AvatarResponse("401 Unauthorized", null))
+            : profileId != _scenario.AuthenticatedProfileId ? ("error:NOT_FOUND", AvatarResponse("404 Not Found", null))
+            : ("ok", AvatarResponse("200 OK", OwnerAvatarPng));
+        var index = Record(AvatarRequestMethod, null);
+        var recorded = "cancelled";
+        try
+        {
+            await stream.WriteAsync(response, ct);
+            recorded = outcome;
+        }
+        catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+        {
+            // A caller that abandons a superseded fetch is not fixture drift and must not read as a rejected upgrade.
+            recorded = "disconnected";
+        }
+        finally
+        {
+            Complete(index, recorded, unexpected: recorded.StartsWith("error:", StringComparison.Ordinal));
+        }
+        return true;
+    }
+
+    private static bool TryReadAvatarProfileId(string[] head, out string profileId)
+    {
+        profileId = "";
+        if (head.FirstOrDefault()?.Split(' ') is not ["GET", var target, "HTTP/1.1"])
+            return false;
+        // The query carries an opaque revision. It never selects the response and is never recorded.
+        var path = target.Split('?', 2)[0];
+        var idLength = path.Length - AvatarRoutePrefix.Length - AvatarRouteSuffix.Length;
+        if (idLength <= 0 || !path.StartsWith(AvatarRoutePrefix, StringComparison.Ordinal)
+            || !path.EndsWith(AvatarRouteSuffix, StringComparison.Ordinal))
+            return false;
+        var escapedId = path.Substring(AvatarRoutePrefix.Length, idLength);
+        if (escapedId.Contains('/'))
+            return false;
+        profileId = Uri.UnescapeDataString(escapedId);
+        return true;
+    }
+
+    private bool HasAcceptedBearer(string[] head)
+    {
+        const string scheme = "Bearer ";
+        var header = head.FirstOrDefault(line => line.StartsWith("Authorization:", StringComparison.OrdinalIgnoreCase))
+            ?.Split(':', 2)[1].Trim();
+        if (header is null || !header.StartsWith(scheme, StringComparison.OrdinalIgnoreCase))
+            return false;
+        var presented = SHA256.HashData(Encoding.UTF8.GetBytes(header[scheme.Length..].Trim()));
+        // One bearer is either the shared token or, once a device is paired, the accepted device token.
+        return CryptographicOperations.FixedTimeEquals(_tokenHash, presented)
+            || AcceptedDeviceToken is { } deviceToken && CryptographicOperations.FixedTimeEquals(
+                SHA256.HashData(Encoding.UTF8.GetBytes(deviceToken)), presented);
+    }
+
+    private static byte[] AvatarResponse(string status, byte[]? image)
+    {
+        var body = image ?? [];
+        var contentType = image is null ? "" : "Content-Type: image/png\r\n";
+        var head = Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 {status}\r\n{contentType}Content-Length: {body.Length}\r\nConnection: close\r\n\r\n");
+        return [.. head, .. body];
+    }
+
+    private static async Task<WebSocket> UpgradeAsync(NetworkStream stream, string[] lines, CancellationToken ct)
+    {
         var key = lines.FirstOrDefault(line => line.StartsWith("Sec-WebSocket-Key:", StringComparison.OrdinalIgnoreCase))?.Split(':', 2)[1].Trim();
         if (lines.Length == 0 || !lines[0].StartsWith("GET / HTTP/1.1", StringComparison.Ordinal) || string.IsNullOrWhiteSpace(key))
             throw new InvalidDataException("Expected a loopback WebSocket upgrade.");
@@ -987,10 +1425,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             _sessionMutationGate = null;
             _chatSendGate?.TrySetCanceled();
             _chatSendGate = null;
+            _connectionHandshakeGate?.TrySetCanceled();
+            _connectionHandshakeGate = null;
             _chatAbortGate?.TrySetCanceled();
             _chatAbortGate = null;
         }
         await _acceptLoop;
+        await _sandboxLoop;
         Task[] connections;
         lock (_sync) connections = _connections.ToArray();
         try { await Task.WhenAll(connections); }

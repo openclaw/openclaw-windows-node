@@ -75,6 +75,32 @@ try {
         Assert-True ($exclusionOff.Models) 'Explicit false exclusion disabled model removal.'
         $excludeOnly = & $entryPoint -ExcludeCachedModels
         Assert-True (-not $excludeOnly.Apply -and -not $excludeOnly.Dev -and -not $excludeOnly.Models -and -not $excludeOnly.Wsl) 'Exclusion alone expanded default scope.'
+        Test-Case 'isolated script routing cannot accidentally invoke ordinary cleanup' {
+            function Invoke-CleanPatchLocked { param([scriptblock]$Action) & $Action }
+            function Invoke-OpenClawClean { throw 'Ordinary cleanup was selected.' }
+            function Invoke-OpenClawIsolatedClean {
+                param($Apply, $Patch, $FullName, $Layout, $Profiles, $Companion, $ExpectedSha256)
+                [pscustomobject]@{ Apply=$Apply; Patch=$Patch; FullName=$FullName; Layout=$Layout; Profiles=$Profiles; Companion=$Companion; Digest=$ExpectedSha256; WhatIf=$WhatIfPreference }
+            }
+            $scope = @{
+                IsolatedOnly=$true; GatewayPatch='pr225-test'; GatewayPackageFullName='exact-registration'
+                GatewayInstallLocation="$fixture\layout"; CompanionExecutablePath="$fixture\owned-build\OpenClaw.Tray.WinUI.exe"
+                DisposableProfilePath=@("$fixture\one","$fixture\two")
+            }
+            $preview = & $entryPoint @scope -ExcludeCachedModels
+            Assert-True (-not $preview.Apply -and $preview.Patch -eq 'pr225-test' -and $preview.Profiles.Count -eq 2) 'Isolated preview scope changed.'
+            $apply = & $entryPoint @scope -ConfirmDestructive -ExpectedPreviewSha256 ('a' * 64) -WhatIf
+            Assert-True ($apply.Apply -and $apply.WhatIf -and $apply.Digest -eq ('a' * 64) -and
+                $apply.FullName -eq $scope.GatewayPackageFullName -and $apply.Companion -eq $scope.CompanionExecutablePath) 'Explicit isolated identity or confirmation lost.'
+            foreach ($option in @('All','IncludeDev','RemoveCachedModels','RemoveWslGateway')) {
+                $conflict = @{}; $conflict[$option]=$true
+                Assert-Throws { & $entryPoint @scope @conflict } 'cannot be combined'
+            }
+            Assert-Throws { & $entryPoint @scope -AdditionalProfilePath "$fixture\extra" } 'cannot be combined'
+            Assert-Throws { & $entryPoint @scope -RemoveIsolatedProfilePath "$fixture\user" } 'cannot be combined'
+            Assert-Throws { & $entryPoint @scope -ReportDirectory "$fixture\reports" } 'cannot be combined'
+            Assert-Throws { & $entryPoint -GatewayPatch 'pr225-test' } 'require -IsolatedOnly'
+        }
     }
     Test-Case 'root, ancestor, system, and session guards' {
         foreach ($path in @($env:USERPROFILE, $env:TEMP, 'C:\', "$env:USERPROFILE\.copilot",
@@ -373,6 +399,302 @@ try {
     $env:APPDATA = Join-Path $fixture 'roaming'
     $env:LOCALAPPDATA = Join-Path $fixture 'local'
     New-Item -ItemType Directory -Path $env:APPDATA,$env:LOCALAPPDATA | Out-Null
+    Test-Case 'isolated-only cleanup exercises owned patch lifecycle without ordinary cleanup' {
+        $patch = 'pr225-test'
+        $layout = "$fixture\patch-layout"
+        $profile = "$fixture\disposable-companion"
+        $companion = "$fixture\owned-build\OpenClaw.Tray.WinUI.exe"
+        $fullName = 'OpenClawFoundation.OpenClawGateway-pr225-test_1.2.3.4_x64__123456789abcd'
+        $package = [pscustomobject]@{
+            Name = 'OpenClawFoundation.OpenClawGateway-pr225-test'
+            PackageFullName = $fullName
+            PackageFamilyName = 'OpenClawFoundation.OpenClawGateway-pr225-test_123456789abcd'
+            PublisherId = '123456789abcd'
+            Publisher = 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC'
+            IsDevelopmentMode = $true; InstallLocation = $layout
+        }
+        $normalPackage = [pscustomobject]@{
+            Name = 'OpenClawFoundation.OpenClawGateway'; InstallLocation = "$fixture\store"
+        }
+        $otherPatch = [pscustomobject]@{
+            Name = 'OpenClawFoundation.OpenClawGateway-other'; InstallLocation = "$fixture\other-patch"
+        }
+        $state = [pscustomobject]@{
+            Packages = @($package, $normalPackage, $otherPatch); Processes = @(); Distros = @()
+            Events = [Collections.Generic.List[string]]::new()
+            Json = '{"ok":true,"command":"teardown","gateway":{"state":"records-removed"},"session":{"state":"removed"}}'
+            Exit = 0; DuringTeardown = $null; LeaveSession = $false
+            SelectedProfiles = @($profile); FailDeletePath = $null
+        }
+        $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($package.PackageFamilyName)\clawctl-$patch.exe"
+        $sessionPath = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)\LocalState\OpenClawGatewayMSIX\session.json"
+        $appId = "PFN:$($package.PackageFamilyName)"
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('{"appId":"' + $appId + '","id":"opaque-fixture"}')).TrimEnd('=').Replace('+','-').Replace('/','_')
+        $record = [ordered]@{ schemaVersion = 2; applicationId = $appId; generation = 'fixture-generation'; sandboxId = "iso:$encoded" }
+        $manifest = '<Package><Identity Version="1.2.3.4" ProcessorArchitecture="x64" Name="' + $package.Name + '" Publisher="' + $package.Publisher +
+            '"/><Applications><ExecutionAlias Alias="clawctl-pr225-test.exe"/><ExecutionAlias Alias="openclaw-pr225-test.exe"/></Applications></Package>'
+        foreach ($directory in @($layout, $profile, (Split-Path $companion), (Split-Path $alias), (Split-Path $sessionPath),
+            "$env:APPDATA\OpenClawTray", "$fixture\shared-cache", "$fixture\other-profile")) {
+            New-Item -ItemType Directory -Path $directory -Force | Out-Null
+        }
+        Set-Content -LiteralPath $companion -Value 'fixture executable, never launched'
+        Set-Content -LiteralPath $alias -Value 'fixture alias, never launched'
+        Set-Content -LiteralPath "$layout\AppxManifest.xml" -Value $manifest
+        Set-Content -LiteralPath "$env:APPDATA\OpenClawTray\preserve.txt" -Value 'ordinary profile fixture'
+        Set-Content -LiteralPath "$fixture\shared-cache\weights.gguf" -Value 'shared model fixture'
+        Set-Content -LiteralPath "$fixture\other-profile\preserve.txt" -Value 'other session fixture'
+        function Reset-IsolatedFixture {
+            $state.Packages = @($package, $normalPackage, $otherPatch)
+            $state.Processes = @(); $state.Distros = @(); $state.Events.Clear()
+            $state.Exit = 0; $state.DuringTeardown = $null; $state.LeaveSession = $false
+            $state.SelectedProfiles = @($profile)
+            $state.FailDeletePath = $null
+            $state.Json = '{"ok":true,"command":"teardown","gateway":{"state":"records-removed"},"session":{"state":"removed"}}'
+            New-Item -ItemType Directory -Path $profile -Force | Out-Null
+            Set-Content -LiteralPath "$profile\disposable.txt" -Value 'disposable fixture'
+            $record | ConvertTo-Json | Set-Content -LiteralPath $sessionPath
+        }
+        function Get-AppxPackage { $state.Packages }
+        function Get-CleanWin32 { }
+        function Get-CimInstance { param($ClassName) Assert-True ($ClassName -eq 'Win32_Process') 'Unexpected live inventory.'; $state.Processes }
+        function Get-CleanDistroRecords { $state.Distros }
+        function Stop-Process { throw 'Isolated mode must not stop any process.' }
+        function Remove-Item {
+            [CmdletBinding()]
+            param([string[]]$LiteralPath, [switch]$Recurse, [switch]$Force)
+            if ($state.FailDeletePath -and $LiteralPath.Count -eq 1 -and
+                $LiteralPath[0].Equals($state.FailDeletePath, [StringComparison]::OrdinalIgnoreCase)) {
+                throw 'TEST profile deletion blocked by fixture.'
+            }
+            Microsoft.PowerShell.Management\Remove-Item @PSBoundParameters
+        }
+        function Invoke-CleanNativeCommand {
+            param($FilePath, $Arguments)
+            Assert-True ($FilePath -eq $alias -and $Arguments -eq 'teardown --force --json') 'Wrong patch CLI or command.'
+            $state.Events.Add('teardown')
+            if ($state.DuringTeardown) { & $state.DuringTeardown }
+            if (-not $state.LeaveSession -and $state.Exit -eq 0 -and $state.Json -match '"ok":true') {
+                Remove-Item -LiteralPath $sessionPath -ErrorAction SilentlyContinue
+            }
+            [pscustomobject]@{ ExitCode = $state.Exit; Stdout = $state.Json; Stderr = 'fixture stderr' }
+        }
+        function Remove-AppxPackage {
+            param($Package)
+            Assert-True ($Package -ceq $fullName) 'Removed unrelated package.'
+            Assert-True ($state.Events.Count -ge 1 -and $state.Events[$state.Events.Count - 1] -eq 'teardown') 'Unregistered before teardown.'
+            Assert-True (@($state.SelectedProfiles | Where-Object { Test-Path -LiteralPath $_ }).Count -eq 0) 'Unregistered before disposable profiles were removed.'
+            $state.Events.Add('unregister')
+            $state.Packages = @($normalPackage, $otherPatch)
+        }
+        function Get-IsolatedPlan([string[]]$Profiles = @($profile)) {
+            $state.SelectedProfiles = $Profiles
+            Get-CleanIsolatedPlan $patch $fullName $layout $Profiles $companion
+        }
+        function Invoke-IsolatedApply([string]$Digest, [string[]]$Profiles = @($profile)) {
+            $state.SelectedProfiles = $Profiles
+            Invoke-OpenClawIsolatedClean -Apply $true -Patch $patch -FullName $fullName -Layout $layout `
+                -Profiles $Profiles -Companion $companion -ExpectedSha256 $Digest
+        }
+        Reset-IsolatedFixture
+        Test-Case 'isolated preview and WhatIf leave packages, profiles, processes and reports untouched' {
+            $plan = Get-IsolatedPlan
+            Invoke-OpenClawIsolatedClean -Apply $false -Patch $patch -FullName $fullName -Layout $layout -Profiles @($profile) -Companion $companion
+            Invoke-OpenClawIsolatedClean -Apply $true -Patch $patch -FullName $fullName -Layout $layout -Profiles @($profile) -Companion $companion -ExpectedSha256 $plan.Sha256 -WhatIf
+            Assert-True ($state.Events.Count -eq 0 -and $state.Packages.Count -eq 3 -and (Test-Path $profile)) 'Preview mutated targets.'
+        }
+        Test-Case 'isolated mode preserves concurrent unrelated tray and model instances' {
+            $state.Processes = @(
+                [pscustomobject]@{ Name = 'OpenClaw.Tray.WinUI.exe'; ExecutablePath = "$fixture\other-build\OpenClaw.Tray.WinUI.exe"; ProcessId = 123; CommandLine = 'unrelated instance' },
+                [pscustomobject]@{ Name = 'llama-server.exe'; ExecutablePath = "$fixture\shared-cache\llama-server.exe"; ProcessId = 124; CommandLine = 'shared model server' })
+            $null = Get-IsolatedPlan
+            $state.Processes = @()
+        }
+        Test-Case 'isolated cleanup ignores unrelated processes with UNC or unusual executable paths' {
+            foreach ($path in @('\\server\share\team[1]\helper.exe', "$fixture\strange[1]\helper.exe")) {
+                $state.Processes = @([pscustomobject]@{
+                    Name = 'unrelated.exe'; ExecutablePath = $path; ProcessId = 125; CommandLine = 'unrelated process'
+                })
+                $null = Get-IsolatedPlan
+            }
+            $state.Processes = @()
+        }
+        Test-Case 'selected running executables and profile users are rejected without stopping them' {
+            foreach ($process in @(
+                [pscustomobject]@{ Name = 'OpenClaw.Tray.WinUI.exe'; ExecutablePath = $companion; ProcessId = 1; CommandLine = '' },
+                [pscustomobject]@{ Name = 'other.exe'; ExecutablePath = "$profile\other.exe"; ProcessId = 2; CommandLine = '' },
+                [pscustomobject]@{ Name = 'OpenClaw.Tray.WinUI.exe'; ExecutablePath = "$fixture\other\OpenClaw.Tray.WinUI.exe"; ProcessId = 3; CommandLine = "--data-dir $profile" },
+                [pscustomobject]@{ Name = 'OpenClaw.Tray.WinUI.exe'; ExecutablePath = $null; ProcessId = 4; CommandLine = '' })) {
+                $state.Processes = @($process)
+                Assert-Throws { Get-IsolatedPlan } 'running|references|ownership'
+            }
+            $state.Processes = @()
+            Assert-True ($state.Events.Count -eq 0) 'Process guard mutated runtime.'
+        }
+        Test-Case 'protected profile junctions cannot alias a disposable target' {
+            $protected = Join-Path $env:APPDATA 'OpenClawTray'
+            $backup = Join-Path $fixture 'ordinary-profile-backup'
+            Move-Item -LiteralPath $protected -Destination $backup
+            try {
+                $created = & $env:ComSpec /d /c "mklink /J `"$protected`" `"$profile`""
+                Assert-True ($LASTEXITCODE -eq 0 -and (Get-Item -LiteralPath $protected -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) "Could not create fixture junction: $created"
+                Assert-Throws { Get-IsolatedPlan } 'reparse point'
+            } finally {
+                if (Test-Path -LiteralPath $protected) {
+                    & $env:ComSpec /d /c "rmdir `"$protected`"" | Out-Null
+                    if ($LASTEXITCODE -ne 0) { throw 'Could not remove the temporary protected-root junction.' }
+                }
+                Move-Item -LiteralPath $backup -Destination $protected
+            }
+        }
+        Test-Case 'isolated scope requires one exact development registration and registered layout' {
+            foreach ($items in @(@(), @($normalPackage), @($package,$package))) {
+                $state.Packages = $items
+                Assert-Throws { Get-IsolatedPlan } 'exactly one'
+            }
+            $state.Packages = @($package,$normalPackage,$otherPatch)
+            $package.IsDevelopmentMode = $false
+            Assert-Throws { Get-IsolatedPlan } 'identity or owned layout'
+            $package.IsDevelopmentMode = $true
+            $package.InstallLocation = "$fixture\other-layout"
+            Assert-Throws { Get-IsolatedPlan } 'identity or owned layout'
+            $package.InstallLocation = $layout
+            $package.PublisherId = 'invalid'
+            Assert-Throws { Get-IsolatedPlan } 'identity or owned layout'
+            $package.PublisherId = '123456789abcd'
+            Assert-Throws { Get-CleanPatchPackage '*' $fullName $layout } 'exact lowercase'
+            Assert-Throws { Get-CleanPatchPackage $patch 'wrong_full_name' $layout } 'identity or owned layout'
+        }
+        Test-Case 'patched lifecycle alias and manifest must agree with exact identity' {
+            Set-Content -LiteralPath "$layout\AppxManifest.xml" -Value ($manifest.Replace('clawctl-pr225-test.exe','clawctl.exe'))
+            Assert-Throws { Get-IsolatedPlan } 'manifest'
+            Set-Content -LiteralPath "$layout\AppxManifest.xml" -Value $manifest
+            Remove-Item -LiteralPath $alias
+            Assert-Throws { Get-IsolatedPlan } 'Missing package-qualified'
+            Set-Content -LiteralPath $alias -Value 'fixture alias'
+        }
+        Test-Case 'session record and opaque sandbox both prove package ownership' {
+            foreach ($change in @(
+                @{schemaVersion=99}, @{applicationId='PFN:foreign'}, @{generation=''}, @{sandboxId='iso:eyJhcHBJZCI6IkZPUkVJR04ifQ'})) {
+                $bad = @{}; foreach ($key in $record.Keys) { $bad[$key] = $record[$key] }
+                foreach ($key in $change.Keys) { $bad[$key] = $change[$key] }
+                $bad | ConvertTo-Json | Set-Content -LiteralPath $sessionPath
+                Assert-Throws { Get-IsolatedPlan } 'ownership|another application'
+            }
+            $record | ConvertTo-Json | Set-Content -LiteralPath $sessionPath
+            Remove-Item -LiteralPath $sessionPath
+            Set-Content -LiteralPath (Join-Path (Split-Path $sessionPath) 'setup.json') -Value '{}'
+            Assert-Throws { Get-IsolatedPlan } 'missing while setup'
+            Remove-Item -LiteralPath (Join-Path (Split-Path $sessionPath) 'setup.json')
+            $null = Get-IsolatedPlan
+            Reset-IsolatedFixture
+        }
+        Test-Case 'disposable profiles cannot select normal installs, caches, checkout, roots or overlapping paths' {
+            foreach ($path in @("$env:APPDATA\OpenClawTray", "$env:LOCALAPPDATA\OpenClawTray-Dev",
+                "$env:LOCALAPPDATA\Packages\other", $layout, "$fixture\other-patch", "$env:USERPROFILE\.cache\child",
+                $env:TEMP, "$fixture\*", '\\server\share')) {
+                Assert-Throws { Get-CleanIsolatedPlan $patch $fullName $layout @($path) $companion } 'Refusing|overlaps|absolute local'
+            }
+            Assert-Throws { Get-CleanIsolatedPlan $patch $fullName $layout @($profile,"$profile\child") $companion } 'must not overlap'
+            Assert-Throws { Get-CleanIsolatedPlan $patch $fullName $layout @() $companion } 'explicitly named'
+            New-Item -ItemType Directory -Path "$profile\.git" | Out-Null
+            Assert-Throws { Get-IsolatedPlan } 'source checkout'
+            Remove-Item -LiteralPath "$profile\.git"
+            $oldCache = $env:HF_HUB_CACHE
+            try {
+                $env:HF_HUB_CACHE = $profile
+                Assert-Throws { Get-IsolatedPlan } 'shared cache'
+            } finally { $env:HF_HUB_CACHE = $oldCache }
+            $state.Distros = @([pscustomobject]@{ Name = 'UnrelatedDistro'; BasePath = "$profile\wsl" })
+            Assert-Throws { Get-IsolatedPlan } 'Preserved WSL storage overlaps'
+            $state.Distros = @()
+        }
+        Test-Case 'isolated cleanup rejects disposable profiles beneath Git checkout and worktree markers' {
+            $checkout = Join-Path $fixture 'checkout-ancestor'
+            $selectedProfile = Join-Path $checkout 'disposable-profile'
+            New-Item -ItemType Directory -Path $selectedProfile -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $checkout '.git') | Out-Null
+            Assert-Throws { Get-CleanIsolatedPlan $patch $fullName $layout @($selectedProfile) $companion } 'source checkout'
+            Remove-Item -LiteralPath (Join-Path $checkout '.git') -Force
+            Set-Content -LiteralPath (Join-Path $checkout '.git') -Value 'gitdir: ..\worktree-metadata'
+            Assert-Throws { Get-CleanIsolatedPlan $patch $fullName $layout @($selectedProfile) $companion } 'source checkout'
+            Remove-Item -LiteralPath (Join-Path $checkout '.git') -Force
+            $null = Get-IsolatedPlan
+        }
+        Test-Case 'changed previews and package/session/profile drift fail before teardown' {
+            $original = (Get-IsolatedPlan).Sha256
+            Assert-Throws { Invoke-IsolatedApply '' } 'Missing or stale'
+            Set-Content -LiteralPath "$profile\disposable.txt" -Value 'changed after preview'
+            Assert-Throws { Invoke-IsolatedApply $original } 'Missing or stale'
+            $original = (Get-IsolatedPlan).Sha256
+            $record.generation = 'changed'
+            $record | ConvertTo-Json | Set-Content -LiteralPath $sessionPath
+            Assert-Throws { Invoke-IsolatedApply $original } 'Missing or stale'
+            $package.PackageFullName = $fullName.Replace('1.2.3.4','1.2.3.5')
+            Assert-Throws { Invoke-IsolatedApply $original } 'identity or owned layout'
+            $package.PackageFullName = $fullName
+            Assert-True ($state.Events.Count -eq 0) 'Stale preview reached teardown.'
+            Reset-IsolatedFixture
+        }
+        Test-Case 'teardown exit, JSON success, exact command, state and record absence all gate unregister' {
+            foreach ($json in @('{"ok":false}', '{"ok":"true"}', '{bad-json',
+                '{"ok":true,"command":"setup","gateway":{"state":"records-removed"},"session":{"state":"removed"}}',
+                '{"ok":true,"command":"teardown","gateway":{"state":"running"},"session":{"state":"removed"}}',
+                '{"ok":true,"command":"teardown","gateway":{"state":"records-removed"},"session":{"state":"not-configured"}}')) {
+                Reset-IsolatedFixture
+                $digest = (Get-IsolatedPlan).Sha256
+                $state.Json = $json
+                Assert-Throws { Invoke-IsolatedApply $digest } 'structured success|not valid JSON'
+                Assert-True ($state.Events.Count -eq 1 -and $state.Packages.Count -eq 3 -and (Test-Path $profile)) 'Failed teardown deleted registration or profile.'
+            }
+            Reset-IsolatedFixture
+            $state.Exit = 7
+            Assert-Throws { Invoke-IsolatedApply (Get-IsolatedPlan).Sha256 } 'structured success'
+            Reset-IsolatedFixture
+            $state.LeaveSession = $true
+            Assert-Throws { Invoke-IsolatedApply (Get-IsolatedPlan).Sha256 } 'structured success'
+            Reset-IsolatedFixture
+        }
+        Test-Case 'profile changes during teardown preserve registration and remaining data' {
+            $digest = (Get-IsolatedPlan).Sha256
+            $state.DuringTeardown = { Set-Content -LiteralPath "$profile\disposable.txt" -Value 'concurrent writer' }
+            Assert-Throws { Invoke-IsolatedApply $digest } 'changed after teardown'
+            Assert-True ($state.Events.Count -eq 1 -and $state.Packages.Count -eq 3 -and (Test-Path $profile)) 'Drift reached unregister.'
+            Reset-IsolatedFixture
+        }
+        Test-Case 'profile deletion failure leaves patch registered and can be retried after a fresh preview' {
+            Reset-IsolatedFixture
+            $secondProfile = Join-Path $fixture 'disposable-companion-second'
+            New-Item -ItemType Directory -Path $secondProfile -Force | Out-Null
+            $profiles = @($profile, $secondProfile)
+            $digest = (Get-IsolatedPlan $profiles).Sha256
+            $state.FailDeletePath = $secondProfile
+            Assert-Throws { Invoke-IsolatedApply $digest $profiles } 'TEST profile deletion blocked'
+            $state.FailDeletePath = $null
+            Assert-True ($state.Events.Count -eq 1 -and $state.Events[0] -eq 'teardown' -and
+                $state.Packages.Count -eq 3 -and -not (Test-Path -LiteralPath $profile) -and
+                (Test-Path -LiteralPath $secondProfile)) 'Failed profile deletion unregistered the package or changed the wrong profile set.'
+            $state.Json = '{"ok":true,"command":"teardown","gateway":{"state":"records-removed"},"session":{"state":"not-configured"}}'
+            $retryDigest = (Get-IsolatedPlan $profiles).Sha256
+            Invoke-IsolatedApply $retryDigest $profiles
+            Assert-True (($state.Events -join ',') -eq 'teardown,teardown,unregister' -and
+                $state.Packages.Count -eq 2 -and -not (Test-Path -LiteralPath $profile) -and
+                -not (Test-Path -LiteralPath $secondProfile)) 'Retry did not finish only the selected cleanup.'
+            Reset-IsolatedFixture
+        }
+        Test-Case 'successful isolated apply preserves normal install, other patches, profiles and external models' {
+            New-Item -ItemType Directory -Path "$profile\LocalAI\models" -Force | Out-Null
+            Set-Content -LiteralPath "$profile\LocalAI\models\in-profile.gguf" -Value 'disposable model'
+            Invoke-IsolatedApply (Get-IsolatedPlan).Sha256
+            Assert-True (($state.Events -join ',') -eq 'teardown,unregister') 'Wrong lifecycle order.'
+            Assert-True ($state.Packages.Count -eq 2 -and $state.Packages[0] -eq $normalPackage -and $state.Packages[1] -eq $otherPatch) 'Preserved registrations changed.'
+            Assert-True (-not (Test-Path $profile) -and (Test-Path "$fixture\shared-cache\weights.gguf") -and
+                (Test-Path "$env:APPDATA\OpenClawTray\preserve.txt") -and (Test-Path "$fixture\other-profile\preserve.txt") -and
+                (Test-Path "$layout\AppxManifest.xml")) 'Profile/cache/payload preservation wrong.'
+        }
+        Test-Case 'already absent patch fails closed rather than selecting normal package' {
+            Assert-Throws { Get-IsolatedPlan } 'exactly one'
+        }
+    }
     $script:events = [Collections.Generic.List[string]]::new()
     $script:registered = $true
     $script:teardownFails = $false

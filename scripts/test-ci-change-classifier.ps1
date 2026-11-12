@@ -101,6 +101,11 @@ $cases = @(
         Classification = "docs_only"
     },
     @{
+        Scenario = "Root design system"
+        Paths = @("DESIGN.md")
+        Classification = "docs_only"
+    },
+    @{
         Scenario = "WinNode skill reference"
         Paths = @(".agents/skills/winnode/SKILL.md")
         Classification = "targeted"

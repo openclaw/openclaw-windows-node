@@ -1,6 +1,10 @@
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -24,11 +28,65 @@ public sealed class A2UISvgTests
     private readonly UIThreadFixture _ui;
     public A2UISvgTests(UIThreadFixture ui) => _ui = ui;
 
+    private const string SvgDecodeSlackVariable = "OPENCLAW_UI_SVG_DECODE_SLACK_SECONDS";
+    // Slack beyond MediaResolver.SvgRenderTimeout for ONE admitted decode (the pre-existing 2 s).
+    // Do not widen it to absorb a late return. Pathological geometry is rejected before decode by
+    // SvgGeometryBudget because SvgImageSource.SetSourceAsync can block the UI
+    // thread past SvgRenderTimeout. Queue wait is excluded by
+    // AssertSingleDecodeBoundedAsync and covered separately by Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees.
+    private static readonly TimeSpan SvgDecodeSlack =
+        int.TryParse(Environment.GetEnvironmentVariable(SvgDecodeSlackVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan SingleDecodeBound = MediaResolver.SvgRenderTimeout + SvgDecodeSlack;
+
     private const string MinSvg =
         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>" +
         "<rect width='24' height='24' fill='red'/></svg>";
 
-    private static MediaResolver NewResolver() => new(NullLogger.Instance);
+    private static MediaResolver NewResolver(IOpenClawLogger? logger = null) => new(logger ?? NullLogger.Instance);
+
+    private static SemaphoreSlim DecodeSlots()
+    {
+        var field = typeof(MediaResolver).GetField("s_svgDecodeSemaphore", BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(field);
+        return Assert.IsType<SemaphoreSlim>(field.GetValue(null));
+    }
+
+    /// <summary>
+    /// Loads one SVG with every decode slot idle, so the elapsed time is a single admitted decode
+    /// with no queue wait. DOCTYPE strip removes all entity declarations before parsing, so
+    /// entity-expansion blowup never happens; the wall-clock cap (SvgRenderTimeout) is the backstop.
+    /// </summary>
+    private async Task AssertSingleDecodeBoundedAsync(string url, string label)
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            Assert.True(DecodeSlots().CurrentCount > 0,
+                "SVG decode slots are busy, so the single-decode bound would include queue wait");
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(url);
+            sw.Stop();
+            Assert.True(
+                sw.Elapsed < SingleDecodeBound,
+                $"{label} decode took {sw.Elapsed} (>{SingleDecodeBound}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+            _ = src;
+        });
+    }
+
+    /// <summary>Records warnings with their offset from construction, so a late cap can be told apart from a late return.</summary>
+    private sealed class RecordingLogger : IOpenClawLogger
+    {
+        private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly ConcurrentQueue<string> _warnings = new();
+        public IReadOnlyCollection<string> Warnings => _warnings;
+        public void Info(string message) { }
+        public void Debug(string message) { }
+        public void Warn(string message) => Record(message);
+        public void Error(string message, Exception? ex = null) => Record(message);
+        private void Record(string message) => _warnings.Enqueue($"+{_clock.ElapsedMilliseconds} ms {message}");
+    }
 
     private static string DataSvgUtf8(string svgXml) =>
         "data:image/svg+xml;utf8," + Uri.EscapeDataString(svgXml);
@@ -234,24 +292,11 @@ public sealed class A2UISvgTests
             "<!ENTITY lol4 \"&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;&lol3;\">" +
             "]>" +
             "<svg xmlns='http://www.w3.org/2000/svg'><text>&lol4;</text></svg>";
-        await _ui.RunOnUIAsync(async () =>
-        {
-            var media = NewResolver();
-            var sw = Stopwatch.StartNew();
-            var src = await media.LoadImageAsync(DataSvgUtf8(svg));
-            sw.Stop();
-            // DOCTYPE strip removes all <!ENTITY> declarations before parsing begins, so
-            // the entity-expansion blowup never happens. The wall-clock cap (SvgRenderTimeout)
-            // is the backstop. Either way, decode must complete well under timeout.
-            Assert.True(
-                sw.Elapsed < MediaResolver.SvgRenderTimeout + TimeSpan.FromSeconds(2),
-                $"billion-laughs decode took {sw.Elapsed} (>{MediaResolver.SvgRenderTimeout})");
-            _ = src;
-        });
+        await AssertSingleDecodeBoundedAsync(DataSvgUtf8(svg), "billion-laughs");
     }
 
     [Fact]
-    public async Task PathologicalGeometry_BoundedByRenderTimeout()
+    public async Task PathologicalGeometry_RejectedBeforeDecode()
     {
         // Build an SVG with a very long path expression. Stay under the 2 MiB data-URL cap
         // by base64-encoding to avoid percent-escape bloat.
@@ -267,17 +312,262 @@ public sealed class A2UISvgTests
         sb.Append("'/></svg>");
         var url = DataSvgBase64(sb.ToString());
 
+        // Oversized geometry never reaches D2D, so the load fails fast instead of blocking the UI thread.
         await _ui.RunOnUIAsync(async () =>
         {
-            var media = NewResolver();
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
             var sw = Stopwatch.StartNew();
             var src = await media.LoadImageAsync(url);
             sw.Stop();
-            // Decode (or timeout) must complete within the configured wall-clock bound.
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("SVG rejected before decode", StringComparison.Ordinal));
             Assert.True(
-                sw.Elapsed < MediaResolver.SvgRenderTimeout + TimeSpan.FromSeconds(2),
-                $"pathological-geometry decode took {sw.Elapsed} (>{MediaResolver.SvgRenderTimeout})");
-            _ = src;
+                sw.Elapsed < SvgDecodeSlack,
+                $"pathological-geometry rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
         });
+    }
+
+    [Fact]
+    public async Task ManySmallShapes_RejectedBeforeDecode()
+    {
+        // The attribute budget cannot see element count: tiny shapes carry no path data, so a
+        // document of thousands of nodes would otherwise reach the decoder unmeasured.
+        var svg =
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>" +
+            string.Concat(Enumerable.Repeat("<rect width='1' height='1'/>", SvgGeometryBudget.MaxElements)) +
+            "</svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("element count exceeds", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"element-count rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task DoctypeCommentContainingFakePath_StillRenders()
+    {
+        // Regression: the geometry guard used to scan before the DOCTYPE strip, so the '>' inside this
+        // DTD comment ended its skip early, the fake path inside the comment was counted, and this
+        // small SVG was rejected. The strip now runs first, so the image must render.
+        var fakePath = new string('1', SvgGeometryBudget.MaxAttributeChars + 1);
+        var svg = $"<!DOCTYPE svg [<!-- > <path d='{fakePath}'/> -->]>" + MinSvg;
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            Assert.True(src is SvgImageSource,
+                $"DOCTYPE comment made a small SVG fail; warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task OversizedGeometryAfterDoctype_StillRejectedBeforeDecode()
+    {
+        // '<' + '?' makes the unprefixed scan treat the DTD tail as an unclosed processing
+        // instruction and skip to end of input, so it misses the oversized path. The shipped policy
+        // strips the declaration first and counts it.
+        var svg =
+            "<!DOCTYPE svg [<!-- > <? -->]>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>" +
+            $"<path d='{new string('1', SvgGeometryBudget.MaxAttributeChars + 1)}'/></svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("geometry attributes exceed", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Fact]
+    public async Task DoctypeSurvivingTheStrip_IsRejectedBeforeDecode()
+    {
+        // The decoy declaration inside the comment is the first textual match, so the strip removes
+        // it and leaves the real one; the scan would then skip that DTD only to its first '>'.
+        // The policy fails closed instead of decoding bytes it never accounted for.
+        var svg =
+            "<!-- <!DOCTYPE x> --><!DOCTYPE svg [<!-- > <![CDATA[ -->]>" +
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><rect width='10' height='10'/></svg>";
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var logger = new RecordingLogger();
+            var media = NewResolver(logger);
+            var sw = Stopwatch.StartNew();
+            var src = await media.LoadImageAsync(DataSvgBase64(svg));
+            sw.Stop();
+            Assert.Null(src);
+            Assert.Contains(logger.Warnings, warning => warning.Contains("DOCTYPE could not be stripped", StringComparison.Ordinal));
+            Assert.True(sw.Elapsed < SvgDecodeSlack,
+                $"rejection took {sw.Elapsed} (>{SvgDecodeSlack}); resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+        });
+    }
+
+    [Theory]
+    [InlineData(65_536, true)]
+    [InlineData(65_537, false)]
+    public async Task GeometryByteBoundary_NativeDecode(int geometryBytes, bool expectDecode)
+    {
+        // M and L contribute eight bytes each; 2,730 genuine cubic commands contribute
+        // 24 bytes each. The one-over case changes a visible endpoint, not whitespace.
+        var path = new StringBuilder("M100 100");
+        for (int segment = 0; segment < 2_730; segment++)
+        {
+            path.Append('C');
+            for (int ordinate = 0; ordinate < 6; ordinate++)
+            {
+                if (ordinate != 0) path.Append(' ');
+                int coordinate = 100 +
+                    (segment * segment + segment * (37 + 17 * ordinate) + 149 * ordinate) % 900;
+                path.Append(coordinate.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+        path.Append(geometryBytes == 65_536 ? "L200 200" : "L1000 200");
+        var pathData = path.ToString();
+        Assert.Equal(geometryBytes, Encoding.UTF8.GetByteCount(pathData));
+        Assert.Equal(2_730, pathData.Count(character => character == 'C'));
+
+        var svg =
+            "<svg xmlns='http://www.w3.org/2000/svg' width='256' height='256' viewBox='0 0 1024 1024'>" +
+            $"<path fill='none' stroke='blue' stroke-width='2' d='{pathData}'/></svg>";
+        var document = System.Xml.Linq.XDocument.Parse(svg);
+        System.Xml.Linq.XNamespace svgNamespace = "http://www.w3.org/2000/svg";
+        var root = Assert.Single(document.Elements(svgNamespace + "svg"));
+        var geometry = Assert.Single(root.Elements(svgNamespace + "path"));
+        Assert.Equal(2, document.Descendants().Count());
+        Assert.Equal(pathData, geometry.Attribute("d")?.Value);
+
+        await AssertNativeSvgBoundaryAsync(
+            svg, expectDecode, "geometry attributes exceed 65536 characters", $"geometry-bytes={geometryBytes}");
+    }
+
+    [Theory]
+    [InlineData(8_192, true)]
+    [InlineData(8_193, false)]
+    public async Task ElementCountBoundary_NativeDecode(int elementCount, bool expectDecode)
+    {
+        // One root plus distinct, nonzero 7x7 rectangles on a 128-column grid.
+        // At the limit the bottom-right cell is absent; one over adds that cell.
+        var builder = new StringBuilder(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='1024' height='512' viewBox='0 0 1024 512'>");
+        for (int index = 0; index < elementCount - 1; index++)
+        {
+            int x = index % 128 * 8;
+            int y = index / 128 * 8;
+            builder.Append(FormattableString.Invariant(
+                $"<rect x='{x}' y='{y}' width='7' height='7' fill='blue'/>"));
+        }
+        builder.Append("</svg>");
+        var svg = builder.ToString();
+        var document = System.Xml.Linq.XDocument.Parse(svg);
+        System.Xml.Linq.XNamespace svgNamespace = "http://www.w3.org/2000/svg";
+        var root = Assert.Single(document.Elements(svgNamespace + "svg"));
+        Assert.Equal(elementCount, document.Descendants().Count());
+        Assert.Equal(elementCount - 1, root.Elements(svgNamespace + "rect").Count());
+
+        await AssertNativeSvgBoundaryAsync(
+            svg, expectDecode, "element count exceeds 8192", $"element-count={elementCount}");
+    }
+
+    // This proves real decoder admission/status, not mounted pixels or dispatcher latency.
+    // The payloads must also pass the separate rendered/nonblank/responsiveness proof.
+    private async Task AssertNativeSvgBoundaryAsync(
+        string svg, bool expectDecode, string rejectionReason, string label)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(2), SvgDecodeSlack);
+        Assert.Equal(TimeSpan.FromSeconds(10), SingleDecodeBound);
+        Assert.True(Encoding.UTF8.GetByteCount(svg) < 2 * 1024 * 1024,
+            $"{label}: fixture must not hit the independent data-URL cap");
+        var url = DataSvgBase64(svg);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            Assert.True(DecodeSlots().CurrentCount > 0,
+                $"{label}: native decode timing must not include queue saturation");
+            var logger = new RecordingLogger();
+            using var media = NewResolver(logger);
+            Assert.True(media.IsAllowed(url), $"{label}: URL admission must succeed before SVG policy");
+            var stopwatch = Stopwatch.StartNew();
+            var source = await media.LoadImageAsync(url);
+            stopwatch.Stop();
+            var diagnostics =
+                $"{label}: elapsed={stopwatch.Elapsed}; warnings=[{string.Join(" | ", logger.Warnings)}]";
+            if (expectDecode)
+            {
+                Assert.True(source is SvgImageSource,
+                    $"A valid at-limit SVG must successfully decode, not return null or time out. {diagnostics}");
+                Assert.Empty(logger.Warnings);
+                Assert.True(stopwatch.Elapsed < SingleDecodeBound, diagnostics);
+            }
+            else
+            {
+                Assert.Null(source);
+                Assert.Contains(logger.Warnings, warning => warning.Contains(
+                    $"[A2UI] SVG rejected before decode: {rejectionReason}", StringComparison.Ordinal));
+                Assert.True(stopwatch.Elapsed < SvgDecodeSlack, diagnostics);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task Load_QueuedBehindBusyDecodeSlots_CompletesOnceASlotFrees()
+    {
+        // Two-stage case: queue wait (all slots busy for a known hold) then one trivial decode.
+        // The single-decode tests above must never absorb queue wait; this one covers it explicitly.
+        var slots = DecodeSlots();
+        var hold = TimeSpan.FromMilliseconds(500);
+        var held = 0;
+        void ReleaseHeld()
+        {
+            var count = Interlocked.Exchange(ref held, 0);
+            if (count > 0) slots.Release(count);
+        }
+
+        try
+        {
+            while (slots.Wait(0)) held++;
+            Assert.True(held > 0, "no free SVG decode slot to hold");
+
+            await _ui.RunOnUIAsync(async () =>
+            {
+                var logger = new RecordingLogger();
+                var media = NewResolver(logger);
+                long releasedAt = 0;
+                var sw = Stopwatch.StartNew();
+                var releaser = Task.Run(async () =>
+                {
+                    await Task.Delay(hold);
+                    Volatile.Write(ref releasedAt, Stopwatch.GetTimestamp());
+                    ReleaseHeld();
+                });
+
+                var src = await media.LoadImageAsync(DataSvgUtf8(MinSvg));
+                var completedAt = Stopwatch.GetTimestamp();
+                sw.Stop();
+                await releaser;
+
+                Assert.True(src is SvgImageSource, $"queued load did not decode; resolver warnings: [{string.Join(" | ", logger.Warnings)}]");
+                Assert.True(completedAt >= Volatile.Read(ref releasedAt),
+                    "load completed before any decode slot was released, so it was not queued");
+                Assert.True(sw.Elapsed < hold + SvgDecodeSlack,
+                    $"queue wait {hold} plus a trivial decode took {sw.Elapsed} (>{hold + SvgDecodeSlack})");
+            });
+        }
+        finally
+        {
+            ReleaseHeld();
+        }
     }
 }

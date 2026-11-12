@@ -718,11 +718,84 @@ public sealed class StoreMigrationWorkflowTests
         Assert.Equal("ms-windows-store://pdp/?ProductId=9EXAMPLE0000", uri!.AbsoluteUri);
     }
 
+    [Theory]
+    [InlineData("x64", "https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-x64.exe")]
+    [InlineData("arm64", "https://github.com/openclaw/openclaw-windows-node/releases/latest/download/OpenClawCompanion-Setup-arm64.exe")]
+    [InlineData("unknown", "https://github.com/openclaw/openclaw-windows-node/releases/latest")]
+    public void InstallerLink_UsesOfficialFullSetupForTheRequestedArchitecture(string architecture, string expected) =>
+        Assert.Equal(expected, StoreMigrationListing.CreateInstallerUri(architecture).AbsoluteUri);
+
+    [Fact]
+    public async Task CompletedAdoption_ExposesActualRemovalLabelsWithoutChangingActions()
+    {
+        var operations = new Operations
+        {
+            Consent = true, StoreDisplayName = "OpenClaw", StoreVersion = "2026.10.502.0"
+        };
+        operations.Admission = operations.Admission with
+        {
+            Installation = operations.Admission.Installation! with
+            { Version = new Version(2026, 9, 8, 1), DisplayName = "OpenClaw Companion version 2026.9.8-1" }
+        };
+        var workflow = Create(operations);
+
+        await workflow.StartAsync(CancellationToken.None);
+
+        Assert.Equal(StoreMigrationStage.AwaitingRemoval, workflow.Stage);
+        Assert.Equal("OpenClaw Companion version 2026.9.8-1", workflow.RemovalSourceDisplayName);
+        Assert.Equal("OpenClaw", workflow.RemovalStoreDisplayName);
+        Assert.Equal("2026.10.502.0", workflow.RemovalStoreVersion);
+        Assert.Equal(new[] { "inspect", "consent?", "close", "prepare", "complete" }, operations.Calls);
+        Assert.True(workflow.BlocksStartup);
+    }
+
+    [Theory]
+    [InlineData(StoreMigrationStartupState.UnsupportedInstallation)]
+    [InlineData(StoreMigrationStartupState.InspectionFailed)]
+    [InlineData(StoreMigrationStartupState.RecoveryRequired)]
+    [InlineData(StoreMigrationStartupState.NotRequired)]
+    public async Task RemovalLabels_DoNotSurviveAnotherAdmission(StoreMigrationStartupState next)
+    {
+        var operations = new Operations { StoreDisplayName = "OpenClaw", StoreVersion = "2026.10.502.0" };
+        operations.Admission = new(StoreMigrationStartupState.AwaitingInnoRemoval,
+            operations.Admission.Installation! with { Version = new Version(2026, 10, 8, 0), DisplayName = "OpenClaw Companion version 2026.10.8" });
+        var workflow = Create(operations);
+        await workflow.StartAsync(CancellationToken.None);
+        Assert.Equal("OpenClaw Companion version 2026.10.8", workflow.RemovalSourceDisplayName);
+        Assert.Equal(new[] { "inspect" }, operations.Calls);
+
+        operations.Admission = new(next);
+        await workflow.ContinueAsync(CancellationToken.None);
+
+        Assert.Null(workflow.RemovalSourceDisplayName);
+        Assert.Null(workflow.RemovalStoreDisplayName);
+        Assert.Null(workflow.RemovalStoreVersion);
+    }
+
+    [Fact]
+    public async Task FailedReinspection_DoesNotReuseAnOldRemovalLabel()
+    {
+        var operations = new Operations();
+        operations.Admission = new(StoreMigrationStartupState.AwaitingInnoRemoval,
+            operations.Admission.Installation! with { Version = new Version(2026, 10, 8, 0), DisplayName = "OpenClaw Companion version 2026.10.8" });
+        var workflow = Create(operations);
+        await workflow.StartAsync(CancellationToken.None);
+        Assert.NotNull(workflow.RemovalSourceDisplayName);
+
+        operations.InspectError = new IOException("fixture inspection failure");
+        await workflow.ContinueAsync(CancellationToken.None);
+
+        Assert.Equal(StoreMigrationStage.InspectionFailed, workflow.Stage);
+        Assert.Null(workflow.RemovalSourceDisplayName);
+    }
+
     private static StoreMigrationWorkflow Create(Operations operations) => new(operations, NullLogger.Instance);
 
     private sealed class Operations : IStoreMigrationOperations
     {
         public List<string> Calls { get; } = [];
+        public string? StoreDisplayName { get; set; }
+        public string? StoreVersion { get; set; }
         public StoreMigrationStartupDecision Admission { get; set; } = new(StoreMigrationStartupState.ConsentRequired,
             new InnoInstallation(@"C:\fixture", @"C:\fixture\app.exe", @"C:\fixture\unins000.exe", "x64", new Version(2026, 9, 5)));
         public bool Consent { get; set; }

@@ -161,6 +161,36 @@ public class GatewayProtocolModelsTests
         Assert.False(patch.HasChanges);
     }
 
+    [Theory]
+    [InlineData("11111111-2222-4333-8444-555555555555", true)]
+    [InlineData(null, false)]
+    [InlineData("", false)]
+    [InlineData("   ", false)]
+    public void SessionPatch_ExpectedSessionId_IsAGuardSentOnlyWhenNonBlank(string? sessionId, bool sent)
+    {
+        // The gateway rejects an empty or null expectedSessionId, so a blank id
+        // must be omitted rather than sent. The guard alone is never a mutation.
+        var payload = new SessionPatch { Archived = true, ExpectedSessionId = sessionId }.ToPayload("agent:main:main");
+
+        Assert.Equal(sent, payload.ContainsKey("expectedSessionId"));
+        if (sent)
+            Assert.Equal(sessionId, payload["expectedSessionId"]);
+        Assert.False(new SessionPatch { ExpectedSessionId = sessionId }.HasChanges);
+    }
+
+    [Fact]
+    public void SessionPatch_ExpectedSessionId_IsOmittedWhenTheGatewayPredatesTheGuard()
+    {
+        // Gateways before 2026.8.1 reject the field as an unknown property; the client
+        // retries without it, and the rest of the patch must be untouched.
+        var payload = new SessionPatch { Archived = true, ExpectedSessionId = "11111111-2222-4333-8444-555555555555" }
+            .ToPayload("agent:main:main", includeSessionGuard: false);
+
+        Assert.False(payload.ContainsKey("expectedSessionId"));
+        Assert.Equal(true, payload["archived"]);
+        Assert.Equal("agent:main:main", payload["key"]);
+    }
+
     [Fact]
     public void SessionPatch_ClearLabelEmitsExplicitNull()
     {
@@ -606,7 +636,8 @@ public class GatewayProtocolModelsTests
             Pinned = true,
             Unread = true,
             Archived = true,
-            ExpectedMarkedUnreadAt = 1L
+            ExpectedMarkedUnreadAt = 1L,
+            ExpectedSessionId = "s"
         };
 
         var keys = patch.ToPayload("agent:main").Keys.OrderBy(k => k).ToArray();
@@ -614,7 +645,7 @@ public class GatewayProtocolModelsTests
         var expected = new[]
         {
             "archived", "elevatedLevel", "execAsk", "execHost", "execNode", "execSecurity",
-            "expectedMarkedUnreadAt", "fastMode", "groupActivation", "key", "label", "model",
+            "expectedMarkedUnreadAt", "expectedSessionId", "fastMode", "groupActivation", "key", "label", "model",
             "pinned", "reasoningLevel", "responseUsage", "sendPolicy", "thinkingLevel",
             "traceLevel", "unread", "verboseLevel"
         }.OrderBy(k => k).ToArray();

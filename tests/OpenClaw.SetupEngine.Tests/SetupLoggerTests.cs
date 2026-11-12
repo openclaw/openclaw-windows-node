@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Connection.NativeGateway;
+using OpenClaw.Shared;
 using OpenClaw.TestSupport;
 
 namespace OpenClaw.SetupEngine.Tests;
@@ -23,6 +24,42 @@ public class SetupLoggerTests : IDisposable
     }
 
     [Fact]
+    public void HandshakeObservation_EnumValuesSurviveJsonlRedactionWithoutWeakeningGenericRedaction()
+    {
+        var path = Path.Combine(_tempDir, "handshake.jsonl");
+        var observations = Enum.GetValues<GatewayHandshakePhase>()
+            .Select(phase => new GatewayHandshakeObservation(3, phase, 10.5, 2.5))
+            .Concat(Enum.GetValues<GatewayErrorKind>()
+                .Select(kind => new GatewayHandshakeObservation(3, GatewayHandshakePhase.ConnectRejected, 10.5, 2.5, kind)))
+            .ToArray();
+        using (var logger = new SetupLogger(path))
+        {
+            foreach (var observation in observations)
+                logger.HandshakeObservation(2, observation);
+            logger.Info("generic event", new { token = "sensitive-token-sentinel" });
+        }
+
+        var lines = File.ReadAllLines(path);
+        Assert.Equal(observations.Length + 1, lines.Length);
+        for (var index = 0; index < observations.Length; index++)
+        {
+            using var json = JsonDocument.Parse(lines[index]);
+            Assert.Equal("native.gateway.handshake", json.RootElement.GetProperty("msg").GetString());
+            var data = json.RootElement.GetProperty("data");
+            Assert.Equal(observations[index].Phase.ToString(), data.GetProperty("phase").GetString());
+            if (observations[index].FailureKind is { } failure)
+                Assert.Equal(failure.ToString(), data.GetProperty("failure_kind").GetString());
+            Assert.Equal(2, data.GetProperty("connection_attempt").GetInt64());
+            Assert.Equal(3, data.GetProperty("transport_generation").GetInt64());
+            Assert.Equal(10.5, data.GetProperty("elapsed_ms").GetDouble());
+            Assert.Equal(2.5, data.GetProperty("phase_elapsed_ms").GetDouble());
+            Assert.DoesNotContain("[REDACTED]", lines[index]);
+        }
+        Assert.Contains("[REDACTED]", lines[^1]);
+        Assert.DoesNotContain("sensitive-", File.ReadAllText(path));
+    }
+
+    [Fact]
     public void WritesAfterDisposeAreDroppedWithoutThrowing()
     {
         var path = Path.Combine(_tempDir, "native-setup.jsonl");
@@ -38,6 +75,86 @@ public class SetupLoggerTests : IDisposable
         Assert.Contains("before", text);
         Assert.DoesNotContain("after", text);
         Assert.Contains(entries, entry => entry.Message == "after");
+    }
+
+    [Fact]
+    public async Task OperationLeaseKeepsFileOpenThroughCancellationCleanup()
+    {
+        var path = Path.Combine(_tempDir, "native-setup.jsonl");
+        using var logger = new SetupLogger(path);
+        using var cancellation = new CancellationTokenSource();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancellationObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishCleanup = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        async Task RunOperationAsync()
+        {
+            using var lease = logger.RetainForOperation();
+            started.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellation.Token);
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                cancellationObserved.SetResult();
+                await finishCleanup.Task;
+                logger.Info("terminal cancellation cleanup");
+                throw;
+            }
+        }
+
+        var operation = RunOperationAsync();
+        await started.Task;
+        cancellation.Cancel();
+        logger.Dispose();
+        try
+        {
+            await cancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(operation.IsCompleted);
+            logger.Info("cleanup in progress");
+        }
+        finally
+        {
+            finishCleanup.TrySetResult();
+            try { await operation; }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        }
+
+        var exception = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+        Assert.Equal(cancellation.Token, exception.CancellationToken);
+        logger.Info("after operation");
+        var text = File.ReadAllText(path);
+        Assert.Contains("cleanup in progress", text);
+        Assert.Contains("terminal cancellation cleanup", text);
+        Assert.DoesNotContain("after operation", text);
+    }
+
+    [Fact]
+    public void DisposeWaitsForEveryOperationLeaseAndRejectsNewLeases()
+    {
+        var path = Path.Combine(_tempDir, "native-setup.jsonl");
+        using var logger = new SetupLogger(path);
+        var first = logger.RetainForOperation();
+        var second = logger.RetainForOperation();
+
+        logger.Dispose();
+        Assert.Throws<ObjectDisposedException>(() => logger.RetainForOperation());
+        first.Dispose();
+        first.Dispose();
+        logger.Info("second operation remains");
+        Assert.Throws<IOException>(() =>
+        {
+            using var locked = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        });
+        second.Dispose();
+        logger.Info("all operations ended");
+
+        var text = File.ReadAllText(path);
+        Assert.Contains("second operation remains", text);
+        Assert.DoesNotContain("all operations ended", text);
+        using var reopened = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        Assert.True(reopened.CanWrite);
     }
 
     [Theory]
@@ -426,5 +543,20 @@ public class SetupLoggerTests : IDisposable
         Assert.Single(entries);
         Assert.Equal(LogLevel.Debug, entries[0].Level);
         Assert.Contains("state", entries[0].Message);
+    }
+
+    [Fact]
+    public void LoggingAfterDispose_DoesNotThrowAndStopsWritingToFile()
+    {
+        var path = Path.Combine(_tempDir, "dispose-check.jsonl");
+        var logger = new SetupLogger(path);
+        logger.Info("before");
+        logger.Dispose();
+
+        logger.Info("after-dispose");
+
+        var content = File.ReadAllText(path);
+        Assert.Contains("before", content);
+        Assert.DoesNotContain("after-dispose", content);
     }
 }

@@ -26,6 +26,98 @@ public class GatewayConnectionManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task DisconnectIfCurrentAsync_DisconnectsWhenADeviceIdUpdateReplacesTheSnapshot()
+    {
+        SetupGateway("settlement-same", "wss://same.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        await _manager.ConnectAsync("settlement-same");
+        var current = _manager.CurrentSnapshot;
+        await InvokeHandshakeSucceededAsync(_manager);
+        Assert.NotSame(current, _manager.CurrentSnapshot);
+        Assert.Equal(current.GatewayId, _manager.CurrentSnapshot.GatewayId);
+        Assert.Equal(current.GatewayUrl, _manager.CurrentSnapshot.GatewayUrl);
+
+        Assert.True(await _manager.DisconnectIfCurrentAsync(current));
+        Assert.Equal(RoleConnectionState.Idle, _manager.CurrentSnapshot.OperatorState);
+    }
+
+    [Fact]
+    public async Task DisconnectIfCurrentAsync_PreservesANewerConnectionToTheSameGateway()
+    {
+        SetupGateway("settlement-same", "wss://same.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        await _manager.ConnectAsync("settlement-same");
+        var beforeReconnect = _manager.CurrentSnapshot;
+
+        await _manager.ReconnectAsync();
+        var current = _manager.CurrentSnapshot;
+        var client = _manager.OperatorClient;
+        Assert.NotNull(client);
+        Assert.NotSame(beforeReconnect, current);
+        Assert.Equal(beforeReconnect.GatewayId, current.GatewayId);
+        Assert.Equal(beforeReconnect.GatewayUrl, current.GatewayUrl);
+
+        Assert.False(await _manager.DisconnectIfCurrentAsync(beforeReconnect));
+        Assert.Same(current, _manager.CurrentSnapshot);
+        Assert.Same(client, _manager.OperatorClient);
+        Assert.True(await _manager.DisconnectIfCurrentAsync(current));
+    }
+
+    [Fact]
+    public async Task DisconnectIfCurrentAsync_PreservesANewerNodeOnlyConnection()
+    {
+        SetupGateway("settlement-node", "wss://node.example");
+        _resolver.NodeCredential = new("node-token", false, CredentialResolver.SourceNodeDeviceToken);
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nodeConnector: node);
+        await manager.ConnectNodeOnlyAsync("settlement-node");
+        var beforeReconnect = manager.CurrentSnapshot;
+
+        await manager.ConnectNodeOnlyAsync("settlement-node");
+        var current = manager.CurrentSnapshot;
+        Assert.Equal(2, node.ConnectCount);
+        Assert.False(await manager.DisconnectIfCurrentAsync(beforeReconnect));
+        Assert.Same(current, manager.CurrentSnapshot);
+        Assert.True(await manager.DisconnectIfCurrentAsync(current));
+    }
+
+    [Fact]
+    public async Task DisconnectIfCurrentAsync_AcceptsOnlyThePostDisconnectObservation()
+    {
+        SetupGateway("settlement-disconnect", "wss://disconnect.example");
+        _resolver.OperatorCredential = new("token", false, "test");
+        await _manager.ConnectAsync("settlement-disconnect");
+        var beforeDisconnect = _manager.CurrentSnapshot;
+
+        await _manager.DisconnectAsync();
+        var current = _manager.CurrentSnapshot;
+        Assert.False(await _manager.DisconnectIfCurrentAsync(beforeDisconnect));
+        Assert.Same(current, _manager.CurrentSnapshot);
+        Assert.True(await _manager.DisconnectIfCurrentAsync(current));
+    }
+
+    [Fact]
+    public async Task DisconnectIfCurrentAsync_RetriesFailedNativeTeardownWithoutAReplacementConnection()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime { StopException = new IOException("Native stop failed") };
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        SetupGateway("replacement", "wss://replacement.example");
+
+        await Assert.ThrowsAsync<IOException>(() => manager.DisconnectAsync());
+        var current = manager.CurrentSnapshot;
+        Assert.True(runtime.Running);
+        runtime.StopException = null;
+
+        Assert.True(await manager.DisconnectIfCurrentAsync(current));
+        Assert.False(runtime.Running);
+        Assert.Equal(2, runtime.StopCount);
+    }
+
+    [Fact]
     public async Task NativeRecovery_ProductionAuthorizerDoesNotDowngradeAtUnownedManualLoopback()
     {
         var path = Path.Combine(_tempDir, "saved-native");
@@ -342,7 +434,8 @@ public class GatewayConnectionManagerTests : IDisposable
             BeforeEnsure = () =>
             {
                 if (!reconnecting) return;
-                clock.Advance(outcome == "expired" ? TimeSpan.FromSeconds(210) : TimeSpan.FromSeconds(187));
+                clock.Advance(NativeGatewayEndpointSecurity.CredentialHandoffTimeout -
+                    (outcome == "expired" ? TimeSpan.Zero : TimeSpan.FromSeconds(23)));
                 if (outcome == "changed")
                     _registry.AddOrUpdate(_registry.GetById("native")! with { Url = "ws://127.0.0.1:19999" });
                 if (outcome == "cancelled") handshake.Cancel();
@@ -2272,7 +2365,7 @@ public class GatewayConnectionManagerTests : IDisposable
             registry,
             NullLogger.Instance);
 
-        await manager.SwitchGatewayAsync("gw-1");
+        await Assert.ThrowsAsync<IOException>(() => manager.SwitchGatewayAsync("gw-1"));
 
         Assert.Null(registry.ActiveGatewayId);
         Assert.Empty(factory.CreatedClients);
@@ -2299,7 +2392,7 @@ public class GatewayConnectionManagerTests : IDisposable
         await manager.ConnectAsync("gw-1");
         var activeLifecycle = Assert.Single(factory.CreatedClients);
 
-        await manager.SwitchGatewayAsync("gw-2");
+        await Assert.ThrowsAsync<IOException>(() => manager.SwitchGatewayAsync("gw-2"));
 
         Assert.Equal("gw-1", registry.ActiveGatewayId);
         Assert.Same(activeLifecycle.DataClient, manager.OperatorClient);
@@ -5131,6 +5224,75 @@ public class GatewayConnectionManagerTests : IDisposable
         Assert.Equal(expectedNodeUrl, node.LastGatewayUrl);
     }
 
+    // Models a settings-driven full reconnect (fire-and-forget operator connect) followed by a
+    // same-gateway node-only reconnect before the new operator handshake completes. Both calls are
+    // serialized by the transition semaphore, so awaiting ReconnectAsync first preserves caller order.
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_SameGatewayDuringPendingOperatorReconnect_KeepsOperatorRecoverable()
+    {
+        SetupGateway("gw-1", "wss://test");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node,
+            isNodeEnabled: () => true,
+            shouldStartNodeConnection: (_, _) => true);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        await manager.ReconnectAsync();
+        Assert.Equal(2, _factory.CreatedClients.Count);
+        var pendingOperator = _factory.CreatedClients[1];
+        Assert.False(pendingOperator.IsDisposed);
+        Assert.Equal(RoleConnectionState.Connecting, manager.CurrentSnapshot.OperatorState);
+        var nodeConnectsBefore = node.ConnectCount;
+
+        await manager.ConnectNodeOnlyAsync("gw-1");
+
+        Assert.Equal(nodeConnectsBefore + 1, node.ConnectCount);
+        var liveOperator = Assert.Single(_factory.CreatedClients.Skip(1), lifecycle => !lifecycle.IsDisposed);
+        Assert.Same(liveOperator.DataClient, manager.OperatorClient);
+        await InvokeHandshakeSucceededAsync(manager);
+        Assert.Equal(RoleConnectionState.Connected, manager.CurrentSnapshot.OperatorState);
+        Assert.Equal(nodeConnectsBefore + 1, node.ConnectCount);
+        Assert.Equal(2, _factory.CreatedClients.Count);
+    }
+
+    [Fact]
+    public async Task ConnectNodeOnlyAsync_ChangedGatewayDuringPendingOperatorReconnect_DisposesPendingOperator()
+    {
+        SetupGateway("gw-1", "wss://test-1");
+        _resolver.OperatorCredential = new GatewayCredential("operator-token", false, "test");
+        _resolver.NodeCredential = new GatewayCredential("node-token", false, "test");
+        var node = new CountingNodeConnector();
+        using var manager = new GatewayConnectionManager(
+            _resolver,
+            _factory,
+            _registry,
+            NullLogger.Instance,
+            nodeConnector: node);
+
+        await manager.ConnectAsync("gw-1");
+        await InvokeHandshakeSucceededAsync(manager);
+        await manager.ReconnectAsync();
+        var pendingOperator = _factory.CreatedClients[^1];
+        Assert.False(pendingOperator.IsDisposed);
+        Assert.Equal(RoleConnectionState.Connecting, manager.CurrentSnapshot.OperatorState);
+        _registry.AddOrUpdate(new GatewayRecord { Id = "gw-2", Url = "wss://test-2" });
+        _registry.SetActive("gw-2");
+
+        await manager.ConnectNodeOnlyAsync("gw-2");
+
+        Assert.True(pendingOperator.IsDisposed);
+        Assert.Null(manager.OperatorClient);
+        Assert.Equal("wss://test-2", node.LastGatewayUrl);
+    }
+
     [Fact]
     public async Task ConnectNodeOnlyAsync_StartsSshTunnel_WhenGatewayUsesTunnel()
     {
@@ -5677,6 +5839,7 @@ public class GatewayConnectionManagerTests : IDisposable
         public Action? BeforeEnsure { get; init; }
         public Action? BeforeInspect { get; init; }
         public Exception? StartException { get; init; }
+        public Exception? StopException { get; set; }
         public bool Running { get; set; }
         public int StartCount { get; private set; }
         public int StopCount { get; private set; }
@@ -5712,6 +5875,8 @@ public class GatewayConnectionManagerTests : IDisposable
         public Task StopAsync(CancellationToken cancellationToken)
         {
             StopCount++;
+            if (StopException is not null)
+                throw StopException;
             Running = false;
             return Task.CompletedTask;
         }

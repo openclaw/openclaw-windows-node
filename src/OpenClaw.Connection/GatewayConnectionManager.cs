@@ -365,6 +365,7 @@ public sealed class GatewayConnectionManager :
             // Update snapshot with gateway info
             _stateMachine.Current = _stateMachine.Current with
             {
+                LifecycleGeneration = gen,
                 GatewayId = record.Id,
                 GatewayUrl = record.Url,
                 GatewayName = record.FriendlyName
@@ -844,11 +845,11 @@ public sealed class GatewayConnectionManager :
         if (!Directory.Exists(perGatewayIdentityDir))
             Directory.CreateDirectory(perGatewayIdentityDir);
 
-        // Same-gateway node reapproval reconnects keep the operator alive so it can
-        // request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
+        // Same-gateway node reapproval reconnects keep a live or still-handshaking operator alive
+        // so it can request the post-handshake node.list; all other paths reset lifecycle/tunnel state.
         var preservesOperatorConnection =
             _activeLifecycle != null &&
-            _stateMachine.Current.OperatorState == RoleConnectionState.Connected &&
+            _stateMachine.Current.OperatorState is RoleConnectionState.Connected or RoleConnectionState.Connecting &&
             string.Equals(_activeGatewayRecordId, record.Id, StringComparison.Ordinal) &&
             string.Equals(_stateMachine.Current.GatewayUrl, record.Url, StringComparison.Ordinal) &&
             Equals(_activeSshTunnel, record.SshTunnel);
@@ -870,6 +871,7 @@ public sealed class GatewayConnectionManager :
         _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
         _stateMachine.Current = _stateMachine.Current with
         {
+            LifecycleGeneration = gen,
             GatewayId = record.Id,
             GatewayUrl = record.Url,
             GatewayName = record.FriendlyName
@@ -1079,13 +1081,20 @@ public sealed class GatewayConnectionManager :
         }
     }
 
+    /// <summary>Disconnects only if an observation from CurrentSnapshot still identifies the published connection.</summary>
     public async Task<bool> DisconnectIfCurrentAsync(GatewayConnectionSnapshot expected)
     {
         ThrowIfDisposed();
         await _transitionSemaphore.WaitAsync();
         try
         {
-            if (!ReferenceEquals(CurrentSnapshot, expected)) return false;
+            var current = CurrentSnapshot;
+            // Compare published contexts, not an attempt counter that may have
+            // advanced before teardown failed without publishing a replacement.
+            if (current.LifecycleGeneration != expected.LifecycleGeneration ||
+                !string.Equals(current.GatewayId, expected.GatewayId, StringComparison.Ordinal) ||
+                !string.Equals(current.GatewayUrl, expected.GatewayUrl, StringComparison.Ordinal))
+                return false;
             await DisconnectCoreAsync();
             return true;
         }
@@ -1127,7 +1136,7 @@ public sealed class GatewayConnectionManager :
     private async Task DisconnectCoreAsync(bool stopNativeGateway = false)
     {
         CancelOperatorTelemetryAttempt("canceled", ConnectionErrorCategory.Cancelled);
-        Interlocked.Increment(ref _generation);
+        var generation = Interlocked.Increment(ref _generation);
         _nodeConnectionCoordinator.CancelTelemetry(
             "canceled",
             ConnectionErrorCategory.Cancelled);
@@ -1145,6 +1154,7 @@ public sealed class GatewayConnectionManager :
         }
         SyncNodeIntentFromSettings();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
+        _stateMachine.Current = _stateMachine.Current with { LifecycleGeneration = generation };
         _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
         EmitStateChanged();
     }
@@ -1626,7 +1636,7 @@ public sealed class GatewayConnectionManager :
                 _registry.SetActive(previousActiveId);
                 _logger.Warn($"[ConnMgr] Failed to persist active gateway switch: {ex.Message}");
                 _diagnostics.Record("state", "Switch gateway failed", $"Could not persist active gateway: {ex.Message}");
-                return;
+                throw;
             }
 
             await DisconnectCoreAsync();

@@ -4,6 +4,8 @@ using OpenClaw.Shared;
 using OpenClaw.Shared.Mxc;
 using OpenClawTray.Helpers;
 using OpenClawTray.Services;
+using OpenClawTray.Presentation;
+using Microsoft.Extensions.DependencyInjection;
 using System.Collections.ObjectModel;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
@@ -20,13 +22,32 @@ public sealed partial class SandboxPage : Page
     private bool _probeInFlight;
     private MxcAvailability? _availability;
     private MxcRequestContext? _folderContext;
+    private NodeService? _cleanupSource;
     public ObservableCollection<CustomFolderRow> CustomFolders { get; } = new();
 
     public SandboxPage()
     {
         InitializeComponent();
         CustomFoldersList.ItemsSource = CustomFolders;
+        Loaded += OnPageLoaded;
+        Unloaded += OnPageUnloaded;
     }
+
+    private void OnPageLoaded(object sender, RoutedEventArgs e)
+    {
+        _cleanupSource = CurrentApp.ActiveNodeService;
+        if (_cleanupSource is not null) _cleanupSource.UploadCleanupChanged += OnUploadCleanupChanged;
+        UpdateUploadCleanup();
+    }
+
+    private void OnPageUnloaded(object sender, RoutedEventArgs e)
+    {
+        if (_cleanupSource is not null) _cleanupSource.UploadCleanupChanged -= OnUploadCleanupChanged;
+        _cleanupSource = null;
+    }
+
+    private void OnUploadCleanupChanged() => DispatcherQueue.TryEnqueue(UpdateUploadCleanup);
+    private void UpdateUploadCleanup() => UploadCleanupWarning.IsOpen = _cleanupSource?.UploadCleanupBlockedReason is not null;
 
     public void Initialize()
     {
@@ -53,6 +74,8 @@ public sealed partial class SandboxPage : Page
         finally
         {
             _probeInFlight = false;
+            if (_availability is { } availability)
+                CurrentApp.Services?.GetRequiredService<SandboxStatusStore>().Publish(availability);
             LoadFolders();
             UpdateStatus();
         }
@@ -352,6 +375,7 @@ public sealed partial class SandboxPage : Page
         if (long.TryParse((string?)((ComboBoxItem?)MaxOutputCombo.SelectedItem)?.Tag, out var bytes))
         { settings.SandboxMaxOutputBytes = bytes; Save(); }
     }
+
     public sealed class CustomFolderRow
     {
         public MxcFolderPermission Permission { get; }
