@@ -14,7 +14,7 @@ internal static class Program
             return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|sessions-hub|sessions-hub-readonly|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -74,7 +74,8 @@ internal static class Program
         }
         if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or GatewayScenario.AutomationsName
             or GatewayScenario.DashboardsName or ContextUsageFixture.Name
-            or UsageAnalyticsFixture.Name or SystemsFixture.InventoryName or SystemsFixture.EmptyName))
+            or UsageAnalyticsFixture.Name or SystemsFixture.InventoryName or SystemsFixture.EmptyName
+            or GatewayScenario.SessionsHubName or GatewayScenario.SessionsHubReadOnlyName))
         {
             Console.Error.WriteLine("Unknown fixture scenario.");
             return 2;

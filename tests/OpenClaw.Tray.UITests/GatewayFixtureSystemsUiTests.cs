@@ -388,10 +388,34 @@ public sealed partial class GatewayFixtureUiTests
                 Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS"),
                 scenario: GatewayScenario.CreateSystems(empty: false), appTheme: theme);
             await run.InvokeAsync("app.navigate", new { page = "systems" });
-            await WaitUiAsync(run, () => FindById(run, "SystemsPageScroll") is not null &&
-                FindById(run, "SystemsRow_node:fixture-studio") is not null, "daily Systems inventory");
-            var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsPageMarker")) is not null);
+            AutomationElement? window = null;
+            await WaitUiAsync(run, () =>
+            {
+                var candidates = AppWindows(run).Where(root => root.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsPageMarker")) is not null).ToArray();
+                if (candidates.Length == 0)
+                    return false;
+                var candidate = Assert.Single(candidates);
+                if (candidate.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsPageScroll")) is null ||
+                    candidate.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsRow_node:fixture-studio")) is null)
+                    return false;
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(candidate, candidate, run.AppProcessId));
+                window = candidate;
+                return true;
+            }, "daily Systems inventory");
+            Assert.NotNull(window);
+            AutomationElement? FindUnder(AutomationElement parent, string id)
+            {
+                var element = parent.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+                if (element is not null)
+                    Assert.True(NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId),
+                        $"Systems observation '{id}' must belong to the retained native window and process.");
+                return element;
+            }
+            AutomationElement? Find(string id) => FindUnder(window, id);
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             var scale = SystemsWindowDpi(hwnd) / 96d;
             var work = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
@@ -399,15 +423,28 @@ public sealed partial class GatewayFixtureUiTests
                 Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
             var windowPattern = (WindowPattern)window.GetCurrentPattern(WindowPattern.Pattern);
             windowPattern.SetWindowVisualState(WindowVisualState.Normal);
-            await WaitUiAsync(run, () => windowPattern.Current.WindowVisualState == WindowVisualState.Normal &&
-                FindById(run, "SystemsPageScroll") is { Current.BoundingRectangle.Width: > 0 }, "normal Systems window");
+            AutomationElement? paneToggle = null, pageMarker = null;
+            await WaitUiAsync(run, () =>
+            {
+                var viewport = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                paneToggle = Find("SettingsTogglePane");
+                return windowPattern.Current.WindowVisualState == WindowVisualState.Normal &&
+                    viewport is not null && paneToggle is { Current.IsOffscreen: false, Current.IsEnabled: true };
+            }, "normal Systems window");
+            Assert.NotNull(paneToggle);
             var records = new List<object>();
             async Task Capture(string state, params AutomationElement[] requiredVisible)
             {
                 var name = $"{theme}-{state}.png";
-                OwnedWindowCapture.Save(run, window, name, requiredVisible);
-                var bounds = window.Current.BoundingRectangle;
-                var viewport = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle;
+                OwnedWindowCapture.ViewportSnapshot? frame = null;
+                await WaitUiAsync(run, () =>
+                    (frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll")) is not null,
+                    $"owned Systems viewport ready for {state}");
+                Assert.NotNull(frame);
+                OwnedWindowCapture.Save(run, window, name, [frame.Element, .. requiredVisible]);
+                frame.AssertUnchanged();
+                var bounds = frame.WindowBounds;
+                var viewport = frame.Bounds;
                 records.Add(new
                 {
                     state, theme, run.AppProcessId, hwnd = hwnd.ToInt64(), scale,
@@ -422,47 +459,71 @@ public sealed partial class GatewayFixtureUiTests
                 await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "daily-frames.json"),
                     JsonSerializer.Serialize(records, new JsonSerializerOptions { WriteIndented = true }));
             }
-            Invoke(FindById(run, "SettingsTogglePane")!);
-            await WaitUiAsync(run, () => FindById(run, "SettingsSearch") is null or { Current.IsOffscreen: true },
-                "Settings navigation pane collapsed");
+            Invoke(paneToggle);
+            ScrollPattern? currentScroll = null;
+            await WaitUiAsync(run, () =>
+            {
+                var viewport = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                if (Find("SettingsSearch") is not (null or { Current.IsOffscreen: true }) || viewport is null)
+                    return false;
+                var pattern = (ScrollPattern)viewport.Element.GetCurrentPattern(ScrollPattern.Pattern);
+                currentScroll = pattern;
+                return true;
+            }, "Settings navigation pane collapsed");
+            Assert.NotNull(currentScroll);
             foreach (var width in new[] { 800, 1000 })
             {
                 var requestedWidth = width * scale;
                 Assert.True(requestedWidth <= work.Width, $"Display cannot contain the requested {width} DIP owned window.");
                 Assert.True(SystemsSetWindowPos(hwnd, IntPtr.Zero, work.X, work.Y,
                     (int)Math.Round(requestedWidth), Math.Min(work.Height, (int)Math.Round(900 * scale)), 0x0014));
-                var scroll = FindById(run, "SystemsPageScroll")!;
-                var pattern = (ScrollPattern)scroll.GetCurrentPattern(ScrollPattern.Pattern);
-                pattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
-                await WaitUiAsync(run, () => Math.Abs(window.Current.BoundingRectangle.Width / scale - width) <= 2 &&
-                    FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: false } &&
-                    scroll.Current.BoundingRectangle.Top >=
-                        FindById(run, "SettingsTogglePane")!.Current.BoundingRectangle.Bottom,
+                currentScroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
+                await WaitUiAsync(run, () =>
+                {
+                    var viewport = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                    var marker = Find("SystemsPageMarker");
+                    var toggle = Find("SettingsTogglePane");
+                    if (viewport is null || marker is not { Current.IsOffscreen: false } ||
+                        toggle is not { Current.IsOffscreen: false } ||
+                        !(Math.Abs(window.Current.BoundingRectangle.Width / scale - width) <= 2 &&
+                            viewport.Bounds.Top >= toggle.Current.BoundingRectangle.Bottom))
+                        return false;
+                    var pattern = (ScrollPattern)viewport.Element.GetCurrentPattern(ScrollPattern.Pattern);
+                    currentScroll = pattern;
+                    pageMarker = marker;
+                    return true;
+                },
                     $"collapsed {width} DIP Systems content remains below navigation chrome");
-                await Capture($"collapsed-{width}-top", FindById(run, "SystemsPageMarker")!);
+                Assert.NotNull(pageMarker);
+                await Capture($"collapsed-{width}-top", pageMarker);
                 if (width == 1000)
                 {
-                    pattern.SetScrollPercent(ScrollPattern.NoScroll, 35);
-                    await WaitUiAsync(run, () => pattern.Current.VerticalScrollPercent > 20 &&
-                        FindById(run, "SystemsPageMarker") is { Current.IsOffscreen: true }, "collapsed Systems scrolled");
+                    currentScroll.SetScrollPercent(ScrollPattern.NoScroll, 35);
+                    await WaitUiAsync(run, () => currentScroll.Current.VerticalScrollPercent > 20 &&
+                        Find("SystemsPageMarker") is { Current.IsOffscreen: true }, "collapsed Systems scrolled");
                     await Capture("collapsed-1000-scrolled");
-                    pattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
+                    currentScroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
                 }
             }
             var collapsedViewport = System.Windows.Rect.Empty;
             var previousCollapsedWidth = -1d;
             await WaitUiAsync(run, () =>
             {
-                if (FindById(run, "SystemsPageScroll") is not { Current.IsOffscreen: false } scroll ||
-                    FindById(run, "SystemsPageMarker") is not { Current.IsOffscreen: false } marker)
+                var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                var marker = Find("SystemsPageMarker");
+                var toggle = Find("SettingsTogglePane");
+                if (frame is null || marker is not { Current.IsOffscreen: false } ||
+                    toggle is not { Current.IsOffscreen: false, Current.IsEnabled: true })
                 {
                     previousCollapsedWidth = -1d;
                     return false;
                 }
-                Assert.Equal(run.AppProcessId, scroll.Current.ProcessId);
-                Assert.Equal(run.AppProcessId, marker.Current.ProcessId);
-                var viewport = scroll.Current.BoundingRectangle;
-                var pattern = (ScrollPattern)scroll.GetCurrentPattern(ScrollPattern.Pattern);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, frame.Element, run.AppProcessId),
+                    "Systems scroll viewport must belong to the captured native window and process.");
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, marker, run.AppProcessId),
+                    "Systems page marker must belong to the captured native window and process.");
+                var viewport = frame.Bounds;
+                var pattern = (ScrollPattern)frame.Element.GetCurrentPattern(ScrollPattern.Pattern);
                 if (viewport.IsEmpty || viewport.Width <= 0 || viewport.Height <= 0 ||
                     !double.IsFinite(viewport.X) || !double.IsFinite(viewport.Y) ||
                     !double.IsFinite(viewport.Width) || !double.IsFinite(viewport.Height) ||
@@ -473,32 +534,43 @@ public sealed partial class GatewayFixtureUiTests
                 }
                 var stable = Math.Abs(viewport.Width - previousCollapsedWidth) < .1;
                 previousCollapsedWidth = viewport.Width;
-                if (stable) collapsedViewport = viewport;
-                return stable;
+                if (!stable)
+                    return false;
+                collapsedViewport = viewport;
+                paneToggle = toggle;
+                return true;
             }, "collapsed Systems viewport settles at the top after scroll reset");
             var collapsedTop = collapsedViewport.Top;
             var collapsedWidth = collapsedViewport.Width;
             var previousExpandedWidth = -1d;
-            Invoke(FindById(run, "SettingsTogglePane")!);
+            OwnedWindowCapture.ViewportSnapshot? currentViewport = null;
+            Invoke(paneToggle);
             await WaitUiAsync(run, () =>
             {
                 // An absent viewport during the pane transition is not settled geometry.
-                if (FindById(run, "SystemsPageScroll") is not
-                    { Current.BoundingRectangle.Width: > 0, Current.BoundingRectangle.Height: > 0 } scroll)
+                var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                var marker = Find("SystemsPageMarker");
+                if (frame is null || marker is not { Current.IsOffscreen: false })
                 {
                     previousExpandedWidth = -1d;
                     return false;
                 }
-                var viewport = scroll.Current.BoundingRectangle;
+                var viewport = frame.Bounds;
                 var stable = Math.Abs(viewport.Width - previousExpandedWidth) < .1;
                 previousExpandedWidth = viewport.Width;
-                return stable && viewport.Width < collapsedWidth - 100 * scale &&
-                    FindById(run, "SettingsSearch") is { Current.IsOffscreen: false } && viewport.Top < collapsedTop;
+                if (!(stable && viewport.Width < collapsedWidth - 100 * scale &&
+                    Find("SettingsSearch") is { Current.IsOffscreen: false } && viewport.Top < collapsedTop))
+                    return false;
+                currentViewport = frame;
+                pageMarker = marker;
+                return true;
             },
                 "expanding navigation removes the Systems scroll-only inset");
-            await Capture("expanded-1000-top", FindById(run, "SystemsPageMarker")!);
-            var chromeWidth = window.Current.BoundingRectangle.Width -
-                FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width;
+            Assert.NotNull(currentViewport);
+            Assert.NotNull(pageMarker);
+            await Capture("expanded-1000-top", pageMarker);
+            currentViewport.AssertUnchanged();
+            var chromeWidth = currentViewport.WindowBounds.Width - currentViewport.Bounds.Width;
             var statsWindowWidth = 1000 * scale + chromeWidth;
             Assert.True(statsWindowWidth <= work.Width, "Display must contain a 1000 DIP Systems host and its native navigation pane.");
             Assert.True(SystemsSetWindowPos(hwnd, IntPtr.Zero, work.X, work.Y,
@@ -506,12 +578,21 @@ public sealed partial class GatewayFixtureUiTests
             var previousStatsHostWidth = -1d;
             await WaitUiAsync(run, () =>
             {
-                var hostWidth = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width;
+                var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                if (frame is null)
+                {
+                    previousStatsHostWidth = -1d;
+                    return false;
+                }
+                var hostWidth = frame.Bounds.Width;
                 var stable = Math.Abs(hostWidth - previousStatsHostWidth) < .1;
                 previousStatsHostWidth = hostWidth;
-                return stable && Math.Abs(window.Current.BoundingRectangle.Width - statsWindowWidth) <= 2;
+                if (!(stable && Math.Abs(window.Current.BoundingRectangle.Width - statsWindowWidth) <= 2))
+                    return false;
+                currentViewport = frame;
+                return true;
             }, "native window and resource viewport finish their initial width allocation");
-            var measuredStatsHostWidth = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width / scale;
+            var measuredStatsHostWidth = currentViewport.Bounds.Width / scale;
             if (Math.Abs(measuredStatsHostWidth - 1000) > 2)
             {
                 statsWindowWidth += Math.Round((1000 - measuredStatsHostWidth) * scale);
@@ -519,72 +600,147 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.True(SystemsSetWindowPos(hwnd, IntPtr.Zero, work.X, work.Y,
                     (int)Math.Round(statsWindowWidth), Math.Min(work.Height, (int)Math.Round(900 * scale)), 0x0014));
             }
-            try
-            {
-                await WaitUiAsync(run, () => Math.Abs(FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle.Width / scale - 1000) <= 2,
-                    "1000 DIP Systems page host for the resource-tile minimum");
-            }
-            catch (TimeoutException)
-            {
-                await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "tile-host-failure.json"),
-                    JsonSerializer.Serialize(new { statsWindowWidth, chromeWidth, scale,
-                        window = window.Current.BoundingRectangle,
-                        viewport = FindById(run, "SystemsPageScroll")!.Current.BoundingRectangle,
-                        work = new { work.Width, work.Height } }, new JsonSerializerOptions { WriteIndented = true }));
-                OwnedWindowCapture.Save(run, window, $"{theme}-tile-host-failure.png");
-                throw;
-            }
-            await run.InvokeAsync("app.navigate", new { page = "systems:node:fixture-studio" });
-            var gatewayDisclosure = (ExpandCollapsePattern)FindById(run, "SystemsRow_gateway")!
-                .GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            if (gatewayDisclosure.Current.ExpandCollapseState == ExpandCollapseState.Expanded)
-                gatewayDisclosure.Collapse();
-            var studioDisclosure = (ExpandCollapsePattern)FindById(run, "SystemsRow_node:fixture-studio")!
-                .GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            await WaitUiAsync(run, () => gatewayDisclosure.Current.ExpandCollapseState == ExpandCollapseState.Collapsed &&
-                studioDisclosure.Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
-                FindById(run, "SystemsSelectedName")?.Current.Name == "Fixture Studio PC",
-                "Studio resource proof has one explicitly expanded native machine");
-            AutomationElement? Studio(string id) => window.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsRow_node:fixture-studio"))?.FindFirst(
-                    TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
-            await WaitUiAsync(run, () => Studio("SystemsStat_cpu") is not null &&
-                Studio("SystemsStat_memory") is not null && Studio("SystemsStat_disk") is not null, "reported Studio resource tiles");
-            var stats = Studio("SystemsStat_cpu")!;
-            var statsScroll = FindById(run, "SystemsPageScroll")!;
-            var statsPattern = (ScrollPattern)statsScroll.GetCurrentPattern(ScrollPattern.Pattern);
-            var viewportBounds = statsScroll.Current.BoundingRectangle;
-            var range = viewportBounds.Height * (100 / statsPattern.Current.VerticalViewSize - 1);
-            Assert.True(range > 0, "Expanded machine details must remain reachable through ordinary scrolling.");
-            var offset = statsPattern.Current.VerticalScrollPercent / 100 * range;
-            var target = offset + stats.Current.BoundingRectangle.Top - viewportBounds.Top - 16;
-            statsPattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(target / range * 100, 0, 100));
-            AutomationElement? cpuTile = null, memoryTile = null, diskTile = null;
+            OwnedWindowCapture.ViewportSnapshot? lastStatsHostObservation = null;
             try
             {
                 await WaitUiAsync(run, () =>
                 {
-                    cpuTile = Studio("SystemsStat_cpu");
-                    memoryTile = Studio("SystemsStat_memory");
-                    diskTile = Studio("SystemsStat_disk");
-                    return cpuTile is { Current.IsOffscreen: false } && memoryTile is { Current.IsOffscreen: false } &&
-                        diskTile is { Current.IsOffscreen: false } &&
-                        cpuTile.Current.BoundingRectangle.Width / scale >= 160 &&
-                        memoryTile.Current.BoundingRectangle.Width / scale >= 160 &&
-                        diskTile.Current.BoundingRectangle.Width / scale >= 160;
+                    var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                    lastStatsHostObservation = frame;
+                    return frame is not null && Math.Abs(frame.Bounds.Width / scale - 1000) <= 2;
+                },
+                    "1000 DIP Systems page host for the resource-tile minimum");
+            }
+            catch (TimeoutException timeout)
+            {
+                try
+                {
+                    await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "tile-host-failure.json"),
+                        JsonSerializer.Serialize(new { statsWindowWidth, chromeWidth, scale,
+                            lastObservedWindow = lastStatsHostObservation?.WindowBounds,
+                            lastObservedViewport = lastStatsHostObservation?.Bounds,
+                            viewportObservedOnLastPoll = lastStatsHostObservation is not null,
+                            work = new { work.Width, work.Height } }, new JsonSerializerOptions { WriteIndented = true }));
+                    OwnedWindowCapture.Save(run, window, $"{theme}-tile-host-failure.png");
+                }
+                catch (Exception diagnosticError)
+                {
+                    throw new AggregateException("Systems host wait and failure evidence both failed.", timeout, diagnosticError);
+                }
+                throw;
+            }
+            await run.InvokeAsync("app.navigate", new { page = "systems:node:fixture-studio" });
+            AutomationElement? gatewayRow = null, studioRow = null;
+            ExpandCollapsePattern? gatewayDisclosure = null, studioDisclosure = null;
+            var studioActionDispatched = false;
+            await run.WaitForAsync(() =>
+            {
+                if (!studioActionDispatched)
+                {
+                    try
+                    {
+                        var gateway = Find("SystemsRow_gateway");
+                        var studio = Find("SystemsRow_node:fixture-studio");
+                        if (gateway is null || studio is null)
+                            return Task.FromResult(false);
+                        var gatewayPattern = (ExpandCollapsePattern)gateway.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                        var studioPattern = (ExpandCollapsePattern)studio.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                        gatewayRow = gateway;
+                        studioRow = studio;
+                        gatewayDisclosure = gatewayPattern;
+                        studioDisclosure = studioPattern;
+                    }
+                    catch (ElementNotAvailableException) { return Task.FromResult(false); }
+
+                    // This mutation is outside the observation catches and is never replayed.
+                    studioActionDispatched = true;
+                    if (gatewayDisclosure!.Current.ExpandCollapseState == ExpandCollapseState.Expanded)
+                        gatewayDisclosure.Collapse();
+                }
+                try
+                {
+                    return Task.FromResult(
+                        gatewayDisclosure!.Current.ExpandCollapseState == ExpandCollapseState.Collapsed &&
+                        studioDisclosure!.Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
+                        Find("SystemsSelectedName")?.Current.Name == "Fixture Studio PC");
+                }
+                catch (ElementNotAvailableException) { return Task.FromResult(false); }
+            }, "Studio resource proof has one explicitly expanded native machine");
+            Assert.NotNull(gatewayRow);
+            Assert.NotNull(studioRow);
+            Assert.NotNull(gatewayDisclosure);
+            Assert.NotNull(studioDisclosure);
+            AutomationElement? Studio(string id) => FindUnder(studioRow, id);
+            AutomationElement? cpuTile = null, memoryTile = null, diskTile = null;
+            OwnedWindowCapture.ViewportSnapshot? statsFrame = null;
+            ScrollPattern? statsPattern = null;
+            await WaitUiAsync(run, () =>
+            {
+                var cpu = Studio("SystemsStat_cpu");
+                var memory = Studio("SystemsStat_memory");
+                var disk = Studio("SystemsStat_disk");
+                var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                if (cpu is null || memory is null || disk is null || frame is null)
+                    return false;
+                var pattern = (ScrollPattern)frame.Element.GetCurrentPattern(ScrollPattern.Pattern);
+                cpuTile = cpu;
+                statsFrame = frame;
+                statsPattern = pattern;
+                return true;
+            }, "reported Studio resource tiles");
+            Assert.NotNull(cpuTile);
+            Assert.NotNull(statsFrame);
+            Assert.NotNull(statsPattern);
+            var viewportBounds = statsFrame.Bounds;
+            var range = viewportBounds.Height * (100 / statsPattern.Current.VerticalViewSize - 1);
+            Assert.True(range > 0, "Expanded machine details must remain reachable through ordinary scrolling.");
+            var offset = statsPattern.Current.VerticalScrollPercent / 100 * range;
+            var target = offset + cpuTile.Current.BoundingRectangle.Top - viewportBounds.Top - 16;
+            statsFrame.AssertUnchanged();
+            statsPattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(target / range * 100, 0, 100));
+            try
+            {
+                await WaitUiAsync(run, () =>
+                {
+                    var cpu = Studio("SystemsStat_cpu");
+                    var memory = Studio("SystemsStat_memory");
+                    var disk = Studio("SystemsStat_disk");
+                    if (!(cpu is { Current.IsOffscreen: false } && memory is { Current.IsOffscreen: false } &&
+                        disk is { Current.IsOffscreen: false } &&
+                        cpu.Current.BoundingRectangle.Width / scale >= 160 &&
+                        memory.Current.BoundingRectangle.Width / scale >= 160 &&
+                        disk.Current.BoundingRectangle.Width / scale >= 160))
+                        return false;
+                    Assert.True(NativeUiOwnership.IsOwnedDescendant(window, gatewayRow, run.AppProcessId));
+                    Assert.True(NativeUiOwnership.IsOwnedDescendant(window, studioRow, run.AppProcessId));
+                    var gatewayPattern = (ExpandCollapsePattern)gatewayRow.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                    var studioPattern = (ExpandCollapsePattern)studioRow.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                    cpuTile = cpu;
+                    memoryTile = memory;
+                    diskTile = disk;
+                    gatewayDisclosure = gatewayPattern;
+                    studioDisclosure = studioPattern;
+                    return true;
                 },
                     "Studio resource tiles visible with the independent 160 DIP minimum");
             }
-            catch (TimeoutException)
+            catch (TimeoutException timeout)
             {
-                await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "tile-visibility-failure.json"),
-                    JsonSerializer.Serialize(new { scale, viewport = statsScroll.Current.BoundingRectangle,
-                        scrollPercent = statsPattern.Current.VerticalScrollPercent,
-                        viewSize = statsPattern.Current.VerticalViewSize,
-                        tiles = new[] { "SystemsStat_cpu", "SystemsStat_memory", "SystemsStat_disk" }.Select(id => new
-                        { id, bounds = Studio(id)?.Current.BoundingRectangle, offscreen = Studio(id)?.Current.IsOffscreen }) },
-                        new JsonSerializerOptions { WriteIndented = true }));
-                OwnedWindowCapture.Save(run, window, $"{theme}-tile-visibility-failure.png");
+                try
+                {
+                    await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "tile-visibility-failure.json"),
+                        JsonSerializer.Serialize(new { scale, viewport = statsFrame.Element.Current.BoundingRectangle,
+                            scrollPercent = statsPattern.Current.VerticalScrollPercent,
+                            viewSize = statsPattern.Current.VerticalViewSize,
+                            tiles = new[] { "SystemsStat_cpu", "SystemsStat_memory", "SystemsStat_disk" }.Select(id => new
+                            { id, bounds = Studio(id)?.Current.BoundingRectangle, offscreen = Studio(id)?.Current.IsOffscreen }) },
+                            new JsonSerializerOptions { WriteIndented = true }));
+                    OwnedWindowCapture.Save(run, window, $"{theme}-tile-visibility-failure.png");
+                }
+                catch (Exception diagnosticError)
+                {
+                    throw new AggregateException("Systems tile wait and failure evidence both failed.", timeout, diagnosticError);
+                }
                 throw;
             }
             Assert.NotNull(cpuTile);
@@ -596,94 +752,184 @@ public sealed partial class GatewayFixtureUiTests
             studioDisclosure.Expand();
             await WaitUiAsync(run, () => gatewayDisclosure.Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
                 studioDisclosure.Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
-                FindById(run, "SystemsSelectedName")?.Current.Name == "Fixture Studio PC",
+                Find("SystemsSelectedName")?.Current.Name == "Fixture Studio PC",
                 "independent native Gateway and Studio disclosures both remain expanded");
-            Assert.Equal(ExpandCollapseState.Expanded, ((ExpandCollapsePattern)FindById(run, "SystemsRow_gateway")!
-                .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
-            Assert.Equal(ExpandCollapseState.Expanded, ((ExpandCollapsePattern)FindById(run, "SystemsRow_node:fixture-studio")!
-                .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
+            Assert.Equal(ExpandCollapseState.Expanded, gatewayDisclosure.Current.ExpandCollapseState);
+            Assert.Equal(ExpandCollapseState.Expanded, studioDisclosure.Current.ExpandCollapseState);
             var twoRowRange = viewportBounds.Height * (100 / statsPattern.Current.VerticalViewSize - 1);
             var twoRowOffset = statsPattern.Current.VerticalScrollPercent / 100 * twoRowRange;
-            var twoRowTarget = twoRowOffset + FindById(run, "SystemsRow_node:fixture-studio")!.Current.BoundingRectangle.Top -
+            var twoRowTarget = twoRowOffset + studioRow.Current.BoundingRectangle.Top -
                 viewportBounds.Top - viewportBounds.Height / 3;
+            statsFrame.AssertUnchanged();
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(twoRowTarget / twoRowRange * 100, 0, 100));
-            await WaitUiAsync(run, () => FindById(run, "SystemsSelectedName") is { Current.IsOffscreen: false } &&
-                FindById(run, "SystemsRow_gateway") is { Current.IsOffscreen: false },
+            AutomationElement? selectedName = null;
+            await WaitUiAsync(run, () =>
+                (selectedName = Find("SystemsSelectedName")) is { Current.IsOffscreen: false } &&
+                !gatewayRow.Current.IsOffscreen,
                 "both expanded machine rows occupy the viewport");
-            await Capture("two-open-rows", FindById(run, "SystemsSelectedName")!);
+            Assert.NotNull(selectedName);
+            await Capture("two-open-rows", selectedName);
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
-            await WaitUiAsync(run, () => FindById(run, "SystemsIssuesTile") is { Current.IsOffscreen: false, Current.IsEnabled: true },
+            AutomationElement? issuesButton = null;
+            await WaitUiAsync(run, () =>
+                (issuesButton = Find("SystemsIssuesTile")) is { Current.IsOffscreen: false, Current.IsEnabled: true },
                 "Issues tile retains access to badged rows");
-            Invoke(FindById(run, "SystemsIssuesTile")!);
-            await WaitUiAsync(run, () => window.FindAll(TreeScope.Descendants, Condition.TrueCondition)
-                .Cast<AutomationElement>().Any(element =>
-                    element.Current.AutomationId.StartsWith("SystemsPairing_", StringComparison.Ordinal) &&
-                    !element.Current.IsOffscreen), "Issues jump reveals the pending pairing row");
-            Assert.Null(FindById(run, "SystemsIssuesView"));
-            Assert.NotNull(FindById(run, "SystemsRow_node:fixture-studio"));
+            Assert.NotNull(issuesButton);
+            Invoke(issuesButton);
+            AutomationElement? issuesView = null, jumpStudio = null;
+            await WaitUiAsync(run, () =>
+            {
+                var pairingVisible = window.FindAll(TreeScope.Descendants, Condition.TrueCondition)
+                    .Cast<AutomationElement>().Any(element =>
+                        element.Current.AutomationId.StartsWith("SystemsPairing_", StringComparison.Ordinal) &&
+                        !element.Current.IsOffscreen);
+                var studio = Find("SystemsRow_node:fixture-studio");
+                if (!pairingVisible || studio is null)
+                    return false;
+                issuesView = Find("SystemsIssuesView");
+                jumpStudio = studio;
+                return true;
+            }, "Issues jump reveals the pending pairing row");
+            Assert.Null(issuesView);
+            Assert.NotNull(jumpStudio);
             await Capture("issues-jump-in-full-inventory");
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
-            await WaitUiAsync(run, () => FindById(run, "SystemsRefreshButton") is { Current.IsOffscreen: false },
+            AutomationElement? refreshButton = null;
+            await WaitUiAsync(run, () =>
+                (refreshButton = Find("SystemsRefreshButton")) is { Current.IsOffscreen: false, Current.IsEnabled: true },
                 "inventory refresh remains reachable after Issues jump");
+            Assert.NotNull(refreshButton);
             run.Gateway.SetSystemsInventoryUnavailable(true);
-            Invoke(FindById(run, "SystemsRefreshButton")!);
-            await WaitUiAsync(run, () => FindById(run, "SystemsRetry") is { Current.IsOffscreen: false } &&
-                FindById(run, "SystemsInventoryConnection") is { Current.IsOffscreen: false },
+            Invoke(refreshButton);
+            AutomationElement? retryButton = null, inventoryConnection = null;
+            await WaitUiAsync(run, () =>
+            {
+                retryButton = Find("SystemsRetry");
+                inventoryConnection = Find("SystemsInventoryConnection");
+                return retryButton is { Current.IsOffscreen: false, Current.IsEnabled: true } &&
+                    inventoryConnection is { Current.IsOffscreen: false };
+            },
                 "inventory transport failure exposes Retry and Connection");
+            Assert.NotNull(retryButton);
+            Assert.NotNull(inventoryConnection);
             Assert.Contains(run.Gateway.Requests, request => request.Method == "environments.list" && request.Outcome == "error:UNAVAILABLE");
-            await Capture("inventory-error-recovery", FindById(run, "SystemsRetry")!, FindById(run, "SystemsInventoryConnection")!);
+            await Capture("inventory-error-recovery", retryButton, inventoryConnection);
             run.Gateway.SetSystemsInventoryUnavailable(false);
-            Invoke(FindById(run, "SystemsRetry")!);
-            await WaitUiAsync(run, () => FindById(run, "SystemsRetry") is null &&
-                FindById(run, "SystemsRow_node:fixture-studio") is not null, "successful retry restores inventory");
+            Invoke(retryButton);
+            await WaitUiAsync(run, () => Find("SystemsRetry") is null &&
+                Find("SystemsRow_node:fixture-studio") is not null, "successful retry restores inventory");
             await run.Gateway.DisposeAsync();
-            await WaitUiAsync(run, () => FindById(run, "SystemsDisconnectedBanner") is not null &&
-                FindById(run, "SystemsDisconnectedConnection") is not null, "disconnected last-known Systems state");
-            var disconnectedGatewayDisclosure = (ExpandCollapsePattern)FindById(run, "SystemsRow_gateway")!
-                .GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            var disconnectedStudioDisclosure = (ExpandCollapsePattern)FindById(run, "SystemsRow_node:fixture-studio")!
-                .GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            ExpandCollapsePattern? disconnectedGatewayDisclosure = null, disconnectedStudioDisclosure = null;
+            ScrollPattern? disconnectedScroll = null;
+            await WaitUiAsync(run, () =>
+            {
+                var banner = Find("SystemsDisconnectedBanner");
+                var connection = Find("SystemsDisconnectedConnection");
+                var gateway = Find("SystemsRow_gateway");
+                var studio = Find("SystemsRow_node:fixture-studio");
+                var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                if (banner is null || connection is null || gateway is null || studio is null || frame is null)
+                    return false;
+                var gatewayPattern = (ExpandCollapsePattern)gateway.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                var studioPattern = (ExpandCollapsePattern)studio.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                var scrollPattern = (ScrollPattern)frame.Element.GetCurrentPattern(ScrollPattern.Pattern);
+                disconnectedGatewayDisclosure = gatewayPattern;
+                disconnectedStudioDisclosure = studioPattern;
+                disconnectedScroll = scrollPattern;
+                return true;
+            }, "disconnected last-known Systems state");
+            Assert.NotNull(disconnectedGatewayDisclosure);
+            Assert.NotNull(disconnectedStudioDisclosure);
+            Assert.NotNull(disconnectedScroll);
             disconnectedGatewayDisclosure.Collapse();
             disconnectedStudioDisclosure.Collapse();
-            var disconnectedScroll = (ScrollPattern)FindById(run, "SystemsPageScroll")!
-                .GetCurrentPattern(ScrollPattern.Pattern);
             disconnectedScroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
             var inventoryIds = new[] { "SystemsRow_gateway", "SystemsRow_node:fixture-studio",
                 "SystemsRow_node:fixture-macbook", "SystemsRow_node:fixture-pi" };
-            await WaitUiAsync(run, () => FindById(run, "SystemsDisconnectedConnection") is { Current.IsOffscreen: false } &&
-                inventoryIds.All(id => FindById(run, id) is { Current.IsOffscreen: false } row &&
-                    ((ExpandCollapsePattern)row.GetCurrentPattern(ExpandCollapsePattern.Pattern))
-                        .Current.ExpandCollapseState == ExpandCollapseState.Collapsed &&
-                    row.Current.BoundingRectangle.Height / scale is > 20 and < 120 &&
-                    row.Current.Name.Contains("Last known", StringComparison.Ordinal)),
+            AutomationElement? disconnectedConnection = null;
+            AutomationElement[] disconnectedRows = [];
+            await WaitUiAsync(run, () =>
+            {
+                if (Find("SystemsDisconnectedConnection") is not { Current.IsOffscreen: false } connection)
+                    return false;
+                var rows = new List<AutomationElement>();
+                foreach (var id in inventoryIds)
+                {
+                    if (Find(id) is not { Current.IsOffscreen: false } row ||
+                        ((ExpandCollapsePattern)row.GetCurrentPattern(ExpandCollapsePattern.Pattern))
+                            .Current.ExpandCollapseState != ExpandCollapseState.Collapsed ||
+                        row.Current.BoundingRectangle.Height / scale is not (> 20 and < 120) ||
+                        !row.Current.Name.Contains("Last known", StringComparison.Ordinal))
+                        return false;
+                    rows.Add(row);
+                }
+                var gatewayPattern = (ExpandCollapsePattern)rows[0].GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                disconnectedRows = rows.ToArray();
+                disconnectedConnection = connection;
+                disconnectedGatewayDisclosure = gatewayPattern;
+                return true;
+            },
                 "settled disconnected inventory retains all four collapsed last-known machines");
+            Assert.NotNull(disconnectedConnection);
             await Capture("disconnected-last-known",
-                inventoryIds.Select(id => FindById(run, id)!).Prepend(FindById(run, "SystemsDisconnectedConnection")!).ToArray());
+                disconnectedRows.Prepend(disconnectedConnection).ToArray());
             disconnectedGatewayDisclosure.Expand();
-            var knownGateway = FindById(run, "SystemsRow_gateway")!;
-            AutomationElement? GatewayContent(string id) => knownGateway.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, id));
-            await WaitUiAsync(run, () => GatewayContent("SystemsCapabilitiesHeading") is { Current.BoundingRectangle.Height: > 0 } &&
-                GatewayContent("SystemsStatisticsHeading") is { Current.BoundingRectangle.Height: > 0 } &&
-                GatewayContent("SystemsStatsSampled") is { Current.BoundingRectangle.Height: > 0 } &&
-                knownGateway.FindAll(TreeScope.Descendants, new PropertyCondition(
-                    AutomationElement.AutomationIdProperty, "SystemsStatLastKnown")).Count == 5,
+            AutomationElement? knownGateway = null;
+            OwnedWindowCapture.ViewportSnapshot? knownScrollFrame = null;
+            ScrollPattern? knownPattern = null;
+            await WaitUiAsync(run, () =>
+            {
+                var row = Find("SystemsRow_gateway");
+                if (row is null)
+                    return false;
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, row, run.AppProcessId),
+                    "Last-known Gateway row must belong to the captured native window and process.");
+                if (((ExpandCollapsePattern)row.GetCurrentPattern(ExpandCollapsePattern.Pattern))
+                    .Current.ExpandCollapseState != ExpandCollapseState.Expanded)
+                    return false;
+                AutomationElement? Content(string id) => FindUnder(row, id);
+                if (Content("SystemsCapabilitiesHeading") is not { Current.BoundingRectangle.Height: > 0 } ||
+                    Content("SystemsStatisticsHeading") is not { Current.BoundingRectangle.Height: > 0 } ||
+                    Content("SystemsStatsSampled") is not { Current.BoundingRectangle.Height: > 0 } ||
+                    row.FindAll(TreeScope.Descendants, new PropertyCondition(
+                        AutomationElement.AutomationIdProperty, "SystemsStatLastKnown")).Count != 5)
+                    return false;
+                var viewport = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                if (viewport is null)
+                    return false;
+                var scrollPattern = (ScrollPattern)viewport.Element.GetCurrentPattern(ScrollPattern.Pattern);
+                knownGateway = row;
+                knownScrollFrame = viewport;
+                knownPattern = scrollPattern;
+                return true;
+            },
                 "expanded last-known Gateway retains capabilities, resource heading, sample age and all five labelled metrics");
-            var knownScroll = FindById(run, "SystemsPageScroll")!;
-            var knownPattern = (ScrollPattern)knownScroll.GetCurrentPattern(ScrollPattern.Pattern);
-            var knownViewport = knownScroll.Current.BoundingRectangle;
+            Assert.NotNull(knownGateway);
+            Assert.NotNull(knownScrollFrame);
+            Assert.NotNull(knownPattern);
+            AutomationElement? GatewayContent(string id) => FindUnder(knownGateway, id);
+            var knownViewport = knownScrollFrame.Bounds;
             var knownRange = knownViewport.Height * (100 / knownPattern.Current.VerticalViewSize - 1);
             var knownOffset = knownPattern.Current.VerticalScrollPercent / 100 * knownRange;
             var knownTarget = knownOffset + knownGateway.Current.BoundingRectangle.Top - knownViewport.Top - 16 * scale;
+            knownScrollFrame.AssertUnchanged();
             knownPattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(knownTarget / knownRange * 100, 0, 100));
-            await WaitUiAsync(run, () => GatewayContent("SystemsCapabilitiesHeading") is { Current.IsOffscreen: false } &&
-                GatewayContent("SystemsStatisticsHeading") is { Current.IsOffscreen: false } &&
-                GatewayContent("SystemsStatsSampled") is { Current.IsOffscreen: false } &&
-                GatewayContent("SystemsStat_disk:/data") is { Current.IsOffscreen: false },
+            AutomationElement? knownCapabilities = null, knownStatistics = null, knownSample = null, knownDisk = null;
+            await WaitUiAsync(run, () =>
+            {
+                knownCapabilities = GatewayContent("SystemsCapabilitiesHeading");
+                knownStatistics = GatewayContent("SystemsStatisticsHeading");
+                knownSample = GatewayContent("SystemsStatsSampled");
+                knownDisk = GatewayContent("SystemsStat_disk:/data");
+                return knownCapabilities is { Current.IsOffscreen: false } && knownStatistics is { Current.IsOffscreen: false } &&
+                    knownSample is { Current.IsOffscreen: false } && knownDisk is { Current.IsOffscreen: false };
+            },
                 "last-known expanded resource heading, report age and trailing Disk are visible together");
-            await Capture("disconnected-expanded-resources", GatewayContent("SystemsCapabilitiesHeading")!,
-                GatewayContent("SystemsStatisticsHeading")!, GatewayContent("SystemsStatsSampled")!,
-                GatewayContent("SystemsStat_disk:/data")!);
+            Assert.NotNull(knownCapabilities);
+            Assert.NotNull(knownStatistics);
+            Assert.NotNull(knownSample);
+            Assert.NotNull(knownDisk);
+            await Capture("disconnected-expanded-resources", knownCapabilities, knownStatistics, knownSample, knownDisk);
             await run.WriteReportAsync("passed");
             output.WriteLine($"{theme} daily Systems frames: {run.ArtifactsDirectory}");
         }

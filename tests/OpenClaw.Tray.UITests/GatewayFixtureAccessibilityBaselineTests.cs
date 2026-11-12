@@ -532,7 +532,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => !HasValue("alpha") && HasValue("bravo"), "alpha removed and bravo retained");
             var focused = AutomationElement.FocusedElement;
             Assert.NotNull(focused);
-            Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                "Focus must remain in the owned native window.");
             output.WriteLine($"Focus after removal: type=[{focused.Current.ControlType.ProgrammaticName}] id=[{focused.Current.AutomationId}].");
             var discard = window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "DiscardButton"));
@@ -550,7 +551,8 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => !previousFocus.SequenceEqual(AutomationElement.FocusedElement.GetRuntimeId()), "focus advances after Tab");
                 focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 reachedBravo |= Automation.Compare(bravoRemove, focused);
                 reachedDiscard = Automation.Compare(discard, focused);
             }
@@ -671,7 +673,8 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 actual.Add(focused.Current.Name);
                 if (i + 1 < expected.Length)
                 {
@@ -824,7 +827,7 @@ public sealed partial class GatewayFixtureUiTests
                     var options = ClipboardRadios(live);
                     var focused = AutomationElement.FocusedElement;
                     var inTargetWindow = false;
-                    if (focused is not null && focused.Current.ProcessId == run.AppProcessId)
+                    if (focused is not null && NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId))
                     {
                         for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
                         {
@@ -852,7 +855,8 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 var inTargetWindow = false;
                 for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
                 {

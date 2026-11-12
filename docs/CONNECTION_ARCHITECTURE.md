@@ -254,7 +254,26 @@ Chat and Settings end with one shared `WorkspacePaneFooter`: account, Dashboard,
 and the notifications bell, always visible. Settings' compact rail stacks the
 same three as 40 DIP icons, with connection status as a dot on the avatar.
 Diagnostics and App settings live at the end of "This Computer". Dashboard and
-Ctrl+Shift+D open the Gateway Dashboard home through `GatewayDashboardLauncher`.
+Ctrl+Shift+D open the verified counterpart of the visible page or chat through
+`GatewayDashboardLauncher`, falling back to Dashboard home when no verified
+route is available. Chat handoff uses `/chat?session=<encoded-full-session-key>`
+without checking Gateway release numbers. The Gateway owns resolution of its
+current session routes and configured main key. This query compatibility path
+is present in both the
+[older bootstrap](https://github.com/openclaw/openclaw/blob/3a9d69db306cd7f081e06254cb89c4bcc14a7107/ui/src/app/bootstrap-location.ts)
+and [current released parser](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/app/released-session-query.ts).
+Settings and search web destinations also use established routes, not Gateway
+release allowlists. Their route contracts are recorded in the
+[older route table](https://github.com/openclaw/openclaw/blob/3a9d69db306cd7f081e06254cb89c4bcc14a7107/ui/src/app-route-paths.ts)
+and [current released route table](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/app-route-paths.ts).
+Systems links use `/systems`, the same route the native Systems page's Open in
+web action uses when the Gateway reports environments, not the separate Devices
+settings page. The current released route table defines `/systems`; the older
+table does not. Gateways without that page cannot provide an equivalent Systems
+destination, and their web app opens its default view for any route it lacks.
+These navigation contracts are not capability negotiation. Search still gates
+remote reads on advertised methods and operator permissions, fences stale
+connection/profile results, and limits admin-only destinations to administrators.
 Each bell opens `NotificationFlyoutContent` using the existing
 `AppNotificationService`, without replacing chat or changing history. Its
 explicit Open notifications link and existing deep links retain the full page.
@@ -547,7 +566,11 @@ cancellation, and window close. It adopts only the operation's known final
 registry output against its admitted baseline, refreshes the persistence
 baseline, and publishes changes outside locks. Stale live connections are
 disconnected conditionally against their captured connection snapshot; a newer
-connection is not canceled. External conflicts preserve live edits and provide
+connection is not canceled. The connection snapshot retains the manager's
+lifecycle generation across device, pairing and role updates, but not a
+reconnect to the same gateway. Conditional teardown compares published
+snapshots so a failed attempt that publishes no replacement remains retryable.
+External conflicts preserve live edits and provide
 an explicit reopen/reload recovery message instead of weakening save CAS.
 
 If settlement itself fails, `SetupPipelineSettlementException` retains the
@@ -906,7 +929,7 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 
 **Default-on product contract and macOS parity.** App-installed local gateways are supervised by default for both fresh setups and upgrades, matching the macOS local-mode contract where launchd supervision is active unless OpenClaw is paused. Fresh Windows setup writes `EnableManagedLocalGatewayAutoRepair=true` explicitly; an existing settings file that predates the field deserializes to the same default. This enrollment is restricted to records whose setup-managed ownership is positively linked to the installed endpoint. Manual localhost, repointed, SSH, and remote records are never adopted. The user-facing controls are **Disconnect** and **Stop** on the Connection page: either records explicit operator intent and suppresses automatic restart, process remediation, and reconnect until the operator explicitly connects/starts again. An explicitly persisted `false` remains available as a policy/debug kill switch and is never overwritten by setup merge.
 
-`ManagedLocalGatewayRepairCoordinator` **probes before it restarts**: if the gateway is already reachable it just reconnects (the macOS "attach" path); only a genuinely-down gateway triggers a WSL distro restart (via `WslGatewayController`), a keepalive re-arm (`WslGatewayKeepAliveService.TryEnsureAsync`), and a reconnect. For the native-vs-WSL collision case, `ManagedLocalGatewayPortProvenanceService` classifies listeners by address and proves process command line plus scheduled-task/profile lineage. Relayless mirrored networking is accepted only when complete Windows captures remain empty around positive expected-distro systemd MainPID proof. It automatically disables/stops only a fully proven obsolete native OpenClaw gateway; an unknown, incomplete, or conflicting listener is never trusted or killed and produces precise `LocalPortConflict` diagnostics. The shared lifecycle lease serializes that destructive work with manual WSL actions. Reconnect is **gateway-pinned, intent-aware, and cancellable** (`GatewayConnectionManager.ReconnectIfCurrentAsync(gatewayId, ct)`), so gateway switches, explicit Disconnect/Stop, and shutdown always win. Repair is single-flight, verifies success by a real operator connection to the same gateway, is per-gateway restart-budget-bounded, and never reads or logs credentials.
+`ManagedLocalGatewayRepairCoordinator` **probes before it restarts**: if the gateway is already reachable it just reconnects (the macOS "attach" path); only a genuinely-down gateway triggers a WSL distro restart (via `WslGatewayController`), a keepalive re-arm (`WslGatewayKeepAliveService.TryEnsureAsync`), and a reconnect. After any attempted restart, including a failed one (the forced restart terminates the distro and the keepalive with it), the coordinator makes a best-effort attempt to re-arm the keepalive, unless the repair was cancelled or the user had already stopped, disconnected, or switched away from the gateway when the re-arm began. For the native-vs-WSL collision case, `ManagedLocalGatewayPortProvenanceService` classifies listeners by address and proves process command line plus scheduled-task/profile lineage. Relayless mirrored networking is accepted only when complete Windows captures remain empty around positive expected-distro systemd MainPID proof. It automatically disables/stops only a fully proven obsolete native OpenClaw gateway; an unknown, incomplete, or conflicting listener is never trusted or killed and produces precise `LocalPortConflict` diagnostics. The shared lifecycle lease serializes that destructive work with manual WSL actions. Reconnect is **gateway-pinned, intent-aware, and cancellable** (`GatewayConnectionManager.ReconnectIfCurrentAsync(gatewayId, ct)`), so gateway switches, explicit Disconnect/Stop, and shutdown always win. Repair is single-flight, verifies success by a real operator connection to the same gateway, is per-gateway restart-budget-bounded, and never reads or logs credentials.
 
 ## Client instance lifecycle
 

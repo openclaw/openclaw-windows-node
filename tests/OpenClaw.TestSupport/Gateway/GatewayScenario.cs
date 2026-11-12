@@ -68,10 +68,13 @@ public sealed partial class GatewayScenario
     private readonly List<object> _createdAgents = [];
     private readonly Dictionary<string, string> _chatRuns = new(StringComparer.Ordinal);
     private int _chatSendCount;
+    private readonly string[]? _hubMethods;
+    private readonly bool _hubReadOnly;
 
     public FixtureBoards? Boards => _boards;
 
-    public string Name => _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+    public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
+        : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -87,10 +90,12 @@ public sealed partial class GatewayScenario
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
         bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
         UsageAnalyticsFixture? usageAnalytics = null, bool accessibilityBaseline = false,
-        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null)
+        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false)
     {
         _inboxFeed = inboxFeed;
         _accessibilityBaseline = accessibilityBaseline;
+        _hubMethods = hubMethods;
+        _hubReadOnly = hubReadOnly;
         _sessions = sessions;
         _reads = reads;
         if (!reads.TryGetValue("users.self", out var self) ||
@@ -125,6 +130,7 @@ public sealed partial class GatewayScenario
             .Concat(inboxFeed is null ? [] : ["exec.approval.list", "models.authStatus"])
             .Concat(inboxFeed is not null && allowChatSend ? ["chat.send"] : [])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(hubMethods ?? [])
             .Concat(boards is null ? [] : FixtureBoards.Methods)
             .Concat(systems is null ? [] : SystemsFixture.Methods)
             .Distinct(StringComparer.Ordinal)
@@ -143,6 +149,8 @@ public sealed partial class GatewayScenario
     {
         BrowseName => CreateBrowse(),
         InteractiveName => CreateInteractive(),
+        SessionsHubName => CreateSessionsHub(),
+        SessionsHubReadOnlyName => CreateSessionsHub(readOnly: true),
         AutomationsName => CreateAutomations(),
         DashboardsName => CreateDashboards(),
         UsageAnalyticsFixture.Name => CreateUsageAnalytics(),
@@ -497,6 +505,7 @@ public sealed partial class GatewayScenario
                             : new[] { "operator.read", "operator.approvals" })
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
+                        : _hubMethods is not null ? (_hubReadOnly ? new[] { "operator.read" } : new[] { "operator.admin", "operator.write", "operator.read" })
                         : _contextUsage is not null || _accessibilityBaseline ? new[] { "operator.read", "operator.write" }
                         : _systems is not null ? new[] { "operator.admin", "operator.read", "operator.pairing" }
                         : _allowAgentCreation || _allowSessionMutations || (_cronJobs is not null && !CronReadOnly)
@@ -531,6 +540,8 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (RespondSessionsHub(method, parameters) is { } hubResponse)
+            return hubResponse;
         if (_boards is not null && method == "board.get")
             return _boards.GetBoard(parameters);
         if (_boards is not null && method == "sessions.list" && OptionalString(parameters, "source") == "dashboard")
@@ -661,16 +672,19 @@ public sealed partial class GatewayScenario
 
     private object ListSessions(JsonElement p)
     {
-        ValidateProperties(p, "agentId", "limit", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived",
-            "search", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock");
+        ValidateProperties(p, "agentId", "limit", "offset", "activeMinutes", "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage", "archived",
+            "search", "source", "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock");
         var agent = OptionalString(p, "agentId");
         if (agent is not null && agent is not ("main" or "research"))
             throw new FixtureRequestException("INVALID_PARAMS", "Unknown fixture agentId.");
         var limit = PositiveInt(p, "limit", int.MaxValue);
+        var offset = PositiveInt(p, "offset", 0);
         var activeMinutes = PositiveInt(p, "activeMinutes", int.MaxValue);
         foreach (var flag in new[] { "includeGlobal", "includeUnknown", "includeDerivedTitles", "includeLastMessage",
             "configuredAgentsOnly", "excludeSubagents", "excludeCron", "excludeSystem", "excludeDock" })
             OptionalBoolean(p, flag);
+        _ = OptionalString(p, "source");
+        _ = OptionalBoolean(p, "excludeDock");
         var search = OptionalString(p, "search");
         JsonObject[] rows;
         lock (_sessionChanges)
@@ -683,7 +697,7 @@ public sealed partial class GatewayScenario
                 .Where(row => (row["archived"]?.GetValue<bool>() ?? false) == (OptionalBoolean(p, "archived") ?? false))
                 .Where(row => string.IsNullOrEmpty(search) || new[] { "label", "derivedTitle", "displayName", "key", "subject" }
                     .Any(field => row[field]?.ToString().Contains(search, StringComparison.OrdinalIgnoreCase) == true))
-                .Take(limit).ToArray();
+                .Skip(offset).Take(limit).ToArray();
         }
         var listing = JsonSerializer.SerializeToElement(new
         {
@@ -757,7 +771,7 @@ public sealed partial class GatewayScenario
     {
         var delete = method == "sessions.delete";
         ValidateProperties(p, delete ? ["key", "deleteTranscript"] :
-            ["key", "label", "pinned", "unread", "archived", "expectedMarkedUnreadAt"]);
+            ["key", "label", "pinned", "unread", "archived", "expectedMarkedUnreadAt", "expectedSessionId"]);
         var key = RequiredString(p, "key");
         if (key == MainSessionKey && (delete || (OptionalBoolean(p, "archived") ?? false)))
             throw new FixtureRequestException("INVALID_PARAMS", "The main fixture session cannot be removed.");
@@ -772,6 +786,12 @@ public sealed partial class GatewayScenario
                 _sessionChanges[key] = null;
                 return new { ok = true, key, deleted = true };
             }
+            // Mirrors the Gateway's lifecycle admission: archive and unarchive must name the observed session.
+            var expectedSessionId = OptionalString(p, "expectedSessionId");
+            if (OptionalBoolean(p, "archived") is not null && expectedSessionId is null)
+                throw new FixtureRequestException("INVALID_REQUEST", $"expectedSessionId required for session lifecycle patch: {key}");
+            if (expectedSessionId is not null && expectedSessionId != row["sessionId"]?.GetValue<string>())
+                throw new FixtureRequestException("INVALID_REQUEST", $"Session {key} changed before patch. Retry.");
             foreach (var field in new[] { "label", "pinned", "unread", "archived" })
                 if (p.TryGetProperty(field, out var value))
                     row[field] = JsonNode.Parse(value.GetRawText());

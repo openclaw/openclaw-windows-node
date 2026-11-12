@@ -247,29 +247,49 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_APPDATA_DIR", RoamingAppDataRoot);
         Environment.SetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR", LocalAppDataRoot);
 
-        try
-        {
-            var exitCode = await Program.Main(BuildUninstallArguments(_configPath, _distroName, uninstallLogPath));
-            Log($"Uninstall completed with exit code {exitCode}.");
-        }
-
-        catch (Exception ex)
-        {
-            Log($"Warning: uninstall threw: {ex.Message}");
-        }
-
-        // 4. Copy logs from data dir to artifact dir before deleting
-        CopyDataDirLogs();
-
-        // 5. Delete temp data dirs (best-effort)
-        try { Directory.Delete(DataDir, recursive: true); }
-        catch (Exception ex) { Log($"Warning: temp dir cleanup failed: {ex.Message}"); }
-        try { Directory.Delete(LocalAppDataRoot, recursive: true); }
-        catch (Exception ex) { Log($"Warning: temp local appdata cleanup failed: {ex.Message}"); }
-        try { Directory.Delete(RoamingAppDataRoot, recursive: true); }
-        catch (Exception ex) { Log($"Warning: temp roaming appdata cleanup failed: {ex.Message}"); }
+        await UninstallAndRemoveOwnedRootsAsync(
+            () => Program.Main(BuildUninstallArguments(_configPath, _distroName, uninstallLogPath)),
+            () => new WindowsWslRegistrationInspector().Inspect(_distroName),
+            CopyDataDirLogs,
+            () =>
+            {
+                if (Directory.Exists(DataDir))
+                    Directory.Delete(DataDir, recursive: true);
+                if (Directory.Exists(LocalAppDataRoot))
+                    Directory.Delete(LocalAppDataRoot, recursive: true);
+                if (Directory.Exists(RoamingAppDataRoot))
+                    Directory.Delete(RoamingAppDataRoot, recursive: true);
+            });
 
         Log("Teardown complete.");
+    }
+
+    internal static async Task UninstallAndRemoveOwnedRootsAsync(
+        Func<Task<int>> uninstall,
+        Func<WslRegistrationInspection> inspectExactDistro,
+        Action copyLogs,
+        Action removeOwnedRoots)
+    {
+        int exitCode;
+        try
+        {
+            exitCode = await uninstall();
+        }
+        finally
+        {
+            copyLogs();
+        }
+
+        if (exitCode != 0)
+            throw new InvalidOperationException(
+                $"E2E uninstall failed with exit code {exitCode}; isolated roots were preserved.");
+
+        var registration = inspectExactDistro();
+        if (registration.Status != WslRegistrationInspectionStatus.NotFound)
+            throw new InvalidOperationException(
+                $"E2E distro absence was not verified ({registration.Status}); isolated roots were preserved.");
+
+        removeOwnedRoots();
     }
 
     internal static string[] BuildUninstallArguments(string configPath, string distroName, string logPath) =>
@@ -449,53 +469,30 @@ public sealed class E2ESetupFixture : IAsyncLifetime
         var deadline = DateTime.UtcNow.AddSeconds(90);
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         var tokenPath = Path.Combine(DataDir, "mcp-token.txt");
-        string? token = null;
-        Exception? lastEx = null;
+        var readiness = new McpReadinessProbe(http, tokenPath, new Uri($"http://127.0.0.1:{McpPort}/"));
+        var lastObservation = readiness.LastObservation;
 
         while (DateTime.UtcNow < deadline)
         {
-            if (_trayProcess!.HasExited)
+            var exitCode = _trayProcess!.HasExited ? _trayProcess.ExitCode : (int?)null;
+            var hadToken = readiness.Token is not null;
+            var ready = await readiness.PollAsync(exitCode);
+            lastObservation = readiness.LastObservation;
+            if (exitCode is not null)
             {
                 CopyDataDirLogs();
                 throw new InvalidOperationException(
-                    $"Tray process exited before MCP server became ready (exit code {_trayProcess.ExitCode}). " +
-                    $"Logs: {ArtifactDir}");
+                    $"{lastObservation} Logs: {ArtifactDir}");
             }
 
-            try
-            {
-                if (token is null)
-                {
-                    if (!File.Exists(tokenPath))
-                    {
-                        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
-                        await Task.Delay(500);
-                        continue;
-                    }
-                    token = (await File.ReadAllTextAsync(tokenPath)).Trim();
-                    if (string.IsNullOrEmpty(token))
-                    {
-                        token = null;
-                        // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
-                        await Task.Delay(500);
-                        continue;
-                    }
-                    http.DefaultRequestHeaders.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                    Log($"MCP token acquired ({token.Length} chars).");
-                }
+            if (!hadToken && readiness.Token is { } token)
+                Log($"MCP token acquired ({token.Length} chars).");
 
-                var resp = await http.GetAsync($"http://127.0.0.1:{McpPort}/");
-                if (resp.StatusCode == HttpStatusCode.OK)
-                {
-                    Client?.Dispose();
-                    Client = new McpClient(McpEndpoint, token);
-                    return;
-                }
-            }
-            catch (Exception ex)
+            if (ready)
             {
-                lastEx = ex;
+                Client?.Dispose();
+                Client = new McpClient(McpEndpoint, readiness.Token);
+                return;
             }
 
             // slopwatch-ignore: SW004 Integration fixture polling delay is intentional and bounded while waiting for external process state.
@@ -504,7 +501,7 @@ public sealed class E2ESetupFixture : IAsyncLifetime
 
         CopyDataDirLogs();
         throw new TimeoutException(
-            $"MCP server never came up on {McpEndpoint} within 90s. Last error: {lastEx?.Message}. " +
+            $"MCP server never came up on {McpEndpoint} within 90s. Last observation: {lastObservation} " +
             $"Logs: {ArtifactDir}");
     }
 

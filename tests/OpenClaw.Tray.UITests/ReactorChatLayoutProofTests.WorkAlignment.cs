@@ -6,7 +6,8 @@ extern alias TrayRuntime;
 // the same rows live. These tests open every disclosure level (Worked, activity group, tool rows, nested delegates,
 // "Tool input") on synthetic conversations and measure the realized elements against the prose reading column and
 // the shared tool-row contract: a header of at least 32 DIP with a 24 DIP icon column, nested rows indented 24 DIP
-// behind a guide, and detail cards inset 12 by 8 inside the row.
+// behind a guide, and detail cards inset 12 by 8 inside the row. Command input reserves 58 DIP on the right
+// for the in-card action.
 //
 // Run: dotnet test tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj --filter
 //   "FullyQualifiedName~CompletedWork_|FullyQualifiedName~ExpandedWork_|FullyQualifiedName~LiveWork_"
@@ -46,6 +47,7 @@ public sealed partial class ReactorChatLayoutProofTests
     private const double WorkDetailMaxHeight = 240;
     private const double WorkDetailInsetX = 12;
     private const double WorkDetailInsetY = 8;
+    private const double WorkCommandInputRightInset = 58;
     private const int WorkStableEvaluations = 3;
     private const string WorkCommentary = "I will inspect the project before reporting the result.";
     private const string WorkAnswer = "The inspection is complete.";
@@ -625,9 +627,13 @@ public sealed partial class ReactorChatLayoutProofTests
     private static bool IsWorkSection(Border border) =>
         border.Child is ScrollViewer;
 
+    private static StackPanel? WorkSectionsPanel(Border card) =>
+        FindDescendants<StackPanel>(card).SingleOrDefault(panel =>
+            ReferenceEquals(Ancestors(panel).OfType<Border>().FirstOrDefault(), card) &&
+            panel.Children.OfType<Border>().Any(IsWorkSection));
+
     private static bool IsWorkCard(Border border) =>
-        border.BorderThickness.Left > 0 && border.Child is StackPanel panel &&
-        panel.Children.OfType<Border>().Any(IsWorkSection);
+        border.BorderThickness.Left > 0 && WorkSectionsPanel(border) is not null;
 
     private static bool WorkRowHasCard(Expander row) => OwnWorkDescendants<Border>(row).Any(IsWorkCard);
 
@@ -832,7 +838,7 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} card left", cardBounds.Left, rowBounds.Left, WorkEdgeTolerance);
         AssertWorkAligned($"{label} card right", cardBounds.Right, rowBounds.Right, WorkEdgeTolerance);
 
-        var panel = (StackPanel)card.Child;
+        var panel = Assert.IsType<StackPanel>(WorkSectionsPanel(card));
         var sections = panel.Children.OfType<Border>().Where(IsWorkSection).ToList();
         Assert.True(sections.Count == 2, $"{label}: expected an input and an output section, found {sections.Count}.");
         var scrolls = false;
@@ -840,7 +846,11 @@ public sealed partial class ReactorChatLayoutProofTests
         foreach (var section in sections)
         {
             var sectionBounds = Bounds(section, surface);
-            Assert.Equal(new Thickness(WorkDetailInsetX, WorkDetailInsetY, WorkDetailInsetX, WorkDetailInsetY), section.Padding);
+            var rightInset = ReferenceEquals(section, sections[0]) &&
+                label is "ChatToolCall_execTool" or "ChatToolCall_liveExec"
+                    ? WorkCommandInputRightInset
+                    : WorkDetailInsetX;
+            Assert.Equal(new Thickness(WorkDetailInsetX, WorkDetailInsetY, rightInset, WorkDetailInsetY), section.Padding);
             AssertWorkRange($"{label} section left inset", sectionBounds.Left - cardBounds.Left, 0, 2);
             AssertWorkRange($"{label} section right inset", cardBounds.Right - sectionBounds.Right, 0, 2);
             if (previousBottom is { } bottom)
@@ -850,7 +860,7 @@ public sealed partial class ReactorChatLayoutProofTests
             var scroll = Assert.IsType<ScrollViewer>(section.Child);
             var scrollBounds = Bounds(scroll, surface);
             AssertWorkAligned($"{label} body left", scrollBounds.Left, sectionBounds.Left + WorkDetailInsetX, WorkEdgeTolerance);
-            AssertWorkAligned($"{label} body right", scrollBounds.Right, sectionBounds.Right - WorkDetailInsetX, WorkEdgeTolerance);
+            AssertWorkAligned($"{label} body right", scrollBounds.Right, sectionBounds.Right - rightInset, WorkEdgeTolerance);
             AssertWorkAligned($"{label} body top", scrollBounds.Top, sectionBounds.Top + WorkDetailInsetY, WorkEdgeTolerance);
             AssertWorkAligned($"{label} section bottom", sectionBounds.Bottom, scrollBounds.Bottom + WorkDetailInsetY,
                 WorkEdgeTolerance);

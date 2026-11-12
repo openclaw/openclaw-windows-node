@@ -83,6 +83,46 @@ internal static class OwnedWindowCapture
         Math.Max((int)Math.Ceiling(1000 * scale),
             (int)Math.Round(currentPixels + (desiredHostDip - measuredHostDip) * scale, MidpointRounding.AwayFromZero));
 
+    /// <summary>A retained native viewport and frame measured before one capture; never re-find it afterward.</summary>
+    internal sealed record ViewportSnapshot(AutomationElement Window, AutomationElement Element, int ProcessId,
+        int[] WindowRuntimeId, int[] RuntimeId, global::System.Windows.Rect WindowBounds, global::System.Windows.Rect Bounds)
+    {
+        internal void AssertUnchanged()
+        {
+            Assert.Equal(WindowRuntimeId, Window.GetRuntimeId());
+            Assert.Equal(RuntimeId, Element.GetRuntimeId());
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(Window, Element, ProcessId),
+                "Captured viewport must still belong to the same native window and process.");
+            Assert.False(Window.Current.IsOffscreen);
+            Assert.False(Element.Current.IsOffscreen);
+            Assert.Equal(WindowBounds, Window.Current.BoundingRectangle);
+            Assert.Equal(Bounds, Element.Current.BoundingRectangle);
+        }
+    }
+
+    /// <summary>Read within the caller's existing bounded wait, then assert the snapshot unchanged after Save.</summary>
+    internal static ViewportSnapshot? TryReadViewport(AutomationElement window, int processId, string automationId)
+    {
+        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, window, processId),
+            "Viewport observation requires the owned native capture window.");
+        var element = window.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+        if (element is null)
+            return null;
+        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, element, processId),
+            "Viewport must belong to the capture window, not another window in the process.");
+        var windowBounds = window.Current.BoundingRectangle;
+        var bounds = element.Current.BoundingRectangle;
+        static bool Usable(global::System.Windows.Rect area) =>
+            !area.IsEmpty && area.Width > 0 && area.Height > 0 &&
+            double.IsFinite(area.X) && double.IsFinite(area.Y) &&
+            double.IsFinite(area.Width) && double.IsFinite(area.Height);
+        if (window.Current.IsOffscreen || element.Current.IsOffscreen ||
+            !Usable(windowBounds) || !Usable(bounds) || !windowBounds.Contains(bounds))
+            return null;
+        return new(window, element, processId, window.GetRuntimeId(), element.GetRuntimeId(), windowBounds, bounds);
+    }
+
     internal static void Save(GatewayFixtureRun run, AutomationElement window, string name,
         params AutomationElement[] assertedElements) => Save(run, window, name, CancellationToken.None, assertedElements);
 
@@ -123,7 +163,8 @@ internal static class OwnedWindowCapture
                 qualifiedGeometry is null ? null : ReadCurrentProcessGeometry(handle));
             var assertions = assertedElements.Select(element =>
             {
-                Assert.Equal(appProcessId, element.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, element, appProcessId),
+                    "Asserted control must belong to the captured native window and process.");
                 Assert.False(element.Current.IsOffscreen);
                 var area = element.Current.BoundingRectangle;
                 Assert.True(area.Width > 0 && area.Height > 0);

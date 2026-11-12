@@ -12,6 +12,9 @@ public enum GatewayProtocolCompatibilityRole
 /// </summary>
 public sealed record GatewayConnectionSnapshot
 {
+    // State-only copies retain the manager's lifecycle generation.
+    internal long LifecycleGeneration { get; init; }
+
     // ─── Overall ───
     public OverallConnectionState OverallState { get; init; }
 

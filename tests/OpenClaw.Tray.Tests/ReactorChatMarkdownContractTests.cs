@@ -29,7 +29,10 @@ public sealed class ReactorChatMarkdownContractTests
             TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "ChatMarkdownPresentation.cs"));
         Assert.Contains("link.UnderlineStyle = Microsoft.UI.Xaml.Documents.UnderlineStyle.None;", presentation, StringComparison.Ordinal);
         Assert.Contains("TextElement.FontFamilyProperty", presentation, StringComparison.Ordinal);
-        Assert.Contains("AccessibilitySettings().HighContrast", presentation, StringComparison.Ordinal);
+        Assert.Contains("ChatThemeChanges.IsHighContrast", presentation, StringComparison.Ordinal);
+        var themeChanges = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Chat", "ChatThemeChanges.cs"));
+        Assert.Contains("AccessibilitySettings().HighContrast", themeChanges, StringComparison.Ordinal);
         Assert.Contains("HtmlBlock = raw => Text(", timeline, StringComparison.Ordinal);
         Assert.Contains("ListItem = row => ChatMarkdownPresentation.ListItem(row, compactSecondaryReading)", timeline, StringComparison.Ordinal);
         Assert.DoesNotContain("BuildWrappingMarkdownListItem", timeline, StringComparison.Ordinal);
