@@ -198,9 +198,11 @@ public sealed partial class A2UICanvasWindow : WindowEx
             var s = surfaces[0];
             SingleSurfaceHost.Visibility = Visibility.Visible;
             MultiSurfaceTabs.Visibility = Visibility.Collapsed;
-            SingleSurfaceHost.Content = GetOrCreateScroller(s);
-            MultiSurfaceTabs.TabItems.Clear();
-            _surfaceTabs.Clear();
+            CanvasSurfacePlacement.MoveToSingleHost(
+                SingleSurfaceHost,
+                MultiSurfaceTabs,
+                _surfaceTabs,
+                GetOrCreateScroller(s));
             Title = string.IsNullOrWhiteSpace(s.Title)
                 ? OpenClawTray.Helpers.LocalizationHelper.GetString("A2UI_CanvasTitle")
                 : s.Title!;
