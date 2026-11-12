@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Windows.Automation;
+using System.Globalization;
 using OpenClaw.TestSupport.Gateway;
 using OpenClaw.GatewayFixtureHost;
 
@@ -531,7 +532,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => !HasValue("alpha") && HasValue("bravo"), "alpha removed and bravo retained");
             var focused = AutomationElement.FocusedElement;
             Assert.NotNull(focused);
-            Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                "Focus must remain in the owned native window.");
             output.WriteLine($"Focus after removal: type=[{focused.Current.ControlType.ProgrammaticName}] id=[{focused.Current.AutomationId}].");
             var discard = window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "DiscardButton"));
@@ -549,7 +551,8 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => !previousFocus.SequenceEqual(AutomationElement.FocusedElement.GetRuntimeId()), "focus advances after Tab");
                 focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 reachedBravo |= Automation.Compare(bravoRemove, focused);
                 reachedDiscard = Automation.Compare(discard, focused);
             }
@@ -569,67 +572,70 @@ public sealed partial class GatewayFixtureUiTests
     public async Task UsageRows_StayReadableAcrossChangedSnapshotAndPeriodSwitch()
     {
         var scenario = GatewayScenario.CreateAccessibilityBaseline();
+        var firstDate = DateTime.Today.AddDays(-1);
+        var secondDate = DateTime.Today.AddDays(-2);
+        var firstId = "UsageDailyRow_" + firstDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var secondId = "UsageDailyRow_" + secondDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "usage" });
-            await WaitUiAsync(run, () => FindText(run, "Fixture Provider") is not null
-                && FindText(run, "Fixture Empty") is not null && FindText(run, "2026-10-31") is not null
-                && FindText(run, "2026-10-30") is not null, "two providers and two daily rows");
-            AutomationElement RowFor(string text)
+            await WaitUiAsync(run, () => FindById(run, "UsageProvider_fixture") is not null
+                && FindById(run, "UsageProvider_fixture-empty") is not null, "two named provider cards");
+            void Select(string id, string label)
             {
-                var current = FindText(run, text) ?? throw new InvalidOperationException($"Missing synthetic row text {text}.");
-                while (current.Current.ControlType != ControlType.ListItem)
-                    current = TreeWalker.ControlViewWalker.GetParent(current)
-                        ?? throw new InvalidOperationException($"No ListItem peer for {text}.");
-                return current;
+                var selector = FindById(run, id);
+                Assert.NotNull(selector);
+                var matches = selector.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.NameProperty, label)).Cast<AutomationElement>();
+                var item = Assert.Single(matches, candidate => candidate.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
+                ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             }
-            string ReadRow(string text)
+            string ReadRow(string id) => FindById(run, id)?.Current.Name
+                ?? throw new InvalidOperationException($"Missing named Usage row {id}.");
+            async Task<string> SelectPeriodAndReadRow(string periodLabel, string expectedCost)
             {
-                var row = RowFor(text);
-                if (row.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
-                return row.Current.Name;
-            }
-            async Task<string> SelectPeriodAndReadRow(string periodId, string expectedCost)
-            {
-                var period = FindById(run, periodId);
-                Assert.NotNull(period);
-                Invoke(period);
-                await WaitUiAsync(run, () => FindText(run, "2026-10-31") is not null
-                    && RowFor("2026-10-31").FindFirst(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.NameProperty, expectedCost)) is not null
-                    && ReadRow("2026-10-31").Contains(expectedCost, StringComparison.Ordinal),
+                await WaitUiAsync(run, () => FindById(run, "UsageChartView") is not null, "loaded daily controls");
+                Select("UsagePresets", periodLabel);
+                if (FindById(run, "UsageDailyTable") is null) Select("UsageChartView", "Table");
+                await WaitUiAsync(run, () => FindById(run, firstId) is { } row
+                    && row.Current.Name.Contains(expectedCost, StringComparison.Ordinal),
                     $"period row and accessible name updated to {expectedCost}");
-                return ReadRow("2026-10-31");
+                return ReadRow(firstId);
             }
-            var provider = ReadRow("Fixture Provider");
-            var empty = ReadRow("Fixture Empty");
-            var first = await SelectPeriodAndReadRow("Period7DaysItem", "$0.75");
-            var second = ReadRow("2026-10-30");
+            var provider = ReadRow("UsageProvider_fixture");
+            var empty = ReadRow("UsageProvider_fixture-empty");
+            var first = await SelectPeriodAndReadRow("7 days", "$0.75");
+            var second = ReadRow(secondId);
             output.WriteLine($"Initial rows: provider=[{provider}], empty=[{empty}], day1=[{first}], day2=[{second}].");
             scenario.AdvanceAccessibilityUsage();
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null, "leave Usage");
             await run.InvokeAsync("app.navigate", new { page = "usage" });
             await WaitUiAsync(run, () => FindText(run, "Fixture changed warning") is not null, "changed usage snapshot");
-            var changedProvider = ReadRow("Fixture Provider");
-            var changedDay = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
-            var thirtyDayRow = await SelectPeriodAndReadRow("Period30DaysItem", "$2.50");
-            var sevenDayRow = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
+            var changedProvider = ReadRow("UsageProvider_fixture");
+            var changedDay = await SelectPeriodAndReadRow("7 days", "$1.50");
+            var thirtyDayRow = await SelectPeriodAndReadRow("30 days", "$2.50");
+            var sevenDayRow = await SelectPeriodAndReadRow("7 days", "$1.50");
             output.WriteLine($"Changed rows: provider=[{changedProvider}], day1=[{changedDay}], 30 days=[{thirtyDayRow}], 7 days=[{sevenDayRow}].");
-            foreach (var expected in new[] { "Fixture Provider", "Pro", "37% used", "Fixture quota warning" })
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "37%", "Fixture quota warning" })
                 Assert.Contains(expected, provider, StringComparison.Ordinal);
             Assert.Equal("Fixture Empty", empty);
-            Assert.Contains("2026-10-31", first, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), first, StringComparison.Ordinal);
             Assert.Contains("$0.75", first, StringComparison.Ordinal);
-            Assert.Contains("2026-10-30", second, StringComparison.Ordinal);
+            Assert.Contains(secondDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), second, StringComparison.Ordinal);
             Assert.Contains("$0.50", second, StringComparison.Ordinal);
-            foreach (var expected in new[] { "Fixture Provider", "Pro", "53% used", "Fixture changed warning" })
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "53%", "Fixture changed warning" })
                 Assert.Contains(expected, changedProvider, StringComparison.Ordinal);
-            Assert.Contains("2026-10-31", changedDay, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), changedDay, StringComparison.Ordinal);
             Assert.Contains("$1.50", changedDay, StringComparison.Ordinal);
-            Assert.Contains("2026-10-31", thirtyDayRow, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), thirtyDayRow, StringComparison.Ordinal);
             Assert.Contains("$2.50", thirtyDayRow, StringComparison.Ordinal);
             Assert.Equal(changedDay, sevenDayRow);
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "usage-accessible-rows.json"),
+                JsonSerializer.Serialize(new { provider, empty, first, second, changedProvider, changedDay, thirtyDayRow, sevenDayRow }));
+            var window = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "UsagePageRoot")) is not null);
+            OwnedWindowCapture.Save(run, window, "Usage-accessible-rows-updated.png");
         }, scenario: scenario);
     }
 
@@ -667,7 +673,8 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 actual.Add(focused.Current.Name);
                 if (i + 1 < expected.Length)
                 {
@@ -820,7 +827,7 @@ public sealed partial class GatewayFixtureUiTests
                     var options = ClipboardRadios(live);
                     var focused = AutomationElement.FocusedElement;
                     var inTargetWindow = false;
-                    if (focused is not null && focused.Current.ProcessId == run.AppProcessId)
+                    if (focused is not null && NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId))
                     {
                         for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
                         {
@@ -848,7 +855,8 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 var inTargetWindow = false;
                 for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
                 {

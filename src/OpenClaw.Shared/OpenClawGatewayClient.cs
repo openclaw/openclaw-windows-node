@@ -187,6 +187,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _agentFilesListUnsupported = false;
         _agentFileGetUnsupported = false;
         _operatorReadScopeUnavailable = false;
+        _sessionsUsageUnsupported = false;
+        _sessionsUsageOverviewUnsupported = false;
         if (agentsListWasUnsupported)
             AgentsListUnsupportedChanged?.Invoke(this, false);
     }
@@ -394,6 +396,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         Volatile.Write(ref _hasHandshakeSnapshot, false);
         Volatile.Write(ref _advertisedServerMethods, Array.Empty<string>());
         Volatile.Write(ref _advertisedServerCapabilities, Array.Empty<string>());
+        ResetBoardHelloFacts();
         Interlocked.Increment(ref _serverHandshakeGeneration);
         _pendingRequests.Drain(
             new GatewayConnectionLostException(
@@ -435,6 +438,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler<SessionCommandResult>? SessionCommandCompleted;
     public event EventHandler<GatewaySelfInfo>? GatewaySelfUpdated;
     public event EventHandler? SelfProfileChanged;
+    public event EventHandler<SessionListChange>? SessionListChanged;
+    public event EventHandler<JsonElement>? CronEventReceived;
     public event EventHandler<JsonElement>? CronListUpdated;
     public event EventHandler<JsonElement>? CronStatusUpdated;
     public event EventHandler<JsonElement>? CronRunsUpdated;
@@ -2043,6 +2048,30 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         await SendTrackedRequestAsync("cron.runs", new { id, limit, offset });
     }
 
+    // Response-aware Automations APIs. Wire shapes live in Cron.CronGatewayRequests so
+    // test doubles that only implement SendWizardRequestAsync share them.
+
+    public Task<Cron.CronListPage> ListCronJobsAsync(Cron.CronListQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.ListAsync(this, query, timeoutMs);
+
+    public Task<Cron.CronSchedulerStatus> GetCronStatusAsync(int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.StatusAsync(this, timeoutMs);
+
+    public Task<Cron.CronJob> GetCronJobAsync(string id, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.GetAsync(this, id, timeoutMs);
+
+    public Task<Cron.CronJob> AddCronJobDetailedAsync(System.Text.Json.Nodes.JsonObject definition, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.AddAsync(this, definition, timeoutMs);
+
+    public Task<Cron.CronJob> UpdateCronJobDetailedAsync(string id, string? expectedConfigRevision, System.Text.Json.Nodes.JsonObject patch, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.UpdateAsync(this, id, expectedConfigRevision, patch, timeoutMs);
+
+    public Task RemoveCronJobDetailedAsync(string id, string? expectedConfigRevision = null, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.RemoveAsync(this, id, expectedConfigRevision, timeoutMs);
+
+    public Task<Cron.CronRunsPage> ListCronRunsAsync(Cron.CronRunsQuery query, int timeoutMs = Cron.CronGatewayRequests.DefaultTimeoutMs) =>
+        Cron.CronGatewayRequests.RunsAsync(this, query, timeoutMs);
+
     // Gateway config management
 
     public async Task RequestConfigAsync()
@@ -2844,6 +2873,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             Volatile.Write(
                 ref _advertisedServerCapabilities,
                 GatewayServerMethodAdvertisement.ParseCapabilities(payload));
+            CaptureBoardHelloFacts(payload);
             Interlocked.Increment(ref _serverHandshakeGeneration);
             // Write the key first, then publish the readiness flag. Pair with
             // Volatile.Read on the public getters so a reader observing
@@ -3915,6 +3945,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 }
                 // Gateway broadcasts this after session mutations (patch, send, etc.).
                 // Re-request the full sessions list so we pick up model/thinking changes.
+                var changed = root.TryGetProperty("payload", out var changedPayload)
+                    && changedPayload.ValueKind == JsonValueKind.Object
+                    ? new SessionListChange(GetString(changedPayload, "reason"), GetString(changedPayload, "sessionKey"))
+                    : new SessionListChange(null, null);
+                SessionListChanged?.Invoke(this, changed);
                 ScheduleSessionRefresh(sourceConnectionGeneration);
                 break;
             case "config.changed":
@@ -3922,13 +3957,18 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
                 SystemsInventoryChanged?.Invoke(this, "config.changed");
                 break;
+            case "board.changed":
+            case "board.command":
+                HandleBoardEvent(eventType!, root);
+                break;
             case "chat.metadata.changed":
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
                 break;
             case "cron":
-                // Gateway pushes cron events when jobs run/change — refresh the list
-                _ = RequestCronListAsync();
-                _ = RequestCronStatusAsync();
+                // Pushed when jobs run or change. Subscribers refresh their own agent-scoped view.
+                CronEventReceived?.Invoke(this, root.TryGetProperty("payload", out var cronPayload)
+                    ? cronPayload.Clone()
+                    : default);
                 break;
             case "exec.approval.requested":
             case "exec.approval.resolved":
@@ -4456,6 +4496,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         
         if (!root.TryGetProperty("payload", out var payload)) return;
         EmitRawChatEvent(payload);
+        var isTranscriptSnapshot = root.TryGetProperty("event", out var eventType) &&
+            eventType.ValueKind == JsonValueKind.String &&
+            eventType.GetString() == "session.message";
 
         // Extract sessionKey for the timeline-driving event. As with agent
         // events, do NOT substitute a fallback like "main" — empty must
@@ -4530,7 +4573,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 replacesStreamText: payload.TryGetProperty("replace", out var replace) &&
                     replace.ValueKind == JsonValueKind.True,
                 outputTruncated: ReadChatTruncation(message).Truncated ?? false,
-                truncationReason: ReadChatTruncation(message).Reason);
+                truncationReason: ReadChatTruncation(message).Reason,
+                isTranscriptSnapshot: isTranscriptSnapshot);
 
             if (notify && role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
             {
@@ -4573,7 +4617,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     openClawMetadata.TokensAfter,
                     projection.ContentParts,
                     runId,
-                    ReadChatPresentation(payload));
+                    ReadChatPresentation(payload),
+                    isTranscriptSnapshot: isTranscriptSnapshot);
 
                 if (notify && role == "assistant" &&
                     (string.IsNullOrWhiteSpace(state) ||
@@ -4658,7 +4703,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         ChatMessagePresentation? presentation = null,
         bool replacesStreamText = false,
         bool outputTruncated = false,
-        string? truncationReason = null)
+        string? truncationReason = null,
+        bool isTranscriptSnapshot = false)
     {
         if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
             return false;
@@ -4673,6 +4719,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ReplacesStreamText = replacesStreamText,
                 Presentation = presentation ?? new(),
                 StopReason = presentation?.StopReason,
+                IsTranscriptSnapshot = isTranscriptSnapshot,
                 Role = role,
                 Text = text,
                 ContentParts = contentParts ?? Array.Empty<ChatMessageContentPartInfo>(),
@@ -5345,7 +5392,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (item.TryGetProperty("model", out var model))
         {
             var newModel = model.GetString();
-            if (session.Model != newModel)
+            // A freshly parsed row has no previous model; only a real change is worth logging.
+            if (session.Model is not null && session.Model != newModel)
                 _logger.Info($"[SESSION] {session.Key}: model changed '{session.Model}' → '{newModel}'");
             session.Model = newModel;
         }
@@ -5438,6 +5486,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             session.ReasoningDefault = null;
         if (item.TryGetProperty("verboseLevel", out var verbose))
             session.VerboseLevel = verbose.GetString();
+        PopulateSessionHubFields(session, item, authoritativeSessionList);
         if (item.TryGetProperty("systemSent", out var systemSent) &&
             (systemSent.ValueKind == JsonValueKind.True || systemSent.ValueKind == JsonValueKind.False))
             session.SystemSent = systemSent.GetBoolean();

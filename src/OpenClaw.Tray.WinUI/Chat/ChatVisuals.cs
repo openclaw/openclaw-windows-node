@@ -182,6 +182,17 @@ internal static class ChatVisuals
     internal const double ProseInset = 16;
     internal const double ComposerRadius = 20;
     internal const double ComposerMinHeight = 96;
+    // Desktop reference composer: 14px editor text, a 14px "+", and a compact 24px Send/Stop
+    // disc inside a 32px hit target with a 12px arrow or a filled 10px Stop square.
+    internal const double ComposerInputSize = 14;
+    internal const double ComposerAttachGlyphSize = 14;
+    internal const double ComposerSendTargetSize = 32;
+    internal const double ComposerSendSize = 24;
+    internal const double ComposerSendGlyphSize = 12;
+    internal const double ComposerStopGlyphSize = 10;
+    internal const double ComposerToolbarInset = 8;
+    // Space between the writing surface and the window's bottom edge.
+    internal const double ComposerBottomInset = 16;
     internal const double SurfaceRadius = 12;
     internal const double BodySize = 14;
     internal const double BodyLineHeight = 21;
@@ -192,20 +203,37 @@ internal static class ChatVisuals
     internal const double ReasoningSize = 12;
     internal const double ReasoningLineHeight = 18;
     internal const double BlockGap = 8;
+    // Web --chat-block-gap: top-level Markdown blocks and text/media stacks are one text size apart.
+    internal const double MessageBlockGap = 14;
+    // Headings that follow other blocks get the web's 1.5x block gap.
+    internal const double HeadingTopInset = MessageBlockGap / 2;
+    // Web .code-block-wrapper: 10px corners, 36px header (8/8/4/14 insets) and pre insets that
+    // place code 14 pixels from the side and bottom edges.
+    internal const double CodeRadius = 10;
+    internal const double CodeInset = 14;
+    internal const double CodeHeaderTopInset = 8;
+    internal const double CodeHeaderTrailingInset = 8;
+    internal const double CodeHeaderBottomInset = 4;
+    internal const double CodeLabelSize = 12;
+    // Web lists reserve a 24px marker column (16px marker box plus 8px gap) and space items 0.4em apart.
+    internal const double ListMarkerColumn = 20;
+    internal const double ListItemGap = 6;
+    // Compact thinking text keeps Reactor's original 2px list rhythm.
+    internal const double CompactListItemGap = 2;
     internal const double CompactGap = 4;
     internal const double TurnGap = 4;
     internal const double DetailHorizontalInset = 12;
     internal const double DetailVerticalInset = 8;
+    internal const double ActionIconSize = 14;
     internal const double ToolRowMinHeight = 32;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
     internal const double ActivityDetailsMaxHeight = 160;
-    internal const double SubagentsPaneWidth = 360;
-    internal const double SubagentsPaneMinWidth = 260;
-    internal const double SubagentsNarrowWidth = 680;
-    internal const double SubagentsPaneWidthRatio = 0.4;
     internal const double TranscriptTopInset = 8;
-    internal const double TranscriptBottomInset = 24;
+    // The transcript's bottom edge fades into the composer over this height. Like the web
+    // thread padding, the last row's inset adds the fade so a settled tail stays fully opaque.
+    internal const double TranscriptFadeHeight = 32;
+    internal const double TranscriptBottomInset = TranscriptFadeHeight + 6;
     internal const double JumpLatestSize = 32;
     internal const double QueueAvatarSize = 20;
     internal const double QueueCompactAvatarSize = 18;
@@ -213,7 +241,6 @@ internal static class ChatVisuals
     internal const double QueueVerticalInset = 6;
     internal const double QueueTrailingInset = 4;
     internal const double QueueCompactGap = 6;
-    internal const double HeadingTopInset = 8;
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
@@ -233,6 +260,19 @@ internal static class ChatVisuals
             .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
             .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
             .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush"));
+
+    // Send/Stop paints its own compact disc, so the 32px button chrome stays transparent at
+    // rest and while disabled, with only a subtle circular hover/pressed halo around the disc.
+    internal static void SendButtonResources(ResourceBuilder resources) =>
+        resources
+            .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBackgroundPointerOver", Theme.SubtleFill)
+            .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
+            .Set("ButtonBackgroundDisabled", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushDisabled", Theme.Ref("SubtleFillColorTransparentBrush"));
 
     /// <summary>
     /// Transparent, borderless (in every header state) tool-row Expander header whose built-in
@@ -296,6 +336,12 @@ internal static class ChatVisuals
         menu.Placement = FlyoutPlacementMode.TopEdgeAlignedRight;
     }
 
+    internal static void StyleLeadingPicker(Flyout flyout)
+    {
+        StylePicker(flyout);
+        flyout.Placement = FlyoutPlacementMode.TopEdgeAlignedLeft;
+    }
+
     internal static void StylePickerAccent(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["ChatPickerAccentTextStyle"];
 
@@ -328,6 +374,58 @@ internal static class ChatVisuals
         button.ClearValue(Control.BackgroundProperty);
         button.ClearValue(Control.BorderThicknessProperty);
     }
+
+    internal static void AttachComposerPlaceholder(TextBox input)
+    {
+        DetachComposerPlaceholder(input);
+        input.Loaded += OnComposerLoaded;
+        input.Unloaded += OnComposerUnloaded;
+        if (input.IsLoaded)
+            ActivateComposerPlaceholder(input);
+    }
+
+    internal static void DetachComposerPlaceholder(TextBox input)
+    {
+        input.Loaded -= OnComposerLoaded;
+        input.Unloaded -= OnComposerUnloaded;
+        DeactivateComposerPlaceholder(input);
+    }
+
+    private static void DeactivateComposerPlaceholder(TextBox input)
+    {
+        input.ActualThemeChanged -= OnComposerThemeChanged;
+        ChatThemeChanges.Unwatch(input);
+        input.ClearValue(TextBox.PlaceholderForegroundProperty);
+    }
+
+    private static void OnComposerLoaded(object sender, RoutedEventArgs args) =>
+        ActivateComposerPlaceholder((TextBox)sender);
+
+    private static void OnComposerUnloaded(object sender, RoutedEventArgs args) =>
+        DeactivateComposerPlaceholder((TextBox)sender);
+
+    private static void ActivateComposerPlaceholder(TextBox input)
+    {
+        input.ActualThemeChanged -= OnComposerThemeChanged;
+        input.ActualThemeChanged += OnComposerThemeChanged;
+        ChatThemeChanges.Watch(input, () => ApplyComposerPlaceholder(input));
+        ApplyComposerPlaceholder(input);
+    }
+
+    // Reactor owns the control Style. Keep this explicit brush in sync with both
+    // element theme and contrast-only changes, and clear it before control pooling.
+    private static void ApplyComposerPlaceholder(TextBox input)
+    {
+        if (ChatThemeChanges.IsHighContrast())
+            input.ClearValue(TextBox.PlaceholderForegroundProperty);
+        else
+            input.PlaceholderForeground =
+                ThemeRef.Resolve("ChatMutedTextBrush", input.ActualTheme == ElementTheme.Dark) as Brush
+                ?? throw new InvalidOperationException("ChatMutedTextBrush is missing.");
+    }
+
+    private static void OnComposerThemeChanged(FrameworkElement sender, object args) =>
+        ApplyComposerPlaceholder((TextBox)sender);
 
     internal static void StyleQuestionInput(TextBox input, bool inline)
     {

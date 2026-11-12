@@ -126,7 +126,7 @@ internal sealed record ChatSendCommit(
     string? StaleRunIdToAbort,
     bool BindAcceptedRun,
     bool RequeueRequired,
-    bool RetryDeferredSend,
+    bool ScheduleQueueDrain,
     TimeSpan DeferredRetryDelay,
     ChatOpenedLifecycleTransition? OpenedLifecycle,
     ChatRuntimeGeneration RuntimeGeneration);
@@ -165,10 +165,10 @@ internal sealed record ChatLocalEchoTransition(
     bool Consumed,
     ChatDataSnapshot? Snapshot);
 
-internal sealed record ChatAssistantPreparation(
-    AssistantQueueFrameDisposition Disposition,
-    ChatDataSnapshot? PromotionSnapshot,
-    ChatEntryMetadata Metadata,
+internal sealed record ChatAssistantTransition(
+    bool Rendered,
+    bool SuppressNotification,
+    ChatDataSnapshot? Snapshot,
     string? ActiveRunId,
-    bool IsBackgroundFinal,
-    ChatDataSnapshot? BackgroundFinalSnapshot);
+    string? CompletedRunId,
+    bool TurnComplete);

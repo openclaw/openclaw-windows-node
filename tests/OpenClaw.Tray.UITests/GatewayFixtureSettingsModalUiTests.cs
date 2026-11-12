@@ -2,6 +2,7 @@ using System.Windows.Automation;
 using System.Diagnostics;
 using System.Text.Json;
 using OpenClaw.Connection;
+using OpenClaw.GatewayFixtureHost;
 using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport.Gateway;
@@ -44,26 +45,22 @@ public sealed partial class GatewayFixtureUiTests
             if (settingsOrigin)
             {
                 await run.InvokeAsync("app.navigate", new { page = "sessions" });
-                await WaitUiAsync(run, () => FindText(run, GatewayScenario.MainTitle) is not null, "Sessions page");
-                var row = FindText(run, GatewayScenario.MainTitle)!;
-                for (var depth = 0; depth < 15 && row.Current.ControlType != ControlType.ListItem; depth++)
-                    row = TreeWalker.ControlViewWalker.GetParent(row)
-                        ?? throw new InvalidOperationException("Session title has no list-item ancestor.");
-                Invoke(row.FindFirst(TreeScope.Descendants, new AndCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                    new PropertyCondition(AutomationElement.NameProperty, "More actions"))));
-                var reset = new AndCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
-                    new PropertyCondition(AutomationElement.NameProperty, "Reset"));
-                await WaitUiAsync(run, () => FindInApp(run, reset) is not null, "session action menu");
-                Invoke(FindInApp(run, reset)!);
-                await WaitUiAsync(run, () => FindText(run, "Reset session?") is { Current.IsOffscreen: false },
-                    "Settings-origin ContentDialog");
+                await OpenSessionsResetDialogAsync(run, "Settings-origin ContentDialog");
             }
             else
             {
-                ((ExpandCollapsePattern)FindById(run, "WorkspaceAssistantSelector")!
-                    .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+                if (destination is null)
+                {
+                    var toggle = window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceTogglePane"));
+                    if (toggle is { Current.IsOffscreen: false })
+                        Invoke(toggle);
+                    await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceReopenPane"))
+                        is { Current.IsOffscreen: false }, "collapsed pane before assistant selection");
+                }
+                var selector = await WaitForModalAssistantSelectorAsync(run, window);
+                ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceNewAgent") is not null, "new assistant action");
                 Invoke(FindById(run, "WorkspaceNewAgent")!);
                 await WaitUiAsync(run, () => FindById(run, "AgentCreationDialog") is not null, "chat-origin ContentDialog");
@@ -159,6 +156,33 @@ public sealed partial class GatewayFixtureUiTests
         }, scenario: scenario);
     }
 
+    private static async Task<AutomationElement> WaitForModalAssistantSelectorAsync(
+        GatewayFixtureRun run, AutomationElement window)
+    {
+        var reopenInvoked = false;
+        AutomationElement? selector = null;
+        await WaitUiAsync(run, () =>
+        {
+            // A ready composer does not establish that its NavigationView pane is open.
+            var reopen = window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceReopenPane"));
+            if (reopen is { Current.IsOffscreen: false })
+            {
+                if (!reopenInvoked && reopen.Current.IsEnabled)
+                {
+                    reopenInvoked = true;
+                    Invoke(reopen);
+                }
+                return false;
+            }
+
+            selector = window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, SessionAgentSelectorId));
+            return selector is { Current.IsOffscreen: false, Current.IsEnabled: true };
+        }, "open pane and live assistant selector in the retained Workspace window");
+        return selector!;
+    }
+
     [GatewayFixtureUiTheory]
     [InlineData(null, "ConnectionPageMarker")]
     [InlineData("connection", "ConnectionPageMarker")]
@@ -177,27 +201,11 @@ public sealed partial class GatewayFixtureUiTests
                 candidate.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsPageMarker")) is not null);
             var hwnd = window.Current.NativeWindowHandle;
-            var row = FindText(run, GatewayScenario.MainTitle)!;
-            for (var depth = 0; depth < 15 && row.Current.ControlType != ControlType.ListItem; depth++)
-                row = TreeWalker.ControlViewWalker.GetParent(row)
-                    ?? throw new InvalidOperationException("Session title has no list-item ancestor.");
-            var more = row.FindFirst(TreeScope.Descendants, new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                new PropertyCondition(AutomationElement.NameProperty, "More actions")));
-            Assert.NotNull(more);
-            Invoke(more);
-            await WaitUiAsync(run, () => FindInApp(run, new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
-                new PropertyCondition(AutomationElement.NameProperty, "Reset"))) is not null, "session action menu");
-            Invoke(FindInApp(run, new AndCondition(
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
-                new PropertyCondition(AutomationElement.NameProperty, "Reset")))!);
-            await WaitUiAsync(run, () => FindText(run, "Reset session?") is { Current.IsOffscreen: false },
-                "real Settings ContentDialog");
+            await OpenSessionsResetDialogAsync(run, "real Settings ContentDialog");
             var cancel = FindButton(run, "Cancel")!;
             var dialogIdentity = cancel.GetRuntimeId();
             OwnedWindowCapture.Save(run, window, "01-settings-dialog-before-disconnect.png",
-                FindText(run, "Reset session?")!, cancel);
+                FindById(run, SessionsDialogBodyId)!, cancel);
 
             // Stop only this run's synthetic server so reconnect cannot hide the prune transition.
             await run.Gateway.DisposeAsync();
@@ -214,12 +222,12 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Null(FindById(run, "PermissionsPageMarker"));
             Assert.Equal(dialogIdentity, FindButton(run, "Cancel")!.GetRuntimeId());
             OwnedWindowCapture.Save(run, window, "02-settings-dialog-retains-pruned-page.png",
-                FindText(run, "Reset session?")!, FindButton(run, "Cancel")!);
+                FindById(run, SessionsDialogBodyId)!, FindButton(run, "Cancel")!);
 
             Invoke(FindButton(run, "Cancel")!);
             await WaitUiAsync(run, () => FindById(run, expectedMarker) is { Current.IsOffscreen: false },
                 "required fallback or latest intent after dialog closes");
-            Assert.Null(FindText(run, "Reset session?"));
+            Assert.Null(FindById(run, SessionsDialogBodyId));
             Assert.Null(FindById(run, "SessionsPageMarker"));
             var destinationWindow = Assert.Single(AppWindows(run), candidate =>
                 !candidate.Current.IsOffscreen && candidate.FindFirst(TreeScope.Descendants,
@@ -236,6 +244,33 @@ public sealed partial class GatewayFixtureUiTests
             OwnedWindowCapture.Save(run, destinationWindow, "03-settings-dialog-closed-destination.png",
                 destinationWindow.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, expectedMarker)));
-        });
+        }, allowSessionMutations: true);
+    }
+
+    /// <summary>Opens the Sessions page's Reset confirmation for the main session (admin scope required).</summary>
+    private static async Task OpenSessionsResetDialogAsync(GatewayFixtureRun run, string description)
+    {
+        await OpenSessionsRowMenuAsync(run, GatewayScenario.MainSessionKey);
+        var reset = new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem),
+            new PropertyCondition(AutomationElement.NameProperty, "Reset session…"));
+        await WaitUiAsync(run, () => FindInApp(run, reset) is { Current.IsEnabled: true }, "session action menu");
+        Invoke(FindInApp(run, reset)!);
+        await WaitUiAsync(run, () => FindById(run, SessionsDialogBodyId) is { Current.IsOffscreen: false }
+            && FindButton(run, "Cancel") is not null, description);
+    }
+
+    private static async Task OpenSessionsRowMenuAsync(GatewayFixtureRun run, string key)
+    {
+        var rowId = "SessionsHubRow:" + key;
+        await WaitUiAsync(run, () => FindById(run, rowId) is not null, "session row");
+        ScrollIntoView(run, rowId);
+        if (!FindById(run, rowId)!.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expand))
+            throw new InvalidOperationException("The session row has no ExpandCollapsePattern.");
+        ((ExpandCollapsePattern)expand).Expand();
+        await WaitUiAsync(run, () => FindById(run, "SessionsHubCommandMore") is { Current.IsEnabled: true },
+            "expanded session actions");
+        ScrollIntoView(run, "SessionsHubCommandMore");
+        Invoke(FindById(run, "SessionsHubCommandMore")!);
     }
 }

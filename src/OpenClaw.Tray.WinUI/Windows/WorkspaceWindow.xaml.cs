@@ -25,6 +25,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     // VK_OEM_COMMA; VirtualKey has no named member for it.
     private const global::Windows.System.VirtualKey SettingsShortcutKey = (global::Windows.System.VirtualKey)188;
     private const string SettingsShortcutText = "Ctrl+,";
+    private const double SidebarMinContentWidth = 480;
+    private const double SidebarMaxWidth = 480;
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
@@ -70,7 +72,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     internal string? SelectedAgentId => _agentSelection.AgentId;
     internal WorkspaceDestination Destination => _navigation.Current;
     internal ChatPage ChatPage => _chat;
-    internal bool CanGoBack => _navigation.CanGoBack;
+    internal bool CanGoBack => (IsSettingsVisible && _settings?.HasOpenDashboard == true) || _navigation.CanGoBack;
 
     internal WorkspaceWindow(
         AppState state, AppNotificationService notifications, Action openTimeline)
@@ -291,7 +293,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         var agent = IsSettingsVisible ? _settings!.CurrentAgentId : SelectedAgentId ?? "";
         var client = CurrentApp.GatewayClient;
         var items = HubCommandCatalog.BuildSearch(_state, agent, client?.GrantedOperatorScopes.Contains("operator.admin") == true);
-        return new(client, agent, _state.GatewaySelf?.ServerVersion, items,
+        return new(client, agent, items,
             _state.Sessions.Select(session => session.Clone()).ToArray(), _state.SelfProfileRevision,
             _state.Status == ConnectionStatus.Connected);
     }
@@ -423,7 +425,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateHistoryButtons()
     {
-        var back = _navigation.CanGoBack;
+        var back = CanGoBack;
         var forward = _navigation.CanGoForward;
         BackButton.IsEnabled = back;
         ForwardButton.IsEnabled = forward;
@@ -439,6 +441,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _preparedSettings = null;
         view.AppModel = _state;
         view.NavigateRequested = tag => OpenSettings(tag);
+        view.PageNavigationChanged = UpdateHistoryButtons;
         view.PageContentChanged = () => UpdateEmbeddedPageTopAllocation(view);
         view.WorkspaceRouteRequested = OnSettingsWorkspaceRoute;
         view.ExitRequested = ExitSettings;
@@ -677,8 +680,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
 
     private bool IsPinDestination(PinnedPageTag pin) =>
-        WorkspaceNavigation.NormalizeSettingsTag(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId),
-            _settings?.CurrentAgentId ?? SelectedAgentId ?? "main") == Destination.CompanionTag;
+        pin.Tag == DashboardsRoute.Tag
+            ? DashboardsRoute.IsDashboardsTag(Destination.CompanionTag)
+            : WorkspaceNavigation.NormalizeSettingsTag(PinnedPages.ResolveRoute(pin.Tag, SelectedAgentId),
+                _settings?.CurrentAgentId ?? SelectedAgentId ?? "main") == Destination.CompanionTag;
 
     private void SignalContentReady(FrameworkElement content)
     {
@@ -1070,10 +1075,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     private UserAvatarImage? _shownAvatar;
     private Microsoft.UI.Xaml.Media.Imaging.BitmapImage? _ownerImage;
 
-    // Web UI parity: the shared-credential owner keeps its marker beside any saved name; no known profile shows Owner.
     private string OwnerLabel() =>
-        _identity.FooterLabel(Text("Owner.Text"), Text("SharedOwner.Text"),
-            ownerName => LocalizationHelper.Format("WorkspaceShell_SharedOwnerNamedFormat", ownerName));
+        _identity.FooterLabel(Text("Owner.Text"));
 
     private void UpdateOwnerIdentity()
     {
@@ -1161,15 +1164,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         var sessionKey = destination.Page == WorkspacePageId.Home
             ? destination.SessionKey ?? _chat.CurrentSessionKey
             : null;
-        bool? isMain = sessionKey is null
-            ? null
-            : _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)?.IsMain;
-        if (sessionKey is not null && isMain is null &&
-            CurrentApp.GatewayClient?.MainSessionKey is { } mainSessionKey)
-            isMain = string.Equals(sessionKey, mainSessionKey, StringComparison.Ordinal);
-
         return HubSearchCatalog.ContextualDashboardPath(
-            destination, sessionKey, isMain, _state.GatewaySelf?.ServerVersion);
+            destination, sessionKey);
     }
 
     private void OpenDashboard(string? path = null) =>
@@ -1316,6 +1312,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
     private void UpdatePanePresentation()
     {
+        SidebarSplitter.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
         ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
@@ -1327,6 +1324,40 @@ public sealed partial class WorkspaceWindow : WindowEx
             _gatewayStatusFlyout.Hide();
         }
         UpdateTitleBarActions();
+    }
+
+    private void OnNavigationSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        SidebarColumn.MaxWidth = Math.Max(SidebarColumn.MinWidth,
+            Math.Min(SidebarMaxWidth, e.NewSize.Width - SidebarMinContentWidth));
+    }
+
+    private void OnSidebarPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(global::Windows.System.VirtualKey.Menu)
+            .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down)) return;
+        var delta = e.Key switch
+        {
+            global::Windows.System.VirtualKey.Left => -SidebarSplitter.KeyboardIncrement,
+            global::Windows.System.VirtualKey.Right => SidebarSplitter.KeyboardIncrement,
+            _ => 0,
+        };
+        if (delta == 0) return;
+        if (SidebarSplitter.FlowDirection == FlowDirection.RightToLeft) delta = -delta;
+        var next = SidebarColumn.ActualWidth + delta;
+        var boundary = delta < 0 ? SidebarColumn.MinWidth : SidebarColumn.MaxWidth;
+        var scale = NavigationSection.XamlRoot.RasterizationScale;
+        // Toolkit rejects 191.99998 at a 192-DIP minimum. Match the rendered pixel at either limit.
+        if (Math.Round(next * scale) != Math.Round(boundary * scale)) return;
+        SidebarColumn.Width = new GridLength(boundary);
+        e.Handled = true;
+    }
+
+    private void OnSidebarSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        NavView.OpenPaneLength = e.NewSize.Width;
+        if (_settings is { } settings && IsSettingsVisible)
+            UpdateEmbeddedPageTopAllocation(settings);
     }
 
     // An embedded section sits to the right of the sidebar, which stays visible and usable. The
@@ -1390,6 +1421,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (DeferWhileModalOpen(NavigateBack)) return;
         _sidebarInvoked = false;
+        if (IsSettingsVisible && _settings?.TryReturnToDashboardGallery() == true)
+            return;
         PruneUnavailableGatewayHistory();
         if (_navigation.GoBack()) RenderDestination();
         else UpdateHistoryButtons();

@@ -138,7 +138,25 @@ app is never discovered or selected implicitly.
 CI builds the UI and integration test projects before running the fixture and
 passes `-NoBuild` to reuse their matching configuration and RID outputs. Local
 runs build the test projects by default. Neither path adds a separate MSBuild
-`Platform` output tree, and the fixture execution deadline is unchanged.
+`Platform` output tree. Each test-project invocation retains a 900-second default
+deadline; `-TestTimeoutSeconds` accepts 1 through 1800 seconds. The ordinary hosted
+mock-Gateway scenarios step explicitly uses 1500 seconds inside its unchanged
+30-minute outer bound. Timeouts still terminate only the owned test process tree;
+missing reports, zero tests, failures and skipped selected tests still fail proof.
+
+The same hosted job also builds the unsigned non-Dev Release app and runs both
+`CompletedRunLateSnapshotLeavesNativeComposerReadyAndQueueDraining` variants.
+`Invoke-CiTest.ps1 -Configuration Release -ExpectedTestCount 2 -RequireAllTestsPassed`
+requires exactly two passing cases. Captures, TRX and the compiled app assembly
+for configuration/identity verification are retained under `TestResults\GatewayFixtureRelease`.
+This targeted Release check does not replace the ordinary Debug fixture inventory.
+Only that fixture build sets `RequireSignedCleanupHost=false`; signed release
+packaging retains its normal signing requirement.
+The same built Release output also runs the mounted reader layout proof at
+480 and 1100 DIP in a separate exact-two-case invocation. It retains the
+Standard resource profile and original predicates, with reports under
+`TestResults\ReaderRelease`; it does not enable capture-driven resizing or
+replace the Debug full UI lane.
 
 ```powershell
 .\build.ps1
@@ -189,6 +207,36 @@ pending selection: returning Home retains the original conversation, while the
 created session remains available for explicit sidebar selection. No provider, transcript file, or real
 Gateway is involved; other mutations and unsupported creation parameters still fail.
 
+The opt-in `sessions-hub` scenario backs the Settings Sessions page. It adds 30
+synthetic sessions (categories, owners, a cloud worker, global, unknown and
+archived rows) to the browse set and accepts in-memory `sessions.list` filters
+and paging, `sessions.search` (including indexing and truncation states), patch,
+delete (including a preserved busy worktree), and the `worktrees.*` methods.
+`sessions-hub-readonly` grants only `operator.read` to show the limited page.
+`GatewayScenario.CreateSessionsHub(legacySessionsList: true)` rejects the
+`source`/`excludeDock` list params like Gateways before 2026.10.5 do. Run either
+interactively with `-Scenario sessions-hub` or `-Scenario sessions-hub-readonly`.
+
+Moving sessions between existing categories uses `sessions.patch`. Creating,
+renaming or deleting categories, assigning owners, changing session colors/icons,
+bulk deletion and stopping cloud workers stay in the web dashboard.
+Single-session archive, Undo and confirmed deletion remain native.
+
+Sessions regression tests also exercise failed-query row replacement, visible
+refresh errors, transcript query/scope invalidation and acknowledged label drafts
+through mounted native controls. They use the actual
+controller and small external-client proxies, without another app process.
+They also cover preserving identity-bound rename drafts across filters,
+wire-equivalent search edits, superseded or reopened Worktree branch lookups,
+single-delete confirmation during roster replacement, and mounted transcript
+scope text for global and unrouted sessions.
+Session details expand inside their native roster row at every window width.
+The list owns scrolling; wide rows use two detail columns, and narrower rows
+stack the same fields. Transcript **Show details** reveals the matching page
+and expands its group and row. It enables the completed/background display
+toggle when needed to show that explicitly requested result, for this visit only;
+the saved **Show completed** preference is unchanged.
+
 The host is `tests\OpenClaw.GatewayFixtureHost`, a plain .NET console app, not a
 test container. The request-driven server and scenario live in
 `tests\OpenClaw.TestSupport\Gateway`. Repeated reads and different request
@@ -199,16 +247,26 @@ published token file, within the existing startup deadline. Missing-file,
 permission and other I/O failures are not hidden.
 The token value is never included in readiness diagnostics.
 
+Teardown retains process handles for the fixture app and its confirmed nested
+WebView2 descendants before stopping the app tree. It reaps those owned
+processes before deleting the isolated profile. Process, listener and profile
+cleanup failures remain separate errors in the teardown aggregate; a profile
+deletion failure does not hide an earlier process failure.
+
 ## Run the application smoke
 
+Use an authorized, exclusive interactive desktop. The complete ordinary UI
+selection includes native mouse-wheel input to the owned foreground fixture
+window, so request that proof explicitly:
+
 ```powershell
-.\scripts\test-gateway-fixture.ps1 -AppPath $app
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -NativeInputProof
 ```
 
 For screenshots, use owned-window native capture (no Windows App CLI installation is needed):
 
 ```powershell
-.\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots
+.\scripts\test-gateway-fixture.ps1 -AppPath $app -Screenshots -NativeInputProof
 ```
 
 The script runs profile/preflight and polling tests, real-process MCP tests, and native UI
@@ -216,11 +274,19 @@ tests. It rejects failed, skipped, missing-report and zero-test runs. It needs
 a Windows desktop and the same WinUI prerequisites as the existing UI suite.
 There is no skip-as-success fallback when the desktop is unavailable.
 
-On an authorized, exclusive interactive desktop, add `-KeyboardProof` to run the
-separate foreground keyboard fixture lane as well. It enables native input only
-in that child test process and rejects failed, skipped, and zero-test runs. The
-default fixture lane excludes those keyboard-dependent cases; it does not claim
-their proof.
+`-NativeInputProof` enables the strict native-input opt-in only in the ordinary
+fixture UI child process. Profile/preflight and released-profile children retain
+that stricter opt-in at `0`, and inherited environment variables cannot enable it.
+Existing fixture-keyboard journeys retain their own fixture/foreground guards. Without
+the switch, the wheel-bearing selection fails closed; it never omits wheel
+assertions or reports complete proof from UIA scrolling alone. The test still
+checks the owned HWND, foreground state, exact injected event count and cursor
+restoration. No machine-wide setting or CI identity override is used.
+
+Add `-KeyboardProof` separately to select the existing keyboard-only fixture lane
+as well. That option enables only its own child and still rejects failed,
+skipped, and zero-test runs. The ordinary UI filter continues to exclude those
+keyboard-only cases; `-NativeInputProof` does not select them.
 
 ### Saved Gateway ownership and released profiles
 
@@ -268,9 +334,10 @@ mismatch, failed case, or zero/skipped selection is not compatibility proof.
 
 The dedicated `windows-latest` Gateway fixture job runs this script against its explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
-`Directory.Build.props`. Its dedicated step enables the fixture opt-in only for
-the child test processes and selects `Category=GatewayFixture` without keyboard-only
-cases, including the
+`Directory.Build.props`. Its dedicated step passes `-NativeInputProof` to the
+wrapper on that owned interactive runner. The wrapper enables native input only
+in the ordinary fixture UI child and selects `Category=GatewayFixture` without
+keyboard-only cases, including the
 context-usage and chat-run correlation scenarios. The general UI test step
 excludes that category so each scenario runs once. TRX, synthetic request logs,
 run receipts and owned-window screenshots are uploaded in `test-results-gateway-fixture`
@@ -415,33 +482,178 @@ snapshot are retained with the run artifacts. This proves stored-history
 compatibility, not microphone capture, live voice streaming or real Gateway
 pairing, and does not use the reporter's private sessions.
 
-## Cron editor proof
+## Automations proof
 
-`GatewayScenario.CreateCronEditing()` explicitly opts into in-memory `cron.add`
-and `cron.update`, with listed, absent, unlisted, and interval schedules.
-`cron.list` returns the updated jobs; nothing is scheduled or executed.
-The normal browse scenario still rejects cron writes.
+`GatewayScenario.CreateAutomations()` (host scenario `automations`) serves an
+in-memory Automations catalog: interval, one-time, cron, MCP event, stream and
+auto-disabled jobs for agent `main`, one job owned by agent `ops`, and none for
+`research`. It answers `cron.list` filters, paging and agent scope (or every
+agent when the scope is omitted), `cron.get`, a revision-guarded `cron.update`,
+`cron.remove` and `cron.runs`. Request parameters follow the released Gateway's
+closed schemas: an unknown property is rejected as `INVALID_PARAMS`, so
+`cron.runs` has no `view` and `cron.remove` takes only the job id (the client
+confirms a loaded revision with `cron.get` first). Morning brief runs carry chat
+session keys. Nothing is scheduled or executed; `cron.run` only records a
+synthetic run. Browse the scenario with:
 
-The focused proof uses the existing isolated profile, real Gateway client and
-cron form. Its native title click verifies the owning process, foreground window,
-physical point and UIA target before sending input. Run it only with exclusive
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario automations
+```
+
+The UI proof checks the route-agent filter and All agents, inline expansion with
+a native CommandBar and recent-run chat icons, and the ContentDialog editor in
+Light and Dark. A basic edit preserves hidden settings; pause still requires
+confirmation. Separate cases cover a disconnected editor draft, an old save
+completing after a newer draft opens, read-only and denied operators, initial
+loading/error/retry, failed refresh with retained content, scheduler off, and
+offline last-seen content. The large fixture adds 205 jobs to verify agenda
+paging beyond 200 and a jump beyond the first inventory page. Populated, detail
+and editor states are scanned with Axe.Windows using the fixture-owned app PID
+and verified top-level HWND. Native windows in unrelated processes are outside
+that scope; hosted cross-process and unknown providers retain their rule checks.
+Do not treat a `ProviderDescription` PID as the element's owning process: it can
+identify the client-side proxy. Accessibility failures are saved and asserted
+after the behavior sequence so they do not prevent remaining popup/toast captures.
+Diagnostics are bounded and sanitized: scan/item ordinals, rule identifiers,
+process/window ownership, scope decisions, fixed reasons and numeric geometry or
+scroll state. They do not log names, raw property/provider dumps, editor ancestry
+or child content. Scope filtering follows scan metadata/count validation and
+never excludes incomplete results. It excludes only positively identified
+unhosted foreign windows or a verified owned scroll-viewport edge clip for
+`BoundingRectangleSizeReasonable`; unknown ownership or geometry retains the check.
+The empty-proxy predicate remains covered by unit tests but is inactive in live
+scans: content absence is unknown, so no `BoundingRectangleNotNull` violation is
+excluded as an empty proxy.
+`AutomationsResponsiveLayoutTests` separately mounts the real Reactor page at
+page-host widths 1400, 1000, 937, 760 and 520 DIPs, with a synthetic Gateway socket.
+It checks responsive column/row counts, horizontal bounds, one-row mast actions,
+and ellipsis/tooltips for row titles. The Wide case admits operator admin after
+initial read-only rendering, checks the live New style/accent fill, then resizes
+Wide/Medium/Wide and transitions populated/empty/populated without replacing the
+Reactor root. Refresh/More must remain neutral and retired menus must be detached.
+With
+`OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS=1`, it opens only its own Light proof window
+and saves real owned-HWND `PrintWindow` captures beneath
+`OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS`; this mode requires the coordinated desktop
+lock and explicit native-input opt-in (`OPENCLAW_RUN_KEYBOARD_PROOF=1`). The
+capture path activates only its newly created proof window before initial focus;
+later resize captures still require that owned window to remain foreground.
+Select `Category=ProductionResources` separately from the external-app
+Automations theory and from the mixed UI suite. All mounted native runs, including
+offscreen runs, require the authorized serial native slot. Each case uses its own correctly sized offscreen client viewport,
+not the shared fixture's 1x1 window, so layout and containment checks remain faithful.
+
+The steady-resource lane covers responsive widths, toast/remount lifecycle,
+same-control focus retention, editor saves, full run results and hero summaries.
+It uses
+`OPENCLAW_UI_TEST_RESOURCE_PROFILE=Production`: the existing `UIThreadFixture`
+startup callback loads actual `App.xaml` resources once, after the `Application.Start`
+callback returns and before readiness. Markup errors fail setup. Individual page mounts
+do not replace or restore the application resource graph. Pooling, same-host
+resize checks, retired-flyout cleanup and resource/style assertions remain enabled.
+This models production resource ownership; it does not establish a native crash
+cause or repair.
+
+After building the matching UI-test output and acquiring the native slot, run
+in a dedicated PowerShell process (use `win-arm64` on ARM64):
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_UI_TEST_RESOURCE_PROFILE = 'Production'
+$env:OPENCLAW_UI_TEST_APP_THEME = 'Light'
+$env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path (Get-Location) 'artifacts\automations-mounted'
+.\scripts\Invoke-CiTest.ps1 -Project tests\OpenClaw.Tray.UITests `
+    -Runtime win-x64 -ResultsDirectory TestResults\AutomationsSteadyResources `
+    -TrxFileName AutomationsSteadyResources.trx `
+    -Filter 'Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled' `
+    -RequireAllTestsPassed -HangTimeoutSeconds 300
+```
+
+The unset/default `Standard` profile preserves the legacy synthetic resources.
+CI runs the two profiles in separate test processes. A profile mismatch fails
+the selected test, rather than skipping it or silently using fallback resources.
+`ChatThemeProofScope` rejects replacement in the Production profile.
+Existing chat/markdown scope replacement and synthetic HighContrast projection
+are unchanged in the Standard lane. Do not mix them into steady-resource proof.
+
+The separate real-app `Automations_HeroWashScrollsWhileTheBackplateStaysAnchored`
+case tracks corresponding gradient pixels through a settled partial scroll,
+then verifies that the hero scrolls out of view and compares the plain page
+margin before and after. Synthetic pixel controls reject a viewport-anchored
+gradient even if its text moves.
+It does not expect the retired viewport-wide wash to remain behind the content.
+
+The separate `Automations_ResponsiveShellWidthsHaveDistinctMeasuredFrames`
+case captures reachable native page-host widths and the unchanged shell minimum,
+including a collapsed-pane frame followed by pane restoration. It records
+`GetDpiForWindow` scaling, requested window DIPs, measured host DIPs, canonical content width/tier,
+and window rectangles in pixels/DIPs. `SetWindowPos` must change actual bounds;
+unchanged/clamped frames or duplicate image hashes fail rather than claim a
+narrow host. The normal shell minimum is not relaxed for proof.
+The host measurement uses the real ScrollPattern ancestor of the exposed
+`CronPageMarker`, not an assumed UIA peer for a Reactor Grid or ScrollView ID.
+Before resizing, the case records the actual marker ancestor chain and captures
+the loaded baseline. Missing ownership stops the shell case without resizing.
+Initial window widths are 1661, 1261, 1021 and 1000 DIPs. For desired host widths
+1386, 1008 and 754 DIPs, at most two measured-host corrections adjust window pixels
+by the actual DIP deficit times DPI scale. Two stable host reads determine the
+page tier independently of changing navigation/chrome dimensions. Initial and
+corrected targets, loaded PNGs and JSON are saved before strict tier, final-pixel
+and distinct-frame assertions. The current bounded parent pass runs Light only.
+UIA helper classification cases use a nonparallel collection, without starting
+their own WinUI fixture. Parallel UIA helper and mounted geometry collections
+produced a native MeasureOverride COM failure; serializing those owners preserves
+all checks and allows the combined 24-case lane to pass.
+The Light/Dark behavior theory records each state as captured or failed, preserves
+owned-HWND failure captures and accessibility diagnostics, and asserts failures
+after attempting the remaining states. Dark runs only after the Light proof passes.
+Before Remove and during its dialog scan, transient UIA menus/input-site peers
+are recorded. Visible menu peers under the modal fail; typed/content-bearing
+accessibility violations are never treated as empty-proxy exceptions.
+Weekly-field proof waits for the selected combo peer to reconcile and reacquires
+the field before applying the unchanged clipping guard. Error-announcement proof
+records every owned-hub notification, captures the permission-error toast promptly,
+then verifies ImportantAll independently of UI capture timing. Error toasts persist
+past the normal four-second lifetime and disappear only after Close; no duplicate
+global notification or stale page error bar is accepted.
+Light and Dark captures include the plain new editor, editing with hidden
+settings, Copy as new, Pause, and Remove. Remove checks the actual fixture
+Gateway display name, its Agent/Schedule/Next run facts, alert-dialog semantics
+and initial Cancel focus. Toast proof covers queued IDs, already-running
+refusals, removal and automatic dismissal. These screenshots are review
+evidence, not a declaration of visual matching before design-coordinator review.
+No browser or clipboard handoff is invoked by UI proof. Run only with exclusive
 desktop access:
 
 ```powershell
 $env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
 $env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
-$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = "$env:TEMP\openclaw-cron-proof"
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path (Get-Location) 'artifacts\automations-proof'
 $env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
 $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
-dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~GatewayFixtureUiTests.CronEditor_' --logger 'console;verbosity=normal'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~GatewayFixtureUiTests.Automations_' --logger 'console;verbosity=normal'
 ```
 
-On x64 use `-r win-x64 -p:Platform=x64`. Keep the selected executable on the
-tested commit. The two tests must execute, not skip. They check timezone
-preservation and explicit replacement, switching jobs and schedule kinds,
-and resetting for a new job. Artifacts include owned-window editor captures
-and the exact synthetic schedules read back after accepted saves. This proves
-the app/fixture wire path, not production Gateway persistence or scheduling.
+On x64 use `-r win-x64 -p:Platform=x64`. Artifacts include owned-window
+captures of each state. This proves the app/fixture wire path, not production
+Gateway persistence or scheduling.
+
+Published Reactor preview.12 and preview.16 do not theme ContentDialog correctly
+in Dark. Preview.17 includes the
+[upstream fix #1389](https://github.com/microsoft/microsoft-ui-reactor/pull/1389).
+Before capture, verify that `project.assets.json` resolves the pinned
+`Microsoft.UI.Reactor` and `Microsoft.UI.Reactor.Advanced` versions, and record
+package provenance with the evidence. NU1603 is not successful integration, and
+exact version resolution alone does not establish app API compatibility. For a
+direct restore, first bootstrap preview.17 as described in
+[Reactor compatibility proof](WINDOWS_NODE_TESTING.md#reactor-compatibility-proof).
+
+The same filter includes editor lifetime regressions: an unsaved draft survives
+reconnect and a delayed save cannot close a newer editor. Host-side
+`HoldResponses`/`ReleaseResponses` gates delay real fixture replies; they do not
+bypass page callbacks or supply the UI behavior being asserted.
 
 ## Systems inventory proof
 
@@ -608,6 +820,214 @@ PRI and compiled page resources beside the native UI test assembly. It does not
 use this Gateway scenario or prove usage reconciliation. Run it serially with
 the fixture UI test and computer-use, not concurrently on the same desktop.
 
+## Usage analytics proof
+
+The `usage-analytics` scenario opens the Settings Usage page against synthetic
+`sessions.usage` and `usage.status` replies. Data is deterministic and anchored
+to the requested date range, so every preset shows populated charts. Twelve
+sessions cover several agents, channels, providers and models, plus cache,
+error and tool activity. Every other scenario also answers `sessions.usage`,
+which the Gateway does not advertise in `hello-ok`. The fixture models the
+native page's range, detail and bounded browsing reads, not web-only heatmaps,
+creator attribution, recent/multi-session selection or prompt-context analysis.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario usage-analytics
+```
+
+Enter one of these modes in the host console, then select Refresh on the page.
+For unattended runs, pass `-UsageMode <mode>` to start in that mode:
+
+| Mode | Replies |
+|---|---|
+| `populated` | Complete usage with sessions, details and provider plans |
+| `empty` | A complete report with no sessions |
+| `partial` | Lower-bound totals with `cacheStatus` pending and stale sessions |
+| `legacy` | `sessions.usage` fails as an unknown method, like a Gateway older than any setup installs, so the page shows its update notice and provider plans only |
+| `released` | Like released Gateways through 2026.10.9, including `extended-stable` 2026.9.36: `sessions.usage` rejects the overview parameters with the released schema error, so the page retries with full rows and shows its basic view without search, sort or paging |
+
+The app remembers unknown methods for the life of a connection. After leaving
+`legacy`, reconnect from Connection settings before refreshing, or start a new
+run with `-UsageMode`.
+
+Disconnect the app from Connection settings to show the disconnected banner.
+The fixture proves rendering and the native client contract, not a real
+Gateway's session aggregation or cost estimates. **Open in web** and the
+row's **Open chat** button use the app's normal Dashboard launcher and chat routes;
+the fixture does not serve the Gateway's web Usage page, so prove those
+handoffs against a real Gateway.
+
+The native Usage page is a read-only analysis surface. The default installed
+Gateway view has no server search, sort or paging. It previews ten loaded rows,
+then reveals ten more at a time; the coverage note distinguishes a reported
+total from an unknown population beyond the 1,000-row cap. The advanced view
+adds those server controls, without pretending a loaded-row drilldown is an
+exhaustive search.
+
+The hero shows estimated range cost and contributor details only when reported
+data supports them. Agent cost shares require complete priced totals; independent
+model aggregates do not claim an agent-to-model relationship. The header retains
+Open in web and Export CSV actions, with the range bar directly below it.
+Cross-year ranges retain both years; the tooltip and accessibility help
+retain the full dates and reporting zone. On Wide hosts, custom date pickers
+sit beside the presets, with server search on a separate row when available.
+Medium and Narrow hosts retain stacked controls. **Options** holds reporting-day
+boundaries and session-family counting. **Daily usage** contains cost/tokens,
+chart/table, token/cache facts and defined activity counts. Provider allowance
+windows at or above 75% carry a **Near limit** badge on their allowance row,
+with its **See what's using it** action. Missing allowance percentages are not
+zero usage, and billing amounts or absent/zero billing limits never invent an
+allowance percentage. Disconnected rows retain their last-reported context.
+There is no separate Needs you section. **Usage breakdown** retains all contributor
+buckets behind a top-five plus Other legend and opens loaded sessions. Session
+details expand inline, and the trailing row chat button passes the exact key.
+No chart selection changes the requested range.
+
+Usage facts come from authenticated Gateway reads, not local inventory or
+fixture generators in production:
+
+| Gateway owner | Native projection and surfaces |
+| --- | --- |
+| `sessions.usage` range read | Cost/token totals, reported or loaded session count, dated trend, contributor buckets and session rows |
+| `sessions.usage` single-key read | Expanded session model, token/cache counters, messages, tools and errors |
+| `usage.status` | Independently scoped provider allowance windows, reset times, plans, errors and billing amounts |
+
+`UsageJsonParser` preserves missing numeric counters separately from explicit
+zero. Charts and the metric-aware daily table contain only reported dates;
+missing calendar days are not synthesized as zero-cost rows. A reported row with
+a missing selected counter remains unavailable. The 30-day mast names the first
+and last reported dates and states how many days were reported. Both the daily
+series and headline totals come from the same `sessions.usage` snapshot, never
+from a separate `usage.cost` read. Provider windows
+or billing entries without valid numbers are omitted instead of inventing a
+zero allowance or balance. Missing aggregate counts render unavailable, and CSV
+cells stay blank for absent counters. Merged contributor counters are known
+only when every subtotal reported them; incomplete shares and extrema are
+withheld. Missing session usage does not imply a Gateway computing status, and
+a reported nonzero population cannot become an empty success or complete CSV.
+Calendar ranges, local/UTC formatting,
+selection, connection/loading state and presentation-only ranking are client
+state or deterministic transformations, not additional Gateway facts. Synthetic
+records are confined to the test Gateway scenarios.
+
+`PageResponsiveLayout` selects tiers from the page host width, not the window:
+Wide starts at 1,000 DIP, Medium at 720 DIP, and Narrow supports hosts down to
+480 DIP. The daily/allowance stage and contributor/detail pairs stack below
+Wide. The hero uses a card-local accent tint, not a page-wide glow.
+Native Border padding
+owns their insets; bounded explanatory text stays left-aligned.
+Session and provider card rows have separate rounded borders with exactly
+`PageResponsiveLayout.GapInner` (DESIGN spacing2, 8 DIP) between adjacent cards,
+including expanded session details. Native session and contributor expanders
+retain independent open states without closing other panels or scrolling on
+ordinary expansion. Session panels reuse loaded summaries; only the active
+detail read is controller-owned. Native Expander animation follows Windows
+animation preferences without a separate entrance-transition host.
+Dense tables and legends keep their own spacing. The daily table grows to its
+content and uses the page's scroll viewer, not an internal scrolling region.
+Average and range-wide peak claims remain withheld when reported dates do not
+cover the requested calendar range. When available, the daily-average value is labelled directly on the dashed plot line as well
+as in the card header and chart accessibility description. Bars use the solid
+native accent. Left/Right moves native focus and day selection within the chart;
+each bar exposes its date and available counters. The
+secondary activity strip uses four columns or a two-by-two grid, with
+single-line trimmed labels and full-text tooltips. A metric pivot on its own
+row aligns its first label with the card heading. The session-list badge counts
+the actual loaded rows; a separate line states shown and loaded counts. The
+range-wide population remains in the mast and range facts. Incomplete totals
+have a partial tag and reason immediately beside the headline, while missing
+prices retain their distinct explanation.
+
+CSV export re-reads the selected range before opening the system Save dialog.
+If a sessions file would omit rows or still-computing usage, a native
+ContentDialog offers **Export daily totals** or **Close**. Its coverage facts
+come from the export read, not a request limit. When no total was reported, the
+dialog says so. The daily alternative keeps the original range and must pass
+its own completeness check; it is not a bypass for partial data.
+
+After a successful save, a page-local in-app notification shows the actual saved
+file name and **Open folder**. Reactor's announcement region announces errors
+assertively. Actionable results dismiss after seven seconds and passive errors
+after four (override with
+`OPENCLAW_USAGE_NOTIFICATION_MS`). Cancelling Save produces no success
+notification. Gateway/page changes fence pending export work, and missing prices
+remain blank CSV costs rather than zero. Suggested file names include the
+actual reporting dates.
+Results sit bottom-center, 20 logical pixels above the page edge, at up to
+480 logical pixels wide. Native flyout fill/stroke and ThemeShadow provide
+their neutral surface; only the severity icon is colored.
+The export dialog keeps its frozen facts while resizing. Its footer stacks
+primary-first on Narrow. The dialog body reconciles viewport updates through
+Reactor's released overlay lifecycle.
+
+For deterministic light/dark captures and interaction checks without a shared
+Gateway, use the mounted native page tests:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_VISUAL_TEST = '1'
+$env:OPENCLAW_VISUAL_TEST_DIR = '<absolute-local-evidence-directory>'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -r win-arm64 --filter 'FullyQualifiedName~UsagePageRenderingTests|FullyQualifiedName~UsageChartColorTests'
+```
+
+Select `win-x64` on an x64 host. The mounted matrix includes installed,
+advanced, sparse, bounded, empty, offline, loading, first-read failure,
+refresh failure, no-read-access, unsupported and computing states. The page
+issues reads only, so a connection with read permission but no write permission
+has the same analysis controls. These captures prove the native renderer over
+recorded responses, not a live provider account, real Gateway or browser launch.
+The export popup tests invoke the real menu/dialog/notification workflow but
+intercept file saving and folder opening, so they do not mutate user documents.
+The mounted resize cases exercise 1,400, 1,000, 760 and 520 DIP hosts and return
+to Wide, checking column counts, sibling bounds, text clipping/ellipsis,
+one-row mast actions, card insets/alignment and export feedback. These are
+geometry/renderer checks, not real-shell screenshot acceptance.
+
+Pinned Usage keyboard proof retains main's native tab cycle: pane/history,
+title bar, Dashboard, Notifications, then visible page content. Exact intermediate
+focus and a reverse/forward content roundtrip guard against skipped controls and
+focus traps; visual adjacency is not the native XAML tab order.
+
+`UsageResponsive_RealShellCapturesMeasuredWidthsAndCollapsedNavigation` uses
+the isolated released-Gateway fixture and owned-HWND PrintWindow capture.
+Its per-state manifest records measured host/content widths, the shared tier,
+window rectangles in pixels and DIP, and image hashes. The Hub's unchanged
+800 DIP window minimum and expanded pane prevent a real-shell 520 DIP host; the native pass
+therefore captures the shell minimum with the pane open and collapsed.
+It samples host/navigation bounds at least 300 ms apart before capture.
+Run native proof only on an authorized, serial desktop slot with a fresh
+explicit app binary. Inspect the PNGs; a passed geometry test or a rendered
+bitmap does not establish visible shell acceptance.
+
+Reactor preview.17 includes the dialog theme and pooled-background fixes that
+previously required a task-local preview.12 backport. Validate the released
+package identities and loaded DLL hashes, not the historical local override.
+Usage retains the aligned Core/Advanced preview.17 pair when integrating the
+shared page foundation and Windows App SDK 2.6.5. Its declarative export
+`ContentDialog` needs inherited theme and host-disposal handling, and its pooled
+count-pill `Border` needs resource-backed background precedence. The mounted
+`ExportBlock_OffersDailyTotalsThenShowsTheSavedToastAndFolderAction` cases
+assert the actual Light/Dark dialog theme; the count-pill regression below
+checks the native brush. These are dependency regression requirements, not
+evidence that the newly merged package combination has passed native proof.
+`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
+Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
+build or run commands; `build.ps1` and building through `run-app-local.ps1`
+already do this. The initializer verifies the official preview.17 release
+digests without changing global NuGet configuration or clearing its cache.
+A successful build alone is not dark-dialog proof.
+The count-pill contrast regression also checks the actual native brush after
+pooled reuse. A pooled Border must release a local null background when its
+theme style owns that property; a correctly defined resource alone does not
+prove that it was painted.
+
+Usage retains figures during a same-query refresh, but clears them when the
+date range, reporting zone, scope or server filters change. A failed new query
+must not relabel old values. Basic browsing retains its row limit while
+disclosing at most one extra selected loaded session. Missing prices qualify
+cost independently of token completeness and suppress unsupported exact
+contributor percentages and costliest-session claims.
+
 ## Known runtime regression
 
 The strict cached-session tail assertion has exposed an intermittent failure:
@@ -631,7 +1051,7 @@ the same smoke against a non-Dev Release build without an attached debugger:
 ```powershell
 .\build.ps1 -Project WinUI -Configuration Release
 $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'
-.\scripts\test-gateway-fixture.ps1 -AppPath $releaseApp -Configuration Release -Screenshots
+.\scripts\test-gateway-fixture.ps1 -AppPath $releaseApp -Configuration Release -Screenshots -NativeInputProof
 ```
 
 An explicitly selected unpackaged publish executable is also supported. This
@@ -766,6 +1186,71 @@ Backend and independent app instances can run concurrently. UI tests are
 serialized on a shared desktop; focus-dependent GUI workers need separate
 Windows sessions or VMs. Interactive streaming uses the same per-instance
 server/profile ownership described below.
+
+## Dashboards without a real Gateway
+
+The opt-in `dashboards` scenario serves synthetic boards for the Dashboards
+page: a multi-tab board with HTML, report, website, pending, rejected,
+broken, MCP app and disabled-plugin widgets, plus release, research and empty
+boards. Widget documents and the sandbox proxy are served from loopback, so
+no real board or capability grant is touched:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario dashboards
+```
+
+Pass `-Theme Dark` to seed the disposable profile for dark-theme proof.
+Omitting `-Theme` uses `Light`:
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario dashboards -Theme Dark
+```
+
+The focused native regression runs both themes, captures the gallery, HTML and
+report widgets, approval/error states, tabs, the website link card and an empty
+board, and scans the populated gallery and board with Axe.Windows. It also
+asserts that the gallery sends no `board.get` before a card opens and that no
+board mutation, grant, or action request is sent. English Windows OCR verifies
+visible widget text in owned-window captures because UI Automation on some
+hosts stops at the WebView pane. A pixel guard also requires the deployment
+curve's plot area to have a luminance range of at least 64; a blank SVG cannot
+pass merely because its heading rendered. The companion mounted tests
+(`DashboardWidgetCellTests`) verify widget recovery messages, website links
+without an embedded browser, and the web Dashboards handoff. The scenario needs
+no outbound network: websites are links, not embedded pages, and the run uses no
+production Gateway or browser credentials.
+
+The gallery fixture includes six main-agent boards to exercise Fresh today and
+the filter threshold. The title-bar Back button is exercised after visiting the
+website tab. `DashboardWidgetCellTests.GalleryStates_KeepFailuresDistinctFromEmptyAndDenied`
+also mounts the actual Reactor gallery for empty, loading, read-denied,
+first-load error, stale-refresh, and 30-row states. Set
+`OPENCLAW_DASHBOARD_STATE_ARTIFACTS` to a dedicated local directory to save
+light/dark RenderTargetBitmap captures of those native controls; these do not
+capture Mica or HTML WebViews and are separate from owned-window fixture proof.
+
+On an authorized Windows desktop, after building the explicit app:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = '<dedicated-artifact-directory>'
+$env:OPENCLAW_TRAY_DATA_DIR = '<dedicated-test-profile>'
+$env:OPENCLAW_TRAY_LOCAL_DATA_DIR = '<dedicated-test-local-directory>'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj -c Debug -r win-arm64 -p:Platform=ARM64 -p:DevBuild=false --filter 'FullyQualifiedName~DashboardsRenderNativeReports|FullyQualifiedName~DashboardWidgetCellTests'
+```
+
+For x64 use `-r win-x64 -p:Platform=x64`. Inspect the saved PNGs as well as the
+test results. This is synthetic Gateway/UI proof, not real Gateway pairing, a
+browser launch, or a working MCP app host, which remains deferred to the web
+Dashboards.
+
+Fixture teardown retains handles to WebView browser children whose parent ID
+and start time match the owned app, and stops only those processes. A sharing
+violation while their Crashpad files close is retried for at most 10 seconds.
+Set `OPENCLAW_FIXTURE_CLEANUP_TIMEOUT_SECONDS` before starting the test host to
+override that bound. Other cleanup errors and expired sharing violations fail.
 
 ## Interactive chat without a real Gateway
 

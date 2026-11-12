@@ -256,7 +256,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsToggle")));
             await SettleAsync();
             await CaptureAsync(surface, "Feedback-child-details");
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsClose")));
+            await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
             await SettleAsync();
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
                 FindControl<TextBlock>(host, "ChatRunProgressText").Text));
@@ -276,11 +276,31 @@ public sealed partial class ReactorChatLayoutProofTests
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             var transcriptScroll = await ui.RunOnUIAsync(() => Task.FromResult(
                 Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView));
-            Task AwaitBottomAsync() => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            string DescribeBottom()
+            {
+                var repeater = transcriptScroll.Content as ItemsRepeater;
+                var count = repeater?.ItemsSourceView.Count ?? 0;
+                var expected = count > 0 ? repeater!.ItemsSourceView.GetAt(count - 1) : null;
+                var tail = count > 0 ? repeater!.TryGetElement(count - 1) as FrameworkElement : null;
+                var bounds = tail?.TransformToVisual(transcriptScroll).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, tail.ActualWidth, tail.ActualHeight));
+                var geometry = $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
+                    $"extent={transcriptScroll.ExtentHeight}; viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
+                    $"anchorRatio={transcriptScroll.VerticalAnchorRatio:R}; nativeAnchorRatio={transcriptScroll.ScrollPresenter?.VerticalAnchorRatio:R}; " +
+                    $"repeaterPresent={repeater is not null}; itemCount={count}; tailLoaded={tail?.IsLoaded}; " +
+                    $"tailTop={bounds?.Top}; tailBottom={bounds?.Bottom}; tailHeight={tail?.ActualHeight}; " +
+                    $"tailMatchesSource={tail is not null && expected is not null && ReferenceEquals(tail.DataContext, expected)}";
+                // Query only after timeout: CurrentAnchor can resolve the native anchor selection.
+                var anchor = transcriptScroll.CurrentAnchor;
+                return geometry + $"; queriedAnchorType={anchor?.GetType().Name}; " +
+                    $"queriedAnchorIndex={(anchor is not null && repeater is not null ? repeater.GetElementIndex(anchor) : -1)}; " +
+                    $"queriedAnchorIsTail={tail is not null && ReferenceEquals(anchor, tail)}";
+            }
+            Task AwaitBottomAsync(string operation = "jump reaches the exact transcript bottom") => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => transcriptScroll.State == ScrollingInteractionState.Idle &&
                     Math.Abs(transcriptScroll.ScrollableHeight - transcriptScroll.VerticalOffset) <= 1,
-                "jump reaches the exact transcript bottom",
-                () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; state={transcriptScroll.State}"));
+                operation,
+                DescribeBottom));
             async Task ScrollAwayAsync()
             {
                 // Establish reader intent through the normal transcript keyboard-focus path.
@@ -377,7 +397,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
                     "\n\n" + string.Join("\n\n", Enumerable.Repeat($"Streamed section {index}.", 5))));
                 await PublishAsync();
-                await AwaitBottomAsync();
+                await AwaitBottomAsync($"streamed section {index} reaches the exact transcript bottom");
             }
             state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
             await PublishAsync();
@@ -404,6 +424,21 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await AwaitBottomAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => transcriptScroll.VerticalAnchorRatio > 0 && transcriptScroll.VerticalAnchorRatio < 1,
+                "content anchoring restored after the corrected jump"));
+            await CaptureAsync(surface, "Feedback-resized-jump-latest");
+
+            state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Reply after resized jump.", IsStreaming: true));
+            await PublishAsync();
+            await AwaitBottomAsync("streaming reply after resized jump reaches the exact transcript bottom");
+            state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
+                "\n\n" + string.Join("\n\n", Enumerable.Repeat("Keep following after the corrected jump.", 20))));
+            await PublishAsync();
+            await AwaitBottomAsync("streamed continuation after resized jump reaches the exact transcript bottom");
+            state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+            await PublishAsync();
+            await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));

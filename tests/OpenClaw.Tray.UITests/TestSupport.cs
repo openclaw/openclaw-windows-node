@@ -196,6 +196,9 @@ public static class TestSupport
             case ScrollViewer sv when sv.Content is FrameworkElement sc:
                 foreach (var d in FindLogical<T>(sc)) yield return d;
                 break;
+            case ScrollView view when view.Content is FrameworkElement content:
+                foreach (var d in FindLogical<T>(content)) yield return d;
+                break;
             case TabView tv:
                 foreach (var ti in tv.TabItems.OfType<TabViewItem>())
                 {

@@ -59,6 +59,7 @@ internal sealed partial class SettingsShellView : UserControl
 
     /// <summary>Raised when the rail or an in-page link requests another Settings section.</summary>
     internal Action<string>? NavigateRequested { get; set; }
+    internal Action? PageNavigationChanged { get; set; }
     internal Action? PageContentChanged { get; set; }
 
     /// <summary>Raised when a notification route leaves Settings.</summary>
@@ -166,6 +167,7 @@ internal sealed partial class SettingsShellView : UserControl
     {
         if (_disposed) return;
         _disposed = true;
+        PageNavigationChanged = null;
         PageContentChanged = null;
         Deactivate();
         _contentReady.TrySetResult(true);
@@ -403,6 +405,17 @@ internal sealed partial class SettingsShellView : UserControl
 
     // Back/Forward live in the window-level pair driven only by WorkspaceNavigationHistory.
     // This view keeps no navigation stack of its own.
+    internal bool HasOpenDashboard => ContentFrame.Content is DashboardsPage { HasOpenBoard: true };
+
+    internal bool TryReturnToDashboardGallery() =>
+        ContentFrame.Content is DashboardsPage dashboards && dashboards.TryReturnToGallery();
+
+    internal void RefreshPageNavigation()
+    {
+        if (!_disposed)
+            PageNavigationChanged?.Invoke();
+    }
+
     /// <summary>
     /// Shows only the section content, hiding this view's own section list. Used when a pinned page
     /// opens beside the Workspace sidebar.
@@ -538,6 +551,9 @@ internal sealed partial class SettingsShellView : UserControl
         if (ContentFrame.Content is not null &&
             ContentFrame.SourcePageType == pageType && _currentNavTag == tag)
         {
+            // Boards open in-page without changing the route, so the same tag can mean a new destination.
+            if (ContentFrame.Content is DashboardsPage dashboards)
+                dashboards.Initialize(this, tag);
             _contentReady = CreateCompletedContentReady();
             AccessibilityNavigationSignal.WritePageReady(pageType.Name);
             return;
@@ -857,10 +873,16 @@ internal sealed partial class SettingsShellView : UserControl
     {
         switch (ContentFrame.Content)
         {
-            case SessionsPage sessions: sessions.Initialize(); break;
+            case SessionsPage sessions:
+                // "agent:{id}:sessions" scopes the roster; the plain "sessions" route keeps the user's choice.
+                sessions.Initialize(_currentNavTag?.StartsWith("agent:", StringComparison.Ordinal) == true ? _currentAgentId : null);
+                break;
             case ConnectionPage connection: connection.Initialize(); break;
             case UsagePage usage: usage.Initialize(); break;
-            case CronPage cron: cron.Initialize(); break;
+            case CronPage cron:
+                cron.AgentId = _currentAgentId;
+                cron.Initialize();
+                break;
             case ConfigPage config:
                 try { config.Initialize(); }
                 catch (Exception ex)
@@ -869,6 +891,7 @@ internal sealed partial class SettingsShellView : UserControl
                 }
                 break;
             case SystemsPage systems: systems.Initialize(); break;
+            case DashboardsPage dashboards: dashboards.Initialize(this, _currentNavTag); break;
             case PermissionsPage: break;
             case SandboxPage sandbox: sandbox.Initialize(); break;
             case VoiceSettingsPage voice: voice.Initialize(CurrentApp.VoiceService); break;

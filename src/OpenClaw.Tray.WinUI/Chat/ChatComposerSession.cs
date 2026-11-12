@@ -23,6 +23,7 @@ public sealed class ChatComposerSession : IDisposable
     private long _inputRevision;
     private bool _hostVisible = true;
     private bool _composerVisible = true;
+    private bool _conversationVisible = true;
     private readonly ISettingsStore _settingsStore;
     private readonly SandboxStatusStore _sandboxStatus;
 
@@ -66,7 +67,7 @@ public sealed class ChatComposerSession : IDisposable
         if (Volatile.Read(ref _disposed) != 0) return;
         var previousThread = ViewModel.Inputs?.CurrentThread.Id;
         _composerVisible = inputs.IsVisible;
-        Controller.SetComposerVisible(_hostVisible && _composerVisible);
+        ApplyVisibility();
         ViewModel.ApplyInputs(inputs with
         {
             Revision = Interlocked.Increment(ref _inputRevision),
@@ -79,13 +80,22 @@ public sealed class ChatComposerSession : IDisposable
     internal void SetHostVisible(bool visible)
     {
         _hostVisible = visible;
-        Controller.SetComposerVisible(_hostVisible && _composerVisible);
+        ApplyVisibility();
         if (!visible)
         {
             ViewModel.SetVoiceTranscript(null);
             ViewModel.SetVoiceAudioLevel(0);
         }
     }
+
+    internal void SetConversationVisible(bool visible)
+    {
+        _conversationVisible = visible;
+        ApplyVisibility();
+    }
+
+    private void ApplyVisibility() =>
+        Controller.SetComposerVisible(_hostVisible && _composerVisible && _conversationVisible);
 
     /// <summary>Disposes the controller then the view model exactly once. Safe to
     /// call multiple times; repeated calls are a no-op.</summary>

@@ -33,7 +33,8 @@ internal enum HubPageKind
     Debug,
     Sessions,
     Cron,
-    Workspace
+    Workspace,
+    Dashboards
 }
 
 internal enum HubCommandActionKind
@@ -107,6 +108,7 @@ internal static class HubPageRegistry
             HubPageKind.Connection => ("HubWindow_NavigationViewItem_88.Content", FluentIconCatalog.Plug),
             HubPageKind.LocalAi => ("HubWindow_NavigationViewItem_LocalAi.Content", FluentIconCatalog.Inference),
             HubPageKind.Sessions => ("HubWindow_NavigationViewItem_91.Content", FluentIconCatalog.Sessions),
+            HubPageKind.Dashboards => ("HubWindow_NavDashboards.Content", FluentIconCatalog.Dashboard),
             HubPageKind.DefaultModel => ("HubWindow_NavigationViewItem_DefaultModel.Content", FluentIconCatalog.Settings),
             HubPageKind.Cron => ("HubWindow_NavigationViewItem_124.Content", FluentIconCatalog.Cron),
             HubPageKind.Workspace => ("WorkspacePage_TextBlock_22.Text", FluentIconCatalog.Workspace),
@@ -148,6 +150,10 @@ internal static class HubPageRegistry
         "Command_GoToChat_Subtitle",
         "Command_GoToSessions_Title",
         "Command_GoToSessions_Subtitle",
+        "Command_GoToDashboards_Title",
+        "Command_GoToDashboards_Subtitle",
+        "Command_OpenSessionDashboard_TitleFormat",
+        "Command_OpenSessionDashboard_Subtitle",
         "Command_GoToCron_Title",
         "Command_GoToCron_Subtitle",
         "Command_GoToWorkspace_Title",
@@ -217,6 +223,7 @@ internal static class HubPageRegistry
         "conversations" or "sessions" => HubPageKind.Sessions,
         "cron" => HubPageKind.Cron,
         "workspace" => HubPageKind.Workspace,
+        _ when DashboardsRoute.IsDashboardsTag(tag) => HubPageKind.Dashboards,
         _ when SystemsMachine(tag) is not null => HubPageKind.Systems,
         _ when tag?.StartsWith("agent:", StringComparison.Ordinal) == true => ResolveAgentPage(tag),
         _ => null
@@ -271,7 +278,8 @@ internal static class HubPageRegistry
             tag.Equals("config", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("usage", StringComparison.OrdinalIgnoreCase) ||
             tag.Equals("cron", StringComparison.OrdinalIgnoreCase) ||
-            tag.Equals("workspace", StringComparison.OrdinalIgnoreCase);
+            tag.Equals("workspace", StringComparison.OrdinalIgnoreCase) ||
+            DashboardsRoute.IsDashboardsTag(tag);
     }
 
     /// <summary>
@@ -279,7 +287,8 @@ internal static class HubPageRegistry
     /// last-known machines with its own disconnected state instead of bouncing to Connection.
     /// </summary>
     public static bool ShouldKeepCurrentPageVisibleDuringDisconnect(string? currentTag) =>
-        string.Equals(currentTag, "config", StringComparison.OrdinalIgnoreCase) || IsSystemsTag(currentTag);
+        ResolvePage(currentTag?.ToLowerInvariant()) is HubPageKind.Config or HubPageKind.Cron or HubPageKind.Systems ||
+        DashboardsRoute.IsDashboardsTag(currentTag);
 
     /// <summary>True for the Systems page, its legacy aliases and machine deep links.</summary>
     public static bool IsSystemsTag(string? tag) => ResolvePage(tag) == HubPageKind.Systems;
@@ -303,6 +312,7 @@ internal static class HubPageRegistry
         HubPageKind.Sessions => typeof(SessionsPage),
         HubPageKind.Cron => typeof(CronPage),
         HubPageKind.Workspace => typeof(WorkspacePage),
+        HubPageKind.Dashboards => typeof(DashboardsPage),
         _ => null
     };
 #endif
@@ -317,6 +327,7 @@ internal static class HubPageRegistry
         AddNavigation(commands, context, "AI", "Command_GoToDefaultModel", "model");
         AddNavigation(commands, context, "💬", "Command_GoToChat", "chat");
         AddNavigation(commands, context, "🧠", "Command_GoToSessions", "sessions");
+        AddNavigation(commands, context, "📊", "Command_GoToDashboards", DashboardsRoute.Tag);
         commands.Add(new HubCommand(
             "🧠",
             Format(context, "Command_GoToCron_Title", context.CurrentAgentId),
@@ -361,6 +372,11 @@ internal static class HubPageRegistry
                 $"Go to session: {sessionKey}",
                 "Open in dashboard",
                 HubCommandAction.OpenDashboard($"sessions/{sessionKey}")));
+            commands.Add(new HubCommand(
+                "📊",
+                Format(context, "Command_OpenSessionDashboard_TitleFormat", sessionKey),
+                Get(context, "Command_OpenSessionDashboard_Subtitle"),
+                HubCommandAction.Navigate(DashboardsRoute.ForSession(sessionKey))));
         }
 
         return commands.ToImmutable();

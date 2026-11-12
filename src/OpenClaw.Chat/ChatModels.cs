@@ -299,7 +299,7 @@ public record ChatThinkingEvent(string Text, string? RunId = null) : ChatEvent;
 public record ChatProgressEvent(string Text, long? RetryAtMs = null) : ChatEvent;
 public record ChatRunUsageEvent(string RunId, long OutputTokens, int Sequence) : ChatEvent;
 public record ChatReasoningEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null,
-    bool IsStreaming = false, bool AttachToAssistant = false) : ChatEvent;
+    bool IsStreaming = false, bool AttachToAssistant = false, bool ActivatesTurn = true) : ChatEvent;
 public record ChatReasoningDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
 public record ChatReasoningStreamEvent(string RunId, string ItemId, string Text, double StartedAtMs) : ChatEvent;
 public record ChatReasoningReceiptEvent(string RunId, string ItemId, string MessageRunId, string MessageId) : ChatEvent;
@@ -312,7 +312,7 @@ public record ChatReasoningReceiptEvent(string RunId, string ItemId, string Mess
 public record ChatReasoningEndEvent() : ChatEvent;
 public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false, bool IsStreaming = false,
     OpenClaw.Shared.ChatMessagePresentation? Presentation = null, bool IsContentPart = false,
-    bool ReplacesStreamText = false) : ChatEvent;
+    bool ReplacesStreamText = false, bool ActivatesTurn = true) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
 public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
@@ -328,7 +328,8 @@ public record ChatToolStartEvent(
     ChatToolInputDetails? InputDetails = null,
     ChatToolFeedback? Feedback = null,
     // Recorded wrapping call (Gateway parentToolCallId), distinct from ChatToolPresentationEvent.ParentToolCallId.
-    string? ParentCallId = null) : ChatEvent;
+    string? ParentCallId = null,
+    bool ActivatesTurn = true) : ChatEvent;
 public record ChatToolPresentationEvent(
     string ParentToolCallId,
     string ToolName,

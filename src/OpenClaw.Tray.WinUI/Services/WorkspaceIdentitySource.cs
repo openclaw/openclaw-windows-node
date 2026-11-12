@@ -47,6 +47,8 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
     /// <summary>The profile's first email for the account menu; never set for the shared owner.</summary>
     public string? Email { get; private set; }
 
+    private string? _firstName;
+
     /// <summary>Gateway-served avatar for the authenticated user; scoped to the current connection only and never persisted.</summary>
     public UserAvatarImage? Avatar { get; private set; }
 
@@ -80,19 +82,20 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
         IsSharedOwner = false;
         SharedOwnerName = null;
         Email = null;
+        _firstName = null;
         changed();
         return true;
     }
 
     /// <summary>
-    /// Footer label. As in the web Control UI, a shared owner with a saved name keeps the shared marker
-    /// beside it (never its email or profile id); an unnamed shared owner shows the marker alone, any other
-    /// profile shows its label, and no known profile shows Owner.
+    /// Footer label. A shared owner shows only its saved first name, never its email or profile id.
+    /// An unnamed shared owner shows Owner.
+    /// Other profiles show their first name, else their fallback label, and no known profile shows Owner.
     /// </summary>
-    public string FooterLabel(string owner, string sharedOwner, Func<string, string> namedSharedOwner) =>
+    public string FooterLabel(string owner) =>
         IsSharedOwner
-            ? SharedOwnerName is { } name ? namedSharedOwner(name) : sharedOwner
-            : DisplayName ?? owner;
+            ? _firstName ?? owner
+            : _firstName ?? DisplayName ?? owner;
 
     public Task RefreshAsync(bool invalidate = false)
     {
@@ -213,6 +216,7 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 IsSharedOwner = profile.ProfileId == GatewayOwnerProfileId;
                 SharedOwnerName = IsSharedOwner ? profile.SavedName : null;
                 Email = IsSharedOwner ? null : profile.Email;
+                _firstName = profile.SavedName?.Split((char[]?)null, 2, StringSplitOptions.RemoveEmptyEntries)[0];
                 var key = (profile.ProfileId, profile.AvatarRevision);
                 var refetch = _forceAvatar || key != _avatarKey;
                 if (key != _avatarKey)
@@ -246,6 +250,7 @@ internal sealed class WorkspaceIdentitySource(Action changed, Action<string> rep
                 IsSharedOwner = false;
                 SharedOwnerName = null;
                 Email = null;
+                _firstName = null;
                 Avatar = null;
                 _avatarKey = null;
                 var failure = Classify(ex);

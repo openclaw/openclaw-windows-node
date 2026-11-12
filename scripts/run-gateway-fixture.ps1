@@ -10,10 +10,12 @@ param(
     [Parameter(Mandatory)]
     [string]$AppPath,
     [string]$ArtifactsDirectory,
-    [ValidateSet('multi-session-browse', 'chat-interactive', 'context-usage-snapshots', 'systems-inventory', 'systems-empty')]
+    [ValidateSet('multi-session-browse', 'chat-interactive', 'automations', 'context-usage-snapshots', 'dashboards', 'usage-analytics', 'systems-inventory', 'systems-empty', 'sessions-hub', 'sessions-hub-readonly')]
     [string]$Scenario = 'multi-session-browse',
     [ValidateSet('streaming', 'chat-deltas', 'tools', 'tool-error', 'tool-powershell', 'agent-activity', 'question-choice', 'question-text', 'question-multi', 'approval', 'approval-deny-only', 'slow', 'send-error', 'stream-error', 'disconnect')]
     [string]$Interaction,
+    [ValidateSet('populated', 'empty', 'partial', 'legacy', 'released')]
+    [string]$UsageMode,
     [ValidateRange(0, 86400)]
     [int]$DurationSeconds = 0,
     [ValidateSet('Debug', 'Release')]
@@ -28,6 +30,10 @@ $hostArgs = @('--app', $resolvedApp, '--scenario', $Scenario, '--theme', $Theme)
 if ($Interaction) {
     if ($Scenario -ne 'chat-interactive') { throw '-Interaction requires -Scenario chat-interactive.' }
     $hostArgs += @('--interaction', $Interaction)
+}
+if ($UsageMode) {
+    if ($Scenario -ne 'usage-analytics') { throw '-UsageMode requires -Scenario usage-analytics.' }
+    $hostArgs += @('--usage-mode', $UsageMode)
 }
 if ($ArtifactsDirectory) {
     $hostArgs += @('--artifacts', [IO.Path]::GetFullPath($ArtifactsDirectory))

@@ -410,6 +410,7 @@ public sealed class InboxGatewaySourceTests
 
         Assert.Empty(source.Items);
         Assert.False(oldGateway.HasHandlers("PendingApprovalRequested"));
+        Assert.False(oldGateway.HasHandlers("CronEventReceived"));
     }
 
     [Fact]
@@ -433,6 +434,36 @@ public sealed class InboxGatewaySourceTests
         }));
 
         Assert.Empty(source.Items);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LateSchedulerStatusCannotHideOverdueJobsAfterDisconnectOrReplacement(bool replaceClient)
+    {
+        var (source, gateway) = Attach();
+        gateway.Reads["cron.status"] = () =>
+        {
+            // Finish the new epoch inside the old read. Returning an already-completed
+            // task then processes the stale response synchronously before the final assertion.
+            gateway.Reads.Remove("cron.status");
+            var current = replaceClient ? FakeGateway.Create() : gateway;
+            if (replaceClient)
+                source.AttachClient((IOperatorGatewayClient)current);
+            else
+                gateway.Raise("StatusChanged", ConnectionStatus.Disconnected);
+            current.Replies["cron.status"] = JsonSerializer.SerializeToElement(new { enabled = true });
+            current.Replies["cron.list"] = JsonSerializer.SerializeToElement(new
+            {
+                jobs = new[] { new { id = "current", enabled = true, state = new { nextRunAtMs = Ms(Start) - 3_600_000 } } },
+            });
+            current.Raise("StatusChanged", ConnectionStatus.Connected);
+            Assert.Equal(InboxGatewayItemKind.AutomationOverdue, Assert.Single(source.Items).Kind);
+            return Task.FromResult(JsonSerializer.SerializeToElement(new { enabled = false }));
+        };
+
+        gateway.Raise("StatusChanged", ConnectionStatus.Connected);
+        Assert.Equal(InboxGatewayItemKind.AutomationOverdue, Assert.Single(source.Items).Kind);
     }
 
     [Fact]

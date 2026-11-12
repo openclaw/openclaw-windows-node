@@ -13,6 +13,114 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
+    public async Task SidebarResize_KeepsDraftAndWidthAcrossCollapseAndWindowResize_AndLeavesRoomForContent(string theme)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme,
+            initialRoute: "sessions", agentIdentities: true);
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        var scale = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
+        var splitter = Find(root, "WorkspaceSidebarSplitter");
+        var navigation = Find(root, "WorkspaceNavigation");
+        var maximumWidth = Math.Floor(Math.Min(480, navigation.Current.BoundingRectangle.Width / scale - 480) / 8) * 8;
+        Assert.InRange(maximumWidth, 288, 480);
+        double PaneWidth() => (splitter.Current.BoundingRectangle.Right
+            - navigation.Current.BoundingRectangle.Left) / scale;
+        async Task ResizeToAsync(double width)
+        {
+            await FocusForKeyboardAsync(app, root, "WorkspaceSidebarSplitter");
+            while (Math.Abs(PaneWidth() - width) > 1)
+            {
+                var previous = PaneWidth();
+                var next = previous + Math.CopySign(8, width - previous);
+                System.Windows.Forms.SendKeys.SendWait(width > previous ? "{RIGHT}" : "{LEFT}");
+                await WaitUntilAsync(() => Math.Abs(PaneWidth() - next) <= 1,
+                    () => $"Sidebar width: expected {next}, actual {PaneWidth()}. " +
+                        $"Splitter focused: {splitter.Current.HasKeyboardFocus}; " +
+                        $"workspace foreground: {GetForegroundWindow() == app.HubWindowHandle}.");
+            }
+        }
+        async Task AssertWidthStaysAsync(double expected)
+        {
+            const int stableGeometryPolls = 5;
+            var polls = 0;
+            await WaitUntilAsync(() =>
+            {
+                Assert.InRange(PaneWidth(), expected - 1, expected + 1);
+                return ++polls >= stableGeometryPolls;
+            });
+        }
+        Assert.Equal("Resize sidebar", splitter.Current.Name);
+        Assert.True(splitter.Current.IsKeyboardFocusable);
+        Assert.InRange(PaneWidth(), 255, 257);
+        const string draft = "Keep this draft while resizing the sidebar";
+        ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+
+        await ResizeToAsync(288);
+        await ResizeToAsync(192);
+        System.Windows.Forms.SendKeys.SendWait("{LEFT}");
+        await AssertWidthStaysAsync(192);
+        var toggleBounds = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle;
+        var backBounds = Find(root, "WorkspaceBack").Current.BoundingRectangle;
+        var searchBounds = Find(root, "WorkspaceSearch").Current.BoundingRectangle;
+        Assert.True(backBounds.Left >= toggleBounds.Right, "Narrowing must not overlap the pane toggle and Back.");
+        Assert.True(searchBounds.Right <= splitter.Current.BoundingRectangle.Left + 1,
+            "The resize handle must not cover the Search button.");
+        foreach (var id in new[] { "WorkspacePagesCustomize", "WorkspaceSessionsAdd", "WorkspaceNotifications" })
+            Assert.True(Find(root, id).Current.BoundingRectangle.Right <= splitter.Current.BoundingRectangle.Left + 1,
+                $"The resize handle must not cover {id}.");
+        Assert.True(Find(root, "OwnerDetail").Current.BoundingRectangle.Height
+            <= Find(root, "OwnerName").Current.BoundingRectangle.Height + scale,
+            "The narrow sidebar must truncate its status rather than wrapping it onto multiple lines.");
+        Capture(app, theme, "sidebar-smaller");
+        await ResizeToAsync(maximumWidth);
+        System.Windows.Forms.SendKeys.SendWait("{RIGHT}");
+        await AssertWidthStaysAsync(maximumWidth);
+        Capture(app, theme, "sidebar-resized");
+
+        Invoke(Find(root, "WorkspaceTogglePane"));
+        await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane") && !IsVisible(root, "WorkspaceSidebarSplitter"));
+        Invoke(Find(root, "WorkspaceReopenPane"));
+        await WaitUntilAsync(() => IsVisible(root, "WorkspaceSidebarSplitter"));
+        Assert.InRange(PaneWidth(), maximumWidth - 1, maximumWidth + 1);
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+
+        Invoke(Find(root, "WorkspacePagesCustomize"));
+        await WaitUntilAsync(() => FindPopup(root, "WorkspacePagesToggle:connection") is not null);
+        ((TogglePattern)FindPopup(root, "WorkspacePagesToggle:connection")!
+            .GetCurrentPattern(TogglePattern.Pattern)).Toggle();
+        await WaitUntilAsync(() => IsVisible(root, "WorkspacePinnedPage:connection"));
+        ((SelectionItemPattern)Find(root, "WorkspacePinnedPage:connection")
+            .GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
+        await ResizeToAsync(Math.Min(320, maximumWidth - 8));
+        await WaitUntilAsync(() => Math.Abs(Find(root, "NavView").Current.BoundingRectangle.Left
+            - splitter.Current.BoundingRectangle.Right) <= scale);
+        await ResizeToAsync(200);
+        Assert.True(Find(root, "WorkspaceBack").Current.IsEnabled);
+        System.Windows.Forms.SendKeys.SendWait("%{LEFT}");
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        await ResizeToAsync(maximumWidth);
+
+        var window = (WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern);
+        window.SetWindowVisualState(WindowVisualState.Normal);
+        ((TransformPattern)root.GetCurrentPattern(TransformPattern.Pattern)).Resize(800 * scale, 700 * scale);
+        await WaitUntilAsync(() => Math.Abs(root.Current.BoundingRectangle.Width / scale - 800) <= 2);
+        await WaitUntilAsync(() => Math.Abs(PaneWidth()
+            - Math.Min(maximumWidth, navigation.Current.BoundingRectangle.Width / scale - 480)) <= 1);
+        var available = navigation.Current.BoundingRectangle.Width / scale;
+        Assert.InRange(PaneWidth(), 192, available - 479);
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        Capture(app, theme, "sidebar-resized-narrow", preserveWindowState: true);
+        window.SetWindowVisualState(WindowVisualState.Maximized);
+        await WaitUntilAsync(() => Math.Abs(PaneWidth() - maximumWidth) <= 1);
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
     public async Task OfflineAssistantMenuKeepsConnectionEntryWithoutEnablingSessionCreation(string theme)
     {
         using var app = new AccessibilityAppFixture(
@@ -251,9 +359,9 @@ public sealed class WorkspaceWindowProofTests
                     if (page is null || button is null) return false;
                     var pageInfo = page.Current;
                     var buttonInfo = button.Current;
-                    if (pageInfo.ProcessId != ownedProcessId || pageInfo.IsOffscreen ||
+                    if (!NativeUiOwnership.IsOwnedDescendant(root, page, ownedProcessId) || pageInfo.IsOffscreen ||
                         !HasVisibleBounds(pageInfo.BoundingRectangle) ||
-                        buttonInfo.ProcessId != ownedProcessId || buttonInfo.ControlType != ControlType.Button ||
+                        !NativeUiOwnership.IsOwnedDescendant(root, button, ownedProcessId) || buttonInfo.ControlType != ControlType.Button ||
                         buttonInfo.IsOffscreen || !HasVisibleBounds(buttonInfo.BoundingRectangle) ||
                         buttonInfo.IsEnabled != expectedEnabled)
                         return false;
@@ -298,11 +406,19 @@ public sealed class WorkspaceWindowProofTests
             .Select(window => window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsSearchBox")))
             .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
-        Invoke(Find(root, "SettingsSearch"));
-        await WaitUntilAsync(() => SearchBox() is not null);
-        var input = SearchBox()!;
-        Assert.Equal(ControlType.Edit, input.Current.ControlType);
-        await WaitUntilAsync(() => input.Current.HasKeyboardFocus);
+        async Task<AutomationElement> WaitForSearchInputAsync()
+        {
+            AutomationElement? observedInput = null;
+            // Retain the successful observation rather than racing another UIA tree lookup.
+            await WaitUntilAsync(() => (observedInput = SearchBox()) is not null);
+            var readyInput = observedInput!;
+            Assert.Equal(ControlType.Edit, readyInput.Current.ControlType);
+            await WaitUntilAsync(() => readyInput.Current.HasKeyboardFocus);
+            return readyInput;
+        }
+
+        await InvokeWhenEnabledAsync(root, "SettingsSearch");
+        var input = await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("Go to General");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
@@ -320,13 +436,13 @@ public sealed class WorkspaceWindowProofTests
             .All(item => item.Current.BoundingRectangle.Top >= toggle.Bottom));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
-        await WaitUntilAsync(() => SearchBox() is not null);
-        await WaitUntilAsync(() => SearchBox()!.Current.HasKeyboardFocus);
+        await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitUntilAsync(() => SearchBox() is not null);
+        await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Invoke(Find(root, "SettingsTogglePane"));
@@ -338,7 +454,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitUntilAsync(() => SearchBox() is not null);
+        await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
@@ -543,7 +659,10 @@ public sealed class WorkspaceWindowProofTests
             if (element is null) return false;
             var info = element.Current;
             var bounds = info.BoundingRectangle;
-            return info.ProcessId == workspaceProcessId && !info.IsOffscreen && info.IsEnabled &&
+            return (ReferenceEquals(element, workspace)
+                ? info.ProcessId == workspaceProcessId
+                : NativeUiOwnership.IsOwnedDescendant(workspace, element, workspaceProcessId)) &&
+                !info.IsOffscreen && info.IsEnabled &&
                 HasInboxBounds(viewport) && HasInboxBounds(bounds) && viewport.Contains(bounds);
         }
 
@@ -817,9 +936,13 @@ public sealed class WorkspaceWindowProofTests
         var scale = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
         Assert.InRange((customize.Top - initialHomeBounds.Top) / scale, -1, 4);
         Assert.True(customize.Right <= initialHomeBounds.Right + 1);
-        // NavigationViewItemSeparator is decorative and has no automation peer.
-        // Its native spacing separates Home from the first and only section header.
-        Assert.InRange((sessionsHeader.Top - initialHomeBounds.Bottom) / scale, 4, 48);
+        var defaultPin = Find(workspaceElement, "WorkspacePinnedPage:dashboards");
+        Assert.Equal(pid, defaultPin.Current.ProcessId);
+        Assert.False(defaultPin.Current.IsOffscreen);
+        var defaultPinBounds = defaultPin.Current.BoundingRectangle;
+        Assert.InRange((defaultPinBounds.Top - initialHomeBounds.Bottom) / scale, -1, 8);
+        // The decorative separator follows the default pin, not Home. Keep the same gap contract.
+        Assert.InRange((sessionsHeader.Top - defaultPinBounds.Bottom) / scale, 4, 48);
         foreach (var obsolete in new[] { "Pages", "Pin pages here with the customize button." })
             Assert.Null(workspaceElement.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.NameProperty, obsolete)));
@@ -922,7 +1045,12 @@ public sealed class WorkspaceWindowProofTests
         ((WindowPattern)timeline.GetCurrentPattern(WindowPattern.Pattern)).Close();
         Assert.NotNull(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
 
-        var nativeNavigation = Find(workspaceElement, "WorkspaceNavigation");
+        AutomationElement? observedNavigation = null;
+        // Retain the successful observation while UIA settles after the secondary window closes.
+        await WaitUntilAsync(() =>
+            (observedNavigation = FindOrNull(workspaceElement, "WorkspaceNavigation")) is not null,
+            () => "Workspace navigation did not return after closing the connection timeline.");
+        var nativeNavigation = observedNavigation!;
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
         var clear = FindPopup(workspaceElement, "WorkspaceNotificationsClear");
@@ -1306,11 +1434,11 @@ public sealed class WorkspaceWindowProofTests
                 "TestResults", "WorkspaceProof")
             : null);
 
-    private static void Capture(AccessibilityAppFixture app, string theme, string page)
+    private static void Capture(AccessibilityAppFixture app, string theme, string page, bool preserveWindowState = false)
     {
         var directory = ProofDirectory;
         if (string.IsNullOrEmpty(directory)) return;
         using var environment = new EnvironmentScope("OPENCLAW_UI_SCREENSHOT_PATH", Path.Combine(directory, $"{theme}-{page}.png"));
-        app.CaptureHubScreenshotIfRequested();
+        app.CaptureHubScreenshotIfRequested(preserveWindowState);
     }
 }

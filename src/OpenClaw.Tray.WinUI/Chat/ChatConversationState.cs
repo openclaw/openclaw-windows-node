@@ -944,7 +944,7 @@ internal sealed class ChatConversationState
                     StaleRunIdToAbort: staleRunId,
                     BindAcceptedRun: false,
                     RequeueRequired: false,
-                    RetryDeferredSend: false,
+                    ScheduleQueueDrain: false,
                     DeferredRetryDelay: ChatSendQueuePolicy.DrainDelay,
                     OpenedLifecycle: null,
                     CurrentRuntimeGenerationLocked(threadId));
@@ -955,7 +955,7 @@ internal sealed class ChatConversationState
             ChatOpenedLifecycleTransition? openedLifecycle = null;
             var bindAcceptedRun = false;
             var requeueRequired = false;
-            var retryDeferredSend = false;
+            var scheduleQueueDrain = false;
             var deferredRetryDelay = ChatSendQueuePolicy.DrainDelay;
             if (ChatSendQueuePolicy.IsDeferredAdmissionStatus(sendResult.Status))
             {
@@ -1001,7 +1001,7 @@ internal sealed class ChatConversationState
                                 acceptedRunId);
                     }
                     requeuedSnapshot = BuildSnapshotLocked(context);
-                    retryDeferredSend = true;
+                    scheduleQueueDrain = true;
                 }
                 else if (dispatch.StartedDirectly)
                 {
@@ -1022,10 +1022,20 @@ internal sealed class ChatConversationState
                         threadId,
                         acceptedRunId,
                         dispatch.StartedRunStartSequence);
-                if (PromoteQueuedMessageLocked(threadId, request.Id))
-                    acceptedSnapshot = BuildSnapshotLocked(context);
-                else if (runAlreadyStarted)
+                var completedRunId = _lifecycle.IsTerminalRun(threadId, acceptedRunId)
+                    ? acceptedRunId : null;
+                var promoted = PromoteQueuedMessageLocked(
+                    threadId, request.Id, completedRunId: completedRunId);
+                if (completedRunId is not null)
+                {
                     _queue.RemoveRunMappingByMessageId(threadId, request.Id);
+                    ClearLocallyInitiatedIfIdleLocked(threadId);
+                    scheduleQueueDrain = true;
+                }
+                else if (!promoted && runAlreadyStarted)
+                    _queue.RemoveRunMappingByMessageId(threadId, request.Id);
+                if (promoted)
+                    acceptedSnapshot = BuildSnapshotLocked(context);
             }
             else if (_reset.IsAwaitingUserMessage(threadId))
             {
@@ -1055,7 +1065,7 @@ internal sealed class ChatConversationState
                 StaleRunIdToAbort: null,
                 bindAcceptedRun,
                 requeueRequired,
-                retryDeferredSend,
+                scheduleQueueDrain,
                 deferredRetryDelay,
                 openedLifecycle,
                 CurrentRuntimeGenerationLocked(threadId));
@@ -1271,7 +1281,8 @@ internal sealed class ChatConversationState
     private bool PromoteQueuedMessageLocked(
         string threadId,
         string messageId,
-        ChatEntryMetadata? confirmedMeta = null)
+        ChatEntryMetadata? confirmedMeta = null,
+        string? completedRunId = null)
     {
         var request = _queue.FindRequest(threadId, messageId);
         if (!_queue.TryTakeForPromotion(threadId, messageId, out var queued))
@@ -1279,11 +1290,34 @@ internal sealed class ChatConversationState
 
         var current = GetOrCreateTimelineLocked(threadId);
         var entryId = $"e{current.NextId}";
-        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
+        var promoted = ChatTimelineReducer.AddLocalUser(
             current,
             request?.EffectiveTimelineText ?? queued.Text,
             queued.LocalNonce,
             current.TurnStartedAt ?? DateTimeOffset.UtcNow);
+        if (completedRunId is not null)
+        {
+            var index = current.Entries.Count;
+            var metadata = GetOrCreateThreadMetaLocked(threadId);
+            for (var i = 0; i < current.Entries.Count; i++)
+            {
+                var entry = current.Entries[i];
+                if (entry.ToolRunId == completedRunId ||
+                    metadata.TryGetValue(entry.Id, out var existing) && existing.LiveRunId == completedRunId)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            // A late admission adds the local echo, not a new turn or a boundary in a newer run.
+            promoted = current with
+            {
+                Entries = current.Entries.Insert(index, promoted.Entries[^1]),
+                NextId = promoted.NextId,
+                LocalNonces = promoted.LocalNonces,
+            };
+        }
+        _timelines[threadId] = promoted;
         var meta = confirmedMeta is not null && HasGatewayIdentity(confirmedMeta)
             ? confirmedMeta with
             {
@@ -1848,7 +1882,7 @@ internal sealed class ChatConversationState
         }
     }
 
-    internal string? GetActiveReasoningForFinal(string threadId, string? runId)
+    private string? GetActiveReasoningForFinal(string threadId, string? runId)
     {
         lock (_gate)
         {
@@ -1860,23 +1894,31 @@ internal sealed class ChatConversationState
         }
     }
 
-    internal ChatAssistantPreparation PrepareAssistant(
+    internal ChatAssistantTransition ApplyAssistant(
         ChatMessageInfo message,
         string assistantText,
         ChatProjectionContext context,
+        ChatRuntimeGeneration generation,
         ChatAssistantContentPresentation? assistantContent = null)
     {
         var threadId = message.SessionKey!;
         lock (_gate)
         {
+            if (!IsRuntimeGenerationCurrent(threadId, generation) ||
+                _lifecycle.IsCancelledRun(message.RunId) ||
+                _lifecycle.IsThreadSuppressed(threadId) ||
+                !message.IsFinal && IsTerminalRunDuringNewerTurnLocked(threadId, message.RunId))
+            {
+                return new(false, true, null, null, null, false);
+            }
             _lifecycle.TryGetActiveRun(threadId, out var activeRunId);
-            var backgroundFinal = message.IsFinal && !string.IsNullOrWhiteSpace(message.RunId) &&
+            var isFinal = message.IsFinal;
+            var backgroundFinal = isFinal && !string.IsNullOrWhiteSpace(message.RunId) &&
                 (activeRunId is not null && !string.Equals(activeRunId, message.RunId, StringComparison.Ordinal) ||
                  IsTerminalRunDuringNewerTurnLocked(threadId, message.RunId));
-            if (message.IsFinal && !string.IsNullOrWhiteSpace(message.RunId) &&
+            if (isFinal && !string.IsNullOrWhiteSpace(message.RunId) &&
                 IsBackgroundFinalRetransmitLocked(message, assistantText, assistantContent))
-                return new(AssistantQueueFrameDisposition.Drop, null,
-                    BuildLiveMetaLocked(threadId), activeRunId, true, null);
+                return new(false, true, null, activeRunId, null, false);
             // Identityless media-only frames bypass text classification after
             // background retransmissions have been checked against run and media.
             var disposition = assistantText.Length == 0 &&
@@ -1890,16 +1932,21 @@ internal sealed class ChatConversationState
                     message.OpenClawId,
                     message.OpenClawSeq,
                     allowSnapshotRefinement: message.IsFinal && IsCurrentSnapshotRefinementLocked(message));
-            ChatDataSnapshot? promotionSnapshot = null;
-            if (disposition == AssistantQueueFrameDisposition.Render &&
-                !backgroundFinal &&
+            if (disposition != AssistantQueueFrameDisposition.Render)
+                return new(false, backgroundFinal, null, activeRunId, null, false);
+            if (!isFinal && IsLateNonFinalAssistantFrame(threadId))
+            {
+                Logger.Warn($"[ChatProvider] Dropping late non-final assistant frame after completed turn for threadId='{threadId}' len={assistantText.Length}");
+                return new(false, true, null, activeRunId, null, false);
+            }
+            if (!backgroundFinal &&
+                (!message.IsTranscriptSnapshot || isFinal) &&
                 _queue.IsLocallyInitiated(threadId) &&
                 _queue.TryGetSingleSendingMessage(threadId, out var queued) &&
                 !_lifecycle.HasActiveRun(threadId) &&
-                !_queue.IsAssistantFallbackPromoted(threadId) &&
-                PromoteQueuedMessageLocked(threadId, queued.Id))
+                !_queue.IsAssistantFallbackPromoted(threadId))
             {
-                promotionSnapshot = BuildSnapshotLocked(context);
+                PromoteQueuedMessageLocked(threadId, queued.Id);
             }
 
             var metadata = BuildLiveMetaLocked(
@@ -1907,7 +1954,11 @@ internal sealed class ChatConversationState
                 message.Ts,
                 message.OpenClawId,
                 message.OpenClawSeq,
-                assistantContent: assistantContent) with { Presentation = message.Presentation };
+                assistantContent: assistantContent) with
+                {
+                    Presentation = message.Presentation,
+                    LiveRunId = message.RunId ?? activeRunId,
+                };
             var hasUsage = message.InputTokens is not null ||
                            message.OutputTokens is not null ||
                            message.ResponseTokens is not null ||
@@ -1926,14 +1977,112 @@ internal sealed class ChatConversationState
                         : metadata.ContextTokens,
                 };
             }
-            ChatDataSnapshot? backgroundSnapshot = null;
-            if (backgroundFinal && disposition == AssistantQueueFrameDisposition.Render)
+            if (backgroundFinal)
             {
                 metadata = metadata with { BackgroundFinalRunId = message.RunId };
                 ApplyEventLocked(threadId, new ChatBackgroundFinalEvent(assistantText), metadata);
-                backgroundSnapshot = BuildSnapshotLocked(context);
+                return new(false, true, BuildSnapshotLocked(context), activeRunId, null, false);
             }
-            return new(disposition, promotionSnapshot, metadata, activeRunId, backgroundFinal, backgroundSnapshot);
+
+            var timeline = GetOrCreateTimelineLocked(threadId);
+            // End preserves a streaming frontier for late-final merging. That
+            // presentation flag must not grant a snapshot a new execution turn.
+            var reconcileCompleted = !timeline.TurnActive && activeRunId is null &&
+                (timeline.TurnEndedAt is not null ||
+                 _lifecycle.IsTerminalRun(threadId, message.RunId) ||
+                 timeline.Entries.LastOrDefault() is { Kind: ChatTimelineItemKind.Assistant });
+            ApplyAssistantContentLocked(message, assistantText, metadata,
+                activatesTurn: !message.IsTranscriptSnapshot && !reconcileCompleted);
+            SnapshotAssistantUsageFrameLocked(threadId, metadata);
+            string? completedRunId = null;
+            if (isFinal)
+            {
+                completedRunId = _lifecycle.CompleteAssistantFinal(threadId, message.RunId);
+                _reset.CompleteRun(threadId, completedRunId);
+                if (!_queue.HasSendingMessages(threadId))
+                    _queue.ClearLocallyInitiated(threadId);
+                var session = _presentation.ResolveSessionForThread(threadId, context.MainSessionKey);
+                if (session is not null)
+                    SnapshotLatestAssistantUsageLocked(session, threadId, authoritative: false);
+                ApplyEventLocked(threadId, new ChatTurnEndEvent(), metadata: null);
+            }
+            return new(true, message.IsTranscriptSnapshot && !isFinal, BuildSnapshotLocked(context), activeRunId, completedRunId, isFinal);
+        }
+    }
+
+    private void ApplyAssistantContentLocked(
+        ChatMessageInfo message,
+        string assistantText,
+        ChatEntryMetadata metadata,
+        bool activatesTurn)
+    {
+        var threadId = message.SessionKey;
+        var activeReasoning = message.IsFinal &&
+            !message.ContentParts.Any(part => part.Kind == ChatMessageContentPartKind.Reasoning)
+                ? GetActiveReasoningForFinal(threadId, message.RunId) : null;
+        if (message.ContentParts.Any(part => part.Phase is not null || part.TextSignatureId is not null ||
+                part.Kind is ChatMessageContentPartKind.Tool or ChatMessageContentPartKind.Reasoning))
+        {
+            foreach (var part in ChatHistoryReplayProjection.Project([message]).OrderBy(part => part.IsReasoning))
+            {
+                var partMetadata = metadata with
+                {
+                    Presentation = part.Presentation,
+                    AssistantContent = ChatAssistantContentProjector.Project(part.AssistantContentParts),
+                };
+                if (part.IsReasoning)
+                {
+                    if (message.IsFinal)
+                    {
+                        ApplyEventLocked(threadId,
+                            new ChatReasoningEvent(ChatContentFormatting.TruncateForChatEntry(part.Text),
+                                part.Presentation, AttachToAssistant: true, ActivatesTurn: activatesTurn),
+                            partMetadata);
+                        ApplyEventLocked(threadId, new ChatReasoningEndEvent(), null);
+                    }
+                    continue;
+                }
+                if (!ChatMessageInfo.IsSilentAssistantDirective(message.Role, part.Text) &&
+                    (part.Text.Length > 0 || partMetadata.AssistantContent is not null))
+                {
+                    ApplyEventLocked(threadId,
+                        new ChatMessageEvent(
+                            ChatContentFormatting.RepairContentBlockSeams(
+                                ChatContentFormatting.TruncateForChatEntry(part.Text)),
+                            ReconcilePrevious: true, IsStreaming: !message.IsFinal,
+                            Presentation: part.Presentation, IsContentPart: true,
+                            ReplacesStreamText: message.ReplacesStreamText && part.IsFirstPart,
+                            ActivatesTurn: activatesTurn),
+                        partMetadata);
+                }
+                foreach (var tool in part.ToolContent)
+                {
+                    foreach (var toolEvent in ChatEventMapper.MapContentTool(tool,
+                        message.Presentation.RunId ?? message.RunId, _history.ResolveSessionId(threadId)))
+                    {
+                        var mapped = toolEvent is ChatToolStartEvent start
+                            ? start with { ActivatesTurn = activatesTurn }
+                            : toolEvent;
+                        ApplyEventLocked(threadId, ChatContentFormatting.TruncateChatEvent(mapped), partMetadata);
+                    }
+                }
+            }
+        }
+        else
+        {
+            ApplyEventLocked(threadId,
+                new ChatMessageEvent(assistantText, ReconcilePrevious: true, IsStreaming: !message.IsFinal,
+                    Presentation: message.Presentation, ReplacesStreamText: message.ReplacesStreamText,
+                    ActivatesTurn: activatesTurn),
+                metadata);
+        }
+        if (activeReasoning is not null)
+        {
+            ApplyEventLocked(threadId,
+                new ChatReasoningEvent(activeReasoning, message.Presentation with { Phase = null },
+                    AttachToAssistant: true, ActivatesTurn: activatesTurn),
+                metadata);
+            ApplyEventLocked(threadId, new ChatReasoningEndEvent(), null);
         }
     }
 
@@ -1960,18 +2109,6 @@ internal sealed class ChatConversationState
         _timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive &&
         (!_lifecycle.TryGetActiveRun(threadId, out var activeRunId) ||
          !string.Equals(activeRunId, runId, StringComparison.Ordinal));
-
-    internal string? CompleteAssistantFinal(string threadId)
-    {
-        lock (_gate)
-        {
-            var completedRunId = _lifecycle.CompleteAssistantFinal(threadId);
-            _reset.CompleteRun(threadId, completedRunId);
-            if (!_queue.HasSendingMessages(threadId))
-                _queue.ClearLocallyInitiated(threadId);
-            return completedRunId;
-        }
-    }
 
     internal string? ResolveAgentEventThread(AgentEventInfo evt)
     {
@@ -2039,7 +2176,7 @@ internal sealed class ChatConversationState
                         ChatContentFormatting.TruncateChatEvent(mapped),
                         BuildLiveMetaLocked(
                             threadId,
-                            evt.Ts > 0 ? (long)evt.Ts : 0));
+                            evt.Ts > 0 ? (long)evt.Ts : 0) with { LiveRunId = evt.RunId });
                     toolMetadata = BuildToolMetadataWriteLocked(
                         threadId,
                         mapped,
@@ -2210,8 +2347,8 @@ internal sealed class ChatConversationState
         // close the permission it left pending; it cannot add requests or output.
         // Normally completed runs may still repair retained, identity-matched tools.
         if ((_lifecycle.IsRetiredCancelledRun(evt.RunId) ||
-             IsTerminalRunDuringNewerTurnLocked(threadId, evt.RunId) &&
-             !IsRetainedTerminalToolOutcomeLocked(evt, threadId)) &&
+             _lifecycle.IsTerminalRun(threadId, evt.RunId) &&
+             !CanApplyTerminalUpdateLocked(evt, threadId)) &&
             !IsPendingTerminalApprovalLocked(evt, threadId, out _) ||
             ChatEventMapper.IsLifecycleStart(evt) && _lifecycle.IsRunAborted(evt.RunId))
         {
@@ -2236,10 +2373,16 @@ internal sealed class ChatConversationState
             openedLifecycle);
     }
 
-    private bool IsRetainedTerminalToolOutcomeLocked(AgentEventInfo evt, string threadId) =>
-        !_lifecycle.IsCancelledRun(evt.RunId) &&
-        _timelines.TryGetValue(threadId, out var timeline) &&
-        ChatTimelineReducer.CanApplyRetainedToolOutcome(timeline, ChatEventMapper.Map(evt).Event);
+    private bool CanApplyTerminalUpdateLocked(AgentEventInfo evt, string threadId)
+    {
+        if (_lifecycle.IsCancelledRun(evt.RunId) ||
+            !_timelines.TryGetValue(threadId, out var timeline))
+            return false;
+        var mapped = ChatEventMapper.Map(evt).Event;
+        return ChatTimelineReducer.CanApplyRetainedToolEvent(timeline, mapped) ||
+            !timeline.TurnActive && mapped is ChatRunUsageEvent usage &&
+            timeline.RunUsage?.RunId == usage.RunId;
+    }
 
     private ChatRunTransition UpdateRunTrackingLocked(
         AgentEventInfo evt,
@@ -2490,22 +2633,6 @@ internal sealed class ChatConversationState
                    string.Equals(value, "error", StringComparison.OrdinalIgnoreCase);
         }
         return false;
-    }
-
-    internal ChatDataSnapshot? SnapshotLatestAssistantUsage(
-        string threadId,
-        ChatProjectionContext context)
-    {
-        lock (_gate)
-        {
-            var session = _presentation.ResolveSessionForThread(
-                threadId,
-                context.MainSessionKey);
-            return session is not null &&
-                   SnapshotLatestAssistantUsageLocked(session, threadId, authoritative: false)
-                ? BuildSnapshotLocked(context)
-                : null;
-        }
     }
 
     internal ChatDataSnapshot? SnapshotAssistantUsageFrame(
@@ -2899,6 +3026,8 @@ internal sealed class ChatConversationState
             return;
         }
         var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
+        var liveAssistantId = metadata.LiveRunId is null ? null :
+            next.Entries.LastOrDefault(entry => entry.Kind == ChatTimelineItemKind.Assistant)?.Id;
         foreach (var entry in next.Entries)
         {
             if (!beforeIds.Contains(entry.Id) && !threadMetadata.ContainsKey(entry.Id))
@@ -2910,6 +3039,11 @@ internal sealed class ChatConversationState
                 (entry.ToolCallId == tool.ToolCallId || entry.ToolCorrelationIds?.Contains(tool.ToolCallId) == true) &&
                 threadMetadata.TryGetValue(entry.Id, out var existing))
                 threadMetadata[entry.Id] = existing with { Presentation = metadata.Presentation };
+            else if (metadata.LiveRunId is not null &&
+                entry.Id == liveAssistantId &&
+                !Equals(current.Entries.FirstOrDefault(previous => previous.Id == entry.Id), entry) &&
+                threadMetadata.TryGetValue(entry.Id, out var existingAssistant))
+                threadMetadata[entry.Id] = existingAssistant with { LiveRunId = metadata.LiveRunId };
         }
 
         // Streaming assistant frames reconcile into the SAME entry id

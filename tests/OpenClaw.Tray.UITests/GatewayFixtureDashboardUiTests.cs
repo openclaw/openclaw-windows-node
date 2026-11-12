@@ -149,7 +149,7 @@ public sealed partial class GatewayFixtureUiTests
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false }
-                && FindById(run, OwnerButtonId)?.Current.Name == "Fixture Owner",
+                && FindById(run, OwnerButtonId)?.Current.Name == "Fixture",
                 "Workspace chat with the authenticated owner");
 
             await run.InvokeAsync("app.navigate", new { page = ChannelsRoute });

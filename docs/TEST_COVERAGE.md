@@ -94,9 +94,10 @@ test sequence without collecting a memory dump; it is not retried or skipped.
 
 ### OpenClaw.Tray.Tests
 
-The composer lifetime-disposal lock regression uses dedicated workers so its
-two-second reentrancy assertion measures controller lock ownership rather than
-shared thread-pool scheduling latency.
+The composer lifetime- and voice-disposal reentrancy regressions use dedicated
+workers so their bounded reentrancy assertions (`OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS`,
+default 10 s) measure controller lock ownership rather than shared thread-pool
+scheduling latency.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
@@ -202,11 +203,24 @@ routes and capture screenshots. Credentials are sent through local CDP, not
 browser command-line arguments; only the test's synthetic session is deleted.
 Browser profile storage is excluded from collected artifacts; only its
 screenshots and bounded proof outcomes are retained.
+The browser helper discovers the initial `about:blank` page through the owned
+loopback debugger's `/json/list` endpoint and connects directly to that page.
+It does not create another target through the browser-level WebSocket. Startup
+failures report the stage, elapsed time, process state, stderr character count
+and exception type, never raw Edge output or debugger URLs.
 The existing fixture owns Gateway and profile teardown. This is a real released
 WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
 The run's `gateway-release.json`, result report and screenshots identify actual
 execution; compilation or a locally gated skip is not successful runtime proof.
 Local execution still requires the existing WSL E2E runtime authority.
+
+For browser-only startup proof, set `OPENCLAW_RUN_E2E=1` and run
+`dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj --filter FullyQualifiedName~SetupAndConnectTestsBrowserStartup`.
+This class does not use the setup fixture or provision a Gateway. Its native
+smoke owns one temporary Edge process/profile and verifies page evaluation and
+PNG capture; discovery tests cover readiness, cancellation and endpoint
+isolation. The hosted setup/connect filter includes this class. This is not
+authenticated Dashboard route proof.
 
 Capacity-dependent Windows validation is named in
 [`PROOF_POOLS.md`](./PROOF_POOLS.md). Pull requests declare the exact pool IDs
