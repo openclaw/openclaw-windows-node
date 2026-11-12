@@ -95,6 +95,50 @@ public class GatewayErrorClassifierTests
     }
 
     [Theory]
+    [InlineData(54012)]
+    [InlineData(54290)]
+    [InlineData(55001)]
+    [InlineData(55020)]
+    [InlineData(55030)]
+    [InlineData(401)]
+    [InlineData(429)]
+    [InlineData(500)]
+    [InlineData(502)]
+    [InlineData(503)]
+    public void Classify_RefusedEndpointPort_IsNetwork(int port)
+    {
+        var error = $"No connection could be made because the target machine actively refused it. (127.0.0.1:{port})";
+
+        Assert.Equal(GatewayErrorKind.Network, GatewayErrorClassifier.Classify(error));
+    }
+
+    [Theory]
+    [InlineData("HTTP 401", GatewayErrorKind.Auth)]
+    [InlineData("HTTP 429", GatewayErrorKind.RateLimited)]
+    [InlineData("HTTP 500", GatewayErrorKind.Server)]
+    [InlineData("HTTP 502", GatewayErrorKind.Server)]
+    [InlineData("HTTP 503", GatewayErrorKind.Server)]
+    [InlineData("status code: 401", GatewayErrorKind.Auth)]
+    [InlineData("status code: 429", GatewayErrorKind.RateLimited)]
+    [InlineData("status code: 500", GatewayErrorKind.Server)]
+    [InlineData("status code: 502", GatewayErrorKind.Server)]
+    [InlineData("status code: 503", GatewayErrorKind.Server)]
+    [InlineData("HTTP:401", GatewayErrorKind.Auth)]
+    [InlineData("status:429", GatewayErrorKind.RateLimited)]
+    [InlineData("status code:500", GatewayErrorKind.Server)]
+    [InlineData("status code=502", GatewayErrorKind.Server)]
+    [InlineData("status:503", GatewayErrorKind.Server)]
+    [InlineData("The server returned status code '401' when status code '101' was expected.", GatewayErrorKind.Auth)]
+    [InlineData("The server returned status code '429' when status code '101' was expected.", GatewayErrorKind.RateLimited)]
+    [InlineData("The server returned status code '500' when status code '101' was expected.", GatewayErrorKind.Server)]
+    [InlineData("The server returned status code '502' when status code '101' was expected.", GatewayErrorKind.Server)]
+    [InlineData("The server returned status code '503' when status code '101' was expected.", GatewayErrorKind.Server)]
+    public void Classify_HttpStatus_IsActionable(string error, GatewayErrorKind expected)
+    {
+        Assert.Equal(expected, GatewayErrorClassifier.Classify(error));
+    }
+
+    [Theory]
     [InlineData("rate limit exceeded")]
     [InlineData("429 Too Many Requests")]
     [InlineData("too many requests, slow down")]

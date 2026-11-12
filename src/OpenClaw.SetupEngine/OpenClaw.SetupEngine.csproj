@@ -5,14 +5,37 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>OpenClaw.SetupEngine</RootNamespace>
+    <RequireSignedCleanupHost Condition="'$(RequireSignedCleanupHost)' == '' and '$(Configuration)' == 'Release' and '$(DevBuild)' != 'true'">true</RequireSignedCleanupHost>
   </PropertyGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="GatewayPackageCleanup.ps1" />
+    <EmbeddedResource Include="GatewayPackageCleanup.Task.ps1" />
+    <ProjectReference Include="..\OpenClaw.GatewayCleanupHost\OpenClaw.GatewayCleanupHost.csproj"
+                      Condition="'$(OpenClawSignedCleanupHostPath)' == ''"
+                      ReferenceOutputAssembly="false" OutputItemType="EmbeddedResource"
+                      LogicalName="OpenClaw.SetupEngine.GatewayCleanupHost.exe"
+                      SkipGetTargetFrameworkProperties="true"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishAot;PublishTrimmed" />
+    <EmbeddedResource Include="$(OpenClawSignedCleanupHostPath)"
+                      Condition="'$(OpenClawSignedCleanupHostPath)' != ''"
+                      LogicalName="OpenClaw.SetupEngine.GatewayCleanupHost.exe" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.Tests" />
     <InternalsVisibleTo Include="OpenClaw.SetupEngine.UI" />
     <ProjectReference Include="..\OpenClaw.Connection\OpenClaw.Connection.csproj" />
     <ProjectReference Include="..\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
+
+  <Target Name="ValidateCleanupHostSigningInput" BeforeTargets="PrepareResources">
+    <Error Condition="'$(RequireSignedCleanupHost)' == 'true' and '$(OpenClawSignedCleanupHostPath)' == ''"
+           Text="Signed releases require OpenClawSignedCleanupHostPath. Sign the cleanup EXE before building SetupEngine; signing the outer DLL cannot sign an embedded executable." />
+    <Exec Condition="'$(OpenClawSignedCleanupHostPath)' != ''"
+          Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\scripts\Test-CleanupHostSignature.ps1&quot; -HostPath &quot;$(OpenClawSignedCleanupHostPath)&quot; -RequireSigned" />
+  </Target>
+
+  <Target Name="VerifyEmbeddedCleanupHost" AfterTargets="Build"
+          Condition="'$(OpenClawSignedCleanupHostPath)' != ''">
+    <Exec Command="pwsh -NoProfile -File &quot;$(MSBuildThisFileDirectory)..\..\scripts\Test-CleanupHostSignature.ps1&quot; -HostPath &quot;$(OpenClawSignedCleanupHostPath)&quot; -AssemblyPath &quot;$(TargetPath)&quot; -RequireSigned" />
+  </Target>
 
 </Project>

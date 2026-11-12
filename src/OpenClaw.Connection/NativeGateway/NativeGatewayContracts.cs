@@ -25,6 +25,12 @@ public sealed record IsolatedGatewayConfiguration(int Port, string Token);
 public sealed record IsolatedGatewayListener(
     int Port, int ProcessId, DateTime ProcessStartTimeUtc, ulong SequenceNumber);
 
+public sealed record IsolatedGatewayLaunch(string AttemptId, string? Disposition = null);
+
+/// <summary>A conditional stop was refused; it must never fall back to an unconditional stop.</summary>
+public sealed class NativeGatewayLaunchOwnershipException(string reason)
+    : InvalidOperationException($"The Gateway package refused attempt-owned cleanup ({reason}). No unconditional stop was requested.");
+
 public sealed record IsolatedGatewayStatus(
     string State,
     int? Port,
@@ -32,7 +38,25 @@ public sealed record IsolatedGatewayStatus(
     IReadOnlyList<IsolatedGatewayListener> Listeners,
     string? SessionState = null,
     string? ReadinessState = null,
-    string? ReadinessReason = null);
+    string? ReadinessReason = null)
+{
+    public bool SupportsLaunchReceipts { get; init; }
+    public IsolatedGatewayLaunch? Launch { get; init; }
+
+    /// <summary>Display-safe summary: lifecycle states are validated sets; a reason is kept only when it is a token-shaped code.</summary>
+    public string Describe()
+    {
+        var text = $"gateway {State}, session {SessionState ?? "unreported"}, readiness {ReadinessState ?? "unreported"}";
+        return ReadinessReason is { } reason && IsReasonCode(reason) ? $"{text} ({reason})" : text;
+    }
+
+    private static bool IsReasonCode(string value) =>
+        value.Length is > 0 and <= 64 && value[0] != '-' &&
+        value.All(c => c is (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-');
+}
+
+/// <summary>The package's redacted diagnostics ZIP as reported by <c>clawctl collect-logs --json</c>.</summary>
+public sealed record NativeGatewayDiagnosticsBundle(string? Path, string Included, IReadOnlyList<string> Notes);
 
 /// <summary>No matching trusted package is registered. Other validation failures are not install requests.</summary>
 public sealed class NativeGatewayPackageNotInstalledException : InvalidOperationException

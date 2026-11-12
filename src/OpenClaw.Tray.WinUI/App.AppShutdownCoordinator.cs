@@ -88,7 +88,11 @@ public partial class App
         // and withdraw before that owner is disconnected, even when the Gateway stays running.
         var localAiLifecycle = _localAiGatewayLifecycle;
         if (localAiLifecycle is not null)
-            steps.Add(new AppShutdownStep("local AI recovery", async () => await localAiLifecycle.DrainRecoveryAsync()));
+            steps.Add(new AppShutdownStep("local AI recovery", async () =>
+            {
+                _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.Drain);
+                await localAiLifecycle.DrainRecoveryAsync();
+            }));
         var localAiRuntime = _localAiRuntime;
         if (localAiRuntime is not null)
         {
@@ -96,6 +100,7 @@ public partial class App
             {
                 try
                 {
+                    _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.StopLocalAi);
                     await localAiRuntime.DisposeAsync();
                 }
                 finally
@@ -107,12 +112,31 @@ public partial class App
         }
 
         var connectionManager = _connectionManager;
+        var automationsOverview = _automationsOverview;
+        if (automationsOverview is not null)
+            steps.Add(new AppShutdownStep("Automations overview", () =>
+            {
+                automationsOverview.Dispose();
+                if (ReferenceEquals(_automationsOverview, automationsOverview))
+                    _automationsOverview = null;
+                return ValueTask.CompletedTask;
+            }));
+        var usageProviderReads = _usageProviderReads;
+        if (usageProviderReads is not null)
+            steps.Add(new AppShutdownStep("Usage provider reads", () =>
+            {
+                usageProviderReads.Dispose();
+                if (ReferenceEquals(_usageProviderReads, usageProviderReads))
+                    _usageProviderReads = null;
+                return ValueTask.CompletedTask;
+            }));
         if (connectionManager is not null)
         {
             steps.Add(new AppShutdownStep("gateway client", async () =>
             {
                 try
                 {
+                    _windowManager?.ReportSetupShutdownProgress(OpenClaw.SetupEngine.SetupLoadingStep.StopGateway);
                     await connectionManager.DisposeAsync();
                 }
                 finally
@@ -164,6 +188,12 @@ public partial class App
             }));
         }
 
+        steps.Add(new AppShutdownStep("voice playback mute", () =>
+        {
+            _voicePlaybackMute.Dispose();
+            return ValueTask.CompletedTask;
+        }));
+
         steps.Add(new AppShutdownStep("ssh tunnel service", () =>
         {
             _sshTunnelService?.Dispose();
@@ -184,6 +214,8 @@ public partial class App
         {
             _settingsPersistenceNotification?.Dispose();
             _settingsPersistenceNotification = null;
+            _inboxGatewaySource?.Dispose();
+            _inboxGatewaySource = null;
             if (_appState != null)
                 _appState.PropertyChanged -= OnAppStateChanged;
             PermissionsRuntimeChanged = null;

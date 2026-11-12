@@ -3,6 +3,8 @@ using OpenClaw.Shared;
 using OpenClaw.TestSupport;
 using OpenClaw.Tray.Tests.Presentation;
 using OpenClawTray.Chat;
+using OpenClawTray.Presentation;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -667,6 +669,8 @@ public sealed class ChatPlacementControllerTests
 
     private sealed class Context : IDisposable
     {
+        private readonly TempDirectory _settingsDirectory = new();
+        private readonly SettingsStore _settingsStore;
         internal FakeGateway Gateway { get; } = new();
         internal FakeChatComposerRuntimePort Port { get; } = new();
         internal ChatComposerViewModel Vm { get; }
@@ -677,15 +681,21 @@ public sealed class ChatPlacementControllerTests
         internal Context(bool targetIsNew = true, TimeProvider? timeProvider = null)
         {
             var dispatcher = new RecordingUiDispatcher();
+            _settingsStore = new(new SettingsManager(_settingsDirectory.Path), dispatcher);
             var actions = new ChatComposerHostActions(null, null, null, null, null);
             Vm = new(dispatcher, false);
             Placement = new(Gateway, dispatcher, timeProvider);
             Composer = new(Vm, Port, actions, Placement);
-            Session = new(Vm, Composer, actions, Placement);
+            Session = new(Vm, Composer, actions, _settingsStore, new SandboxStatusStore(), Placement);
             Session.ApplyInputs(Inputs() with { PlacementTargetIsNew = targetIsNew });
         }
 
-        public void Dispose() => Session.Dispose();
+        public void Dispose()
+        {
+            Session.Dispose();
+            _settingsStore.Dispose();
+            _settingsDirectory.Dispose();
+        }
     }
 
     private sealed class FakeGateway : IChatPlacementGateway

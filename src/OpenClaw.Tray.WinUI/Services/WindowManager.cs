@@ -1,3 +1,11 @@
+// <summary>
+// Owns the application's WinUI window lifetimes, workspace navigation and setup-window presentation.
+// It marshals UI work through its dispatcher and must never activate or expose windows after shutdown begins.
+// Usage:
+//   IWindowManager windows = new WindowManager(dispatcherQueue, callbacks);
+//   windows.ShowHub("settings");
+//   await windows.ShowLocalAiSetupAsync();
+// </summary>
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -37,10 +45,18 @@ internal sealed record WindowManagerCallbacks(
     Func<SetupNativeCompletion, CancellationToken, Task>? PublishNativeCompletion = null,
     Func<bool, CancellationToken, Task>? ApplyNativeStartup = null,
     Func<ISettingsStore?>? GetSettingsStore = null,
-    Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null);
+    Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
+    Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null,
+    Func<SetupNativeCompletion, string, CancellationToken, Task<bool>>? OpenSetupDashboard = null);
 
+/// <summary>
+/// Coordinates every application-owned window and transitions between workspace, onboarding and setup UI.
+/// Callers interact through <see cref="IWindowManager"/> so this class retains lifetime ownership.
+/// </summary>
 internal sealed class WindowManager : IWindowManager
 {
+    private const string ShuttingDownMessage = "The application is shutting down.";
+
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr window);
@@ -48,14 +64,21 @@ internal sealed class WindowManager : IWindowManager
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly WindowManagerCallbacks _callbacks;
     private Window? _keepAliveWindow;
-    private HubWindow? _hubWindow;
     private WorkspaceWindow? _workspaceWindow;
     private Window? _lastActiveMainWindow;
     private ConnectionStatusWindow? _connectionStatusWindow;
     private SetupWindow? _setupWindow;
+    private OpenClaw.SetupEngine.UI.SetupReadyWindow? _readyWindow;
+    private OpenClaw.SetupEngine.UI.SetupLoadingWindow? _restartProgressWindow;
+    private Func<CancellationToken, Task<SetupVerifiedNativeRoute>>? _readyVerification;
+    private SetupReadyObservation? _readyObservation;
+    private GatewayAiSetupCompletion? _readyProof;
+    private readonly SetupHandoffPresentationOwnership _handoffPresentationOwnership = new();
     private bool _isShuttingDown;
     private Task? _closeForShutdownTask;
     private bool _nativeSetupFailureVisible;
+    private ContentDialog? _nativeSetupFailureDialog;
+    private int _nativeSetupFailureVersion;
 
     internal WindowManager(
         DispatcherQueue dispatcherQueue,
@@ -65,15 +88,14 @@ internal sealed class WindowManager : IWindowManager
         _callbacks = callbacks;
     }
 
+    // Member names keep the historical "Hub" prefix; the surface they describe is the single
+    // Workspace window, which hosts chat and Settings.
     public Window? ActiveHubWindow =>
         _isShuttingDown ? null :
             _lastActiveMainWindow is WorkspaceWindow { IsClosed: false } workspace ? workspace :
-            _lastActiveMainWindow is HubWindow { IsClosed: false } hub ? hub :
-            _hubWindow is { IsClosed: false } ? _hubWindow :
             _workspaceWindow is { IsClosed: false } ? _workspaceWindow : null;
 
-    public bool IsHubOpen => !_isShuttingDown &&
-        (_workspaceWindow is { IsClosed: false } || _hubWindow is { IsClosed: false });
+    public bool IsHubOpen => !_isShuttingDown && _workspaceWindow is { IsClosed: false };
 
     public bool IsChatVisible => ChatVisibilityPolicy.IsChatVisible(
         _isShuttingDown,
@@ -83,9 +105,6 @@ internal sealed class WindowManager : IWindowManager
         _isShuttingDown
             ? null
             : (ActiveHubWindow?.Content as FrameworkElement)?.XamlRoot
-              ?? (_hubWindow is { IsClosed: false } hub
-                ? (hub.Content as FrameworkElement)?.XamlRoot
-                : null)
               ?? (_workspaceWindow?.Content as FrameworkElement)?.XamlRoot
               ?? (_keepAliveWindow?.Content as FrameworkElement)?.XamlRoot;
 
@@ -95,21 +114,12 @@ internal sealed class WindowManager : IWindowManager
     public XamlRoot? SetupXamlRoot =>
         _isShuttingDown ? null : (_setupWindow?.Content as FrameworkElement)?.XamlRoot;
 
-    public bool CanNavigateHubBack() => ActiveHubWindow switch
-    {
-        WorkspaceWindow workspace => workspace.CanGoBack,
-        HubWindow hub => hub.CanGoBack,
-        _ => false
-    };
+    public bool CanNavigateHubBack() => ActiveHubWindow is WorkspaceWindow { CanGoBack: true };
 
     public void NavigateHubBack()
     {
         if (ActiveHubWindow is WorkspaceWindow workspace)
             workspace.NavigateBack();
-        else if (ActiveHubWindow is HubWindow hub)
-        {
-            hub.NavigateBack();
-        }
     }
 
     public void InitializeRuntimeAnchor()
@@ -185,15 +195,26 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
+    /// <summary>Shows the workspace and optionally navigates it before activation.</summary>
     public void ShowHub(string? navigateTo = null, bool activate = true)
-        => ShowHubCore(navigateTo, activate);
+    {
+        var admission = ShowHubCoreAsync(navigateTo, activate);
+        AsyncEventHandlerGuard.Run(async () => await admission,
+            new AppLogger(), nameof(ShowHub));
+    }
 
+    public Task<bool> TryShowHubAsync(string navigateTo, string? chatSessionKey = null) =>
+        ShowHubCoreAsync(navigateTo, activate: true, chatSessionKey, usePendingChatSession: false);
+
+    /// <summary>Shows the native setup completion experience until it is closed or committed.</summary>
     public async Task ShowNativeSetupAsync(SetupNativeCompletion completion, CancellationToken ct)
     {
         var request = new SetupNativeNavigationRequest(completion);
         while (true)
         {
             ct.ThrowIfCancellationRequested();
+            if (_isShuttingDown)
+                throw new InvalidOperationException(ShuttingDownMessage);
             var active = _callbacks.GetGatewayRegistry()?.GetActive();
             if (active is null || active.Id != completion.Verification.GatewayId ||
                 GatewayDashboardBinding.Capture(active) != completion.Verification.EndpointBinding)
@@ -210,38 +231,179 @@ internal sealed class WindowManager : IWindowManager
         }
         ct.ThrowIfCancellationRequested();
         if (_isShuttingDown)
-            throw new InvalidOperationException("The application is shutting down.");
+            throw new InvalidOperationException(ShuttingDownMessage);
+        if (HubPageRegistry.GetNativeSetupDashboardPath(completion.Target.Destination) is { } dashboardPath)
+        {
+            var openDashboard = _callbacks.OpenSetupDashboard
+                ?? throw new InvalidOperationException("The Gateway dashboard launcher is unavailable.");
+            if (!await openDashboard(completion, dashboardPath, ct))
+                throw new InvalidOperationException("The Gateway dashboard could not be opened.");
+            return;
+        }
         Window window;
         if (request.WorkspaceDestination is { } destination)
-        {
             ShowWorkspace(destination, activate: false, preserveCurrent: false, nativeRequest: request);
-            if (_workspaceWindow is not { } workspace)
-                throw new InvalidOperationException("The native window is unavailable.");
-            await workspace.WaitForNativeSetupAsync(request, ct);
-            window = workspace;
-        }
-        else
-        {
-            ShowCompanion(request.PageTag, activate: false, nativeRequest: request);
-            if (_hubWindow is not { } hub)
-                throw new InvalidOperationException("The native window is unavailable.");
-            await hub.WaitForNativeSetupAsync(request, ct);
-            window = hub;
-        }
+        if (_workspaceWindow is not { } workspace)
+            throw new InvalidOperationException("The native window is unavailable.");
+        await workspace.WaitForNativeSetupAsync(request, ct);
+        window = workspace;
         ct.ThrowIfCancellationRequested();
         request.GetConnectedClient(_callbacks.GetGatewayRegistry(), _callbacks.GetConnectionManager());
         if (SetupDashboardLiveFacts.Capture(_callbacks.GetConnectionManager()) is { } facts &&
             !facts.Matches(completion.Verification))
             throw new SetupNativeOwnershipException();
-        if (_isShuttingDown || window is WorkspaceWindow { IsClosed: true } or HubWindow { IsClosed: true })
+        if (_isShuttingDown || window is WorkspaceWindow { IsClosed: true })
             throw new InvalidOperationException("The native window closed.");
         ct.ThrowIfCancellationRequested();
         _lastActiveMainWindow = window;
         window.Activate();
     }
 
+    public Task ShowNativeSetupPreparingAsync(GatewayAiSetupCompletion proof,
+        Func<CancellationToken, Task<SetupVerifiedNativeRoute>> verify, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_isShuttingDown) throw new InvalidOperationException("The application is shutting down.");
+        if (_readyWindow is { IsClosed: false })
+        {
+            if (_readyProof is not null && _readyProof != proof)
+                throw new InvalidOperationException("A different setup completion window is already open.");
+            _readyObservation?.Dispose();
+            _readyObservation = null;
+        }
+        _readyProof = proof;
+        _readyVerification = verify;
+        var ready = EnsureReadyWindow();
+        ready.ShowPreparing();
+        ready.Activate();
+        return Task.CompletedTask;
+    }
+
+    public IProgress<SetupLoadingStep>? NativeSetupProgress => _readyWindow?.Progress;
+
+    public void ShowNativeSetupStartupProgress()
+    {
+        if (_isShuttingDown) return;
+        try { EnsureReadyWindow().Activate(); }
+        catch (Exception error) when (error is COMException or InvalidOperationException)
+        {
+            Logger.Warn($"Early setup progress could not be shown ({error.GetType().Name}). Handoff will retry presentation.");
+        }
+    }
+
+    public void FinishNativeLaunchPresentation()
+    {
+        if (_readyProof is null) _readyWindow?.Close();
+    }
+
+    public void FailNativeSetupStartupProgress()
+    {
+        if (_readyProof is null) _readyWindow?.ShowFailure();
+    }
+
+    public void SettleDeferredNativeSetupPresentation(SetupHandoffAcquisitionStatus status, Action retry)
+    {
+        if (_isShuttingDown) return;
+        var action = SetupDeferredPresentationPolicy.Project(status,
+            _readyWindow is { IsClosed: false } && _readyProof is null, _handoffPresentationOwnership.IsActive);
+        if (action == SetupDeferredPresentation.CloseUnboundShell)
+            _readyWindow?.Close();
+        else if (action == SetupDeferredPresentation.OfferRetry)
+            AsyncEventHandlerGuard.Run(() => ShowNativeSetupFailureAsync(SetupNativeLaunchFailure.Unavailable, retry),
+                new AppLogger(), "Deferred setup recovery presentation");
+    }
+
+    public IDisposable BeginNativeSetupPresentation() => _handoffPresentationOwnership.Acquire();
+
+    public void ShowSetupRestartProgress()
+    {
+        if (_isShuttingDown || _restartProgressWindow is not null) return;
+        try
+        {
+            var passive = new OpenClaw.SetupEngine.UI.SetupLoadingWindow();
+            _restartProgressWindow = passive;
+            passive.Closed += (_, _) =>
+            {
+                if (ReferenceEquals(_restartProgressWindow, passive)) _restartProgressWindow = null;
+            };
+            _callbacks.ApplyTheme(passive);
+            passive.Activate();
+        }
+        catch (Exception error) when (error is COMException or InvalidOperationException)
+        {
+            Logger.Warn($"Passive setup progress could not be shown ({error.GetType().Name}). Owned shutdown will continue.");
+        }
+    }
+
+    public void ReportSetupShutdownProgress(SetupLoadingStep step) => _restartProgressWindow?.Report(step);
+
+    private OpenClaw.SetupEngine.UI.SetupReadyWindow EnsureReadyWindow()
+    {
+        if (_readyWindow is { IsClosed: false } existing) return existing;
+        var ready = new OpenClaw.SetupEngine.UI.SetupReadyWindow(
+            ct => _readyVerification?.Invoke(ct) ??
+                Task.FromException<SetupVerifiedNativeRoute>(new InvalidOperationException("No setup handoff has been admitted.")),
+            ShowNativeSetupAsync,
+            binding =>
+            {
+                _readyObservation?.Dispose();
+                _readyObservation = new SetupReadyObservation(
+                    _callbacks.GetConnectionManager() ?? throw new InvalidOperationException("The Gateway owner is unavailable."),
+                    _callbacks.GetGatewayRegistry() ?? throw new InvalidOperationException("The Gateway registry is unavailable."),
+                    _callbacks.GetLocalAiRuntime(), binding, () =>
+                    {
+                        _dispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (ReferenceEquals(_readyObservation?.Binding, binding))
+                                _readyWindow?.Invalidate();
+                        });
+                    });
+                return _readyObservation;
+            },
+            () => _readyObservation?.RequireCurrent(),
+            () =>
+            {
+                _readyWindow?.Close();
+                ShowHub("connection");
+            });
+        _readyWindow = ready;
+        ready.Closed += (_, _) =>
+        {
+            if (!ReferenceEquals(_readyWindow, ready)) return;
+            _readyObservation?.Dispose();
+            _readyObservation = null;
+            _readyWindow = null;
+            _readyProof = null;
+            _readyVerification = null;
+        };
+        _callbacks.ApplyTheme(ready);
+        return ready;
+    }
+
+    public Task ShowNativeSetupReadyAsync(SetupVerifiedNativeRoute route, CancellationToken ct) =>
+        _readyWindow is { IsClosed: false } window
+            ? window.ShowReadyAsync(route, ct)
+            : Task.FromException(new InvalidOperationException("The setup completion window closed."));
+
+    public void CommitNativeSetupReady()
+    {
+        _readyWindow?.CommitPresentation();
+        if (_readyWindow?.IsReady != true) return;
+        _nativeSetupFailureVersion++;
+        _nativeSetupFailureDialog?.Hide();
+    }
+
+    public Task<SetupVerifiedNativeRoute> VerifyNativeSetupReadyAsync(CancellationToken ct) =>
+        _readyWindow is { IsClosed: false } window
+            ? window.VerifyAsync(ct)
+            : Task.FromException<SetupVerifiedNativeRoute>(new InvalidOperationException("The setup completion window closed."));
+
     public async Task ShowNativeSetupFailureAsync(SetupNativeLaunchFailure failure, Action? retry)
     {
+        if (failure == SetupNativeLaunchFailure.Invalid && _readyWindow?.IsReady == true) return;
+        if (_nativeSetupFailureVisible && failure == SetupNativeLaunchFailure.Unavailable) return;
+        var failureVersion = ++_nativeSetupFailureVersion;
+        _readyWindow?.ShowFailure(failure == SetupNativeLaunchFailure.Unavailable ? retry : null);
         var title = LocalizationHelper.GetString("Onboarding_Ready_LaunchFailedTitle");
         var message = LocalizationHelper.GetString("Onboarding_Ready_Launch" + failure);
         _callbacks.GetAppNotificationService()?.Show(new AppNotification
@@ -254,7 +416,11 @@ internal sealed class WindowManager : IWindowManager
             DedupeKey = SetupNativeHandoffLauncher.FailureNotificationId,
             ActionRoute = "connection",
         });
-        if (_nativeSetupFailureVisible) return;
+        if (_nativeSetupFailureVisible)
+        {
+            _nativeSetupFailureDialog?.Hide();
+            return;
+        }
         _nativeSetupFailureVisible = true;
         var retryRequested = false;
         try
@@ -267,6 +433,14 @@ internal sealed class WindowManager : IWindowManager
                 Logger.Error("Native setup destination failed; the persistent notification is available in Connection.");
                 return;
             }
+            if (failureVersion != _nativeSetupFailureVersion) return;
+            if (Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(root)
+                .Any(popup => popup.Child is ContentDialog))
+            {
+                // A root hosts one ContentDialog; the persistent notification already reports the failure.
+                Logger.Warn("Native setup destination failed while another dialog is open; the persistent notification is available.");
+                return;
+            }
             var dialog = new ContentDialog
             {
                 XamlRoot = root,
@@ -276,20 +450,27 @@ internal sealed class WindowManager : IWindowManager
                 PrimaryButtonText = failure == SetupNativeLaunchFailure.Unavailable && retry is not null
                     ? LocalizationHelper.GetString("Onboarding_Ready_Retry") : "",
             };
+            _nativeSetupFailureDialog = dialog;
             retryRequested = await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
-        finally { _nativeSetupFailureVisible = false; }
-        if (retryRequested && !_isShuttingDown) retry?.Invoke();
+        finally
+        {
+            _nativeSetupFailureDialog = null;
+            _nativeSetupFailureVisible = false;
+        }
+        if (retryRequested && failureVersion == _nativeSetupFailureVersion && !_isShuttingDown)
+            retry?.Invoke();
     }
 
-    private void ShowHubCore(string? navigateTo, bool activate)
+    private Task<bool> ShowHubCoreAsync(
+        string? navigateTo, bool activate, string? chatSessionKey = null, bool usePendingChatSession = true)
     {
         if (_isShuttingDown)
         {
-            return;
+            return Task.FromResult(false);
         }
 
-        WorkspaceNavigation.Dispatch(navigateTo, destination =>
+        return WorkspaceNavigation.DispatchAsync(navigateTo, destination =>
         {
             if (_callbacks.RequiresSetup())
             {
@@ -297,98 +478,20 @@ internal sealed class WindowManager : IWindowManager
                     ShowOnboardingAsync,
                     new AppLogger(),
                     nameof(ShowOnboardingAsync));
-                return;
+                return Task.FromResult(false);
             }
 
-            ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub");
-        }, tag => ShowCompanion(tag, activate));
+            return Task.FromResult(ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub",
+                chatSessionKey: chatSessionKey, usePendingChatSession: usePendingChatSession));
+        }, tag => Task.FromResult(ShowWorkspace(
+            WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag)),
+            path => ((IAppCommands)Application.Current).TryOpenDashboardAsync(path));
     }
 
-    private void ShowCompanion(string navigateTo, bool activate, SetupNativeNavigationRequest? nativeRequest = null)
-    {
-        if (_hubWindow is null || _hubWindow.IsClosed)
-        {
-            var appState = _callbacks.GetAppState();
-            var notificationService = _callbacks.GetAppNotificationService();
-            if (appState is null || notificationService is null)
-            {
-                return;
-            }
-
-            var settings = _callbacks.GetSettings();
-            if (settings is null)
-            {
-                return;
-            }
-
-            _hubWindow = new HubWindow();
-            _callbacks.ApplyTheme(_hubWindow);
-            _hubWindow.AppModel = appState;
-            _hubWindow.BindAppNotifications(notificationService);
-            _hubWindow.ApplyNavPaneState(settings);
-            _hubWindow.OpenSetupAction = () => _ = ShowOnboardingAsync();
-            _hubWindow.OpenConnectionStatusAction = ShowConnectionStatus;
-            _hubWindow.OpenVoiceAction = () => ShowHub("voice");
-            _hubWindow.ConnectionManager = _callbacks.GetConnectionManager();
-            _hubWindow.GatewayRegistry = _callbacks.GetGatewayRegistry();
-            _hubWindow.ConnectAction = _callbacks.Connect;
-            _hubWindow.DisconnectAction = _callbacks.Disconnect;
-            _hubWindow.ReconnectAction = _callbacks.Connect;
-            var nodeService = _callbacks.GetNodeService();
-            if (nodeService is not null)
-            {
-                _hubWindow.NodeIsConnected = nodeService.IsConnected;
-                _hubWindow.NodeIsPaired = nodeService.IsPaired;
-                _hubWindow.NodeIsPendingApproval = nodeService.IsPendingApproval;
-                _hubWindow.NodeShortDeviceId = nodeService.ShortDeviceId;
-                _hubWindow.NodeFullDeviceId = nodeService.FullDeviceId;
-            }
-            _hubWindow.SettingsSaved += _callbacks.SettingsSaved;
-            _hubWindow.Closed += OnHubClosed;
-            _hubWindow.Activated += OnMainWindowActivated;
-            _hubWindow.BindToAppState();
-            if (nativeRequest is null) _hubWindow.NavigateToDefault();
-        }
-
-        if (nativeRequest is not null)
-        {
-            _hubWindow.NavigateTo(nativeRequest);
-        }
-        else if (navigateTo == "command-center")
-        {
-            _hubWindow.OpenCommandCenter();
-        }
-        else if (navigateTo is not null)
-        {
-            _hubWindow.NavigateTo(navigateTo);
-        }
-
-        if (activate)
-        {
-            _lastActiveMainWindow = _hubWindow;
-            _ = ActivateHubWhenReadyAsync(_hubWindow);
-        }
-        else
-        {
-            try
-            {
-                if (_hubWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
-                    presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
-                {
-                    presenter.Restore(activateWindow: false);
-                }
-                _hubWindow.AppWindow.Show(activateWindow: false);
-            }
-            catch (Exception ex)
-            {
-                Logger.Debug($"WindowManager: Failed to show hub window without activation before tray menu: {ex.Message}");
-            }
-        }
-    }
-
-    private void ShowWorkspace(
+    private bool ShowWorkspace(
         WorkspaceDestination destination, bool activate, bool preserveCurrent,
-        SetupNativeNavigationRequest? nativeRequest = null)
+        SetupNativeNavigationRequest? nativeRequest = null, string? settingsTag = null,
+        string? chatSessionKey = null, bool usePendingChatSession = true)
     {
         if (_workspaceWindow is null || _workspaceWindow.IsClosed)
         {
@@ -396,28 +499,35 @@ internal sealed class WindowManager : IWindowManager
                 _callbacks.GetAppNotificationService() is not { } notifications)
             {
                 Logger.Warn("[WindowManager] Workspace cannot open before application services are ready.");
-                return;
+                return false;
             }
 
-            _workspaceWindow = new WorkspaceWindow(state, notifications,
-                tag => ShowHub(tag), ShowConnectionStatus);
+            _workspaceWindow = new WorkspaceWindow(state, notifications, ShowConnectionStatus);
             _callbacks.ApplyTheme(_workspaceWindow);
+            _workspaceWindow.SettingsSaved += OnWorkspaceSettingsSaved;
             _workspaceWindow.Closed += OnWorkspaceClosed;
             _workspaceWindow.Activated += OnMainWindowActivated;
         }
 
+        var admitted = false;
         if (nativeRequest is not null)
         {
             nativeRequest.RequireWorkspaceDestination(destination);
             _workspaceWindow.NavigateNativeSetup(nativeRequest);
         }
+        else if (settingsTag is not null)
+        {
+            admitted = _workspaceWindow.TryOpenSettings(settingsTag);
+        }
         else if (!preserveCurrent)
         {
-            if (destination.Page == WorkspacePageId.Home &&
-                _callbacks.GetPendingChatSessionKey() is { Length: > 0 } sessionKey)
-                _workspaceWindow.SelectSession(sessionKey);
-            else
-                _workspaceWindow.Navigate(destination);
+            if (destination.Page == WorkspacePageId.Home)
+            {
+                var sessionKey = chatSessionKey ?? (usePendingChatSession ? _callbacks.GetPendingChatSessionKey() : null);
+                if (sessionKey is { Length: > 0 })
+                    destination = destination with { SessionKey = sessionKey };
+            }
+            admitted = _workspaceWindow.TryNavigate(destination);
         }
         if (_workspaceWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
             presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
@@ -431,7 +541,10 @@ internal sealed class WindowManager : IWindowManager
         }
         else
             _workspaceWindow.AppWindow.Show(activateWindow: false);
+        return admitted;
     }
+
+    private void OnWorkspaceSettingsSaved(object? sender, EventArgs e) => _callbacks.SettingsSaved(sender, e);
 
     private void OnWorkspaceClosed(object sender, WindowEventArgs args)
     {
@@ -439,52 +552,21 @@ internal sealed class WindowManager : IWindowManager
         {
             workspace.Closed -= OnWorkspaceClosed;
             workspace.Activated -= OnMainWindowActivated;
+            workspace.SettingsSaved -= OnWorkspaceSettingsSaved;
         }
         if (ReferenceEquals(sender, _lastActiveMainWindow))
             _lastActiveMainWindow = null;
         if (ReferenceEquals(sender, _workspaceWindow))
+        {
             _workspaceWindow = null;
+            ResetNavigationScope();
+        }
     }
 
     private void OnMainWindowActivated(object sender, WindowActivatedEventArgs args)
     {
         if (args.WindowActivationState != WindowActivationState.Deactivated && sender is Window window)
             _lastActiveMainWindow = window;
-    }
-
-    private async Task ActivateHubWhenReadyAsync(HubWindow hub)
-    {
-        try
-        {
-            await hub.WaitForCurrentContentReadyAsync();
-            if (!_isShuttingDown && ReferenceEquals(_hubWindow, hub) && !hub.IsClosed)
-            {
-                hub.Activate();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"Hub window readiness activation failed: {ex.Message}");
-        }
-    }
-
-    private void OnHubClosed(object sender, WindowEventArgs args)
-    {
-        if (sender is not HubWindow hub)
-        {
-            return;
-        }
-
-        hub.SettingsSaved -= _callbacks.SettingsSaved;
-        hub.Closed -= OnHubClosed;
-        hub.Activated -= OnMainWindowActivated;
-        if (ReferenceEquals(hub, _lastActiveMainWindow))
-            _lastActiveMainWindow = null;
-        if (ReferenceEquals(_hubWindow, hub))
-        {
-            _hubWindow = null;
-            ResetNavigationScope();
-        }
     }
 
     private void ResetNavigationScope()
@@ -557,6 +639,7 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
+    /// <summary>Shows onboarding and starts at its initial Gateway setup milestone.</summary>
     public async Task ShowOnboardingAsync()
     {
         await EnsureSetupWindowAsync(
@@ -564,12 +647,7 @@ internal sealed class WindowManager : IWindowManager
             localAiRecoveryTarget: null);
     }
 
-    public Task ShowLocalAiModelSetupAsync() =>
-        _callbacks.GetGatewayRegistry()?.GetActive() is
-            { NativePackageFamilyName: not null,
-              NativeRuntimeContract: OpenClaw.Connection.NativeGateway.NativeGatewayPackageClient.IsolatedContract }
-                ? ShowLocalAiSetupAsync() : ShowOnboardingAsync();
-
+    /// <summary>Shows Local AI setup for the active Gateway selection.</summary>
     public async Task ShowLocalAiSetupAsync()
     {
         if (_callbacks.GetGatewayRegistry()?.GetActive() is
@@ -701,6 +779,7 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
+    /// <summary>Shows onboarding at the Gateway-installed milestone.</summary>
     public async Task ShowGatewayWizardAsync()
     {
         var (setupWindow, created) = await EnsureSetupWindowAsync(
@@ -802,6 +881,7 @@ internal sealed class WindowManager : IWindowManager
                 localAiHost: CreateLocalAiSetupHost(),
                 connectionManager: _callbacks.GetConnectionManager(),
                 publishNativeCompletion: _callbacks.PublishNativeCompletion,
+                publishNativePreparation: _callbacks.PublishNativePreparation,
                 applyNativeStartup: _callbacks.ApplyNativeStartup,
                 startupRegistrationAllowed: !AppIdentity.IsIsolated,
                 persistChoices: (config, startup, onlyStartup) =>
@@ -892,6 +972,29 @@ internal sealed class WindowManager : IWindowManager
         {
             _setupWindow = null;
         }
+
+        var registry = _callbacks.GetGatewayRegistry();
+        if (registry is null)
+            return;
+        var before = registry.GetActive();
+        // The file lease can wait up to its own bound. Keep that wait off the UI thread.
+        // Registry change handlers marshal themselves back to the dispatcher.
+        var adoption = await Task.Run(() => registry.TryAdoptExternalSnapshot());
+        if (adoption == ExternalSnapshotAdoption.UnsavedEdits)
+        {
+            Logger.Warn("Gateway list was not refreshed after setup closed because this session has unsaved Gateway edits.");
+            NotifySetupRegistryRecovery();
+            return;
+        }
+
+        if (adoption != ExternalSnapshotAdoption.Adopted)
+        {
+            Logger.Warn("Gateway list was not refreshed after setup closed because the saved list could not be read.");
+            return;
+        }
+
+        Logger.Info("Gateway list refreshed after setup closed.");
+        await ReconcileSetupConnectionAsync(before, registry.GetActive());
     }
 
     public void CloseSetup()
@@ -910,10 +1013,11 @@ internal sealed class WindowManager : IWindowManager
         }
 
         _callbacks.ApplyTheme(_keepAliveWindow);
-        _callbacks.ApplyTheme(_hubWindow);
         _callbacks.ApplyTheme(_workspaceWindow);
         _callbacks.ApplyTheme(_connectionStatusWindow);
         _callbacks.ApplyTheme(_setupWindow);
+        _callbacks.ApplyTheme(_readyWindow);
+        _callbacks.ApplyTheme(_restartProgressWindow);
     }
 
     public void UpdateHubTitleBarStatus(
@@ -922,7 +1026,6 @@ internal sealed class WindowManager : IWindowManager
     {
         if (!_isShuttingDown)
         {
-            _hubWindow?.UpdateTitleBarStatus(snapshot, status);
             _workspaceWindow?.UpdateConnectionStatus(snapshot, status);
         }
     }
@@ -931,7 +1034,7 @@ internal sealed class WindowManager : IWindowManager
     {
         if (!_isShuttingDown)
         {
-            _hubWindow?.RefreshDiagnosticsNavVisibility();
+            _workspaceWindow?.SettingsView?.RefreshDiagnosticsNavVisibility();
         }
     }
 
@@ -962,6 +1065,7 @@ internal sealed class WindowManager : IWindowManager
             ? WinRT.Interop.WindowNative.GetWindowHandle(_setupWindow)
             : IntPtr.Zero;
 
+    /// <summary>Begins shutdown and closes every window owned by this manager.</summary>
     public Task CloseForShutdownAsync()
     {
         BeginShutdown();
@@ -981,6 +1085,13 @@ internal sealed class WindowManager : IWindowManager
         }
 
         var setupWindow = _setupWindow;
+        _readyObservation?.Dispose();
+        _readyObservation = null;
+        var readyWindow = _readyWindow;
+        TryClose("Ready window", () => readyWindow?.Close(), ref failures);
+        if (readyWindow is { IsClosed: true })
+            await readyWindow.CleanupCompleted;
+        _readyWindow = null;
         if (setupWindow is not null)
         {
             setupWindow.AdvancedSetupRequested -= _callbacks.AdvancedSetupRequested;
@@ -1025,20 +1136,11 @@ internal sealed class WindowManager : IWindowManager
             _connectionStatusWindow = null;
         }
 
-        if (_hubWindow is not null)
-        {
-            var hub = _hubWindow;
-            hub.SettingsSaved -= _callbacks.SettingsSaved;
-            hub.Closed -= OnHubClosed;
-            hub.Activated -= OnMainWindowActivated;
-            TryClose("Hub window", hub.Close, ref failures);
-            _hubWindow = null;
-            ResetNavigationScope();
-        }
-
         _lastActiveMainWindow = null;
         TryClose("Runtime anchor window", () => _keepAliveWindow?.Close(), ref failures);
         _keepAliveWindow = null;
+        TryClose("Setup restart progress", () => _restartProgressWindow?.Close(), ref failures);
+        _restartProgressWindow = null;
 
         if (failures is { Count: > 0 })
         {

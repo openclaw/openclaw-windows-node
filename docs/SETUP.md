@@ -96,8 +96,8 @@ OpenClaw Companion responds to `openclaw://` deep links, which can be invoked fr
 | `openclaw://settings` | Open the Settings page |
 | `openclaw://setup` | Open the Setup Wizard |
 | `openclaw://commandcenter` | Open Command Center diagnostics |
-| `openclaw://activity` | Legacy activity route; opens Sessions, Usage, Instances, or Channels according to `?filter=` |
-| `openclaw://history` | Legacy notification-history alias; opens the Channels page |
+| `openclaw://activity` | Legacy activity route; opens Sessions, Usage, Systems, or the Gateway dashboard channels path according to `?filter=` |
+| `openclaw://history` | Legacy notification-history alias; opens the Gateway dashboard channels path |
 | `openclaw://healthcheck` | Run a manual health check |
 | `openclaw://check-updates` | Run a manual update check |
 | `openclaw://logs` | Open the current tray log file |
@@ -190,6 +190,10 @@ OpenClaw Companion checks for updates automatically and shows a notification whe
 Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel. You'll be asked whether to also remove the local WSL gateway; choose **Yes** to unregister its WSL distro and generated state, or **No** to leave the gateway and that state in place.
 
 Your settings file at `%APPDATA%\OpenClawTray\settings.json` is not removed automatically, and device identity files for gateways unrelated to the one you removed (including per-gateway keys at `%APPDATA%\OpenClawTray\gateways\<gateway-id>\device-key-ed25519.json`) are preserved. Choosing **Yes** also removes the removed gateway's own identity directory. Root operator and node tokens are preserved only while an external gateway record remains; otherwise they are cleared, even if another local or loopback gateway record remains. Delete `%APPDATA%\OpenClawTray\` manually if you want a fully clean uninstall.
+
+For the **Companion MSIX**, managed Gateway cleanup uses a current-user interactive scheduled task that survives Companion removal. Its worker, registration script and versioned `cleanup-host-<hash>.exe` are copied to `%USERPROFILE%\.openclaw-companion\cleanup\<Companion-package-family>\`. The task runs at logon and every minute through a GUI-subsystem helper that starts Windows PowerShell with `CreateNoWindow`, preventing a desktop console from being created. The helper targets the Windows-provided .NET Framework 4.8 and forwards the worker's exit code, recording failures in `cleanup-host-error.txt` beside the worker. It does not depend on VBScript, the Companion's .NET 10 runtime, or an executable inside the removed package. Versioned helper paths allow an updated Companion to refresh the task without overwriting a running helper.
+
+The worker checks Companion package identity, ownership sentinels and removal events, then removes only the recorded owned Gateway resources after confirmed Companion removal. Polling also retries pending cleanup and provides a second absence check at least 30 seconds after the first when removal-event evidence is unavailable. The exact one-minute interval is a cleanup-latency choice, not an AppX requirement; increasing it would only slow cleanup, not prevent a visible launch. Opening an updated packaged Companion refreshes an existing owned cleanup task with the new action. A Gateway-only package update cannot refresh this Companion-owned task.
 
 For the headless dev/WSL CLI uninstall (`--uninstall --dry-run`, then `--confirm-destructive`), see the [uninstall skill](../.agents/skills/uninstall/SKILL.md). For a **clean retest of native Gateway/MXC, Companion, and managed llama.cpp**, use its [hard-clean procedure](../.agents/skills/uninstall/HARD-CLEAN.md). This inventories exact targets and requires confirmation before teardown, package removal, or residual-state deletion. Shared model caches, unrelated profiles, and WSL are preserved unless explicitly included.
 

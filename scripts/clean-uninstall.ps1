@@ -26,6 +26,18 @@
     Only unloaded, non-special S-1-5-110 profiles directly under ProfilesDirectory
     are eligible. Works when the folder was already deleted but its registration
     remains. Never implied by -All. Applying this option requires elevation.
+.PARAMETER IsolatedOnly
+    Select only GatewayPatch at the exact GatewayPackageFullName and
+    GatewayInstallLocation, plus explicitly named DisposableProfilePath directories.
+    Never stops Companion processes. The caller must stop its verified owned
+    instance first. Cannot be combined with ordinary cleanup scope flags.
+.PARAMETER ExpectedPreviewSha256
+    Required for isolated apply. Copy the SHA-256 printed by isolated preview.
+    Changed package, session, manifest, profile inventory or user identity fails closed.
+.PARAMETER CompanionExecutablePath
+    Required in isolated mode: exact task-owned OpenClaw.Tray.WinUI.exe path.
+    It must remain available and stopped; other processes must not use the named
+    disposable profiles. Profile ownership must be independently verified by caller.
 .EXAMPLE
     .\clean-uninstall.ps1
 .EXAMPLE
@@ -51,7 +63,14 @@ param(
     [switch]$RemoveWslGateway,
     [string[]]$AdditionalProfilePath = @(),
     [string[]]$RemoveIsolatedProfilePath = @(),
-    [string]$ReportDirectory
+    [string]$ReportDirectory,
+    [switch]$IsolatedOnly,
+    [string]$GatewayPatch,
+    [string]$GatewayPackageFullName,
+    [string]$GatewayInstallLocation,
+    [string]$CompanionExecutablePath,
+    [string[]]$DisposableProfilePath = @(),
+    [string]$ExpectedPreviewSha256
 )
 
 Set-StrictMode -Version Latest
@@ -78,6 +97,28 @@ function Get-CleanFullPath([string]$Path) {
     if ($full -match '~[0-9]') { $full = Expand-CleanLongPath $full }
     if ($full.Length -eq 3) { return $full }
     return $full.TrimEnd('\')
+}
+
+function Get-CleanComparablePath([string]$Path) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+    $comparable = $Path
+    if ($comparable.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+        $comparable = '\\' + $comparable.Substring(8)
+    } elseif ($comparable.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+        $comparable = $comparable.Substring(4)
+    }
+    $isDrivePath = $comparable.Length -ge 3 -and $comparable[1] -eq ':' -and $comparable[2] -eq '\'
+    $isUncPath = $comparable.StartsWith('\\') -and
+        @($comparable.Substring(2).Split('\') | Where-Object { $_ }).Count -ge 2
+    if (-not $isDrivePath -and -not $isUncPath) { return $null }
+    try {
+        $full = [IO.Path]::GetFullPath($comparable)
+        if ($isDrivePath -and $full -match '~[0-9]') { $full = Expand-CleanLongPath $full }
+        if ($full.Length -eq 3) { return $full }
+        return $full.TrimEnd('\')
+    } catch {
+        return $null
+    }
 }
 
 function Expand-CleanLongPath([string]$Path) {
@@ -181,6 +222,18 @@ function Get-CleanTree([string]$Path) {
                 $pending.Push($child.FullName)
             }
         }
+    }
+}
+
+function Assert-CleanNotWithinSourceCheckout([string]$Path) {
+    $cursor = Get-CleanFullPath $Path
+    while ($cursor) {
+        if (Test-Path -LiteralPath (Join-Path $cursor '.git')) {
+            throw "Refusing a disposable profile inside a source checkout: $Path"
+        }
+        $parent = Split-Path -Parent $cursor
+        if (-not $parent -or $parent.Equals($cursor, [StringComparison]::OrdinalIgnoreCase)) { break }
+        $cursor = $parent
     }
 }
 
@@ -552,6 +605,263 @@ function Get-CleanStartup([bool]$Dev, [string[]]$OwnedRoots) {
     }
 }
 
+function Get-CleanSha256([string]$Text) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Text)))).Replace('-', '').ToLowerInvariant()
+    } finally { $sha.Dispose() }
+}
+
+function Get-CleanPatchPackage([string]$Patch, [string]$FullName, [string]$Layout) {
+    if ($Patch -cnotmatch '^[a-z0-9-]{1,15}$') { throw 'Select an exact lowercase development patch (1 to 15 letters, digits or hyphens).' }
+    $name = "OpenClawFoundation.OpenClawGateway-$Patch"
+    $packages = @(Get-AppxPackage -ErrorAction Stop | Where-Object { $_.Name -ceq $name })
+    if ($packages.Count -ne 1) { throw "Expected exactly one registered development package: $name" }
+    $package = $packages[0]
+    $publisherId = [string](Get-CleanProperty $package 'PublisherId')
+    if ($package.PackageFullName -cne $FullName -or
+        $publisherId -cnotmatch '^[a-z0-9]{13}$' -or
+        $package.PackageFamilyName -cne "${name}_$publisherId" -or
+        $FullName -cnotmatch ('^' + [regex]::Escape($name) + '_\d+\.\d+\.\d+\.\d+_(x64|arm64)__' + [regex]::Escape($publisherId) + '$') -or
+        (Get-CleanProperty $package 'Publisher') -ne 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC' -or
+        (Get-CleanProperty $package 'IsDevelopmentMode') -isnot [bool] -or -not $package.IsDevelopmentMode -or
+        (Get-CleanFullPath $package.InstallLocation) -ne $Layout) {
+        throw 'Development package identity or owned layout does not match. Preview again with the actual registration.'
+    }
+    $manifestPath = Join-Path $Layout 'AppxManifest.xml'
+    Assert-CleanNoReparsePath $manifestPath
+    [xml]$manifest = Get-Content -LiteralPath $manifestPath -Raw
+    $identity = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Identity']")
+    $fullIdentity = [regex]::Match($FullName, '_(?<version>\d+\.\d+\.\d+\.\d+)_(?<arch>x64|arm64)__')
+    $aliases = @($manifest.SelectNodes("//*[local-name()='ExecutionAlias']") | ForEach-Object { $_.GetAttribute('Alias') })
+    if ($null -eq $identity -or $identity.GetAttribute('Name') -cne $name -or
+        $identity.GetAttribute('Publisher') -cne $package.Publisher -or
+        $identity.GetAttribute('Version') -cne $fullIdentity.Groups['version'].Value -or
+        $identity.GetAttribute('ProcessorArchitecture') -cne $fullIdentity.Groups['arch'].Value -or
+        @($aliases | Where-Object { $_ -ceq "clawctl-$Patch.exe" }).Count -ne 1 -or
+        @($aliases | Where-Object { $_ -ceq "openclaw-$Patch.exe" }).Count -ne 1 -or
+        @($aliases | Where-Object { $_ -in @('clawctl.exe','openclaw.exe') }).Count) {
+        throw 'Registered patch manifest does not expose the exact patched lifecycle aliases.'
+    }
+    $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($package.PackageFamilyName)\clawctl-$Patch.exe"
+    # App execution alias leaves are Windows-managed AppExecLinks, not deletion
+    # targets. Reject redirected parents, but do not follow or delete the leaf.
+    Assert-CleanNoReparsePath (Split-Path -Parent $alias)
+    if (-not (Test-Path -LiteralPath $alias -PathType Leaf)) { throw "Missing package-qualified patched CLI: $alias" }
+    [pscustomobject]@{ Package = $package; Alias = $alias; ManifestHash = (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash }
+}
+
+function Get-CleanPatchSession($Package) {
+    $root = Join-Path $env:LOCALAPPDATA "Packages\$($Package.PackageFamilyName)\LocalState\OpenClawGatewayMSIX"
+    Assert-CleanNoReparsePath $root
+    $path = Join-Path $root 'session.json'
+    if (-not (Test-Path -LiteralPath $path)) {
+        if (Test-Path -LiteralPath (Join-Path $root 'setup.json')) {
+            throw 'Session ownership record is missing while setup evidence remains. Preserve it for investigation.'
+        }
+        return [pscustomobject]@{ Path = $path; Hash = 'absent'; Present = $false }
+    }
+    Assert-CleanNoReparsePath $path
+    $text = Get-Content -LiteralPath $path -Raw
+    $session = $text | ConvertFrom-Json
+    $appId = "PFN:$($Package.PackageFamilyName)"
+    $sandbox = [string](Get-CleanProperty $session 'sandboxId')
+    if ((Get-CleanProperty $session 'schemaVersion') -ne 2 -or
+        (Get-CleanProperty $session 'applicationId') -cne $appId -or
+        [string]::IsNullOrWhiteSpace([string](Get-CleanProperty $session 'generation')) -or
+        $sandbox -cnotmatch '^iso:([A-Za-z0-9_-]+)$') {
+        throw 'Cannot verify patch session ownership (schema, application, generation or sandbox identity).'
+    }
+    $encoded = $Matches[1].Replace('-', '+').Replace('_', '/')
+    $encoded = $encoded.PadRight($encoded.Length + ((4 - $encoded.Length % 4) % 4), '=')
+    $decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded)) | ConvertFrom-Json
+    if ((Get-CleanProperty $decoded 'appId') -cne $appId) { throw 'Sandbox identity belongs to another application or cannot prove ownership.' }
+    # Replay no sandbox/account identifiers ourselves. The real packaged CLI
+    # validates the record again under its lifecycle lock and owns deprovision.
+    [pscustomobject]@{ Path = $path; Hash = (Get-CleanSha256 $text); Present = $true }
+}
+
+function Assert-CleanIsolatedProcesses([string[]]$Profiles, [string]$Layout, [string]$Companion) {
+    foreach ($process in Get-CimInstance Win32_Process -ErrorAction Stop) {
+        $path = [string](Get-CleanProperty $process 'ExecutablePath')
+        if ($path) {
+            $comparable = Get-CleanComparablePath $path
+            if (-not $comparable -and $process.Name -match '^(OpenClaw\.Tray\.WinUI|llama-server|openclaw-wsl-keepalive)\.exe$') {
+                throw "Cannot determine candidate process ownership (PID $($process.ProcessId)). Isolated cleanup never stops processes."
+            }
+            if ($comparable) {
+                if ($comparable -eq $Companion) {
+                    throw "Selected Companion executable is running (PID $($process.ProcessId)). Caller must stop only its verified owned instance first."
+                }
+                foreach ($root in @($Profiles) + @($Layout)) {
+                    if (Test-CleanWithin $comparable $root) {
+                        throw "A process is running from a selected root (PID $($process.ProcessId)). Caller must stop only its verified owned instance first."
+                    }
+                }
+            }
+        }
+        if ($process.Name -match '^(OpenClaw\.Tray\.WinUI|llama-server|openclaw-wsl-keepalive)\.exe$') {
+            if (-not $path) { throw "Cannot determine candidate process ownership (PID $($process.ProcessId)). Isolated cleanup never stops processes." }
+            foreach ($profile in $Profiles) {
+                if (([string](Get-CleanProperty $process 'CommandLine')).IndexOf($profile, [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                    throw "Candidate process references a disposable profile (PID $($process.ProcessId)). Caller must verify and stop it first."
+                }
+            }
+        }
+    }
+}
+
+function Get-CleanProfileFingerprint([string]$Profile) {
+    $inventory = @()
+    foreach ($item in @(Get-CleanTree $Profile | Sort-Object FullName)) {
+        $inventory += [ordered]@{
+            path = $item.FullName; directory = [bool]$item.PSIsContainer
+            modified = $item.LastWriteTimeUtc.Ticks
+            hash = $(if ($item.PSIsContainer) { '' } else { (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash })
+        }
+    }
+    Get-CleanSha256 (ConvertTo-Json -InputObject $inventory -Depth 4 -Compress)
+}
+
+function Get-CleanIsolatedPlan([string]$Patch, [string]$FullName, [string]$Layout, [string[]]$Profiles, [string]$Companion) {
+    $layoutFull = Get-CleanFullPath $Layout
+    Assert-CleanNoReparsePath $layoutFull
+    $patchPackage = Get-CleanPatchPackage $Patch $FullName $layoutFull
+    $package = $patchPackage.Package
+    $companionFull = Get-CleanFullPath $Companion
+    Assert-CleanNoReparsePath $companionFull
+    if ([IO.Path]::GetFileName($companionFull) -ne 'OpenClaw.Tray.WinUI.exe' -or
+        -not (Test-Path -LiteralPath $companionFull -PathType Leaf)) {
+        throw 'Supply the exact task-owned Companion executable, which must remain available until cleanup finishes.'
+    }
+    $selected = @($Profiles | ForEach-Object { Assert-CleanPath $_ } | Sort-Object -Unique)
+    if (-not $selected.Count) { throw 'Isolated cleanup requires explicitly named disposable Companion profile directories.' }
+    $protected = @()
+    foreach ($root in @($env:APPDATA, $env:LOCALAPPDATA)) {
+        $protected += Join-Path $root 'OpenClawTray'
+        $protected += Join-Path $root 'OpenClawTray-Dev'
+    }
+    $protected += Join-Path $env:LOCALAPPDATA 'Packages'
+    $protected += Join-Path $env:LOCALAPPDATA 'OpenClawGatewayMSIX'
+    $protected += Join-Path $env:USERPROFILE '.cache'
+    foreach ($name in @('HF_HUB_CACHE','HUGGINGFACE_HUB_CACHE','HF_HOME','XDG_CACHE_HOME')) {
+        $cache = [Environment]::GetEnvironmentVariable($name)
+        if ($cache) { $protected += Get-CleanFullPath $cache }
+    }
+    $protected += @(Get-AppxPackage -ErrorAction Stop | ForEach-Object { $_.InstallLocation } | Where-Object { $_ })
+    $protected += @(Get-CleanWin32 $true | ForEach-Object { $_.Install })
+    foreach ($root in $protected) {
+        Assert-CleanNoReparsePath $root
+        $protectedFull = Get-CleanFullPath $root
+        if (Test-CleanWithin $companionFull $protectedFull) { throw 'Companion executable belongs to a preserved install/profile/cache, not an isolated build.' }
+    }
+    $protected += Split-Path -Parent $companionFull
+    foreach ($profile in $selected) {
+        Assert-CleanNotWithinSourceCheckout $profile
+        foreach ($root in $protected) {
+            $root = Get-CleanFullPath $root
+            if ((Test-CleanWithin $profile $root) -or (Test-CleanWithin $root $profile)) {
+                throw "Disposable profile overlaps a preserved install, ordinary profile or shared cache: $profile"
+            }
+        }
+        foreach ($other in $selected | Where-Object { $_ -ne $profile }) {
+            if (Test-CleanWithin $profile $other) { throw 'Disposable profiles must not overlap.' }
+        }
+    }
+    $packageData = Join-Path $env:LOCALAPPDATA "Packages\$($package.PackageFamilyName)"
+    $distros = @(Get-CleanDistroRecords)
+    Assert-CleanDistroStorage $distros (@($selected) + @($packageData))
+    Assert-CleanIsolatedProcesses $selected $layoutFull $companionFull
+    $inventory = [ordered]@{}
+    foreach ($profile in $selected) {
+        $inventory[$profile] = Get-CleanProfileFingerprint $profile
+    }
+    $session = Get-CleanPatchSession $package
+    $snapshot = [ordered]@{
+        user = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+        package = $package.PackageFullName; family = $package.PackageFamilyName
+        layout = $layoutFull; manifest = $patchPackage.ManifestHash; session = $session.Hash
+        companion = $companionFull; companionHash = (Get-FileHash -LiteralPath $companionFull -Algorithm SHA256).Hash
+        profiles = $selected; inventory = $inventory
+        wsl = @($distros | Sort-Object Name, BasePath | Select-Object Name, BasePath)
+    } | ConvertTo-Json -Depth 8 -Compress
+    [pscustomobject]@{
+        Package = $package; Alias = $patchPackage.Alias; Session = $session
+        Profiles = $selected; Layout = $layoutFull; Sha256 = (Get-CleanSha256 $snapshot)
+        Companion = $companionFull; ProfileHashes = $inventory; ManifestHash = $patchPackage.ManifestHash
+        PackageData = $packageData
+    }
+}
+
+function Invoke-OpenClawIsolatedClean {
+    [CmdletBinding(SupportsShouldProcess)]
+    param([bool]$Apply, [string]$Patch, [string]$FullName, [string]$Layout,
+        [string[]]$Profiles, [string]$Companion, [string]$ExpectedSha256)
+    $plan = Get-CleanIsolatedPlan $Patch $FullName $Layout $Profiles $Companion
+    Write-Host "REMOVE only development registration: $($plan.Package.PackageFullName) at $($plan.Layout)"
+    foreach ($profile in $plan.Profiles) { Write-Host "REMOVE disposable Companion profile: $profile" }
+    Write-Warning 'All in-profile data, including identities, conversations and models, will be destroyed. Back up needed data separately.'
+    Write-Host 'PRESERVE normal Companion, Store Gateway, all other patches/profiles, WSL, shared external model caches and development payloads. No processes are stopped.'
+    Write-Host "Isolated preview SHA-256: $($plan.Sha256)"
+    if (-not $Apply) { Write-Host 'DRY RUN. Nothing changed. Apply with -ConfirmDestructive and -ExpectedPreviewSha256 from this preview.'; return }
+    if ($ExpectedSha256 -notmatch '^[0-9a-fA-F]{64}$' -or $ExpectedSha256 -ine $plan.Sha256) {
+        throw 'Missing or stale isolated preview SHA-256. Nothing changed. Preview and review the exact scope again.'
+    }
+    if (-not $PSCmdlet.ShouldProcess($plan.Package.PackageFullName, 'Tear down the owned patch, delete explicit disposable profiles, then unregister it')) { return }
+    $live = Get-CleanIsolatedPlan $Patch $FullName $Layout $Profiles $Companion
+    if ($live.Sha256 -ne $plan.Sha256) { throw 'Isolated inventory changed before teardown. Nothing changed.' }
+    $command = Invoke-CleanNativeCommand $plan.Alias 'teardown --force --json'
+    try { $result = $command.Stdout | ConvertFrom-Json }
+    catch { throw 'Patch teardown output is not valid JSON. Registration and Companion profiles preserved.' }
+    $expectedSessionState = if ($plan.Session.Present) { 'removed' } else { 'not-configured' }
+    if ($command.ExitCode -ne 0 -or (Get-CleanProperty $result 'ok') -isnot [bool] -or -not $result.ok -or
+        (Get-CleanProperty $result 'command') -ne 'teardown' -or
+        (Get-CleanProperty (Get-CleanProperty $result 'gateway') 'state') -ne 'records-removed' -or
+        (Get-CleanProperty (Get-CleanProperty $result 'session') 'state') -ne $expectedSessionState -or
+        (Test-Path -LiteralPath $plan.Session.Path)) {
+        throw 'Patch teardown did not confirm structured success and session absence. Registration and Companion profiles preserved.'
+    }
+    $after = Get-CleanIsolatedPlan $Patch $FullName $Layout $Profiles $Companion
+    if ($after.Session.Present -or $after.ManifestHash -ne $plan.ManifestHash -or
+        (ConvertTo-Json $after.ProfileHashes -Compress) -ne (ConvertTo-Json $plan.ProfileHashes -Compress)) {
+        throw 'Isolated ownership or profile inventory changed after teardown. Registration and Companion profiles preserved.'
+    }
+    foreach ($profile in $plan.Profiles) {
+        Assert-CleanNotWithinSourceCheckout $profile
+        Assert-CleanIsolatedProcesses $plan.Profiles $plan.Layout $plan.Companion
+        Assert-CleanDistroStorage @(Get-CleanDistroRecords) @($profile)
+        if ((Get-CleanProfileFingerprint $profile) -ne $plan.ProfileHashes[$profile]) {
+            throw 'Disposable profile changed before deletion. Remaining profiles preserved.'
+        }
+        if (Test-Path -LiteralPath $profile) { Remove-Item -LiteralPath $profile -Recurse -Force -ErrorAction Stop }
+        if (Test-Path -LiteralPath $profile) { throw "Disposable profile remains: $profile" }
+    }
+    Remove-AppxPackage -Package $FullName -ErrorAction Stop
+    if (@(Get-AppxPackage -ErrorAction Stop | Where-Object { $_.Name -eq $plan.Package.Name }).Count) {
+        throw 'Patch registration remains after disposable profile deletion.'
+    }
+    Write-Host 'SUCCESS: exact development registration and selected disposable Companion profiles absent. No app relaunched; payloads and external caches kept.'
+}
+
+function Invoke-CleanPatchLocked([scriptblock]$Action) {
+    # Cooperate with Build-NativeGatewayFromSource without a repository module
+    # dependency. Out-of-band deployment and hostile writers remain unsupported.
+    $mutex = [Threading.Mutex]::new($false, 'Global\OpenClaw.NativeGatewaySourceBuild')
+    $held = $false
+    try {
+        try { $held = $mutex.WaitOne(0) }
+        catch [Threading.AbandonedMutexException] {
+            $held = $true
+            throw 'Native Gateway build lock was abandoned. Inspect ownership and preview again before cleanup.'
+        }
+        if (-not $held) { throw 'Another native Gateway build or unregister is running. Cleanup stopped.' }
+        & $Action
+    } finally {
+        if ($held) { $mutex.ReleaseMutex() }
+        $mutex.Dispose()
+    }
+}
+
 function Invoke-OpenClawClean {
     [CmdletBinding(SupportsShouldProcess)]
     param([bool]$Apply, [bool]$Dev, [bool]$Models, [bool]$Wsl, [string[]]$Extra, [string]$Reports,
@@ -791,6 +1101,21 @@ function Invoke-OpenClawClean {
     }
 }
 
-Invoke-OpenClawClean -Apply ([bool]$ConfirmDestructive) -Dev ($All -or $IncludeDev) `
-    -Models (($All -or $RemoveCachedModels) -and -not $ExcludeCachedModels) -Wsl ($All -or $RemoveWslGateway) `
-    -Extra $AdditionalProfilePath -Reports $ReportDirectory -IsolatedProfiles $RemoveIsolatedProfilePath
+if ($IsolatedOnly) {
+    if ($All -or $IncludeDev -or $RemoveCachedModels -or $RemoveWslGateway -or
+        $AdditionalProfilePath.Count -or $RemoveIsolatedProfilePath.Count -or $ReportDirectory) {
+        throw 'IsolatedOnly cannot be combined with ordinary cleanup scope or report options.'
+    }
+    Invoke-CleanPatchLocked {
+        Invoke-OpenClawIsolatedClean -Apply ([bool]$ConfirmDestructive) -Patch $GatewayPatch `
+            -FullName $GatewayPackageFullName -Layout $GatewayInstallLocation -Profiles $DisposableProfilePath `
+            -Companion $CompanionExecutablePath -ExpectedSha256 $ExpectedPreviewSha256
+    }
+} elseif ($GatewayPatch -or $GatewayPackageFullName -or $GatewayInstallLocation -or
+    $CompanionExecutablePath -or $DisposableProfilePath.Count -or $ExpectedPreviewSha256) {
+    throw 'Patch and disposable profile options require -IsolatedOnly. No ordinary cleanup started.'
+} else {
+    Invoke-OpenClawClean -Apply ([bool]$ConfirmDestructive) -Dev ($All -or $IncludeDev) `
+        -Models (($All -or $RemoveCachedModels) -and -not $ExcludeCachedModels) -Wsl ($All -or $RemoveWslGateway) `
+        -Extra $AdditionalProfilePath -Reports $ReportDirectory -IsolatedProfiles $RemoveIsolatedProfilePath
+}

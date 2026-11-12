@@ -8,6 +8,8 @@ const capabilities = require("./gateway-capabilities.cjs");
 
 const UPSTREAM = "openclaw/openclaw";
 const MAX_BYTES = 32 * 1024 * 1024;
+// Allow upstream growth while retaining a bounded, complete inventory.
+const MAX_SOURCE_FILES = 50000;
 const SHA = /^[a-f0-9]{40}$/;
 const HASH = /^[a-f0-9]{64}$/;
 const GROUPS = ["schema", "authorization", "gateway", "agent-producers", "reference-client"];
@@ -83,7 +85,7 @@ function sourceInventory(tree) {
     files[entry.path] = { group, sha: entry.sha };
     counts[group]++;
   }
-  check(Object.keys(files).length <= 10000, "Upstream source inventory exceeds budget");
+  check(Object.keys(files).length <= MAX_SOURCE_FILES, `Upstream source inventory exceeds ${MAX_SOURCE_FILES} files`);
   for (const group of GROUPS) check(counts[group] > 0, `Watch group disappeared: ${group}`);
   check(files["packages/gateway-protocol/src/schema/protocol-schemas.ts"], "Protocol registry moved");
   return canonical(files);
@@ -307,7 +309,7 @@ function validateReport(report) {
     && (report.released.declaredSourceCommit === null || SHA.test(report.released.declaredSourceCommit)),
   "Invalid or independently unverified package-source binding claim");
   for (const track of [report.main]) {
-    check(SHA.test(track?.commit) && track.files && Object.keys(track.files).length <= 10000,
+    check(SHA.test(track?.commit) && track.files && Object.keys(track.files).length <= MAX_SOURCE_FILES,
       "Invalid source track");
     for (const [file, entry] of Object.entries(track.files)) {
       check(/^[a-zA-Z0-9_./@()[\]-]+$/.test(file) && !file.split("/").includes("..")
@@ -354,7 +356,7 @@ function validateReport(report) {
   check(report.evidenceHash === hash({ baseline: report.baseline, changes: report.changes }), "Report evidence mismatch");
   for (const track of ["main"]) {
     const changes = report.changes?.[track];
-    check(Array.isArray(changes) && changes.length <= 20000, "Invalid source deltas");
+    check(Array.isArray(changes) && changes.length <= 2 * MAX_SOURCE_FILES, "Invalid source deltas");
     for (const change of changes) {
       check(watchGroup(change.path) === change.group && GROUPS.includes(change.group)
         && ["baseline-review", "added", "removed", "changed"].includes(change.kind)

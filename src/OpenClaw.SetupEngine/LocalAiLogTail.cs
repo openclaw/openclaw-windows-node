@@ -72,17 +72,22 @@ internal static partial class LocalAiLogTail
     }
 
     /// <summary>
-    /// Keeps the last <paramref name="maximumLines"/> distinct lines that look like a failure, in
-    /// file order. llama.cpp reports the proximate cause (a CUDA kernel fault, a nonzero instance
-    /// exit status) close to the end of the log, so the tail is the interesting part.
+    /// Keeps at most <paramref name="maximumLines"/> distinct failure lines, in log order. Cause
+    /// lines (a CUDA fault, an allocation failure, a model-load error) take precedence over
+    /// consequence lines (a "failed to load" echo, a nonzero instance exit status), which fill
+    /// the remaining slots newest first. The input is the stdout tail followed by the stderr tail,
+    /// so the router's stderr consequences always sort last and would otherwise push a model
+    /// instance's cause out of a plain last-N window. Lines that differ only by the router's
+    /// "[pid]" instance prefix are one line, kept at its newest occurrence, so repeated
+    /// attempts of the same failing load do not fill every slot.
     /// </summary>
     internal static IReadOnlyList<string> ExtractDiagnosticLines(string log, int maximumLines = 4)
     {
         if (string.IsNullOrWhiteSpace(log))
             return [];
 
-        var matches = new List<string>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var newest = new Dictionary<string, (int Order, string Line, bool IsCause)>(StringComparer.Ordinal);
+        int order = 0;
         foreach (string rawLine in log.Split('\n'))
         {
             string line = rawLine.Trim();
@@ -90,16 +95,20 @@ internal static partial class LocalAiLogTail
                 RequestOrResponsePattern().IsMatch(line) ||
                 !DiagnosticPattern().IsMatch(line))
                 continue;
+            bool isCause = CausePattern().IsMatch(line);
             line = NormalizeSingleLine(TokenSanitizer.SanitizeLogMessage(line));
             if (line.Length > MaximumDiagnosticLineLength)
                 line = line[..MaximumDiagnosticLineLength];
-            if (seen.Add(line))
-                matches.Add(line);
+            newest[InstancePrefixPattern().Replace(line, "")] = (order++, line, isCause);
         }
 
-        return matches.Count <= maximumLines
-            ? matches
-            : matches[^maximumLines..];
+        var byRecency = newest.Values.OrderByDescending(match => match.Order).ToList();
+        var causes = byRecency.Where(match => match.IsCause).Take(maximumLines).ToList();
+        return causes
+            .Concat(byRecency.Where(match => !match.IsCause).Take(maximumLines - causes.Count))
+            .OrderBy(match => match.Order)
+            .Select(match => match.Line)
+            .ToList();
     }
 
     private static string NormalizeSingleLine(string value)
@@ -123,10 +132,20 @@ internal static partial class LocalAiLogTail
         return builder.ToString();
     }
 
+    /// <summary>Markers that name a failure's cause rather than a consequence of it.</summary>
+    private const string CauseMarkers =
+        "CUDA error|cudaError|failed to allocate|out of memory|error loading model|unable to load model";
+
     [GeneratedRegex(
-        @"CUDA error|cudaError|exited with status|failed to load|failed to allocate|out of memory|error loading model|unable to load model",
+        CauseMarkers + "|exited with status|failed to load",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DiagnosticPattern();
+
+    [GeneratedRegex(CauseMarkers, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex CausePattern();
+
+    [GeneratedRegex(@"^\[\d+\]\s*", RegexOptions.CultureInvariant)]
+    private static partial Regex InstancePrefixPattern();
 
     [GeneratedRegex(
         @"(?:\blog_server_[a-z_]*|\brequest|\bresponse)\s*:",

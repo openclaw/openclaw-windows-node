@@ -5,11 +5,11 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/openclaw/openclaw-windows-node/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/openclaw/openclaw-windows-node/actions/workflows/ci.yml)
 [![.NET](https://img.shields.io/badge/.NET-10.0-512bd4?style=flat-square)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
-[![Discord](https://img.shields.io/discord/1456350064065904867?label=discord&logo=discord&logoColor=white&color=5865F2&style=flat-square)](https://discord.gg/clawd)
+[![Discord](https://img.shields.io/discord/1456350064065904867?label=discord&logo=discord&logoColor=white&color=5865F2&style=flat-square)](https://openclaw.ai/discord?from=github-openclaw-windows-node-readme-badge)
 
 The native Windows companion for [OpenClaw](https://github.com/openclaw/openclaw). Connect your PC to a gateway, chat with your agents, and choose which Windows capabilities they can use.
 
-[Download](https://docs.openclaw.ai/platforms/windows) | [Setup guide](docs/SETUP.md) | [Windows docs](https://docs.openclaw.ai/platforms/windows) | [Support](https://community.openclaw.ai/) | [Discord](https://discord.gg/clawd)
+[Download](https://docs.openclaw.ai/platforms/windows) | [Setup guide](docs/SETUP.md) | [Windows docs](https://docs.openclaw.ai/platforms/windows) | [Support](https://community.openclaw.ai/) | [Discord](https://openclaw.ai/discord?from=github-openclaw-windows-node-readme-nav)
 
 For official OpenClaw support with installation, setup, or usage, visit [community.openclaw.ai](https://community.openclaw.ai/). Use GitHub issues for reproducible bugs and private security reporting for vulnerabilities.
 
@@ -67,7 +67,7 @@ OpenClaw applies more than one trust check:
 - **Permissions** controls what this PC advertises.
 - **Connection** shows pairing and reapproval requests.
 - **Command Center** explains commands filtered by gateway policy and provides copyable repair commands for safe capabilities.
-- **Advanced > Config** provides a schema-guided editor for the connected gateway's configuration.
+- **Config** provides a schema-guided editor for the connected gateway's configuration.
 
 After changing gateway command policy, approve any `pending-reapproval` request shown by the app and reconnect the node. The app never silently opts into privacy-sensitive gateway commands.
 
@@ -214,10 +214,17 @@ the same runtime resolver as the app build and rejects a missing or outdated com
 Direct WinUI builds require a runtime identifier:
 
 ```powershell
+.\scripts\Initialize-ReactorPackages.ps1
 dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64
 dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-arm64
 dotnet build .\src\OpenClaw.Tray.WinUI\OpenClaw.Tray.WinUI.csproj -r win-x64 -p:PackageMsix=true
 ```
+
+The initializer verifies the published Reactor packages in the repository-local
+feed selected by `NuGet.Config`. Run it before direct restore/build/run commands
+or the first Visual Studio restore. `build.ps1` and `run-app-local.ps1` perform
+this step automatically when building; `-NoBuild` uses existing output without
+acquiring packages. No global NuGet configuration or cache is changed.
 
 ### Run
 

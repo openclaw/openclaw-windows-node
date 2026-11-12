@@ -65,7 +65,11 @@ public partial class App
         new(
             new SettingsChangeEffects(
                 settings => _nodeService?.ApplyOllamaPermission(settings.NodeOllamaInferenceEnabled),
-                settings => OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls),
+                settings =>
+                {
+                    OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(settings.ShowChatToolCalls);
+                    OpenClawTray.Chat.OpenClawReactorChatRoot.SetThinkingVisible(settings.ShowChatThinking);
+                },
                 SyncActiveGatewayBrowserProxyForward,
                 PublishSandboxRiskNotificationIfNeeded,
                 PrepareFullReconnect,

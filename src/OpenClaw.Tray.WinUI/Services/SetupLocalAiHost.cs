@@ -1,3 +1,11 @@
+// <summary>
+// Adapts existing Local AI runtime, Gateway and setup owners to the onboarding host contracts.
+// It coordinates their calls but must never take ownership of their processes, receipts or windows.
+// Usage:
+//   LocalAiOnboardingSnapshot state = await host.ObserveAsync(cancellationToken);
+//   SetupLocalAiUseResult result = await host.UseAsync(state, cancellationToken);
+//   await host.ReconcileNativeAsync(transport, modelRef, cancellationToken);
+// </summary>
 using System.Security.Cryptography;
 using System.Text.Json;
 using OpenClaw.Connection;
@@ -32,6 +40,7 @@ internal sealed class SetupLocalAiHost(
     public bool HasNativeSelection => _nativeRecord is { } record &&
         nativeLifecycle?.OwnsGateway(record.Id) == true;
 
+    /// <summary>Reconciles the selected native Gateway with its Local AI model route.</summary>
     public async Task ReconcileNativeAsync(IGatewayAiSetupTransport transport, string modelRef, CancellationToken ct)
     {
         if (!HasNativeSelection || !modelRef.StartsWith("llamacpp/", StringComparison.Ordinal)) return;
@@ -39,6 +48,7 @@ internal sealed class SetupLocalAiHost(
         await nativeLifecycle!.ReconcileVerifiedAsync(_nativeRecord!, transport, install, ct);
     }
 
+    /// <summary>Withdraws the selected native Local AI route.</summary>
     public async Task WithdrawNativeAsync(CancellationToken ct)
     {
         if (!HasNativeSelection) return;
@@ -88,6 +98,7 @@ internal sealed class SetupLocalAiHost(
         }
     }
 
+    /// <summary>Observes available Local AI setup choices and current onboarding state.</summary>
     public Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct) => ObserveAsync(ct, null);
 
     public async Task<LocalAiOnboardingSnapshot> ObserveAsync(CancellationToken ct,
@@ -125,13 +136,13 @@ internal sealed class SetupLocalAiHost(
         {
             eligibility = install is null
                 ? LocalInferenceEligibility.Evaluate(hardware)
-                : string.Equals(install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase)
+                : LocalModelCatalog.RequiresRecordedProfile(install.Manifest.ModelCatalogId)
                     ? LocalInferenceEligibility.EvaluateRecordedProfile(hardware,
                         LlamaServerRouterConfiguration.ResolveInstalledPlan(install))
                     : LocalInferenceEligibility.EvaluateInstalled(hardware, install.Manifest.ModelCatalogId);
         }
-        catch (InvalidDataException) when (install is not null && string.Equals(
-            install.Manifest.ModelCatalogId, LocalModelCatalog.NemotronBoltModelId, StringComparison.OrdinalIgnoreCase))
+        catch (InvalidDataException) when (install is not null &&
+            LocalModelCatalog.RequiresRecordedProfile(install.Manifest.ModelCatalogId))
         {
             // File repair retains qualified recipe pins. An unqualified receipt
             // needs explicit recovery before it can authorize repair or model use.
@@ -159,6 +170,7 @@ internal sealed class SetupLocalAiHost(
             getRuntime()?.Snapshot, Identity(install), nativeOwnership: ownership);
     }
 
+    /// <summary>Revalidates the selected install before it is shown for review.</summary>
     public async Task<SetupLocalAiTarget> RevalidateReviewAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
     {
         if (!selected.CanReview)
@@ -176,6 +188,7 @@ internal sealed class SetupLocalAiHost(
         return current.Target!;
     }
 
+    /// <summary>Uses a reviewed Local AI selection through the appropriate runtime owner.</summary>
     public Task<SetupLocalAiUseResult> UseAsync(LocalAiOnboardingSnapshot selected, CancellationToken ct)
         => UseAsync(selected, ct, null);
 
@@ -191,6 +204,7 @@ internal sealed class SetupLocalAiHost(
         return await UseAdmittedAsync(current, ct, progress);
     }
 
+    /// <summary>Installs and uses a selected Local AI intent.</summary>
     public async Task<SetupLocalAiUseResult> UseInstalledAsync(LocalAiInstallAndUseIntent intent, CancellationToken ct,
         IProgress<LocalAiSetupStage>? progress)
     {
@@ -207,6 +221,7 @@ internal sealed class SetupLocalAiHost(
         if (Identity(install) != selected.ReceiptIdentity)
             throw new LocalAiSelectionRejectedException("The selected Local AI installation changed.");
         LocalAiGatewayProviderCoordinator? provider = null;
+        var runtimeProgress = progress is null ? null : new RuntimeStartProgress(progress, ct);
         progress?.Report(LocalAiSetupStage.PreparingGateway);
         if (selected.Target!.IsNative)
         {
@@ -219,7 +234,7 @@ internal sealed class SetupLocalAiHost(
             catch (LocalAiSelectionRejectedException) when (nativeLifecycle.HasNativeBinding &&
                 runtime.Snapshot.Ownership == LocalAiOwnership.CompanionManaged)
             {
-                await nativeLifecycle.ReconcileVerifiedAsync(_nativeRecord!, _nativeTransport, install, ct);
+                await nativeLifecycle.ReconcileVerifiedAsync(_nativeRecord!, _nativeTransport, install, ct, runtimeProgress);
                 await nativeLifecycle.PrepareAsync(install, ct);
             }
         }
@@ -237,8 +252,13 @@ internal sealed class SetupLocalAiHost(
         try
         {
             RequireActiveTarget(selected.Target!, mutationStarted: false);
-            progress?.Report(LocalAiSetupStage.StartingRuntime);
-            started = await runtime.EnsureStartedAsync(ct);
+            if (selected.Target.IsNative)
+                started = await runtime.EnsureStartedAsync(ct, runtimeProgress);
+            else
+            {
+                progress?.Report(LocalAiSetupStage.StartingRuntime);
+                started = await runtime.EnsureStartedAsync(ct);
+            }
         }
         finally
         {
@@ -256,11 +276,11 @@ internal sealed class SetupLocalAiHost(
             LocalAiGatewayProviderDefinition.BuildPrimaryModel(install) != selected.ModelRef ||
             started.ModelEvidence.State is not (LocalAiModelAvailabilityState.Verified or LocalAiModelAvailabilityState.Loaded))
             throw new InvalidOperationException("The exact managed Local AI model did not become ready.");
-        progress?.Report(LocalAiSetupStage.PublishingProvider);
         // Native startup owns publication and recovery authorization under the runtime
         // gate. A second host write could otherwise republish after a newer Stop.
         if (!selected.Target.IsNative)
         {
+            progress?.Report(LocalAiSetupStage.PublishingProvider);
             var published = await provider!.PublishAsync(install, ct);
             if (!published.Success)
                 throw new InvalidOperationException(published.Detail);
@@ -302,6 +322,23 @@ internal sealed class SetupLocalAiHost(
             if (!mutationStarted)
                 throw new LocalAiSelectionRejectedException(message);
             throw new InvalidOperationException(message);
+        }
+    }
+
+    private sealed class RuntimeStartProgress(IProgress<LocalAiSetupStage> progress, CancellationToken ct)
+        : IProgress<LocalAiRuntimeStartStage>
+    {
+        public void Report(LocalAiRuntimeStartStage stage)
+        {
+            if (ct.IsCancellationRequested) return;
+            progress.Report(stage switch
+            {
+                LocalAiRuntimeStartStage.StartingRuntime => LocalAiSetupStage.StartingRuntime,
+                LocalAiRuntimeStartStage.PublishingProvider => LocalAiSetupStage.PublishingProvider,
+                LocalAiRuntimeStartStage.CheckingConfiguration => LocalAiSetupStage.CheckingConfiguration,
+                LocalAiRuntimeStartStage.VerifyingEndpoint => LocalAiSetupStage.VerifyingEndpoint,
+                _ => throw new ArgumentOutOfRangeException(nameof(stage))
+            });
         }
     }
 

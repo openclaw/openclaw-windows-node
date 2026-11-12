@@ -89,6 +89,10 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     private ChatComposerInputs? _inputs;
     private ChatSessionModelCatalog? _sessionModelCatalog;
     private long _latestInputsRevision;
+    private long _sandboxSettingsVersion = -1;
+    private long _sandboxStatusVersion = -1;
+    private bool _systemRunEnabled = true;
+    private SandboxStatus _sandboxAvailability = SandboxStatus.Checking;
 
     public ChatComposerViewModel(IUiDispatcher dispatcher, bool initialSpeakerMuted)
     {
@@ -123,6 +127,38 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
                 ? _sessionModelCatalog?.Choices ?? []
                 : inputs.ModelChoices)
         : null;
+    public SandboxStatus SandboxStatus => _systemRunEnabled ? _sandboxAvailability : SandboxStatus.Disabled;
+
+    public void ApplySandboxSettings(SettingsSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        MutateIfChanged(() =>
+        {
+            if (snapshot.Version <= _sandboxSettingsVersion)
+                return false;
+            _sandboxSettingsVersion = snapshot.Version;
+            if (_systemRunEnabled == snapshot.NodeSystemRunEnabled)
+                return false;
+
+            _systemRunEnabled = snapshot.NodeSystemRunEnabled;
+            return true;
+        });
+    }
+
+    public void ApplySandboxStatus(SandboxStatusSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        MutateIfChanged(() =>
+        {
+            if (snapshot.Version <= _sandboxStatusVersion)
+                return false;
+            _sandboxStatusVersion = snapshot.Version;
+            if (_sandboxAvailability == snapshot.Status)
+                return false;
+            _sandboxAvailability = snapshot.Status;
+            return true;
+        });
+    }
 
     /// <summary>Exposed for disposal characterization tests.</summary>
     internal bool IsDisposed => _disposed;
