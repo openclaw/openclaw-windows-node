@@ -100,7 +100,7 @@ internal sealed class ChatCopyButton : Component<ChatCopyButtonProps>
                     _ => FluentIconCatalog.Copy,
                 })
                     .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                    .FontSize(14)
+                    .FontSize(ChatVisuals.ActionIconSize)
                     .AccessibilityView(AccessibilityView.Raw)
                     .Set(text => text.IsTextScaleFactorEnabled = false),
                 Copy)

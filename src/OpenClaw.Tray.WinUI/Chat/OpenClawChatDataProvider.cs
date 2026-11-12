@@ -146,6 +146,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;
     internal long ModelCatalogRevision => Interlocked.Read(ref _modelCatalogRevision);
+    internal long ToolDetailsGeneration => _state.HistoryGeneration;
 
     public event EventHandler<ChatDataChangedEventArgs>? Changed;
     public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;

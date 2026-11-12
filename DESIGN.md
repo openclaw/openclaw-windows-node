@@ -496,7 +496,7 @@ x-colophon:
       accentText:
         resource: AccentTextFillColorPrimaryBrush
         themes: { dark: "#99ebff", highContrast: "#ffffff" }
-        usage: Outlined accent badge text and border. Native SystemAccentColorDark2 in light, Light3 in dark, and SystemColorWindowTextColor in high contrast; not AccentFillColorDefaultBrush.
+        usage: Outlined accent badge text and border, and chat picker accent text. Native SystemAccentColorDark2 in light, Light3 in dark, and SystemColorWindowTextColor in high contrast; not AccentFillColorDefaultBrush.
       setupCardFill:
         resource: CardBackgroundFillColorDefaultBrush
         themes: { dark: "#ffffff0d", highContrast: "#000000" }
@@ -1038,7 +1038,7 @@ Personality: native, trustworthy, calm, precise.
 - **line** {colors.line}: Borders, dividers. Fluent CardStrokeColorDefault / DividerStroke.
 - **accent** {colors.accent}: Primary actions, links, selection, focus. Follows SystemAccentColor (default AccentDark1 on light).
 - **accentInk** {colors.accentInk}: Text/glyphs on accent fills.
-- **accentText** {colors.accentText}: `AccentTextFillColorPrimaryBrush` for outlined accent badge text and border. It uses Dark2 in light and Light3 in dark, not the primary button fill palette.
+- **accentText** {colors.accentText}: `AccentTextFillColorPrimaryBrush` for outlined accent badge text and border, and chat picker accent text. It uses Dark2 in light and Light3 in dark, not the primary button fill palette.
 - **Setup and settings cards:** {colors.setupCardFill} and {colors.setupCardStroke} preserve `CardBackgroundFillColorDefaultBrush` and `CardStrokeColorDefaultBrush`, including their alpha. The frame owns the single backplate and 1px border. Setup choice rows and actionable expander headers have separate hover/pressed layers; ordinary settings rows and expanded children stay static around their action controls. Existing token names are retained because both surfaces bind the same native resources.
 - **Automations agenda:** measure the agenda's own width. Its columns stack below 820 DIPs; below 1000 DIPs the collapsed upcoming budget is four rows (at most three per group) and the earlier-runs budget is three. Wider agendas use six upcoming rows (at most four per group) and five earlier runs. A lone row stays visible regardless of budget. Expansion state survives resizing, and each automation uses an independent native Expander with Windows-owned animation and reduced-motion behavior. Only an explicit reveal scrolls and focuses a row.
 - **positive** {colors.positive}: Success / connected states. Fluent SystemFillColorSuccess.
@@ -1108,7 +1108,7 @@ Use the `rounded` tokens for corner radii: `sm` for buttons and inputs, `md` for
 
 The chat transcript and composer ship via Reactor and follow the native chat visual system in [`docs/CHAT_VISUAL_DESIGN.md`](docs/CHAT_VISUAL_DESIGN.md). They align to the reading rhythm of the released web chat without replacing Windows chrome, native input, or gateway contracts.
 
-- **Semantic brushes.** Chat binds the chat-local resources in `Themes/ChatResources.xaml` (Default/Light/HighContrast), not raw palette hex: `ChatCanvasBrush` (transparent; system window in HC), `ChatComposerBrush` and `ChatCardBrush` (`CardBackgroundFillColorDefault`), `ChatStrokeBrush` (`ControlStrokeColorDefault`), `ChatTextBrush` (`TextFillColorPrimary`), `ChatSecondaryTextBrush` (`TextFillColorSecondary`, used for code text), `ChatUserBrush` (accent at low opacity for the user bubble), `ChatUserTextBrush` (`TextFillColorPrimary`), `ChatPickerAccentBrush` (accent variants for picker triggers), and `ChatCopySuccessBrush` (`SystemFillColorSuccess`).
+- **Semantic brushes.** Chat binds the chat-local resources in `Themes/ChatResources.xaml` (Default/Light/HighContrast), not raw palette hex: `ChatCanvasBrush` (transparent; system window in HC), `ChatComposerBrush` and `ChatCardBrush` (`CardBackgroundFillColorDefault`), `ChatStrokeBrush` (`ControlStrokeColorDefault`), `ChatTextBrush` (`TextFillColorPrimary`), `ChatSecondaryTextBrush` (`TextFillColorSecondary`, used for code text), `ChatUserBrush` (accent at low opacity for the user bubble), `ChatUserTextBrush` (`TextFillColorPrimary`), and `ChatCopySuccessBrush` (`SystemFillColorSuccess`). `ChatPickerAccentTextStyle` binds `AccentTextFillColorPrimaryBrush` directly so picker values and checks use the native readable accent in their own theme, including high contrast.
 - **Surface layering.** The Hub title bar and expanded navigation pane reveal Mica; `NavigationViewContentBackground` supplies one content layer (`LayerFillColorDefaultBrush`; system window in HC). The chat canvas is transparent so it neither hides nor doubles that layer, and the composer and code cards use the card fill above it. The standalone chat window uses the same Mica plus one content layer.
 - **Geometry.** The reading column is capped at 768px with a 16px prose inset; outer gutters are 12px below 640px and 40px above. The avatar is omitted below 960px; wider native layouts reserve a 44px gutter on each side of the prose. The writing surface has a 20px radius, 1px border, 96px minimum height, 16,8 inner padding and a 4px editor-to-toolbar gap, and sits 16px above the window's bottom edge. Its 14px TextBox has no padding, a 44px minimum height and 200px maximum height, and draws its placeholder in `ChatMutedTextBrush` (TextFillColorTertiary) so it stays fainter than typed text. Native focus and hover keep the editor fill and border transparent, with no accent underline. Assistant prose is bubbleless at 14/21, with no extra vertical body padding, 8px block gaps and 4px turn spacing. User messages have 12,8 padding, 12px corners and a 720px maximum width; their action footer is separated by one 4px gap. Thinking and tool details use 12,8 insets and 4px internal spacing. The transcript lead-in is 8px. Expanded provider/child activity shares a 160px maximum-height scrolling region so it cannot consume most of the transcript. These chat-local density tokens reduce whitespace, not reading type or action targets.
 - **Footer controls.** Workspace shows a leading Add ("+") attach action followed by the Node Sandbox shield, then right-aligned context ring, model, effort, Voice and circular Send/Stop. Only standalone ChatWindow includes the session selector. Controls are 32px tall; icon targets are 32px square with 16px glyphs, except the 14px "+" glyph. While the sandbox is On, Windows 11 shows Segoe Fluent's ShieldTask shield-check (U+F760); Windows 10, whose MDL2 font lacks it, layers an 8px CheckMark (U+E73E) at the shield's center. Send/Stop keeps a 32px circular hit target but paints a compact 24px disc inside it, with the toolbar row 8px from the frame's sides while the editor keeps the 16px inset. The button chrome stays transparent at rest and disabled, with a subtle circular hover/pressed halo. Send carries a 12px Up arrow on `AccentFillColorDefaultBrush`, and Stop a filled 10px square (CheckboxFill U+E73B) rather than the outlined Stop glyph. An unavailable Send uses the quiet `ChatSendDisabledBrush` disc (SubtleFillColorSecondary) and `ChatSendDisabledTextBrush` arrow (TextFillColorTertiary). Model/effort labels use 13px text, a 12px native chevron and 8,4 padding. Attach/Sandbox and Voice/Send have 4px gaps. The model flyout contains an AutoSuggestBox and grouped native list; effort uses a native discrete slider and changes to a 44px gauge trigger at widths <=560px. No fake session selector or separate speaker/settings actions belong in Workspace's composer.
@@ -1122,9 +1122,24 @@ Expanded tool cards show input and output without visible section headings.
 A one-pixel `ChatStrokeBrush` line separates them only when both are present.
 The sections retain 12,8 padding, selectable monospace text and accessible
 input/output/error names. The existing outcome footer keeps its own divider.
+An available side-panel action stays inside this card: commands use an
+8px-top/6px-right overlay and 58px first-section right inset, while generic tools
+pair the supplied preview with the action in an internal header above a divider.
+Its glyph shares Copy's 14px `ChatVisuals.ActionIconSize`; command/touch targets
+remain 40px and other targets 28px. Command first sections are at least 56px tall,
+without introducing a separate header row.
 
-Tool input uses native primary ink with syntax accents; output uses
-`ChatSecondaryTextBrush`, not reduced element opacity. PowerShell commands and
+Tool input uses native primary ink with syntax accents. Generic output and
+errors use `ChatTextBrush`. Command output uses `ChatCommandOutputBrush`: the
+native primary color with opacity derived from an 82% primary / 18% secondary
+alpha blend, not reduced element opacity. The Light ratio is
+`(0.82*228 + 0.18*158)/228`; Dark is `(0.82*255 + 0.18*197)/255`.
+HC keeps full system window text. `ChatToolActionHoverBrush` uses native
+`SubtleFillColorSecondary` at 70% for pointer hover and keyboard focus;
+`ChatToolActionHoverForegroundBrush` uses primary text. HC substitutes the
+system highlight/highlight-text pair at full opacity. These native mappings
+preserve the web hierarchy without importing its literal palette.
+PowerShell commands and
 JSON arguments use the following chat-local syntax resources. Unrecognized
 languages remain literal primary text. All syntax resources map to system
 window text in high contrast.

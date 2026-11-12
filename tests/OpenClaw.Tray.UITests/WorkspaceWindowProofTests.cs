@@ -417,7 +417,7 @@ public sealed class WorkspaceWindowProofTests
             return readyInput;
         }
 
-        Invoke(Find(root, "SettingsSearch"));
+        await InvokeWhenEnabledAsync(root, "SettingsSearch");
         var input = await WaitForSearchInputAsync();
         System.Windows.Forms.SendKeys.SendWait("Go to General");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");

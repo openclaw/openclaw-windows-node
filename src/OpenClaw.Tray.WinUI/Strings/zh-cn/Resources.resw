@@ -7661,7 +7661,6 @@
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>门户</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作树</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上传文件清理受阻</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>请检查文件夹访问权限和私有状态数据的权限。恢复清理前，旧上传文件可能会继续保留。请勿自动重试已完成的上传。</value></data>
@@ -9924,4 +9923,11 @@
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>显示未路由会话</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已归档“{0}”（{1}）。</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>关闭通知</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁打开详情</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>工具详情</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>这些详情已不可用。如有需要，请重新连接，然后从当前对话重新打开工具。</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>调整详情面板大小</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>使用左右方向键调整大小。Home 键选择最小宽度；End 键选择最大宽度。</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>返回对话</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>显示详情</value></data>
 </root>

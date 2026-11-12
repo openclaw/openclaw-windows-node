@@ -404,6 +404,20 @@ public sealed class ChatTimelinePresentationTests
             itemCount: 1));
     }
 
+    [Theory]
+    [InlineData(100, 100, true)]
+    [InlineData(99, 100, true)]
+    [InlineData(101, 100, true)]
+    [InlineData(98.99, 100, false)]
+    [InlineData(101.01, 100, false)]
+    [InlineData(3230, 3234.2857055664062, false)]
+    [InlineData(3269.142822265625, 3234.2857055664062, false)]
+    public void TailNavigationPolicy_AtBottomRequiresAtMostOnePixelOfErrorInEitherDirection(
+        double verticalOffset, double scrollableHeight, bool expected)
+    {
+        Assert.Equal(expected, TailNavigationPolicy.IsAtBottom(verticalOffset, scrollableHeight));
+    }
+
     [Fact]
     public void TailNavigationQueue_OldCallbackConsumesNewestMatchingGeneration()
     {
@@ -456,6 +470,20 @@ public sealed class ChatTimelinePresentationTests
         Assert.False(correction.TryConsume(following: false, nearBottom: false, initialPending: false));
         Assert.False(correction.TryConsume(following: true, nearBottom: true, initialPending: false));
         Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+    }
+
+    [Fact]
+    public void TailReflowCorrection_OvershootUsesOnlyTheArmedCorrectionWithoutBypassingReaderOrInitialGates()
+    {
+        var correction = new TailReflowCorrection();
+        var atBottom = TailNavigationPolicy.IsAtBottom(3269.142822265625, 3234.2857055664062);
+
+        Assert.False(correction.TryConsume(following: true, nearBottom: atBottom, initialPending: false));
+        correction.Arm();
+        Assert.False(correction.TryConsume(following: false, nearBottom: atBottom, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: atBottom, initialPending: true));
+        Assert.True(correction.TryConsume(following: true, nearBottom: atBottom, initialPending: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: atBottom, initialPending: false));
     }
 
     [Fact]
@@ -808,19 +836,23 @@ public sealed class ChatTimelinePresentationTests
         Assert.Equal(typeof(bool?), fields["AnimationDesiredAtCallback"]);
     }
 
-    [Fact]
-    public void InitialTailConfirmation_CompletedBringThatDidNotMoveRequestsOffsetCorrection()
+    [Theory]
+    [InlineData(0, 2410)]
+    [InlineData(3269.142822265625, 3234.2857055664062)]
+    public void InitialTailConfirmation_CompletedBringAwayFromExactBottomRequestsOffsetCorrection(
+        double verticalOffset, double scrollableHeight)
     {
         var confirmation = new InitialTailConfirmation();
         var target = new object();
         confirmation.Reset(target);
-        confirmation.BringingIntoView(17, target, (2410, 0, 2410), 29);
-        confirmation.ScrollCompleted(17, (0, 2410), target, sourceReadSucceeded: true);
+        confirmation.BringingIntoView(17, target, (scrollableHeight, verticalOffset, scrollableHeight), 29);
+        confirmation.ScrollCompleted(17, (verticalOffset, scrollableHeight), target, sourceReadSucceeded: true);
+        var atBottom = TailNavigationPolicy.IsAtBottom(verticalOffset, scrollableHeight);
 
         for (var frame = 0; frame < InitialTailConfirmation.SettledFramesBeforeDecision - 1; frame++)
-            Assert.Equal(InitialTailLanding.Wait, confirmation.Observe(idle: true, nearBottom: false));
+            Assert.Equal(InitialTailLanding.Wait, confirmation.Observe(idle: true, nearBottom: atBottom));
 
-        Assert.Equal(InitialTailLanding.CorrectOffset, confirmation.Observe(idle: true, nearBottom: false));
+        Assert.Equal(InitialTailLanding.CorrectOffset, confirmation.Observe(idle: true, nearBottom: atBottom));
         Assert.Equal(1, confirmation.Diagnostics.Retries);
     }
 
@@ -1348,7 +1380,11 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains(".BorderThickness(1)", card);
         Assert.Contains(".BorderBrush(Theme.Ref(\"ChatStrokeBrush\"))", card);
         Assert.Contains(".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))", card);
-        Assert.DoesNotContain(".ToolTip(", renderer);
+        // Disclosure rows have no hover tooltip; the separate panel-open icon does.
+        var actionStart = renderer.IndexOf("private sealed class ToolDetailsBody", StringComparison.Ordinal);
+        var actionEnd = renderer.IndexOf("private static List<Element> BuildDetails", actionStart, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ToolTip(", renderer[..actionStart] + renderer[actionEnd..]);
+        Assert.Contains(".ToolTip(label)", renderer[actionStart..actionEnd]);
     }
 
     [Fact]
@@ -1872,7 +1908,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("private const int ToolDetailMaxChars = 4000;", renderer);
         Assert.Contains("\"Chat_Tool_InputSection\"", renderer);
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
-        Assert.Contains(".Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)", renderer);
+        Assert.Contains(".Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset,", renderer);
+        Assert.Contains("reserveActionSpace ? ToolDetailsCommandTextInset : ChatVisuals.DetailHorizontalInset", renderer);
         Assert.Contains("var body = RichTextBlock(content)", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
         Assert.Contains("text.IsTextSelectionEnabled = true", renderer);

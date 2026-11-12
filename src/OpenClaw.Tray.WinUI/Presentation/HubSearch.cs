@@ -61,7 +61,7 @@ internal static class HubSearch
     }
 
     internal static IEnumerable<HubSearchItem> Sessions(
-        IEnumerable<SessionInfo> source, bool serverMatch = false, bool dashboardSupported = false)
+        IEnumerable<SessionInfo> source, bool serverMatch = false)
     {
         var sessions = source.Where(session => !session.Archived &&
             !SessionDisplayResolver.IsBackground(session)).ToArray();
@@ -71,7 +71,7 @@ internal static class HubSearch
             SessionDisplayResolver.Resolve(session).AgentId, "\uE8BD",
             new(HubSearchTargetKind.Session, session.Key),
             $"{session.Label} {session.Subject} {session.AgentId} {session.Key}",
-            DashboardPath: dashboardSupported ? HubSearchCatalog.SessionPath(session.Key, session.IsMain) : null,
+            DashboardPath: HubSearchCatalog.SessionPath(session.Key),
             ServerMatch: serverMatch, UpdatedAt: session.UpdatedAt)).ToArray();
     }
 

@@ -7714,7 +7714,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portais</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Árvores de trabalho</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>O item solicitado não está mais disponível aqui.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Alguns destinos do painel não estão disponíveis para esta versão do Gateway.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: escolha um assistente primeiro.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>A limpeza de uploads está bloqueada</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Revise o acesso às pastas e as permissões dos dados privados. Uploads antigos podem permanecer até que a limpeza seja restabelecida. Não repita automaticamente uploads concluídos.</value></data>
@@ -9977,4 +9976,11 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessões não roteadas exibidas</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>"{0}" arquivada ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dispensar notificação</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Abrir detalhes ao lado da conversa</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Detalhes da ferramenta</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Estes detalhes não estão mais disponíveis. Reconecte-se, se necessário, e reabra a ferramenta na conversa atual.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionar painel de detalhes</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Use as setas para a esquerda e para a direita para redimensionar. Home seleciona a largura mínima; End seleciona a largura máxima.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Voltar à conversa</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Mostrar detalhes</value></data>
 </root>

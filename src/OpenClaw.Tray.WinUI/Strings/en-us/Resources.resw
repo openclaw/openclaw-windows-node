@@ -7729,7 +7729,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portals</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Worktrees</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>The requested item is no longer available here.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Some Dashboard destinations are unavailable for this Gateway version.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: choose an assistant first.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Upload cleanup is blocked</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Review folder access and private-state permissions. Old uploads may remain until cleanup is restored. Do not retry completed uploads automatically.</value></data>
@@ -9995,4 +9994,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>unrouted shown</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>Archived "{0}" ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dismiss notification</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Open details beside chat</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Tool details</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>These details are no longer available. Reconnect if needed, then reopen the tool from the current conversation.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Resize details panel</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Use Left and Right arrow keys to resize. Home selects the minimum width; End selects the maximum width.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Back to conversation</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Show details</value></data>
 </root>

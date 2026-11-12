@@ -132,12 +132,16 @@ syntax uses the web's highlight.js palette.
 | `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush`, for headings |
 | `ChatProseRichTextStyle` | Native rich-text Foreground binding to `ChatProseTextBrush`, for Markdown prose |
 | `ChatSecondaryRichTextStyle` | Native rich-text Foreground binding to `ChatSecondaryTextBrush`, for thinking text |
+| `ChatCommandOutputRichTextStyle` | Native rich-text binding to `ChatCommandOutputBrush`, slightly muted command output |
+| `ChatCommandOutputBrush` | 82% primary / 18% secondary native text alpha; full system window text in HC |
+| `ChatToolActionHoverBrush` | 70% native subtle hover fill; system highlight in HC |
+| `ChatToolActionHoverForegroundBrush` | Primary text for hover/focus; system highlight text in HC |
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
 | `ChatSecondaryTextStyle` | Native progress/result TextBlock binding to `ChatSecondaryTextBrush` |
 | `ChatMutedTextStyle` | Native TextBlock binding to `ChatMutedTextBrush`, for list bullets |
 | `ChatQuestionCardStyle` | Native question Border bindings to card fill and question-specific stroke |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
-| `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
+| `ChatPickerAccentTextStyle` | Direct theme binding to native `AccentTextFillColorPrimaryBrush`, including its high-contrast mapping |
 | `ChatSandboxOnBrush` | Light/dark system accent variants; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
@@ -209,8 +213,9 @@ Recovery stays within the 256KiB UTF-8 display budget and requests at most
 remains explicitly **limited**, never complete. Unsupported Gateway versions,
 missing or invisible results, oversized responses, mismatched identities and
 transport failures have separate visible outcomes. Retry is an explicit action.
-The panel can reuse `LoadToolOutputAsync` and `ChatToolOutputOperation`; it must
-not add another fetch or renderer. These rules follow the
+The panel reuses `LoadToolOutputAsync`, `ChatToolOutputOperation`, and the same
+detail renderer. Recovery uses the canonical saved result's call and message
+identity, not the invocation's display identity. These rules follow the
 [pinned message-read handler](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/src/gateway/server-methods/chat-message-get-handler.ts).
 
 Consecutive tool groups stay within the exact run identity and legacy turn.
@@ -350,6 +355,86 @@ buffered text becomes the streaming tail. Stop aborts that run. A live run,
 pending abort, reset or terminal outcome already known to this client wins, and
 the run's later live lifecycle end settles it.
 
+### Conversation details panel
+
+Expand a tool card and use its top-right panel-open icon to read its existing
+input/output presentation in a native, closable **Tool details** tab. The icon
+uses `FluentIconCatalog.OpenPane` (Segoe Fluent OpenPane, E8A0), with
+**Open details beside chat** as its localized tooltip and accessible name.
+The glyph is 14 pixels, sharing `ChatVisuals.ActionIconSize` with Copy.
+The action target remains 28 pixels in a generic card's title header, or 40
+pixels for commands and touch-capable devices. The generic header and its
+divider live inside the card border, with the supplied tool preview on the left.
+A command action overlays the inside top-right corner at 8 pixels from the top
+and 6 from the right, with no separate header row. Its first text section
+reserves 58 pixels on the right and a 56-pixel minimum height so even short or
+output-only commands cannot collide with the 40-pixel target.
+Command actions appear on whole-card hover or focus-within and stay visible on
+touch-capable devices. Idle icons use secondary text on a transparent,
+borderless target; pointer hover and keyboard focus use primary text with 70%
+of the native subtle hover fill. HC uses the system highlight/text pair instead.
+Clicking the main tool row still expands inline; there is
+no additional labeled button beneath its output. This follows the
+[web tool-card action](https://github.com/openclaw/openclaw/blob/63db5996914d3f629e8ff5c7f3eff9c02ec9a754/ui/src/pages/chat/components/chat-tool-expanded.solid.tsx#L329-L392)
+and its [pointer/focus presentation](https://github.com/openclaw/openclaw/blob/63db5996914d3f629e8ff5c7f3eff9c02ec9a754/ui/src/styles/chat/tool-cards.css#L620-L726).
+Opening a
+different tool replaces that slot's content, not the conversation or composer.
+Reopening the same tool retains its mounted reader. This follows the
+[web sidebar slot reuse contract](https://github.com/openclaw/openclaw/blob/8298d434d93bfb4f97bf8f4ed2087b4eca18ac22/ui/src/pages/chat/sidebar-layout.ts#L248-L300),
+not the Dashboard's separate document tabs.
+
+The wide layout has a full-height, one-DIP themed separator between the panes,
+with the existing draggable, keyboard-resizable handle. The separator does not
+intercept pointer input or add a keyboard stop. Both panes use `ChatCanvasStyle`
+and `ChatCanvasBrush`: Details has no additional layer tint, so it reveals the
+same host background as the conversation in Light and Dark and retains the
+system window fill in high contrast. The conversation and window backdrop
+remain unchanged. The separator is hidden in compact mode and when Details
+closes. Pointer handlers
+observe events handled by the native Button, and drag/key deltas begin at the
+displayed, viewport-clamped width. Arrow keys resize the focused divider; Home
+and End select the current viewport's width limits. In a narrow window,
+**Back to conversation** and **Show details** switch the visible surface without
+remounting the composer. Hiding the conversation cancels voice capture through
+the existing composer session; later visible projections cannot restart hidden
+capture or append its late result. Returning to chat never starts recording
+automatically. F6 moves between the conversation and panel; Escape
+closes the active panel when focus is inside it, or when it occupies the compact
+surface. Focus returns to a usable opening control, or a current conversation
+control if the opener was collapsed or virtualized away. The native tab close
+control also dismisses it. The panel has one full-height scroll area; the
+240-pixel section limit remains only in inline transcript details.
+
+Only current-history identities are retained. Conversation, provider, connection,
+timeline generation and history revision changes invalidate the old request.
+Disconnected, removed or mismatched content is unavailable rather than a cached
+payload. A stronger display name for the same scoped tool does not retire its
+view. Details establishes the authenticated profile through the existing
+`users.self` read and revalidates it on profile events, bound to the original
+connection epoch and signing device. A same-profile name/avatar edit restores
+availability without reconnecting. Pending or failed verification hides the
+content; actual profile replacement retires it until reconnect because main's
+transcript does not yet carry account provenance. An explicit profile event
+before the first identity read succeeds also retires Details until reconnect,
+even for a same-profile edit: the existing history cannot be qualified without
+that baseline. Ordinary bootstrap retries can still establish initial identity.
+Superseded reads cannot
+restore availability, and failures log only a bounded category.
+Each revalidation advances an opaque admission revision. The root checks that
+revision against the live profile snapshot before an open action, even before
+the next render. A verified same-account refresh can retain the open tab, but
+callbacks captured before the refresh are retired. With a verified baseline and
+an unretired connection, failed revalidation can retry on another profile or
+connection event. An initial read failure has no verified baseline: ordinary
+bootstrap retries remain possible, but an explicit profile event retires
+Details until reconnect as described above.
+
+This first panel supports only read-only tool details. It is not complete
+multi-content sidebar parity. Files requires the session-file RPCs, canonical
+source/account admission, draft retention and safe download owners. Canvas and
+MCP Apps require their reviewed authenticated content boundary, host lifetime and
+permission adapters. None is represented by a placeholder tab or a new RPC here.
+
 Initial transcript tail navigation retains its native layout gate. Entering a
 transcript control through keyboard focus cancels pending automatic
 navigation just as pointer and keyboard input do. Focus at the tail can retain
@@ -404,6 +489,9 @@ transcript then anchors to the top, so the header stays put and its details
 grow downward, as on the web. Any other reader input or programmatic tail scroll
 restores bottom anchoring.
 Actual tail visibility is tracked separately from follow eligibility. The
+landing predicate uses absolute distance to the current bottom, so an offset
+beyond a reduced extent does not count as landed. The wider follow-intent
+threshold and the existing correction budget remain unchanged.
 **Jump to latest** button stays mounted as an overlay, so showing it does not
 shrink the transcript viewport or move the composer.
 It is a 32-pixel circular native button with a 16-pixel Fluent down arrow,
@@ -790,8 +878,16 @@ scroll regions for screen readers. Each section retains selectable monospace
 text, 12,8 padding and its 240-pixel scroll cap. Input uses primary text with
 theme-bound syntax accents for explicit PowerShell tools, commands prefixed
 with PowerShell/pwsh, and JSON arguments. Unrecognized languages remain literal
-primary text rather than being guessed from the client OS. Output and errors
-use native secondary ink, not reduced element opacity; the failed outcome
+primary text rather than being guessed from the client OS. Generic output and
+errors use normal primary ink. Command output uses `ChatCommandOutputBrush`,
+an 82% primary / 18% secondary blend of native text alpha, not secondary ink or
+reduced element opacity. Fluent primary and secondary text share RGB within
+each theme, so the brush uses the primary theme color with derived opacity:
+`(0.82*228 + 0.18*158)/228` in Light and
+`(0.82*255 + 0.18*197)/255` in Dark. HC uses full system window text.
+This maps the web's hierarchy onto native Fluent colors, not its literal
+palette. Reused rich-text controls clear local foreground, opacity and Markdown
+highlighters before applying the appropriate style. The failed outcome
 remains explicit. ColorCode.Core parses only the already-sanitized display
 input, with a bounded regex match deadline. A timeout is logged and leaves the
 complete literal text visible. Syntax runs retain native selection and theme
