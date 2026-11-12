@@ -816,10 +816,11 @@ public class GatewayProtocolDriftTests
         ConcatSources(f => FileNameMatches(f.Path, "OpenClawGatewayClient", ".cs"),
             "Could not locate OpenClawGatewayClient*.cs under src/.");
 
-    /// <summary>The client surface plus the DTO/payload builders (GatewayProtocolModels.cs).</summary>
+    /// <summary>The client surface plus the DTO/payload builders (GatewayProtocolModels.cs, SessionsUsageQuery.cs).</summary>
     private static Source LoadProtocolSource() =>
         ConcatSources(
-            f => FileNameMatches(f.Path, "OpenClawGatewayClient", ".cs") || EndsWith(f.Path, "GatewayProtocolModels.cs"),
+            f => FileNameMatches(f.Path, "OpenClawGatewayClient", ".cs") || EndsWith(f.Path, "GatewayProtocolModels.cs")
+                || EndsWith(f.Path, "SessionsUsageQuery.cs"),
             "Could not locate the gateway protocol source under src/.");
 
     private static Source ConcatSources(Func<SourceFileSnapshot, bool> predicate, string notFound)

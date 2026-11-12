@@ -7,19 +7,20 @@ namespace OpenClaw.Tray.Tests;
 public sealed class PermissionSettingsWriterRoutingTests
 {
     [Fact]
-    public void HubCommandPalette_PermissionToggles_UseSettingsStore_AndRaiseSettingsSaved()
+    public void SearchNavigatesWithoutWrites_AndLegacyToggleExecutorRetainsSettingsStore()
     {
         var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
-        var buildCommandList = ExtractMethodBodyBySignature(source, "internal ImmutableArray<HubCommand> BuildCommandList()");
         var executor = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "HubCommandExecutor.cs");
         var toggleHelper = ExtractMethodBodyBySignature(executor, "private bool ToggleSetting(HubSettingToggle toggle)");
 
-        Assert.Contains("HubCommandCatalog.Build", buildCommandList);
         var catalog = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "HubCommandCatalog.cs");
+        var buildSearch = ExtractMethodBodyBySignature(catalog, "internal static IReadOnlyList<HubSearchItem> BuildSearch(");
         Assert.Contains("HubPageRegistry.BuildCommands", catalog);
         Assert.DoesNotContain("settings.Save();", catalog);
-        Assert.DoesNotContain("settings.Save();", buildCommandList);
-        Assert.Contains("_commandExecutor.Execute(command, NavigateTo, RaiseSettingsSaved)", source);
+        Assert.DoesNotContain("ToggleSetting", buildSearch);
+        Assert.Contains("HubSearchTargetKind.Page", buildSearch);
+        Assert.DoesNotContain("_commandExecutor", source);
+        Assert.Contains("SettingsSearchHost.Begin", source);
 
         Assert.Contains("_store()", toggleHelper);
         Assert.Contains("_settingsOrigin ??= store.CreateOrigin();", toggleHelper);
@@ -105,24 +106,32 @@ public sealed class PermissionSettingsWriterRoutingTests
         var workspace = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs");
         var xaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml");
         var open = ExtractMethodBodyBySignature(workspace, "internal void OpenCommandCenter()");
-        var submitted = ExtractMethodBodyBySignature(workspace, "private void OnWorkspaceSearchQuerySubmitted(");
         var keyDown = ExtractMethodBodyBySignature(workspace, "private void OnKeyDown(");
 
         Assert.Contains("WorkspaceSearchButton", xaml);
         Assert.Contains("WorkspaceSearchFlyout", xaml);
         Assert.DoesNotContain("Navigate(", open);
         Assert.Contains("_settings.OpenCommandCenter()", open);
-        Assert.Contains("WorkspaceSearchFlyout.ShowAt", open);
+        Assert.Contains("_workspaceSearchShow.ShowAt(anchor)", open);
+        Assert.Contains("_workspaceSearchShow.DeferUntilClosed()", open);
+        Assert.Contains("_settings?.DeferCommandSearchUntilClosed()", open);
+        Assert.Contains("new FlyoutShowRequest(WorkspaceSearchFlyout, OpenCommandCenter)", workspace);
         Assert.Contains("Root.IsLoaded", open);
         Assert.Contains("OpenModalDialog() is { } dialog", open);
         Assert.Contains("_commandCenterPending", open);
         Assert.Contains("dialog.Closed +=", open);
-        Assert.Contains("HubCommandCatalog.Build(_state", workspace);
-        Assert.Contains("_commandExecutor.Execute(command, OnSettingsWorkspaceRoute, () => SettingsSaved?.Invoke(this, EventArgs.Empty))", submitted);
+        Assert.Contains("HubCommandCatalog.BuildSearch(_state", workspace);
+        Assert.Contains("_commandExecutor.Execute(target,", workspace);
+        Assert.Contains("WorkspaceSearchHost.Begin", workspace);
+        Assert.DoesNotContain("OnWorkspaceSearchQuerySubmitted", workspace);
         Assert.Contains("TitleSearchBox.PlaceholderText", workspace);
         Assert.Contains("VirtualKey.E", keyDown);
         Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", keyDown);
         Assert.DoesNotContain("Ctrl+F", workspace);
+        var settings = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
+        var reveal = ExtractMethodBodyBySignature(settings, "internal void RevealSearchTarget(");
+        Assert.Contains("search.IsOwner(SettingsSearchHost)", reveal);
+        Assert.Contains("search.Generation != searchGeneration", reveal);
     }
 
     [Fact]

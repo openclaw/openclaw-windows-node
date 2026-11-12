@@ -247,9 +247,10 @@ public sealed partial class PersonalDashboardWindow : Window
         {
             core.PostWebMessageAsJson(JsonSerializer.Serialize(new { id, error = UnavailableMessage }));
         }
-        catch
+        catch (Exception ex)
         {
-            // The WebView can close while a native challenge is in flight.
+            new OpenClawTray.AppLogger().Warn(
+                $"Personal Dashboard error reply was unavailable ({ex.GetType().Name}, 0x{ex.HResult:X8}).");
         }
     }
 
@@ -306,7 +307,6 @@ public sealed partial class PersonalDashboardWindow : Window
         var subscribed = false;
         try
         {
-            // CoreWebView2Initialized precedes completion of EnsureCoreWebView2Async.
             if (!_initialized) await DrainDispatcherAsync();
             profile.Deleted += OnDeleted;
             subscribed = true;

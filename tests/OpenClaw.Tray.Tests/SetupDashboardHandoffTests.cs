@@ -168,7 +168,8 @@ public sealed class SetupDashboardHandoffTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task PersonalDashboardNeverFallsBackToBrowserOrSavedCredentials(bool available)
+    [InlineData(null)]
+    public async Task PersonalDashboardNeverFallsBackToBrowserOrSavedCredentials(bool? available)
     {
         var failures = 0;
         var opened = 0;
@@ -178,11 +179,13 @@ public sealed class SetupDashboardHandoffTests
             () => throw new InvalidOperationException("Personal mode resolved saved credentials."),
             _ => throw new InvalidOperationException("Personal mode opened the shared browser route."),
             () => failures++, () => opened++, () => true,
-            target => { path = target; return Task.FromResult(available); });
-        Assert.Equal(available, await launcher.OpenAsync("channels"));
-        Assert.Equal("channels", path);
-        Assert.Equal(available ? 0 : 1, failures);
-        Assert.Equal(available ? 1 : 0, opened);
+            available.HasValue
+                ? target => { path = target; return Task.FromResult(available.Value); }
+                : null);
+        Assert.Equal(available == true, await launcher.OpenAsync("channels"));
+        Assert.Equal(available.HasValue ? "channels" : null, path);
+        Assert.Equal(available == true ? 0 : 1, failures);
+        Assert.Equal(available == true ? 1 : 0, opened);
     }
 
     [Fact]
@@ -193,6 +196,22 @@ public sealed class SetupDashboardHandoffTests
         Assert.Equal(binding, GatewayDashboardBinding.Capture(original with { SharedGatewayToken = "rotated" }));
         Assert.NotEqual(binding, GatewayDashboardBinding.Capture(
             original with { SshTunnel = original.SshTunnel! with { Host = "other.example" } }));
+    }
+
+    [Fact]
+    public async Task CancelledDispatchGate_PropagatesWithoutLaunchingOrReportingFailure()
+    {
+        var launches = 0;
+        var failures = 0;
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var launcher = new GatewayDashboardLauncher(() => true,
+            () => new(Gateway.Url, "synthetic", false, CredentialResolver.SourceSharedGatewayToken),
+            _ => { launches++; return Task.FromResult(true); }, () => failures++);
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            launcher.OpenAsync("channels", () => cts.Token.ThrowIfCancellationRequested()));
+        Assert.Equal(0, launches);
+        Assert.Equal(0, failures);
     }
 
     [Fact]
@@ -212,6 +231,33 @@ public sealed class SetupDashboardHandoffTests
         Assert.Equal(urls[0], urls[1]);
         Assert.Equal(1, failures);
         Assert.Equal(1, opened);
+    }
+
+    [Fact]
+    public async Task SetupChannelDashboardFailureRetainsReceiptForExplicitRetry()
+    {
+        using var directory = new TempDirectory();
+        var store = new SetupDashboardHandoffStore(directory.Path);
+        var completion = new SetupNativeCompletion(Receipt(),
+            new(SetupNativeDestination.Channels, "agent:agent-a:main"));
+        var handle = store.Issue(completion);
+        var browserCalls = 0;
+        var launcher = new SetupNativeHandoffLauncher(() => Gateway,
+            (_, _) => Task.FromResult(new SetupVerifiedNativeRoute(Receipt(), completion.Target.SessionKey)),
+            async (_, _) =>
+            {
+                var dashboard = new GatewayDashboardLauncher(() => true,
+                    () => new(Gateway.Url, "synthetic", false, CredentialResolver.SourceSharedGatewayToken),
+                    _ => Task.FromResult(++browserCalls > 1), () => { });
+                if (!await dashboard.OpenAsync("channels", () => { }))
+                    throw new IOException("Synthetic browser dispatch failure");
+            }, _ => { });
+
+        Assert.False(await launcher.OpenAsync(store, handle));
+        Assert.Equal(SetupHandoffAcquisitionStatus.RetryRequired, store.Acquire(handle).Status);
+        Assert.True(await launcher.OpenAsync(store, handle, explicitRetry: true));
+        Assert.Equal(2, browserCalls);
+        Assert.Equal(SetupHandoffAcquisitionStatus.Invalid, store.Acquire(handle, explicitRetry: true).Status);
     }
 
     private sealed class StartupClock : TimeProvider

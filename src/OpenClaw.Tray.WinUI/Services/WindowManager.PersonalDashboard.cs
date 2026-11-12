@@ -6,14 +6,15 @@ internal sealed partial class WindowManager
 {
     private PersonalDashboardWindow? _personalDashboardWindow;
 
-    public async Task<bool> ShowPersonalDashboardAsync(string? path = null)
+    public async Task<bool> ShowPersonalDashboardAsync(string? path = null, string? expectedGatewayId = null)
     {
         if (_isShuttingDown || !_dispatcherQueue.HasThreadAccess)
             return false;
 
         var manager = _callbacks.GetConnectionManager();
         var lease = manager?.CurrentPersonalOperatorLease;
-        if (manager is null || lease is null)
+        if (manager is null || lease is null ||
+            (expectedGatewayId is not null && lease.GatewayId != expectedGatewayId))
             return false;
 
         if (_personalDashboardWindow is not null && !_personalDashboardWindow.CanReuseFor(lease))

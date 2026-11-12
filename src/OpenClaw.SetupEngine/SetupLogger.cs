@@ -20,9 +20,11 @@ public sealed partial class SetupLogger : IDisposable
     private readonly ConcurrentQueue<LogEntry> _recentEntries = new();
     private readonly object _writeLock = new();
     private const int MaxRecentEntries = 256;
-    // The native setup page hands its log to a runtime and host that can outlive it.
+    // An in-flight native setup operation can outlive the window's disposal request.
     private bool _disposed;
+    private bool _disposeRequested;
     private bool _fileSinkFailed;
+    private int _activeOperationLeases;
 
     public event EventHandler<LogEntry>? LogEmitted;
     public string RunId => _runId;
@@ -57,6 +59,11 @@ public sealed partial class SetupLogger : IDisposable
     public void Warn(string message, object? data = null) => Write(LogLevel.Warn, message, data);
     public void Error(string message, object? data = null) => Write(LogLevel.Error, message, data);
 
+    private sealed record HandshakeLogData(long ConnectionAttempt, GatewayHandshakeObservation Observation);
+
+    public void HandshakeObservation(long connectionAttempt, GatewayHandshakeObservation observation) =>
+        Info("native.gateway.handshake", new HandshakeLogData(connectionAttempt, observation));
+
     public void StepStarted(string stepId, string displayName)
         => Write(LogLevel.Info, $"step.started: {displayName}", new { step_id = stepId });
 
@@ -88,6 +95,26 @@ public sealed partial class SetupLogger : IDisposable
             timed_out = result.TimedOut
         });
     }
+
+    public void CommandExitObserved(int exitCode, TimeSpan elapsed)
+        => Write(LogLevel.Debug, "cmd.exit: direct child exit observed", new
+        {
+            exit_code = exitCode,
+            elapsed_ms = elapsed.TotalMilliseconds
+        });
+
+    public void CommandCancelled(
+        string phase, bool directChildExitObserved, bool stdoutEofObserved,
+        bool stderrEofObserved, bool timedOut, TimeSpan elapsed)
+        => Write(LogLevel.Warn, "cmd.cancelled: caller cancellation observed", new
+        {
+            phase,
+            direct_child_exit_observed = directChildExitObserved,
+            stdout_eof_observed = stdoutEofObserved,
+            stderr_eof_observed = stderrEofObserved,
+            timed_out = timedOut,
+            elapsed_ms = elapsed.TotalMilliseconds
+        });
 
     public void Decision(string description, string chosen)
         => Write(LogLevel.Info, $"decision: {description} → {chosen}");
@@ -198,6 +225,20 @@ public sealed partial class SetupLogger : IDisposable
         if (data == null)
             return null;
 
+        // This private wrapper admits only numeric fields and enum names. Free-text
+        // redaction would corrupt names such as AuthorizationStarted or TokenDrift.
+        if (data is HandshakeLogData handshake)
+            return JsonSerializer.SerializeToNode(new
+            {
+                connection_attempt = handshake.ConnectionAttempt,
+                transport_generation = handshake.Observation.TransportGeneration,
+                phase = handshake.Observation.Phase.ToString(),
+                elapsed_ms = handshake.Observation.ElapsedMs,
+                phase_elapsed_ms = handshake.Observation.PhaseElapsedMs,
+                failure_kind = handshake.Observation.FailureKind?.ToString(),
+                retry_after_ms = handshake.Observation.RetryAfterMs
+            }, _jsonOptions);
+
         if (data is string value)
             return NormalizeLogString(Sanitize(value));
 
@@ -291,15 +332,52 @@ public sealed partial class SetupLogger : IDisposable
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    internal IDisposable RetainForOperation()
+    {
+        lock (_writeLock)
+        {
+            if (_disposeRequested)
+                throw new ObjectDisposedException(nameof(SetupLogger));
+
+            _activeOperationLeases++;
+            return new OperationLease(this);
+        }
+    }
+
     public void Dispose()
     {
         lock (_writeLock)
         {
-            if (_disposed)
+            if (_disposeRequested)
                 return;
-            _disposed = true;
-            StopFileSink();
+            _disposeRequested = true;
+            if (_activeOperationLeases == 0)
+                CloseFileSink();
         }
+    }
+
+    private void ReleaseOperationLease()
+    {
+        lock (_writeLock)
+        {
+            _activeOperationLeases--;
+            if (_disposeRequested && _activeOperationLeases == 0)
+                CloseFileSink();
+        }
+    }
+
+    // Caller holds _writeLock.
+    private void CloseFileSink()
+    {
+        _disposed = true;
+        StopFileSink();
+    }
+
+    private sealed class OperationLease(SetupLogger logger) : IDisposable
+    {
+        private SetupLogger? _logger = logger;
+
+        public void Dispose() => Interlocked.Exchange(ref _logger, null)?.ReleaseOperationLease();
     }
 }
 

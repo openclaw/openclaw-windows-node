@@ -16,7 +16,10 @@ public sealed class OpenClawGatewayClientSelfProfileTests
     {
         using var client = new OpenClawGatewayClient("ws://localhost:18789", "test-token", new TestLogger());
         var observed = 0;
+        var listChanged = 0;
+        SessionListChange? listChange = null;
         client.SelfProfileChanged += (_, _) => observed++;
+        client.SessionListChanged += (_, change) => { listChanged++; listChange = change; };
         var json = $$"""{"type":"event","event":"sessions.changed","payload":{{payload}}}""";
         using var doc = JsonDocument.Parse(json);
         var method = typeof(OpenClawGatewayClient).GetMethod(
@@ -24,5 +27,8 @@ public sealed class OpenClawGatewayClientSelfProfileTests
         Assert.NotNull(method);
         method.Invoke(client, [doc.RootElement, json.Length, 0L]);
         Assert.Equal(expected, observed);
+        // Every sessions.changed push invalidates session lists, including archived rows.
+        Assert.Equal(1, listChanged);
+        Assert.Equal(expected == 1 ? "profile-identity" : payload.Contains("\"message\"") ? "message" : null, listChange?.Reason);
     }
 }

@@ -1,3 +1,13 @@
+// <summary>
+// Application composition root for the Companion's top-level lifecycle. App constructs and owns the
+// service provider, coordinates activation, tray and window entry points, and disposes process-wide services.
+// Pages use the composed services and window manager rather than retaining App-owned state or creating parallel roots.
+// Usage:
+//   var app = (App)Application.Current;
+//   app.EnsureSshTunnelStarted();
+//   await app.RestartSshTunnelAsync(); // false when no connection manager is available.
+// </summary>
+
 using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -16,6 +26,7 @@ using OpenClawTray.Services;
 using OpenClawTray.Windows;
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.SetupEngine;
 using Microsoft.Extensions.DependencyInjection;
 using OpenClawTray.Presentation;
 using OpenClawTray.Presentation.Adapters;
@@ -40,6 +51,9 @@ using SetupCompletedEventArgs = OpenClaw.SetupEngine.UI.SetupCompletedEventArgs;
 
 namespace OpenClawTray;
 
+/// <summary>
+/// Composes the Companion's application-wide services and top-level lifecycle.
+/// </summary>
 public partial class App : Application, OpenClawTray.Services.IAppCommands, IPermissionsPageRuntimeHost
 {
     private ITrayController? _trayController;
@@ -54,6 +68,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ILocalAiRuntime? _localAiRuntime;
     private LocalAiGatewayLifecycle? _localAiGatewayLifecycle;
     private KokoroVoicePackPrefetcher? _kokoroPrefetcher;
+    private ILocalAiModelSwitcher? _localAiModelSwitcher;
+    private DefaultModelGatewayService? _defaultModelGateway;
+    private ModelProviderGatewayService? _modelProviderGateway;
 
     /// <summary>
     /// Root DI composition root, built once during startup and disposed during
@@ -65,9 +82,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ServiceProvider? _services;
 
     /// <summary>
-    /// Page type → view-model type map used by the navigation activation hook. The Settings
-    /// page resolves its view model from DI and binds it as the page DataContext; pages absent
-    /// from the map take the no-op activation path.
+    /// Page type → view-model type map used by the navigation activation hook. General and
+    /// notification preferences share the settings view model; pages absent from the map take
+    /// the no-op activation path.
     /// </summary>
     private static readonly IReadOnlyDictionary<Type, Type> PageViewModelMap =
         new Dictionary<Type, Type>
@@ -75,6 +92,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             [typeof(Pages.SettingsPage)] = typeof(SettingsPageViewModel),
             [typeof(Pages.PermissionsPage)] = typeof(PermissionsPageViewModel),
             [typeof(Pages.LocalAiPage)] = typeof(LocalAiPageViewModel),
+            [typeof(Pages.DefaultModelPage)] = typeof(DefaultModelPageViewModel),
         };
 
     /// <summary>The root service provider, or null before startup / after shutdown.</summary>
@@ -91,10 +109,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// during Phase 14 auto-pair (Bug #2, manual test 2026-05-05). Null when no local
     /// setup has run in this app lifetime.
     /// </summary>
-    /// <summary>The persistent gateway client. Used by the onboarding wizard for RPC calls.</summary>
+    /// <summary>Returns the active authenticated Gateway client, registry and connection manager for hosted flows.</summary>
     public IOperatorGatewayClient? GatewayClient => _connectionManager?.OperatorClient;
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
+    private ProfileAutoFillCoordinator? _profileAutoFill;
+    internal ProfileAutoFillCoordinator ProfileAutoFill => _profileAutoFill ??= new(
+        () => ProfileCompletionContext.Capture(_connectionManager, _gatewayRegistry),
+        new WindowsAccountIdentityProvider(),
+        result => Logger.Info($"Owner profile auto-fill: {result.Offer}, name {result.Save?.Name}, photo {result.Save?.Photo}."),
+        new AppLogger());
     internal GatewayDirectConnectService? GatewayDirectConnectService =>
         _gatewayDirectConnectService;
     internal ManagedLocalGatewayPortProvenanceService? ManagedLocalPortProvenance =>
@@ -109,6 +133,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal VoiceService? VoiceService => _nodeService?.VoiceService ?? _standaloneVoiceService;
     /// <summary>The full device ID of the local node service (if running).</summary>
     internal string? NodeFullDeviceId => _nodeService?.FullDeviceId;
+    internal IReadOnlyCollection<string> OwnNodeIds => BuildOwnNodeIds();
     /// <summary>Live node service instance used by settings surfaces for MCP status.</summary>
     internal NodeService? ActiveNodeService => _nodeService;
     internal ExecApprovalsStore ExecApprovalsStore =>
@@ -123,7 +148,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// </summary>
     public string? PendingChatSessionKey { get; set; }
 
+    /// <summary>Exposes the active chat data and speech coordinators to the hosted chat surface.</summary>
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
+    public OpenClawTray.Chat.OpenClawChatCoordinator? ChatSpeech => _chatCoordinator;
     /// <summary>
     /// Raised after the tray-wide settings have been saved (either via the
     /// SettingsPage Save button or a direct toggle from the tray menu).
@@ -202,7 +229,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal AppState? AppState => _appState;
     private UpdateCoordinator? _updateCoordinator;
     private GatewayService? _gatewayService;
+    private OpenClaw.Shared.Cron.AutomationsOverviewSource? _automationsOverview;
+    internal OpenClaw.Shared.Cron.AutomationsOverviewSource AutomationsOverview =>
+        _automationsOverview ?? throw new InvalidOperationException("Automations overview is not initialized.");
+    private OpenClawTray.Presentation.Usage.UsageProviderReadSource? _usageProviderReads;
+    internal OpenClawTray.Presentation.Usage.IUsageProviderReadSource UsageProviderReads =>
+        _usageProviderReads ?? throw new InvalidOperationException("Usage provider reads are not initialized.");
+    private IOperatorGatewayClient? _usageProviderBindingClient;
+    private long? _usageProviderBindingEpoch;
+    private long _usageProviderBindingRevision;
     private PairingApprovalCoordinator? _pairingApprovalCoordinator;
+    /// <summary>Inbound pairing approvals; the Systems page shows their count and routes decisions to Connection.</summary>
+    internal PairingApprovalCoordinator? PairingApprovals => _pairingApprovalCoordinator;
     private OpenClawTray.Dialogs.PairingApprovalDialog? _pairingApprovalDialog;
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? _pairingApprovalPollTimer;
     
@@ -241,6 +279,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private AppNotificationService? _appNotificationService;
     private SettingsPersistenceNotification? _settingsPersistenceNotification;
     internal AppNotificationService? AppNotifications => _appNotificationService;
+    private InboxGatewaySource? _inboxGatewaySource;
+    /// <summary>Inbox rows, tab counts and badge: app notifications plus live Gateway facts.</summary>
+    internal InboxFeed? InboxFeed { get; private set; }
     private string? _lastConnectionIssueNotificationKey;
     private readonly Dictionary<string, string> _reportedChannelIssueSignatures = new(StringComparer.OrdinalIgnoreCase);
     private string? _lastSandboxRiskNotificationKey;
@@ -282,6 +323,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private readonly AppCrashLogger _crashLogger = new(Path.Combine(DataPath, "crash.log"));
     private static readonly AppRunMarker s_runMarker = new(Path.Combine(DataPath, "run.marker"));
 
+    /// <summary>Initializes startup validation, localization, XAML resources and process-wide failure handlers.</summary>
     public App()
     {
         // Validate before restart handling, logging, settings, or run-marker writes.
@@ -474,7 +516,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _settings,
             ExecApprovalsStore,
             this,
-            _localAiRuntime);
+            _localAiRuntime,
+            _localAiModelSwitcher,
+            _defaultModelGateway,
+            _modelProviderGateway);
 
         var services = new ServiceCollection();
         services.AddOpenClawTrayCore(context);
@@ -671,6 +716,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // Seed chat tool-call visibility from persisted settings so the timeline
         // honors the Settings > Chat "Show tool calls and usage" toggle on launch.
         OpenClawTray.Chat.OpenClawReactorChatRoot.SetToolCallsVisible(_settings.ShowChatToolCalls);
+        OpenClawTray.Chat.OpenClawReactorChatRoot.SetThinkingVisible(_settings.ShowChatThinking);
         _settingsChangeCoordinator = CreateSettingsChangeCoordinator(_settings.ToSettingsData());
         _openTelemetryConnection = new OpenTelemetryEndpointConnection();
         await _openTelemetryConnection.ApplyAsync(
@@ -681,7 +727,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             new AppLogger(),
             _dispatcherQueue is null
                 ? null
-                : OpenClawTray.Chat.ReactorChatHostExtensions.AsPost(_dispatcherQueue));
+                : OpenClawTray.Chat.ReactorChatHostExtensions.AsPost(_dispatcherQueue),
+            _voicePlaybackMute.Acquire);
         DiagnosticsJsonlService.Configure(DataPath);
 
         // Central observable model + gateway event handler.
@@ -721,7 +768,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     _autoStartMutationGate, enabled,
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
                     AutoStartManager.ApplySetupPreferenceAsync, ct),
-                GetSettingsStore: () => SettingsStore));
+                GetSettingsStore: () => SettingsStore,
+                OpenSetupDashboard: async (completion, path, ct) =>
+                {
+                    var launcher = CreateDashboardLauncher(() =>
+                        throw new InvalidOperationException("Windows did not open the Gateway dashboard."),
+                        completion);
+                    return await launcher.OpenAsync(path, () =>
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        RequireSetupDashboardAuthority(completion);
+                    });
+                }));
         _updateCoordinator = new UpdateCoordinator(
             _appState,
             _settings,
@@ -731,6 +789,18 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             exit: Exit);
         _appState.UpdateInfo = UpdateCoordinator.BuildInitialInfo();
         _gatewayService = new GatewayService(_appState, _dispatcherQueue!);
+        _automationsOverview = new OpenClaw.Shared.Cron.AutomationsOverviewSource(
+            () => GatewayClient,
+            action =>
+            {
+                if (!_dispatcherQueue!.TryEnqueue(() => action()))
+                    Logger.Warn("Failed to dispatch Automations overview update during shutdown.");
+            });
+        _usageProviderReads = new OpenClawTray.Presentation.Usage.UsageProviderReadSource(action =>
+        {
+            if (!_dispatcherQueue!.TryEnqueue(() => action()))
+                Logger.Warn("Failed to dispatch Usage provider read update during shutdown.");
+        });
         _gatewayService.ConnectionStatusChanged += OnGatewayConnectionStatusChanged;
         _gatewayService.AuthenticationFailed += OnGatewayAuthenticationFailed;
         _gatewayService.SessionCommandCompleted += OnGatewaySessionCommandCompleted;
@@ -740,6 +810,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _diagnosticsClipboard = new DiagnosticsClipboardService(BuildCommandCenterState);
         _toastService = new ToastService(() => _settings);
         _appNotificationService = new AppNotificationService();
+        _inboxGatewaySource = new InboxGatewaySource(new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!));
+        InboxFeed = new InboxFeed(_appNotificationService, _inboxGatewaySource);
         _settingsPersistenceNotification = new SettingsPersistenceNotification(
             _settings, new OpenClawTray.Presentation.Adapters.WinUIDispatcher(_dispatcherQueue!),
             _appNotificationService, LocalizationHelper.GetString);
@@ -829,6 +901,16 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 GetRecoveryPort = _localAiGatewayLifecycle.GetRecoveryPort,
             },
             localAiLogger);
+        _localAiModelSwitcher = new OpenClaw.SetupEngine.LocalAiModelSwitcher(
+            _localAiRuntime, AppIdentity.ResolveSetupLocalDataDirectory(), _localAiGatewayLifecycle.GetApiKey);
+        if (_appState is not null)
+        {
+            _defaultModelGateway = new DefaultModelGatewayService(
+                _appState, () => GatewayClient, () => _gatewayRegistry,
+                () => _connectionManager?.CurrentSnapshot.GatewayId, _localAiGatewayLifecycle);
+            _modelProviderGateway = new ModelProviderGatewayService(() => GatewayClient,
+                () => _gatewayRegistry?.GetActive()?.Id, () => _connectionManager?.CurrentSnapshot.GatewayId);
+        }
 
         // Build the DI composition root AFTER the tray is up, so additive plumbing
         // can never delay or preempt tray initialization. It only needs the
@@ -1180,6 +1262,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     // Voice overlay disabled — inline chat voice mode is used instead.
     // private VoiceOverlayWindow? _voiceOverlayWindow;
     private VoiceService? _standaloneVoiceService;
+    private readonly PlaybackMuteState _voicePlaybackMute = new();
 
     /// <summary>
     /// Gets the current VoiceService instance (from the node service or standalone).
@@ -1230,7 +1313,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         if (_settings?.NodeSttEnabled != true)
             return null;
 
-        return _standaloneVoiceService ??= new VoiceService(new AppLogger(), _settings);
+        return _standaloneVoiceService ??= new VoiceService(new AppLogger(), _settings, _voicePlaybackMute);
     }
 
     private void OnTrayMenuItemClicked(object? sender, string action)
@@ -1279,7 +1362,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             case "portdiagnostics": _diagnosticsClipboard!.CopyPortDiagnostics(); break;
             case "capabilitydiagnostics": _diagnosticsClipboard!.CopyCapabilityDiagnostics(); break;
             case "nodeinventory": _diagnosticsClipboard!.CopyNodeInventory(); break;
-            case "channelsummary": _diagnosticsClipboard!.CopyChannelSummary(); break;
             case "activitysummary": _diagnosticsClipboard!.CopyActivitySummary(); break;
             case "extensibilitysummary": _diagnosticsClipboard!.CopyExtensibilitySummary(); break;
             case "restartsshtunnel": RestartSshTunnel(); break;
@@ -1316,8 +1398,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     OpenDashboard(action["dashboard:".Length..]);
                 else if (action.StartsWith("activity:", StringComparison.Ordinal))
                     ShowHub("channels");
-                else if (action.StartsWith("channel:", StringComparison.Ordinal))
-                    ToggleChannel(action[8..]);
                 else
                     // Default: treat as a Hub navigation tag (e.g. "nodes", "agent:main:sessions")
                     ShowHub(action);
@@ -2289,6 +2369,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Delegate all 27 event subscriptions to GatewayService
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
+        _automationsOverview?.SetConnection(GatewayClient);
+        SynchronizeUsageProviderConnection();
+        _inboxGatewaySource?.AttachClient(e.NewClient);
 
         // Configure new client
         if (e.NewClient is { } client)
@@ -2319,6 +2402,22 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         ChatProviderChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    private void SynchronizeUsageProviderConnection()
+    {
+        if (_usageProviderReads is null) return;
+        // Read the live manager client, not a queued connection event's obsolete client or snapshot.
+        var client = GatewayClient;
+        var epoch = client is { IsConnectedToGateway: true } ? client.SessionMutationConnectionEpoch : null;
+        if (epoch is null) client = null;
+        if (!ReferenceEquals(client, _usageProviderBindingClient) || epoch != _usageProviderBindingEpoch)
+        {
+            _usageProviderBindingClient = client;
+            _usageProviderBindingEpoch = epoch;
+            _usageProviderBindingRevision++;
+        }
+        _usageProviderReads.SetConnection(client, _usageProviderBindingRevision);
+    }
+
     /// <summary>
     /// Handles the connection manager's StateChanged event.
     /// Maps the snapshot to the existing tray icon / UI status system.
@@ -2333,6 +2432,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             : null;
         OnUiThread(() =>
         {
+            _automationsOverview?.SetConnection(GatewayClient);
+            SynchronizeUsageProviderConnection();
             if (_appState != null) _appState.Status = mapped;
             _windowManager?.UpdateHubTitleBarStatus(snap, mapped);
             _trayController?.ApplyConnectionState(mapped, snap.OverallState);
@@ -2376,6 +2477,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 _dispatcherQueue,
                 DataPath,
                 settings: settings,
+                voiceServiceFactory: (logger, voiceSettings) => new VoiceService(logger, voiceSettings, _voicePlaybackMute),
                 enableMcpServer: settings.EnableMcpServer,
                 identityDataPath: IdentityDataPath,
                 sharedGatewayTokenResolver: () => _gatewayRegistry?.GetActive()?.SharedGatewayToken,
@@ -2607,11 +2709,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             $"[App] Node list refresh failed after {reason}");
     }
 
-    /// <summary>
-    /// Pushes current node service state to hub window so ConnectionPage reflects live pairing/identity.
-    /// Now a no-op — pages read App properties directly via CurrentApp.
-    /// </summary>
-
+    /// <summary>Builds the Gateway CLI command that approves the specified pending node device.</summary>
     public static string BuildPairingApprovalCommand(string deviceId) =>
         $"openclaw devices approve {deviceId}";
 
@@ -2642,6 +2740,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         return sanitized.Length <= 8 ? sanitized : $"{sanitized[..8]}...";
     }
 
+    /// <summary>Publishes a notification for a pending node-pairing request and its approval action.</summary>
     public void ShowPairingPendingNotification(string deviceId, string? approvalCommand = null)
     {
         var command = approvalCommand ?? BuildPairingApprovalCommand(deviceId);
@@ -3088,7 +3187,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             // TTS: read response aloud whenever chat TTS is enabled and ready (any chat surface).
             if (SpeechSetupReadiness.IsAutomaticChatTtsEnabled(_settings))
             {
-                _ = (_chatCoordinator?.SpeakResponseAsync(speechText) ?? Task.CompletedTask);
+                _ = (_chatCoordinator?.SpeakResponseAsync(speechText, notification.SessionKey) ?? Task.CompletedTask);
             }
         }
 
@@ -3480,6 +3579,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             AuthFailureMessage = _appState!.AuthFailureMessage,
             LastCheckTime = _appState!.LastCheckTime,
             Settings = _settings,
+            ActiveGateway = _gatewayRegistry?.GetActive(),
             IsMcpRunning = _nodeService?.IsMcpRunning == true,
             McpStartupError = _nodeService?.McpStartupError
         };
@@ -3652,6 +3752,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _pairingApprovalDialog.ShowForeground();
     }
 
+    /// <summary>Restarts the managed SSH tunnel when the active connection manager supports it.</summary>
     public async Task<bool> RestartSshTunnelAsync()
     {
         return _connectionManager is not null &&
@@ -3768,19 +3869,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 ?? OpenClaw.Connection.RoleConnectionState.Idle,
             ActiveGatewaySshTunnel = activeGateway?.SshTunnel
         };
-    }
-
-    private void ShowNotificationHistory()
-    {
-        // ActivityPage removed; legacy callers now land on the Channels page.
-        ShowHub("channels");
-    }
-
-    private void ShowActivityStream(string? filter = null)
-    {
-        // ActivityPage removed; legacy callers now land on the Channels page.
-        _ = filter;
-        ShowHub("channels");
     }
 
     private async Task ShowOnboardingAsync()
@@ -3948,7 +4036,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         out string gatewayUrl,
         out string token,
         out string credentialSource,
-        out bool isBootstrapToken)
+        out bool isBootstrapToken,
+        SetupNativeCompletion? setupCompletion = null)
     {
         gatewayUrl = string.Empty;
         token = string.Empty;
@@ -3966,6 +4055,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _settings.LegacyToken,
             _settings.LegacyBootstrapToken,
             (record, candidate) =>
+                (setupCompletion is null || IsSetupDashboardCredentialAllowed(setupCompletion, record)) &&
                 InteractiveEndpointAuthorizer?.IsCredentialAllowed(record, candidate) == true,
             out var credential) ||
             credential == null)
@@ -4028,30 +4118,64 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }, new AppLogger(), nameof(OpenNativeSetupCompletion));
     }
 
-    private void OpenDashboard(string? path = null)
+    private void OpenDashboard(string? path = null, string? expectedPersonalGatewayId = null)
     {
-        AsyncEventHandlerGuard.Run(async () =>
-        {
-            var launcher = new GatewayDashboardLauncher(
-                EnsureSshTunnelConfigured,
-                () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap)
-                    ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
-                async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)),
-                () => AsyncEventHandlerGuard.Run(
-                    () => _windowManager?.ShowDashboardLaunchFailureAsync(
-                        () => OpenDashboard(path))
-                        ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
-                () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
-                isPersonalMode: () => _gatewayRegistry?.GetActive()?.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale,
-                openPersonalDashboard: target => _windowManager?.ShowPersonalDashboardAsync(target) ?? Task.FromResult(false));
-            await launcher.OpenAsync(path);
-        }, new AppLogger(), nameof(OpenDashboard));
+        AsyncEventHandlerGuard.Run(async () => await TryOpenDashboardAsync(path, expectedPersonalGatewayId),
+            new AppLogger(), nameof(OpenDashboard));
     }
+
+    private Task<bool> TryOpenDashboardAsync(string? path, string? expectedPersonalGatewayId = null)
+    {
+        var launcher = CreateDashboardLauncher(
+            () => AsyncEventHandlerGuard.Run(
+                () => _windowManager?.ShowDashboardLaunchFailureAsync(
+                    () => OpenDashboard(path, expectedPersonalGatewayId))
+                    ?? Task.CompletedTask, new AppLogger(), "Dashboard launch error"),
+            expectedPersonalGatewayId: expectedPersonalGatewayId);
+        return launcher.OpenAsync(path);
+    }
+
+    private bool IsSetupDashboardCredentialAllowed(SetupNativeCompletion completion, GatewayRecord record)
+    {
+        if (record.Id != completion.Verification.GatewayId ||
+            GatewayDashboardBinding.Capture(record) != completion.Verification.EndpointBinding)
+            throw new SetupNativeOwnershipException();
+        RequireSetupDashboardAuthority(completion);
+        return true;
+    }
+
+    private void RequireSetupDashboardAuthority(SetupNativeCompletion completion)
+    {
+        new SetupNativeNavigationRequest(completion).GetConnectedClient(_gatewayRegistry, _connectionManager);
+        if (SetupDashboardLiveFacts.Capture(_connectionManager) is not { } facts ||
+            !facts.Matches(completion.Verification))
+            throw new SetupNativeOwnershipException();
+    }
+
+    private GatewayDashboardLauncher CreateDashboardLauncher(
+        Action reportFailure, SetupNativeCompletion? setupCompletion = null,
+        string? expectedPersonalGatewayId = null) => new(
+        EnsureSshTunnelConfigured,
+        () => TryResolveChatCredentials(out var url, out var token, out var source, out var bootstrap, setupCompletion)
+            ? new InteractiveGatewayCredential(url, token, bootstrap, source) : null,
+        new DashboardBrowser(
+            async url => await global::Windows.System.Launcher.LaunchUriAsync(new Uri(url)), Logger.Info).OpenAsync,
+        reportFailure,
+        () => _appNotificationService?.Dismiss(GatewayDashboardLauncher.FailureNotificationId),
+        isPersonalMode: () => expectedPersonalGatewayId is not null ||
+            _gatewayRegistry?.GetActive()?.OperatorAuthentication == OperatorAuthenticationMode.PersonalTailscale,
+        openPersonalDashboard: setupCompletion is null
+            ? target => _windowManager?.ShowPersonalDashboardAsync(target, expectedPersonalGatewayId) ?? Task.FromResult(false)
+            : null);
 
     // ── IAppCommands implementation ─────────────────────────────────────
 
     void IAppCommands.OpenDashboard(string? path) => OpenDashboard(path);
+    Task<bool> IAppCommands.TryOpenDashboardAsync(string? path, string? expectedPersonalGatewayId) =>
+        TryOpenDashboardAsync(path, expectedPersonalGatewayId);
     void IAppCommands.Navigate(string pageTag) => ShowHub(pageTag);
+    Task<bool> IAppCommands.TryNavigateAsync(string pageTag, string? chatSessionKey) =>
+        _windowManager?.TryShowHubAsync(pageTag, chatSessionKey) ?? Task.FromResult(false);
     void IAppCommands.Reconnect() => ReconnectWithSyncedBrowserProxyForward();
     void IAppCommands.Disconnect()
     {
@@ -4062,7 +4186,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     void IAppCommands.CheckForUpdates() => _ = _updateCoordinator!.CheckForUpdatesUserInitiatedAsync();
     void IAppCommands.ShowOnboarding() => _ = ShowOnboardingAsync();
     void IAppCommands.ShowLocalAiSetup() => _ = _windowManager?.ShowLocalAiSetupAsync();
-    void IAppCommands.ShowLocalAiModelSetup() => _ = _windowManager?.ShowLocalAiModelSetupAsync();
     void IAppCommands.OpenLocalAiLogs() =>
         OpenFolder(new LocalAiPaths(AppIdentity.ResolveSetupLocalDataDirectory()).LogsDirectory, "Local AI logs");
     void IAppCommands.ShowGatewayWizard() => _ = ShowGatewayWizardAsync();
@@ -4099,44 +4222,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             (false, true) => PermissionsVoiceSetupRequirement.VoiceSetup,
             _ => PermissionsVoiceSetupRequirement.None,
         };
-    }
-
-    private void ToggleChannel(string channelName) =>
-        AsyncEventHandlerGuard.Run(
-            () => ToggleChannelAsync(channelName),
-            new AppLogger(),
-            nameof(ToggleChannel));
-
-    private async Task ToggleChannelAsync(string channelName)
-    {
-        var client = _connectionManager?.OperatorClient;
-        if (client == null) return;
-
-        var channel = _appState!.Channels.FirstOrDefault(c => c.Name == channelName);
-        if (channel == null) return;
-
-        try
-        {
-            var isRunning = ChannelHealth.IsHealthyStatus(channel.Status);
-            if (isRunning)
-            {
-                await client.StopChannelAsync(channelName);
-                AddRecentActivity($"Stopped channel: {channelName}", category: "channel", dashboardPath: "settings");
-            }
-            else
-            {
-                await client.StartChannelAsync(channelName);
-                AddRecentActivity($"Started channel: {channelName}", category: "channel", dashboardPath: "settings");
-            }
-             
-            // Refresh health
-            await RunHealthCheckAsync();
-        }
-        catch (Exception ex)
-        {
-            AddRecentActivity($"Channel toggle failed: {channelName}", category: "channel", details: ex.Message);
-            Logger.Error($"Failed to toggle channel: {ex.Message}");
-        }
     }
 
     private void ToggleAutoStart() =>
@@ -4333,9 +4418,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             await voiceService.StopAsync();
     }
 
+    /// <summary>Asks the active chat coordinator to speak text, if chat speech is available.</summary>
     public Task SpeakChatTextAsync(string text) =>
         _chatCoordinator?.SpeakChatTextAsync(text) ?? Task.CompletedTask;
 
+    /// <summary>Stops active chat speech without changing the persisted mute preference.</summary>
     public void StopChatSpeaking() => _chatCoordinator?.StopSpeaking();
 
     /// <summary>Raised when speaker mute state changes from any source (composer, settings, etc.).</summary>

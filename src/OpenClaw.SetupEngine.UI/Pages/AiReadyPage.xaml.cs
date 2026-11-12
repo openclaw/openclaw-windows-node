@@ -19,9 +19,7 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
     public AiReadyPage()
     {
         InitializeComponent();
-        ChatChoice.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Chat, 20);
-        ChannelsChoice.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Sessions, 20);
-        SkillsChoice.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Develop, 20);
+        ChatAction.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Chat, 20);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -32,8 +30,8 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
         Heading.Text = SetupLocalization.GetString("Onboarding_Finishing_Heading.Text");
         FlowProgress.Update([OnboardingStage.AiSetup, OnboardingStage.Ready], OnboardingStage.Ready);
         _admitted = args.IsCommitted;
-        SetChoicesEnabled(_admitted);
-        if (_admitted) AdmitChoices();
+        SetChatActionEnabled(_admitted);
+        if (_admitted) AdmitChatAction();
         var model = args.Coordinator.Proof.ModelRef;
         ModelSummary.Text = model.Length <= 160 && !model.Any(char.IsControl)
             ? SetupLocalization.Format("Onboarding_Ready_Model", model) : "";
@@ -45,21 +43,21 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
         args.Coordinator.Dispose();
     }
 
-    private void Choose_Click(object sender, RoutedEventArgs e)
+    private void OpenChat_Click(object sender, RoutedEventArgs e)
     {
         if (_closed || !_admitted || _args is not { } args || !args.IsCurrent() ||
             args.Coordinator.IsBusy || args.Coordinator.IsCompleted ||
-            sender is not FrameworkElement { Tag: string tag } || !Enum.TryParse<SetupNativeDestination>(tag, out var destination))
+            !ReferenceEquals(sender, ChatAction))
             return;
-        AsyncEventHandlerGuard.Run(() => ChooseAsync(args, destination), onError: error =>
+        AsyncEventHandlerGuard.Run(() => OpenChatAsync(args), onError: error =>
             System.Diagnostics.Trace.TraceWarning("Native setup completion failed ({0}).", error.GetType().Name));
     }
 
-    private async Task ChooseAsync(AiReadyPageArgs args, SetupNativeDestination destination)
+    private async Task OpenChatAsync(AiReadyPageArgs args)
     {
         SetBusy(true);
         ErrorBar.IsOpen = false;
-        try { await args.Coordinator.SelectAsync(destination); }
+        try { await args.Coordinator.SelectAsync(SetupNativeDestination.Chat); }
         catch (Exception error)
         {
             if (_closed || !args.IsCurrent()) return;
@@ -71,7 +69,7 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
             catch (Exception)
             {
                 Heading.Text = SetupLocalization.GetString("Onboarding_Finishing_Heading.Text");
-                Choices.Visibility = Visibility.Collapsed;
+                ChatActionPanel.Visibility = Visibility.Collapsed;
                 RecoveryButton.Visibility = Visibility.Visible;
             }
             ErrorBar.Message = SetupLocalization.GetString(AiSetupReadinessPresentation.CompletionFailureKey(
@@ -85,7 +83,7 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
 
     private void SetBusy(bool busy)
     {
-        SetChoicesEnabled(!busy && _admitted);
+        SetChatActionEnabled(!busy && _admitted);
         BusyProgress.Visibility = StatusText.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
         StatusText.Text = SetupLocalization.GetString("Onboarding_Ready_Opening");
     }
@@ -99,27 +97,25 @@ public sealed partial class AiReadyPage : Page, IAsyncDisposable
     public void ShowInvalidated()
     {
         Heading.Text = SetupLocalization.GetString("Onboarding_Finishing_Heading.Text");
-        Choices.Visibility = Visibility.Collapsed;
+        ChatActionPanel.Visibility = Visibility.Collapsed;
         ErrorBar.Message = SetupLocalization.GetString("Onboarding_Ready_OwnershipChanged");
         ErrorBar.IsOpen = true;
         RecoveryButton.IsEnabled = _admitted;
         RecoveryButton.Visibility = Visibility.Visible;
     }
 
-    public void AdmitChoices()
+    public void AdmitChatAction()
     {
         _admitted = true;
         Heading.Text = SetupLocalization.GetString("Onboarding_Ready_Heading.Text");
-        Prompt.Text = SetupLocalization.GetString("Onboarding_Ready_Prompt.Text");
         MascotHero.Mood = OnboardingMascotMood.Celebrating;
-        Choices.Visibility = Visibility.Visible;
-        SetChoicesEnabled(true);
+        ChatActionPanel.Visibility = Visibility.Visible;
+        SetChatActionEnabled(true);
     }
 
-    private void SetChoicesEnabled(bool enabled)
+    private void SetChatActionEnabled(bool enabled)
     {
-        foreach (var choice in Choices.Children.OfType<Control>())
-            choice.IsEnabled = enabled;
+        ChatAction.IsEnabled = enabled;
         RecoveryButton.IsEnabled = enabled;
     }
 

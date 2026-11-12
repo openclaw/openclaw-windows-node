@@ -104,11 +104,14 @@ public abstract class WebSocketClientBase : IDisposable
     private int _reconnectAttempts;
     private int _reconnectLoopActive;
     private long _connectionGeneration;
+    private long _clientAbortedGeneration = -1;
     private int _remoteCloseStatusCode = -1;
     private string? _remoteCloseStatusDescription;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
     private static readonly int[] BackoffMs = { 1000, 2000, 4000, 8000, 15000, 30000, 60000 };
     private static readonly TimeSpan DefaultConnectAttemptTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan DefaultKeepAliveInterval = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan DefaultKeepAliveTimeout = TimeSpan.FromSeconds(30);
 
     protected readonly string _token;
     protected readonly IOpenClawLogger _logger;
@@ -192,6 +195,11 @@ public abstract class WebSocketClientBase : IDisposable
 
     // --- Virtual hooks (subclass MAY override) ---
 
+    /// <summary>Observation only, retaining the source attempt even before authentication.</summary>
+    protected virtual void OnTransportObservation(
+        long connectionGeneration, GatewayHandshakePhase phase,
+        Exception? error = null, GatewayErrorKind? failureKind = null) { }
+
     /// <summary>Called after WebSocket connects, before the listen loop starts.</summary>
     protected virtual Task OnConnectedAsync() => Task.CompletedTask;
 
@@ -212,6 +220,18 @@ public abstract class WebSocketClientBase : IDisposable
 
     /// <summary>Maximum time allowed for one WebSocket HTTP upgrade attempt.</summary>
     protected virtual TimeSpan ConnectAttemptTimeout => DefaultConnectAttemptTimeout;
+
+    /// <summary>Idle time before the socket sends a WebSocket ping to the Gateway.</summary>
+    protected virtual TimeSpan KeepAliveInterval => DefaultKeepAliveInterval;
+
+    /// <summary>
+    /// Time allowed for the pong. Without this limit a peer that keeps its TCP connection open
+    /// but stops responding, such as a frozen Gateway behind the WSL relay, is never detected.
+    /// </summary>
+    protected virtual TimeSpan KeepAliveTimeout => DefaultKeepAliveTimeout;
+
+    /// <summary>A protocol-specific retry delay for the rejected socket, or normal transport backoff.</summary>
+    protected virtual int? GetReconnectDelayMs(long sourceConnectionGeneration) => null;
 
     protected WebSocketClientBase(string gatewayUrl, string token, IOpenClawLogger? logger = null, bool allowEmptyToken = false)
     {
@@ -272,10 +292,12 @@ public abstract class WebSocketClientBase : IDisposable
                 return null;
             }
 
+            OnTransportObservation(connectGeneration, GatewayHandshakePhase.TransportConnecting);
             RaiseStatusChanged(ConnectionStatus.Connecting);
             _logger.Info($"Connecting to {ClientRole}: {GatewayUrlForDisplay}");
 
-            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
+            ws.Options.KeepAliveInterval = KeepAliveInterval;
+            ws.Options.KeepAliveTimeout = KeepAliveTimeout;
 
             // Set Origin header (convert ws/wss to http/https)
             var uri = new Uri(_gatewayUrl);
@@ -329,6 +351,7 @@ public abstract class WebSocketClientBase : IDisposable
             // completes (subclass calls ResetReconnectAttempts after hello-ok).
             _logger.Info($"{ClientRole} connected, waiting for challenge...");
 
+            OnTransportObservation(connectGeneration, GatewayHandshakePhase.TransportConnected);
             await OnConnectedAsync();
             if (!IsCurrentConnection(ws, connectGeneration))
             {
@@ -375,6 +398,7 @@ public abstract class WebSocketClientBase : IDisposable
                 _logger.Warn(ex.Message);
             }
             _logger.Error($"{ClientRole} connection failed", ex);
+            OnTransportObservation(connectGeneration, GatewayHandshakePhase.Failed, ex);
             OnConnectionException(ex);
             RaiseStatusChanged(ConnectionStatus.Error);
 
@@ -451,6 +475,7 @@ public abstract class WebSocketClientBase : IDisposable
             !ReferenceEquals(_webSocket, ws))
             return;
 
+        Interlocked.Exchange(ref _clientAbortedGeneration, expectedGeneration);
         try { ws.Abort(); }
         catch (Exception ex) { _logger.Debug($"{ClientRole} WebSocket abort threw: {ex.Message}"); }
     }
@@ -557,6 +582,7 @@ public abstract class WebSocketClientBase : IDisposable
                         Volatile.Write(
                             ref _remoteCloseStatusDescription,
                             result.CloseStatusDescription);
+                        OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Disconnected);
                         OnDisconnected();
                         RaiseStatusChanged(ConnectionStatus.Disconnected);
                     }
@@ -569,6 +595,21 @@ public abstract class WebSocketClientBase : IDisposable
             _logger.Warn("Connection closed prematurely");
             if (IsCurrentConnection(ws, connectionGeneration))
             {
+                OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Disconnected);
+                OnDisconnected();
+                RaiseStatusChanged(ConnectionStatus.Disconnected);
+            }
+        }
+        catch (OperationCanceledException) when (
+            !_cts.Token.IsCancellationRequested &&
+            Interlocked.Read(ref _clientAbortedGeneration) != connectionGeneration)
+        {
+            // Nothing here asked for this cancellation, so the socket aborted itself: the keep-alive
+            // pong never arrived. Report it like any other lost connection.
+            _logger.Warn($"{ClientRole} connection stopped answering keep-alive pings");
+            if (IsCurrentConnection(ws, connectionGeneration))
+            {
+                OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Disconnected);
                 OnDisconnected();
                 RaiseStatusChanged(ConnectionStatus.Disconnected);
             }
@@ -580,6 +621,7 @@ public abstract class WebSocketClientBase : IDisposable
             _logger.Error($"{ClientRole} listen error", ex);
             if (IsCurrentConnection(ws, connectionGeneration))
             {
+                OnTransportObservation(connectionGeneration, GatewayHandshakePhase.Failed, ex);
                 OnError(ex);
                 RaiseStatusChanged(ConnectionStatus.Error);
             }
@@ -615,6 +657,7 @@ public abstract class WebSocketClientBase : IDisposable
 
         var ownerSocket = expectedSocket;
         var ownerGeneration = expectedGeneration;
+        var authorizing = false;
         try
         {
             while (!_disposed
@@ -622,16 +665,18 @@ public abstract class WebSocketClientBase : IDisposable
                 && ShouldAutoReconnect()
                 && IsReconnectOwner(ownerSocket, ownerGeneration))
             {
-                var delay = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
-                // Add 0-25% jitter to prevent thundering herd when multiple clients
-                // (operator + node) reconnect on the same schedule
-                var jitter = Random.Shared.Next(0, delay / 4);
-                delay += jitter;
+                var delay = GetReconnectDelayMs(ownerGeneration);
+                if (delay is null)
+                {
+                    var backoff = BackoffMs[Math.Min(_reconnectAttempts, BackoffMs.Length - 1)];
+                    // Preserve transport jitter, but honor a bounded application retry hint exactly.
+                    delay = backoff + Random.Shared.Next(0, backoff / 4);
+                }
                 _reconnectAttempts++;
                 _logger.Warn($"{ClientRole} reconnecting in {delay}ms (attempt {_reconnectAttempts})");
                 RaiseStatusChanged(ConnectionStatus.Connecting);
 
-                await Task.Delay(delay, _cts.Token);
+                await Task.Delay(delay.Value, _cts.Token);
 
                 if (_cts.Token.IsCancellationRequested
                     || _disposed
@@ -643,8 +688,11 @@ public abstract class WebSocketClientBase : IDisposable
 
                 if (ReconnectAuthorizationAsync is not null)
                 {
+                    OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationStarted);
+                    authorizing = true;
                     var authorization =
                         await ReconnectAuthorizationAsync(_cts.Token).ConfigureAwait(false);
+                    authorizing = false;
                     if (_cts.Token.IsCancellationRequested
                         || _disposed
                         || !ShouldAutoReconnect()
@@ -655,6 +703,8 @@ public abstract class WebSocketClientBase : IDisposable
 
                     if (!authorization.Allowed)
                     {
+                        OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationDenied,
+                            failureKind: authorization.FailureKind);
                         _logger.Warn(
                             $"{ClientRole} reconnect blocked by endpoint authorization policy: " +
                             (authorization.Detail ?? authorization.FailureKind.ToString()));
@@ -662,6 +712,7 @@ public abstract class WebSocketClientBase : IDisposable
                         RaiseStatusChanged(ConnectionStatus.Error);
                         break;
                     }
+                    OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationSucceeded);
                 }
 
                 // Safely dispose old socket
@@ -705,6 +756,9 @@ public abstract class WebSocketClientBase : IDisposable
         catch (ObjectDisposedException) { /* CTS disposed mid-loop during shutdown — expected. */ }
         catch (Exception ex)
         {
+            if (authorizing)
+                OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationDenied,
+                    failureKind: GatewayErrorKind.Unknown);
             _logger.Error($"{ClientRole} reconnect failed", ex);
             RaiseStatusChanged(ConnectionStatus.Error);
         }
@@ -826,8 +880,9 @@ public abstract class WebSocketClientBase : IDisposable
         long expectedConnectionGeneration,
         CancellationToken cancellationToken)
     {
+        var transportCancellation = _cts.Token;
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
-            _cts.Token,
+            transportCancellation,
             cancellationToken);
         try
         {
@@ -856,11 +911,13 @@ public abstract class WebSocketClientBase : IDisposable
             try
             {
                 var written = Encoding.UTF8.GetBytes(message, buffer);
+                linkedCancellation.Token.ThrowIfCancellationRequested();
+                // A caller may leave the queue, but aborting a partial frame closes the shared socket.
                 await ws.SendAsync(
                         buffer.AsMemory(0, written),
                         WebSocketMessageType.Text,
                         true,
-                        linkedCancellation.Token)
+                        transportCancellation)
                     .ConfigureAwait(false);
                 return IsCurrentConnection(ws, expectedConnectionGeneration);
             }

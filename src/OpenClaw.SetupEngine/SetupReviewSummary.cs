@@ -1,7 +1,18 @@
+// <summary>
+// Projects validated setup configuration into the review text shown before setup begins. It formats
+// user-visible choices without performing setup, network I/O, or persistence, so callers may rebuild it
+// whenever their draft changes.
+// Usage:
+//   SetupReviewSummary summary = SetupReviewSummaryBuilder.Build(config, dataDir, localDataDir);
+//   string modelLabel = SetupReviewSummaryBuilder.DisplayModelName(plan.Model);
+//   // summary contains display-ready review fields and optional Local AI details.
+// </summary>
+
 namespace OpenClaw.SetupEngine;
 
 using OpenClaw.Shared.Inference.Catalog;
 
+/// <summary>Contains the display-ready setup choices presented for user review.</summary>
 public sealed record SetupReviewSummary(
     string DistroTitle,
     string DistroDescription,
@@ -17,8 +28,10 @@ public sealed record SetupReviewSummary(
     public string? LocalAiDescription { get; init; }
 }
 
+/// <summary>Builds review projections from setup configuration without mutating that configuration.</summary>
 public static class SetupReviewSummaryBuilder
 {
+    /// <summary>Builds the full preflight review projection for a setup configuration.</summary>
     public static SetupReviewSummary Build(SetupConfig config, string? dataDir = null, string? localDataDir = null)
     {
         var distroName = Display(config.DistroName, "OpenClawGateway");
@@ -73,9 +86,9 @@ public static class SetupReviewSummaryBuilder
                 installUrl,
                 requestedVersion,
                 isCustomInstaller ? null : GatewayInstallPolicy.NodeVersion);
-        LocalModelInfo localAiModel =
+        LocalModelInfo localAiModel = config.LocalAi.PinnedPlan?.Model ??
             LocalModelCatalog.Find(config.LocalAi.SelectedModelId) ?? LocalModelCatalog.Default;
-        LocalInferenceRunProfile? localAiProfile =
+        LocalInferenceRunProfile? localAiProfile = config.LocalAi.PinnedPlan?.Profile ??
             LocalModelCatalog.FindProfile(localAiModel, config.LocalAi.SelectedProfileId);
         string[] localAiCommands;
         if (config.LocalAi.Enabled)
@@ -148,6 +161,7 @@ public static class SetupReviewSummaryBuilder
         };
     }
 
+    /// <summary>Removes catalog-only qualifiers from a model name for compact display.</summary>
     public static string DisplayModelName(LocalModelInfo model)
     {
         string displayName = model.DisplayName;

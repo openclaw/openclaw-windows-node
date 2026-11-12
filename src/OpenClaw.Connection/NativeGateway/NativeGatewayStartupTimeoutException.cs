@@ -12,7 +12,7 @@ public enum NativeGatewayStartupTimeoutPhase
 /// <summary>Safe-to-display startup timeout: contains only validated package states and token-shaped reason codes.</summary>
 public sealed class NativeGatewayStartupTimeoutException : TimeoutException
 {
-    internal NativeGatewayStartupTimeoutException(
+    public NativeGatewayStartupTimeoutException(
         NativeGatewayStartupTimeoutPhase phase,
         TimeSpan budget,
         IsolatedGatewayStatus? lastStatus,

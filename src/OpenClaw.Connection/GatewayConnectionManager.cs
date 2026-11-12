@@ -365,6 +365,7 @@ public sealed partial class GatewayConnectionManager :
             // Update snapshot with gateway info
             _stateMachine.Current = _stateMachine.Current with
             {
+                LifecycleGeneration = gen,
                 GatewayId = record.Id,
                 GatewayUrl = record.Url,
                 GatewayName = record.FriendlyName
@@ -870,6 +871,7 @@ public sealed partial class GatewayConnectionManager :
         _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
         _stateMachine.Current = _stateMachine.Current with
         {
+            LifecycleGeneration = gen,
             GatewayId = record.Id,
             GatewayUrl = record.Url,
             GatewayName = record.FriendlyName
@@ -1079,13 +1081,20 @@ public sealed partial class GatewayConnectionManager :
         }
     }
 
+    /// <summary>Disconnects only if an observation from CurrentSnapshot still identifies the published connection.</summary>
     public async Task<bool> DisconnectIfCurrentAsync(GatewayConnectionSnapshot expected)
     {
         ThrowIfDisposed();
         await _transitionSemaphore.WaitAsync();
         try
         {
-            if (!ReferenceEquals(CurrentSnapshot, expected)) return false;
+            var current = CurrentSnapshot;
+            // Compare published contexts, not an attempt counter that may have
+            // advanced before teardown failed without publishing a replacement.
+            if (current.LifecycleGeneration != expected.LifecycleGeneration ||
+                !string.Equals(current.GatewayId, expected.GatewayId, StringComparison.Ordinal) ||
+                !string.Equals(current.GatewayUrl, expected.GatewayUrl, StringComparison.Ordinal))
+                return false;
             await DisconnectCoreAsync();
             return true;
         }
@@ -1127,7 +1136,7 @@ public sealed partial class GatewayConnectionManager :
     private async Task DisconnectCoreAsync(bool stopNativeGateway = false)
     {
         CancelOperatorTelemetryAttempt("canceled", ConnectionErrorCategory.Cancelled);
-        Interlocked.Increment(ref _generation);
+        var generation = Interlocked.Increment(ref _generation);
         _nodeConnectionCoordinator.CancelTelemetry(
             "canceled",
             ConnectionErrorCategory.Cancelled);
@@ -1145,6 +1154,7 @@ public sealed partial class GatewayConnectionManager :
         }
         SyncNodeIntentFromSettings();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
+        _stateMachine.Current = _stateMachine.Current with { LifecycleGeneration = generation };
         _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
         EmitStateChanged();
     }
@@ -1626,7 +1636,7 @@ public sealed partial class GatewayConnectionManager :
                 _registry.SetActive(previousActiveId);
                 _logger.Warn($"[ConnMgr] Failed to persist active gateway switch: {ex.Message}");
                 _diagnostics.Record("state", "Switch gateway failed", $"Could not persist active gateway: {ex.Message}");
-                return;
+                throw;
             }
 
             await DisconnectCoreAsync();

@@ -58,6 +58,7 @@
                                Margin="0,0,0,2"/>
                     <TextBlock x:Uid="DiagnosticsPage_Subtitle"
                                Text="Inspect, export, and troubleshoot your OpenClaw installation."
+                               TextWrapping="Wrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                Margin="0,0,0,12"/>
@@ -324,7 +325,7 @@
                                               Text="Protocol"
                                               Style="{StaticResource CaptionTextBlockStyle}"
                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                                   <StackPanel Orientation="Horizontal"
+                                   <StackPanel x:Name="TelemetryProtocols" Orientation="Horizontal"
                                                Spacing="16">
                                        <RadioButton x:Uid="DiagnosticsPage_OpenTelemetryProtocolGrpc"
                                                     x:Name="OpenTelemetryProtocolGrpcButton"
@@ -344,7 +345,7 @@
                                           MinHeight="20"
                                           Style="{StaticResource CaptionTextBlockStyle}"
                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                               <StackPanel Orientation="Horizontal"
+                               <StackPanel x:Name="TelemetryActions" Orientation="Horizontal"
                                            Spacing="8">
                                    <Button x:Uid="DiagnosticsPage_SaveOpenTelemetryEndpointButton"
                                            x:Name="SaveOpenTelemetryEndpointButton"
@@ -377,7 +378,7 @@
                             <toolkit:SettingsCard x:Uid="DiagnosticsPage_Card_WorkspaceChat"
                                                   Header="Workspace chat">
                                 <ComboBox x:Name="ChatOverrideCombo"
-                                          MinWidth="220"
+                                          MaxWidth="220" HorizontalAlignment="Stretch"
                                           AutomationProperties.AutomationId="DebugPageChatOverride"
                                           SelectionChanged="OnChatOverrideChanged">
                                     <ComboBoxItem x:Uid="DebugPage_NoOverride" Content="No override" Tag="NoOverride"/>
@@ -427,6 +428,7 @@
                         </StackPanel>
                     </HyperlinkButton>
                     <TextBlock x:Name="DetailTitle"
+                               TextWrapping="Wrap"
                                Style="{StaticResource SubtitleTextBlockStyle}"
                                AutomationProperties.HeadingLevel="Level1"/>
                     <TextBlock x:Name="DetailCaption"
@@ -435,7 +437,7 @@
                                TextWrapping="Wrap"/>
                 </StackPanel>
 
-                <StackPanel Grid.Row="1"
+                <StackPanel x:Name="DetailActions" Grid.Row="1"
                             Orientation="Horizontal"
                             Spacing="8">
                     <Button x:Name="DetailRefreshButton"
