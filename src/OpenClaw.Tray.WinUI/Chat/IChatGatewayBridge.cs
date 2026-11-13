@@ -347,7 +347,10 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
 
     public long? ChatMessageReadConnectionEpoch => _client.SessionMutationConnectionEpoch;
     public Task<SessionFileList> ListSessionFilesAsync(string sessionKey) =>
-        _client.ListSessionFilesAsync(sessionKey);
+        // Ask only Gateways that advertise the method; hello fills the list before Connected is raised.
+        _client.AdvertisedServerMethods.Contains("sessions.files.list", StringComparer.Ordinal)
+            ? _client.ListSessionFilesAsync(sessionKey)
+            : Task.FromResult(new SessionFileList { Key = sessionKey, IsSupported = false });
     public Task<ChatMessageReadResult> RequestChatMessageAsync(
         string sessionKey, string sessionId, string messageId, int maxChars,
         long expectedConnectionEpoch, CancellationToken cancellationToken) =>
