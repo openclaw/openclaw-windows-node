@@ -596,6 +596,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public Task PublishSelfProfileChangedAsync() =>
         BroadcastAsync("sessions.changed", new { reason = "profile-identity" });
 
+    /// <summary>Publishes synthetic channel health and presence through the real Gateway event path.</summary>
+    public Task PublishHealthAsync(object payload)
+    {
+        lock (_sync) _readResponses["health"] = _ => payload;
+        return BroadcastAsync("health", payload);
+    }
+
     public void FailSearchRead(string method) => OverrideSearchRead(method, _ =>
         throw new FixtureRequestException("FIXTURE_SEARCH_FAILURE", "Synthetic read failure."));
 

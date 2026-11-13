@@ -15,12 +15,12 @@ internal static class OnboardingSetupGalleryData
 
     internal static HeaderContract HeaderFor(Scene scene) => scene.Family switch
     {
-        "security" => new(typeof(SecurityNoticePage), "Welcome to OpenClaw"),
-        "welcome" => new(typeof(WelcomePage), "Set up OpenClaw"),
+        "security" => new(typeof(SecurityNoticePage), "Meet your new sidekick."),
+        "welcome" => new(typeof(WelcomePage), "Where should OpenClaw live?"),
         "advanced" => new(typeof(AdvancedSetupPage), "Choose another setup route"),
         "connection" => new(typeof(SetupNativeConnectionPage), "Connect to a gateway", "TitleText"),
-        "capabilities" or "branch" => new(typeof(CapabilitiesPage), "PC capabilities"),
-        "review" => new(typeof(GatewaySetupPage), "WSL Gateway setup"),
+        "capabilities" or "branch" => new(typeof(CapabilitiesPage), "What can your assistant use?"),
+        "review" => new(typeof(GatewaySetupPage), "Ready to install"),
         "tailscale" => new(typeof(GatewaySetupDetailPage), "Tailscale Serve", "DetailTitle"),
         "local-review" => new(typeof(GatewaySetupDetailPage), "Local AI", "DetailTitle"),
         "networking" => new(typeof(GatewaySetupDetailPage), "WSL networking consent", "DetailTitle"),

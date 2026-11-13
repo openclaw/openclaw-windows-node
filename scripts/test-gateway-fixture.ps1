@@ -14,6 +14,9 @@ Both the IntegrationTests and UITests projects must have matching canonical outp
 .PARAMETER TestTimeoutSeconds
 Finite deadline for each test-project invocation, from 1 to 1800 seconds.
 Defaults to 900 seconds. A timeout still terminates only the owned process tree.
+.PARAMETER StepTimeoutMinutes
+The calling workflow step's timeout-minutes. When set, reports the share of that budget used
+and warns at 80% or more. Defaults to 0, which skips the report.
 #>
 [CmdletBinding()]
 param(
@@ -28,8 +31,11 @@ param(
     [switch]$NativeInputProof,
     [switch]$KeyboardProof,
     [ValidateRange(1, 1800)]
-    [int]$TestTimeoutSeconds = 900
+    [int]$TestTimeoutSeconds = 900,
+    [ValidateRange(0, 360)]
+    [int]$StepTimeoutMinutes = 0
 )
+$stepBudget = [Diagnostics.Stopwatch]::StartNew()
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $resolvedApp = (Resolve-Path -LiteralPath $AppPath).Path
@@ -90,13 +96,20 @@ function Invoke-FixtureTests {
     }
 }
 
-if ($resolvedStableApp) {
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'
-} else {
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui' -EnableKeyboardProof:$NativeInputProof
-    if ($KeyboardProof) {
-        Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof
+try {
+    if ($resolvedStableApp) {
+        Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'
+    } else {
+        Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
+        Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui' -EnableKeyboardProof:$NativeInputProof
+        if ($KeyboardProof) {
+            Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof
+        }
+    }
+} finally {
+    if ($StepTimeoutMinutes -gt 0) {
+        . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+        Write-CiStepBudget -Elapsed $stepBudget.Elapsed -StepTimeoutMinutes $StepTimeoutMinutes -Label 'Gateway fixture checks'
     }
 }
 Write-Host "Fixture checks passed. Results: $resultsDirectory"

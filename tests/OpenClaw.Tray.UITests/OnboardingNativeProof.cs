@@ -385,6 +385,19 @@ internal static class OnboardingNativeProof
         }
     }
 
+    /// <summary>
+    /// Waits until <paramref name="page"/> is parented beside a setup companion and returns that capture.
+    /// The companion lookup walks the live visual tree, so it is null until the page is mounted.
+    /// </summary>
+    internal static async Task<OpenClaw.SetupEngine.UI.Controls.SetupCompanion> CompanionAsync(FrameworkElement page)
+    {
+        OpenClaw.SetupEngine.UI.Controls.SetupCompanion? companion = null;
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => (companion = OpenClaw.SetupEngine.UI.Controls.SetupCompanion.Find(page)) is not null,
+            $"setup companion beside {page.GetType().Name}");
+        return companion!;
+    }
+
     internal static void AssertFullyVisible(FrameworkElement element, FrameworkElement viewport)
     {
         Assert.True(element.IsLoaded && element.Visibility == Visibility.Visible);
@@ -814,11 +827,11 @@ internal static class OnboardingNativeProof
     internal static void AssertManualLabelExceptions(string[] missingLabels, string originalText, string scaledText)
     {
         static bool HasWelcomeTitleAmbiguity(string text) =>
-            $" {text} ".Contains(" Set up OpenCIaw ", StringComparison.Ordinal);
+            $" {text} ".Contains(" Where should OpenCIaw live? ", StringComparison.Ordinal);
 
         foreach (var label in missingLabels)
             Assert.True(label is "Set up your AI" or "Set up a local model" ||
-                label == "Set up OpenClaw" &&
+                label == "Where should OpenClaw live?" &&
                 HasWelcomeTitleAmbiguity(originalText) && HasWelcomeTitleAmbiguity(scaledText),
                 $"OCR did not verify expected label: {label}");
     }

@@ -624,6 +624,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                     ? ChatTelemetryOutcome.Canceled
                     : ChatTelemetryOutcome.Failure,
                 ex);
+            if (ex is OperationCanceledException && sendOperation is not null)
+            {
+                // The client cancels a dispatched chat.send when its connection ends and only
+                // then reports the non-connected status. Whether the gateway accepted the message
+                // is unknown, so this is not a send failure: the status transition ends the turn,
+                // and on reconnect still-queued messages are marked failed instead of being sent
+                // into the dropped connection. Handling it here first would depend on which of the
+                // two notifications arrived first.
+                Logger.Info($"[Queue] chat.send canceled by connection loss threadId='{threadId}' queuedMessageId='{request.Id}'; outcome unknown");
+                return false;
+            }
             var failure = _state.FailSend(
                 dispatch,
                 ex.Message,

@@ -82,6 +82,21 @@ public class ActivationRouterTests
         }
     }
 
+    private sealed class SignalingSink : IActivationPlanSink
+    {
+        public TaskCompletionSource<ActivationRoute> Dispatched { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task DispatchAsync(ActivationRoute route, CancellationToken cancellationToken)
+        {
+            Dispatched.TrySetResult(route);
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> ConfirmAsync(ActivationConfirmation confirmation, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
+    }
+
     private sealed class BlockingConfirmationSink : IActivationPlanSink
     {
         private readonly TaskCompletionSource<bool> _releaseConfirmation =
@@ -454,6 +469,39 @@ public class ActivationRouterTests
     #endregion
 
     #region Forwarded activation IPC
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ForwardedLaunch_IsDispatchedWhileStartupUpdateCheckIsPending(bool deepLink)
+    {
+        var pipeName = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, pipeName);
+        await using var forwarder = new ActivationRouter(Scheme, pipeName);
+        var sink = new SignalingSink();
+        var releaseUpdate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+        var update = listener.CheckOrdinaryStartupUpdateAsync(Input(args: ["app.exe"]), () => releaseUpdate.Task);
+        try
+        {
+            Assert.False(update.IsCompleted);
+            var input = deepLink
+                ? Input(protocolUri: "openclaw://settings")
+                : Input(args: ["app.exe"]);
+            Assert.True(await forwarder.ForwardLaunchToPrimaryAsync(input, timeout.Token));
+            var route = await sink.Dispatched.Task.WaitAsync(timeout.Token);
+            var hub = Assert.IsType<ActivationRoute.OpenHub>(route);
+            Assert.Equal(deepLink ? "settings" : null, hub.Page);
+            Assert.False(update.IsCompleted);
+        }
+        finally
+        {
+            releaseUpdate.TrySetResult(true);
+            await update;
+        }
+    }
 
     [Fact]
     public async Task ForwardThenListen_DispatchesRouteFromForwardedDeepLink()
