@@ -80,6 +80,44 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }, "empty", compact: true);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompactChat_ExplicitFocusTargetsEditor_AndHiddenRequestCannotStealFocus(bool requestBeforeLoad)
+    {
+        await WithChatAsync(420, async (surface, _, session, _) =>
+        {
+            await ui.RunOnUIAsync(async () =>
+            {
+                var input = FindControl<TextBox>(surface, "ChatComposerInput");
+                var attach = FindControl<Button>(surface, "ChatComposerAttach");
+                if (requestBeforeLoad)
+                    await WaitForRenderedConditionAsync(
+                        () => ReferenceEquals(input, FocusManager.GetFocusedElement(input.XamlRoot)),
+                        "input focus requested before loading");
+                Assert.True(attach.Focus(FocusState.Programmatic));
+                session.RequestInputFocus();
+                await WaitForRenderedConditionAsync(
+                    () => ReferenceEquals(input, FocusManager.GetFocusedElement(input.XamlRoot)),
+                    "requested composer input focus");
+                input.Text = "Retained draft";
+                input.Select(3, 4);
+                session.SetHostVisible(false);
+                Assert.True(attach.Focus(FocusState.Programmatic));
+                session.RequestInputFocus();
+                session.SetHostVisible(true);
+                Assert.Same(attach, FocusManager.GetFocusedElement(attach.XamlRoot));
+                session.RequestInputFocus();
+                await WaitForRenderedConditionAsync(
+                    () => ReferenceEquals(input, FocusManager.GetFocusedElement(input.XamlRoot)),
+                    "reopened composer input focus");
+                Assert.Equal("Retained draft", input.Text);
+                Assert.Equal(3, input.SelectionStart);
+                Assert.Equal(4, input.SelectionLength);
+            });
+        }, "empty", onMounted: requestBeforeLoad ? mounted => mounted.FocusInput() : null, compact: true);
+    }
+
     [Fact]
     public async Task CompactChat_RetainsExactTargetWhenSessionDisappears_AndSendsThroughSharedComposer()
     {

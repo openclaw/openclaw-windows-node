@@ -140,6 +140,34 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             });
         }
 
+        void FocusPendingInput()
+        {
+            if (!props.Session.IsInputFocusPending || inputControl.Current is not { } input)
+                return;
+            if (!input.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (props.Session.IsInputFocusPending &&
+                    inputControl.Current is { IsLoaded: true, IsEnabled: true } textBox &&
+                    textBox.Focus(FocusState.Programmatic))
+                    props.Session.CompleteInputFocus();
+            }))
+                OpenClawTray.Services.Logger.Warn("Chat could not dispatch its requested input focus.");
+        }
+        var inputLoadedHandler = UseRef<RoutedEventHandler>((_, _) => FocusPendingInput());
+
+        UseEffect((Func<Action>)(() =>
+        {
+            props.Session.InputFocusRequested += FocusPendingInput;
+            FocusPendingInput();
+            return () => props.Session.InputFocusRequested -= FocusPendingInput;
+        }), props.Session);
+
+        UseEffect((Func<Action>)(() =>
+        {
+            FocusPendingInput();
+            return static () => { };
+        }), inputs.ConnectionState, inputs.IsVisible);
+
         void CommitSlash(string value, ReactorSlashMenuState nextState)
         {
             vm.CommitSlashText(value, nextState);
@@ -618,6 +646,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .OnMount(control =>
             {
                 var textBox = (TextBox)control;
+                textBox.Loaded += inputLoadedHandler.Current;
                 textBox.TextChanging += textChangingHandler.Current;
                 textBox.Paste += pasteHandler.Current;
                 ChatVisuals.AttachComposerPlaceholder(textBox);
@@ -628,6 +657,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .OnUnmount(control =>
             {
                 var textBox = (TextBox)control;
+                textBox.Loaded -= inputLoadedHandler.Current;
                 textBox.TextChanging -= textChangingHandler.Current;
                 textBox.Paste -= pasteHandler.Current;
                 ChatVisuals.DetachComposerPlaceholder(textBox);

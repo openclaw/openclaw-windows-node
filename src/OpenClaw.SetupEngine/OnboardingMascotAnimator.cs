@@ -128,6 +128,19 @@ internal sealed class OnboardingMascotAnimator
         }
     }
 
+    public void WakeUp()
+    {
+        if (!_motionEnabled || !AllowsAutoSleep)
+            return;
+        var wasDozing = IsDozing;
+        _lastInteractionAt = ElapsedSeconds;
+        if (wasDozing)
+        {
+            _sleepAfter = RandomSleepDelay();
+            StartGesture(OnboardingMascotGesture.Startle);
+        }
+    }
+
     public OnboardingMascotPose Advance(TimeSpan elapsed, bool animationsEnabled)
     {
         if (elapsed < TimeSpan.Zero)

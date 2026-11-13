@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
@@ -69,6 +70,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _host.LayoutUpdated += OnHostLayoutUpdated;
         _host.KeyDown += OnKeyDown;
         _bubbleHost.KeyDown += OnBubbleKeyDown;
+        _bubbleHost.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnBubblePressed), true);
         _bubbleHost.SizeChanged += OnBubbleSizeChanged;
         AppWindow.Changed += OnAppWindowChanged;
         AppWindow.Closing += OnAppWindowClosing;
@@ -138,7 +140,8 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         if (_closed) return;
         if (_presentation.IsChatOpen)
         {
-            if (notification is null) return;
+            if (notification is null ||
+                AppNotificationActionRoutes.TryGetChatSessionKey(notification.ActionRoute, out _)) return;
             _chat.Hide();
             _bubbleHovered = false;
         }
@@ -297,16 +300,36 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _bubbleTimer.Stop();
         _presentation.ShowChat(true);
         PositionInWorkArea();
-        Activate();
-        _ = OpenChatAndFocusAsync(sessionKey);
+        ActivateForInput();
+        _ = _chat.OpenAsync(sessionKey);
     }
 
-    private async Task OpenChatAndFocusAsync(string? sessionKey)
+    private void ActivateForInput()
     {
-        await _chat.OpenAsync(sessionKey);
-        if (_closed || !_bubblePopup.IsOpen) return;
-        if (FocusManager.FindFirstFocusableElement(_bubbleHost) is UIElement first)
-            first.Focus(FocusState.Programmatic);
+        Activate();
+        if (!DesktopCompanionNative.SetForegroundWindow(_hwnd))
+            Logger.Warn("Windows declined the desktop lobster foreground activation request.");
+    }
+
+    private void OnBubblePressed(object sender, PointerRoutedEventArgs args)
+    {
+        if (!_presentation.IsChatOpen) return;
+        for (var element = args.OriginalSource as DependencyObject; element is not null;
+            element = VisualTreeHelper.GetParent(element))
+        {
+            if (element is not TextBox input) continue;
+            // The windowed popup can receive pointer input while another window's
+            // text editor still owns keyboard input. Activate its owner before focusing.
+            ActivateForInput();
+            var revision = _presentation.Revision;
+            if (!DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_closed && _presentation.IsChatOpen && _presentation.Revision == revision && input.IsLoaded)
+                    input.Focus(FocusState.Pointer);
+            }))
+                Logger.Warn("Desktop lobster could not dispatch its requested input focus.");
+            return;
+        }
     }
 
     private void OnBubbleMounted(FrameworkElement element)
@@ -346,6 +369,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         var dx = cursor.X - start.X;
         var dy = cursor.Y - start.Y;
         if (!_dragged && Math.Abs(dx) + Math.Abs(dy) < 6) return;
+        if (_mascotTarget?.Content is OnboardingMascot mascot) mascot.WakeUp();
         _dragged = true;
         AppWindow.Move(new(_windowStart.X + dx, _windowStart.Y + dy));
     }
@@ -436,6 +460,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _host.LayoutUpdated -= OnHostLayoutUpdated;
         _host.KeyDown -= OnKeyDown;
         _bubbleHost.KeyDown -= OnBubbleKeyDown;
+        _bubbleHost.RemoveHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnBubblePressed));
         _bubbleHost.SizeChanged -= OnBubbleSizeChanged;
         _presentation.Changed -= OnPresentationChanged;
         _bubblePopup.IsOpen = false;
