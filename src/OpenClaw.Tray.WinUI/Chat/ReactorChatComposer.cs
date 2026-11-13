@@ -71,6 +71,20 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         controllerRef.Current = controller;
         var (attachmentFocus, setAttachmentFocus) = UseState<ChatAttachmentFocusRequest?>(null);
         var attachmentFocusToken = UseRef(0L);
+        var viewModelRef = UseRef(vm);
+        viewModelRef.Current = vm;
+        // TextBox raises TextChanged after the edit, but Reactor corrects any
+        // TextBox whose text differs from the rendered draft. A composer render
+        // that runs first would overwrite the edit with the old draft and suppress
+        // its TextChanged, so TextChanging commits every native change
+        // synchronously.
+        var nativeTextRef = UseRef<string?>(null);
+        var textChangingHandler = UseRef<global::Windows.Foundation.TypedEventHandler<TextBox, TextBoxTextChangingEventArgs>>(
+            (textBox, _) =>
+            {
+                nativeTextRef.Current = textBox.Text;
+                viewModelRef.Current.SetDraft(textBox.Text);
+            });
         var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>
         {
             if (GetBitmapClipboardContent() is not { } clipboardContent)
@@ -483,7 +497,15 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var placeholder = PlaceholderFor(inputs.ConnectionState, agent.Name);
         var input = TextBox(
                 text,
-                vm.SetDraft,
+                // TextChanging already committed the edit. The deferred TextChanged
+                // reads the TextBox later and could restore text that a slash commit
+                // or clear replaced in the meantime, so it only reports text that
+                // TextChanging did not see.
+                value =>
+                {
+                    if (!string.Equals(value, nativeTextRef.Current, StringComparison.Ordinal))
+                        vm.SetDraft(value);
+                },
                 placeholder)
             .AutomationId("ChatComposerInput")
             .AutomationName(placeholder)
@@ -580,6 +602,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .OnMount(control =>
             {
                 var textBox = (TextBox)control;
+                textBox.TextChanging += textChangingHandler.Current;
                 textBox.Paste += pasteHandler.Current;
                 ChatVisuals.AttachComposerPlaceholder(textBox);
                 textBox.ContextFlyout = CreateComposerContextFlyout(
@@ -589,6 +612,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .OnUnmount(control =>
             {
                 var textBox = (TextBox)control;
+                textBox.TextChanging -= textChangingHandler.Current;
                 textBox.Paste -= pasteHandler.Current;
                 ChatVisuals.DetachComposerPlaceholder(textBox);
                 textBox.ContextFlyout = null;

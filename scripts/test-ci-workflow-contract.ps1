@@ -1188,29 +1188,128 @@ foreach ($requiredRunnerToken in @(
         -Message "CI test runner is missing required token '$requiredRunnerToken'."
 }
 
-# Step budget visibility: each timed single-runner step passes its own timeout-minutes so the
-# runner can warn before a passing suite outgrows it. Drift between the two values is rejected.
+# Step budget visibility: each timed single-runner step declares its own timeout-minutes in
+# OPENCLAW_CI_STEP_TIMEOUT_MINUTES so the runner can warn before a passing suite outgrows it.
+# Drift between the two values is rejected. It must never be a runner argument: alpha promotion
+# runs this workflow against an older candidate's runner scripts, which reject unknown parameters.
 $budgetedRunnerPattern = '(?m)^      run: >\r?\n\s+\./scripts/(?:Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1\r?$'
 # A multi-command step would understate its budget from inside the runner, so it must be named here.
 $unbudgetedRunnerSteps = @('Run latest stable profile compatibility')
 $budgetedSteps = 0
+Assert-NotContains -Text $workflow -Unexpected '-StepTimeoutMinutes' `
+    -Message 'CI must pass step budgets as OPENCLAW_CI_STEP_TIMEOUT_MINUTES, never as a runner argument that older promotion candidates reject.'
 foreach ($stepText in [regex]::Split($workflow, '(?m)^(?=    - (?:name:|uses:))')) {
     $stepName = [regex]::Match($stepText, '(?m)^    - name: (.+?)\r?$').Groups[1].Value
-    $declared = @([regex]::Matches($stepText, '(?m)^\s+-StepTimeoutMinutes (\d+)\r?$') | ForEach-Object { [int]$_.Groups[1].Value })
+    $declared = @([regex]::Matches($stepText, "(?m)^        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '(\d+)'\r?$") | ForEach-Object { [int]$_.Groups[1].Value })
     $stepTimeout = [regex]::Match($stepText, '(?m)^      timeout-minutes: (\d+)\r?$')
     if ($stepText -match $budgetedRunnerPattern -and $stepTimeout.Success) {
-        if ($declared.Count -ne 1 -or $declared[0] -ne [int]$stepTimeout.Groups[1].Value) {
-            throw "CI step '$stepName' must pass -StepTimeoutMinutes $($stepTimeout.Groups[1].Value) to match its timeout-minutes."
+        if ($declared.Count -ne 1 -or $declared[0] -ne [int]$stepTimeout.Groups[1].Value -or
+            -not ($stepText -match '(?m)^      env:\r?$')) {
+            throw "CI step '$stepName' must set OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '$($stepTimeout.Groups[1].Value)' to match its timeout-minutes."
         }
         $budgetedSteps++
-    } elseif ($declared.Count -gt 0 -or $stepText.Contains('-StepTimeoutMinutes')) {
-        throw "CI step '$stepName' passes -StepTimeoutMinutes without being a timed single-runner step."
+    } elseif ($declared.Count -gt 0 -or $stepText.Contains('OPENCLAW_CI_STEP_TIMEOUT_MINUTES')) {
+        throw "CI step '$stepName' declares a step budget without being a timed single-runner step."
     } elseif ($stepTimeout.Success -and $stepText -match '\./scripts/(?:Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1' -and
         $stepName -notin $unbudgetedRunnerSteps) {
-        throw "CI step '$stepName' runs a test runner with other commands. Make it a single-runner step with -StepTimeoutMinutes, or list it in `$unbudgetedRunnerSteps."
+        throw "CI step '$stepName' runs a test runner with other commands. Make it a single-runner step with OPENCLAW_CI_STEP_TIMEOUT_MINUTES, or list it in `$unbudgetedRunnerSteps."
     }
 }
 if ($budgetedSteps -lt 12) { throw "Expected at least 12 budgeted runner steps, found $budgetedSteps." }
+if (([regex]::Matches($workflow, '(?m)^\s+OPENCLAW_CI_STEP_TIMEOUT_MINUTES:')).Count -ne $budgetedSteps) {
+    throw 'OPENCLAW_CI_STEP_TIMEOUT_MINUTES may only be set on budgeted runner steps, not at job or workflow level.'
+}
+
+# Alpha promotion runs this workflow from main against an older candidate's checkout and its own
+# runner scripts. Bind every runner invocation's current arguments to the runners of the oldest
+# alpha that must stay promotable and to the current runners. A parameter the candidate's runner
+# does not declare fails here instead of failing a promotion; pass new CI options as step
+# environment variables instead. Advance the pin when older alphas no longer need promotion.
+# Pinned: v2026.11.3-alpha.11. Earlier alphas already lack runner options added on Nov 9-10
+# (for example -Configuration and -ExpectedTestCount), which this check cannot restore.
+$promotionCandidateSha = '3f47e83888db83740660d03c3ecd403550235187'
+& git -C $repoRootPath cat-file -e "$promotionCandidateSha^{commit}" 2>$null
+if ($LASTEXITCODE -ne 0) { throw "Promotion compatibility needs candidate $promotionCandidateSha; check out with full history." }
+$global:LASTEXITCODE = 0
+$runnerPattern = '\./scripts/(?<script>Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1'
+$runnerInvocations = [Collections.Generic.List[object]]::new()
+foreach ($stepText in [regex]::Split(($workflow -replace "`r`n", "`n"), '(?m)^(?=    - (?:name:|uses:))')) {
+    $stepName = [regex]::Match($stepText, '(?m)^    - name: (.+)$').Groups[1].Value
+    $folded = [regex]::Match($stepText, "(?ms)^      run: >\n(?<command>\s+$runnerPattern\n.*?)(?=\n\n|\n    - |\z)")
+    if ($folded.Success) {
+        $runnerInvocations.Add(@{ Step = $stepName; Script = $folded.Groups['script'].Value
+            Command = (($folded.Groups['command'].Value -split "`n") | ForEach-Object { $_.Trim() }) -join ' ' })
+        continue
+    }
+    # A literal run block may call a runner on backtick-continued lines among other commands.
+    $lines = @($stepText -split "`n")
+    for ($index = 0; $index -lt $lines.Count; $index++) {
+        if ($lines[$index].Trim() -notmatch "^$runnerPattern") { continue }
+        $script = $Matches.script
+        $command = $lines[$index].Trim()
+        while ($command.EndsWith('`') -and $index + 1 -lt $lines.Count) {
+            $index++
+            $command = $command.TrimEnd('`').TrimEnd() + ' ' + $lines[$index].Trim()
+        }
+        $runnerInvocations.Add(@{ Step = $stepName; Script = $script; Command = $command })
+    }
+}
+# Runtime values are bound as placeholders: only the parameter names matter here.
+foreach ($invocation in $runnerInvocations) {
+    $command = [regex]::Replace($invocation.Command, '\$\{\{.*?\}\}', 'placeholder')
+    $invocation.Command = [regex]::Replace($command, '\$[A-Za-z_][\w:]*(?:\[[^\]]*\])?(?:\.\w+)*', "'placeholder'")
+}
+# Count every mention of a runner, in any path form, so an unrecognized call fails closed.
+$runnerMentionCount = [regex]::Matches($workflow, '(?i)(?:Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1').Count
+if ($runnerInvocations.Count -ne $runnerMentionCount) {
+    throw "Every CI runner invocation must be checked for promotion compatibility: found $runnerMentionCount runner reference(s) but recognized $($runnerInvocations.Count). Start the run line with ./scripts/<runner>.ps1 (folded 'run: >' or backtick-continued lines)."
+}
+# Compare parameter names from the parsed command with each runner's declared parameters. Nothing
+# is evaluated, so missing mandatory values or runtime expressions cannot prompt or mislead.
+$runnerParameters = @{}
+foreach ($invocation in $runnerInvocations) {
+    $parseErrors = $null
+    $commandAst = [Management.Automation.Language.Parser]::ParseInput($invocation.Command, [ref]$null, [ref]$parseErrors).Find({ param($node)
+            $node -is [Management.Automation.Language.CommandAst] }, $true)
+    if ($parseErrors.Count -or -not $commandAst) {
+        throw "Could not parse the runner call in CI step '$($invocation.Step)': $($parseErrors.Message -join '; ')"
+    }
+    if ($invocation.Command -match '(^|\s)--%(\s|$)') {
+        throw "CI step '$($invocation.Step)' stops runner argument parsing with --%; pass named parameters so promotion compatibility can be checked."
+    }
+    if ($commandAst.CommandElements | Where-Object { $_ -is [Management.Automation.Language.VariableExpressionAst] -and $_.Splatted }) {
+        throw "CI step '$($invocation.Step)' splats runner arguments; pass named parameters so promotion compatibility can be checked."
+    }
+    $passed = @($commandAst.CommandElements | Where-Object { $_ -is [Management.Automation.Language.CommandParameterAst] } |
+        ForEach-Object { $_.ParameterName })
+    foreach ($source in @('candidate', 'current')) {
+        $key = "$source/$($invocation.Script)"
+        if (-not $runnerParameters.ContainsKey($key)) {
+            $runnerSource = if ($source -eq 'current') {
+                Get-Content -LiteralPath (Join-Path $repoRootPath "scripts\$($invocation.Script).ps1") -Raw
+            } else {
+                (& git -C $repoRootPath show "${promotionCandidateSha}:scripts/$($invocation.Script).ps1") -join "`n"
+            }
+            if ($LASTEXITCODE -ne 0 -or -not $runnerSource) { throw "Could not read the $source $($invocation.Script) runner." }
+            $declared = [Management.Automation.Language.Parser]::ParseInput($runnerSource, [ref]$null, [ref]$null).ParamBlock.Parameters
+            $runnerParameters[$key] = @{
+                Names = @($declared | ForEach-Object { $_.Name.VariablePath.UserPath })
+                Mandatory = @($declared | Where-Object {
+                        $_.Attributes | Where-Object { $_.TypeName.Name -eq 'Parameter' -and
+                            ($_.NamedArguments | Where-Object { $_.ArgumentName -eq 'Mandatory' }) } } |
+                    ForEach-Object { $_.Name.VariablePath.UserPath })
+            }
+        }
+        $runnerContract = $runnerParameters[$key]
+        $unknown = @($passed | Where-Object { $_ -notin $runnerContract.Names })
+        $absent = @($runnerContract.Mandatory | Where-Object { $_ -notin $passed })
+        if ($unknown.Count -or $absent.Count) {
+            throw "CI step '$($invocation.Step)' does not bind to the $source $($invocation.Script) runner: unknown -$($unknown -join ', -'); missing mandatory -$($absent -join ', -')."
+        }
+    }
+}
+$global:LASTEXITCODE = 0
+if ($runnerInvocations.Count -lt 20) { throw "Expected at least 20 runner invocations in the promotion binding check, found $($runnerInvocations.Count)." }
 . (Join-Path $repoRootPath 'scripts\CiStepBudget.ps1')
 foreach ($case in @(
         @{ Minutes = 0.5; Budget = 25; Warn = $false; Text = 'CI step budget: probe.trx used 0.5 of 25 minutes (2%) of its step timeout.' },
@@ -1227,6 +1326,15 @@ foreach ($case in @(
 if ((Get-CiStepBudgetReport -Elapsed ([TimeSpan]::FromMinutes(30)) -StepTimeoutMinutes 25 -Label "a`nb") -match "`n") {
     throw 'Step budget warnings must escape workflow command data.'
 }
+$priorBudget = $env:OPENCLAW_CI_STEP_TIMEOUT_MINUTES
+try {
+    foreach ($case in @(@{ Value = $null; Minutes = 0 }, @{ Value = '25'; Minutes = 25 }, @{ Value = ' 360 '; Minutes = 360 },
+            @{ Value = '0'; Minutes = 0 }, @{ Value = '361'; Minutes = 0 }, @{ Value = '-5'; Minutes = 0 }, @{ Value = '2.5'; Minutes = 0 }, @{ Value = 'x'; Minutes = 0 })) {
+        $env:OPENCLAW_CI_STEP_TIMEOUT_MINUTES = $case.Value
+        $resolved = Get-CiStepTimeoutMinutes 3>$null
+        if ($resolved -ne $case.Minutes) { throw "Step budget '$($case.Value)' resolved to $resolved, expected $($case.Minutes)." }
+    }
+} finally { $env:OPENCLAW_CI_STEP_TIMEOUT_MINUTES = $priorBudget }
 foreach ($runnerScript in @($runner, $e2eRunner, (Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw))) {
     $budgetAst = [Management.Automation.Language.Parser]::ParseInput($runnerScript, [ref]$null, [ref]$null)
     $budgetProbe = [scriptblock]::Create(($budgetAst.ParamBlock.Extent.Text -replace '\[Parameter\(Mandatory\)\]', '') + "`n`$StepTimeoutMinutes")
@@ -1239,6 +1347,8 @@ foreach ($runnerScript in @($runner, $e2eRunner, (Get-Content -LiteralPath (Join
         catch [Management.Automation.ParameterBindingException] { $rejected = $true }
         if (-not $rejected) { throw "A CI runner accepted step budget $invalid." }
     }
+    Assert-Contains -Text $runnerScript -Expected '$StepTimeoutMinutes = Get-CiStepTimeoutMinutes' `
+        -Message 'Each CI runner must read OPENCLAW_CI_STEP_TIMEOUT_MINUTES when -StepTimeoutMinutes is not passed.'
     Assert-Contains -Text $runnerScript -Expected 'Write-CiStepBudget -Elapsed $stepBudget.Elapsed -StepTimeoutMinutes $StepTimeoutMinutes' `
         -Message 'Each CI runner must report its step budget.'
 }
@@ -1857,7 +1967,8 @@ Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $Runner) 'CiStepBudget.ps1
 [IO.File]::WriteAllText((Join-Path $Root 'Invoke-CiProcess.ps1'), ${function:Invoke-FakeCiProcess}.ToString())
 $parameters = @{ Name = $Name; Filter = 'Sentinel.Filter' }
 if ($Override) { $parameters.HangTimeoutSeconds = $Timeout }
-if ($Budget) { $parameters.StepTimeoutMinutes = $Budget }
+# CI passes the budget in the step environment, never as a runner argument.
+if ($Budget) { $env:OPENCLAW_CI_STEP_TIMEOUT_MINUTES = [string]$Budget } else { Remove-Item Env:OPENCLAW_CI_STEP_TIMEOUT_MINUTES -ErrorAction SilentlyContinue }
 & (Join-Path $Root 'Invoke-CiE2e.ps1') @parameters
 exit $LASTEXITCODE
 '@

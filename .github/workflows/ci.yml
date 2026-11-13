@@ -551,10 +551,10 @@ jobs:
     - name: Run Shared Tests
       timeout-minutes: 15
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '15'
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Shared.Tests
         -ResultsDirectory TestResults\Shared
         -TrxFileName OpenClaw.Shared.Tests.trx
@@ -799,10 +799,10 @@ jobs:
       # -HangTimeoutSeconds still bounds a single stalled test.
       timeout-minutes: 25
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '25'
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 25
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
@@ -816,6 +816,7 @@ jobs:
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 15
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '15'
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production
         OPENCLAW_UI_TEST_APP_THEME: Light
         OPENCLAW_REPO_ROOT: ${{ github.workspace }}
@@ -824,7 +825,6 @@ jobs:
         OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AutomationsSteadyResources
         -TrxFileName AutomationsSteadyResources.trx
@@ -851,9 +851,10 @@ jobs:
     - name: Run animation-enabled reveal proof
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 5
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '5'
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AnimationsEnabled
         -TrxFileName AnimationsEnabled.trx
@@ -866,9 +867,10 @@ jobs:
     - name: Run animations-disabled behavior proof
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 5
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '5'
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AnimationsDisabled
         -TrxFileName AnimationsDisabled.trx
@@ -1028,10 +1030,10 @@ jobs:
       # -HangTimeoutSeconds still bounds a single stalled test.
       timeout-minutes: 25
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '25'
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 25
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUIShard
         -TrxFileName OpenClaw.Tray.UITests.Shard.trx
@@ -1143,9 +1145,10 @@ jobs:
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 30
       shell: pwsh
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '30'
       run: >
         ./scripts/test-gateway-fixture.ps1
-        -StepTimeoutMinutes 30
         -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
         -ArtifactsDirectory .\TestResults\GatewayFixture
         -TestTimeoutSeconds 1500
@@ -1166,6 +1169,7 @@ jobs:
       if: ${{ !cancelled() && steps.release-fixture-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 15
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '15'
         OPENCLAW_RUN_GATEWAY_FIXTURE_UI: '1'
         OPENCLAW_RUN_KEYBOARD_PROOF: '0'
         OPENCLAW_GATEWAY_FIXTURE_APP: ${{ github.workspace }}\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
@@ -1173,7 +1177,6 @@ jobs:
         OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Tray.UITests
         -Configuration Release
         -ResultsDirectory TestResults\GatewayFixtureRelease
@@ -1190,11 +1193,11 @@ jobs:
       if: ${{ !cancelled() && steps.release-fixture-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 5
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '5'
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
         OPENCLAW_VISUAL_TEST_DIR: ${{ github.workspace }}\TestResults\ReaderRelease\observations
       run: >
         ./scripts/Invoke-CiTest.ps1
-        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -Configuration Release
         -ResultsDirectory TestResults\ReaderRelease
@@ -1334,11 +1337,11 @@ jobs:
     - name: Run setup and connect E2E tests
       timeout-minutes: 20
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '20'
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
-        -StepTimeoutMinutes 20
         -Name setup-connect
         -Filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayExecutableResolutionTests"
 
@@ -1413,11 +1416,11 @@ jobs:
     - name: Run revocation recovery E2E tests
       timeout-minutes: 20
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '20'
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
-        -StepTimeoutMinutes 20
         -Name revocation-recovery
         -Filter FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
 
@@ -1492,11 +1495,11 @@ jobs:
     - name: Run network recovery E2E tests
       timeout-minutes: 20
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '20'
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
-        -StepTimeoutMinutes 20
         -Name network-recovery
         -Filter FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
 

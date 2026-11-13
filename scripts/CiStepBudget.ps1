@@ -2,20 +2,36 @@
 .SYNOPSIS
     Reports how much of its workflow step timeout a CI test runner used.
 .DESCRIPTION
-    GitHub does not expose a step's timeout-minutes to the step, so the workflow passes the same
-    value as -StepTimeoutMinutes; scripts\test-ci-workflow-contract.ps1 keeps them equal. At or
-    above 80% of the budget the report is a GitHub warning annotation, so a passing step that is
-    approaching its timeout is visible before it starts failing.
+    GitHub does not expose a step's timeout-minutes to the step, so the workflow repeats the value
+    in the step's OPENCLAW_CI_STEP_TIMEOUT_MINUTES environment variable;
+    scripts\test-ci-workflow-contract.ps1 keeps them equal. It is an environment variable, not a
+    runner parameter, because alpha promotion runs the current workflow against an older
+    candidate's runner scripts, which ignore unknown variables but reject unknown parameters.
+    At or above 80% of the budget the report is a GitHub warning annotation, so a passing step
+    that is approaching its timeout is visible before it starts failing.
+    Dot-sourcing this file does not change the caller's strict mode.
 .EXAMPLE
     . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+    $budgetMinutes = Get-CiStepTimeoutMinutes  # 0 when the step declares no budget
     $budget = [Diagnostics.Stopwatch]::StartNew()
     # ... run tests ...
-    Write-CiStepBudget -Elapsed $budget.Elapsed -StepTimeoutMinutes 25 -Label 'OpenClaw.Tray.UITests.trx'
+    if ($budgetMinutes -gt 0) { Write-CiStepBudget -Elapsed $budget.Elapsed -StepTimeoutMinutes $budgetMinutes -Label 'OpenClaw.Tray.UITests.trx' }
 #>
 
-Set-StrictMode -Version Latest
-
 $script:CiStepBudgetWarningPercent = 80
+$script:CiStepTimeoutVariable = 'OPENCLAW_CI_STEP_TIMEOUT_MINUTES'
+
+# The calling step's timeout-minutes from OPENCLAW_CI_STEP_TIMEOUT_MINUTES, or 0 when absent.
+# A malformed value only warns: the budget report is diagnostics and must not fail a test run.
+function Get-CiStepTimeoutMinutes {
+    $configured = [Environment]::GetEnvironmentVariable($script:CiStepTimeoutVariable)
+    if ([string]::IsNullOrWhiteSpace($configured)) { return 0 }
+    $minutes = 0
+    if ([int]::TryParse($configured.Trim(), [Globalization.NumberStyles]::None, [Globalization.CultureInfo]::InvariantCulture, [ref]$minutes) -and
+        $minutes -ge 1 -and $minutes -le 360) { return $minutes }
+    Write-Warning "$($script:CiStepTimeoutVariable) must be a whole number of minutes from 1 to 360; skipping the step budget report."
+    return 0
+}
 
 function Get-CiStepBudgetReport {
     [CmdletBinding()]
