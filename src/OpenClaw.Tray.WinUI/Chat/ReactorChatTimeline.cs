@@ -665,7 +665,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 toggleSpeechAsync,
                 includeAvatar),
             ChatTimelineItemKind.ToolCall => ToolCallCardRenderer.BuildStandalone(row.Props.Timeline, entry),
-            ChatTimelineItemKind.Reasoning => BuildReasoning(entry),
+            ChatTimelineItemKind.Reasoning => BuildReasoning(
+                entry, ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream)),
             ChatTimelineItemKind.PermissionRequest => BuildPermission(row, entry),
             ChatTimelineItemKind.Status => BuildStatus(row, entry),
             _ => BuildGenericStatus(entry),
@@ -1146,23 +1147,27 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
     }
 
-    private static Element BuildReasoning(ChatTimelineItem entry)
+    private static Element BuildReasoning(ChatTimelineItem entry, bool active)
     {
-        return Border(VStack(ChatVisuals.CompactGap,
-                Text(LocalizedOrDefault("Chat_Run_Thinking", "Thinking"),
-                    ChatVisuals.ReasoningSize, FontWeights.Normal, "TextFillColorSecondaryBrush")
-                    .LineHeight(ChatVisuals.ReasoningLineHeight)
-                    .Set(text => text.LineStackingStrategy = LineStackingStrategy.MaxHeight)
-                    .FontStyle(global::Windows.UI.Text.FontStyle.Italic)
-                    .WithTextShimmer(entry.IsStreaming),
-                BuildSafeMarkdown(entry.Text, compactSecondaryReading: true)))
+        var header = LocalizedOrDefault("Chat_Run_Thinking", "Thinking");
+        return Expander(
+                header,
+                ScrollViewer(BuildSafeMarkdown(entry.Text, compactSecondaryReading: true))
+                    .MaxHeight(240).Margin(16, 4, 0, 8)
+                    .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled))
+            .HeaderContent(ChatVisuals.ActivityText(header, active))
+            .OnUnmount(ChatVisuals.StopToolRowShimmers)
+            .MinHeight(ChatVisuals.ToolRowMinHeight)
+            .Padding(0)
+            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Resources(ChatVisuals.DisclosureRowExpanderResources)
+            .Set(ChatVisuals.FlushToolRowExpander)
             .HAlign(HorizontalAlignment.Stretch)
-            .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
-            .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
-            .BorderThickness(1)
-            .CornerRadius(8)
-            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
-            .Margin(0, ChatVisuals.CompactGap);
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .AutomationName(header)
+            .AutomationId("ChatReasoning")
+            .Margin(0, 4, 0, 0);
     }
 
     private static Element BuildPermission(ReactorTimelineRow row, ChatTimelineItem entry)

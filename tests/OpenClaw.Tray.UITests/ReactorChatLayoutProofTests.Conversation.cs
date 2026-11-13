@@ -176,7 +176,7 @@ public sealed partial class ReactorChatLayoutProofTests
             state = ChatTimelineReducer.Apply(state, new ChatProgressEvent(
                 "Retrying the model request", DateTimeOffset.UtcNow.AddSeconds(5).ToUnixTimeMilliseconds()));
             await PublishAsync();
-            await ui.RunOnUIAsync(() => Assert.Contains("Retrying in", FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+            await ui.RunOnUIAsync(() => Assert.Contains("Retrying in", FindControl<TextBlock>(host, "ChatRunProgressStatus").Text));
             await CaptureAsync(surface, "Feedback-retry");
 
             void Tool(string data, int sequence) => state = ChatTimelineReducer.Apply(state,
@@ -234,7 +234,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
                 var progress = FindDescendants<TextBlock>(surface).SingleOrDefault(text =>
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatRunProgressText");
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatRunProgressStatus");
                 if (progress is null || !progress.Text.Contains("Waiting for subagents", StringComparison.Ordinal))
                     return false;
                 var scroll = Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView;
@@ -283,7 +283,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
             await UntilAsync(() => PanelCollapsed(surface), "Subagents tab closed");
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
-                FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+                FindControl<TextBlock>(host, "ChatRunProgressStatus").Text));
 
             RecordPhase("append transcript");
             snapshot = snapshot with { Threads = [snapshot.Threads[0] with

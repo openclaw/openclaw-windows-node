@@ -41,7 +41,8 @@ public sealed partial class ReactorChatLayoutProofTests
     private const double WorkStatusGap = 6;
     private const double WorkCategoryGlyphSize = 14;
     private const double WorkDisclosureGlyphSize = 12;
-    private const double WorkHeaderTextSize = 13;
+    private const double WorkActivityTitleSize = 12;
+    private const double WorkInlineTextSize = 13;
     private const double WorkHeaderMinimum = 31.5;
     private const double WorkHeaderMaximum = 40;
     private const double WorkDetailMaxHeight = 240;
@@ -802,8 +803,10 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} icon left", Bounds(icon, surface).Left, rowBounds.Left, WorkEdgeTolerance);
         AssertWorkAligned($"{label} title left", Bounds(title, surface).Left, rowBounds.Left + WorkIconColumn,
             WorkEdgeTolerance);
-        foreach (var text in texts.Skip(1))
-            AssertWorkAligned($"{label} header text font size", text.FontSize, WorkHeaderTextSize, 0.1);
+        AssertWorkAligned($"{label} title font size", title.FontSize,
+            title.Text == WorkToolInput ? WorkInlineTextSize : WorkActivityTitleSize, 0.1);
+        if (texts.Count == 3)
+            AssertWorkAligned($"{label} status font size", texts[2].FontSize, WorkInlineTextSize, 0.1);
         var headerCenter = headerBounds.Top + headerBounds.Height / 2;
         for (var index = 0; index < texts.Count; index++)
         {
@@ -938,7 +941,7 @@ public sealed partial class ReactorChatLayoutProofTests
             element => AutomationProperties.GetAutomationId(element) == id);
         var row = Bounds(Part<Grid>("ChatRunProgress"), surface);
         var claw = Bounds(Part<Grid>("ChatRunProgressClaw"), surface);
-        var text = Bounds(Part<TextBlock>("ChatRunProgressText"), surface);
+        var text = Bounds(Part<TextBlock>("ChatRunProgressStatus"), surface);
         AssertWorkAligned("progress left", row.Left, column.Left, WorkEdgeTolerance);
         AssertWorkAligned("progress right", row.Right, column.Right, WorkEdgeTolerance);
         Assert.True(row.Height >= 27.5, $"progress row height: expected at least 28, measured {row.Height:0.##}.");

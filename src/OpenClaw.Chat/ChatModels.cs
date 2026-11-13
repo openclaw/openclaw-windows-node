@@ -259,7 +259,8 @@ public sealed record ChatReasoningReceipt(string RunId, string MessageId, bool P
 public sealed record ChatReasoningStreamItem(
     string ItemId, string Text, double StartedAtMs, string? AfterEntryId = null, ChatReasoningReceipt? Receipt = null);
 public sealed record ChatReasoningStream(
-    string RunId, System.Collections.Immutable.ImmutableList<ChatReasoningStreamItem> Items);
+    string RunId, System.Collections.Immutable.ImmutableList<ChatReasoningStreamItem> Items,
+    string? ActiveItemId = null);
 
 public record ChatPendingToolPresentation(
     string ToolName,

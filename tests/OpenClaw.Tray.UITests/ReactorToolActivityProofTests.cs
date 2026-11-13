@@ -44,9 +44,11 @@ public sealed class ReactorToolActivityProofTests
             host.Content = root;
             try
             {
+                var status = Assert.Single(FindLogical<TextBlock>(root!),
+                    block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressStatus");
                 var text = Assert.Single(FindLogical<TextBlock>(root!),
                     block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressText");
-                Assert.Contains(label, text.Text);
+                Assert.Contains(label, status.Text);
                 Assert.Contains("1m", text.Text);
                 Assert.IsNotType<LinearGradientBrush>(text.Foreground);
             }
@@ -79,13 +81,13 @@ public sealed class ReactorToolActivityProofTests
                 var row = Assert.Single(FindLogical<Grid>(host),
                     grid => AutomationProperties.GetAutomationId(grid) == "ChatRunProgress");
                 Assert.Equal(1, row.Opacity);
-                Assert.StartsWith("12,345 output tokens \u00b7 ", text.Text);
+                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", text.Text);
                 Assert.Contains("1m", text.Text);
                 Assert.IsNotType<LinearGradientBrush>(text.Foreground);
                 var initial = text.Text;
                 await WaitForRenderedConditionAsync(() => text.Text != initial, "the running clock ticks");
                 Assert.Equal(1, row.Opacity);
-                Assert.StartsWith("12,345 output tokens \u00b7 ", text.Text);
+                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", text.Text);
                 Assert.IsNotType<LinearGradientBrush>(text.Foreground);
             }
             finally
@@ -123,15 +125,12 @@ public sealed class ReactorToolActivityProofTests
             {
                 var primaryInk = Assert.IsType<SolidColorBrush>(reference.Foreground).Color;
                 var softerInk = Assert.IsType<SolidColorBrush>(secondary.Foreground).Color;
-                softerInk.A = (byte)Math.Round(softerInk.A - (primaryInk.A - softerInk.A) / 5.0);
-                var ink = dark ? softerInk : primaryInk;
-                Assert.All(stops.Where((_, index) => index != 2), stop => Assert.Equal(ink, stop.Color));
+                Assert.All(stops.Where((_, index) => index != 2), stop => Assert.Equal(softerInk, stop.Color));
                 var peak = stops[2].Color;
-                Assert.Equal(dark ? primaryInk : softerInk, peak);
-                Assert.Equal((ink.R, ink.G, ink.B), (peak.R, peak.G, peak.B));
-                Assert.True(Math.Abs(peak.A - ink.A) is >= 40 and <= 85,
-                    $"The flare must remain subtle and visible: base {ink}, flare {peak}, theme {text.ActualTheme}.");
-                Assert.True(dark ? peak.A >= ink.A : peak.A <= ink.A);
+                Assert.Equal(primaryInk, peak);
+                Assert.Equal((softerInk.R, softerInk.G, softerInk.B), (peak.R, peak.G, peak.B));
+                Assert.True(peak.A - softerInk.A is >= 40 and <= 100,
+                    $"The flare must remain visible: base {softerInk}, flare {peak}, theme {text.ActualTheme}.");
                 foreach (var stop in stops)
                     Assert.True(ShimmerContrast(stop.Color, dark) >= 4.5,
                         $"The full running label must remain readable: {stop.Color} in {(dark ? "Dark" : "Light")}.");
@@ -192,8 +191,7 @@ public sealed class ReactorToolActivityProofTests
                     // Use the same native gradient rasterizer without a highlight or motion.
                     // Solid-color text can use different glyph antialiasing from gradient text.
                     var resting = Assert.IsType<SolidColorBrush>(text.Foreground);
-                    var primaryAlpha = Assert.IsType<SolidColorBrush>(primary.Foreground).Color.A;
-                    var minimumInkAlpha = resting.Color.A - (primaryAlpha - resting.Color.A) / 5.0;
+                    Assert.True(Assert.IsType<SolidColorBrush>(primary.Foreground).Color.A > resting.Color.A);
                     var reference = new LinearGradientBrush();
                     reference.GradientStops.Add(new GradientStop { Color = resting.Color, Offset = 0 });
                     reference.GradientStops.Add(new GradientStop { Color = resting.Color, Offset = 1 });
@@ -227,10 +225,10 @@ public sealed class ReactorToolActivityProofTests
                         for (var offset = 3; offset < baseline.Length; offset += 4)
                             if (baseline[offset] >= 64)
                             {
-                                Assert.True(pixels[offset] >= baseline[offset] * minimumInkAlpha / resting.Color.A - 8,
+                                Assert.True(pixels[offset] >= baseline[offset] - 8,
                                     $"{themeName}, phase {phase}: the shine erased part of the label at pixel {(offset - 3) / 4}: {baseline[offset]} -> {pixels[offset]}; theme {text.ActualTheme}, base {brush.GradientStops[0].Color}.");
                                 var baseAlpha = baseline[offset] * brush.GradientStops[0].Color.A / (double)resting.Color.A;
-                                var flare = themeName == "Dark" ? pixels[offset] - baseAlpha : baseAlpha - pixels[offset];
+                                var flare = pixels[offset] - baseAlpha;
                                 if (flare >= 3)
                                 {
                                     weight += flare;

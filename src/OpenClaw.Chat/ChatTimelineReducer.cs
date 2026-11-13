@@ -119,11 +119,32 @@ public static class ChatTimelineReducer
         }
         if (state.TurnActive && !next.TurnActive)
             next = next with { TurnEndedAt = timestamp, ProgressText = null, ProgressRetryAtMs = null };
+        if ((evt is ChatMessageDeltaEvent or ChatMessageEvent { ActivatesTurn: true }) &&
+            next.Entries.LastOrDefault() is { Kind: ChatTimelineItemKind.Assistant, Text.Length: > 0 } assistant &&
+            !string.Equals(state.Entries.FirstOrDefault(entry => entry.Id == assistant.Id)?.Text,
+                assistant.Text, StringComparison.Ordinal))
+        {
+            var runId = evt switch
+            {
+                ChatMessageDeltaEvent delta => delta.Presentation?.RunId,
+                ChatMessageEvent message => message.Presentation?.RunId,
+                _ => null,
+            };
+            if (runId is null || next.ReasoningStream is null || next.ReasoningStream.RunId == runId)
+                next = next with
+                {
+                    ActiveReasoningId = null,
+                    ReasoningStream = EndReasoningStream(next.ReasoningStream),
+                };
+        }
         if (!ReferenceEquals(state, next) && evt is ChatMessageDeltaEvent or ChatMessageEvent
             or ChatReasoningDeltaEvent or ChatReasoningStreamEvent or ChatToolStartEvent or ChatToolProgressEvent)
             next = next with { ProgressText = null, ProgressRetryAtMs = null };
         return next;
     }
+
+    private static ChatReasoningStream? EndReasoningStream(ChatReasoningStream? stream) =>
+        stream is { ActiveItemId: not null } ? stream with { ActiveItemId = null } : stream;
 
     private static ChatTimelineState ApplyRunUsage(ChatTimelineState state, ChatRunUsageEvent evt) =>
         state.RunUsage is { } usage && usage.RunId == evt.RunId
@@ -141,7 +162,7 @@ public static class ChatTimelineReducer
         items = index >= 0
             ? items.SetItem(index, items[index] with { Text = evt.Text })
             : items.Add(new(evt.ItemId, evt.Text, evt.StartedAtMs, state.Entries.LastOrDefault()?.Id));
-        return BeginTurn(state) with { ReasoningStream = new(evt.RunId, items) };
+        return BeginTurn(state) with { ReasoningStream = new(evt.RunId, items, evt.ItemId) };
     }
 
     private static ChatTimelineState ApplyReasoningReceipt(ChatTimelineState state, ChatReasoningReceiptEvent evt)
@@ -570,6 +591,12 @@ public static class ChatTimelineReducer
             PendingToolPresentations = pendingPresentations,
             PendingToolOutcomes = pendingOutcomes,
             TerminalToolCorrelations = terminalCorrelations,
+            ActiveReasoningId = entry.ToolResult == ChatToolCallStatus.InProgress
+                ? null
+                : state.ActiveReasoningId,
+            ReasoningStream = entry.ToolResult == ChatToolCallStatus.InProgress
+                ? EndReasoningStream(state.ReasoningStream)
+                : state.ReasoningStream,
             TurnActive = state.TurnActive || !isTerminalReplay
         };
     }

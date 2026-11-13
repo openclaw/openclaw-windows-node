@@ -539,11 +539,7 @@ internal static class ToolCallCardRenderer
                     : LocalizedOrDefault("Chat_Activity_ToolCallsMany", "{0} tool calls"),
                 summary.ToolCount)
             : summaryText;
-        var headline = TextBlock(headlineText)
-            .FontSize(ChatVisuals.ToolRowFontSize)
-            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-            .TextWrapping(TextWrapping.Wrap)
-            .WithTextShimmer(summary.IsRunning)
+        var headline = ChatVisuals.ActivityText(headlineText, summary.IsRunning)
             .WithKey($"activity-headline:{summary.NewestRunningTool?.Id ?? "settled"}");
         if (!reducedMotion && summary.IsRunning)
             headline = headline.Transition(
@@ -642,18 +638,13 @@ internal static class ToolCallCardRenderer
     // column so it trims with an ellipsis; the detail is capped and trims on its own.
     private static Element BuildRowTitle(string title, string? detail, bool running)
     {
-        var text = TextBlock(title)
-            .FontSize(ChatVisuals.ToolRowFontSize)
-            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-            .TextWrapping(TextWrapping.NoWrap)
-            .TextTrimming(TextTrimming.CharacterEllipsis)
-            .WithTextShimmer(running);
+        var text = ChatVisuals.ActivityText(title, running);
         if (string.IsNullOrWhiteSpace(detail))
             return text.WithKey("preview");
         return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 text.Grid(column: 0).VAlign(VerticalAlignment.Center),
                 TextBlock(detail)
-                    .FontSize(ChatVisuals.ToolRowFontSize)
+                    .FontSize(12)
                     .Foreground(Theme.Ref("TextFillColorTertiaryBrush"))
                     .TextWrapping(TextWrapping.NoWrap)
                     .TextTrimming(TextTrimming.CharacterEllipsis)

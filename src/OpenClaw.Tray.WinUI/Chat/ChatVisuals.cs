@@ -13,8 +13,8 @@ namespace OpenClawTray.Chat;
 /// <summary>Shared native chat geometry. See docs/CHAT_VISUAL_DESIGN.md.</summary>
 internal static class ChatVisuals
 {
-    private const double TextShimmerDurationMilliseconds = 2400;
-    private const double TextShimmerContrastBoost = 0.2;
+    private const double TextShimmerSweepMilliseconds = 900;
+    private const double TextShimmerCycleMilliseconds = 1300;
     private sealed record ShimmerState(Storyboard Storyboard, object OriginalLocal, LinearGradientBrush Shimmer);
     private static readonly ConditionalWeakTable<TextBlock, ShimmerState> s_shimmers = new();
 
@@ -109,7 +109,11 @@ internal static class ChatVisuals
         foreach (var offset in new[] { 0, 0, 0, 0.15, 1 })
             brush.GradientStops.Add(new GradientStop { Offset = offset });
 
-        var storyboard = new Storyboard { RepeatBehavior = RepeatBehavior.Forever };
+        var storyboard = new Storyboard
+        {
+            Duration = TimeSpan.FromMilliseconds(TextShimmerCycleMilliseconds),
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
         foreach (var (index, end) in new[] { (1, 0.85), (2, 1.0), (3, 1.0) })
         {
             var stop = brush.GradientStops[index];
@@ -117,8 +121,7 @@ internal static class ChatVisuals
             {
                 From = stop.Offset,
                 To = end,
-                Duration = TimeSpan.FromMilliseconds(TextShimmerDurationMilliseconds),
-                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+                Duration = TimeSpan.FromMilliseconds(TextShimmerSweepMilliseconds),
                 EnableDependentAnimation = true,
             };
             Storyboard.SetTarget(sweep, stop);
@@ -168,12 +171,9 @@ internal static class ChatVisuals
             else
                 text.SetValue(TextBlock.ForegroundProperty, originalForeground);
         }
-        secondary.A = (byte)Math.Round(secondary.A - (ink.A - secondary.A) * TextShimmerContrastBoost);
-        var dark = text.ActualTheme == ElementTheme.Dark;
         foreach (var stop in state.Shimmer.GradientStops)
-            stop.Color = dark ? secondary : ink;
-        var flare = dark ? ink : secondary;
-        state.Shimmer.GradientStops[2].Color = flare;
+            stop.Color = secondary;
+        state.Shimmer.GradientStops[2].Color = ink;
     }
 
     private static void OnShimmerLoaded(object sender, RoutedEventArgs args)
@@ -356,14 +356,29 @@ internal static class ChatVisuals
     /// Transparent, borderless (in every header state) tool-row Expander header whose built-in
     /// chevron is hidden; the row's leading icon swaps to a chevron on hover or keyboard focus instead.
     /// </summary>
-    internal static void ToolRowExpanderResources(ResourceBuilder resources)
+    internal static void ToolRowExpanderResources(ResourceBuilder resources) =>
+        RowExpanderResources(resources, showChevron: false);
+
+    /// <summary>The tool-row header with the native trailing chevron left visible.</summary>
+    internal static void DisclosureRowExpanderResources(ResourceBuilder resources) =>
+        RowExpanderResources(resources, showChevron: true);
+
+    private static void RowExpanderResources(ResourceBuilder resources, bool showChevron)
     {
         resources
             .Set("ExpanderHeaderBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
-            .Set("ExpanderChevronButtonSize", 0d);
+            .Set("ExpanderChevronButtonSize", showChevron ? 24d : 0d);
         foreach (var key in s_transparentToolRowBrushKeys)
-            resources.Set(key, Theme.Ref("SubtleFillColorTransparentBrush"));
+            resources.Set(key, Theme.Ref(showChevron && key.EndsWith("Foreground", StringComparison.Ordinal)
+                ? "TextFillColorSecondaryBrush" : "SubtleFillColorTransparentBrush"));
     }
+
+    /// <summary>Quiet 12px activity title; it shimmers only while its work is active.</summary>
+    internal static TextBlockElement ActivityText(string label, bool active) =>
+        Factories.TextBlock(label).FontSize(12).TextWrapping(TextWrapping.NoWrap)
+            .TextTrimming(TextTrimming.CharacterEllipsis)
+            .Set(StyleSecondaryText)
+            .WithTextShimmer(active);
 
     /// <summary>
     /// Aligns the stock Expander template with prose without replacing its interaction states.

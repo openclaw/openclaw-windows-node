@@ -1448,20 +1448,21 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("UISettings().AnimationsEnabled", shimmer);
         Assert.Contains("AccessibilitySettings().HighContrast", shimmer);
         Assert.Contains("RepeatBehavior.Forever", shimmer);
-        Assert.Contains("TimeSpan.FromMilliseconds(TextShimmerDurationMilliseconds)", shimmer);
-        Assert.Contains("TextShimmerDurationMilliseconds = 2400", visuals);
+        Assert.Contains("TimeSpan.FromMilliseconds(TextShimmerSweepMilliseconds)", shimmer);
+        Assert.Contains("TimeSpan.FromMilliseconds(TextShimmerCycleMilliseconds)", shimmer);
+        Assert.Contains("TextShimmerSweepMilliseconds = 900", visuals);
+        Assert.Contains("TextShimmerCycleMilliseconds = 1300", visuals);
         Assert.Contains("text.Unloaded += OnShimmerUnloaded", shimmer);
         Assert.Contains(".OnUnmount(control => TextShimmer((TextBlock)control, false))", visuals);
 
         var renderer = File.ReadAllText(Path.Combine(chat, "ToolCallCardRenderer.cs"));
-        Assert.Contains("entry.ToolResult is null or ChatToolCallStatus.InProgress", renderer);
-        Assert.Contains(".WithTextShimmer(running)", renderer);
-        Assert.Contains(".WithTextShimmer(summary.IsRunning)", renderer);
-        Assert.Contains(".OnUnmount(ChatVisuals.StopToolRowShimmers)", renderer);
+        Assert.Contains("BuildRowTitle(title, detail, entry.ToolResult is null or ChatToolCallStatus.InProgress)", renderer);
+        Assert.Contains("ChatVisuals.ActivityText(title, running)", renderer);
+        Assert.Contains("ChatVisuals.ActivityText(headlineText, summary.IsRunning)", renderer);        Assert.Contains(".OnUnmount(ChatVisuals.StopToolRowShimmers)", renderer);
         var progress = File.ReadAllText(Path.Combine(chat, "ReactorRunProgress.cs"));
-        Assert.DoesNotContain("TextShimmer", progress);
+        Assert.Contains("ChatVisuals.ActivityText(label, progress.Active && !progress.Waiting)", progress);
         var timeline = File.ReadAllText(Path.Combine(chat, "ReactorChatTimeline.cs"));
-        Assert.Contains(".WithTextShimmer(entry.IsStreaming)", timeline);
+        Assert.Contains("ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream)", timeline);
     }
 
     private static int CountOccurrences(string text, string normalizedValue)
