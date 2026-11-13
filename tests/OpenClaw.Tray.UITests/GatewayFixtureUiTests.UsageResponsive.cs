@@ -86,7 +86,7 @@ public sealed partial class GatewayFixtureUiTests
                 await run.InvokeAsync("app.navigate", new { page = "chat" });
                 await WaitUiAsync(run, () => FindById(run, "WorkspacePagesCustomize") is { Current.IsOffscreen: false },
                     "Chat pin customization");
-                var window = FindHub(run);
+                var window = await WaitForHubAsync(run, "pinned Usage chat window");
                 var handle = new IntPtr(window.Current.NativeWindowHandle);
                 await NativeKeyboardProof.ActivateAsync(handle);
                 var scale = UsageGetDpiForWindow(handle) / 96d;
