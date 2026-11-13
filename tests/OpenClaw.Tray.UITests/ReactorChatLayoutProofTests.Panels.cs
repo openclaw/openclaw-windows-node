@@ -249,8 +249,9 @@ public sealed partial class ReactorChatLayoutProofTests
                 var actionBounds = Bounds(open, surface);
                 Assert.True(actionBounds.Left >= cardBounds.Left && actionBounds.Right <= cardBounds.Right);
                 Assert.True(actionBounds.Top >= cardBounds.Top && actionBounds.Bottom <= cardBounds.Bottom);
-                Assert.Equal(toolName == "powershell" || touch ? 40 : 28, open.ActualWidth);
-                Assert.Equal(open.ActualWidth, open.ActualHeight);
+                // Native layout uses float precision at fractional display scales.
+                Assert.Equal(toolName == "powershell" || touch ? 40 : 28, open.ActualWidth, precision: 4);
+                Assert.Equal(open.ActualWidth, open.ActualHeight, precision: 4);
                 var input = FindDescendants<RichTextBlock>(expander).First();
                 var inputBounds = Bounds(input, surface);
                 if (toolName == "powershell")

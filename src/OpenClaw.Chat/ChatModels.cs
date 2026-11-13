@@ -118,6 +118,7 @@ public record ChatThread
     public bool WaitingForSubagents { get; init; }
     public OpenClaw.Shared.SessionProviderReviewInfo? ProviderReview { get; init; }
     public bool IsBackground { get; init; }
+    public bool IsSubagent { get; init; }
     public bool IsArchived { get; init; }
     public bool IsChannelSession { get; init; }
     public ChatThreadStatus Status { get; init; }
@@ -147,6 +148,8 @@ public record ChatThread
     public string DisplayTitle => Title;
     public string? LastRunId { get; init; }
     public string? RunStatus { get; init; }
+    /// <summary>The latest run was stopped or aborted, even when its recorded status reads as done.</summary>
+    public bool LastRunStopped { get; init; }
     public double? RuntimeMs { get; init; }
     public long? EndedAt { get; init; }
 }

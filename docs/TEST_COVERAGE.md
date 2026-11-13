@@ -94,7 +94,12 @@ test sequence without collecting a memory dump; it is not retried or skipped.
 The MCP bearer-rotation regression keeps its deliberately blocking rotation on a
 dedicated thread and bounds each loopback step with
 `OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS` (default 30 s), because the server
-pipeline itself runs on the shared thread pool.
+pipeline itself runs on the shared thread pool. The standalone clean-uninstall
+regression runs about 50 interpreted Windows PowerShell 5.1 cases in one process.
+It takes 16-37 s on hosted runners, but its run time grows with host load, so it is bounded by
+`OPENCLAW_CLEAN_UNINSTALL_TEST_TIMEOUT_SECONDS` (default 240 s). With a short
+cleanup bound it stays below the five-minute watchdog, and on timeout it stops
+the process tree and reports the script's last output and errors.
 
 ### OpenClaw.Tray.Tests
 
@@ -224,6 +229,11 @@ with symbolic-link privileges (Developer Mode or an elevated test process);
 without those privileges they fail during fixture creation. Do not replace
 their alias-rejection assertions with skips or change machine policy
 automatically.
+Resolver fixtures use a unique root under `RUNNER_TEMP` (CI) or the user temp
+directory, outside the checkout unless one of those points into it. A failed run
+can leave its fixture behind, and in the checkout those paths exceed `MAX_PATH`
+and break GitVersion. Delete older `.file-resolver-test-data` remnants with a
+`\\?\` path, for example `cmd /c rd /s /q "\\?\<checkout>\.file-resolver-test-data"`.
 Source and cached-file pins, full digests/inventories, atomic publication,
 tamper/alias rejection, bounded inventory and failure/cancellation ownership
 are covered at the shared owner boundary. The legacy per-operation-copy

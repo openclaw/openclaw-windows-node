@@ -7,6 +7,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.Versioning;
+using System.Security.Cryptography;
 
 namespace OpenClawTray.Helpers;
 
@@ -19,16 +20,18 @@ namespace OpenClawTray.Helpers;
 ///   <item>error → a red dot with a white "-" (minus) glyph.</item>
 /// </list>
 /// Healthy states (connected, connecting) render the plain lobster with no badge.
-/// Composed icons are cached per <see cref="ConnectionStatusAccent"/> and written
-/// to a temp folder as multi-resolution .ico files so both the tray icon
+/// Composed icons are cached per <see cref="ConnectionStatusAccent"/> and published
+/// to the app's local data folder as multi-resolution .ico files so both the tray icon
 /// (<see cref="WinUIEx.TrayIcon.SetIcon(string)"/>) and the desktop/taskbar window
-/// icon (<c>Window.SetIcon(string)</c>) can consume them.
+/// icon (<c>Window.SetIcon(string)</c>) can consume them. Other tray processes may
+/// share that folder, so a published file is never rewritten in place; see
+/// <see cref="PublishIcon"/>.
 /// </summary>
 [SupportedOSPlatform("windows")]
 internal static class StatusBadgeIconFactory
 {
     private static readonly string AssetsPath = Path.Combine(AppContext.BaseDirectory, "Assets");
-    private static readonly string OutputDir = Path.Combine(Path.GetTempPath(), "OpenClawTray", "StatusIcons");
+    private static readonly string OutputDir = Path.Combine(AppIdentity.ResolveLocalDataDirectory(), "StatusIcons");
     private static readonly object Gate = new();
     private static readonly ConcurrentDictionary<ConnectionStatusAccent, string> Cache = new();
 
@@ -87,22 +90,204 @@ internal static class StatusBadgeIconFactory
         var fallback = Path.Combine(AssetsPath, "openclaw.ico");
         try
         {
-            Directory.CreateDirectory(OutputDir);
-            var outputPath = Path.Combine(OutputDir, $"openclaw-{accent}".ToLowerInvariant() + ".ico");
-
             // Only attention states (neutral/critical) get a dot; healthy states
             // render the plain lobster (null dot colour).
             Color? dotColor = ShouldBadge(accent) ? DotColor(accent) : null;
 
             using var baseImage = LoadBaseImage();
-            File.WriteAllBytes(outputPath, CreateIcoBytes(baseImage, dotColor, HasDash(accent), Sizes));
-            return (outputPath, false);
+            var bytes = CreateIcoBytes(baseImage, dotColor, HasDash(accent), Sizes);
+            return (PublishIcon(OutputDir, $"openclaw-{accent}".ToLowerInvariant(), bytes), false);
         }
         catch (Exception ex)
         {
             Logger.Warn($"Failed to build status-badged icon for {accent}: {ex.Message}");
             return (fallback, true);
         }
+    }
+
+    /// <summary>
+    /// Publishes icon bytes where concurrent tray processes and the shell can read them.
+    /// Readers load an icon by path at any time, so a published path must only ever hold
+    /// complete content:
+    /// <list type="bullet">
+    ///   <item>the name carries a content hash, so different builds never share a file;</item>
+    ///   <item>this process writes and flushes a private staging file, then renames it into
+    ///   place without overwriting; an existing target is reused only when it holds the
+    ///   same bytes;</item>
+    ///   <item>a target proven to hold other bytes (damaged) is replaced atomically by one
+    ///   process at a time, after re-checking it under an exclusive lock file;</item>
+    ///   <item>when the target cannot be read or repaired, or another process is repairing
+    ///   it, this process loads its own complete staging copy. This host's staging files left
+    ///   by exited processes are removed.</item>
+    /// </list>
+    /// Exposed for testing.
+    /// </summary>
+    internal static string PublishIcon(string directory, string stem, byte[] bytes)
+    {
+        Directory.CreateDirectory(directory);
+        var hash = Convert.ToHexString(SHA256.HashData(bytes), 0, 8).ToLowerInvariant();
+        var target = Path.Combine(directory, $"{stem}-{hash}.ico");
+        RemoveAbandonedStagingFiles(directory, stem);
+        if (ReadContent(target, bytes) == PublishedContent.Same)
+            return target;
+
+        var staging = Path.Combine(directory, $"{stem}-{hash}.{HostTag}-{Environment.ProcessId}-{Guid.NewGuid():N}.ico");
+        try
+        {
+            using var stream = new FileStream(staging, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+            stream.Write(bytes);
+            stream.Flush(flushToDisk: true);
+        }
+        catch
+        {
+            // A partial staging file must never be loaded or published.
+            TryDelete(staging);
+            throw;
+        }
+
+        try
+        {
+            File.Move(staging, target, overwrite: false);
+            return target;
+        }
+        catch (IOException) when (File.Exists(target))
+        {
+            // Another process published first, or a damaged file holds the content name.
+        }
+        catch
+        {
+            TryDelete(staging);
+            throw;
+        }
+
+        return ReuseOrRepair(target, staging, bytes);
+    }
+
+    private static string ReuseOrRepair(string target, string staging, byte[] bytes)
+    {
+        switch (ReadContent(target, bytes))
+        {
+            case PublishedContent.Same:
+                TryDelete(staging);
+                return target;
+            case PublishedContent.Different:
+                break;
+            default:
+                // The target could not be read (for example while it is briefly locked).
+                // This process's complete private copy is safe to load.
+                return staging;
+        }
+
+        // Replacing opens the target for deletion, which concurrent readers see as a sharing
+        // violation. One repairer at a time holds an exclusive lock file beside the target and
+        // re-checks it, so a repaired target is never replaced again. The lock is file-based so
+        // it also covers other Windows sessions and hosts that share the folder, and it is never
+        // waited for: a busy lock means this process loads its own complete copy.
+        FileStream repairLock;
+        try
+        {
+            repairLock = new FileStream(target + ".repair-lock", FileMode.OpenOrCreate, FileAccess.ReadWrite,
+                FileShare.None, 1, FileOptions.DeleteOnClose);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return staging;
+        }
+        using (repairLock)
+        {
+            switch (ReadContent(target, bytes))
+            {
+                case PublishedContent.Same:
+                    TryDelete(staging);
+                    return target;
+                case PublishedContent.Different:
+                    try
+                    {
+                        File.Move(staging, target, overwrite: true);
+                        return target;
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        Logger.Warn($"Status icon {Path.GetFileName(target)} is damaged and in use; using a private copy: {ex.Message}");
+                        return staging;
+                    }
+                default:
+                    return staging;
+            }
+        }
+    }
+
+    // Staging names carry the writing host, so a folder shared across machines never has a
+    // live copy removed on the basis of a process ID from another host.
+    internal static readonly string HostTag = Convert.ToHexString(
+        SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(Environment.MachineName.ToUpperInvariant())), 0, 4).ToLowerInvariant();
+
+    /// <summary>
+    /// Removes this host's staging copies whose writer has exited. A live, inaccessible or
+    /// reused process ID keeps its files, so a copy that a running process may still load is
+    /// never deleted.
+    /// </summary>
+    private static void RemoveAbandonedStagingFiles(string directory, string stem)
+    {
+        var pattern = new System.Text.RegularExpressions.Regex(
+            "^" + System.Text.RegularExpressions.Regex.Escape(stem) +
+            @"-[0-9a-f]{16}\.(?<host>[0-9a-f]{8})-(?<pid>\d+)-[0-9a-f]{32}\.ico$");
+        string[] candidates;
+        try { candidates = Directory.GetFiles(directory, stem + "-*.*-*-*.ico"); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return; }
+        foreach (var candidate in candidates)
+        {
+            var match = pattern.Match(Path.GetFileName(candidate));
+            if (!match.Success || match.Groups["host"].Value != HostTag ||
+                !int.TryParse(match.Groups["pid"].Value, out var pid) ||
+                pid == Environment.ProcessId || IsProcessRunning(pid))
+                continue;
+            TryDelete(candidate);
+        }
+    }
+
+    private static bool IsProcessRunning(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // Inaccessible processes are still running.
+            return true;
+        }
+    }
+
+    private enum PublishedContent { Missing, Same, Different, Unreadable }
+
+    private static PublishedContent ReadContent(string path, byte[] expected)
+    {
+        try
+        {
+            return File.ReadAllBytes(path).AsSpan().SequenceEqual(expected)
+                ? PublishedContent.Same
+                : PublishedContent.Different;
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return PublishedContent.Missing;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return PublishedContent.Unreadable;
+        }
+    }
+
+    private static void TryDelete(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     /// <summary>

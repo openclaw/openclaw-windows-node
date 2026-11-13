@@ -2152,7 +2152,6 @@ public class WindowsNodeClient : WebSocketClientBase
     protected override void OnDisconnected()
     {
         StopHostStatsPublishing();
-        CancelTransportInvocations();
         _isConnected = false;
         Volatile.Write(ref _pendingConnectRequestId, null);
         // Don't reset pairing state when disconnected due to pairing — gateway
@@ -2164,16 +2163,21 @@ public class WindowsNodeClient : WebSocketClientBase
         }
     }
 
-    protected override void OnError(Exception ex)
+    protected override Action CaptureTransportLossNotification() => CaptureTransportCleanup();
+
+    private Action CaptureTransportCleanup()
     {
-        StopHostStatsPublishing();
-        CancelTransportInvocations();
-        _isConnected = false;
-        if (!_pairingBlocked)
+        var cancelInvocations = _activeInvocations.CaptureTransportCancellation();
+        var fileInvocations = _fileInvocations.Values.ToArray();
+        var drainProgressRequests = _progressRequests.CaptureDrain();
+        // Each step runs even when an earlier one throws, so file channels and progress waiters are always released.
+        return () =>
         {
-            _isPendingApproval = false;
-            _isPaired = false;
-        }
+            RunTransportLossCallback(cancelInvocations, "invocation cancellation");
+            foreach (var invocation in fileInvocations)
+                RunTransportLossCallback(invocation.Channel.Abort, "file channel abort");
+            RunTransportLossCallback(drainProgressRequests, "progress drain");
+        };
     }
 
     protected override void OnDisposing()
@@ -2182,10 +2186,5 @@ public class WindowsNodeClient : WebSocketClientBase
         CancelTransportInvocations();
     }
 
-    private void CancelTransportInvocations()
-    {
-        _activeInvocations.CancelAll();
-        foreach (var invocation in _fileInvocations.Values) invocation.Channel.Abort();
-        _progressRequests.Drain();
-    }
+    private void CancelTransportInvocations() => CaptureTransportCleanup()();
 }

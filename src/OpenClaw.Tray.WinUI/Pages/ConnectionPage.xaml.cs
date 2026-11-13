@@ -2756,7 +2756,7 @@ public sealed partial class ConnectionPage : Page
 
             if (wasActive && _connectionManager != null)
             {
-                try { await _connectionManager.DisconnectAsync(); }
+                try { await _connectionManager.DisconnectByUserAsync(gwId); }
                 catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway after removal: {ex.Message}"); }
             }
             LoadSavedGateways();

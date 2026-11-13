@@ -7728,7 +7728,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nouveaux messages. Aller aux plus récents</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Aller aux plus récents</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} sous-agents, {1} en cours, {2} nécessitent votre attention</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>Inactif</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>En attente des sous-agents</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Préparation des paramètres</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>échec</value></data>
@@ -7740,6 +7739,17 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Review_Denied" xml:space="preserve"><value>Le fournisseur n'a pas approuvé la demande</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>L'historique antérieur n'a pas avancé. Réessayez après avoir rechargé la conversation.</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>Examinez cette demande dans le chat web avant de continuer.</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>Session mise en pause par précaution</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>Session arrêtée par précaution</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>Le fournisseur n&apos;a pas pu confirmer que l&apos;agent a compris vos instructions. Examinez ses conclusions avant de continuer.</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>Le fournisseur a mis cette session en pause. Examinez cette demande dans le chat web avant de continuer.</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>Le fournisseur a arrêté cette session sans conclusions consultables. Elle ne peut pas continuer.</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>Le fournisseur a arrêté cette session. Examinez ses conclusions avant de lancer d&apos;autres tâches.</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>Examiner les conclusions</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>Conclusions du fournisseur</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>Message de poursuite</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>Cette session ne peut pas continuer. Elle reste arrêtée.</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>Fermer</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Le délai de vérification du fournisseur a expiré</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>Vérification du fournisseur annulée</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Ajouter un système</value></data>
@@ -7880,6 +7890,14 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>Paramètres</value>
   </data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>Sous-agents</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Aucun sous-agent dans la liste actuelle des sessions.</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Sous-agents : {0} en cours, {1} terminés</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>En cours</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>En attente</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>Terminé</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Arrêté</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Échec</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent : {0}</value>
   </data>
@@ -9993,8 +10011,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Ouvrir les détails à côté de la conversation</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Détails de l’outil</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ces détails ne sont plus disponibles. Reconnectez-vous si nécessaire, puis rouvrez l’outil depuis la conversation actuelle.</value></data>
-  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionner le panneau de détails</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionner le panneau de conversation</value></data>
   <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Utilisez les flèches gauche et droite pour redimensionner. Début sélectionne la largeur minimale ; Fin sélectionne la largeur maximale.</value></data>
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Revenir à la conversation</value></data>
-  <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher les détails</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher le panneau</value></data>
+  <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Panneaux de conversation</value></data>
 </root>

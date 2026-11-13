@@ -104,6 +104,41 @@ public sealed class InvocationCancellationRegistryTests
     }
 
     [Fact]
+    public void CapturedTransportCancellation_DoesNotCancelLaterInvocations()
+    {
+        var registry = new InvocationCancellationRegistry();
+        Assert.True(registry.TryRegister("old", CancellationToken.None, out var oldCandidate));
+        using var old = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(oldCandidate);
+        var cancelLostTransport = registry.CaptureTransportCancellation();
+        Assert.True(registry.TryRegister("new", CancellationToken.None, out var newCandidate));
+        using var current = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(newCandidate);
+
+        cancelLostTransport();
+
+        Assert.True(old.Token.IsCancellationRequested);
+        Assert.False(current.Token.IsCancellationRequested);
+        Assert.False(old.CancelledByCaller);
+    }
+
+    [Fact]
+    public void CapturedTransportCancellation_ThrowingCallbackStillCancelsEveryCapturedInvocation()
+    {
+        var registry = new InvocationCancellationRegistry();
+        Assert.True(registry.TryRegister("first", CancellationToken.None, out var firstCandidate));
+        Assert.True(registry.TryRegister("second", CancellationToken.None, out var secondCandidate));
+        using var first = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(firstCandidate);
+        using var second = Assert.IsType<InvocationCancellationRegistry.InvocationCancellation>(secondCandidate);
+        using var firstCallback = first.Token.Register(() => throw new InvalidOperationException("first"));
+        using var secondCallback = second.Token.Register(() => throw new InvalidOperationException("second"));
+
+        var error = Assert.Throws<AggregateException>(registry.CaptureTransportCancellation());
+
+        Assert.True(first.Token.IsCancellationRequested);
+        Assert.True(second.Token.IsCancellationRequested);
+        Assert.Equal(2, error.Flatten().InnerExceptions.Count);
+    }
+
+    [Fact]
     public void TryCancel_UnknownOrCompletedId_IsHarmless()
     {
         var registry = new InvocationCancellationRegistry();
