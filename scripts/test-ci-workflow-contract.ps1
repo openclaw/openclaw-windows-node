@@ -764,6 +764,14 @@ foreach ($token in @(
     )) {
     Assert-Contains -Text $disabledAnimationStep -Expected $token -Message "Disabled animation proof lost required contract '$token'."
 }
+$localAiProofStep = Get-StepBlock -Text $uiJob -Name 'Capture Local AI hardware profiles before and after'
+foreach ($token in @(
+        './scripts/Invoke-LocalAiVisualProof.ps1',
+        'timeout-minutes: 20',
+        "if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}"
+    )) {
+    Assert-Contains -Text $localAiProofStep -Expected $token -Message "Local AI visual proof lost required contract '$token'; an earlier UI test failure must not skip it."
+}
 Assert-Contains -Text $workflow -Expected './scripts/test-native-animation-preference.ps1' `
     -Message 'Native animation prerequisite failures and restoration must be tested.'
 foreach ($shard in @(

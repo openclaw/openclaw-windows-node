@@ -929,6 +929,8 @@ jobs:
         Write-Host "DevBuild identity marker verified at $($marker.FullName): $identity"
 
     - name: Capture Local AI hardware profiles before and after
+      # Runs after earlier UI test failures so they cannot hide this independent native proof.
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 20
       env:
         LOCAL_AI_PROOF_BASELINE: ${{ inputs.local_ai_proof_baseline }}
