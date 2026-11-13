@@ -1,11 +1,11 @@
 // Adds inert, theme-bound syntax runs to tool input without changing its text or executing it.
 // Usage: ChatToolInputSyntax.Apply(richText, displayedInput, toolEntry).
-using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using ColorCode;
 using ColorCode.Common;
 using ColorCode.Compilation;
 using ColorCode.Parsing;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Markup;
@@ -30,17 +30,22 @@ internal static class ChatToolInputSyntax
             [Languages.PowerShell.Id] = Languages.PowerShell,
             [JsonLanguage.Id] = JsonLanguage,
         }));
-    private sealed record RenderedInput(string Text, string Language, Paragraph Paragraph);
-    private static readonly ConditionalWeakTable<RichTextBlock, RenderedInput> Rendered = new();
+    private static readonly DependencyProperty RenderedInputProperty = DependencyProperty.RegisterAttached(
+        "RenderedInput", typeof(string), typeof(ChatToolInputSyntax), new PropertyMetadata(null));
 
     /// <summary>Colors supported input while preserving every character and the native selection surface.</summary>
     internal static void Apply(RichTextBlock target, string source, ChatTimelineItem? entry)
     {
         var language = entry is null ? null : InputLanguage(source, entry);
         var languageId = language?.Id ?? "";
-        if (Rendered.TryGetValue(target, out var previous) && previous.Text == source &&
-            previous.Language == languageId && target.Blocks.Count == 1 &&
-            ReferenceEquals(target.Blocks[0], previous.Paragraph))
+        // The marker lives on the native paragraph. Reactor does not keep managed wrappers for
+        // mounted controls, so a cache keyed by the RichTextBlock wrapper lost its entry after a
+        // collection and replaced an unchanged literal paragraph (and its selection) on re-render.
+        // Reactor's own text update keeps only single-run paragraphs, so colored input is still
+        // rebuilt by Reactor on each re-render.
+        var signature = languageId + "\n" + source;
+        if (target.Blocks is [Paragraph rendered] &&
+            rendered.GetValue(RenderedInputProperty) is string previous && previous == signature)
             return;
 
         var roles = new string?[source.Length];
@@ -75,9 +80,9 @@ internal static class ChatToolInputSyntax
             paragraph.Inlines.Add(run);
             start = end;
         }
+        paragraph.SetValue(RenderedInputProperty, signature);
         target.Blocks.Clear();
         target.Blocks.Add(paragraph);
-        Rendered.AddOrUpdate(target, new(source, languageId, paragraph));
     }
 
     private static ILanguage? InputLanguage(string source, ChatTimelineItem entry)
