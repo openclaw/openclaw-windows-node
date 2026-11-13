@@ -7,7 +7,7 @@ public sealed class InboxNavigationAdmissionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Feed_ForwardsOnlyAppReminderAdmissionAndKeepsReplacement(bool admitted)
+    public async Task Feed_ForwardsAppReminderAdmissionAndRetainsEntriesUntilDismissed(bool admitted)
     {
         var notifications = new AppNotificationService();
         var feed = new InboxFeed(notifications, gateway: null);
@@ -31,10 +31,13 @@ public sealed class InboxNavigationAdmissionTests
         Assert.Equal(admitted, await pending);
         Assert.Equal("New reply", Assert.Single(notifications.Snapshot.ActiveNotifications).Title);
         Assert.Equal(admitted, await feed.NavigateNotificationAsync("mention", (_, _) => Task.FromResult(admitted)));
-        if (admitted)
-            Assert.Empty(notifications.Snapshot.ActiveNotifications);
-        else
-            Assert.Single(notifications.Snapshot.ActiveNotifications);
+        var retained = Assert.Single(feed.Snapshot.Entries);
+        Assert.Equal("New reply", retained.Notification!.Title);
+        Assert.Equal(1, feed.Snapshot.Badge.Count);
+
+        feed.Dismiss(retained.Id);
+        Assert.Empty(feed.Snapshot.Entries);
+        Assert.False(feed.Snapshot.Badge.IsVisible);
     }
 
     [Theory]
@@ -45,7 +48,7 @@ public sealed class InboxNavigationAdmissionTests
     {
         var notifications = new AppNotificationService();
         var feed = new InboxFeed(notifications, gateway: null);
-        // Even a colliding app record cannot turn a Gateway row into a dismiss-on-open reminder.
+        // Even a colliding app record cannot route a Gateway row through app-reminder navigation.
         notifications.Show(new AppNotification { Id = id, Title = "Collision", Message = "A local reminder.", Source = "app", ActionRoute = "connection" });
         var calls = 0;
         Assert.False(await feed.NavigateNotificationAsync(id, (_, _) =>
