@@ -380,7 +380,7 @@ input, or classifier/contract change selects `full` fail-closed. A full pull
 request runs all test and E2E lanes plus the x64 publish smoke. Pushes to `main`
 and tags also run ARM64 publish.
 
-The former serialized Windows `test` job is split into three clean-runner lanes.
+The former serialized Windows `test` job is split into clean-runner lanes.
 Each lane restores and builds its own minimal project graph and publishes a
 separate TRX artifact:
 
@@ -388,7 +388,15 @@ separate TRX artifact:
 |---|---|
 | `core-tests` | Shared, Connection, WinNode CLI |
 | `tray-tests` | Tray, SetupEngine, Tray Integration |
-| `ui-tests` | FunctionalUI, Tray UI, Axe.Windows accessibility |
+| `ui-tests` | FunctionalUI, Tray UI (first shard), Axe.Windows accessibility |
+| `tray-ui-shard` | Tray UI (second shard: workspace window, chat layout and setup classes) |
+
+The ordinary Tray UI suite is split by test class across `ui-tests` and
+`tray-ui-shard`, which run in parallel on separate runners. Both use the same
+category exclusions; `ui-tests` excludes exactly the classes `tray-ui-shard`
+selects, so every test runs once. `scripts/test-ci-workflow-contract.ps1`
+enforces that partition, and CI Gate requires both jobs whenever UI tests are
+selected. To rebalance, move whole classes between the two filters.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported
