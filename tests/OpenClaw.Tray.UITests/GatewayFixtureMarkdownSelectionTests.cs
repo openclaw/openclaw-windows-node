@@ -377,8 +377,10 @@ public sealed partial class GatewayFixtureUiTests
         Assert.True(Contains(viewport, stopPoint),
             $"The autoscroll stop point {stopPoint} must be inside the viewport {viewport}.");
         drag.MoveTo(stopPoint);
-        var finalEnd = FindSelectionText(run, endText)
-            ?? throw new InvalidOperationException($"Selection endpoint '{endText}' disappeared after stopping autoscroll.");
+        // Autoscroll can apply one more tick after the pointer re-enters the viewport; target the
+        // endpoint glyph only once its bounds stop moving.
+        var finalEnd = await WaitForStableSelectionTextAsync(run, endText,
+            $"selection endpoint {endText} settles after autoscroll stops");
         Assert.True(IsSelectionTextVisible(timeline, finalEnd),
             $"The selection endpoint moved outside the viewport while stopping autoscroll; " +
             $"endpoint bounds {finalEnd.Current.BoundingRectangle}, viewport {viewport}.");
