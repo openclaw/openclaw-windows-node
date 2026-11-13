@@ -214,8 +214,12 @@ screenshots and bounded proof outcomes are retained.
 The browser helper discovers the initial `about:blank` page through the owned
 loopback debugger's `/json/list` endpoint and connects directly to that page.
 It does not create another target through the browser-level WebSocket. Startup
-failures report the stage, elapsed time, process state, stderr character count
-and exception type, never raw Edge output or debugger URLs.
+through the first page command is bounded by a 60-second hang guard because the
+job's first, cold Edge launch can take far longer than later launches. Set
+`OPENCLAW_E2E_EDGE_STARTUP_TIMEOUT_SECONDS` (1-3600) to override it. Each
+startup reports cumulative per-stage milliseconds and the stderr character
+count. Failures also report the stage, elapsed time, limit, process state and
+exception type, never raw Edge output or debugger URLs.
 The existing fixture owns Gateway and profile teardown. This is a real released
 WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
 The run's `gateway-release.json`, result report and screenshots identify actual
