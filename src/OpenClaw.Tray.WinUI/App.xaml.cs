@@ -1148,6 +1148,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         InitializeGatewayClient();
 
+        // Accept forwarded launches while the startup update dialog is open.
+        await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);
+        if (_settings is not null)
+            ApplyGlobalHotkey(_settings.ToSettingsData());
+
         // Resolve the existing connection-manager-owned client before checking
         // whether its authenticated Gateway channel suppresses an ordinary update.
         if (DataDirOverride is null &&
@@ -1161,18 +1166,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 Exit();
                 return;
             }
-        }
-
-        // Start forwarded-activation listener (current-user IPC)
-        await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);
-
-        // Register global hotkey if enabled
-        if (_settings?.GlobalHotkeyEnabled == true)
-        {
-            _globalHotkey = new GlobalHotkeyService();
-            _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
-            _globalHotkey.SettingsHotkeyPressed += OnSettingsHotkeyPressed;
-            _globalHotkey.Register();
         }
 
         // Process startup deep link (command-line, MSIX protocol activation, or post-setup chat)

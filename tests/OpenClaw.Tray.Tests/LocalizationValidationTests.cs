@@ -365,7 +365,6 @@ public class LocalizationValidationTests
 
     private static readonly string[] RequiredLocalizedAccessibilityKeys =
     [
-        "Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_UnavailablePrimaryButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetLockedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
         "SandboxPage_PresetBalancedButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name",
@@ -559,6 +558,25 @@ public class LocalizationValidationTests
         value.Contains("http://", StringComparison.Ordinal) ||
         value.Contains("https://", StringComparison.Ordinal) ||
         value.Contains("~/", StringComparison.Ordinal);
+
+    [Fact]
+    public void ConnectionTopologyExplanation_UsesTheDisplayedLabelsInEveryLocale()
+    {
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
+        {
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+            var labels = new[]
+            {
+                resources["ConnectionPage_TopologyLocal"],
+                resources["ConnectionPage_TopologyLAN"],
+                resources["ConnectionPage_TopologyRemote"],
+            };
+            var tooltip = string.Format(CultureInfo.InvariantCulture,
+                resources["ConnectionPage_TopologyTooltip"], labels[0], labels[1], labels[2]);
+
+            Assert.All(labels, label => Assert.Contains(label, tooltip, StringComparison.Ordinal));
+        }
+    }
 
     [Fact]
     public void MojibakeDetector_FindsWindows1252Substrings()

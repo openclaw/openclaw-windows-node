@@ -181,7 +181,7 @@ public sealed class NodeModeUiStateTests
         Assert.Contains("public string? McpStartupError", service);
         Assert.Contains("public void SetMcpStartupError", service);
         Assert.Contains("SetMcpStartupFailure(ex, \"capability registration\")", service);
-        Assert.Contains("return false;", ExtractMethodBody(service, "bool StartMcpServer"));
+        Assert.Contains("return false;", ExtractMethodBody(service, "bool StartMcpServerLocked"));
         Assert.Contains("MCP server startup failed: listener did not start.", service);
     }
 

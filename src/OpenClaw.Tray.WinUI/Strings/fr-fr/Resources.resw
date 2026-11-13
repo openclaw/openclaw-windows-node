@@ -4846,7 +4846,25 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
     <value>Jeton partagé</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>Appuyez pour copier le jeton partagé</value>
+    <value>Identifiant partagé de la passerelle. Cliquez pour le copier. Gardez-le confidentiel.</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>Comment ce PC accède à la passerelle. {0} désigne ce PC ; {1}, le réseau local ; Tailscale et SSH utilisent ces connexions ; {2} désigne un autre hôte.</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} est le PC Windows qui exécute Companion et ses fonctionnalités de nœud Windows, pas nécessairement l’hôte de la passerelle.</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>Clients connectés signalés par la passerelle. Ouvrir Systèmes dans le tableau de bord web.</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>Canaux prêts : {0}/{1}.
+{2}
+
+Ouvrir Canaux dans le tableau de bord web.</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>Coût estimé d’utilisation de la passerelle pour aujourd’hui (UTC), en dollars américains. Ouvrir Utilisation dans le tableau de bord web.</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>via tunnel SSH</value>
@@ -6278,7 +6296,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Lancer OpenClaw à l'ouverture de session</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Canaux, intégrations et paramètres de la passerelle</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw est votre assistant IA pour accomplir vos tâches sur votre PC.</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw connecte un assistant IA aux outils de votre PC. Vous choisissez ce qu’il peut faire, et vous pouvez changer cela à tout moment.</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Configurez votre IA</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Découvrir les conversations existantes des fournisseurs (facultatif)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Démarrage de la configuration du fournisseur…</value></data>
@@ -6378,7 +6396,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>L'éditeur de connexion est indisponible dans cet hôte de configuration</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Ouvrez la configuration depuis l'application Companion pour utiliser son éditeur de connexion natif.</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Retour</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>Capacités du PC</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>Que peut utiliser votre assistant ?</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Choisissez ce que les agents peuvent utiliser sur ce PC. Ces choix n'accordent ni accès de confidentialité Windows ni autorisation d'exécution.</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Proposez les capacités de ce PC via un Gateway connecté.</value></data>
@@ -6403,8 +6421,8 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>Ce remplacement peut supprimer définitivement les données WSL</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Seule l'installation WSL nommée est remplacée. Les autres connexions Gateway enregistrées restent disponibles.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Revenir à la vérification</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Configuration du Gateway WSL</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Vérifiez les modifications avant le début de l'installation.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Prêt pour l’installation</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Voici ce qui va se passer sur ce PC.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Service Gateway local</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6415,15 +6433,13 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Vérifiez les choix requis</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Vérifiez les prérequis Local AI et Tailscale sélectionnés et confirmez tout remplacement WSL avant l'installation.</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Installer</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Bienvenue dans OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Voici votre nouvel acolyte.</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Discutez avec votre IA</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Utilisez Chat natif avec le fournisseur d'IA de votre choix.</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Laissez les agents vous aider sur ce PC</value></data>
   <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>Choisissez les capacités du PC à activer. Les autorisations Windows et les approbations d’exécution restent distinctes.</value></data>
   <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>Gardez le contrôle de votre Gateway</value></data>
-  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Exécutez ici un Gateway WSL privé ou connectez-vous à un Gateway existant.</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Avant de commencer</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>Les agents IA sont puissants et leur donner accès à votre PC comporte des risques. Ils peuvent commettre des erreurs, modifier ou supprimer des fichiers, ou exposer des informations privées.&#x0a;&#x0a;Vous pouvez contrôler et limiter l’accès d’OpenClaw à votre PC.</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Exécutez un Gateway privé sur ce PC ou connectez-vous à un Gateway existant.</value></data>
   <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Continuer</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Réessayer</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Distant, MCP local ou configuration ultérieure</value></data>
@@ -6509,8 +6525,8 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>Connecter / Configurer</value></data>
   <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>Logo du fournisseur indisponible ({0}). La configuration du fournisseur reste disponible.</value></data>
   <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>Ce que votre agent peut faire</value></data>
-  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Choisissez un profil. Ouvrez Ajuster pour consulter ou modifier chaque capacité.</value></data>
-  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Ajuster</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Commencez avec un ensemble qui vous convient. Vous pourrez le modifier à tout moment.</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Choisir les outils un par un</value></data>
   <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>Les capacités sont indisponibles</value></data>
   <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>Activez Node mode ou Local MCP Server pour utiliser ces capacités. Vos choix sont conservés.</value></data>
   <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Personnalisé : choisir chaque capacité</value></data>
@@ -6574,10 +6590,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>{0} étapes terminées sur {1}</value></data>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Annulé</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} sur {1}</value></data>
-  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Votre IA est prête</value></data>
-  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Parler à mon agent</value></data>
-  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Ouvrir le Chat avec votre agent.</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Parler à mon agent</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Tout est prêt !</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Vérifier à nouveau</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Préparation de vos choix d’IA</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Préparation de la passerelle</value></data>
@@ -6606,7 +6619,6 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Finalisation de la configuration</value></data>
   <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Application de vos choix, redémarrage d’OpenClaw et vérification de votre IA. Cela peut prendre quelques minutes.</value></data>
   <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>La configuration nécessite votre attention. Aucune action d’IA ne sera répétée automatiquement. Fermez cette fenêtre, vérifiez la passerelle enregistrée dans Connexion, puis rouvrez explicitement la configuration de l’IA pour la vérifier.</value></data>
-  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Modèle vérifié : {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Nouvelle vérification du même Gateway, agent et modèle...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Finalisation de vos choix de configuration Windows...</value></data>
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Ouverture de la page sélectionnée...</value></data>
@@ -6627,7 +6639,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Réessayer</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Fermer</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>En savoir plus sur les risques et la sécurité</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Configurer OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Où installer OpenClaw ?</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Le Gateway relie votre assistant IA à vos applications et outils. Choisissez où il s’exécute. Vous pourrez modifier ce choix plus tard.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Méthode de configuration du Gateway</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Choisissez une méthode de configuration du Gateway.</value></data>
@@ -9936,6 +9948,60 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>sessions non routées affichées</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>« {0} » archivée ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Fermer la notification</value></data>
+  <data name="Onboarding_Bubble_Ai" xml:space="preserve"><value>Choisissez-moi un cerveau.</value></data>
+  <data name="Onboarding_Bubble_Capabilities" xml:space="preserve"><value>C’est vous qui décidez de ce que je peux faire.</value></data>
+  <data name="Onboarding_Bubble_Checking" xml:space="preserve"><value>Je fais le point avec votre IA.</value></data>
+  <data name="Onboarding_Bubble_Confirm" xml:space="preserve"><value>Une chose à confirmer d’abord.</value></data>
+  <data name="Onboarding_Bubble_Connect" xml:space="preserve"><value>Indiquez-moi votre Gateway.</value></data>
+  <data name="Onboarding_Bubble_Done" xml:space="preserve"><value>On a réussi.</value></data>
+  <data name="Onboarding_Bubble_Failed" xml:space="preserve"><value>Ça n’a pas marché.</value></data>
+  <data name="Onboarding_Bubble_Gateway" xml:space="preserve"><value>Trouvez-moi un chez-moi.</value></data>
+  <data name="Onboarding_Bubble_Installed" xml:space="preserve"><value>Mon nouveau chez-moi est prêt.</value></data>
+  <data name="Onboarding_Bubble_MoreOptions" xml:space="preserve"><value>Encore quelques options.</value></data>
+  <data name="Onboarding_Bubble_Plan" xml:space="preserve"><value>Voici le plan.</value></data>
+  <data name="Onboarding_Bubble_Ready" xml:space="preserve"><value>Quand vous voulez.</value></data>
+  <data name="Onboarding_Bubble_Restart" xml:space="preserve"><value>On y est presque.</value></data>
+  <data name="Onboarding_Bubble_Tools" xml:space="preserve"><value>Activez ceux qui vous plaisent.</value></data>
+  <data name="Onboarding_Bubble_Welcome" xml:space="preserve"><value>Bonjour. Configurons tout ça ensemble.</value></data>
+  <data name="Onboarding_Bubble_Working" xml:space="preserve"><value>Je m’en occupe…</value></data>
+  <data name="Onboarding_Progress_HideDetails" xml:space="preserve"><value>Masquer les détails</value></data>
+  <data name="Onboarding_Progress_OpenLog.Content" xml:space="preserve"><value>Ouvrir le fichier journal</value></data>
+  <data name="Onboarding_Progress_ShowDetails" xml:space="preserve"><value>Afficher les détails</value></data>
+  <data name="Onboarding_Ready_Prompt" xml:space="preserve"><value>OpenClaw est prêt à démarrer</value></data>
+  <data name="Onboarding_Ready_OpenChat" xml:space="preserve"><value>Ouvrir le Chat</value></data>
+  <data name="Onboarding_Ready_ModelTitle" xml:space="preserve"><value>IA prête</value></data>
+  <data name="Onboarding_Ready_CapabilitiesDescription" xml:space="preserve"><value>Modifiable à tout moment dans les paramètres de Companion</value></data>
+  <data name="Onboarding_Ready_CapabilitiesTitle" xml:space="preserve"><value>Profil de capacités appliqué</value></data>
+  <data name="Onboarding_Ready_PairedDescription" xml:space="preserve"><value>Ce PC est connecté et prêt à l’emploi</value></data>
+  <data name="Onboarding_Ready_PairedTitle" xml:space="preserve"><value>Appareil associé</value></data>
+  <data name="Onboarding_Ready_GatewayDescription" xml:space="preserve"><value>Hébergé sur ce PC</value></data>
+  <data name="Onboarding_Review_HideCommands" xml:space="preserve"><value>Masquer les commandes exactes et l’emplacement des fichiers</value></data>
+  <data name="Onboarding_Review_ShowCommands" xml:space="preserve"><value>Afficher les commandes exactes et l’emplacement des fichiers</value></data>
+  <data name="Onboarding_Steps_ChooseTools" xml:space="preserve"><value>Choisir les outils de votre PC</value></data>
+  <data name="Onboarding_Steps_ChooseToolsDetail" xml:space="preserve"><value>Commencez avec l’accès qui vous convient.</value></data>
+  <data name="Onboarding_Steps_ConnectAi" xml:space="preserve"><value>Connecter votre IA</value></data>
+  <data name="Onboarding_Steps_ConnectAiDetail" xml:space="preserve"><value>Utilisez un fournisseur ou un modèle de votre choix.</value></data>
+  <data name="Onboarding_Steps_ItemName" xml:space="preserve"><value>{0} ({1})</value></data>
+  <data name="Onboarding_Steps_SetUp" xml:space="preserve"><value>Installation</value></data>
+  <data name="Onboarding_Steps_SetUpDetail" xml:space="preserve"><value>OpenClaw s’installe. Vous pouvez continuer à utiliser votre PC.</value></data>
+  <data name="Onboarding_Steps_StartChatting" xml:space="preserve"><value>Commencer à discuter</value></data>
+  <data name="Onboarding_Steps_StartChattingDetail" xml:space="preserve"><value>Ouvrez Chat et dites bonjour.</value></data>
+  <data name="Onboarding_Steps_StateCurrent" xml:space="preserve"><value>étape actuelle</value></data>
+  <data name="Onboarding_Steps_StateDone" xml:space="preserve"><value>terminée</value></data>
+  <data name="Onboarding_Steps_StateSkipped" xml:space="preserve"><value>ignorée</value></data>
+  <data name="Onboarding_Steps_StateUpcoming" xml:space="preserve"><value>non commencée</value></data>
+  <data name="Onboarding_Tools_OnNow" xml:space="preserve"><value>Actuellement activé : {0}</value></data>
+  <data name="Onboarding_Welcome_Safety.Text" xml:space="preserve"><value>Les agents IA sont puissants et leur donner accès à votre PC comporte des risques. Ils peuvent commettre des erreurs, modifier ou supprimer des fichiers, ou exposer des informations privées. Vous pouvez contrôler et limiter l’accès d’OpenClaw à votre PC.</value></data>
+  <data name="Onboarding_Complete_RestartTitle" xml:space="preserve"><value>Redémarrez Windows pour continuer</value></data>
+  <data name="Onboarding_Complete_RestartPrompt" xml:space="preserve"><value>OpenClaw doit redémarrer Windows pour terminer l’installation. Enregistrez d’abord votre travail.</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Avant de commencer</value></data>
+  <data name="Onboarding_Ready_GatewayNativeTitle" xml:space="preserve"><value>Gateway natif en cours d’exécution</value></data>
+  <data name="Onboarding_Ready_GatewayWslTitle" xml:space="preserve"><value>Gateway WSL en cours d’exécution</value></data>
+  <data name="Onboarding_Ready_GatewayWslDescription" xml:space="preserve"><value>Hébergé sur ce PC dans WSL</value></data>
+  <data name="Onboarding_Ready_GatewayConnectedTitle" xml:space="preserve"><value>Gateway connecté</value></data>
+  <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>Exécuté sur ce PC</value></data>
+  <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Gateway distant connecté</value></data>
+  <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Vérifié pour cette configuration</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Ouvrir les détails à côté de la conversation</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Détails de l’outil</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ces détails ne sont plus disponibles. Reconnectez-vous si nécessaire, puis rouvrez l’outil depuis la conversation actuelle.</value></data>

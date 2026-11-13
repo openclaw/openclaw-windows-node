@@ -177,6 +177,11 @@ jobs:
       shell: pwsh
       run: ./scripts/test-agent-skills-validator.ps1
 
+    # Always-on so pull requests that change only UI or Shared tests cannot skip the ratchet.
+    - name: Validate timing-sensitive test patterns
+      shell: pwsh
+      run: ./scripts/validate-test-timing-patterns.ps1
+
     - name: Test proof results and local evidence
       shell: pwsh
       run: ./scripts/test-proof-evidence.ps1
@@ -549,6 +554,7 @@ jobs:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Shared.Tests
         -ResultsDirectory TestResults\Shared
         -TrxFileName OpenClaw.Shared.Tests.trx
@@ -784,17 +790,24 @@ jobs:
       run: |
         "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
 
+    # The ordinary Tray UI suite is split by test class across this job and
+    # tray-ui-shard so neither serial run approaches its timeout. Both filters
+    # start with the same category exclusions; this job negates exactly the
+    # class list that tray-ui-shard selects, so together they run every test
+    # once. scripts/test-ci-workflow-contract.ps1 enforces the partition.
     - name: Run Tray UI Tests
+      # -HangTimeoutSeconds still bounds a single stalled test.
       timeout-minutes: 25
       env:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 25
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&FullyQualifiedName!~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.&FullyQualifiedName!~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests.&FullyQualifiedName!~OpenClaw.Tray.UITests.OnboardingAiPageTests.&FullyQualifiedName!~OpenClaw.Tray.UITests.NativeSharedFlowTests."
         -HangTimeoutSeconds 300
         -CollectNativeFailureMetadata
         -CaptureHostExit
@@ -811,6 +824,7 @@ jobs:
         OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AutomationsSteadyResources
         -TrxFileName AutomationsSteadyResources.trx
@@ -839,6 +853,7 @@ jobs:
       timeout-minutes: 5
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AnimationsEnabled
         -TrxFileName AnimationsEnabled.trx
@@ -853,6 +868,7 @@ jobs:
       timeout-minutes: 5
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AnimationsDisabled
         -TrxFileName AnimationsDisabled.trx
@@ -921,6 +937,128 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: test-results-ui
+        path: TestResults/
+        if-no-files-found: warn
+
+  # Second half of the ordinary Tray UI suite (see "Run Tray UI Tests" in
+  # ui-tests). It runs in parallel on its own runner and only builds what the
+  # Tray UI tests need. CI Gate requires it whenever ui-tests is required.
+  tray-ui-shard:
+    name: Tray UI tests (workspace, chat layout and setup shard)
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    runs-on: windows-latest
+    env:
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
+      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
+      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore UI test projects
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
+
+    - name: Install dotnet-coverage
+      if: ${{ github.event_name != 'pull_request' }}
+      run: dotnet tool install --global dotnet-coverage
+
+    - name: Build UI test projects
+      id: ui-build
+      run: dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+
+    - name: Install WindowsAppRuntime
+      id: ui-runtime
+      shell: pwsh
+      run: |
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
+        $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+        Invoke-WebRequest -Uri $url -OutFile $exe
+        & $exe --quiet
+        if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Configure UI desktop
+      id: ui-desktop
+      shell: pwsh
+      run: ./scripts/Set-CiDesktopResolution.ps1
+
+    - name: Mark Tray UI crash metadata window
+      id: tray-ui-crash-window
+      shell: pwsh
+      run: |
+        "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
+
+    - name: Run Tray UI Tests
+      # -HangTimeoutSeconds still bounds a single stalled test.
+      timeout-minutes: 25
+      env:
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 25
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\TrayUIShard
+        -TrxFileName OpenClaw.Tray.UITests.Shard.trx
+        -Runtime win-x64
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&(FullyQualifiedName~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.|FullyQualifiedName~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests.|FullyQualifiedName~OpenClaw.Tray.UITests.OnboardingAiPageTests.|FullyQualifiedName~OpenClaw.Tray.UITests.NativeSharedFlowTests.)"
+        -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
+    - name: Capture non-memory Tray UI crash metadata
+      if: always() && steps.tray-ui-crash-window.outcome == 'success'
+      shell: pwsh
+      env:
+        TRAY_UI_TEST_STARTED_UTC: ${{ steps.tray-ui-crash-window.outputs.startedUtc }}
+      run: |
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline crash metadata helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Capture-CiTestHostCrashMetadata.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-tray-ui-shard
         path: TestResults/
         if-no-files-found: warn
 
@@ -1007,6 +1145,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/test-gateway-fixture.ps1
+        -StepTimeoutMinutes 30
         -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
         -ArtifactsDirectory .\TestResults\GatewayFixture
         -TestTimeoutSeconds 1500
@@ -1034,6 +1173,7 @@ jobs:
         OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Tray.UITests
         -Configuration Release
         -ResultsDirectory TestResults\GatewayFixtureRelease
@@ -1054,6 +1194,7 @@ jobs:
         OPENCLAW_VISUAL_TEST_DIR: ${{ github.workspace }}\TestResults\ReaderRelease\observations
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -Configuration Release
         -ResultsDirectory TestResults\ReaderRelease
@@ -1197,6 +1338,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
+        -StepTimeoutMinutes 20
         -Name setup-connect
         -Filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayExecutableResolutionTests"
 
@@ -1275,6 +1417,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
+        -StepTimeoutMinutes 20
         -Name revocation-recovery
         -Filter FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
 
@@ -1353,6 +1496,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
+        -StepTimeoutMinutes 20
         -Name network-recovery
         -Filter FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
 
@@ -1888,7 +2032,7 @@ jobs:
   ci-gate:
     name: CI Gate
     if: ${{ always() }}
-    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, gateway-fixture, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
+    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, tray-ui-shard, gateway-fixture, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -1907,6 +2051,7 @@ jobs:
         TRAY_RESULT: ${{ needs.tray-tests.result }}
         UI_REQUIRED: ${{ needs.change-classification.outputs.ui_tests }}
         UI_RESULT: ${{ needs.ui-tests.result }}
+        TRAY_UI_SHARD_RESULT: ${{ needs.tray-ui-shard.result }}
         GATEWAY_FIXTURE_RESULT: ${{ needs.gateway-fixture.result }}
         SETUP_E2E_REQUIRED: ${{ needs.change-classification.outputs.setup_e2e }}
         SETUP_E2E_RESULT: ${{ needs.setup-e2e.result }}
@@ -1934,6 +2079,7 @@ jobs:
           -TrayResult $env:TRAY_RESULT `
           -UiRequired $env:UI_REQUIRED `
           -UiResult $env:UI_RESULT `
+          -TrayUiShardResult $env:TRAY_UI_SHARD_RESULT `
           -GatewayFixtureResult $env:GATEWAY_FIXTURE_RESULT `
           -SetupE2eRequired $env:SETUP_E2E_REQUIRED `
           -SetupE2eResult $env:SETUP_E2E_RESULT `

@@ -6,7 +6,11 @@ namespace OpenClaw.SetupEngine.UI.Pages;
 
 public sealed partial class AdvancedSetupPage : Page
 {
-    public AdvancedSetupPage() => InitializeComponent();
+    public AdvancedSetupPage()
+    {
+        InitializeComponent();
+        Controls.SetupRowPresentation.StyleHeaders(ExistingRouteCard, RemoteRouteCard, McpRouteCard, DeferredRouteCard);
+    }
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         HostUnavailable.IsOpen = e.Parameter is true;

@@ -226,7 +226,13 @@ internal static class OnboardingNativeProof
         return directory!;
     }
 
-    internal static async Task NextCompositionAsync(TimeSpan? cadence = null)
+    // Two frames normally arrive within tens of milliseconds; report slower waits so a UI-thread stall
+    // that the shared budget tolerates still leaves evidence in the test log.
+    private static readonly TimeSpan SlowCompositionReportThreshold = TimeSpan.FromSeconds(1);
+
+    internal static async Task NextCompositionAsync(TimeSpan? cadence = null,
+        [System.Runtime.CompilerServices.CallerFilePath] string callerFile = "",
+        [System.Runtime.CompilerServices.CallerLineNumber] int callerLine = 0)
     {
         var started = Stopwatch.GetTimestamp();
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -236,9 +242,22 @@ internal static class OnboardingNativeProof
             if (++frames >= 2 && Stopwatch.GetElapsedTime(started) >= (cadence ?? TimeSpan.Zero))
                 ready.TrySetResult();
         }
+        var caller = $"{Path.GetFileName(callerFile)}:{callerLine}";
         CompositionTarget.Rendering += OnRendering;
-        try { await ready.Task.WaitAsync(TimeSpan.FromSeconds(2)); }
+        // Frames are an observable event, not a delay: wait for them within the suite's named render-wait
+        // budget instead of an unnamed 2 s literal. Why frames were late in CI (stall or throttling) is unproven.
+        try { await ready.Task.WaitAsync(TestSupport.RenderedConditionTimeout); }
+        catch (TimeoutException timeout)
+        {
+            throw new TimeoutException(
+                $"Only {frames} composed frame(s) arrived within {TestSupport.RenderedConditionTimeout.TotalSeconds:0} s at {caller}.",
+                timeout);
+        }
         finally { CompositionTarget.Rendering -= OnRendering; }
+        var elapsed = Stopwatch.GetElapsedTime(started);
+        var expected = cadence ?? TimeSpan.Zero;
+        if (elapsed - expected > SlowCompositionReportThreshold)
+            Console.Error.WriteLine($"slow-composition: {frames} frame(s) took {elapsed.TotalMilliseconds:0} ms (cadence {expected.TotalMilliseconds:0} ms) at {caller}");
     }
 
     /// <summary>Verify a valid same-process HWND without changing activation or foreground state.</summary>
@@ -346,17 +365,37 @@ internal static class OnboardingNativeProof
         root.ClearValue(Panel.BackgroundProperty);
         root.Style = style;
         root.RequestedTheme = theme;
+        var highContrast = new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
+        bool ThemedBackground() => root.Background is SolidColorBrush brush && (highContrast ||
+            (brush.Color.R + brush.Color.G + brush.Color.B > 3 * 128) == (theme == ElementTheme.Light));
+        // Theme and the resolved brush are element state and need no composed frame. A fixed two-frame
+        // CompositionTarget.Rendering window timed out in CI, so wait only for the asserted state.
         await TestSupport.WaitForRenderedConditionAsync(
-            () => root.IsLoaded && root.ActualTheme == theme, "native surface Loaded and requested theme");
+            () => root.IsLoaded && root.ActualTheme == theme && ThemedBackground(),
+            "native surface Loaded with requested theme background",
+            () => $"IsLoaded={root.IsLoaded}, ActualTheme={root.ActualTheme}, " +
+                $"Background={(root.Background as SolidColorBrush)?.Color.ToString() ?? "none"}");
         root.UpdateLayout();
-        await NextCompositionAsync();
         Assert.Equal(theme, root.ActualTheme);
         var background = Assert.IsType<SolidColorBrush>(root.Background).Color;
-        if (!new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+        if (!highContrast)
         {
             var light = background.R + background.G + background.B > 3 * 128;
             Assert.Equal(theme == ElementTheme.Light, light);
         }
+    }
+
+    /// <summary>
+    /// Waits until <paramref name="page"/> is parented beside a setup companion and returns that capture.
+    /// The companion lookup walks the live visual tree, so it is null until the page is mounted.
+    /// </summary>
+    internal static async Task<OpenClaw.SetupEngine.UI.Controls.SetupCompanion> CompanionAsync(FrameworkElement page)
+    {
+        OpenClaw.SetupEngine.UI.Controls.SetupCompanion? companion = null;
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => (companion = OpenClaw.SetupEngine.UI.Controls.SetupCompanion.Find(page)) is not null,
+            $"setup companion beside {page.GetType().Name}");
+        return companion!;
     }
 
     internal static void AssertFullyVisible(FrameworkElement element, FrameworkElement viewport)
@@ -788,11 +827,11 @@ internal static class OnboardingNativeProof
     internal static void AssertManualLabelExceptions(string[] missingLabels, string originalText, string scaledText)
     {
         static bool HasWelcomeTitleAmbiguity(string text) =>
-            $" {text} ".Contains(" Set up OpenCIaw ", StringComparison.Ordinal);
+            $" {text} ".Contains(" Where should OpenCIaw live? ", StringComparison.Ordinal);
 
         foreach (var label in missingLabels)
             Assert.True(label is "Set up your AI" or "Set up a local model" ||
-                label == "Set up OpenClaw" &&
+                label == "Where should OpenClaw live?" &&
                 HasWelcomeTitleAmbiguity(originalText) && HasWelcomeTitleAmbiguity(scaledText),
                 $"OCR did not verify expected label: {label}");
     }

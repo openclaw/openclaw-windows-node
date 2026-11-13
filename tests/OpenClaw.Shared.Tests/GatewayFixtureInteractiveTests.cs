@@ -126,6 +126,24 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Equal(expectedHistory, history.GetProperty("messages").GetArrayLength());
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Interactive_ChatOnlyAssistantTextCapOmitsAgentAssistantText(bool chatOnly)
+    {
+        var token = CreateToken();
+        await using var server = await StartInteractiveAsync(token);
+        server.Interactive!.Playback.Select("streaming");
+        await using var peer = await FixturePeer.ConnectAsync(server, token,
+            caps: chatOnly ? ["chat-only-assistant-text"] : null);
+        await peer.RequestAsync("chat.send", SendParams("one"));
+        var frames = await peer.ThroughAsync(e => IsChat(e, "final"));
+        Assert.Contains(frames, e => IsChat(e, "delta"));
+        var agentText = frames.Any(e => e.GetProperty("event").GetString() == "agent" &&
+            e.GetProperty("payload").GetProperty("stream").GetString() == "assistant");
+        Assert.Equal(!chatOnly, agentText);
+    }
+
     [Fact]
     public async Task Interactive_SendRejectionDoesNotPersistInputOrConsumeIdempotency()
     {
@@ -574,7 +592,8 @@ public sealed partial class GatewayFixtureProtocolTests
         public void ExpectServerShutdown() => _expectServerShutdown = true;
 
         public static async Task<FixturePeer> ConnectAsync(FixtureGatewayServer server, string token,
-            Func<ClientWebSocket, Memory<byte>, CancellationToken, ValueTask<ValueWebSocketReceiveResult>>? receive = null)
+            Func<ClientWebSocket, Memory<byte>, CancellationToken, ValueTask<ValueWebSocketReceiveResult>>? receive = null,
+            string[]? caps = null)
         {
             var peer = new FixturePeer { _receive = receive };
             await peer._socket.ConnectAsync(server.Endpoint, peer._lifetime.Token);
@@ -584,6 +603,7 @@ public sealed partial class GatewayFixtureProtocolTests
             {
                 minProtocol = 4, maxProtocol = 4, role = "operator", auth = new { token },
                 client = new { id = "fixture-protocol-test" },
+                caps = caps ?? [],
                 device = new { id = "fixture-device", publicKey = "synthetic", signature = "synthetic", nonce = challenge.GetProperty("payload").GetProperty("nonce").GetString() }
             });
             return peer;

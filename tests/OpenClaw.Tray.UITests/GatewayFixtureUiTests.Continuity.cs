@@ -78,10 +78,35 @@ public sealed partial class GatewayFixtureUiTests
             var sends = run.Gateway.Requests.Count(request => request.Method == "chat.send");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")?.Current.IsEnabled == true,
                 "composer enabled after reconnect");
-            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern))
-                .SetValue(afterReconnect);
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerPrimaryAction") is
-                { Current.IsEnabled: true, Current.Name: "Send" }, "native Send action after reconnect");
+            var composerBeforeSend = FindById(run, "ChatComposerInput")!;
+            var composerIdentity = composerBeforeSend.GetRuntimeId();
+            var composerValue = (ValuePattern)composerBeforeSend.GetCurrentPattern(ValuePattern.Pattern);
+            composerValue.SetValue(afterReconnect);
+            // Diagnostic only: distinguishes "SetValue never landed" from "the draft was cleared later".
+            // Best-effort: a failed read is recorded and must never change the test outcome.
+            string? lengthReadError = null;
+            int LengthAfterSet()
+            {
+                try { return composerValue.Current.Value?.Length ?? -1; }
+                catch (Exception error)
+                {
+                    lengthReadError = $"{error.GetType().Name}; hresult=0x{error.HResult:X8}";
+                    return -1;
+                }
+            }
+            var lengthAfterSet = (Utc: DateTimeOffset.UtcNow, Length: LengthAfterSet(), Error: lengthReadError);
+            try
+            {
+                await WaitUiAsync(run, () => FindById(run, "ChatComposerPrimaryAction") is
+                    { Current.IsEnabled: true, Current.Name: "Send" }, "native Send action after reconnect");
+            }
+            catch (TimeoutException timeout)
+            {
+                // Unresolved CI flake: the draft was found empty after this SetValue. Record whether
+                // the composer peer was replaced and what it holds, without retrying the input.
+                WriteComposerReceipt(run, "continuity-send-timeout.json", composerIdentity, lengthAfterSet, timeout);
+                throw;
+            }
             Invoke(FindById(run, "ChatComposerPrimaryAction")!);
             var sent = await run.Gateway.WaitForCompletedRequestAsync("chat.send", GatewayScenario.OtherSessionKey);
             Assert.Equal("ok", sent.Outcome);
@@ -99,6 +124,47 @@ public sealed partial class GatewayFixtureUiTests
                 "authoritative removal requires a new selection");
             CaptureContinuity(run, "continuity-removed.png");
         }, scenario: GatewayScenario.CreateBrowse(requireAgentSelection: true, allowChatSend: true));
+    }
+
+    private static void WriteComposerReceipt(GatewayFixtureRun run, string name, int[] expectedIdentity,
+        (DateTimeOffset Utc, int Length, string? Error) afterSet, Exception original)
+    {
+        var afterSetEvidence = new { utc = afterSet.Utc, length = afterSet.Length, error = afterSet.Error };
+        object Read()
+        {
+            var composers = AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerInput"))
+                .Cast<AutomationElement>()).ToArray();
+            var composer = FindById(run, "ChatComposerInput");
+            var action = FindById(run, "ChatComposerPrimaryAction");
+            return new
+            {
+                utc = DateTimeOffset.UtcNow,
+                afterSet = afterSetEvidence,
+                composerCount = composers.Length,
+                composerHwnd = composer?.Current.NativeWindowHandle,
+                samePeer = composer?.GetRuntimeId().SequenceEqual(expectedIdentity),
+                composerEnabled = composer?.Current.IsEnabled,
+                nativeLength = composer is null ? (int?)null
+                    : ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).Current.Value?.Length,
+                action = action is null ? null : new { action.Current.Name, action.Current.IsEnabled },
+            };
+        }
+        // Never let a diagnostic failure replace the original timeout.
+        try
+        {
+            object receipt;
+            try { receipt = Read(); }
+            catch (Exception error)
+            {
+                receipt = new { afterSet = afterSetEvidence, error = error.GetType().Name, hresult = $"0x{error.HResult:X8}" };
+            }
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, name), JsonSerializer.Serialize(receipt));
+        }
+        catch (Exception error)
+        {
+            original.Data["composerReceiptError"] = $"{error.GetType().Name}; hresult=0x{error.HResult:X8}";
+        }
     }
 
     private static bool AssistantSelected(GatewayFixtureRun run, string id) =>

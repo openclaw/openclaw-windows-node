@@ -140,7 +140,7 @@ public sealed class StartupWindowUiTests(ITestOutputHelper output)
         {
             Assert.Contains(windows, window => IsSetup(window) &&
                 window.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.NameProperty, "Welcome to OpenClaw")) is not null);
+                    new PropertyCondition(AutomationElement.NameProperty, "Meet your new sidekick.")) is not null);
         }
         output.WriteLine($"{phase}: setup={windows.Count(IsSetup)}, workspace={windows.Count(IsWorkspace)}");
     }

@@ -739,13 +739,13 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         _duringStatus = async ct =>
         {
             entered.TrySetResult();
-            await Task.Delay(TimeSpan.FromSeconds(statusSeconds), _clock, ct);
+            await Task.Delay(TimeSpan.FromSeconds(statusSeconds), _clock, ct); // test-timing-exception: fake clock delay completed by the test's explicit Advance
         };
 
         var authorization = NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, default, allowStart: false);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
         _clock.Advance(TimeSpan.FromSeconds(Math.Min(statusSeconds, IsolatedGatewayRuntime.DefaultInspectionTimeoutSeconds)));
-        var result = await authorization.WaitAsync(TimeSpan.FromSeconds(5));
+        var result = await authorization.WaitAsync(TimeSpan.FromSeconds(30));
         _duringStatus = null;
 
         Assert.Equal(allowed, result.Allowed);

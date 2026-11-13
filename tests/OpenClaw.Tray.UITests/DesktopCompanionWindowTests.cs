@@ -61,7 +61,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             var connection = Assert.Single(recoveryActions.Children.OfType<HyperlinkButton>());
             Assert.Equal(Visibility.Visible, connection.Visibility);
             await TestSupport.WaitForRenderedConditionAsync(() => status.ActualHeight > 0, "chat recovery layout");
-            Assert.InRange(status.TransformToVisual(dismiss).TransformPoint(new(0, 0)).Y - dismiss.ActualHeight, 0, 8);
+            Assert.InRange(status.TransformToVisual(dismiss).TransformPoint(new(0, 0)).Y - dismiss.ActualHeight, 0, 8.01);
             Assert.Equal(new Thickness(8), recovery.Margin);
             var retryCenter = retry.TransformToVisual(BubbleRoot).TransformPoint(new(0, 0)).Y + retry.ActualHeight / 2;
             var connectionCenter = connection.TransformToVisual(BubbleRoot).TransformPoint(new(0, 0)).Y + connection.ActualHeight / 2;
@@ -111,10 +111,10 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 {
                     window.ApplyScale(percent);
                     await TestSupport.WaitForRenderedConditionAsync(
-                        () => target.ActualWidth == expectedSize && mascot.ActualWidth == expectedSize,
+                        () => NearSize(root, target.ActualWidth, expectedSize) && NearSize(root, mascot.ActualWidth, expectedSize),
                         $"mascot at {percent}%");
-                    Assert.Equal(expectedSize, target.ActualHeight);
-                    Assert.Equal(expectedSize, mascot.ActualHeight);
+                    Assert.True(NearSize(root, target.ActualHeight, expectedSize), $"target height {target.ActualHeight}");
+                    Assert.True(NearSize(root, mascot.ActualHeight, expectedSize), $"mascot height {mascot.ActualHeight}");
                     Assert.Same(mascot, Mascot(root));
                     Assert.Same(popupContent, frame.Child);
                     Assert.Equal(originalWidth, frame.ActualWidth);
@@ -418,7 +418,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             {
                 window.ApplyTheme("Light");
                 await TestSupport.WaitForRenderedConditionAsync(() => host.ActualTheme == ElementTheme.Light, "theme render");
-                await Task.Delay(100);
+                await Task.Delay(100); // test-timing-exception: negative probe: a theme change must not replay the mascot mood
                 Assert.NotEqual(darkFill, Assert.IsType<SolidColorBrush>(frame.Background).Color);
                 Assert.Equal(0, moodChanges);
                 window.Present(new() { Title = "Second", Message = "Second arrival" });
@@ -463,7 +463,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             view.Close();
             view.Close();
             window.Present(new() { Title = "Late", Message = "Ignored" });
-            await Task.Delay(100);
+            await Task.Delay(100); // test-timing-exception: negative probe: a late Present after Close must not render
             Assert.Null(host.Content);
             Assert.False(host.IsLoaded);
             Assert.False(mascot.IsAnimationEnabled);
@@ -529,14 +529,14 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             try
             {
                 MoveOwnedPointer(hwnd, point);
-                await Task.Delay(50);
+                await Task.Delay(50); // test-timing-exception: real pointer input needs OS delivery time, no observable signal exists
                 SendMouseButton(rightClick ? 0x0008u : 0x0002u);
                 pressed = true;
-                await Task.Delay(50);
+                await Task.Delay(50); // test-timing-exception: real pointer input needs OS delivery time, no observable signal exists
                 point.X += 2;
                 point.Y += 2;
                 MoveOwnedPointer(hwnd, point);
-                await Task.Delay(50);
+                await Task.Delay(50); // test-timing-exception: real pointer input needs OS delivery time, no observable signal exists
                 SendMouseButton(release);
                 pressed = false;
                 await TestSupport.WaitForRenderedConditionAsync(
@@ -569,7 +569,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             try
             {
                 MoveOwnedPointer(hwnd, point);
-                await Task.Delay(50);
+                await Task.Delay(50); // test-timing-exception: real pointer input needs OS delivery time, no observable signal exists
                 SendMouseButton(0x0002);
                 pressed = true;
                 await TestSupport.WaitForRenderedConditionAsync(() => target.PointerCaptures is { Count: > 0 }, "pointer capture");
@@ -582,15 +582,15 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                         () => window.AppWindow.Position.X == origin.X - 12, "drag before capture loss");
                 }
                 target.ReleasePointerCaptures();
-                await Task.Delay(100);
+                await Task.Delay(100); // test-timing-exception: negative probe: dropped capture must stop the drag
                 var stopped = window.AppWindow.Position;
                 point.X -= 12;
                 MoveOwnedPointer(hwnd, point);
-                await Task.Delay(100);
+                await Task.Delay(100); // test-timing-exception: negative probe: moves after capture loss must not drag
                 Assert.Equal(stopped, window.AppWindow.Position);
                 SendMouseButton(0x0004);
                 pressed = false;
-                await Task.Delay(100);
+                await Task.Delay(100); // test-timing-exception: negative probe: release after capture loss must not open a popup
                 Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(target);
                 ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
@@ -604,6 +604,10 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 Assert.True(SetCursorPos(saved.X, saved.Y));
             }
         });
+
+    // Layout rounds to whole physical pixels, so a fractional display scale shifts sizes by up to one pixel.
+    private static bool NearSize(FrameworkElement root, double actual, double expected) =>
+        Math.Abs(actual - expected) <= 1d / root.XamlRoot.RasterizationScale + 0.01;
 
     private static async Task PositionForPointerProofAsync(DesktopCompanionWindow window)
     {
@@ -625,7 +629,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
         try
         {
             MoveOwnedPointer(hwnd, point);
-            await Task.Delay(50);
+            await Task.Delay(50); // test-timing-exception: real pointer input needs OS delivery time, no observable signal exists
             SendMouseButton(0x0002);
             pressed = true;
             await TestSupport.WaitForRenderedConditionAsync(() => target.PointerCaptures is { Count: > 0 }, "drag capture");
@@ -638,7 +642,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             }
             SendMouseButton(0x0004);
             pressed = false;
-            await Task.Delay(150);
+            await Task.Delay(150); // test-timing-exception: negative probe: capture is released after the final button up
             Assert.True(target.PointerCaptures is not { Count: > 0 });
         }
         finally

@@ -32,7 +32,7 @@ internal sealed class InboxFeed
     public InboxSnapshot Snapshot =>
         InboxProjection.Build(_notifications.Snapshot.ActiveNotifications, _gateway?.Items);
 
-    /// <summary>Only app reminders participate in navigation admission; Gateway facts keep their own lifetime.</summary>
+    /// <summary>Reports app-reminder navigation without dismissal; Gateway facts keep their own action owner.</summary>
     public Task<bool> NavigateNotificationAsync(string id, Func<string, string?, Task<bool>> tryNavigate) =>
         InboxGatewayItems.IsGatewayItemId(id)
             ? Task.FromResult(false)

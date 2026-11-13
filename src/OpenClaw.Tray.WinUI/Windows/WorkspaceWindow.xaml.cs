@@ -140,6 +140,11 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chat.SessionSelected += OnChatSessionSelected;
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
+        // Additional mouse-button presses arrive as moves while another button is held.
+        // Observe both routes even when a child control handles the event.
+        var navigationPointerHandler = new Microsoft.UI.Xaml.Input.PointerEventHandler(OnNavigationPointerChanged);
+        Root.AddHandler(UIElement.PointerPressedEvent, navigationPointerHandler, handledEventsToo: true);
+        Root.AddHandler(UIElement.PointerMovedEvent, navigationPointerHandler, handledEventsToo: true);
         // The no-gateway accessibility fixture publishes its explicit roster before this window exists.
         RefreshSidebar(rosterUpdated:
             _state.AgentsListUnsupported ||
@@ -482,8 +487,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdateNavigationSelection();
         UpdateHistoryButtons();
         var tag = Destination.CompanionTag ?? "settings";
+        // SettingsShellView publishes the accessibility readiness signal once the page has settled.
         view.ShowSection(tag);
-        AccessibilityNavigationSignal.WritePageReady(view.CurrentPage?.GetType().Name ?? nameof(SettingsShellView));
     }
 
     /// <summary>
@@ -1296,6 +1301,21 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
+    private void OnNavigationPointerChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        var update = e.GetCurrentPoint(Root).Properties.PointerUpdateKind;
+        if (update == Microsoft.UI.Input.PointerUpdateKind.XButton1Pressed)
+        {
+            e.Handled = true;
+            NavigateBack();
+        }
+        else if (update == Microsoft.UI.Input.PointerUpdateKind.XButton2Pressed)
+        {
+            e.Handled = true;
+            NavigateForward();
+        }
+    }
+
     private void OnTogglePane(object sender, RoutedEventArgs e)
     {
         var open = !NavView.IsPaneOpen;

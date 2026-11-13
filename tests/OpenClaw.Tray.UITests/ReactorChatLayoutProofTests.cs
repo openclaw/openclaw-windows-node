@@ -48,7 +48,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         {
             double singleLineHeight = 0;
             await ui.RunOnUIAsync(() => session.ViewModel.SetDraft("Hello"));
-            await SettleAsync();
+            await SettleAsync(); // test-timing-exception: Reactor reconciles the draft or provider update with no completion signal
             await ui.RunOnUIAsync(() =>
             {
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
@@ -68,13 +68,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                         or "ChatComposerReasoningPicker" or "ChatComposerSandbox");
                 session.ViewModel.SetDraft("First line\nSecond line\nThird line");
             });
-            await SettleAsync();
+            await SettleAsync(); // test-timing-exception: Reactor reconciles the draft or provider update with no completion signal
             await ui.RunOnUIAsync(() =>
             {
                 Assert.True(FindControl<Border>(surface, "ChatWritingSurface").ActualHeight > singleLineHeight);
                 session.ViewModel.SetDraft("Short again");
             });
-            await SettleAsync();
+            await SettleAsync(); // test-timing-exception: Reactor reconciles the draft or provider update with no completion signal
             await ui.RunOnUIAsync(() =>
                 Assert.Equal(singleLineHeight, FindControl<Border>(surface, "ChatWritingSurface").ActualHeight));
         }, "empty", compact: true);
@@ -90,9 +90,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 Threads = [.. original.Threads, new ChatThread { Id = "lobster", AgentId = "main", Title = "Lobster" }],
             }));
-            await SettleAsync();
+            await SettleAsync(); // test-timing-exception: Reactor reconciles the draft or provider update with no completion signal
             await ui.RunOnUIAsync(() => provider.Publish(original));
-            await SettleAsync();
+            await SettleAsync(); // test-timing-exception: Reactor reconciles the draft or provider update with no completion signal
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal("lobster", session.ViewModel.Inputs?.CurrentThread.Id);
@@ -101,7 +101,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 session.ViewModel.SetDraft("A quick reply from the lobster.");
                 Invoke(FindControl<Button>(surface, "ChatComposerPrimaryAction"));
             });
-            await SettleAsync();
+            await SettleAsync(); // test-timing-exception: Reactor reconciles the draft or provider update with no completion signal
             Assert.Equal(("lobster", "A quick reply from the lobster."), Assert.Single(provider.SentMessages));
         }, initialThreadId: "lobster", compact: true);
     }

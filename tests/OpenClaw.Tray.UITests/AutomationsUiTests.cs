@@ -680,10 +680,12 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Equal($"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone.",
                     removeText.DocumentRange.GetText(-1).TrimEnd('\r', '\n'));
                 var removeDialog = FindById(run, "AutomationsConfirmDialog")!;
-                var cancel = removeDialog.FindFirst(TreeScope.Descendants, new AndCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                    new PropertyCondition(AutomationElement.NameProperty, "Cancel")));
-                await WaitUiAsync(run, () => cancel.Current.HasKeyboardFocus, "Cancel receives destructive initial focus");
+                // Re-acquire Cancel on every poll: a dialog re-render can replace the button's peer.
+                await WaitUiAsync(run, () => FindById(run, "AutomationsConfirmDialog")?.FindFirst(TreeScope.Descendants,
+                    new AndCondition(
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                        new PropertyCondition(AutomationElement.NameProperty, "Cancel"))) is { Current.HasKeyboardFocus: true },
+                    "Cancel receives destructive initial focus");
                 Assert.Equal(ControlType.Window, removeDialog.Current.ControlType);
                 Assert.True(((WindowPattern)removeDialog.GetCurrentPattern(WindowPattern.Pattern)).Current.IsModal);
                 await ScanStateAsync("remove confirmation");
@@ -770,7 +772,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief") is not null, "return from single-job agent");
                 await run.InvokeAsync("app.navigate", new { page = "agent:research:cron" });
                 await WaitUiAsync(run, () => FindText(run, "No automations yet") is not null, "empty agent");
-                Assert.Null(FindByIdPrefix(run, "AutomationExpander:"));
+                await AssertNoIdPrefixAsync(run, "AutomationExpander:", "complete empty-agent inventory read");
                 RecordHeadline(run, "empty-body-loaded");
                 await WaitUiAsync(run, () => FindById(run, "AutomationsHeroAnswer") is { } headline
                     && headline.Current.Name == "Nothing scheduled yet", "overview commits empty headline");
@@ -1564,8 +1566,11 @@ public sealed partial class GatewayFixtureUiTests
         var marker = window.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "CronPageMarker"));
         if (marker is null) return null;
-        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, marker, run.AppProcessId),
+        // Polled while Automations re-renders: a marker peer that is detached or replaced proves nothing yet.
+        var markerEvidence = NativeUiOwnership.Classify(window, marker, run.AppProcessId);
+        Assert.True(markerEvidence != NativeUiOwnership.Evidence.Foreign,
             "Automations page marker must belong to the retained native window.");
+        if (markerEvidence != NativeUiOwnership.Evidence.Owned) return null;
         var markerIdentity = marker.GetRuntimeId();
         bool IsMarker(AutomationElement? element) => element is not null
             && NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId)
@@ -1763,8 +1768,28 @@ public sealed partial class GatewayFixtureUiTests
             });
             try
             {
-                await WaitUiAsync(run, () => FullyVisible() || Math.Abs(Read().Scroll.Current.VerticalScrollPercent - next) < 1,
-                    "editor scroll reaches computed position");
+                // Wait for the scroll geometry to settle rather than for the requested percent:
+                // focus restoration or anchoring after a schedule change can also move the editor
+                // (CI receipt: 49.4% requested and reached, then held at 22.4%). The loop then
+                // re-measures from the settled geometry instead of waiting for a stale target.
+                double[]? previousGeometry = null;
+                await WaitUiAsync(run, () =>
+                {
+                    if (FullyVisible()) return true;
+                    var geometry = OwnedWindowCapture.WithPhysicalCoordinates(() =>
+                    {
+                        var current = Read();
+                        var bounds = current.Field.Current.BoundingRectangle;
+                        return new[]
+                        {
+                            current.Scroll.Current.VerticalScrollPercent, current.Scroll.Current.VerticalViewSize,
+                            bounds.Top, bounds.Bottom,
+                        };
+                    });
+                    var settled = previousGeometry is not null && geometry.SequenceEqual(previousGeometry);
+                    previousGeometry = geometry;
+                    return settled;
+                }, "editor scroll geometry settles", onProbeError: _ => previousGeometry = null);
             }
             catch (Exception failure)
             {
@@ -1870,9 +1895,40 @@ public sealed partial class GatewayFixtureUiTests
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);
         return window;
     }
-    private static AutomationElement? FindByIdPrefix(GatewayFixtureRun run, string prefix) => AppWindows(run)
-        .SelectMany(w => w.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>())
-        .FirstOrDefault(e => e.Current.AutomationId.StartsWith(prefix, StringComparison.Ordinal));
+    private static AutomationElement? FindByIdPrefix(GatewayFixtureRun run, string prefix)
+    {
+        // Cache AutomationId during the single FindAll so matching does not re-read live peers
+        // that a concurrent re-render may already have torn down.
+        var request = new CacheRequest();
+        request.Add(AutomationElement.AutomationIdProperty);
+        using (request.Activate())
+        {
+            foreach (var window in AppWindows(run))
+                foreach (AutomationElement element in window.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+                    if (element.Cached.AutomationId.StartsWith(prefix, StringComparison.Ordinal))
+                        return element;
+        }
+        return null;
+    }
+
+    // A whole-tree read fails when an element is torn down mid-traversal (e.g. while an agent switch
+    // re-renders the inventory): ElementNotAvailableException, or COMException E_UNEXPECTED "Pattern not
+    // found" from the UIA client. Assert absence on the first complete read.
+    private static async Task AssertNoIdPrefixAsync(GatewayFixtureRun run, string prefix, string description)
+    {
+        const int UiaElementTornDown = unchecked((int)0x8000FFFF);
+        AutomationElement? match = null;
+        await WaitUiAsync(run, () =>
+        {
+            try { match = FindByIdPrefix(run, prefix); }
+            catch (System.Runtime.InteropServices.COMException error) when (error.HResult == UiaElementTornDown)
+            {
+                return false;
+            }
+            return true;
+        }, description);
+        Assert.Null(match);
+    }
     private static void Capture(GatewayFixtureRun run, string name, params string[] assertedIds)
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1") return;

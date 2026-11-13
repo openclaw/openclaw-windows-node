@@ -111,7 +111,8 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         SignInHeading.Text = S("ConnectProvider");
         CloudDescription.Text = S("CloudDetail");
         LocalAiTitle.Text = S("LocalTitle");
-        LocalAiCard.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Devices, 20);
+        CompletionConsentText.Text = SetupLocalization.GetString("Onboarding_Ai_CompletionConsent.Text");
+        LocalAiTile.Glyph = FluentIconCatalog.Devices;
         AutomationProperties.SetName(LocalAiCard, S("LocalTitle"));
         UtilityNotice.Message = S("UtilityNotice");
         ApiKeysTitle.Text = S("ApiKeys");
@@ -119,7 +120,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         ApiKeysActionText.Text = S("ManualConnect");
         ApiKeyConnectButton.Content = S("ManualConnect");
         ApiKeyHelp.Text = S("ManualHelp");
-        ApiKeysButton.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Key, 20);
+        ApiKeysTile.Glyph = FluentIconCatalog.Key;
         AutomationProperties.SetName(ApiKeysButton, S("ApiKeys"));
         ApiProviderPicker.Header = S("ApiProvider");
         CheckAgainButton.Content = S("CheckAgain");
@@ -1124,11 +1125,11 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             CloseBlockedSetupButton.Visibility = Visible(ManagerRecoveryBlocked && _args?.CloseSetupWindow is not null);
             var freezeBackdrop = _providerBackdrop is not null;
             if (!freezeBackdrop) RenderLocalAi(phase);
-            MascotHero.Mood = phase == GatewayAiSetupPhase.Verified ? OnboardingMascotMood.Celebrating
+            SetupWindow.Active?.SetCompanionMood(phase == GatewayAiSetupPhase.Verified ? OnboardingMascotMood.Celebrating
                 : _busy || phase is GatewayAiSetupPhase.Running or GatewayAiSetupPhase.VerificationRequired
                     ? OnboardingMascotMood.Thinking
                 : ErrorBar.IsOpen || phase is GatewayAiSetupPhase.Uncertain or GatewayAiSetupPhase.Rejected
-                    ? OnboardingMascotMood.Sad : OnboardingMascotMood.Curious;
+                    ? OnboardingMascotMood.Sad : OnboardingMascotMood.Curious);
             if (phase == GatewayAiSetupPhase.Running && !string.IsNullOrWhiteSpace(Client?.Wizard?.Error))
                 ShowError("InvalidInput");
             var status = S(phase switch
@@ -1170,6 +1171,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                 LocalAiCard.IsEnabled = false;
             }
             LocalAiFailurePanel.Visibility = Visible(!freezeBackdrop && ErrorBar.IsOpen && _localAiFailure is not null);
+            JoinLocalRows();
             var backgroundEnabled = !_busy && !_localActionBusy && !BackdropLocked && !ManagerRecoveryBlocked;
             CandidateChoices.IsEnabled = PrepareChoices.IsEnabled = FeaturedSignInChoices.IsEnabled =
                 MoreSignInChoices.IsEnabled = ApiProviderPicker.IsEnabled = ApiKeyInput.IsEnabled =
@@ -1358,6 +1360,18 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private void Input_Changed(object sender, RoutedEventArgs e) => Render();
     private void Preference_Changed(object sender, RoutedEventArgs e) => Render();
     private static string S(string key) => SetupLocalization.GetString("Onboarding_AiSetup_" + key);
+
+    // LM Studio and Ollama continue the Local AI list directly under the managed Local AI row,
+    // sharing its bottom divider instead of starting a second, separately spaced list.
+    private void JoinLocalRows()
+    {
+        var joined = LocalAiSection.Visibility == Visibility.Visible &&
+            ChoicePanel.Visibility == Visibility.Visible &&
+            PrepareSection.Visibility == Visibility.Visible &&
+            UtilityNotice.Visibility == Visibility.Collapsed;
+        PrepareDivider.BorderThickness = new Thickness(0, joined ? 0 : 1, 0, 0);
+        PrepareSection.Margin = new Thickness(0, joined ? -12 : 0, 0, 0);
+    }
     private static Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
     private void ShowError(string key, string? detail = null)
     {

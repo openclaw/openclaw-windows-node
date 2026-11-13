@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Inference.Catalog;
 using System.Numerics;
@@ -26,6 +27,7 @@ public sealed partial class WelcomePage : Page
     public WelcomePage()
     {
         InitializeComponent();
+        UpdateSeparators();
         AutomationProperties.SetName(NativeChoice,
             SetupLocalization.GetString("Onboarding_Native_Title.Text") +
             ", " + SetupLocalization.GetString("Onboarding_Native_Recommended.Text"));
@@ -159,11 +161,21 @@ public sealed partial class WelcomePage : Page
             GatewayChoiceSelector.Items.RemoveAt(currentIndex);
             GatewayChoiceSelector.Items.Insert(targetIndex, NativeChoice);
             GatewayChoiceSelector.SelectedItem = selectedItem;
+            UpdateSeparators();
         }
         finally
         {
             _suppressSelectionWrite = wasSuppressingSelectionWrite;
         }
+    }
+
+    // Hairlines separate rows; the last row in the current order has none.
+    private void UpdateSeparators()
+    {
+        var last = GatewayChoiceSelector.Items[^1];
+        InstallSeparator.Visibility = ReferenceEquals(last, InstallChoice) ? Visibility.Collapsed : Visibility.Visible;
+        ConnectSeparator.Visibility = ReferenceEquals(last, ConnectChoice) ? Visibility.Collapsed : Visibility.Visible;
+        NativeSeparator.Visibility = ReferenceEquals(last, NativeChoice) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void WindowsUpdate_Click(object sender, RoutedEventArgs e) =>
@@ -289,6 +301,7 @@ public sealed partial class WelcomePage : Page
                 GatewaySetupChoice.Existing => ConnectChoice,
                 _ => null,
             };
+            SetupGlyphTile.SyncSelection(GatewayChoiceSelector);
             NextButton.IsEnabled = !_installInProgress &&
                 (_selectedChoice is GatewaySetupChoice.Existing or GatewaySetupChoice.Wsl ||
                  (_selectedChoice == GatewaySetupChoice.Native && _nativeEligibility == NativeGatewayEligibility.Available));
@@ -332,7 +345,7 @@ public sealed partial class WelcomePage : Page
         _installInProgress = true;
         GatewayChoiceSelector.IsEnabled = false;
         ReadinessError.IsOpen = false;
-        MascotHero.Mood = OnboardingMascotMood.Thinking;
+        setupWindow.SetCompanionMood(OnboardingMascotMood.Thinking);
         InstallCheckProgress.IsActive = true;
         InstallCheckProgress.Visibility = Visibility.Visible;
         try
@@ -365,7 +378,9 @@ public sealed partial class WelcomePage : Page
             _installInProgress = false;
             if (!setupWindow.IsClosed)
             {
-                MascotHero.Mood = ReadinessError.IsOpen ? OnboardingMascotMood.Sad : OnboardingMascotMood.Happy;
+                // The companion is shared; leave its mood alone once another page owns it.
+                if (IsLoaded && ReferenceEquals(Frame?.Content, this))
+                    setupWindow.SetCompanionMood(ReadinessError.IsOpen ? OnboardingMascotMood.Sad : OnboardingMascotMood.Happy);
                 InstallCheckProgress.IsActive = false;
                 InstallCheckProgress.Visibility = Visibility.Collapsed;
                 GatewayChoiceSelector.IsEnabled = true;
