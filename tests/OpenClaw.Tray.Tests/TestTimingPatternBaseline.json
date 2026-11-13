@@ -221,7 +221,6 @@
     "tests/OpenClaw.Tray.Tests/SettingsSandboxPublicationTests.cs": 11,
     "tests/OpenClaw.Tray.Tests/SetupDashboardHandoffTests.cs": 1,
     "tests/OpenClaw.Tray.Tests/Usage/UsageExportWorkflowTests.cs": 1,
-    "tests/OpenClaw.Tray.Tests/WizardConsoleTailTests.cs": 7,
     "tests/OpenClaw.Tray.UITests/AccessibilityAppFixture.cs": 1,
     "tests/OpenClaw.Tray.UITests/AudioPipelineFirstAudioTimeoutTests.cs": 12,
     "tests/OpenClaw.Tray.UITests/ChatComposerControllerPasteFencingProofTests.cs": 2,
