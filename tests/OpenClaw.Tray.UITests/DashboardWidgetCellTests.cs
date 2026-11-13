@@ -1243,9 +1243,12 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         return WithMountedAsync(
             () => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             assert,
+            // Cards already exist in the initial minimum-width (Narrow) render, which shows the hero's More
+            // menu instead of the web button. Wait for the column and hero rendered for the target width.
             ready: host => FindDescendants<Button>(host).Any(button =>
                 AutomationProperties.GetAutomationId(button) == (includeFresh
-                    ? "DashboardCardFresh_agent:main:resize:1" : "DashboardCard_agent:main:resize:1")),
+                    ? "DashboardCardFresh_agent:main:resize:1" : "DashboardCard_agent:main:resize:1")) &&
+                HeroMatchesColumn(host, "DashboardsHero", "DashboardsGallery", width),
             width: width, onViewportChanged: state.SetViewportWidth, afterMounted: afterMounted, viewportHeight: viewportHeight);
     }
 
