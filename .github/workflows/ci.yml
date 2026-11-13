@@ -218,6 +218,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-ci-changed-tests.ps1
 
+    - name: Test main failure watch
+      shell: pwsh
+      run: ./scripts/test-ci-main-failure-watch.ps1
+
     - name: Validate CI workflow contracts
       shell: pwsh
       run: |

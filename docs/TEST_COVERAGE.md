@@ -669,6 +669,35 @@ reaches main, where one passing run in its own pull request proves little.
 - The soak does not see changes it cannot map to tests: helpers in other files,
   partial classes split across files, non-C# fixture data, product code, and
   test projects outside Shared, Tray and Tray UI.
+- There is no opt-out. A soak failure always blocks CI Gate, including for an
+  edit to an older test that was already timing-sensitive: fix the test or the
+  product race it found.
+
+When `Build and Test` fails on a push to `main`, the `Main Failure Watch`
+workflow (`.github/workflows/main-failure-watch.yml`) reports it:
+- `scripts/Watch-CiMainFailures.ps1` downloads the `test-results-*` and
+  `e2e-test-results-*` artifacts that the failed run attempt uploaded (for each
+  name, the newest one created between that attempt's start and the next
+  attempt's start) and lists each failed test method once. A failed download
+  fails the watch instead of posting a partial report.
+- Each test is attributed to the most recent commit that changed the method's
+  lines at the failing commit (`git log -L`), and to that commit's merged pull
+  request (preferring one merged into `main`) and author. When no pull request
+  is found, or the lookup keeps failing after retries, the commit's GitHub
+  author is mentioned. That commit is often the cause, but it can be a later
+  refactor, or a product change can fail an older test.
+- It adds one comment per run attempt to the oldest open issue labeled
+  `ci: main-flake`, mentioning every author. It creates the label and the issue
+  when they are missing; close the issue when main is green again. Only issues
+  and comments the workflow created count: a hand-made issue with the label is
+  not used, and other commenters cannot hide a report by copying its marker.
+- It never reruns, cancels or reverts. The job can only read actions, contents
+  and pull requests and write issues, and test names reach the issue only as
+  escaped code spans. It has no concurrency group, because GitHub cancels
+  pending runs in a group; every report keeps the oldest open tracking issue
+  and closes newer duplicates.
+- To preview a report without posting, check out the failing commit and run
+  `.\scripts\Watch-CiMainFailures.ps1 -Repository openclaw/openclaw-windows-node -RunId <id> -RunAttempt <n> -HeadSha <sha> -DryRun`.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported
