@@ -498,7 +498,7 @@ public sealed class WorkspaceWindowProofTests
         if (compact)
         {
             var toggle = Find(root, "SettingsTogglePane").Current.BoundingRectangle;
-            Assert.True(owner.Bottom <= dashboard.Top && dashboard.Bottom <= bell.Top, $"Rail footer is not stacked: {owner} {dashboard} {bell}");
+            Assert.True(dashboard.Bottom <= bell.Top && bell.Bottom <= owner.Top, $"Rail footer is not stacked with the account last: {dashboard} {bell} {owner}");
             foreach (var bounds in new[] { owner, dashboard, bell })
             {
                 // Same 40 DIP target as the toggle; allow scaled-DPI rounding like the reopen-button check.
