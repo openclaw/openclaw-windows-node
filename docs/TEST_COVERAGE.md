@@ -594,7 +594,9 @@ separate TRX artifact:
 | `core-tests` | Shared, Connection, WinNode CLI |
 | `tray-tests` | Tray, SetupEngine, Tray Integration |
 | `ui-tests` | FunctionalUI, Tray UI (first shard), Axe.Windows accessibility |
-| `tray-ui-shard` | Tray UI (second shard: workspace window, chat layout and setup classes) |
+| `tray-ui-shard` | Tray UI (second shard: workspace window and chat layout classes) |
+| `gateway-fixture` | Mock Gateway fixture UI (shard A), profile/app checks, Release correlation and reader proofs, stable-profile compatibility |
+| `gateway-fixture-shard` | Mock Gateway fixture UI (shard B: Automations, Inbox, Dashboards, Usage and MainSearch scenarios) |
 
 The ordinary Tray UI suite is split by test class across `ui-tests` and
 `tray-ui-shard`, which run in parallel on separate runners. Both use the same
@@ -602,6 +604,19 @@ category exclusions; `ui-tests` excludes exactly the classes `tray-ui-shard`
 selects, so every test runs once. `scripts/test-ci-workflow-contract.ps1`
 enforces that partition, and CI Gate requires both jobs whenever UI tests are
 selected. To rebalance, move whole classes between the two filters.
+
+The mock Gateway fixture UI scenarios are split the same way across
+`gateway-fixture` and `gateway-fixture-shard`. One list in
+`scripts/test-gateway-fixture.ps1`, `$FixtureUiShardBPrefixes`, holds
+`GatewayFixtureUiTests` method-name prefixes: shard `B` selects them and shard
+`A` negates exactly the same list. CI selects each job's shard with the step
+variable `OPENCLAW_GATEWAY_FIXTURE_UI_SHARD`, not a runner parameter, so alpha
+promotion of an older candidate still binds. That older runner ignores the
+variable and runs every scenario in both jobs, so each step keeps the
+full-suite budget. The workflow contract checks that both filters come from
+that list, that every prefix still selects a scenario, and that no prefix
+overlaps another. To rebalance, move whole prefixes in that list. Local runs
+default to `-UiShard All`, which runs every scenario.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported
