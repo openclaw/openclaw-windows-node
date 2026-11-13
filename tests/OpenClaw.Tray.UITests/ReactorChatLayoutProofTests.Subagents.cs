@@ -14,10 +14,11 @@ namespace OpenClaw.Tray.UITests;
 public sealed partial class ReactorChatLayoutProofTests
 {
     [Theory]
-    [InlineData(480, false)]
-    [InlineData(1100, false)]
-    [InlineData(1100, true)]
-    public async Task Subagents_CloseReturnsToTheParentsReadingPosition(int width, bool withDetails)
+    [InlineData(480, SubagentsOnly)]
+    [InlineData(1100, SubagentsOnly)]
+    [InlineData(1100, DetailsThenSubagents)]
+    [InlineData(1100, SubagentsThenDetails)]
+    public async Task Subagents_CloseReturnsToTheParentsReadingPosition(int width, string tabs)
     {
         await WithChatAsync(width, async (surface, _, _, provider) =>
         {
@@ -31,7 +32,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     ["proof"] = ChatTimelineState.Initial() with
                     {
                         HistoryLoaded = true,
-                        Entries = (withDetails
+                        Entries = (tabs != SubagentsOnly
                                 ? [new ChatTimelineItem("one", ChatTimelineItemKind.ToolCall, "read",
                                     ToolName: "read_file", ToolCallId: "call-one", ToolRunId: "run", ToolOutput: "Panel result")]
                                 : Array.Empty<ChatTimelineItem>())
@@ -57,7 +58,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.True(reader.Focus(FocusState.Keyboard));
             });
             await SettleAsync();
-            if (withDetails)
+            if (tabs == DetailsThenSubagents)
             {
                 // Two open tabs: closing the selected Subagents tab must not drop focus into the transcript.
                 await ui.RunOnUIAsync(() => scroll!.ScrollTo(0, 0,
@@ -76,6 +77,24 @@ public sealed partial class ReactorChatLayoutProofTests
                 "parent reading its earlier messages"));
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
             await SettleAsync();
+            if (tabs == SubagentsThenDetails)
+            {
+                // Closing the selected first tab must leave focus on the remaining tab. Details opens
+                // without keyboard focus, which ItemsView would redirect to the reader's earlier row.
+                await ExpandPanelToolAsync(surface, "one");
+                await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatToolDetails_one")));
+                await SettleAsync();
+                await ui.RunOnUIAsync(() => FindControl<TabView>(surface, "ConversationPanelTabs").SelectedIndex = 0);
+                await SettleAsync();
+                await ui.RunOnUIAsync(() =>
+                {
+                    var subagentsTab = Assert.IsType<TabViewItem>(
+                        FindControl<TabView>(surface, "ConversationPanelTabs").TabItems[0]);
+                    Assert.Equal("Subagents", subagentsTab.Header);
+                    Assert.True(subagentsTab.Focus(FocusState.Keyboard));
+                    Assert.InRange(scroll!.VerticalOffset, 0, 1);
+                });
+            }
             await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
@@ -85,14 +104,18 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.True(scroll!.ScrollableHeight > 0);
                 Assert.InRange(scroll.VerticalOffset, 0, 1);
                 Assert.Equal(1, FindControl<Button>(surface, "ChatJumpLatest").Opacity);
-                if (withDetails)
+                if (tabs != SubagentsOnly)
                 {
-                    var tabs = FindControl<TabView>(surface, "ConversationPanelTabs");
-                    Assert.Same(Assert.Single(tabs.TabItems), FocusManager.GetFocusedElement(surface.XamlRoot));
+                    var view = FindControl<TabView>(surface, "ConversationPanelTabs");
+                    Assert.Same(Assert.Single(view.TabItems), FocusManager.GetFocusedElement(surface.XamlRoot));
                 }
             });
         }, interactiveKeyboard: true);
     }
+
+    private const string SubagentsOnly = "subagents";
+    private const string DetailsThenSubagents = "details-then-subagents";
+    private const string SubagentsThenDetails = "subagents-then-details";
 
     [Theory]
     [InlineData(480)]

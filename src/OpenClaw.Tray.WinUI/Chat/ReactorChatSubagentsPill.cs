@@ -20,7 +20,10 @@ internal sealed class ReactorChatSubagentsPill : Component<ReactorChatSubagentsP
     {
         var panels = Props.Panels;
         var (_, setRevision) = UseState(0L, threadSafe: true);
-        var (highContrast, setHighContrast) = UseState(ChatThemeChanges.IsHighContrast());
+        var (_, setThemeRevision) = UseState(0L, threadSafe: true);
+        var themeRevision = UseRef(0L);
+        // Read at render so a mode change while the pill was hidden is not stale; the watcher only re-renders.
+        var highContrast = ChatThemeChanges.IsHighContrast();
         UseEffect((Func<Action>)(() =>
         {
             long revision = 0;
@@ -74,7 +77,7 @@ internal sealed class ReactorChatSubagentsPill : Component<ReactorChatSubagentsP
             .Margin(gutter, ChatVisuals.CompactGap, gutter, 0)
             .HAlign(HorizontalAlignment.Stretch)
             .OnMount(control => ChatThemeChanges.Watch((FrameworkElement)control,
-                () => setHighContrast(ChatThemeChanges.IsHighContrast())))
+                () => setThemeRevision(++themeRevision.Current)))
             .OnUnmount(control => ChatThemeChanges.Unwatch((FrameworkElement)control));
     }
 

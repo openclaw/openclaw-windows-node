@@ -126,6 +126,9 @@ file sealed class InitialTailPositioner : IDisposable
     // Exactly 1 selects WinUI's extent-edge mode, which can undo an offset as virtual
     // rows remeasure. The nearest interior point anchors content at its bottom instead.
     private static readonly double TailAnchorRatio = Math.BitDecrement(1.0);
+    // Rendered frames after a resize or re-show during which ItemsView's unfocused reveal of its
+    // last current row is rejected. Explicit reveals outside this window (for example UIA ScrollItem) proceed.
+    private const int NativeRevealGuardFrames = 30;
 
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
@@ -147,6 +150,9 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _disclosureAnchored;
     private bool _readerAnchored;
     private int? _readerBringCorrelationId;
+    private FrameworkElement? _tailBringTarget;
+    private int _nativeRevealFrames;
+    private EventHandler<object>? _nativeRevealRendering;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
@@ -578,9 +584,10 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs args)
     {
-        if (args.PreviousSize.Width <= 0 || args.PreviousSize.Height <= 0
-            || (args.NewSize.Width == args.PreviousSize.Width
-                && args.NewSize.Height == args.PreviousSize.Height))
+        if (args.NewSize.Width == args.PreviousSize.Width && args.NewSize.Height == args.PreviousSize.Height)
+            return;
+        ArmNativeRevealGuard();
+        if (args.PreviousSize.Width <= 0 || args.PreviousSize.Height <= 0)
             return;
 
         _reflowCorrection.Arm();
@@ -610,6 +617,18 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
     {
+        var requested = args.RequestEventArgs?.TargetElement;
+        if (requested is not null && ReferenceEquals(requested, _tailBringTarget))
+            _tailBringTarget = null;
+        else if (ReferenceEquals(sender, _scrollView) && !args.Cancel && _nativeRevealFrames > 0
+            && requested is ItemContainer container && !ContainsFocus(container))
+        {
+            // After a resize or re-show (for example when a side panel closes), ItemsView re-reveals
+            // its last current row without focus. That would pull the reader away from their place.
+            args.Cancel = true;
+            return;
+        }
+
         if (ReferenceEquals(sender, _scrollView) && !_initialPending && !args.Cancel
             && args.RequestEventArgs?.TargetElement is Control { FocusState: FocusState.Keyboard }
             && sender.ScrollableHeight - args.TargetVerticalOffset > FollowThreshold)
@@ -891,6 +910,7 @@ file sealed class InitialTailPositioner : IDisposable
                     || repeater.GetElementIndex(target) != request.Index
                     || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
                     return;
+                _tailBringTarget = target;
                 target.StartBringIntoView(new BringIntoViewOptions
                 {
                     AnimationDesired = false,
@@ -923,6 +943,34 @@ file sealed class InitialTailPositioner : IDisposable
             ? items[request.Index]
             : null;
 
+    private void ArmNativeRevealGuard()
+    {
+        _nativeRevealFrames = NativeRevealGuardFrames;
+        if (_nativeRevealRendering is not null) return;
+        _nativeRevealRendering = (_, _) =>
+        {
+            if (--_nativeRevealFrames <= 0) DetachNativeRevealGuard();
+        };
+        CompositionTarget.Rendering += _nativeRevealRendering;
+    }
+
+    private void DetachNativeRevealGuard()
+    {
+        _nativeRevealFrames = 0;
+        if (_nativeRevealRendering is null) return;
+        CompositionTarget.Rendering -= _nativeRevealRendering;
+        _nativeRevealRendering = null;
+    }
+
+    private static bool ContainsFocus(UIElement container)
+    {
+        if (container.XamlRoot is not { } root) return false;
+        for (var element = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as DependencyObject; element is not null;
+             element = VisualTreeHelper.GetParent(element))
+            if (ReferenceEquals(element, container)) return true;
+        return false;
+    }
+
     private static bool IsNearBottom(WinUIScrollView scrollView) =>
         scrollView.ScrollableHeight - scrollView.VerticalOffset <= FollowThreshold;
 
@@ -935,6 +983,8 @@ file sealed class InitialTailPositioner : IDisposable
         _initialPending = false;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
+        _tailBringTarget = null;
+        DetachNativeRevealGuard();
         DetachLayout();
         DetachScrollView();
     }
@@ -1012,6 +1062,8 @@ file sealed class InitialTailPositioner : IDisposable
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         _explicitJumpPending = false;
+        _tailBringTarget = null;
+        DetachNativeRevealGuard();
         DetachLayout();
         DetachScrollView();
         itemsView.Loaded -= OnLoaded;
