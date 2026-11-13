@@ -8,12 +8,13 @@ public sealed partial class AiCompletionPage : Page
 {
     private Action? _retry;
     private Action? _back;
-    private Action? _close;
+    private Action? _refresh;
+    private Func<FrameworkElement, Task>? _collectLogs;
+    private bool _collectingLogs;
     private SetupLoadingProgress? _loading;
     public AiCompletionPage()
     {
         InitializeComponent();
-        CloseButton.Content = SetupLocalization.GetString("Onboarding_Ready_Close");
         Loaded += (_, _) => LoadingChanged();
         Unloaded += (_, _) =>
         {
@@ -49,7 +50,8 @@ public sealed partial class AiCompletionPage : Page
         Progress.Visibility = Visibility.Visible;
         ErrorBar.IsOpen = false;
         RetryButton.Visibility = BackButton.Visibility = Visibility.Collapsed;
-        CloseButton.Visibility = Visibility.Collapsed;
+        CollectLogsButton.Visibility = Visibility.Collapsed;
+        DiagnosticsStatus.Visibility = Visibility.Collapsed;
         Detail.Text = SetupLocalization.GetString(stage switch
         {
             SetupNativeCompletionStage.Draining => "Onboarding_Finishing_Draining",
@@ -59,11 +61,10 @@ public sealed partial class AiCompletionPage : Page
         });
     }
 
-    public void ShowFailure(Action? retry = null, Action? back = null, Exception? error = null, Action? close = null)
+    public void ShowFailure(Action? retry = null, Action? back = null, Exception? error = null)
     {
         _retry = retry;
         _back = back;
-        _close = close;
         Progress.Visibility = Visibility.Collapsed;
         ErrorBar.Message = SetupLocalization.GetString(retry is not null || back is not null
             ? "Onboarding_Finishing_Recovery" : "Onboarding_Finishing_Interrupted");
@@ -75,12 +76,45 @@ public sealed partial class AiCompletionPage : Page
                 error.GetType().Name, (error as SetupNativeCompletionTimeoutException)?.Phase.ToString() ?? "none");
         }
         ErrorBar.IsOpen = true;
-        RetryButton.Visibility = retry is null ? Visibility.Collapsed : Visibility.Visible;
+        RetryButton.Visibility = retry is null && _refresh is null ? Visibility.Collapsed : Visibility.Visible;
         BackButton.Visibility = back is null ? Visibility.Collapsed : Visibility.Visible;
-        CloseButton.Visibility = close is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    private void Retry_Click(object sender, RoutedEventArgs args) => _retry?.Invoke();
+    public void ConfigureRecovery(Action refresh, Func<FrameworkElement, Task>? collectLogs)
+    {
+        _refresh = refresh;
+        _collectLogs = collectLogs;
+        RetryButton.Visibility = Visibility.Visible;
+        CollectLogsButton.Visibility = Visibility.Visible;
+        CollectLogsButton.IsEnabled = collectLogs is not null && !_collectingLogs;
+    }
+
+    private void CollectLogs_Click(object sender, RoutedEventArgs args)
+    {
+        if (_collectingLogs || _collectLogs is not { } collectLogs) return;
+        _collectingLogs = true;
+        CollectLogsButton.IsEnabled = false;
+        OpenClaw.Shared.AsyncEventHandlerGuard.Run(async () =>
+        {
+            DiagnosticsStatus.Visibility = Visibility.Collapsed;
+            try { await collectLogs(this); }
+            finally
+            {
+                _collectingLogs = false;
+                CollectLogsButton.IsEnabled = _collectLogs is not null;
+            }
+        }, onError: error =>
+        {
+            System.Diagnostics.Trace.TraceWarning("Setup diagnostics collection failed ({0}).", error.GetType().Name);
+            DiagnosticsStatus.Text = SetupLocalization.Format("Onboarding_Finishing_CollectLogsFailed", error.GetType().Name);
+            DiagnosticsStatus.Visibility = Visibility.Visible;
+        });
+    }
+
+    private void Retry_Click(object sender, RoutedEventArgs args)
+    {
+        _refresh?.Invoke();
+        _retry?.Invoke();
+    }
     private void Back_Click(object sender, RoutedEventArgs args) => _back?.Invoke();
-    private void Close_Click(object sender, RoutedEventArgs args) => _close?.Invoke();
 }

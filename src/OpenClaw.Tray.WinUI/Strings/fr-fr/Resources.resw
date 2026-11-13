@@ -10016,4 +10016,6 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Revenir à la conversation</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher le panneau</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Panneaux de conversation</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Collecter les journaux</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>Les journaux n'ont pas pu être collectés ({0}). Réessayez.</value></data>
 </root>

@@ -10069,4 +10069,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Voltar à conversa</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Mostrar painel</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Painéis da conversa</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Coletar logs</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>Não foi possível coletar os logs ({0}). Tente novamente.</value></data>
 </root>

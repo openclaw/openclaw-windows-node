@@ -41,7 +41,7 @@ attempts and explicit retries share its original monotonic deadline. Deadline or
 window cancellation ends the presentation wait, not ownership of an admitted
 write or restart. Delegates receive cooperative cancellation, but cleanup still
 joins the actual work and prior page drain.
-Retry and Back are unavailable while that work remains pending, and expiry cannot
+Completion retries and Back are unavailable while that work remains pending, and expiry cannot
 admit another attempt. An uncertain finalization cannot replay unless the existing
 owner confirms that only committed finalization remains to resume. A late restart
 publication, including a committed-publication failure, never authorizes a second
@@ -54,9 +54,19 @@ runtime checks alone do not prove that a full, potentially longer chat turn has 
 Readiness is withdrawn when the live Gateway reports configuration changes,
 without replaying setup or model activation. Unrelated chat usage and metadata
 updates do not withdraw readiness. Finishing failures retain
-localized timeout-phase guidance. If safe retry or Back is unavailable, Close
-remains available. Once a restart process has launched, failed shutdown scheduling
+localized timeout-phase guidance. If safe retry or Back is unavailable, the
+window's title-bar close action remains available. Once a restart process has launched, failed shutdown scheduling
 cannot launch another restart through Retry.
+
+On a finishing failure, **Back** and **Check readiness again** share the bottom
+footer row. **Check readiness again** first updates recovery availability, then
+retries completion only when the existing owner permits it. Pending, expired or
+uncertain work is not replayed. There is no separate Refresh or Close button.
+**Collect logs** stays left-aligned below the failure message and opens the same sanitized diagnostics preview used in
+Settings, including this Companion profile's latest setup logs. Review the
+preview before copying or saving it. Collection failures stay visible on the
+page and can be retried. Native pre-restart completion failures also record the
+failed stage and sanitized exception in the setup log.
 
 WSL Local AI withdrawal confirms a Gateway restart even when the saved provider
 is already absent. A previous Companion process may have removed the saved route

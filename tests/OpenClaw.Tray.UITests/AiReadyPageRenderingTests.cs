@@ -19,19 +19,84 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Fact]
+    public async Task FinishingFailureMergesReadinessRefreshWithoutBypassingRetryGuards()
+    {
+        await ui.RunOnUIAsync(async () =>
+        {
+            var page = new AiCompletionPage();
+            var retries = 0;
+            var refreshes = 0;
+            var collections = 0;
+            var collection = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            page.ShowFailure();
+            Func<FrameworkElement, Task> collectLogs = async source =>
+            {
+                Assert.Same(page, source);
+                collections++;
+                await collection.Task;
+            };
+            page.ConfigureRecovery(() =>
+            {
+                refreshes++;
+                page.ShowFailure(retry: () => retries++);
+            }, collectLogs);
+            var readiness = Assert.IsType<Button>(page.FindName("RetryButton"));
+            var collect = Assert.IsType<Button>(page.FindName("CollectLogsButton"));
+            Assert.Equal(Visibility.Visible, readiness.Visibility);
+            Assert.Equal(Visibility.Visible, collect.Visibility);
+            var check = typeof(AiCompletionPage).GetMethod("Retry_Click", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            check.Invoke(page, [readiness, new RoutedEventArgs()]);
+            Assert.Equal(1, refreshes);
+            Assert.Equal(1, retries);
+            page.ConfigureRecovery(() =>
+            {
+                refreshes++;
+                page.ShowFailure();
+            }, collectLogs);
+            check.Invoke(page, [readiness, new RoutedEventArgs()]);
+            Assert.Equal(2, refreshes);
+            Assert.Equal(1, retries);
+            var click = typeof(AiCompletionPage).GetMethod("CollectLogs_Click", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            page.ConfigureRecovery(() => refreshes++, collectLogs);
+            Assert.False(collect.IsEnabled);
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            Assert.Equal(1, collections);
+            Assert.Equal(2, refreshes);
+            Assert.Equal(1, retries);
+            collection.SetResult();
+            await TestSupport.WaitForRenderedConditionAsync(() => collect.IsEnabled, "log collection settles");
+
+            page.ConfigureRecovery(() => refreshes++, _ => Task.FromException(new IOException("private fixture content")));
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => Assert.IsType<TextBlock>(page.FindName("DiagnosticsStatus")).Visibility == Visibility.Visible,
+                "log collection failure is visible");
+            var status = Assert.IsType<TextBlock>(page.FindName("DiagnosticsStatus"));
+            Assert.Contains("IOException", status.Text);
+            Assert.DoesNotContain("private fixture content", status.Text);
+            Assert.True(collect.IsEnabled);
+            Assert.Equal(1, retries);
+            Assert.Null(page.FindName("RefreshButton"));
+            Assert.Null(page.FindName("CloseButton"));
+        });
+    }
+
     [Theory]
     [InlineData(SetupNativeCompletionPhase.PageDrain, "Closing the previous AI setup page timed out.")]
     [InlineData(SetupNativeCompletionPhase.Connection, "Connecting to the native Gateway timed out.")]
     [InlineData(SetupNativeCompletionPhase.ModelRecovery, "Waiting for Local AI recovery timed out.")]
     [InlineData(SetupNativeCompletionPhase.ModelVerification, "Verifying the selected AI model timed out.")]
     [InlineData(SetupNativeCompletionPhase.Verification, "Verification timed out or was cancelled.")]
-    public async Task FinishingFailureRetainsSafePhaseGuidanceAndActionableClose(
+    public async Task FinishingFailureRetainsSafePhaseGuidanceAndReadinessRecovery(
         SetupNativeCompletionPhase phase, string expected)
     {
         await ui.RunOnUIAsync(() =>
         {
             var page = new AiCompletionPage();
-            var closed = 0;
+            var refreshed = 0;
             var error = Assert.IsType<SetupNativeCompletionTimeoutException>(Activator.CreateInstance(
                 typeof(SetupNativeCompletionTimeoutException), BindingFlags.Instance | BindingFlags.NonPublic,
                 binder: null, args: [phase, new IOException("private fixture content")], culture: null));
@@ -40,20 +105,20 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
             System.Diagnostics.Trace.Listeners.Add(listener);
             try
             {
-                page.ShowFailure(error: error, close: () => closed++);
+                page.ShowFailure(error: error);
+                page.ConfigureRecovery(() => refreshed++, collectLogs: null);
                 listener.Flush();
                 Assert.StartsWith(expected, Assert.IsType<TextBlock>(page.FindName("Detail")).Text);
                 Assert.DoesNotContain("private fixture content", trace.ToString());
                 Assert.Contains("phase: " + phase, trace.ToString());
                 Assert.False(Assert.IsType<ProgressBar>(page.FindName("Progress")).Visibility == Visibility.Visible);
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<Button>(page.FindName("RetryButton")).Visibility);
                 Assert.Equal(Visibility.Collapsed, Assert.IsType<Button>(page.FindName("BackButton")).Visibility);
-                var close = Assert.IsType<Button>(page.FindName("CloseButton"));
-                Assert.Equal(Visibility.Visible, close.Visibility);
-                Assert.Equal("Close", close.Content);
-                typeof(AiCompletionPage).GetMethod("Close_Click", BindingFlags.Instance | BindingFlags.NonPublic)!
-                    .Invoke(page, [close, new RoutedEventArgs()]);
-                Assert.Equal(1, closed);
+                var readiness = Assert.IsType<Button>(page.FindName("RetryButton"));
+                Assert.Equal(Visibility.Visible, readiness.Visibility);
+                typeof(AiCompletionPage).GetMethod("Retry_Click", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(page, [readiness, new RoutedEventArgs()]);
+                Assert.Equal(1, refreshed);
+                Assert.Null(page.FindName("CloseButton"));
             }
             finally { System.Diagnostics.Trace.Listeners.Remove(listener); }
         });
@@ -194,8 +259,13 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
             try
             {
                 var route = await VerifySyntheticAsync(proof, CancellationToken.None);
+                var verificationAttempts = 0;
                 window = OnboardingNativeProof.CreateWindow(() => new SetupReadyWindow(
-                    ct => VerifySyntheticAsync(proof, ct),
+                    ct =>
+                    {
+                        verificationAttempts++;
+                        return VerifySyntheticAsync(proof, ct);
+                    },
                     (_, _) => throw new InvalidOperationException("Must not navigate"),
                     _ => new Observation(), () => { }, () => { }));
                 SetupWindowMinimumSizeTests.AssertInitialWindowSize(window, output);
@@ -219,8 +289,12 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 var returnButton = Assert.IsType<Button>(beforeConsumption.FindName("BackButton"));
                 Assert.Equal(Visibility.Visible, returnButton.Visibility);
                 Assert.True(returnButton.IsEnabled);
-                Assert.Equal(Visibility.Collapsed,
-                    Assert.IsType<Button>(beforeConsumption.FindName("RetryButton")).Visibility);
+                var readiness = Assert.IsType<Button>(beforeConsumption.FindName("RetryButton"));
+                Assert.Equal(Visibility.Visible, readiness.Visibility);
+                typeof(AiCompletionPage).GetMethod("Retry_Click", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(beforeConsumption, [readiness, new RoutedEventArgs()]);
+                Assert.Same(beforeConsumption, frame.Content);
+                Assert.Equal(0, verificationAttempts);
                 await window.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 page = Assert.IsType<AiReadyPage>(frame.Content);
                 chatActionPanel = Assert.IsType<SetupFooterPanel>(page.FindName("ChatActionPanel"));

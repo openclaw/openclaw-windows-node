@@ -10017,4 +10017,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Paneel weergeven</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Gesprekspanelen</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Logboeken verzamelen</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>De logboeken konden niet worden verzameld ({0}). Probeer het opnieuw.</value></data>
 </root>
