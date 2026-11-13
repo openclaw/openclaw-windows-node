@@ -259,7 +259,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
         return Grid(
             [GridSize.Star()],
-            [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+            [GridSize.Auto, GridSize.Star()],
             Border(Border(itemsView
                     .BindVerticalScrollController(
                         annotatedScrollBarRef,
@@ -319,21 +319,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .AccessibilityView(atTail ? AccessibilityView.Raw : AccessibilityView.Content)
                     .Set(button => button.IsHitTestVisible = !atTail)
                     .VAlign(VerticalAlignment.Bottom).Margin(0, 0, 0, ChatVisuals.BlockGap)
-                    .Grid(row: 1, column: 0),
-            ScrollViewer(VStack(4,
-                props.Timeline.ProviderReview is { } providerReview
-                    ? Expander(LocalizedOrDefault("Chat_Review_Required", "Provider review required"),
-                        TextBlock(string.Join("\n\n",
-                            new[] { providerReview.Explanation, providerReview.ContinuationMessage,
-                                LocalizedOrDefault("Chat_Review_Web", "Review this request in web chat before continuing.") }
-                                .Where(value => !string.IsNullOrEmpty(value))))
-                            .TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true))
-                        .HAlign(HorizontalAlignment.Stretch).AutomationId("ChatProviderReview")
-                        .AutomationName(LocalizedOrDefault("Chat_Review_Required", "Provider review required"))
-                    : Empty()))
-                .MaxHeight(ChatVisuals.ActivityDetailsMaxHeight)
-                .AutomationId("ChatActivityDetails")
-                .Margin(ChatVisuals.Gutter(viewportWidth), 0).Grid(row: 2, column: 0))
+                    .Grid(row: 1, column: 0))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
             .OnPointerEntered((_, _) => setNavigationVisible(true))

@@ -40,6 +40,20 @@ public sealed class ChatPlacementHistoryProjectionTests
         Assert.Equal(isSubagent, Assert.Single(snapshot.Threads).IsSubagent);
     }
 
+    [Theory]
+    [InlineData("done", true, "Stopped")]
+    [InlineData("done", false, "Done")]
+    [InlineData("unknown", false, "Ended")]
+    public void SubagentOutcomeKeepsAbortedRunsOutOfSuccess(string status, bool aborted, string expected)
+    {
+        var snapshot = ChatSnapshotProjector.Project(Input(ConnectionStatus.Connected) with
+        {
+            Sessions = [new() { Key = "agent:main:subagent:child", ParentSessionKey = "parent",
+                HasActiveRun = false, Status = status, AbortedLastRun = aborted }],
+        });
+        Assert.Equal(expected, ChatSubagentPresentation.Classify(Assert.Single(snapshot.Threads)).ToString());
+    }
+
     [Fact]
     public void OlderHistoryPreservesActiveRowsAndRevisionWhileRetiringResetCursor()
     {

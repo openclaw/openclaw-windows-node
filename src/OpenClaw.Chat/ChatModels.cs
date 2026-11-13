@@ -148,6 +148,8 @@ public record ChatThread
     public string DisplayTitle => Title;
     public string? LastRunId { get; init; }
     public string? RunStatus { get; init; }
+    /// <summary>The latest run was stopped or aborted, even when its recorded status reads as done.</summary>
+    public bool LastRunStopped { get; init; }
     public double? RuntimeMs { get; init; }
     public long? EndedAt { get; init; }
 }

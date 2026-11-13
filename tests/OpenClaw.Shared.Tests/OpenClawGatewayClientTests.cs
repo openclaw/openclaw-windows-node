@@ -446,7 +446,7 @@ public class OpenClawGatewayClientTests
     {
         var helper = new GatewayClientTestHelper();
         using var client = helper.Client;
-        var session = new SessionInfo { LastRunId = "old", RuntimeMs = 65000, EndedAt = 123000 };
+        var session = new SessionInfo { LastRunId = "old", RuntimeMs = 65000, EndedAt = 123000, StartedAt = DateTime.UtcNow };
         using var next = JsonDocument.Parse("""{"lastRunId":"new","status":"done"}""");
         var populate = typeof(OpenClawGatewayClient).GetMethod("PopulateSessionFromObject",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
@@ -454,6 +454,7 @@ public class OpenClawGatewayClientTests
         Assert.Equal("new", session.LastRunId);
         Assert.Null(session.RuntimeMs);
         Assert.Null(session.EndedAt);
+        Assert.Null(session.StartedAt);
     }
 
     [Fact]

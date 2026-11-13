@@ -1,145 +1,176 @@
-// List/detail content for the shared conversation panel's Subagents tab.
-// The chat root supplies the current direct-child snapshot and a read-only transcript renderer.
+// List content for the shared conversation panel's Subagents tab.
+// The chat root supplies the current direct-child snapshot; rows are status-only for now.
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
-using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Chat;
 using OpenClawTray.Helpers;
+using Windows.Foundation;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
 
-internal sealed record ReactorChatSubagentsProps(
-    string? ParentId,
-    IReadOnlyList<ChatThread> Children, Func<ChatThread, Element> RenderTranscript);
+internal sealed record ReactorChatSubagentsProps(IReadOnlyList<ChatThread> Children, ChatConversationPanelState Panels);
 
-/// <summary>Owns transient list/detail selection without changing the primary chat selection.</summary>
+/// <summary>Running and finished subagents with status, current activity and elapsed time.</summary>
 internal sealed class ReactorChatSubagents : Component<ReactorChatSubagentsProps>
 {
+    // Elapsed labels show seconds, matching the run-progress row beside the composer.
+    private static readonly TimeSpan ElapsedRefreshInterval = TimeSpan.FromSeconds(1);
+
     public override Element Render()
     {
-        var props = Props;
-        var (selectedId, setSelectedId) = UseState<string?>(null);
-        var scope = UseRef<string?>(props.ParentId);
-        var back = UseRef<Button?>(null);
-        var listControl = UseRef<ScrollViewer?>(null);
-        var rows = UseRef(new Dictionary<string, Button>(StringComparer.Ordinal));
-        var focusTarget = UseRef<string?>(null);
-        var (focusRevision, setFocusRevision) = UseState(0);
-        if (scope.Current != props.ParentId)
-        {
-            scope.Current = props.ParentId;
-            focusTarget.Current = null;
-            if (selectedId is not null) setSelectedId(null);
-            selectedId = null;
-        }
-        var selected = props.Children.FirstOrDefault(child => child.Id == selectedId);
-        if (selectedId is not null && selected is null)
-        {
-            setSelectedId(null);
-            selectedId = null;
-            focusTarget.Current = "list";
-            setFocusRevision(focusRevision + 1);
-        }
-        void FocusAfterRender(string target)
-        {
-            focusTarget.Current = target;
-            setFocusRevision(focusRevision + 1);
-        }
+        // The tick only re-renders; elapsed always uses the current time so newly started runs count up.
+        var (tick, setTick) = UseState(0L);
+        var panels = Props.Panels;
+        var (_, setPanelRevision) = UseState(0L, threadSafe: true);
         UseEffect((Func<Action>)(() =>
         {
-            var target = focusTarget.Current;
-            focusTarget.Current = null;
-            if (target is null) return static () => { };
-            var retired = false;
-            // Visibility is reconciled after render; focus only after the new layout is applied.
-            DispatcherQueue.GetForCurrentThread().TryEnqueue(DispatcherQueuePriority.Low, () =>
-            {
-                if (retired) return;
-                Control? control = target == "back" ? back.Current
-                    : rows.Current.GetValueOrDefault(target) ?? (Control?)listControl.Current;
-                if (control?.IsLoaded == true)
-                {
-                    control.UpdateLayout();
-                    control.Focus(FocusState.Keyboard);
-                }
-            });
-            return () => retired = true;
-        }), focusRevision, props.ParentId ?? "");
+            long revision = 0;
+            void Changed() => setPanelRevision(++revision);
+            panels.Changed += Changed;
+            return () => panels.Changed -= Changed;
+        }), panels);
+        var summary = ChatSubagentPresentation.Project(Props.Children, DateTimeOffset.UtcNow);
+        // The tab body stays mounted behind other tabs; only refresh while it is the selected tab.
+        var ticking = summary.Running.Count > 0 && panels.Selected == ChatConversationPanelState.SubagentsSlot;
+        UseEffect((Func<Action>)(() =>
+        {
+            if (!ticking) return static () => { };
+            var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            timer.Interval = ElapsedRefreshInterval;
+            var count = tick;
+            TypedEventHandler<DispatcherQueueTimer, object> onTick = (_, _) => setTick(++count);
+            timer.Tick += onTick;
+            timer.Start();
+            return () => { timer.Stop(); timer.Tick -= onTick; };
+        }), ticking);
 
         var title = L("Chat_Subagents_Title", "Subagents");
-        var list = ScrollViewer(VStack(ChatVisuals.CompactGap,
-            props.Children.Count == 0
-                ? [TextBlock(L("Chat_Subagents_Empty", "No subagents in the current session list."))
-                    .TextWrapping(TextWrapping.Wrap).Padding(ChatVisuals.DetailHorizontalInset)]
-                : props.Children.Select(child =>
-                {
-                    var status = Status(child);
-                    return (Element)Button(VStack(ChatVisuals.CompactGap,
-                        TextBlock(child.Title).TextWrapping(TextWrapping.Wrap),
-                        TextBlock(status).FontSize(ChatVisuals.ToolRowFontSize)
-                            .Set(ChatVisuals.StyleSecondaryText),
-                        string.IsNullOrEmpty(child.CurrentActivity) ? Empty()
-                            : TextBlock(child.CurrentActivity).FontSize(ChatVisuals.ToolRowFontSize)
-                                .TextWrapping(TextWrapping.Wrap).Set(ChatVisuals.StyleSecondaryText)),
-                        () =>
-                        {
-                            setSelectedId(child.Id);
-                            FocusAfterRender("back");
-                        })
-                        .HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                        .HAlign(HorizontalAlignment.Stretch)
-                        .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
-                        .AutomationId($"ChatSubagent_{child.Id}")
-                        .AutomationName($"{child.Title}: {status}")
-                        .OnMount(control => rows.Current[child.Id] = (Button)control)
-                        .OnUnmount(_ => rows.Current.Remove(child.Id))
-                        .WithKey(child.Id);
-                }).ToArray()))
-            .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled)
-            .OnMount(control => listControl.Current = (ScrollViewer)control)
-            .OnUnmount(_ => listControl.Current = null)
-            .IsVisible(selected is null)
-            .AutomationId("ChatSubagentsList");
-        var header = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-            Button(TextBlock(FluentIconCatalog.Back).FontFamily(FluentIconCatalog.SymbolThemeFontFamily), () =>
-                {
-                    setSelectedId(null);
-                    FocusAfterRender(selectedId ?? "list");
-                })
-                .MinWidth(ChatVisuals.ToolRowMinHeight).MinHeight(ChatVisuals.ToolRowMinHeight)
-                .AutomationName(L("Chat_Subagents_Back", "Back to subagents"))
-                .ToolTip(L("Chat_Subagents_Back", "Back to subagents"))
-                .OnMount(control => back.Current = (Button)control)
-                .OnUnmount(_ => back.Current = null)
-                .AutomationId("ChatSubagentsBack").Grid(column: 0),
-            TextBlock(selected?.Title ?? title).FontSize(ChatVisuals.BodySize)
-                .TextTrimming(TextTrimming.CharacterEllipsis)
-                .ToolTip(selected?.Title ?? title).VAlign(VerticalAlignment.Center)
-                .Margin(ChatVisuals.BlockGap, 0).Grid(column: 1))
-            .IsVisible(selected is not null);
-        return Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()],
-                header.Margin(ChatVisuals.BlockGap).Grid(row: 0),
-                Grid([GridSize.Star()], [GridSize.Star()],
-                    list,
-                    Border(selected is not null ? props.RenderTranscript(selected) : Empty())
-                        .IsVisible(selected is not null).AutomationId("ChatSubagentTranscript"))
-                    .Grid(row: 1)))
+        Element content = summary.Total == 0
+            ? TextBlock(L("Chat_Subagents_Empty", "No subagents in the current session list."))
+                .TextWrapping(TextWrapping.Wrap).Set(ChatVisuals.StyleSecondaryText)
+                .Margin(ChatVisuals.DetailHorizontalInset)
+            : VStack(ChatVisuals.BlockGap,
+                Group("Running", L("Chat_Subagents_Running", "Running"), summary.Running),
+                Group("Finished", L("Chat_Run_Finished", "Finished"), summary.Finished));
+        return Border(ScrollViewer(content.Margin(ChatVisuals.BlockGap))
+                .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled)
+                .AutomationId("ChatSubagentsList"))
             .AutomationId("ChatSubagentsPane")
             .AutomationName(title);
     }
 
-    private static string Status(ChatThread child) => child.Activity switch
+    private static Element Group(string id, string heading, IReadOnlyList<ChatSubagentRow> rows)
     {
-        ChatActivity.Working => L("Chat_Run_Working", "Working"),
-        ChatActivity.AwaitingInput => L("Chat_Run_Answer", "Waiting for your answer"),
-        ChatActivity.AwaitingPermission => L("Chat_Run_Approval", "Waiting for approval"),
-        ChatActivity.Error => L("Chat_Tool_Error", "Error"),
-        _ => child.WaitingForSubagents ? L("Chat_Run_Subagents", "Waiting for subagents")
-            : child.Status == ChatThreadStatus.Ended ? L("Chat_Run_Finished", "Finished")
-            : L("Chat_Children_Idle", "Idle"),
+        if (rows.Count == 0) return Empty();
+        return VStack(ChatVisuals.CompactGap,
+                HStack(ChatVisuals.BlockGap,
+                    TextBlock(heading).FontSize(12).FontWeight(Microsoft.UI.Text.FontWeights.SemiBold)
+                        .Set(ChatVisuals.StyleSecondaryText).VAlign(VerticalAlignment.Center),
+                    Border(TextBlock(rows.Count.ToString(System.Globalization.CultureInfo.CurrentCulture))
+                            .FontSize(12).Set(ChatVisuals.StyleSecondaryText))
+                        .Padding(7, 0).CornerRadius(9)
+                        .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
+                        .VAlign(VerticalAlignment.Center))
+                    .Margin(ChatVisuals.BlockGap, ChatVisuals.CompactGap)
+                    .HeadingLevel(AutomationHeadingLevel.Level3)
+                    .AutomationName($"{heading}: {rows.Count}")
+                    .AutomationId($"ChatSubagentsGroup_{id}"),
+                VStack(0, rows.Select(Row).ToArray()))
+            .WithKey(id);
+    }
+
+    private static Element Row(ChatSubagentRow row)
+    {
+        var child = row.Thread;
+        var status = StatusText(row.Status);
+        var detail = row.IsRunning && !string.IsNullOrWhiteSpace(child.CurrentActivity)
+            ? $"{status} · {child.CurrentActivity}" : status;
+        var elapsed = row.Elapsed is { } value
+            ? ChatRunProgressProjection.ElapsedMilliseconds(value.TotalMilliseconds)
+            : "";
+        var failed = row.Status == ChatSubagentStatus.Failed;
+        var showDetail = row.IsRunning || row.Status != ChatSubagentStatus.Done;
+        var accessible = string.Join(", ", new[] { child.Title, detail, elapsed }.Where(part => part.Length > 0));
+        return Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                Avatar(row).Grid(column: 0),
+                VStack(2,
+                    TextBlock(child.Title).FontSize(ChatVisuals.BodySize)
+                        .FontWeight(Microsoft.UI.Text.FontWeights.SemiBold)
+                        .Foreground(Theme.Ref("ChatTextBrush"))
+                        .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(child.Title),
+                    showDetail
+                        ? TextBlock(detail).FontSize(12)
+                            .Foreground(Theme.Ref(failed ? "SystemFillColorCriticalBrush"
+                                : row.Status == ChatSubagentStatus.Working ? "AccentTextFillColorPrimaryBrush"
+                                : "ChatSecondaryTextBrush"))
+                            .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(detail)
+                        : Empty())
+                    .VAlign(VerticalAlignment.Center).Margin(ChatVisuals.DetailHorizontalInset, 0).Grid(column: 1),
+                TextBlock(elapsed).FontSize(12).Set(ChatVisuals.StyleSecondaryText)
+                    .VAlign(VerticalAlignment.Center).Grid(column: 2))
+            .MinHeight(row.IsRunning ? ChatVisuals.SubagentRowMinHeight : ChatVisuals.SubagentFinishedRowMinHeight)
+            .Padding(ChatVisuals.BlockGap, ChatVisuals.CompactGap)
+            .AutomationName(accessible)
+            .ItemStatus(status)
+            .AutomationId($"ChatSubagent_{child.Id}")
+            .WithKey(child.Id);
+    }
+
+    private static Element Avatar(ChatSubagentRow row)
+    {
+        var size = row.IsRunning ? ChatVisuals.SubagentAvatarSize : ChatVisuals.SubagentAvatarSize - 8;
+        var fill = row.Status switch
+        {
+            ChatSubagentStatus.Failed => "SystemFillColorCriticalBackgroundBrush",
+            ChatSubagentStatus.Done => "SystemFillColorSuccessBackgroundBrush",
+            _ => "SubtleFillColorSecondaryBrush",
+        };
+        Element? badge = row.Status switch
+        {
+            ChatSubagentStatus.Working or ChatSubagentStatus.AwaitingSubagents => ProgressRing().IsActive(true)
+                .Size(ChatVisuals.SubagentBadgeSize - 4, ChatVisuals.SubagentBadgeSize - 4),
+            ChatSubagentStatus.Done => Glyph(FluentIconCatalog.Check, "SystemFillColorSuccessBrush"),
+            ChatSubagentStatus.Failed => Glyph(FluentIconCatalog.StatusErr, "SystemFillColorCriticalBrush"),
+            _ => null,
+        };
+        return Grid([GridSize.Star()], [GridSize.Star()],
+                Border(TextBlock(FluentIconCatalog.Subagent).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                        .FontSize(row.IsRunning ? ChatVisuals.SubagentAvatarGlyphSize : ChatVisuals.SubagentAvatarGlyphSize - 4)
+                        .Foreground(Theme.Ref("ChatTextBrush"))
+                        .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
+                    .Size(size, size).CornerRadius(size / 2).Background(Theme.Ref(fill)),
+                badge is null ? Empty()
+                    : Border(badge.HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
+                        .Size(ChatVisuals.SubagentBadgeSize, ChatVisuals.SubagentBadgeSize)
+                        .CornerRadius(ChatVisuals.SubagentBadgeSize / 2)
+                        .Background(Theme.Ref("ChatCardBrush"))
+                        .BorderBrush(Theme.Ref("ChatStrokeBrush")).BorderThickness(1)
+                        .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom)
+                        .Margin(0, 0, -4, -4))
+            .Size(size, size).VAlign(VerticalAlignment.Center)
+            .AccessibilityView(AccessibilityView.Raw);
+    }
+
+    private static Element Glyph(string glyph, string brush) =>
+        TextBlock(glyph).FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(10)
+            .Foreground(Theme.Ref(brush));
+
+    private static string StatusText(ChatSubagentStatus status) => status switch
+    {
+        ChatSubagentStatus.Queued => L("Chat_Subagents_Queued", "Queued"),
+        ChatSubagentStatus.Working => L("Chat_Run_Working", "Working"),
+        ChatSubagentStatus.AwaitingAnswer => L("Chat_Run_Answer", "Waiting for your answer"),
+        ChatSubagentStatus.AwaitingApproval => L("Chat_Run_Approval", "Waiting for approval"),
+        ChatSubagentStatus.AwaitingSubagents => L("Chat_Run_Subagents", "Waiting for subagents"),
+        ChatSubagentStatus.Stopped => L("Chat_Subagents_Stopped", "Stopped"),
+        ChatSubagentStatus.Failed => L("Chat_Subagents_Failed", "Failed"),
+        ChatSubagentStatus.Ended => L("Chat_Run_Finished", "Finished"),
+        _ => L("Chat_Subagents_Done", "Done"),
     };
 
     private static string L(string key, string fallback) => ReactorQuestionPanel.L(key, fallback);

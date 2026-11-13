@@ -7716,7 +7716,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Naar nieuwste gaan</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagenten, {1} bezig, {2} vereisen aandacht</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>Inactief</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Wachten op subagenten</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Invoer voorbereiden</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>mislukt</value></data>
@@ -7728,6 +7727,17 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Review_Denied" xml:space="preserve"><value>De provider heeft het verzoek niet goedgekeurd</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>Oudere geschiedenis is niet geladen. Probeer het opnieuw nadat het gesprek is herladen.</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>Beoordeel dit verzoek in de webchat voordat u doorgaat.</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>Sessie uit voorzorg gepauzeerd</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>Sessie uit voorzorg gestopt</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>De provider kon niet bevestigen dat de agent uw instructies begreep. Bekijk de bevindingen voordat u doorgaat.</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>De provider heeft deze sessie gepauzeerd. Beoordeel dit verzoek in de webchat voordat u doorgaat.</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>De provider heeft deze sessie gestopt zonder te beoordelen bevindingen. De sessie kan niet doorgaan.</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>De provider heeft deze sessie gestopt. Bekijk de bevindingen voordat u meer werk start.</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>Bevindingen bekijken</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>Bevindingen van de provider</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>Vervolgbericht</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>Deze sessie kan niet doorgaan. Ze blijft gestopt.</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Time-out bij controle door provider</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>Controle door provider geannuleerd</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Systeem toevoegen</value></data>
@@ -7869,9 +7879,13 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Instellingen</value>
   </data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagenten</value></data>
-  <data name="Chat_Subagents_Back" xml:space="preserve"><value>Terug naar subagenten</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Geen subagenten in de huidige sessielijst.</value></data>
-  <data name="Chat_Subagents_NoMessages" xml:space="preserve"><value>Nog geen berichten.</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Subagenten: {0} actief, {1} klaar</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>Actief</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>In wachtrij</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>Klaar</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Gestopt</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Mislukt</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>

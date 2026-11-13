@@ -38,7 +38,6 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         }), state);
 
         var tabs = state.Tabs.ToArray();
-        var sourceRevision = state.Revision;
         var selected = state.Selected;
         var open = selected is not null;
         var narrow = width < ChatConversationPanelState.MinimumConversationWidth +
@@ -70,6 +69,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             .TabCloseRequested(index =>
             {
                 if (index < 0 || index >= tabs.Length) return;
+                focus.Current?.BeforeClose(tabs[index]);
                 state.Close(tabs[index]);
                 focus.Current?.AfterClose();
             })
@@ -116,8 +116,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
 
         return Grid([GridSize.Star(), GridSize.Px(open && !narrow ? ChatConversationPanelState.DividerWidth : 0), GridSize.Px(panelWidth)],
                 [GridSize.Auto, GridSize.Star()],
-                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                    Button(TextBlock(Text(presented ? "Back" : "Show")), () =>
+                Button(TextBlock(Text(presented ? "Back" : "Show")), () =>
                     {
                         setShowCompact(!showCompact);
                         if (presented) focus.Current?.Restore();
@@ -126,13 +125,6 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     .AutomationName(Text(presented ? "Back" : "Show"))
                     .IsVisible(open && narrow)
                     .HAlign(HorizontalAlignment.Left).Margin(8)
-                    .Grid(column: 0),
-                    Button(LocalizationHelper.GetString("Chat_Subagents_Title"),
-                        () => state.OpenSubagents(sourceRevision))
-                        .AutomationId("ChatSubagentsToggle")
-                        .AutomationName(LocalizationHelper.GetString("Chat_Subagents_Title"))
-                        .IsVisible(state.AreSubagentsReady && Props.Subagents is not null && conversationVisible)
-                        .HAlign(HorizontalAlignment.Right).Margin(8).Grid(column: 1))
                     .Grid(row: 0),
                 Border(Props.Conversation).WithKey("chat-conversation")
                     .AutomationId("ChatConversation")
@@ -154,7 +146,9 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             {
                 ChatVisuals.Observe(control, setWidth);
                 focus.Current = new PanelInteraction((Grid)control, state,
-                    () => tabView.Current?.SelectedItem as Control);
+                    slot => tabView.Current is { } view &&
+                        state.Tabs.ToList().IndexOf(slot) is >= 0 and var index && index < view.TabItems.Count
+                            ? view.TabItems[index] as Control : null);
             })
             .OnUnmount(control =>
             {
@@ -168,9 +162,11 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
 
     private sealed class PanelInteraction : IDisposable
     {
+        // Low-priority dispatcher passes allowed for a newly presented focus target to load.
+        private const int FocusAttempts = 4;
         private readonly Grid _root;
         private readonly ChatConversationPanelState _state;
-        private readonly Func<Control?> _selectedTab;
+        private readonly Func<string, Control?> _tabFor;
         private FrameworkElement? _panel;
         private FrameworkElement? _conversation;
         private Control? _opener;
@@ -182,11 +178,11 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         private long _focusRevision;
         private long _openVersion;
 
-        internal PanelInteraction(Grid root, ChatConversationPanelState state, Func<Control?> selectedTab)
+        internal PanelInteraction(Grid root, ChatConversationPanelState state, Func<string, Control?> tabFor)
         {
             _root = root;
             _state = state;
-            _selectedTab = selectedTab;
+            _tabFor = tabFor;
             root.KeyDown += KeyDown;
             state.Changed += CaptureOpener;
         }
@@ -212,7 +208,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             _toggle = toggle;
             if (presented && (!_presented || _selected != _state.Selected || _openVersion != _state.OpenVersion))
             {
-                QueueFocus(_selectedTab, () => FocusManager.FindFirstFocusableElement(panel) as Control);
+                QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(panel) as Control);
             }
             _presented = presented;
             _selected = _state.Selected;
@@ -225,12 +221,17 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         {
             var revision = ++_focusRevision;
             var generation = _state.Revision;
-            _root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                if (revision != _focusRevision || generation != _state.Revision || !_root.IsLoaded)
-                    return;
-                if (!TryFocus(target())) TryFocus(fallback?.Invoke());
-            });
+            void Attempt(int remaining) => _root.DispatcherQueue.TryEnqueue(
+                Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    if (revision != _focusRevision || generation != _state.Revision || !_root.IsLoaded)
+                        return;
+                    if (TryFocus(target())) return;
+                    // A newly presented tab item can load a layout pass after the panel; retry before falling back.
+                    if (remaining > 1) Attempt(remaining - 1);
+                    else TryFocus(fallback?.Invoke());
+                });
+            Attempt(FocusAttempts);
         }
 
         private bool TryFocus(Control? control)
@@ -242,12 +243,45 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             return control.Focus(FocusState.Programmatic);
         }
 
-        internal void Restore() => QueueFocus(
-            () => _opener is { } opener &&
+        internal void Restore() => QueueFocus(OpenerTarget, ConversationTarget);
+
+        private Control? OpenerTarget() =>
+            _opener is { } opener &&
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(opener) == _openerId
-                    ? opener : null,
-            () => _conversation is { } conversation
-                ? FocusManager.FindFirstFocusableElement(conversation) as Control : null);
+                ? opener : null;
+
+        private Control? SelectedTab() => _state.Selected is { } slot ? _tabFor(slot) : null;
+
+        private Control? ConversationTarget() =>
+            _conversation is { } conversation ? FocusManager.FindFirstFocusableElement(conversation) as Control : null;
+
+        /// <summary>
+        /// Removing a focused tab item lets WinUI choose the next focus target, which can be a transcript
+        /// row whose bring-into-view moves the parent's reading position. Before closing, move focus to the
+        /// tab that will be selected next, or to the opener when the last tab closes.
+        /// </summary>
+        internal void BeforeClose(string slot)
+        {
+            var index = _state.Tabs.ToList().IndexOf(slot);
+            if (index < 0 || _panel is not { } panel || _root.XamlRoot is not { } root)
+                return;
+            var focused = FocusManager.GetFocusedElement(root) as DependencyObject;
+            // No focus counts as at risk: WinUI assigns one when the focused item disappears.
+            var closingFocus = focused is null ||
+                _tabFor(slot) is { } closingTab && IsWithin(focused, closingTab) ||
+                slot == _state.Selected && IsWithin(focused, panel);
+            if (!closingFocus) return;
+            if (_state.Tabs.Count == 1)
+            {
+                TryFocus(OpenerTarget());
+                return;
+            }
+            var next = slot == _state.Selected
+                ? _state.Tabs[index + 1 < _state.Tabs.Count ? index + 1 : index - 1]
+                : _state.Selected;
+            if (next is not null) TryFocus(_tabFor(next));
+        }
+
         internal void AfterClose()
         {
             if (_state.Selected is null) Restore();
@@ -259,6 +293,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             var within = _panel is { } panel && IsWithin(FocusManager.GetFocusedElement(root) as DependencyObject, panel);
             if (args.Key == VirtualKey.Escape && (within || _narrow && _presented))
             {
+                BeforeClose(selected);
                 _state.Close(selected);
                 AfterClose();
                 args.Handled = true;
@@ -268,7 +303,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 if (_narrow) _toggle?.Invoke();
                 if (within) Restore();
                 else if (_panel is { } current)
-                    QueueFocus(_selectedTab, () => FocusManager.FindFirstFocusableElement(current) as Control);
+                    QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(current) as Control);
                 args.Handled = true;
             }
         }

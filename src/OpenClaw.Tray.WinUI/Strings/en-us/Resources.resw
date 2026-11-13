@@ -7783,7 +7783,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_NewMessages" xml:space="preserve"><value>New messages. Jump to latest</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Jump to latest</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagents, {1} working, {2} need attention</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>Idle</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Waiting for subagents</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparing input</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>failed</value></data>
@@ -7795,6 +7794,17 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Review_Denied" xml:space="preserve"><value>Provider review did not approve the request</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>Older history did not advance. Try again after reloading the conversation.</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>Review this request in web chat before continuing.</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>Session paused as a precaution</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>Session stopped as a precaution</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>The provider couldn&apos;t confirm the agent understood your instructions. Review its findings before continuing.</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>The provider paused this session. Review this request in web chat before continuing.</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>The provider stopped this session without reviewable findings. It can&apos;t continue.</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>The provider stopped this session. Review its findings before starting more work.</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>Review findings</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>Provider findings</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>Continuation message</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>This session can&apos;t continue. It remains stopped.</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>Close</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Provider review timed out</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>Provider review canceled</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Add a system</value></data>
@@ -7939,9 +7949,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <comment>Large title at the top of the Settings sidebar.</comment>
   </data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagents</value></data>
-  <data name="Chat_Subagents_Back" xml:space="preserve"><value>Back to subagents</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>No subagents in the current session list.</value></data>
-  <data name="Chat_Subagents_NoMessages" xml:space="preserve"><value>No messages yet.</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Subagents: {0} running, {1} finished</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>Running</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>Queued</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>Done</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Stopped</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Failed</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>

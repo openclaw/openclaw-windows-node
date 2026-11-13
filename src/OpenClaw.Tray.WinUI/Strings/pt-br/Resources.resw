@@ -7768,7 +7768,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_NewMessages" xml:space="preserve"><value>Novas mensagens. Ir para as mais recentes</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Ir para as mais recentes</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagentes, {1} trabalhando, {2} precisam de atenção</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>Inativo</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Aguardando subagentes</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparando entrada</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>falhou</value></data>
@@ -7780,6 +7779,17 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Review_Denied" xml:space="preserve"><value>O provedor não aprovou a solicitação</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>O histórico anterior não avançou. Tente novamente após recarregar a conversa.</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>Revise esta solicitação no chat da web antes de continuar.</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>Sessão pausada por precaução</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>Sessão interrompida por precaução</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>O provedor não conseguiu confirmar que o agente entendeu suas instruções. Revise as conclusões antes de continuar.</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>O provedor pausou esta sessão. Revise esta solicitação no chat da web antes de continuar.</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>O provedor interrompeu esta sessão sem conclusões para revisar. Ela não pode continuar.</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>O provedor interrompeu esta sessão. Revise as conclusões antes de iniciar mais trabalho.</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>Revisar conclusões</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>Conclusões do provedor</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>Mensagem de continuação</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>Esta sessão não pode continuar. Ela permanece interrompida.</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>Fechar</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>A revisão do provedor expirou</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>Revisão do provedor cancelada</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Adicionar sistema</value></data>
@@ -7921,9 +7931,13 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Configurações</value>
   </data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagentes</value></data>
-  <data name="Chat_Subagents_Back" xml:space="preserve"><value>Voltar aos subagentes</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Nenhum subagente na lista de sessões atual.</value></data>
-  <data name="Chat_Subagents_NoMessages" xml:space="preserve"><value>Nenhuma mensagem ainda.</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Subagentes: {0} em execução, {1} concluídos</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>Em execução</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>Na fila</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>Concluído</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Interrompido</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Falhou</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agente: {0}</value>
   </data>

@@ -245,6 +245,22 @@ internal static class ChatVisuals
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
+    // Subagents pill above the composer and rows in the Subagents tab.
+    internal const double SubagentPillHeight = 28;
+    internal const double SubagentPillIconSize = 14;
+    internal const double SubagentAvatarSize = 32;
+    internal const double SubagentAvatarGlyphSize = 16;
+    internal const double SubagentBadgeSize = 16;
+    internal const double SubagentRowMinHeight = 56;
+    internal const double SubagentFinishedRowMinHeight = 40;
+    // Web .chat-composer-neighbor-card: 18px icon column, 10px gaps, 10/12 insets, 16px radius, 52px minimum.
+    internal const double ReviewIconColumn = 18;
+    internal const double ReviewIconSize = 16;
+    internal const double ReviewGap = 10;
+    internal const double ReviewVerticalInset = 10;
+    internal const double ReviewRadius = 16;
+    internal const double ReviewMinHeight = 52;
+    internal const double ReviewDialogMaxHeight = 420;
 
     internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;

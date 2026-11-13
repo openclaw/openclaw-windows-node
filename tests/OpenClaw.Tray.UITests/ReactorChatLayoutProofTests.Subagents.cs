@@ -14,9 +14,10 @@ namespace OpenClaw.Tray.UITests;
 public sealed partial class ReactorChatLayoutProofTests
 {
     [Theory]
-    [InlineData(480)]
-    [InlineData(1100)]
-    public async Task Subagents_CloseReturnsToTheParentsReadingPosition(int width)
+    [InlineData(480, false)]
+    [InlineData(1100, false)]
+    [InlineData(1100, true)]
+    public async Task Subagents_CloseReturnsToTheParentsReadingPosition(int width, bool withDetails)
     {
         await WithChatAsync(width, async (surface, _, _, provider) =>
         {
@@ -30,9 +31,13 @@ public sealed partial class ReactorChatLayoutProofTests
                     ["proof"] = ChatTimelineState.Initial() with
                     {
                         HistoryLoaded = true,
-                        Entries = Enumerable.Range(0, 40).Select(index => new ChatTimelineItem(
-                            $"scroll-{index}", index % 2 == 0 ? ChatTimelineItemKind.User : ChatTimelineItemKind.Assistant,
-                            $"Reading message {index}.")).ToImmutableList(),
+                        Entries = (withDetails
+                                ? [new ChatTimelineItem("one", ChatTimelineItemKind.ToolCall, "read",
+                                    ToolName: "read_file", ToolCallId: "call-one", ToolRunId: "run", ToolOutput: "Panel result")]
+                                : Array.Empty<ChatTimelineItem>())
+                            .Concat(Enumerable.Range(0, 40).Select(index => new ChatTimelineItem(
+                                $"scroll-{index}", index % 2 == 0 ? ChatTimelineItemKind.User : ChatTimelineItemKind.Assistant,
+                                $"Reading message {index}."))).ToImmutableList(),
                     },
                 },
             }));
@@ -52,6 +57,14 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.True(reader.Focus(FocusState.Keyboard));
             });
             await SettleAsync();
+            if (withDetails)
+            {
+                // Two open tabs: closing the selected Subagents tab must not drop focus into the transcript.
+                await ui.RunOnUIAsync(() => scroll!.ScrollTo(0, 0,
+                    new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)));
+                await SettleAsync();
+                await OpenPanelToolAsync(surface);
+            }
             await ui.RunOnUIAsync(() =>
             {
                 Assert.True(FindControl<TextBox>(surface, "ChatComposerInput").Focus(FocusState.Programmatic));
@@ -61,7 +74,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => scroll!.VerticalOffset <= 1 && FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
                 "parent reading its earlier messages"));
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsToggle")));
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
             await SettleAsync();
             await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
             await SettleAsync();
@@ -72,6 +85,11 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.True(scroll!.ScrollableHeight > 0);
                 Assert.InRange(scroll.VerticalOffset, 0, 1);
                 Assert.Equal(1, FindControl<Button>(surface, "ChatJumpLatest").Opacity);
+                if (withDetails)
+                {
+                    var tabs = FindControl<TabView>(surface, "ConversationPanelTabs");
+                    Assert.Same(Assert.Single(tabs.TabItems), FocusManager.GetFocusedElement(surface.XamlRoot));
+                }
             });
         }, interactiveKeyboard: true);
     }
@@ -79,37 +97,36 @@ public sealed partial class ReactorChatLayoutProofTests
     [Theory]
     [InlineData(480)]
     [InlineData(1100)]
-    public async Task Subagents_ListDetailAndResizePreserveTheParentConversation(int width)
+    public async Task Subagents_PillOpensTheStatusListAndPreservesTheParentConversation(int width)
     {
         await WithChatAsync(width, async (surface, _, session, provider) =>
         {
             var snapshot = await provider.LoadAsync();
             var child = new ChatThread
             {
-                Id = "child", Title = "Checking the results", ParentSessionKey = "proof",
-                IsSubagent = true, Activity = ChatActivity.Working, CurrentActivity = "Reading the report",
+                Id = "child", Title = "Checking the results", ParentSessionKey = "proof", IsSubagent = true,
+                Activity = ChatActivity.Working, CurrentActivity = "Reading the report",
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-2),
+            };
+            var failed = child with
+            {
+                Id = "failed", Title = "Linting the change", Activity = ChatActivity.Idle, CurrentActivity = null,
+                RunStatus = "failed", RuntimeMs = 58_000,
             };
             snapshot = snapshot with
             {
-                Threads = [snapshot.Threads[0], child,
+                Threads = [snapshot.Threads[0], child, failed,
                     child with { Id = "unrelated", ParentSessionKey = "other" },
                     child with { Id = "archived", IsArchived = true },
                     child with { Id = "ordinary", IsSubagent = false }],
-                Timelines = snapshot.Timelines.ToDictionary(pair => pair.Key, pair => pair.Value)
-                    .Append(new KeyValuePair<string, ChatTimelineState>("child", ChatTimelineState.Initial() with
-                    {
-                        HistoryLoaded = true,
-                        Entries = ImmutableList.Create(
-                            new ChatTimelineItem("child-reply", ChatTimelineItemKind.Assistant, "The child report is ready.")),
-                    })).ToDictionary(pair => pair.Key, pair => pair.Value),
             };
             TextBox? composer = null;
             ItemsView? parentTimeline = null;
             await ui.RunOnUIAsync(() =>
             {
+                Assert.DoesNotContain(FindDescendants<Button>(surface),
+                    button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill");
                 composer = FindControl<TextBox>(surface, "ChatComposerInput");
-                composer.SelectionStart = 3;
-                composer.SelectionLength = 4;
                 parentTimeline = Assert.Single(FindDescendants<ItemsView>(surface));
                 session.ViewModel.AddAttachments([new ChatAttachment
                 {
@@ -121,53 +138,64 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
-                Assert.DoesNotContain(FindDescendants<Expander>(surface),
-                    element => AutomationProperties.GetAutomationId(element) == "ChatChildActivity");
-                Invoke(FindControl<Button>(surface, "ChatSubagentsToggle"));
+                var pill = FindControl<Button>(surface, "ChatSubagentsPill");
+                Assert.Equal("Subagents: 1 running, 1 finished", AutomationProperties.GetName(pill));
+                Assert.Equal("2", FindControl<TextBlock>(pill, "ChatSubagentsPillCount").Text);
+                Assert.Single(FindDescendants<ProgressRing>(pill));
+                Assert.True(Bounds(pill, surface).Bottom <= Bounds(composer!, surface).Top);
+                Invoke(pill);
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
                 var pane = FindControl<Border>(surface, "ChatSubagentsPane");
                 Assert.Equal(Visibility.Visible, pane.Visibility);
-                var rows = FindDescendants<Button>(pane).Where(button =>
-                    AutomationProperties.GetAutomationId(button).StartsWith("ChatSubagent_", StringComparison.Ordinal));
-                Assert.Equal("ChatSubagent_child", AutomationProperties.GetAutomationId(Assert.Single(rows)));
-                Assert.Contains("Working", AutomationProperties.GetName(FindControl<Button>(pane, "ChatSubagent_child")));
+                var rows = FindDescendants<Grid>(pane).Where(row =>
+                    AutomationProperties.GetAutomationId(row).StartsWith("ChatSubagent_", StringComparison.Ordinal))
+                    .Select(AutomationProperties.GetAutomationId).ToArray();
+                Assert.Equal(["ChatSubagent_child", "ChatSubagent_failed"], rows);
+                Assert.Empty(FindDescendants<Button>(pane));
+                Assert.Equal("Running: 1", AutomationProperties.GetName(
+                    FindControl<StackPanel>(pane, "ChatSubagentsGroup_Running")));
+                Assert.Equal("Finished: 1", AutomationProperties.GetName(
+                    FindControl<StackPanel>(pane, "ChatSubagentsGroup_Finished")));
+                var working = FindControl<Grid>(pane, "ChatSubagent_child");
+                Assert.StartsWith("Checking the results, Working · Reading the report, 2m ",
+                    AutomationProperties.GetName(working));
+                Assert.Equal("Working", AutomationProperties.GetItemStatus(working));
+                Assert.Equal("Linting the change, Failed, 58s",
+                    AutomationProperties.GetName(FindControl<Grid>(pane, "ChatSubagent_failed")));
                 Assert.InRange(Bounds(pane, surface).Right, width - 1, width + 1);
                 Assert.Equal(width < 652 ? Visibility.Collapsed : Visibility.Visible,
                     FindControl<Border>(surface, "ChatConversation").Visibility);
             });
             await CaptureAsync(surface, $"Subagents-list-{width}");
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagent_child")));
-            await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                var detail = FindControl<Border>(surface, "ChatSubagentTranscript");
-                Assert.NotEmpty(FindDescendants<ItemsView>(detail));
-                Assert.DoesNotContain(FindDescendants<TextBox>(detail),
-                    control => AutomationProperties.GetAutomationId(control) == "ChatComposerInput");
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Same(parentTimeline, Assert.Single(FindDescendants<ItemsView>(
                     FindControl<Border>(surface, "ChatConversation"))));
                 Assert.Equal("proof", session.ViewModel.Inputs!.CurrentThread.Id);
                 Assert.Equal(Draft, composer!.Text);
                 Assert.Single(session.ViewModel.PendingAttachments);
+                provider.Publish(snapshot with
+                {
+                    Threads = snapshot.Threads.Select(thread => thread.Id == "child"
+                        ? thread with { Activity = ChatActivity.Idle, RunStatus = "completed", RuntimeMs = 90_000 }
+                        : thread).ToArray(),
+                });
                 surface.Width = width < 652 ? 1100 : 480;
             });
             await SettleAsync();
-            await CaptureAsync(surface, $"Subagents-detail-resized-{width}");
             await ui.RunOnUIAsync(() =>
             {
+                var pane = FindControl<Border>(surface, "ChatSubagentsPane");
+                Assert.DoesNotContain(FindDescendants<StackPanel>(pane),
+                    group => AutomationProperties.GetAutomationId(group) == "ChatSubagentsGroup_Running");
+                Assert.Equal("Checking the results, Done, 1m 30s",
+                    AutomationProperties.GetName(FindControl<Grid>(pane, "ChatSubagent_child")));
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Equal(Draft, composer!.Text);
-                Invoke(FindControl<Button>(surface, "ChatSubagentsBack"));
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal(Visibility.Visible, FindControl<ScrollViewer>(surface, "ChatSubagentsList").Visibility);
-                Assert.Equal(FocusState.Keyboard, FindControl<Button>(surface, "ChatSubagent_child").FocusState);
                 CloseSubagentsTab(surface);
             });
             await SettleAsync();
@@ -175,6 +203,10 @@ public sealed partial class ReactorChatLayoutProofTests
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
                 Assert.Equal(Visibility.Visible, FindControl<Border>(surface, "ChatConversation").Visibility);
+                var settledPill = FindControl<Button>(surface, "ChatSubagentsPill");
+                Assert.Equal("2", FindControl<TextBlock>(settledPill, "ChatSubagentsPillCount").Text);
+                Assert.Empty(FindDescendants<ProgressRing>(settledPill));
+                Assert.Equal("Subagents: 0 running, 2 finished", AutomationProperties.GetName(settledPill));
                 Assert.Equal(Draft, composer!.Text);
                 Assert.Single(session.ViewModel.PendingAttachments);
             });
@@ -183,7 +215,7 @@ public sealed partial class ReactorChatLayoutProofTests
     }
 
     [Fact]
-    public async Task Subagents_RemovedChildrenAndDisconnectWithdrawTheDetail()
+    public async Task Subagents_RemovedChildrenAndDisconnectWithdrawTheList()
     {
         await WithChatAsync(1100, async (surface, _, session, provider) =>
         {
@@ -195,30 +227,48 @@ public sealed partial class ReactorChatLayoutProofTests
             };
             await ui.RunOnUIAsync(() => provider.Publish(children));
             await SettleAsync();
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsToggle")));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagent_child")));
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
             await SettleAsync();
             await ui.RunOnUIAsync(() => provider.Publish(snapshot));
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Equal(Visibility.Collapsed, FindControl<Border>(surface, "ChatSubagentTranscript").Visibility);
-                Assert.Contains(FindDescendants<TextBlock>(surface),
+                Assert.Contains(FindDescendants<TextBlock>(FindControl<Border>(surface, "ChatSubagentsPane")),
                     text => text.Text == "No subagents in the current session list.");
+                Assert.DoesNotContain(FindDescendants<Button>(surface),
+                    button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill");
+                provider.Publish(children with
+                {
+                    Threads = [snapshot.Threads[0], new ChatThread
+                    {
+                        Id = "late", Title = "Late start", ParentSessionKey = "proof", IsSubagent = true,
+                        Activity = ChatActivity.Working, CreatedAt = DateTimeOffset.UtcNow,
+                    }],
+                });
+            });
+            // A run that starts after the open list mounted still counts up.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    FindDescendants<Grid>(surface).SingleOrDefault(row =>
+                        AutomationProperties.GetAutomationId(row) == "ChatSubagent_late") is { } row &&
+                    AutomationProperties.GetName(row).StartsWith("Late start, Working, ", StringComparison.Ordinal),
+                "elapsed time for a subagent started while the list is open"));
+            await ui.RunOnUIAsync(() =>
+            {
                 provider.Publish(children with { ConnectionStatus = "Disconnected" });
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
+                Assert.DoesNotContain(FindDescendants<Button>(surface),
+                    button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill");
                 provider.Publish(children);
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
-                Invoke(FindControl<Button>(surface, "ChatSubagentsToggle"));
+                Invoke(FindControl<Button>(surface, "ChatSubagentsPill"));
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession("child")));
@@ -229,58 +279,50 @@ public sealed partial class ReactorChatLayoutProofTests
     }
 
     [Fact]
-    public async Task Subagents_LoadsProviderHistoryOnSelectionWithoutSelectingOrWritingTheChild()
+    public async Task Subagents_ListsProviderChildrenWithoutLoadingOrSelectingThem()
     {
         var parent = new ChatHistoryInfo
         {
             SessionKey = "proof", SessionId = "parent-instance",
             Messages = [new ChatMessageInfo { Role = "assistant", Text = "Parent history remains here.", SessionKey = "proof" }],
         };
-        var child = new ChatHistoryInfo
-        {
-            SessionKey = "agent:main:subagent:proof", SessionId = "child-instance",
-            Messages = [new ChatMessageInfo
-            {
-                Role = "assistant", Text = "CHILD HISTORY ARRIVED THROUGH THE PROVIDER.",
-                SessionKey = "agent:main:subagent:proof",
-            }],
-        };
+        const string childKey = "agent:main:subagent:proof";
         using var directory = new TempDirectory();
         using var bridge = new ConversationParityBridge(parent,
             new SessionInfo { Key = "proof", IsMain = true, Label = "Parent" })
         {
-            Children = [new SessionInfo { Key = child.SessionKey, ParentSessionKey = "proof", Label = "Research" }],
-            ChildHistory = child,
+            Children = [new SessionInfo
+            {
+                Key = childKey, ParentSessionKey = "proof", Label = "Research",
+                HasActiveRun = true, Status = "running", CurrentActivity = "Searching the docs",
+            }],
         };
         await using var source = new OpenClawChatDataProvider(bridge, null,
             directory.Combine("tools.json"), directory.Combine("attachments.json"), directory.Combine("last-state.json"));
         await source.LoadHistoryAsync("proof");
         await WithChatAsync(1100, async (surface, _, session, _) =>
         {
-            Assert.DoesNotContain(child.SessionKey, bridge.HistoryRequests);
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsToggle")));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => FindDescendants<Button>(surface)
+                    .Any(button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill"),
+                "subagents pill from the production provider"));
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
             await SettleAsync();
-            Assert.DoesNotContain(child.SessionKey, bridge.HistoryRequests);
-            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, $"ChatSubagent_{child.SessionKey}")));
-            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                RealizedTimelineElements<RichTextBlock>(
-                    FindControl<Border>(surface, "ChatSubagentTranscript"))
-                    .Any(text => CollectText(text).Contains("CHILD HISTORY ARRIVED", StringComparison.Ordinal)),
-                "selected child history from the production provider"));
-            Assert.Contains(child.SessionKey, bridge.HistoryRequests);
             await ui.RunOnUIAsync(() =>
             {
+                var row = FindControl<Grid>(surface, $"ChatSubagent_{childKey}");
+                Assert.StartsWith("Research, Working · Searching the docs", AutomationProperties.GetName(row));
                 Assert.Equal("proof", session.ViewModel.Inputs!.CurrentThread.Id);
                 Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
             });
-            await CaptureAsync(surface, "Subagents-provider-history");
+            Assert.DoesNotContain(childKey, bridge.HistoryRequests);
+            await CaptureAsync(surface, "Subagents-provider-list");
         }, initialThreadId: "proof", renderProvider: source);
     }
 
     [Theory]
     [InlineData(480)]
     [InlineData(1100)]
-    public async Task Subagents_SharesTabsWithToolDetailsAndRetainsChildSelection(int width)
+    public async Task Subagents_SharesTabsWithToolDetailsAndReturnsFocusToThePill(int width)
     {
         await WithChatAsync(width, async (surface, _, session, provider) =>
         {
@@ -289,16 +331,8 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => provider.Publish(snapshot with
             {
                 Threads = [snapshot.Threads[0],
-                    new ChatThread { Id = "child", Title = "Research", ParentSessionKey = "proof", IsSubagent = true }],
-                Timelines = new Dictionary<string, ChatTimelineState>(snapshot.Timelines)
-                {
-                    ["child"] = ChatTimelineState.Initial() with
-                    {
-                        HistoryLoaded = true,
-                        Entries = ImmutableList.Create(
-                            new ChatTimelineItem("child-answer", ChatTimelineItemKind.Assistant, "Retained child result")),
-                    },
-                },
+                    new ChatThread { Id = "child", Title = "Research", ParentSessionKey = "proof", IsSubagent = true,
+                        Activity = ChatActivity.Working }],
             }));
             await SettleAsync();
             await OpenPanelToolAsync(surface);
@@ -311,11 +345,12 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 composer = FindControl<TextBox>(surface, "ChatComposerInput");
-                var opener = FindControl<Button>(surface, "ChatSubagentsToggle");
+                var opener = FindControl<Button>(surface, "ChatSubagentsPill");
                 Assert.True(opener.Focus(FocusState.Programmatic));
                 Invoke(opener);
             });
             await SettleAsync();
+            ScrollViewer? list = null;
             await ui.RunOnUIAsync(() =>
             {
                 var tabs = FindControl<TabView>(surface, "ConversationPanelTabs");
@@ -323,15 +358,8 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Equal(1, tabs.SelectedIndex);
                 Assert.Equal("Subagents", Assert.IsType<TabViewItem>(tabs.TabItems[1]).Header);
                 Assert.Same(tabs.SelectedItem, FocusManager.GetFocusedElement(surface.XamlRoot));
-                Invoke(FindControl<Button>(surface, "ChatSubagent_child"));
-            });
-            await SettleAsync();
-            ItemsView? childTranscript = null;
-            await ui.RunOnUIAsync(() =>
-            {
-                childTranscript = Assert.Single(FindDescendants<ItemsView>(
-                    FindControl<Border>(surface, "ChatSubagentTranscript")));
-                FindControl<TabView>(surface, "ConversationPanelTabs").SelectedIndex = 0;
+                list = FindControl<ScrollViewer>(surface, "ChatSubagentsList");
+                tabs.SelectedIndex = 0;
             });
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
@@ -344,9 +372,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Same(childTranscript, Assert.Single(FindDescendants<ItemsView>(
-                    FindControl<Border>(surface, "ChatSubagentTranscript"))));
-                Assert.Equal(Visibility.Visible, FindControl<Button>(surface, "ChatSubagentsBack").Visibility);
+                Assert.Same(list, FindControl<ScrollViewer>(surface, "ChatSubagentsList"));
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Equal(Draft, composer!.Text);
                 Assert.Equal("proof", session.ViewModel.Inputs!.CurrentThread.Id);
@@ -370,7 +396,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Empty(FindControl<TabView>(surface, "ConversationPanelTabs").TabItems);
                 Assert.Equal(Visibility.Visible, FindControl<Border>(surface, "ChatConversation").Visibility);
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
-                Assert.Same(FindControl<Button>(surface, "ChatSubagentsToggle"),
+                Assert.Same(FindControl<Button>(surface, "ChatSubagentsPill"),
                     FocusManager.GetFocusedElement(surface.XamlRoot));
             });
         });
