@@ -1,7 +1,8 @@
-// Proves DialogInitialFocus gives a destructive ContentDialog's initial focus to Cancel within WinUI's
-// own initial-focus transaction (already true when Opened fires), even when the dialog content holds
-// a focusable element, and never steals later focus moves. Like AutomationsRoot, each confirmation
-// mounts a fresh keyed dialog and removes it after it closes.
+// Proves DialogInitialFocus gives a destructive ContentDialog's initial focus to Cancel even when the
+// dialog content holds a focusable element: the first focus inside the dialog after Cancel exists is
+// Cancel, and nothing else takes focus after it. Opened can fire before the template is realized, so
+// focus is observed through the dialog's own GettingFocus, not sampled at Opened. A later focus move is
+// never stolen back. Like AutomationsRoot, each confirmation mounts a fresh keyed dialog.
 // Run with the DialogInitialFocusTests filter on an isolated Windows desktop.
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
@@ -18,8 +19,8 @@ namespace OpenClaw.Tray.UITests;
 public sealed class DialogInitialFocusTests(UIThreadFixture ui)
 {
     private static readonly TimeSpan DialogTransitionTimeout = TimeSpan.FromSeconds(10);
-    // Each run reopens this many confirmations right after the previous one closes (the late-template path).
-    private const int FollowUpConfirmations = 10;
+    // Each run opens this many confirmations, each right after the previous one closes.
+    private const int Confirmations = 11;
 
     [Fact]
     public async Task DestructiveDialog_CancelOwnsInitialFocusForEachConfirmationWithoutStealingLaterFocus()
@@ -28,9 +29,6 @@ public sealed class DialogInitialFocusTests(UIThreadFixture ui)
         ReactorHostControl? host = null;
         Microsoft.UI.Xaml.Controls.ContentDialog? native = null;
         Element? current = null;
-        object? focusedAtOpened = null;
-        TextBox? movedTo = null;
-        var moveFocusToBodyOnOpened = false;
         var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         // Each focus change routed through the dialog, read synchronously in GettingFocus after the helper's
@@ -63,17 +61,7 @@ public sealed class DialogInitialFocusTests(UIThreadFixture ui)
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.None,
             OnClosed = _ => closed.TrySetResult(),
-            OnOpened = () =>
-            {
-                // Before any queued dispatcher work: only a redirect inside WinUI's own initial
-                // focus transaction can have placed focus on Cancel by now.
-                focusedAtOpened = native?.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) : null;
-                // A later focus move made before the queued Low-priority fallback can run.
-                if (moveFocusToBodyOnOpened && native is not null && FindDescendant<TextBox>(native) is { } body
-                    && body.Focus(FocusState.Programmatic))
-                    movedTo = body;
-                opened.TrySetResult();
-            },
+            OnOpened = () => opened.TrySetResult(),
         }).Set(dialog =>
         {
             native = dialog;
@@ -94,27 +82,18 @@ public sealed class DialogInitialFocusTests(UIThreadFixture ui)
                 : host.Reconciler.Reconcile(current, next, (UIElement)host.Content!, static () => { });
             current = next;
         }
-        async Task<Microsoft.UI.Xaml.Controls.ContentDialog> ConfirmAndAssertCancelAsync(string key, bool atOpened)
+        async Task<Microsoft.UI.Xaml.Controls.ContentDialog> ConfirmAndAssertCancelAsync(string key)
         {
             opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            focusedAtOpened = null;
             focusLog.Clear();
             await ui.RunOnUIAsync(() => Render(Dialog(key)));
             await opened.Task.WaitAsync(DialogTransitionTimeout);
             return await ui.RunOnUIAsync(async () =>
             {
                 var dialog = native!;
-                if (atOpened)
-                {
-                    var openedCancel = DialogInitialFocus.FindCloseButton(dialog);
-                    Assert.NotNull(openedCancel);
-                    Assert.True(ReferenceEquals(openedCancel, focusedAtOpened), $"{key}: Cancel must own focus when Opened fires.");
-                    return dialog;
-                }
-                // Right after another dialog closes, Opened can precede the template and the first focus.
-                // Wait until Cancel holds focus, drain queued focus work, then require that it kept focus
-                // and that nothing inside the dialog took focus after it.
+                // Opened can precede the template and the first focus. Wait until Cancel holds focus, drain
+                // queued focus work, then require that Cancel was the first focus once it existed and kept it.
                 await TestSupport.WaitForRenderedConditionAsync(() =>
                     DialogInitialFocus.FindCloseButton(dialog) is { } realized && dialog.XamlRoot is { } root &&
                     ReferenceEquals(FocusManager.GetFocusedElement(root), realized),
@@ -138,26 +117,31 @@ public sealed class DialogInitialFocusTests(UIThreadFixture ui)
                 host = new ReactorHostControl { Width = 560, Height = 400 };
                 ui.Container.Children.Add(host);
             });
-            moveFocusToBodyOnOpened = true;
-            var first = await ConfirmAndAssertCancelAsync("first-confirmation", atOpened: true);
-            moveFocusToBodyOnOpened = false;
-            Assert.NotNull(movedTo);
-            // Drains the Low-priority Opened fallback queued before the move: it must not take focus back.
+            var first = await ConfirmAndAssertCancelAsync("confirmation-0");
+            // Once Cancel has focus the initial-focus duty is over: a later move (here to the body, which
+            // also runs layout for any pending retry) must not be taken back.
+            TextBox? body = null;
+            await ui.RunOnUIAsync(() =>
+            {
+                body = FindDescendant<TextBox>(first);
+                Assert.NotNull(body);
+                Assert.True(body.Focus(FocusState.Programmatic));
+            });
             await ui.YieldToRenderAsync();
-            await ui.RunOnUIAsync(() => Assert.Same(movedTo, FocusManager.GetFocusedElement(native!.XamlRoot)));
+            await ui.RunOnUIAsync(() => Assert.Same(body, FocusManager.GetFocusedElement(first.XamlRoot)));
 
             var previous = first;
-            for (var index = 0; index < FollowUpConfirmations; index++)
+            for (var index = 1; index < Confirmations; index++)
             {
-                if (index > 0)
-                    await ui.RunOnUIAsync(() => AssertCancelKeptFocus(previous, $"follow-up-{index - 1} before close"));
+                if (index > 1)
+                    await ui.RunOnUIAsync(() => AssertCancelKeptFocus(previous, $"confirmation-{index - 1} before close"));
                 await CloseAndRemoveAsync();
-                var next = await ConfirmAndAssertCancelAsync($"follow-up-{index}", atOpened: false);
+                var next = await ConfirmAndAssertCancelAsync($"confirmation-{index}");
                 Assert.NotSame(previous, next);
                 previous = next;
             }
-            // The last follow-up stays open through the test's own async steps; Cancel must still hold focus.
-            await ui.RunOnUIAsync(() => AssertCancelKeptFocus(previous, $"follow-up-{FollowUpConfirmations - 1} before close"));
+            // The last confirmation stays open through the test's own async steps; Cancel must still hold focus.
+            await ui.RunOnUIAsync(() => AssertCancelKeptFocus(previous, $"confirmation-{Confirmations - 1} before close"));
             await CloseAndRemoveAsync();
         }
         finally
