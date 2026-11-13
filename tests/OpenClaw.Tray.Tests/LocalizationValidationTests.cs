@@ -36,8 +36,8 @@ public class LocalizationValidationTests
         // provider/model ID placeholders are literal identifier examples.
         "DefaultModelPage_CustomApiAnthropic.Content",
         "DefaultModelPage_CustomApiOpenAiResponses.Content",
-        "DefaultModelPage_CustomProviderId.PlaceholderText",
-        "DefaultModelPage_CustomProviderModels.PlaceholderText",
+        "DefaultModelPage_CustomProviderIdField.PlaceholderText",
+        "DefaultModelPage_CustomProviderModelsField.PlaceholderText",
         // Updater dependency recovery is seeded in English across every locale.
         // Translate the explanation and manual-release action together after review.
         "Update_Message_Unavailable",
@@ -83,9 +83,9 @@ public class LocalizationValidationTests
         // supported locales per onboarding terminology.
         "DiagnosticsPage_Section_Gateway.Text",
         // Sample IDs / brand identifiers — same across locales.
-        "VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText",
-        "VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText",
-        "VoiceSettingsPage_MiniMaxModelBox.PlaceholderText",
+        "VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText",
+        "VoiceSettingsPage_ElevenLabsModelField.PlaceholderText",
+        "VoiceSettingsPage_MiniMaxModelField.PlaceholderText",
         // Capability command identifier — should match the wire/API name.
         "NotificationsPage_MetadataSystemRun",
         // Punctuation-only layout format; localized parts are supplied by
@@ -1257,7 +1257,7 @@ public class LocalizationValidationTests
                     "Systems_Number_0" => ["pt-br"],
                     "Systems_Number_6" => ["fr-fr"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
-                        "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
+                        "Search_Dashboard_Dashboards" or "Search_Group_Chats" or "Chat_Panel_Dashboard" => ["nl-nl"],
                     "Search_Dashboard_Plugins" => ["pt-br"],
                     "Search_Dashboard_Secrets" => ["fr-fr"],
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],

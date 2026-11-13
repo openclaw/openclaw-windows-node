@@ -674,7 +674,8 @@ public sealed class SessionsHubRegressionTests(UIThreadFixture ui)
             Assert.Equal("Sessions", title.Text);
             Assert.Equal(AutomationHeadingLevel.Level1, AutomationProperties.GetHeadingLevel(title));
             Assert.Contains(title, TestSupport.FindDescendants<TextBlock>(hero));
-            Assert.NotNull(harness.Find<FrameworkElement>("SessionsHubMast:Glyph"));
+            Assert.DoesNotContain(TestSupport.FindDescendants<FrameworkElement>(harness.Root!),
+                element => AutomationProperties.GetAutomationId(element) == "SessionsHubMast:Glyph");
             var mastHeadline = harness.Find<TextBlock>("SessionsHubMastHeadline");
             Assert.Contains(mastHeadline, TestSupport.FindDescendants<TextBlock>(hero));
             var openInWeb = harness.Find<Button>("SessionsHubOpenGatewayWeb");

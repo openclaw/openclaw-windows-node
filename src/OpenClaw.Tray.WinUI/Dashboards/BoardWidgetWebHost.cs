@@ -191,7 +191,7 @@ internal sealed class BoardWidgetWebHost : Control
         {
             if (generation == _generation)
             {
-                Logger.Warn($"[Dashboards] widget WebView2 initialization failed: {ex.Message}");
+                Logger.Warn($"[Dashboards] widget WebView2 initialization failed: {ex.GetType().Name} 0x{ex.HResult:X8}: {ex.Message}");
                 // Stop the deadline, retries, and document fetch so the error stays until Retry.
                 Teardown(closeWebView: true);
                 Report(BoardWidgetWebHostStatus.Failed, LocalizationHelper.GetString("Dashboards_Widget_WebViewUnavailable"));

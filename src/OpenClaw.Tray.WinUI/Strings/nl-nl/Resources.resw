@@ -2298,8 +2298,11 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Spraakmodel</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Spraak-naar-tekst is uitgeschakeld. Configureer de modellen hier en schakel de mogelijkheid in Machtigingen in wanneer je klaar bent.</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Spraak-naar-tekst is uitgeschakeld</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Schakel het in bij Machtigingen om deze instellingen te wijzigen.</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>Machtigingen openen</value>
@@ -2370,8 +2373,11 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Kies de stem die wordt gebruikt bij het hardop voorlezen van antwoorden.</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Tekst-naar-spraak is uitgeschakeld. Configureer de providers en stemmen hier en schakel de mogelijkheid in Machtigingen in wanneer je klaar bent.</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Tekst-naar-spraak is uitgeschakeld</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Schakel het in bij Machtigingen om de lokale steminstellingen te wijzigen.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Aanbieder</value>
@@ -2496,13 +2502,13 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
     <value>Stem-ID</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>bijv. male-qn-qingse</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
     <value>Spraakmodel</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve">
     <value>speech-2.8-hd</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
@@ -3638,7 +3644,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>Webchatinterface van gateway gebruiken</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>Meldingen weergeven</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3881,10 +3887,10 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>Hiermee kunnen agents de apparaatlocatie lezen via location.*-opdrachten.</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3908,11 +3914,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>Inactief</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>Sessies bekijken ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>Sessies bekijken</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>Instanties bekijken ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>Instanties bekijken</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>Nodemodus</value>
@@ -3929,8 +3935,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>Verbinden</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>Machtigingen beheren ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>Verbinding</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>Machtigingen beheren</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>Help ons deze verbinding te herstellen:</value>
@@ -4178,7 +4187,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>Programma's die de agent op deze pc uitvoert zijn ingesloten.</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>Wat er wordt ingesloten</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4269,7 +4278,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Windows-runtimemappen en privéwerkruimte blijven beschikbaar. Vermelding in PATH verleent geen toegang. Pas een voorinstelling opnieuw toe om mapkeuzes te herstellen.</value>
+    <value>Beschermde mappen blijven geblokkeerd. Windows-runtimemappen blijven beschikbaar; vermelding in PATH verleent geen toegang.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>Extra mappen</value>
@@ -4292,11 +4301,17 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Map toevoegen</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>Een nieuwe map toevoegen</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 Klembord</value>
+    <value>Klembord</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>Klembordtoegang</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>Het klembord bevat vaak wachtwoorden, tokens en privétekst. Leestoegang kan deze lekken naar de agent (en via internet, indien ingeschakeld).</value>
+    <value>Het klembord bevat vaak wachtwoorden en privétekst. Leestoegang maakt deze zichtbaar voor de agent.</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>Geen (standaard)</value>
@@ -4311,7 +4326,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 Netwerk</value>
+    <value>Netwerk</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>Internet toestaan</value>
@@ -4323,7 +4338,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Lokale netwerkapparaten en gedeelde mappen zijn nog niet inbegrepen.</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ Limieten</value>
+    <value>Limieten</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>Time-out van opdracht: 30 sec</value>
@@ -4548,8 +4563,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Verwijdert de WSL-distributie (OpenClawGateway), de schijfafbeelding, het item voor automatisch starten en wist de gateway-referenties. Uw MCP-token blijft behouden. Onboarding wordt gereset.</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>Lokale gateway verwijderen</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>Verwijderen</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Opgeslagen</value>
@@ -5770,7 +5788,7 @@ Open Kanalen in het webdashboard.</value>
     <value>Verwijderen mislukt</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>Lokale gateway verwijderen</value>
+    <value>Verwijderen</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>Distro verwijderen…</value>
@@ -6162,7 +6180,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Kies het model dat de gateway gebruikt</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Aangepast Hugging Face-model (optioneel)</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>eigenaar/repo, eigenaar/repo:Q4_K_M of een huggingface.co-link</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>eigenaar/repo, eigenaar/repo:Q4_K_M of een huggingface.co-link</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Alleen openbare GGUF-modellen in één bestand. Als dit is ingevuld, wordt het gebruikt in plaats van de selectie hierboven.</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>Dit model past mogelijk niet</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>Het heeft ongeveer {0:F1} GB GPU-geheugen nodig en {1} heeft {2:F1} GB. Het start mogelijk niet of werkt traag.</value></data>
@@ -6191,7 +6209,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Standaardmodel</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Dit model gebruiken</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Vernieuwen</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Lokale AI beheren</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>Lokale AI beheren</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Lokale AI: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (meld u eerst aan bij de provider)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>Het standaardmodel is bijgewerkt.</value></data>
@@ -6205,7 +6223,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Aanmeldmethode</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Aanmelden</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider-ID</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Basis-URL</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API-type</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatibel (Chat Completions)</value></data>
@@ -6213,7 +6231,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API-sleutel (optioneel voor OpenAI-compatibel)</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model-ID's</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Provider toevoegen</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (verbonden)</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Providers laden...</value></data>
@@ -7187,7 +7205,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Toegang voor {0}</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Machtiging voor {0} verwijderen</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Mappen</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Kies wat de agent in elke map mag doen. Geen toegang blokkeert die map, maar expliciet vermelde submappen behouden hun eigen toegang. Beschermde mappen blijven geblokkeerd.</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Kies wat de agent in elke map mag doen; expliciet vermelde submappen behouden hun eigen toegang.</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>Geen toegang</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>Gebruikersprofiel</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7789,7 +7807,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Maak verbinding met de Gateway om deze actie te gebruiken.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Verbonden apps</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Apparaten en Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Apparaten en Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Apparaten en Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>Problemen</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Laatst bekend offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Laatst bekend online</value></data>
@@ -10031,4 +10049,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Paneel weergeven</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Gesprekspanelen</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
 </root>

@@ -267,6 +267,7 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
             {
                 Assert.Equal(TextAlignment.Right, marker!.TextAlignment);
                 Assert.Equal(ChatVisuals.ListMarkerColumn, marker.MinWidth);
+                Assert.Equal(ChatVisuals.BodyFontFamily, marker.FontFamily.Source);
             });
         }
         finally

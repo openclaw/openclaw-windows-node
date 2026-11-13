@@ -91,6 +91,7 @@ public static class ChatTimelineReducer
             ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true, presentation: e.Presentation),
             ChatMessageEvent e => UpsertAssistant(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
+            ChatAssistantStreamRetireEvent e => RetireAssistantStreamPreview(state, e.RunId),
             ChatBackgroundFinalEvent e => ApplyBackgroundFinal(state, e.Text),
             ChatTurnEndEvent e => ApplyTurnEnd(state, e.RetainToolCorrelations),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
@@ -246,6 +247,32 @@ public static class ChatTimelineReducer
             ActiveReasoningId = null,
             RunUsage = null,
             ReasoningStream = null,
+        };
+    }
+
+    // The Gateway's empty replacement means the run's live text is now saved as
+    // transcript rows, so drop this turn's unsaved assistant text for that run.
+    // Only the user turn bounds the search: the run's own saved row can open a
+    // heartbeat turn, and a cron completion can land mid-run. Saved rows may carry
+    // another run id (queued or announce runs) and must not hide the earlier
+    // preview from retirement.
+    private static ChatTimelineState RetireAssistantStreamPreview(ChatTimelineState state, string runId)
+    {
+        if (string.IsNullOrWhiteSpace(runId))
+            return state;
+        var start = state.Entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User) + 1;
+        var retiredIds = state.Entries.Skip(start)
+            .Where(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation is { MessageId: null } presentation && presentation.RunId == runId)
+            .Select(entry => entry.Id)
+            .ToHashSet(StringComparer.Ordinal);
+        if (retiredIds.Count == 0)
+            return state;
+        return state with
+        {
+            Entries = state.Entries.Where(entry => !retiredIds.Contains(entry.Id)).ToImmutableList(),
+            ActiveAssistantId = state.ActiveAssistantId is { } activeId && retiredIds.Contains(activeId)
+                ? null : state.ActiveAssistantId,
         };
     }
 

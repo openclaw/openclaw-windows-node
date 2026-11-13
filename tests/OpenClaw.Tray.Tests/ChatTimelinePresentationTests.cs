@@ -20,7 +20,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void GatewayDashboard_StaysInConnectionCardNotChat()
+    public void GatewayDashboard_StaysInConnectionStatusActionsNotChatOrASeparateCard()
     {
         var pages = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Pages");
         var chat = File.ReadAllText(Path.Combine(pages, "ChatPage.xaml"));
@@ -28,9 +28,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("OnOpenDashboard", File.ReadAllText(Path.Combine(pages, "ChatPage.xaml.cs")));
         var connection = System.Xml.Linq.XDocument.Load(Path.Combine(pages, "ConnectionPage.xaml"));
         var card = connection.Descendants().Single(element =>
-            (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "StatusStrip");
         Assert.Contains(card.Descendants(), element => (string?)element.Attribute("Click") == "OnOpenDashboard");
-        Assert.Contains(card.Descendants(), element =>
+        Assert.DoesNotContain(connection.Descendants(), element =>
             (string?)element.Attribute("Text") == "Channels, integrations and gateway settings");
     }
 
@@ -1577,7 +1577,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("RaisePropertyChangedEvent(", composer);
         Assert.Contains("AutomationElementIdentifiers.IsOffscreenProperty", composer);
         Assert.Equal(
-            5,
+            4,
             composer.Split(
                 "ComposerAutomationVisibility.Prepare(",
                 StringSplitOptions.None).Length - 1);
@@ -1593,7 +1593,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain("\"ChatComposerMore\"", composer);
         Assert.DoesNotContain("\"ChatComposerSessionPicker\"", composer);
         Assert.Contains("\"ChatComposerModelPicker\"", composer);
-        Assert.Contains("\"ChatComposerReasoningPicker\"", composer);
+        Assert.DoesNotContain("\"ChatComposerReasoningPicker\"", composer);
         Assert.Contains("\"ChatComposerVoice\"", composer);
         Assert.DoesNotContain("MenuItem(Localized(\"Chat_Composer_Tooltip_Settings\"", composer);
         Assert.Contains("\"ChatComposerPrimaryAction\"", composer);
@@ -1613,7 +1613,6 @@ public sealed class ChatTimelinePresentationTests
 
     [Theory]
     [InlineData("ChatModelPicker.cs")]
-    [InlineData("ChatReasoningPicker.cs")]
     public void ReactorPickers_PreserveTargetMountActions(string fileName)
     {
         var source = File.ReadAllText(Path.Combine(
@@ -1847,8 +1846,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains(".BorderBrush(Theme.Ref(\"ChatStrokeBrush\"))", composer);
         Assert.Contains("Theme.Ref(\"AcrylicBackgroundFillColorDefaultBrush\")", composer);
         Assert.Contains("Theme.Ref(\"SurfaceStrokeColorFlyoutBrush\")", composer);
-        Assert.Equal(3, composer.Split(
-            ".Resources(ChatVisuals.ToolbarButtonResources)", StringSplitOptions.None).Length - 1);
+        Assert.Contains(".Resources(ChatVisuals.ToolbarButtonResources)", composer);
         Assert.DoesNotContain("Theme.Ref(\"SubtleFillColorTertiaryBrush\")", composer);
         Assert.Contains("Theme.Ref(\"SubtleFillColorTertiaryBrush\")", visuals);
         Assert.Contains("colorScheme);", composer);

@@ -3,6 +3,7 @@
     x:Class="OpenClawTray.Pages.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:presentation="using:OpenClawTray.Presentation"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:helpers="using:OpenClawTray.Helpers">
 
@@ -23,7 +24,7 @@
                 (Pattern matches ConnectionPage.)
             -->
             <Grid HorizontalAlignment="Stretch">
-                <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
+                <StackPanel presentation:PageContentLayout.IsEnabled="True" Spacing="4">
 
                 <!-- Page header -->
                 <TextBlock x:Uid="SettingsPage_Settings" Text="General"
@@ -133,103 +134,114 @@
                            Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>
 
-                <toolkit:SettingsCard AutomationProperties.AutomationId="GeneralNotificationsCard">
-                    <toolkit:SettingsCard.Header>
-                        <StackPanel Spacing="4">
-                            <TextBlock x:Uid="SettingsRow_Notifications_Header"
-                                       Text="Show notifications"
-                                       Style="{StaticResource BodyTextBlockStyle}"/>
-                            <TextBlock x:Uid="SettingsRow_Notifications_Description"
-                                       Text="Show toast notifications for events you've subscribed to below."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </toolkit:SettingsCard.Header>
-                    <toolkit:SettingsCard.Content>
+                <toolkit:SettingsExpander x:Uid="SettingsRow_Notifications_Header" Header="Show notifications"
+                                          IsExpanded="False" Padding="16,16,4,16"
+                                          AutomationProperties.AutomationId="GeneralNotificationsCard">
+                    <toolkit:SettingsExpander.Description>
+                        <TextBlock x:Uid="SettingsRow_Notifications_Description"
+                                   Text="Show toast notifications for events you've subscribed to below."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+                    </toolkit:SettingsExpander.Description>
+                    <toolkit:SettingsExpander.Content>
                         <ToggleSwitch x:Name="NotificationsToggle" MinWidth="0" OnContent="" OffContent=""
                                       IsOn="{Binding ShowNotifications, Mode=TwoWay}"
                                       AutomationProperties.AutomationId="SettingsPageNotifications"
                                       AutomationProperties.Name="Show notifications"/>
-                    </toolkit:SettingsCard.Content>
-                </toolkit:SettingsCard>
-
-                <toolkit:SettingsCard>
-                    <toolkit:SettingsCard.Header>
-                        <StackPanel Spacing="4">
-                            <TextBlock x:Uid="SettingsRow_NotifSound_Header"
-                                       Text="Sound"
-                                       Style="{StaticResource BodyTextBlockStyle}"/>
-                            <TextBlock x:Uid="SettingsRow_NotifSound_Description"
-                                       Text="Notification sound played alongside the toast."
-                                       Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </toolkit:SettingsCard.Header>
-                    <toolkit:SettingsCard.Content>
-                        <ComboBox x:Uid="SettingsPage_NotificationSoundComboBox"
-                                  x:Name="NotificationSoundComboBox" MinWidth="140"
-                                  SelectedValuePath="Tag"
-                                  SelectedValue="{Binding NotificationSound, Mode=TwoWay}"
-                                  AutomationProperties.AutomationId="SettingsPageSound">
-                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_48" Content="Default" Tag="Default"/>
-                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_49" Content="None" Tag="None"/>
-                            <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_50" Content="Subtle" Tag="Subtle"/>
-                        </ComboBox>
-                    </toolkit:SettingsCard.Content>
-                </toolkit:SettingsCard>
-
-                <toolkit:SettingsCard AutomationProperties.AutomationId="GeneralNotificationCategoriesCard">
-                    <toolkit:SettingsCard.Header>
-                        <TextBlock x:Uid="SettingsPage_TextBlock_52"
-                                   Text="Notify me about"
-                                   Style="{StaticResource BodyStrongTextBlockStyle}"/>
-                    </toolkit:SettingsCard.Header>
-                    <toolkit:SettingsCard.Content>
-                        <StackPanel Spacing="8">
-                            <Grid ColumnSpacing="24" RowSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <CheckBox Grid.Row="0" Grid.Column="0" x:Uid="NotifyHealthCb" x:Name="NotifyHealthCb"
+                    </toolkit:SettingsExpander.Content>
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <StackPanel Spacing="0">
+                                    <TextBlock x:Uid="SettingsRow_NotifSound_Header"
+                                               Text="Sound"
+                                               Style="{StaticResource BodyTextBlockStyle}"/>
+                                    <TextBlock x:Uid="SettingsRow_NotifSound_Description"
+                                               Text="Notification sound played alongside the toast."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </toolkit:SettingsCard.Header>
+                            <toolkit:SettingsCard.Content>
+                                <ComboBox x:Uid="SettingsPage_NotificationSoundComboBox"
+                                          x:Name="NotificationSoundComboBox" MinWidth="140"
+                                          SelectedValuePath="Tag"
+                                          SelectedValue="{Binding NotificationSound, Mode=TwoWay}"
+                                          AutomationProperties.AutomationId="SettingsPageSound">
+                                    <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_48" Content="Default" Tag="Default"/>
+                                    <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_49" Content="None" Tag="None"/>
+                                    <ComboBoxItem x:Uid="SettingsPage_ComboBoxItem_50" Content="Subtle" Tag="Subtle"/>
+                                </ComboBox>
+                            </toolkit:SettingsCard.Content>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16"
+                                              AutomationProperties.AutomationId="GeneralNotificationCategoriesCard">
+                            <toolkit:SettingsCard.Header>
+                                <TextBlock x:Uid="SettingsPage_TextBlock_52"
+                                           Text="Notify me about"
+                                           Style="{StaticResource BodyStrongTextBlockStyle}"/>
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyHealthCb" x:Name="NotifyHealthCb"
                                           Content="Health alerts" IsChecked="{Binding NotifyHealth, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyHealth"/>
-                                <CheckBox Grid.Row="0" Grid.Column="1" x:Uid="NotifyUrgentCb" x:Name="NotifyUrgentCb"
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyUrgentCb" x:Name="NotifyUrgentCb"
                                           Content="Urgent messages" IsChecked="{Binding NotifyUrgent, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyUrgent"/>
-                                <CheckBox Grid.Row="1" Grid.Column="0" x:Uid="NotifyReminderCb" x:Name="NotifyReminderCb"
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyReminderCb" x:Name="NotifyReminderCb"
                                           Content="Reminders" IsChecked="{Binding NotifyReminder, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyReminder"/>
-                                <CheckBox Grid.Row="1" Grid.Column="1" x:Uid="NotifyEmailCb" x:Name="NotifyEmailCb"
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyEmailCb" x:Name="NotifyEmailCb"
                                           Content="Email summaries" IsChecked="{Binding NotifyEmail, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyEmail"/>
-                                <CheckBox Grid.Row="2" Grid.Column="0" x:Uid="NotifyCalendarCb" x:Name="NotifyCalendarCb"
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyCalendarCb" x:Name="NotifyCalendarCb"
                                           Content="Calendar events" IsChecked="{Binding NotifyCalendar, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyCalendar"/>
-                                <CheckBox Grid.Row="2" Grid.Column="1" x:Uid="NotifyBuildCb" x:Name="NotifyBuildCb"
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyBuildCb" x:Name="NotifyBuildCb"
                                           Content="Build notifications" IsChecked="{Binding NotifyBuild, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyBuild"/>
-                                <CheckBox Grid.Row="3" Grid.Column="0" x:Uid="NotifyStockCb" x:Name="NotifyStockCb"
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyStockCb" x:Name="NotifyStockCb"
                                           Content="Stock alerts" IsChecked="{Binding NotifyStock, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyStock"/>
-                                <CheckBox Grid.Row="3" Grid.Column="1" x:Uid="NotifyInfoCb" x:Name="NotifyInfoCb"
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <CheckBox x:Uid="NotifyInfoCb" x:Name="NotifyInfoCb"
                                           Content="Info messages" IsChecked="{Binding NotifyInfo, Mode=TwoWay}"
                                           AutomationProperties.AutomationId="SettingsPageNotifyInfo"/>
-                            </Grid>
-                            <Button x:Uid="TestNotificationButton" x:Name="TestNotificationButton"
-                                    Content="Send test notification" Click="OnTestNotification"
-                                    HorizontalAlignment="Left"/>
-                        </StackPanel>
-                    </toolkit:SettingsCard.Content>
-                </toolkit:SettingsCard>
+                            </toolkit:SettingsCard.Header>
+                        </toolkit:SettingsCard>
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
 
                 <toolkit:SettingsExpander x:Name="DesktopCompanionExpander" x:Uid="DesktopCompanion_Expander"
                                           Header="Desktop lobster"
@@ -391,29 +403,42 @@
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8"
-                        Padding="16"
+                        Padding="{StaticResource SettingsRowPadding}"
                         Visibility="Collapsed"
                         AutomationProperties.AutomationId="LocalGatewayExpander">
                     <StackPanel Spacing="12">
                         <InfoBar x:Uid="SettingsPage_MSIXInstallationDetected" x:Name="MsixWarningBar"
+                                 Visibility="{x:Bind MsixWarningBar.IsOpen, Mode=OneWay}"
                                  Severity="Warning"
                                  IsOpen="False"
                                  IsClosable="False"
                                  Title="Gateway cleanup"
                                  Message="Uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. Use Remove Local Gateway below to remove a Gateway while keeping the app."/>
 
-                        <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
-                                   Text="Removes the app-owned WSL distro, its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
-                                   Style="{StaticResource BodyTextBlockStyle}"
-                                   TextWrapping="Wrap"/>
-
-                        <Button x:Uid="SettingsPage_RemoveLocalGateway" x:Name="RemoveGatewayButton"
-                                HorizontalAlignment="Right"
-                                Content="Remove Local Gateway"
-                                Click="OnRemoveGateway"
-                                AutomationProperties.AutomationId="RemoveLocalGatewayButton"/>
+                        <Grid ColumnSpacing="24">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="0">
+                                <TextBlock x:Uid="SettingsPage_RemoveLocalGateway"
+                                           Text="Remove Local Gateway"
+                                           Style="{StaticResource BodyTextBlockStyle}"/>
+                                <TextBlock x:Uid="SettingsPage_RemovesTheWSLDistro" x:Name="GatewayBodyText"
+                                           Text="Removes the app-owned WSL distro, its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset."
+                                           Style="{StaticResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" x:Uid="SettingsPage_RemoveLocalGatewayAction" x:Name="RemoveGatewayButton"
+                                    VerticalAlignment="Center"
+                                    Content="Remove"
+                                    Click="OnRemoveGateway"
+                                    AutomationProperties.AutomationId="RemoveLocalGatewayButton"/>
+                        </Grid>
 
                         <InfoBar x:Name="UninstallResultBar"
+                                 Visibility="{x:Bind UninstallResultBar.IsOpen, Mode=OneWay}"
                                  IsOpen="False"
                                  IsClosable="True"/>
                     </StackPanel>
@@ -424,9 +449,9 @@
                                           IsExpanded="False"
                                           AutomationProperties.AutomationId="SettingsPageAdvancedExpander">
                     <toolkit:SettingsExpander.Items>
-                        <toolkit:SettingsCard>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
                             <toolkit:SettingsCard.Header>
-                                <StackPanel Spacing="4">
+                                <StackPanel Spacing="0">
                                     <TextBlock x:Uid="SettingsRow_ShowDiagnostics_Header"
                                                Text="Enable Diagnostics"
                                                Style="{StaticResource BodyTextBlockStyle}"/>

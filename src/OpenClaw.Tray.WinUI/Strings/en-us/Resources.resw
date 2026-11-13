@@ -2347,8 +2347,11 @@ Use one of these options:
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Speech Model</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Speech-to-text is disabled. Configure models here, then enable the capability in Permissions when you're ready.</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Speech-to-text is disabled</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Enable it in Permissions to change these settings.</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>Open Permissions</value>
@@ -2419,8 +2422,11 @@ Use one of these options:
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Choose the voice used when reading responses aloud.</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Text-to-speech is disabled. Configure providers and voices here, then enable the capability in Permissions when you're ready.</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Text-to-speech is disabled</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Enable it in Permissions to change the local voice settings.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Provider</value>
@@ -2497,13 +2503,13 @@ Use one of these options:
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
     <value>Voice ID</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. male-qn-qingse</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
     <value>Model</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve">
     <value>speech-2.8-hd</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
@@ -3687,7 +3693,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>Use gateway's web chat interface</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>Show notifications</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3930,10 +3936,10 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>Lets agents read device location via location.* commands.</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3957,11 +3963,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>Inactive</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>See sessions ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>See sessions</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>See instances ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>See instances</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>Node mode</value>
@@ -3978,8 +3984,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>Connect</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>Manage permissions ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>Manage permissions</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>Help us fix this connection:</value>
@@ -4227,7 +4236,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>Programs the agent runs on this PC are contained.</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>What gets contained</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4318,7 +4327,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Read &amp; write</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Windows runtime folders and private scratch space remain available. Being on PATH does not grant access. Reapply a preset to reset folder choices.</value>
+    <value>Protected folders stay blocked. Windows runtime folders stay available; being on PATH grants no access.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>Additional folders</value>
@@ -4341,11 +4350,17 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Add folder</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>Add a new folder</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 Clipboard</value>
+    <value>Clipboard</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>Clipboard access</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>Clipboard often contains passwords, tokens, and private text. Read access may leak this to the agent (and over the internet, if enabled).</value>
+    <value>Clipboard often holds passwords and private text. Read access exposes it to the agent.</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>None (default)</value>
@@ -4360,7 +4375,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Read &amp; write</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 Network</value>
+    <value>Network</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>Allow internet</value>
@@ -4372,7 +4387,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Local network devices and shares are not included yet.</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ Limits</value>
+    <value>Limits</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>Command timeout: 30 sec</value>
@@ -4555,8 +4570,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>Remove Local Gateway</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>Remove</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Saved</value>
@@ -5775,7 +5793,7 @@ Open Channels in the web dashboard.</value>
     <value>Removal failed</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>Remove Local Gateway</value>
+    <value>Remove</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>Removing distro…</value>
@@ -6233,7 +6251,7 @@ Open Channels in the web dashboard.</value>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Choose the model the Gateway uses</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Custom Hugging Face model (optional)</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo, owner/repo:Q4_K_M, or a huggingface.co link</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>owner/repo, owner/repo:Q4_K_M, or a huggingface.co link</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Public, single-file GGUF models only. When this is filled in, it is used instead of the selection above.</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>This model may not fit</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>It needs about {0:F1} GB of GPU memory and {1} has {2:F1} GB. It may fail to start or run slowly.</value></data>
@@ -6262,7 +6280,7 @@ Open Channels in the web dashboard.</value>
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Default model</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Use this model</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Refresh</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Manage Local AI</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>Manage Local AI</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Local AI: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (sign in to the provider first)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>The default model was updated.</value></data>
@@ -6276,7 +6294,7 @@ Open Channels in the web dashboard.</value>
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Sign-in method</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Sign in</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider ID</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Base URL</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API type</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatible (Chat Completions)</value></data>
@@ -6284,7 +6302,7 @@ Open Channels in the web dashboard.</value>
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API key (optional for OpenAI-compatible)</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model IDs</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Add provider</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (connected)</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Loading providers...</value></data>
@@ -7257,7 +7275,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Access for {0}</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Remove permission for {0}</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Folders</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Choose what the agent can do in each folder. No access blocks that folder, but explicitly listed subfolders keep their own access. Protected folders stay blocked.</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Choose what the agent can do in each folder; explicitly listed subfolders keep their own access.</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>No access</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>User profile</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7859,7 +7877,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Connect to the Gateway to use this action.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Connected apps</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Devices and Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Devices and Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Devices and Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>Issues</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Last known offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Last known online</value></data>
@@ -10101,4 +10119,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Back to conversation</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Show panel</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Conversation panels</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Refresh</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
 </root>

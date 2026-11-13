@@ -912,7 +912,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         Assert.True(hero.ActualHeight > 0);
         Assert.InRange(Math.Abs(heroBounds.Left - columnBounds.Left - column.Padding.Left), 0, 0.5);
         Assert.InRange(Math.Abs(heroBounds.Right - columnBounds.Right + column.Padding.Right), 0, 0.5);
-        Assert.Equal(new Thickness(1), hero.BorderThickness);
+        Assert.Equal(new Thickness(0), hero.BorderThickness);
     }
 
     private static (double Padding, double Content) ExpectedColumn(double width)
@@ -1090,14 +1090,13 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
     [InlineData(761)]
     [InlineData(739)]
     [InlineData(937)]
-    public Task HeroWebButton_HasNativeBorderAndAlignsWithTheHeroContent(double width) =>
+    public Task HeroWebButton_IsAnIconCommandThatAlignsWithTheHeroContent(double width) =>
         WithFreshGalleryAsync(width, host =>
         {
             var button = ById<Button>(host, "DashboardsOpenWeb");
-            Assert.Contains(FindDescendants<TextBlock>(button), text => text.Text == "Open in web");
+            Assert.Equal("Open in web", AutomationProperties.GetName(button));
             Assert.Contains(FindDescendants<FontIcon>(button), icon => icon.Glyph == "\uE8A7");
-            Assert.True(button.BorderThickness.Right > 0, "The web command must retain its native button border.");
-            AssertDefaultWebButton(host, button);
+            AssertIconWebButton(host, button);
             var scroller = ById<ScrollViewer>(host, "DashboardsGalleryScroll");
             var scrollPeer = FrameworkElementAutomationPeer.CreatePeerForElement(scroller);
             var scrollProvider = Assert.IsAssignableFrom<IScrollProvider>(scrollPeer!.GetPattern(PatternInterface.Scroll));
@@ -1157,7 +1156,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                     var gallery = ById<Border>(host, "DashboardsGallery");
                     Assert.InRange(Math.Abs(column.Left - Bounds(gallery, host).Left - gallery.Padding.Left), 0, 0.5);
                     Assert.InRange(Math.Abs(column.Right - Bounds(gallery, host).Right + gallery.Padding.Right), 0, 0.5);
-                    AssertDefaultWebButton(host, ById<Button>(host, "DashboardsOpenWeb"));
+                    AssertIconWebButton(host, ById<Button>(host, "DashboardsOpenWeb"));
                     AssertHeroActionsRightEdge(host);
                 });
             }
@@ -1252,42 +1251,12 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             width: width, onViewportChanged: state.SetViewportWidth, afterMounted: afterMounted, viewportHeight: viewportHeight);
     }
 
-    private static void AssertDefaultWebButton(ReactorHostControl host, Button button)
+    private static void AssertIconWebButton(ReactorHostControl host, Button button)
     {
-        var fill = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(button.Background);
-        Assert.True(fill.Color.A > 0 && fill.Opacity > 0);
-        Assert.NotNull(button.BorderBrush);
-        Assert.Null(button.Style);
-        Assert.True(double.IsNaN(button.Height));
-        Assert.True(double.IsNaN(button.Width));
-        var localKeys = button.Resources.Select(entry => entry.Key).ToArray();
-        Assert.DoesNotContain(localKeys, key => key is "ButtonBackground" or "ButtonBorderBrush");
-        var parent = Assert.IsAssignableFrom<Panel>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(button));
-        var pristine = new Button { RequestedTheme = button.ActualTheme };
-        parent.Children.Add(pristine);
-        try
-        {
-            var pristineKeys = pristine.Resources.Select(entry => entry.Key).ToArray();
-            Assert.DoesNotContain(pristineKeys, key => key is "ButtonBackground" or "ButtonBorderBrush");
-            Assert.True(pristine.Resources.ContainsKey("ButtonBackground"));
-            pristine.Resources["ButtonBackground"] = pristine.Resources["ButtonBackground"];
-            var injectedKeys = pristine.Resources.Select(entry => entry.Key).ToArray();
-            Assert.Contains("ButtonBackground", injectedKeys);
-        }
-        finally
-        {
-            parent.Children.Remove(pristine);
-        }
-        Assert.True(button.Padding.Left > 0 && button.Padding.Right > 0);
-        var buttonBounds = Bounds(button, host);
-        foreach (var text in FindDescendants<TextBlock>(button))
-        {
-            var textBounds = Bounds(text, host);
-            Assert.True(textBounds.Left - buttonBounds.Left >= 8,
-                $"Button content starts too close to its left border: {text.Text}.");
-            Assert.True(buttonBounds.Right - textBounds.Right >= 8,
-                $"Button content ends too close to its right border: {text.Text}.");
-        }
+        Assert.InRange(button.ActualWidth, 31.5, 32.5);
+        Assert.InRange(button.ActualHeight, 31.5, 32.5);
+        Assert.NotNull(ToolTipService.GetToolTip(button));
+        Assert.DoesNotContain(FindDescendants<TextBlock>(button), text => text.Text == "Open in web");
         var refresh = ById<Button>(host, "DashboardsRefresh");
         Assert.True(Bounds(button, host).Right < Bounds(refresh, host).Left,
             "Open in web must precede Refresh without overlapping.");

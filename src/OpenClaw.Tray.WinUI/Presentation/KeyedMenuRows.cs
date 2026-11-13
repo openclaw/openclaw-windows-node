@@ -8,37 +8,89 @@
 //
 // Usage:
 //   var rows = new KeyedMenuRows();
-//   var shown = rows.Sync(parent.MenuItems, ids, id => new NavigationViewItem { Tag = id });
+//   rows.Adopt("main", rowDeclaredInXaml);
+//   var shown = rows.Sync(parent.MenuItems, start: 0, ids, id => new NavigationViewItem { Tag = id });
 //   // shown[i] is the row for ids[i]; update its content in place.
+//
+//   // For open-ended keys such as sessions, pool rows so memory stays near the most rows shown at once:
+//   var sessions = new KeyedMenuRows(poolRetiredRows: true);
+//   sessions.Sync(menu, start, keys, Create, reuse: (key, row) => Rebind(row, key));
 using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace OpenClawTray.Presentation;
 
-internal sealed class KeyedMenuRows
+internal sealed class KeyedMenuRows(bool poolRetiredRows = false)
 {
-    // Rows for keys no longer shown stay referenced so WinUI never calls into a collected item, and a
-    // returning key gets its original row back. Growth is bounded by the distinct keys ever shown.
+    // Every row this instance created or adopted stays referenced so WinUI never calls into a collected
+    // item. Without pooling, a retired row stays bound to its key and comes back if the key returns;
+    // growth is bounded by the distinct keys ever shown. With pooling, rows retired by an earlier Sync
+    // are rebound to new keys, so the total is bounded by the most rows shown across two consecutive syncs.
     private readonly Dictionary<string, object> _rows = new(StringComparer.Ordinal);
+    private readonly Stack<object> _pool = new();
 
     /// <summary>
-    /// Makes <paramref name="items"/> contain exactly one row per distinct key in
-    /// <paramref name="keys"/>, in that order. Existing rows are reused; <paramref name="create"/>
-    /// runs only for a key seen for the first time. Returns the rows in key order.
+    /// Takes ownership of a row that already exists, for example one declared in XAML, so a later
+    /// <see cref="Sync"/> reuses it for <paramref name="key"/> instead of releasing it.
     /// </summary>
-    public IReadOnlyList<object> Sync(IList<object> items, IReadOnlyList<string> keys, Func<string, object> create)
+    public void Adopt(string key, object row) => _rows.TryAdd(key, row);
+
+    /// <summary>
+    /// Places one row per distinct key in <paramref name="keys"/> at
+    /// <paramref name="items"/>[<paramref name="start"/>..], in key order, and removes this
+    /// instance's rows for other keys. Items it does not own are left alone. A key keeps its row while
+    /// it stays shown. A new key takes a pooled row through <paramref name="reuse"/> when pooling is on;
+    /// otherwise <paramref name="create"/> makes one. Returns the rows in key order.
+    /// </summary>
+    public IReadOnlyList<object> Sync(
+        IList<object> items, int start, IReadOnlyList<string> keys, Func<string, object> create,
+        Action<string, object>? reuse = null)
     {
-        var desired = new List<object>(keys.Count);
-        foreach (var key in keys.Distinct(StringComparer.Ordinal))
+        if (poolRetiredRows && reuse is null)
+            throw new ArgumentNullException(nameof(reuse), "A pooling instance needs reuse, or its pool never drains.");
+        var distinct = keys.Distinct(StringComparer.Ordinal).ToList();
+        // Retired keys keep their rows until the new rows are assigned, so every row stays owned (and
+        // removable from the menu) even if create or reuse throws.
+        var retiredKeys = poolRetiredRows
+            ? _rows.Keys.Except(distinct, StringComparer.Ordinal).ToArray()
+            : [];
+        var desired = new List<object>(distinct.Count);
+        foreach (var key in distinct)
         {
             if (!_rows.TryGetValue(key, out var row))
-                _rows[key] = row = create(key);
+            {
+                // Only rows retired by an earlier Sync are in the pool, so a reused row is never in the menu.
+                if (reuse is not null && _pool.TryPop(out var pooled))
+                {
+                    _rows[key] = pooled;
+                    try { reuse(key, pooled); }
+                    catch
+                    {
+                        // Keep the row owned, but unbound, so the next Sync for this key rebinds it.
+                        _rows.Remove(key);
+                        _pool.Push(pooled);
+                        throw;
+                    }
+                    row = pooled;
+                }
+                else
+                {
+                    _rows[key] = row = create(key);
+                }
+            }
             desired.Add(row);
         }
-        foreach (var stale in items.Where(item => !desired.Any(row => ReferenceEquals(row, item))).ToArray())
+        foreach (var key in retiredKeys)
+        {
+            _pool.Push(_rows[key]);
+            _rows.Remove(key);
+        }
+        var owned = new HashSet<object>(_rows.Values.Concat(_pool), ReferenceEqualityComparer.Instance);
+        var kept = new HashSet<object>(desired, ReferenceEqualityComparer.Instance);
+        foreach (var stale in items.Where(item => owned.Contains(item) && !kept.Contains(item)).ToArray())
             items.Remove(stale);
-        WorkspaceItemsSync.Arrange(items, 0, desired);
+        WorkspaceItemsSync.Arrange(items, start, desired);
         return desired;
     }
 }

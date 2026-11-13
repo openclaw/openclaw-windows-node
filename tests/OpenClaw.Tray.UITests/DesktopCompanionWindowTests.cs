@@ -245,6 +245,10 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
     {
         await WithWindowAsync(async window =>
         {
+            var root = (FrameworkElement)window.Content;
+            var mascot = Mascot(root);
+            var bubble = Control<StackPanel>(root, "DesktopCompanionBubble");
+            var message = Control<TextBlock>(root, "DesktopCompanionMessage");
             window.ApplyTheme("Dark");
             window.Present(new()
             {
@@ -252,19 +256,27 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 Message = "<b>Literal text</b> & a lobster",
                 Severity = severity
             });
-            var root = (FrameworkElement)window.Content;
+            // The popup and mascot reconcile on separate Reactor hosts.
             await TestSupport.WaitForRenderedConditionAsync(
-                () => Control<StackPanel>(root, "DesktopCompanionBubble").ActualHeight > 0, "notification layout");
+                () => bubble.ActualHeight > 0 && bubble.Visibility == Visibility.Visible &&
+                    mascot.Mood == mood && message.Text == "<b>Literal text</b> & a lobster",
+                "notification layout, mood and literal text",
+                () => $"Mood: {mascot.Mood}; bubble: {bubble.Visibility}, height: {bubble.ActualHeight}; text: {message.Text}");
             Assert.Equal(ElementTheme.Dark, root.RequestedTheme);
-            Assert.Equal(mood, Mascot(root).Mood);
+            Assert.Same(mascot, Mascot(root));
+            Assert.Equal(mood, mascot.Mood);
             Assert.Equal("<b>Literal text</b> & a lobster", Control<TextBlock>(root, "DesktopCompanionMessage").Text);
             Assert.Equal(Visibility.Visible, Control<StackPanel>(root, "DesktopCompanionBubble").Visibility);
             var peer = FrameworkElementAutomationPeer.CreatePeerForElement(Control<Button>(root, "DesktopCompanionDismiss"));
             ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
             await TestSupport.WaitForRenderedConditionAsync(
-                () => Control<StackPanel>(root, "DesktopCompanionBubble").Visibility == Visibility.Collapsed, "bubble dismissal");
-            Assert.Equal(OnboardingMascotMood.Idle, Mascot(root).Mood);
-            Assert.Empty(Control<TextBlock>(root, "DesktopCompanionMessage").Text);
+                () => bubble.Visibility == Visibility.Collapsed &&
+                    mascot.Mood == OnboardingMascotMood.Idle && message.Text.Length == 0,
+                "bubble dismissal, idle mood and cleared text",
+                () => $"Mood: {mascot.Mood}; bubble: {bubble.Visibility}; text: {message.Text}");
+            Assert.Same(mascot, Mascot(root));
+            Assert.Equal(OnboardingMascotMood.Idle, mascot.Mood);
+            Assert.Empty(message.Text);
         });
     }
 

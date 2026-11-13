@@ -16,6 +16,14 @@ internal static class UsageSessionsSection
 {
     public const int PreviewRows = 10;
 
+    // Cards sit 4px apart, as on the Sessions page.
+    public const double CardGap = 4;
+
+    // The card's text is a 20px Body row over a 16px Caption row; the cost column keeps one width so
+    // costs and token counts align between cards.
+    private const double TextRowHeight = 20;
+    private const double CostColumnWidth = 128;
+
     public static Element Render(UsagePageState state, UsageDashboard dashboard, UsagePageProps props, UsagePageLayout layout) =>
         Component<UsageSessionsList, UsageSessionsListProps>(new(state, dashboard.Sessions, props, layout));
 
@@ -85,6 +93,7 @@ internal static class UsageSessionsSection
         var cost = row.Computing ? S("Usage_Sessions_Computing")
             : raw?.Usage is null || !raw.Usage.Totals.HasValue("totalCost") ? Dash : unpriced ? S("Usage_Overview_Unpriced")
             : AnalysisCost(row.Cost, row.LowerBound || raw.Usage.Totals.MissingCostEntries > 0);
+        var tokens = raw?.Usage is null ? Dash : ReportedTokens(raw.Usage.Totals, "totalTokens", row.Tokens);
         var subtitle = string.Join(" · ", new[]
         {
             row.AgentId, row.Model,
@@ -92,39 +101,64 @@ internal static class UsageSessionsSection
             row.Errors > 0 ? FN("Usage_Overview_ErrorsCountFormat", row.Errors) : null,
         }.Where(value => !string.IsNullOrEmpty(value)));
         var meta = HStack(PageResponsiveLayout.GapInner,
-            TextBlock(cost).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
-                .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(cost).AutomationId("UsageRowCost_" + row.Key),
-            TextBlock(raw?.Usage is null ? Dash : ReportedTokens(raw.Usage.Totals, "totalTokens", row.Tokens)).FontSize(12).Foreground(SecondaryText)
-                .TextWrapping(TextWrapping.NoWrap)).AutomationId("UsageRowMeta_" + row.Key);
-        var copy = VStack(4,
+            TextBlock(cost).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                .ToolTip(cost).AutomationId("UsageRowCost_" + row.Key),
+            TextBlock(tokens).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.NoWrap))
+            .AutomationId("UsageRowMeta_" + row.Key);
+        // Two text rows, a Body name over a Caption detail, as in the Sessions page navigation card.
+        var copy = VStack(0,
             Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                TextBlock(row.Title).FontWeight(FontWeights.SemiBold).TextWrapping(TextWrapping.NoWrap)
+                TextBlock(row.Title).TextWrapping(TextWrapping.NoWrap)
                     .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(row.Title).VAlign(VerticalAlignment.Center)
                     .AutomationId("UsageRowTitle_" + row.Key).Grid(column: 0),
                 layout.Tier == PageWidthTier.Wide && UsageInsights.IsAutomation(row.Key)
+                    // The pill's 24px minimum height would otherwise make automation rows taller than the rest.
                     ? Pill(S("Usage_Automation"), "UsageAutomation_" + row.Key).VAlign(VerticalAlignment.Center)
-                        .Margin(PageResponsiveLayout.GapInner, 0, 0, 0).Grid(column: 1)
-                    : null).MinHeight(28),
+                        .Margin(PageResponsiveLayout.GapInner, -2, 0, -2).Grid(column: 1)
+                    : null).MinHeight(TextRowHeight),
             TextBlock(subtitle).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.NoWrap)
                 .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(subtitle).AutomationId("UsageRowSubtitle_" + row.Key),
             layout.Narrow ? meta.HAlign(HorizontalAlignment.Left) : null).AutomationId("UsageRowCopy_" + row.Key);
-        return Grid(layout.Narrow ? [GridSize.Auto, GridSize.Star()] : [GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+        // Fixed width and right aligned so cost and token counts line up between cards.
+        Element costColumn = VStack(0,
+                TextBlock(cost).TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis)
+                    .ToolTip(cost).HAlign(HorizontalAlignment.Right),
+                TextBlock(tokens).FontSize(12).Foreground(SecondaryText).TextWrapping(TextWrapping.NoWrap)
+                    .TextTrimming(TextTrimming.CharacterEllipsis).HAlign(HorizontalAlignment.Right))
+            .Width(CostColumnWidth).VAlign(VerticalAlignment.Center).AutomationId("UsageRowMeta_" + row.Key);
+        return Grid(layout.Narrow
+                    ? [GridSize.Auto, GridSize.Star(), GridSize.Auto]
+                    : [GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto],
                 Avatar(row.AgentId ?? row.Title, row.AgentId, 32).VAlign(VerticalAlignment.Center).Grid(column: 0),
-                copy
-                    .Margin(12, 0, 12, 0).Grid(column: 1),
-                layout.Narrow ? null : VStack(2, TextBlock(cost).FontWeight(FontWeights.SemiBold)
-                        .TextWrapping(TextWrapping.NoWrap).TextTrimming(TextTrimming.CharacterEllipsis).MaxWidth(160).ToolTip(cost),
-                    TextBlock(raw?.Usage is null ? Dash : ReportedTokens(raw.Usage.Totals, "totalTokens", row.Tokens)).FontSize(12).Foreground(SecondaryText))
-                    .VAlign(VerticalAlignment.Center).HAlign(HorizontalAlignment.Right).AutomationId("UsageRowMeta_" + row.Key).Grid(column: 2))
+                copy.VAlign(VerticalAlignment.Center).Margin(12, 0, 12, 0).Grid(column: 1),
+                layout.Narrow ? null : costColumn.Margin(0, 0, 12, 0).Grid(column: 2),
+                ChatButton(row.Key, row.Title, props, layout.Narrow).Grid(column: layout.Narrow ? 2 : 3))
             .HAlign(HorizontalAlignment.Stretch)
-            .Padding(0, PageResponsiveLayout.GapInner)
+            // The Expander's 1px border above and below completes the 16px card padding, for 68px outside.
+            .Padding(0, CardPadding - 1)
             .AutomationId("UsageSession_" + row.Key);
     }
 
-    internal static Element ChatButton(string key, string title, UsagePageProps props) =>
-        IconButton("\uE8BD", F("Usage_OpenChatForFormat", title), () => props.OpenConversation(key),
-                "UsageChat_" + key, props.Controller.State.Availability == UsageAvailability.Connected)
-            .ToolTip(S("Usage_OpenChat"));
+    /// <summary>
+    /// The regular Open chat button in the card header, before the expander's native chevron. It is its own
+    /// control: it never toggles the card, and stays disabled while the Gateway is unavailable.
+    /// </summary>
+    internal static Element ChatButton(string key, string title, UsagePageProps props, bool compact)
+    {
+        var glyph = TextBlock("\uE8BD").FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(14)
+            .VAlign(VerticalAlignment.Center);
+        var button = Button(compact
+                    ? glyph
+                    : HStack(8, glyph, TextBlock(S("Usage_OpenChat")).TextWrapping(TextWrapping.NoWrap)
+                        .VAlign(VerticalAlignment.Center)),
+                () => props.OpenConversation(key))
+            .IsEnabled(props.Controller.State.Availability == UsageAvailability.Connected)
+            .AutomationName(F("Usage_OpenChatForFormat", title))
+            .AutomationId("UsageChat_" + key)
+            .VAlign(VerticalAlignment.Center);
+        return compact ? button.ToolTip(S("Usage_OpenChat")) : button;
+    }
 }
 
 internal sealed record UsageSessionsListProps(UsagePageState State, UsageSessionsView Sessions, UsagePageProps Props, UsagePageLayout Layout);
@@ -192,7 +226,7 @@ internal sealed class UsageSessionsList : Component<UsageSessionsListProps>
                 Pill(Count(rows.Count), "UsageSessionsCount").HelpText(S("Usage_LoadedSessions"))),
             Note(F("Usage_Sessions_ShownLoadedFormat", Count(visible.Count), Count(rows.Count)))
                 .AutomationId("UsageSessionsShownLoaded"),
-            VStack(PageResponsiveLayout.GapInner, body.ToArray())).AutomationId("UsageSessions");
+            VStack(UsageSessionsSection.CardGap, body.ToArray())).AutomationId("UsageSessions");
     }
 }
 
@@ -227,11 +261,7 @@ internal sealed class UsageSessionCard : Component<UsageSessionCardProps>
             .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .ItemStatus(S(open ? "Usage_Selected" : "Usage_Sessions_SelectHint"))
             .AutomationName(row.Title).AutomationId("UsageSessionExpander_" + row.Key);
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-            expander.Grid(column: 0),
-            UsageSessionsSection.ChatButton(row.Key, row.Title, Props.Actions)
-                .VAlign(open ? VerticalAlignment.Top : VerticalAlignment.Center)
-                .Margin(PageResponsiveLayout.GapInner, open ? CardPadding : 0, 0, 0).Grid(column: 1))
+        return Grid([GridSize.Star()], [GridSize.Auto], expander.Grid(column: 0))
             .AutomationId("UsageSessionCard_" + row.Key)
             .OnMountAdd(control => AttachReveal((Microsoft.UI.Xaml.Controls.Grid)control, row.Key));
     }

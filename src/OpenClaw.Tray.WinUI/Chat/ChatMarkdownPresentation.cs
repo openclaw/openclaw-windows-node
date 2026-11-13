@@ -109,6 +109,7 @@ internal static class ChatMarkdownPresentation
             // Fenced code owns its syntax highlighters; see ApplyCodeSyntax.
             if (IsCodeText(rich))
                 return;
+            rich.FontFamily = new FontFamily(ChatVisuals.BodyFontFamily);
             // Tight list items and table cells bypass the Paragraph hook; give them the prose tone.
             if (!compactSecondaryReading && rich.Style is null)
             {
@@ -295,6 +296,7 @@ internal static class ChatMarkdownPresentation
                 });
         }
         var column = (marker with { TextAlignment = TextAlignment.Right })
+            .FontFamily(ChatVisuals.BodyFontFamily)
             .MinWidth(ChatVisuals.ListMarkerColumn)
             .Set(text => StyleListMarker(text, compactSecondaryReading));
         if (!compactSecondaryReading && content is RichTextBlockElement rich && !IsHeading(content))
@@ -336,6 +338,7 @@ internal static class ChatMarkdownPresentation
                 {
                     marker.TextAlignment = TextAlignment.Right;
                     marker.MinWidth = ChatVisuals.ListMarkerColumn;
+                    marker.FontFamily = new FontFamily(ChatVisuals.BodyFontFamily);
                     StyleListMarker(marker, compactSecondaryReading);
                 }
             }
@@ -382,6 +385,7 @@ internal static class ChatMarkdownPresentation
         {
             return (rich with
             {
+                FontFamily = new FontFamily(ChatVisuals.BodyFontFamily),
                 FontSize = size,
                 FontWeight = heading ? FontWeights.SemiBold : FontWeights.Normal,
                 LineHeight = heading ? size * 1.4 : ChatVisuals.BodyLineHeight,
@@ -586,7 +590,8 @@ internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclos
                 setExpanded) with
             {
                 HeaderContent = MarkdownTextSelection.Surface(disclosure.Summary,
-                    TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)),
+                    TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)
+                        .FontFamily(ChatVisuals.BodyFontFamily)),
             })
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .HAlign(HorizontalAlignment.Stretch)

@@ -69,7 +69,27 @@ public sealed partial class GatewayFixtureUiTests
     private readonly record struct UsageHeroBounds(System.Windows.Rect Page, System.Windows.Rect Hero,
         System.Windows.Rect Range, System.Windows.Rect OpenWeb, System.Windows.Rect Export);
 
-    private sealed record UsageHeroLayout(UsageHeroBounds Bounds, AutomationElement Marker);
+    private sealed record UsageHeroLayout(UsageHeroBounds Bounds, AutomationElement PageRoot, AutomationElement Marker);
+
+    /// <summary>
+    /// Waits for two identical <see cref="TryReadUsageHeroLayout"/> samples and returns the second.
+    /// Use it after a resize or scroll instead of reading hero peers once.
+    /// </summary>
+    private static async Task<UsageHeroLayout> WaitForSettledUsageHeroLayoutAsync(GatewayFixtureRun run)
+    {
+        UsageHeroLayout? previous = null;
+        UsageHeroLayout? settled = null;
+        await run.WaitForAsync(async () =>
+        {
+            await Task.Delay(UsageResizeSampleInterval);
+            var current = TryReadUsageHeroLayout(run);
+            var stable = current is not null && previous is not null && current.Bounds == previous.Bounds;
+            previous = current;
+            if (stable) settled = current;
+            return stable;
+        }, "stable hero layout with page, hero, actions, visible marker and visible range controls");
+        return settled!;
+    }
 
     /// <summary>
     /// Reads every peer the hero proof measures in one pass, or returns null while any is missing,
@@ -94,7 +114,7 @@ public sealed partial class GatewayFixtureUiTests
                 if (FindById(run, id) is { } control)
                     range.Union(control.Current.BoundingRectangle);
             return new(new(page.Current.BoundingRectangle, hero.Current.BoundingRectangle, range,
-                openWeb.Current.BoundingRectangle, export.Current.BoundingRectangle), marker);
+                openWeb.Current.BoundingRectangle, export.Current.BoundingRectangle), page, marker);
         }
         catch (ElementNotAvailableException)
         {
@@ -339,9 +359,9 @@ public sealed partial class GatewayFixtureUiTests
                     var titleBottom = FindById(run, "WorkspaceTitleBar")!.Current.BoundingRectangle.Bottom;
                     // Grids have no UIA peer. The mounted ContentInset test measures the actual
                     // surface against its host; this real-shell test measures the scrolling control
-                    // against native title chrome and keeps the 0/56-DIP integration contract.
-                    Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale
-                        - (collapsed ? 56 : 0)), 0, 2);
+                    // against native title chrome. The 56 DIP title band is the page inset in every
+                    // pane state, so the viewport starts exactly at its bottom edge.
+                    Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
                     var button = FindById(run, buttonId)!;
                     var feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
                     Assert.False(feedback.Current.IsOffscreen);
@@ -464,7 +484,7 @@ public sealed partial class GatewayFixtureUiTests
                             "collapsed error recapture");
                         await StableGeometry(true, "collapsed-retriggered");
                         Assert.Equal(contentIdentity, FindById(run, "UsagePageRoot")!.GetRuntimeId());
-                        Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale - 56), 0, 2);
+                        Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
                         feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
                         Assert.False(feedback.Current.IsOffscreen);
                         Assert.True(button.Current.BoundingRectangle.Bottom <= feedback.Current.BoundingRectangle.Top);
@@ -475,7 +495,7 @@ public sealed partial class GatewayFixtureUiTests
                     await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, name + "-layout.json"),
                         JsonSerializer.Serialize(new
                         {
-                            theme, collapsed, scale, expectedInsetDip = collapsed ? 56 : 0,
+                            theme, collapsed, scale, expectedInsetDip = 56,
                             titleBarBottom = titleBottom,
                             viewport = content.Current.BoundingRectangle,
                             button = button.Current.BoundingRectangle,
@@ -502,51 +522,67 @@ public sealed partial class GatewayFixtureUiTests
             var handle = new IntPtr(window.Current.NativeWindowHandle);
             var scale = UsageGetDpiForWindow(handle) / 96d;
             var before = UsageWindowBounds(handle);
-            var beforeHost = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width / scale;
+            var beforeHostWidth = 0d;
+            await WaitUiAsync(run, () => FindById(run, "UsagePageRoot") is { } host &&
+                (beforeHostWidth = host.Current.BoundingRectangle.Width) > 0, "measured Usage host before resize");
+            var beforeHost = beforeHostWidth / scale;
             var expected = ResizeUsageWindow(handle, 1400 + before.Width / scale - beforeHost, scale, capToDisplay: true);
             await WaitUiAsync(run, () => UsageWindowBounds(handle).Width == expected.Width, "wide Usage viewport");
-            var scrollElement = FindById(run, "UsagePageRoot")!;
+            // The resize can re-render the page, so read the scroll host from a settled layout.
+            var scrollElement = (await WaitForSettledUsageHeroLayoutAsync(run)).PageRoot;
             var scroll = (ScrollPattern)scrollElement.GetCurrentPattern(ScrollPattern.Pattern);
             await WaitUiAsync(run, () => scroll.Current.VerticallyScrollable, "scrollable Usage content");
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
             await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
                 FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage at top");
-            var hero = FindById(run, "UsageMast") ?? throw new InvalidOperationException("Missing Usage hero card.");
-            Assert.True(UsageRangeBounds(run).Top >= hero.Current.BoundingRectangle.Bottom);
-            OwnedWindowCapture.Save(run, window, "Usage-Light-hero-top.png", FindById(run, "UsagePageMarker")!);
+            var atTop = await WaitForSettledUsageHeroLayoutAsync(run);
+            // Use the page root from this settled layout so a re-rendered page cannot leave a stale scroll host.
+            scrollElement = atTop.PageRoot;
+            await WaitUiAsync(run, () =>
+                (scroll = (ScrollPattern)scrollElement.GetCurrentPattern(ScrollPattern.Pattern)).Current.VerticalScrollPercent == 0,
+                "settled Usage scroll host at top");
+            Assert.True(atTop.Bounds.Range.Top >= atTop.Bounds.Hero.Bottom);
+            OwnedWindowCapture.Save(run, window, "Usage-Light-hero-top.png", atTop.Marker);
             var top = scrollElement.Current.BoundingRectangle;
-            var previousTitle = FindById(run, "UsagePageMarker")!.Current.BoundingRectangle;
-            void RecordScrollObservation(string phase)
+            var previousTitle = atTop.Marker.Current.BoundingRectangle;
+            void RecordScrollObservation(string phase, AutomationElement? title)
             {
-                var title = FindById(run, "UsagePageMarker")
-                    ?? throw new InvalidOperationException("Missing Usage title during scroll proof.");
+                var card = FindById(run, "UsageMast");
+                var liveRoot = FindById(run, "UsagePageRoot");
                 File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "hero-scroll-" + phase + ".json"),
                     JsonSerializer.Serialize(new
                     {
                         utc = DateTimeOffset.UtcNow, phase, scrollPercent = scroll.Current.VerticalScrollPercent,
                         viewport = UsageBoundsForDiagnostic(scrollElement.Current.BoundingRectangle),
+                        scrollHostRuntimeId = scrollElement.GetRuntimeId(),
+                        livePageRootRuntimeId = liveRoot?.GetRuntimeId(),
                         previousTitle = UsageBoundsForDiagnostic(previousTitle),
-                        title = new { bounds = UsageBoundsForDiagnostic(title.Current.BoundingRectangle), offscreen = title.Current.IsOffscreen, runtimeId = title.GetRuntimeId() },
-                        card = new { bounds = UsageBoundsForDiagnostic(hero.Current.BoundingRectangle), offscreen = hero.Current.IsOffscreen, runtimeId = hero.GetRuntimeId() },
+                        title = title is null ? null : new { bounds = UsageBoundsForDiagnostic(title.Current.BoundingRectangle), offscreen = title.Current.IsOffscreen, runtimeId = title.GetRuntimeId() },
+                        card = card is null ? null : new { bounds = UsageBoundsForDiagnostic(card.Current.BoundingRectangle), offscreen = card.Current.IsOffscreen, runtimeId = card.GetRuntimeId() },
                     }, new JsonSerializerOptions { WriteIndented = true }));
             }
-            RecordScrollObservation("before");
+            RecordScrollObservation("before", atTop.Marker);
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 45);
+            AutomationElement? scrolledTitle = null;
             await WaitUiAsync(run, () =>
                 {
-                    RecordScrollObservation("after");
-                    var title = FindById(run, "UsagePageMarker")!;
+                    // A re-render can briefly remove the title peer. Record that and poll again;
+                    // only a found title that is offscreen or moved up proves the scroll.
+                    var title = FindById(run, "UsagePageMarker");
+                    RecordScrollObservation("after", title);
+                    if (title is null) return false;
                     var bounds = title.Current.BoundingRectangle;
-                    return scroll.Current.VerticalScrollPercent >= 44 &&
+                    var moved = scroll.Current.VerticalScrollPercent >= 44 &&
                         (title.Current.IsOffscreen || (!bounds.IsEmpty && bounds.Height > 0 &&
                             bounds.Top < top.Top && bounds.Top < previousTitle.Top - 100));
+                    if (moved) scrolledTitle = title;
+                    return moved;
                 },
                 "ordinary Usage header scrolled away");
             Assert.Equal(top, scrollElement.Current.BoundingRectangle);
             // Border peers can expose clipped bounds. The mounted HeroContent test asserts the
             // actual card transform; here retain visible title movement and the real-shell capture.
-            var scrolledTitle = FindById(run, "UsagePageMarker")!;
-            Assert.True(scrolledTitle.Current.IsOffscreen ||
+            Assert.True(scrolledTitle!.Current.IsOffscreen ||
                 (!scrolledTitle.Current.BoundingRectangle.IsEmpty && scrolledTitle.Current.BoundingRectangle.Height > 0 &&
                     scrolledTitle.Current.BoundingRectangle.Top < top.Top));
             OwnedWindowCapture.Save(run, window, "Usage-Light-hero-scrolled.png");
@@ -555,7 +591,7 @@ public sealed partial class GatewayFixtureUiTests
                 observedHostWidthDip = top.Width / scale,
                 viewportTopPx = top.Top,
                 observedScrollPercent = scroll.Current.VerticalScrollPercent,
-                headerOffscreen = FindById(run, "UsagePageMarker")!.Current.IsOffscreen,
+                headerOffscreen = scrolledTitle.Current.IsOffscreen,
                 scale,
                 syntheticGateway = true,
                 contract = "The hero card and its accent tint scroll inside an anchored viewport; no sticky header or page-wide wash."
@@ -606,18 +642,8 @@ public sealed partial class GatewayFixtureUiTests
                             var bounds = UsageWindowBounds(handle);
                             return bounds.Width == expected.Width && bounds.Height == expected.Height;
                         }, "exact hero capture window bounds");
-                        UsageHeroLayout? previous = null;
-                        UsageHeroLayout? settled = null;
-                        await run.WaitForAsync(async () =>
-                        {
-                            await Task.Delay(UsageResizeSampleInterval);
-                            var current = TryReadUsageHeroLayout(run);
-                            var stable = current is not null && previous is not null && current.Bounds == previous.Bounds;
-                            previous = current;
-                            if (stable) settled = current;
-                            return stable;
-                        }, "stable hero capture layout with page, hero, actions, visible marker and visible range controls");
-                        var layout = settled!.Bounds;
+                        var settled = await WaitForSettledUsageHeroLayoutAsync(run);
+                        var layout = settled.Bounds;
                         var frame = UsageWindowBounds(handle);
                         var page = layout.Page;
                         var client = OwnedWindowCapture.ReadOwnedClientBounds(run, window);

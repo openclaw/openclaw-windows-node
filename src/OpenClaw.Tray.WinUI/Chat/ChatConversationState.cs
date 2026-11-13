@@ -1894,6 +1894,25 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal ChatDataSnapshot? RetireAssistantStream(
+        string threadId,
+        string runId,
+        ChatProjectionContext context,
+        ChatRuntimeGeneration generation)
+    {
+        lock (_gate)
+        {
+            if (_disposed ||
+                !IsRuntimeGenerationCurrent(threadId, generation) ||
+                _lifecycle.IsThreadSuppressed(threadId) ||
+                !_timelines.TryGetValue(threadId, out var current))
+                return null;
+
+            ApplyEventLocked(threadId, new ChatAssistantStreamRetireEvent(runId), null);
+            return ReferenceEquals(current, _timelines[threadId]) ? null : BuildSnapshotLocked(context);
+        }
+    }
+
     internal ChatAssistantTransition ApplyAssistant(
         ChatMessageInfo message,
         string assistantText,
@@ -2010,6 +2029,13 @@ internal sealed class ChatConversationState
         }
     }
 
+    private static bool IsPersistedFinalAnswer(
+        ChatMessageInfo message,
+        ChatMessagePresentation? presentation) =>
+        message.IsTranscriptSnapshot &&
+        !string.IsNullOrWhiteSpace(presentation?.MessageId) &&
+        string.Equals(presentation.Phase, "final_answer", StringComparison.Ordinal);
+
     private void ApplyAssistantContentLocked(
         ChatMessageInfo message,
         string assistantText,
@@ -2049,7 +2075,8 @@ internal sealed class ChatConversationState
                         new ChatMessageEvent(
                             ChatContentFormatting.RepairContentBlockSeams(
                                 ChatContentFormatting.TruncateForChatEntry(part.Text)),
-                            ReconcilePrevious: true, IsStreaming: !message.IsFinal,
+                            ReconcilePrevious: true,
+                            IsStreaming: !message.IsFinal && !IsPersistedFinalAnswer(message, part.Presentation),
                             Presentation: part.Presentation, IsContentPart: true,
                             ReplacesStreamText: message.ReplacesStreamText && part.IsFirstPart,
                             ActivatesTurn: activatesTurn),
@@ -2071,7 +2098,8 @@ internal sealed class ChatConversationState
         else
         {
             ApplyEventLocked(threadId,
-                new ChatMessageEvent(assistantText, ReconcilePrevious: true, IsStreaming: !message.IsFinal,
+                new ChatMessageEvent(assistantText, ReconcilePrevious: true,
+                    IsStreaming: !message.IsFinal && !IsPersistedFinalAnswer(message, message.Presentation),
                     Presentation: message.Presentation, ReplacesStreamText: message.ReplacesStreamText,
                     ActivatesTurn: activatesTurn),
                 metadata);

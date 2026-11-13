@@ -432,16 +432,70 @@ internal sealed partial class SettingsShellView : UserControl
             // Hiding the section list closes the pane and showing it reopens it, so restore the saved choice.
             if (wasContentOnly && !value && CurrentApp.Settings is { } settings)
                 ApplyNavPaneState(settings);
+            ApplyContentSurface();
             UpdatePageAllocation();
         }
     }
 
+    private Grid? _navContentGrid;
+    private bool _contentSurfaceRemoved;
+
+    private void OnNavViewLoaded(object sender, RoutedEventArgs e)
+    {
+        _navContentGrid ??= FindNamedGrid(NavView, "ContentGrid");
+        ApplyContentSurface();
+    }
+
+    /// <summary>
+    /// An embedded (pinned) page sits over the Workspace NavigationView, whose template already paints the
+    /// content layer and leading stroke above Mica. This view's own NavigationView paints the same surface
+    /// through its template's <c>ContentGrid</c>, so ContentOnly removes it instead of stacking a second
+    /// layer. Showing the section list again rebinds both brushes to <c>ContentSurfaceSource</c>, which
+    /// resolves the same theme resources and follows theme changes.
+    /// </summary>
+    private void ApplyContentSurface()
+    {
+        if (_navContentGrid is not { } grid || _contentSurfaceRemoved == ContentOnly)
+            return;
+
+        if (ContentOnly)
+        {
+            grid.Background = null;
+            grid.BorderBrush = null;
+        }
+        else
+        {
+            grid.SetBinding(Panel.BackgroundProperty, SurfaceBinding(nameof(Border.Background)));
+            grid.SetBinding(Grid.BorderBrushProperty, SurfaceBinding(nameof(Border.BorderBrush)));
+        }
+        _contentSurfaceRemoved = ContentOnly;
+    }
+
+    private Microsoft.UI.Xaml.Data.Binding SurfaceBinding(string path) =>
+        new() { Source = ContentSurfaceSource, Path = new PropertyPath(path) };
+
+    private static Grid? FindNamedGrid(DependencyObject parent, string name)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is Grid grid && grid.Name == name)
+                return grid;
+            if (FindNamedGrid(child, name) is { } found)
+                return found;
+        }
+        return null;
+    }
+
     private void UpdatePageAllocation()
     {
-        // Existing pages retain their own padding. Only opted-in pages allocate shell chrome.
-        if (ContentFrame.Content is ISettingsPageContentInset page)
-            page.ApplyTopInset(ContentOnly ? _hostContentTopInset
-                : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen));
+        var inset = ContentOnly ? _hostContentTopInset
+            : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen);
+        AppNotificationOverlay.Margin = new Thickness(0, inset, 0, 0);
+        var page = ContentFrame.Content as ISettingsPageContentInset;
+        ContentFrame.Padding = new Thickness(0, page is null ? inset : 0, 0, 0);
+        page?.ApplyTopInset(inset);
     }
 
     internal void SetHostContentTopInset(double inset)
@@ -749,7 +803,8 @@ internal sealed partial class SettingsShellView : UserControl
 
         // Each agents.list response rebuilds this menu. Replacing its rows lets WinUI call into collected
         // items when the pane later changes (see KeyedMenuRows), so rows are reused in place.
-        var rows = _agentNavRows.Sync(AgentsNavItem.MenuItems, ids,
+        _agentNavRows.Adopt("main", DefaultAgentNavItem);
+        var rows = _agentNavRows.Sync(AgentsNavItem.MenuItems, 0, ids,
             id => new NavigationViewItem { Tag = $"agent:{id}", Icon = BuildAgentItemIcon() });
         for (var i = 0; i < ids.Count; i++)
         {

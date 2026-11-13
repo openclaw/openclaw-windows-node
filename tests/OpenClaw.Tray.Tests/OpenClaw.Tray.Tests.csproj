@@ -33,7 +33,6 @@
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModelChoice.cs" Link="Chat\ChatModelChoice.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatThinkingProfile.cs" Link="Chat\ChatThinkingProfile.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEffortInputPolicy.cs" Link="Chat\ChatEffortInputPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsController.cs" Link="Systems\SystemsController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsLayout.cs" Link="Systems\SystemsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsViewport.cs" Link="Systems\SystemsViewport.cs" />

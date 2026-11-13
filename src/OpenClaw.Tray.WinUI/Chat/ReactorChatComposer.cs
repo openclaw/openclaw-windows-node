@@ -208,7 +208,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .Concat(thinkingLevels.Select(option => option.Label))
             .ToArray();
         var thinkingLabel = thinkingIndex < 0 ? inputs.CurrentThread.ThinkingLevel! : thinkingNames[thinkingIndex];
-        var compactEffort = viewportWidth <= ChatVisuals.CompactEffortBreakpoint;
         var actionLabel = inputs.TurnActive
             ? Localized("Chat_Composer_Tooltip_Stop", "Stop")
             : Localized("Chat_Composer_Tooltip_Send", "Send");
@@ -288,6 +287,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                             .Grid(column: 1),
                         TextBlock(FluentIconCatalog.ChevronDown)
                             .Margin(4, 0, 0, 0)
+                            .Translation(0, 2, 0)
                             .VAlign(VerticalAlignment.Center)
                             .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
@@ -314,29 +314,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 })
                 .OnUnmount(control => ComposerAutomationVisibility.Detach(
                     (FrameworkElement)control));
-        }
-
-        Element EffortIconButton()
-        {
-            var effectiveLevel = string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel)
-                ? vm.ThinkingProfile?.Default : inputs.CurrentThread.ThinkingLevel;
-            var gaugeIndex = Array.FindIndex(thinkingLevels, option => option.Id == effectiveLevel);
-            // Resource overrides survive Reactor's generated theme-binding style on updates.
-            return Button(HStack(4,
-                    Component<ChatEffortGauge, ChatEffortGaugeProps>(new(gaugeIndex, thinkingLevels.Length, effectiveLevel == "off")),
-                    TextBlock(FluentIconCatalog.ChevronDown).FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(12)
-                        .VAlign(VerticalAlignment.Center)
-                        .AccessibilityView(AccessibilityView.Raw)
-                        .Set(text => text.IsTextScaleFactorEnabled = false)), () => { })
-                .Resources(ChatVisuals.ToolbarButtonResources)
-                .Width(44).MinWidth(44).Height(44).Padding(4, 0).CornerRadius(controlCornerRadius).BorderThickness(0)
-                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
-                .AutomationId("ChatComposerReasoningPicker")
-                .AutomationName($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
-                .ToolTip($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
-                .IsEnabled(canChangeThinking)
-                .Set(button => ComposerAutomationVisibility.Prepare(button))
-                .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
         }
 
         // The row's real width: the composer's prose insets, its 1px border on each side and the
@@ -599,6 +576,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .BorderBrush(transparentInputBrush)
             .Background(transparentInputBrush)
             .AcceptsReturn(true)
+            .FontFamily(ChatVisuals.BodyFontFamily)
             .FontSize(ChatVisuals.ComposerInputSize)
             .Foreground(Theme.Ref("ChatTextBrush"))
             .ItemStatus(renderItemStatus)
@@ -654,35 +632,24 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             ChatModelCatalogStatus.Unavailable => Localized("Chat_Composer_Model_Unavailable", "Models unavailable"),
             _ => modelPickerLabel,
         };
+        var reasoningSection = Component<ChatReasoningPicker, ChatReasoningPickerProps>(new(
+            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, canChangeThinking,
+            controller.SetThinkingLevel, vm.ThinkingProfile?.Default));
         var modelPicker = Component<ChatModelPicker, ChatModelPickerProps>(new(
             PickerButton(
                 modelPickerLabel,
-                $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}",
+                $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}. {Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}",
                 "ChatComposerModelPicker",
                 inputs.CanChangeSessionOptions
                     && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                         and not ChatModelCatalogStatus.Unavailable,
-                200)
-                .MinWidth(compactEffort ? 44 : 0)
-                .MinHeight(compactEffort ? 44 : 32)
-                .Padding(compactEffort ? 0 : 8, compactEffort ? 0 : 4),
+                200),
             catalogModels, inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider,
             inputs.CanChangeSessionOptions
                 && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                     and not ChatModelCatalogStatus.Unavailable,
             choice => controller.SetModel(choice.SelectionId),
-            viewportWidth));
-
-        var reasoningPicker = Component<ChatReasoningPicker, ChatReasoningPickerProps>(new(
-            compactEffort ? EffortIconButton() : PickerButton(
-                thinkingLabel,
-                $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}",
-                "ChatComposerReasoningPicker",
-                canChangeThinking,
-                96),
-            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, canChangeThinking,
-            controller.SetThinkingLevel, controller.ClearThinkingLevel, viewportWidth,
-            vm.ThinkingProfile?.Default));
+            viewportWidth, reasoningSection));
 
         var attachButton = IconButton(
             FluentIconCatalog.ChatAttach,
@@ -827,11 +794,10 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var contextRing = Component<ChatContextUsageIndicator, ChatContextUsageIndicatorProps>(
             new(inputs.ContextUsage, viewportWidth));
         var pickers = Grid(
-            [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+            [GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],
-            contextRing.Grid(column: 0),
-            Grid([GridSize.Star()], [GridSize.Auto], modelPicker).Grid(column: 1),
-            Grid([GridSize.Star()], [GridSize.Auto], reasoningPicker).Grid(column: 2))
+            modelPicker.Margin(0, 0, 4, 0).Grid(column: 0),
+            contextRing.Grid(column: 1))
             .MaxWidth(360)
             .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Center);
         var rightToolbar = HStack(4, voiceButton, primaryAction)
@@ -913,8 +879,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         }
 
         var writingSurface = Border(
-            VStack(ChatVisuals.CompactGap, composerChildren.ToArray())
-            .Padding(props.Compact ? new Thickness(8) : new Thickness(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset, ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset)))
+            VStack(props.Compact ? ChatVisuals.CompactGap : 8, composerChildren.ToArray())
+            .Padding(props.Compact ? new Thickness(8) : new Thickness(ChatVisuals.ProseInset, 12, ChatVisuals.ProseInset, 8)))
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
             .MinHeight(props.Compact ? 50 : ChatVisuals.ComposerMinHeight)
