@@ -129,7 +129,7 @@
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.Continuity.cs": 6,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.InboxClock.cs": 6,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.InboxFeedProof.cs": 1,
-    "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.UsageResponsive.cs": 45,
+    "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.UsageResponsive.cs": 38,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.cs": 141,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureWarningUiTests.cs": 8,
     "tests/OpenClaw.Tray.UITests/SshForwardPortUiTests.cs": 4,
