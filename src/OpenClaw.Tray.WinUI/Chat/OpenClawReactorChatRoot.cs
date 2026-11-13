@@ -33,7 +33,11 @@ public sealed record OpenClawReactorChatRootProps(
     IChatAgentRosterSource? AgentRosterSource = null,
     string UserDisplayName = "",
     ImageSource? UserProfilePicture = null,
-    bool Compact = false);
+    bool Compact = false)
+{
+    /// <summary>Optional session dashboard source for the conversation side panel.</summary>
+    internal ChatDashboardBinding? Dashboards { get; init; }
+}
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -93,6 +97,21 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 _panels.Invalidate();
             };
         }), props.Provider);
+        var dashboardBinding = props.Dashboards;
+        var (_, setDashboardRevision) = UseState(0L, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (dashboardBinding is null) return static () => { };
+            long revision = 0;
+            void Changed() => setDashboardRevision(Interlocked.Increment(ref revision));
+            dashboardBinding.View.Changed += Changed;
+            dashboardBinding.PendingOpenChanged += Changed;
+            return () =>
+            {
+                dashboardBinding.View.Changed -= Changed;
+                dashboardBinding.PendingOpenChanged -= Changed;
+            };
+        }), (object?)dashboardBinding ?? this);
         var (viewportWidth, setViewportWidth) = UseState(800d);
         var (viewportHeight, setViewportHeight) = UseState(620d);
         var (collapsedQuestionId, setCollapsedQuestionId) = UseState<string?>(null);
@@ -325,6 +344,26 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         _panels.Bind(props.Provider, panelSession, panelConnection, timelineGeneration, historyRevision,
             entries, PanelSourceCurrent, panelProfile.Revision, SubagentsSourceCurrent);
         var panelRevision = _panels.Revision;
+        var dashboardTarget = isGatewayConnected && selectedMaterializedThread is { } boardThread
+            ? new OpenClaw.Shared.Dashboards.BoardSessionTarget(boardThread.Id, boardThread.AgentId)
+            : null;
+        // Explicit opens may target a session missing from the chat list, such as an archived board.
+        var explicitDashboardTarget = dashboardTarget ?? (isGatewayConnected && effectiveThread is { } openThread
+            ? new OpenClaw.Shared.Dashboards.BoardSessionTarget(openThread.Id, openThread.AgentId)
+            : null);
+        var dashboardView = dashboardBinding?.View;
+        UseEffect((Func<Action>)(() => dashboardBinding is null || dashboardTarget is null
+                ? static () => { }
+                : dashboardBinding.Watch(_panels, dashboardTarget)),
+            (object?)dashboardTarget ?? this, (object?)dashboardView?.Client ?? this,
+            dashboardView?.Connected ?? false, dashboardView?.ConnectionRevision ?? 0);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (explicitDashboardTarget is not null &&
+                dashboardBinding?.TryTakePendingOpen(explicitDashboardTarget.SessionKey) == true)
+                _panels.OpenDashboard(explicitDashboardTarget);
+            return static () => { };
+        }), (object?)explicitDashboardTarget ?? this, (object?)dashboardBinding?.PendingOpen ?? this);
 
         // One child list feeds the Subagents pill, its tab and the spawn rows in the timeline.
         var subagentChildren = isGatewayConnected && effectiveThread is not null
@@ -449,6 +488,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         void SelectThread(string threadId)
         {
             if (selectedIdRef.Current != threadId) _panels.Invalidate();
+            props.Dashboards?.CancelPendingOpenExcept(threadId);
             _pendingSelectedThreadId = threadId;
             selectedIdRef.Current = threadId;
             setSelectedId(threadId);
@@ -609,7 +649,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .OnUnmount(ChatVisuals.StopObserving);
         var subagents = Component<ReactorChatSubagents, ReactorChatSubagentsProps>(new(subagentChildren, _panels));
         return Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(
-            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents));
+            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents, dashboardView));
     }
 
     private static Element RenderLoading() =>

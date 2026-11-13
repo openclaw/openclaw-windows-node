@@ -1,4 +1,5 @@
 using OpenClaw.Chat;
+using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Chat;
 
 namespace OpenClaw.Tray.Tests;
@@ -169,6 +170,117 @@ public sealed class ChatConversationPanelStateTests
         state.Invalidate();
         Bind(state, Tool("first"));
         Assert.False(state.Open(Request("first"), revision));
+    }
+
+    private static readonly BoardSessionTarget Board = new("session", "main");
+
+    [Theory]
+    [InlineData("connection")]
+    [InlineData("timeline")]
+    [InlineData("history")]
+    public void HistoryRebind_KeepsTheSessionDashboardButDropsToolDetails(string boundary)
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state, Tool("first"));
+        state.Open(Request("first"), state.Revision);
+        Assert.True(state.OpenDashboard(Board));
+        state.Select("details");
+        state.Bind(_provider, "session",
+            boundary == "connection" ? 9 : 1,
+            boundary == "timeline" ? 9 : 2,
+            boundary == "history" ? 9 : 3, [Tool("first")], () => true);
+        Assert.Equal(["dashboard"], state.Tabs);
+        Assert.Equal("dashboard", state.Selected);
+        Assert.True(state.Passive);
+        Assert.Equal(Board, state.Dashboard);
+        Assert.Null(state.Details);
+        state.Bind(_provider, "other", 1, 2, 3, [], () => true);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Dashboard);
+    }
+
+    [Fact]
+    public void AutomaticReveal_IsPassiveAndNeverReplacesTheCurrentSelection()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state);
+        var openVersion = state.OpenVersion;
+        Assert.False(state.RevealDashboard(Board with { SessionKey = "other" }));
+        Assert.True(state.RevealDashboard(Board));
+        Assert.Equal("dashboard", state.Selected);
+        Assert.True(state.Passive);
+        Assert.Equal(openVersion, state.OpenVersion);
+        Assert.False(state.RevealDashboard(Board));
+        state.Engage();
+        Assert.False(state.Passive);
+
+        var busy = new ChatConversationPanelState();
+        Bind(busy, Tool("first"));
+        busy.Open(Request("first"), busy.Revision);
+        Assert.True(busy.RevealDashboard(Board));
+        Assert.Equal(["details", "dashboard"], busy.Tabs);
+        Assert.Equal("details", busy.Selected);
+        Assert.False(busy.Passive);
+    }
+
+    [Fact]
+    public void ClosingTheDashboard_SuppressesRevealUntilExplicitlyOpened()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state);
+        state.RevealDashboard(Board);
+        state.Close("dashboard");
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Dashboard);
+        Assert.False(state.Passive);
+        Assert.False(state.CanRevealDashboard(Board.SessionKey));
+        Assert.False(state.RevealDashboard(Board));
+        state.Invalidate();
+        Bind(state);
+        Assert.False(state.RevealDashboard(Board));
+
+        var openVersion = state.OpenVersion;
+        Assert.True(state.OpenDashboard(Board));
+        Assert.Equal("dashboard", state.Selected);
+        Assert.False(state.Passive);
+        Assert.True(state.OpenVersion > openVersion);
+        Assert.False(state.OpenDashboard(Board with { SessionKey = "other" }));
+    }
+
+    [Fact]
+    public void ClosingAnotherTab_FallsBackPassivelyOnlyOntoAnUnopenedDashboard()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state, Tool("first"));
+        state.Open(Request("first"), state.Revision);
+        state.RevealDashboard(Board);
+        state.Select("dashboard");
+        state.Select("dashboard");
+        Assert.False(state.Passive);
+        state.Select("details");
+        state.Close("details");
+        Assert.Equal("dashboard", state.Selected);
+        Assert.False(state.Passive);
+
+        var unseen = new ChatConversationPanelState();
+        Bind(unseen, Tool("first"));
+        unseen.Open(Request("first"), unseen.Revision);
+        unseen.RevealDashboard(Board);
+        unseen.Close("details");
+        Assert.Equal("dashboard", unseen.Selected);
+        Assert.True(unseen.Passive);
+    }
+
+    [Fact]
+    public void ReselectingAPassiveDashboard_KeepsItPassiveUntilEngaged()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state);
+        state.RevealDashboard(Board);
+        state.Select("dashboard");
+        Assert.True(state.Passive);
+        state.Engage();
+        Assert.False(state.Passive);
     }
 
     [Theory]

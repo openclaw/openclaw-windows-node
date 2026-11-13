@@ -8536,6 +8536,133 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.False(timeline.TurnActive);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveReply_PersistedFinalAnswerRowFinishesStreamingBubble(bool clearAfterRow)
+    {
+        // Gateway 2026.11.1 saves the reply row before its unsigned chat final, then clears the
+        // live preview unless the held final supersedes that clear.
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await using var lifetime = provider;
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var processMessage = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        void Frame(string eventName, object payload) =>
+            processMessage.Invoke(client, [JsonSerializer.Serialize(new { type = "event", @event = eventName, payload })]);
+        object Text(string text) => new { type = "text", text };
+        const string reply = "Test received. 👋";
+
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r1"));
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 1, state = "delta", deltaText = "Test",
+            message = new { role = "assistant", content = new[] { Text("Test") }, timestamp = 1 } });
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 2, state = "delta", deltaText = " received. 👋",
+            message = new { role = "assistant", content = new[] { Text(reply) }, timestamp = 2 } });
+        Frame("session.message", new
+        {
+            sessionKey = "main", runId = "r1", hasActiveRun = true, activeRunIds = new[] { "r1" },
+            messageId = "m2", messageSeq = 2,
+            message = new
+            {
+                role = "assistant", timestamp = 3, __openclaw = new { id = "m2", seq = 2, runId = "r1" },
+                content = new object[]
+                {
+                    new { type = "text", text = reply,
+                        textSignature = """{"v":1,"id":"msg_1","phase":"final_answer"}""" },
+                },
+            },
+        });
+        if (clearAfterRow)
+            Frame("chat", new { runId = "r1", sessionKey = "main", seq = 3, state = "delta", replace = true,
+                deltaText = "", message = new { role = "assistant", content = new[] { Text("") }, timestamp = 4 } });
+        var saved = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(reply, saved.Text);
+        Assert.Equal("m2", saved.Presentation?.MessageId);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "r1"));
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = clearAfterRow ? 4 : 3, state = "final",
+            message = new { role = "assistant", content = new[] { Text(reply) }, timestamp = 5,
+                __openclaw = new { runId = "r1", idempotencyKey = "r1:assistant" } } });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var bubble = Assert.Single(timeline.Entries);
+        Assert.Equal(reply, bubble.Text);
+        Assert.False(bubble.IsStreaming);
+        Assert.False(timeline.TurnActive);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, false, true)]
+    public async Task LiveReply_EmptyReplacementRetiresOnlyUnpersistedPreview(
+        bool clearBeforeRow, bool previewMatchesSavedText, bool endBeforeClear)
+    {
+        // Gateway 2026.11.1 clears the live preview when it saves the assistant row: after the row
+        // while that row is still publishing, otherwise before it.
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await using var lifetime = provider;
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var processMessage = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        void Frame(string eventName, object payload) =>
+            processMessage.Invoke(client, [JsonSerializer.Serialize(new { type = "event", @event = eventName, payload })]);
+        object Text(string text) => new { type = "text", text };
+        void End() => bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "r1"));
+        void Clear() => Frame("chat", new { runId = "r1", sessionKey = "main", seq = 2, state = "delta", replace = true,
+            deltaText = "", message = new { role = "assistant", content = new[] { Text("") }, timestamp = 2 } });
+        const string reply = "Three demos completed successfully.";
+        var preview = previewMatchesSavedText ? reply : "Three dem";
+
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r1"));
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 1, state = "delta", deltaText = preview,
+            message = new { role = "assistant", content = new[] { Text(preview) }, timestamp = 1 } });
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"sessions_yield","toolCallId":"yield-1"}""", runId: "r1"));
+        if (clearBeforeRow)
+            Clear();
+        Frame("session.message", new
+        {
+            sessionKey = "main", runId = "r1", hasActiveRun = true, activeRunIds = new[] { "r1" },
+            messageId = "m1", messageSeq = 3,
+            message = new
+            {
+                role = "assistant", timestamp = 3, stopReason = "toolUse",
+                __openclaw = new { id = "m1", seq = 3, runId = "r1" },
+                content = new object[]
+                {
+                    Text(reply),
+                    new { type = "toolCall", id = "yield-1", name = "sessions_yield", arguments = new { } },
+                },
+            },
+        });
+        if (endBeforeClear)
+            End();
+        if (!clearBeforeRow)
+            Clear();
+        var saved = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal(reply, saved.Text);
+        Assert.Equal("m1", saved.Presentation?.MessageId);
+        if (!endBeforeClear)
+            End();
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 3, state = "final",
+            message = new { role = "assistant", content = new[] { Text(reply) }, timestamp = 4,
+                __openclaw = new { runId = "r1", idempotencyKey = "r1:assistant" } } });
+
+        var entries = snapshots[^1].Timelines["main"].Entries;
+        var assistant = Assert.Single(entries, entry => entry.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal(reply, assistant.Text);
+        Assert.False(assistant.IsStreaming);
+        Assert.Single(entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+    }
+
     [Fact]
     public async Task AgentEvent_AssistantContent_IsIgnoredBecauseChatMessageCarriesFinalText()
     {

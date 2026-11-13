@@ -1540,6 +1540,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             return;
         }
 
+        if (role == "assistant" &&
+            message.ReplacesStreamText &&
+            string.IsNullOrEmpty(message.Text) &&
+            !message.IsTranscriptSnapshot &&
+            string.Equals(message.State, "delta", StringComparison.OrdinalIgnoreCase) &&
+            (message.RunId ?? message.Presentation.RunId) is { Length: > 0 } retiringRunId)
+        {
+            message.SuppressNotification();
+            var snapshot = _state.RetireAssistantStream(
+                threadId,
+                retiringRunId,
+                ProjectionContext(),
+                gate.RuntimeGeneration);
+            if (snapshot is not null)
+                Publish(snapshot);
+            return;
+        }
+
         if (role == "system" &&
             string.Equals(message.OpenClawKind, "compaction", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrEmpty(message.Text))

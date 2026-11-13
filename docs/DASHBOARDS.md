@@ -65,6 +65,29 @@ An empty section explicitly says that no content was supplied and offers
 Open chat for that section. Tabs display only their supplied widgets; Windows
 does not manufacture category details or subscription records.
 
+## Beside chat
+
+Native chat shows the selected session's board as a **Dashboard** tab in the
+conversation side panel, next to tool **Details** and **Subagents**. The tab uses the same board
+reader without the page hero. It appears in two ways:
+
+- **Automatically** when `board.get` returns tabs or widgets for the selected
+  session, or after `board.changed` for it. This never replaces an open tab,
+  moves focus, or covers a narrow conversation (a **Show panel** button
+  appears instead). Closing the tab stops automatic reveals for that session
+  while chat stays mounted.
+- **Explicitly** from **Open chat** on the Dashboards page, which selects the
+  tab and clears an earlier dismissal. This also works for sessions missing
+  from the chat list, such as archived boards.
+
+When a reconnect or history reload closes the selected Details or Subagents
+tab, the tab that takes its place is shown without moving focus or covering a
+narrow conversation.
+
+Only the split presentation exists. The web's expanded presentation (board as
+the main view, chat as a side tab), stored `preferredFace`/`boardPresentation`
+defaults and the panel launcher are not implemented.
+
 ## Responsive layout
 
 The [design contract](../DESIGN.md#dashboards-expressive-extension) owns
