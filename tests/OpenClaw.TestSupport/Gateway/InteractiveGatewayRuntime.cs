@@ -319,10 +319,10 @@ public sealed class InteractiveGatewayRuntime : IAsyncDisposable
     private Task<bool> DeltaAsync(Run run, string delta) => StepAsync(run, async () =>
     {
         run.Text.Append(delta);
-        if (run.Scenario == "chat-deltas")
-            await ChatAsync(run, "delta", new { deltaText = delta, message = new { role = "assistant", content = run.Text.ToString() } });
-        else
-            await AgentAsync(run, "assistant", new { delta });
+        // Like the Gateway, publish both live text streams; the server filters agent text by client cap.
+        await ChatAsync(run, "delta", new { deltaText = delta, message = new { role = "assistant", content = run.Text.ToString() } });
+        if (run.Scenario != "chat-deltas")
+            await AgentAsync(run, "assistant", new { delta, text = run.Text.ToString() });
     });
 
     private Task ToolStartAsync(Run run, string id, string name, object args, string? parentId = null)

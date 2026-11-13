@@ -4813,7 +4813,25 @@ Certifique-se de que o Gateway está em execução.</value>
     <value>Token compartilhado</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>Clique para copiar o token compartilhado</value>
+    <value>Credencial compartilhada do Gateway. Clique para copiá-la. Mantenha-a em sigilo.</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>Como este PC acessa o Gateway. {0} significa este PC; {1} significa a rede local; Tailscale e SSH usam essas conexões; {2} significa outro host.</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} é o PC Windows que executa o Companion e seus recursos de nó Windows, não necessariamente o host do Gateway.</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>Clientes conectados informados pelo Gateway. Abrir Sistemas no painel web.</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>Canais prontos: {0}/{1}.
+{2}
+
+Abrir Canais no painel web.</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>Custo estimado de uso do Gateway para hoje (UTC), em dólares americanos. Abrir Uso no painel web.</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>via túnel SSH</value>

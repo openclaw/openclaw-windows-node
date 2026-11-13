@@ -1710,7 +1710,9 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             var card = Find<SettingsCard>(page, "LocalAiCard");
             await TestSupport.WaitForSettingsCardReadyAsync(page, card);
             card.IsClickEnabled = false;
-            var error = await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() => InvokeLocalAiAsync(page));
+            // The card cannot become ready again, so prove the timeout report without the full render budget.
+            var error = await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() =>
+                InvokeLocalAiAsync(page, TestSupport.NegativeObservationTimeout));
             Assert.Contains("AiSetupPage.LocalAiCard ready for invocation", error.Message);
             Assert.Contains("IsLoaded=True", error.Message);
             Assert.Contains("IsEnabled=True", error.Message);
@@ -2537,10 +2539,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         provider.Invoke();
     }
 
-    private Task InvokeLocalAiAsync(AiSetupPage page) =>
-        InvokeCardAsync(Find<SettingsCard>(page, "LocalAiCard"));
+    private Task InvokeLocalAiAsync(AiSetupPage page, TimeSpan? readinessTimeout = null) =>
+        InvokeCardAsync(Find<SettingsCard>(page, "LocalAiCard"), readinessTimeout);
 
-    private Task InvokeCardAsync(SettingsCard card)
+    private Task InvokeCardAsync(SettingsCard card, TimeSpan? readinessTimeout = null)
     {
         if (_nativeProof)
             return OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, card);
@@ -2553,12 +2555,12 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             "RecommendedInstallCard" => "RecommendedInstall_Click",
             _ => throw new InvalidOperationException($"Unsupported AI setup card: {card.Name}")
         };
-        return InvokeReadyCardAsync(page, card, handler);
+        return InvokeReadyCardAsync(page, card, handler, readinessTimeout);
     }
 
-    private async Task InvokeReadyCardAsync(AiSetupPage page, SettingsCard card, string handler)
+    private async Task InvokeReadyCardAsync(AiSetupPage page, SettingsCard card, string handler, TimeSpan? readinessTimeout = null)
     {
-        await TestSupport.WaitForSettingsCardReadyAsync(page, card);
+        await TestSupport.WaitForSettingsCardReadyAsync(page, card, readinessTimeout);
         TestSupport.InvokeSettingsCardAction(page, card, handler);
         await ui.YieldToRenderAsync();
     }
