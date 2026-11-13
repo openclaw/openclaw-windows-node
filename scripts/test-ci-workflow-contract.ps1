@@ -362,6 +362,34 @@ Assert-Contains `
     -Expected "cancel-in-progress: `${{ github.event_name == 'pull_request' }}" `
     -Message "CI cancellation must apply only to pull_request runs."
 
+# Merge queue: the required CI Gate and every lane it reads must run for merge groups, which are
+# classified from their own diff like pull requests. Only the listed pull-request-only uses may stay.
+$onBlock = [regex]::Match($workflow, '(?ms)^on:\r?\n(.*?)^\S').Groups[1].Value
+if ($onBlock -notmatch '(?m)^  merge_group:\r?\n    types: \[ checks_requested \]\r?$') {
+    throw 'CI must run for merge queue groups (merge_group: types: [ checks_requested ]).'
+}
+foreach ($job in @((Get-JobBlock "change-classification"), (Get-JobBlock "proof-pool-contracts"))) {
+    foreach ($token in @('PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}',
+            'PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}')) {
+        Assert-Contains -Text $job -Expected $token -Message "Merge groups must be diffed against the queue base: '$token'."
+    }
+}
+$pullRequestOnly = @([regex]::Matches($workflow, "[^\r\n]*github\.event_name == 'pull_request'[^\r\n]*") | ForEach-Object { $_.Value.Trim() })
+$allowedPullRequestOnly = @(
+    "group: `${{ github.workflow }}-`${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}",
+    "cancel-in-progress: `${{ github.event_name == 'pull_request' }}",
+    "if: `${{ !cancelled() && github.event_name == 'pull_request' && needs.change-classification.result == 'success' }}",
+    "NEW_TEST_SOAK_REQUIRED: `${{ github.event_name == 'pull_request' }}")
+foreach ($use in $pullRequestOnly) {
+    if ($use -notin $allowedPullRequestOnly) {
+        throw "A pull-request-only condition would skip work in merge groups; include merge_group or extend the reviewed list: $use"
+    }
+}
+if (@($pullRequestOnly | Where-Object { $_ -like 'if:*' }).Count -ne 1 -or (Get-JobBlock "new-test-soak") -notmatch [regex]::Escape($allowedPullRequestOnly[2])) {
+    throw 'Only the new-test soak may be limited to pull requests; it already ran before the pull request entered the queue.'
+}
+if ((Get-JobBlock "ci-gate") -notmatch '(?m)^    if: \$\{\{ always\(\) \}\}\r?$') { throw 'CI Gate must report for every event, including merge groups.' }
+
 $classificationJob = Get-JobBlock "change-classification"
 $classificationGuard = [regex]::Match(
     $classificationJob,
@@ -500,8 +528,8 @@ foreach ($lane in $testLanes.GetEnumerator()) {
         -Message "Test lane '$($lane.Key)' must fetch full history for GitVersion.MsBuild."
     Assert-Contains `
         -Text $job `
-        -Expected "OPENCLAW_CI_COLLECT_COVERAGE: `${{ github.event_name != 'pull_request' }}" `
-        -Message "Test lane '$($lane.Key)' does not preserve push/tag coverage."
+        -Expected "OPENCLAW_CI_COLLECT_COVERAGE: `${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}" `
+        -Message "Test lane '$($lane.Key)' must collect coverage on push and tag runs only, not on pull requests or merge groups."
     Assert-Contains `
         -Text $job `
         -Expected "name: $($lane.Value.Artifact)" `
@@ -2199,6 +2227,14 @@ try {
         -RepoRoot $tempRoot
     if ($unrelatedDecision -ne "false") {
         throw "Unrelated PR change produced decision '$unrelatedDecision'."
+    }
+    $mergeGroupDecision = & $selectorPath -EventName merge_group -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+    if ($mergeGroupDecision -ne "false") {
+        throw "A merge group must be diffed like a pull request, but an unrelated change produced '$mergeGroupDecision'."
+    }
+    $mergeGroupMissing = & $selectorPath -EventName merge_group -BaseSha '' -HeadSha $headSha -RepoRoot $tempRoot
+    if ($mergeGroupMissing -ne "true") {
+        throw "A merge group without diff inputs must run the regression fail-closed."
     }
 
     $missingDiffDecision = & $selectorPath `

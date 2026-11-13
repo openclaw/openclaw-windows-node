@@ -6,6 +6,9 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
+  # Merge queue checks. Each merge group is validated like a pull request against the queue's base.
+  merge_group:
+    types: [ checks_requested ]
   workflow_dispatch:
     inputs:
       local_ai_proof_baseline:
@@ -93,8 +96,8 @@ jobs:
       id: classify
       shell: pwsh
       env:
-        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
       run: |
         $impactJson = ./scripts/Get-CiChangeClassification.ps1 `
           -EventName $env:GITHUB_EVENT_NAME `
@@ -316,8 +319,8 @@ jobs:
       continue-on-error: true
       shell: pwsh
       env:
-        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
       run: |
         $decision = ./scripts/Get-CiProofPoolRegressionDecision.ps1 `
           -EventName $env:GITHUB_EVENT_NAME `
@@ -486,7 +489,7 @@ jobs:
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
     runs-on: windows-latest
     env:
-      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
     steps:
     - uses: actions/checkout@v7
@@ -546,7 +549,7 @@ jobs:
         dotnet restore tests/OpenClaw.FileWorker.Tests
 
     - name: Install dotnet-coverage
-      if: ${{ github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build core test projects
@@ -606,7 +609,7 @@ jobs:
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
     runs-on: windows-latest
     env:
-      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayTests
     steps:
@@ -641,7 +644,7 @@ jobs:
         dotnet restore tests/OpenClaw.Tray.IntegrationTests -r win-x64
 
     - name: Install dotnet-coverage
-      if: ${{ github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build tray test projects
@@ -705,7 +708,7 @@ jobs:
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
     runs-on: windows-latest
     env:
-      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
       OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
@@ -744,7 +747,7 @@ jobs:
         dotnet restore tests/OpenClawTray.FunctionalUI.Tests -r win-x64
 
     - name: Install dotnet-coverage
-      if: ${{ github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build UI test projects
@@ -961,7 +964,7 @@ jobs:
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
     runs-on: windows-latest
     env:
-      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
       OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
@@ -995,7 +998,7 @@ jobs:
         dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
 
     - name: Install dotnet-coverage
-      if: ${{ github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build UI test projects

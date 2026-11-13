@@ -1,7 +1,8 @@
 <#
 .SYNOPSIS
     Proves exact alpha and stable tags on a selective release branch while
-    newer main changes remain excluded. Uses the pinned GitVersion tool.
+    newer main changes remain excluded, and a stable version for merge queue
+    group branches. Uses the pinned GitVersion tool.
 #>
 [CmdletBinding()]
 param()
@@ -90,7 +91,63 @@ try {
         Assert-FixtureVersion $repository '2026.10.5-alpha.1' $main
         Write-Host "Passed $($case.Name): exact release branch and tag checkout; newer main unchanged."
     }
-    Write-Host 'Passed real GitVersion release-branch regression: 4 fixtures, 12 version/source checks.'
+
+    # Merge queue groups build on gh-readonly-queue/<base>/pr-<n>-<base sha> branches with normalization on,
+    # as the metadata job does. Another group's branch appearing or disappearing between the metadata
+    # and publish jobs must not change the version, or the publish job's ProductVersion check fails.
+    $queue = Join-Path $fixtures 'merge-queue'
+    $origin = Join-Path $fixtures 'merge-queue-origin.git'
+    New-Item -ItemType Directory -Path $queue | Out-Null
+    Invoke-FixtureGit $queue init --quiet --initial-branch=main
+    Invoke-FixtureGit $queue config user.name 'Release version fixture'
+    Invoke-FixtureGit $queue config user.email 'release@example.invalid'
+    Invoke-FixtureGit $queue config commit.gpgsign false
+    Invoke-FixtureGit $queue config tag.gpgsign false
+    Copy-Item -LiteralPath (Join-Path $root 'GitVersion.yml') -Destination $queue
+    Invoke-FixtureGit $queue add GitVersion.yml
+    Invoke-FixtureGit $queue commit --quiet -m 'Stable baseline'
+    Invoke-FixtureGit $queue tag v2026.9.8
+    Invoke-FixtureGit $queue commit --quiet --allow-empty -m 'Published alpha'
+    Invoke-FixtureGit $queue tag v2026.10.5-alpha.1
+    Invoke-FixtureGit $queue commit --quiet --allow-empty -m 'Main after the alpha'
+    $base = (Invoke-FixtureGit $queue rev-parse HEAD).Trim()
+    Invoke-FixtureGit $queue checkout --quiet --detach $base
+    Invoke-FixtureGit $queue commit --quiet --allow-empty -m 'First queued pull request'
+    $group = (Invoke-FixtureGit $queue rev-parse HEAD).Trim()
+    $groupBranch = "gh-readonly-queue/main/pr-1-$base"
+    & git clone --quiet --bare $queue $origin
+    if ($LASTEXITCODE -ne 0) { throw 'Could not create the merge queue origin fixture.' }
+    Invoke-FixtureGit $queue remote add origin $origin
+    Invoke-FixtureGit $queue push --quiet origin "${group}:refs/heads/$groupBranch"
+    Invoke-FixtureGit $queue fetch --quiet origin
+    $readQueueVersion = {
+        Invoke-FixtureGit $queue checkout --quiet --detach $group
+        foreach ($local in @(Invoke-FixtureGit $queue for-each-ref --format='%(refname:short)' refs/heads)) {
+            if ($local -cne 'main') { Invoke-FixtureGit $queue branch --quiet -D $local }
+        }
+        $env:GITHUB_ACTIONS = 'true'
+        $env:GITHUB_REF = "refs/heads/$groupBranch"
+        $env:GITHUB_SHA = $group
+        try {
+            $json = & dotnet tool run dotnet-gitversion -- $queue /output json /nocache
+            if ($LASTEXITCODE -ne 0) { throw 'GitVersion failed on a merge queue branch.' }
+        } finally {
+            foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }
+        }
+        $version = $json | ConvertFrom-Json
+        if ($version.Sha -cne $group) { throw 'GitVersion selected a different merge group commit.' }
+        $version.SemVer
+    }
+    $alone = & $readQueueVersion
+    if ($alone -cnotmatch "^2026\.10\.5-gh-readonly-queue-main-pr-1-$base\.1$") { throw "Unexpected merge queue version '$alone'." }
+    Invoke-FixtureGit $queue checkout --quiet --detach $group
+    Invoke-FixtureGit $queue commit --quiet --allow-empty -m 'Second queued pull request'
+    Invoke-FixtureGit $queue push --quiet origin "HEAD:refs/heads/gh-readonly-queue/main/pr-2-$group"
+    Invoke-FixtureGit $queue fetch --quiet origin
+    $withNext = & $readQueueVersion
+    if ($withNext -cne $alone) { throw "A later merge group changed this group's version from '$alone' to '$withNext'." }
+    Write-Host "Passed merge queue group versioning: $alone, unchanged by later groups."
+    Write-Host 'Passed real GitVersion regression: 4 release-branch fixtures (12 version/source checks) and 1 merge queue fixture (2 checks).'
 } finally {
     foreach ($name in $environmentNames) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
