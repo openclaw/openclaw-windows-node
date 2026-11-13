@@ -11,6 +11,12 @@ namespace OpenClaw.Shared.Tests.Mxc;
 [Collection("MxcOwnership")]
 public sealed class MxcCommandRunnerTests : IDisposable
 {
+    private const string StepTimeoutVariable = "OPENCLAW_TEST_MXC_STEP_TIMEOUT_SECONDS";
+    // Hang guard for one event-driven runner step. The runner pipeline and closers run on the shared
+    // thread pool, which a loaded runner can starve for seconds; this never gates behavior.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(StepTimeoutVariable), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(30);
     private readonly string _root = Path.Combine(
         Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory(),
         ".mxc-test-runs", Guid.NewGuid().ToString("N"));
@@ -32,11 +38,14 @@ public sealed class MxcCommandRunnerTests : IDisposable
         }
     }
     private MxcCommandRunner Runner(Func<ContainerRequest, Task<IMxcProcess>> spawn, Func<ContainerRequest, ProbeOutput>? probe = null,
-        MxcAvailability? availability = null)
+        MxcAvailability? availability = null, TimeProvider? deadlineClock = null)
     {
         var executor = new NodeSandboxExecutor(new NodeSandboxPolicyStore(() => _settings), () => Path.Combine(_root, "settings"),
             () => availability ?? new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
-            spawn: spawn, probe: probe ?? (_ => MxcAvailabilityTests.BaseProbe()), scratchRoot: _root);
+            spawn: spawn, probe: probe ?? (_ => MxcAvailabilityTests.BaseProbe()), scratchRoot: _root)
+        {
+            DeadlineTimeProvider = deadlineClock ?? TimeProvider.System,
+        };
         _executors.Add(executor);
         return new(executor);
     }
@@ -574,16 +583,21 @@ public sealed class MxcCommandRunnerTests : IDisposable
         };
         var command = Command;
         command.TimeoutMs = 1_000;
+        var deadlineClock = new ManualTimeProvider();
         try
         {
-            var running = Runner(_ => Task.FromResult<IMxcProcess>(process)).RunAsync(command);
-            await Task.WhenAll(output.Paused.Task, error.Paused.Task).WaitAsync(TimeSpan.FromSeconds(2));
-            var result = await running.WaitAsync(TimeSpan.FromSeconds(3));
+            var running = Runner(_ => Task.FromResult<IMxcProcess>(process), deadlineClock: deadlineClock).RunAsync(command);
+            await Task.WhenAll(output.Paused.Task, error.Paused.Task).WaitAsync(StepTimeout);
+            // The short deadline expires only after both readers drained what the pipes held.
+            deadlineClock.Advance(TimeSpan.FromMilliseconds(command.TimeoutMs));
+            var result = await running.WaitAsync(StepTimeout);
             Assert.Equal(!rootExited, result.TimedOut);
             Assert.Equal(rootExited ? 0 : -1, result.ExitCode);
             Assert.StartsWith("out", result.Stdout);
             Assert.StartsWith("err", result.Stderr);
             Assert.DoesNotContain("\uFFFD", result.Stdout + result.Stderr);
+            // SDK reads block until a closer runs, so they must not occupy thread-pool workers.
+            Assert.False(output.ReadOnThreadPool || error.ReadOnThreadPool);
             if (rootExited)
             {
                 Assert.False(process.Killed);
@@ -594,7 +608,9 @@ public sealed class MxcCommandRunnerTests : IDisposable
         finally
         {
             releaseClose.Set();
-            await process.DisposedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(3));
+            // Bounds cleanup if an earlier step failed before the deadline was released.
+            deadlineClock.Advance(TimeSpan.FromMilliseconds(command.TimeoutMs));
+            await process.DisposedCompletion.Task.WaitAsync(StepTimeout);
             Assert.True(outputCloser.Closed);
             Assert.True(errorCloser.Closed);
             Assert.True(output.ReaderExited && error.ReaderExited);
@@ -1140,8 +1156,10 @@ public sealed class MxcCommandRunnerTests : IDisposable
         private readonly ManualResetEventSlim _closed = new();
         public TaskCompletionSource Paused { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public bool ReaderExited { get; private set; }
+        public bool ReadOnThreadPool { get; private set; }
         public override int Read(byte[] buffer, int offset, int count)
         {
+            ReadOnThreadPool |= Thread.CurrentThread.IsThreadPoolThread;
             if (Position < Length) return base.Read(buffer, offset, Math.Min(1, count));
             Paused.TrySetResult();
             if (fail) throw new IOException("synthetic reader failure");

@@ -94,7 +94,10 @@ test sequence without collecting a memory dump; it is not retried or skipped.
 The MCP bearer-rotation regression keeps its deliberately blocking rotation on a
 dedicated thread and bounds each loopback step with
 `OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS` (default 30 s), because the server
-pipeline itself runs on the shared thread pool. The standalone clean-uninstall
+pipeline itself runs on the shared thread pool. The MXC native-reader regression
+advances the command deadline on a manual clock once both readers have drained
+their pipes, bounds each step with `OPENCLAW_TEST_MXC_STEP_TIMEOUT_SECONDS`
+(default 30 s), and checks that blocking SDK reads stay off the thread pool. The standalone clean-uninstall
 regression runs about 50 interpreted Windows PowerShell 5.1 cases in one process.
 It takes 16-37 s on hosted runners, but its run time grows with host load, so it is bounded by
 `OPENCLAW_CLEAN_UNINSTALL_TEST_TIMEOUT_SECONDS` (default 240 s). With a short
@@ -787,7 +790,8 @@ fixture tests.
 | Keep ownership tri-state while polling | Keep polling while ownership is unproven (element missing, a windowless XAML zero process ID, a parent not yet attached). Fail fast only on positive foreign evidence, such as another process or window. Use `NativeUiOwnership.IsOwnedDescendant` as the final proof | Put `Assert.True(IsOwnedDescendant(...))` inside a polling predicate, which turns a transient state into a hard failure |
 | Make fixture data explicit | Set every value the assertion depends on, such as page size and row counts | Rely on a product default, as the Usage pagination fixture did with its page size |
 | Use deterministic inputs | Bind loopback listeners to port 0 and read the assigned port. Classify errors from structured fields | Hard-code ports, or match status-code digits in a message that can contain an ephemeral port |
-| Name timeouts and leave headroom | Use a named constant with an environment override as a hang guard for one event-driven step, such as `StepTimeout` (`OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS`, `OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS`, 30 s by default) | Use a literal 2-6 s `WaitAsync`, `Wait`, or `CancelAfter` guard; these starve on loaded runners |
+| Name timeouts and leave headroom | Use a named constant with an environment override as a hang guard for one event-driven step, such as `StepTimeout` (`OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS`, `OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS`, `OPENCLAW_TEST_MXC_STEP_TIMEOUT_SECONDS`, 30 s by default) | Use a literal 2-6 s `WaitAsync`, `Wait`, or `CancelAfter` guard; these starve on loaded runners |
+| Drive product deadlines from the test | When a short product deadline races the state the test observes, inject `TestSupport.ManualTimeProvider` and advance it once that state is observable, as the MXC native-reader regression does through `NodeSandboxExecutor.DeadlineTimeProvider` | Race a 1 s wall-clock product deadline against thread-pool work that must finish first |
 | Keep measured work off the shared thread pool | Run work on a dedicated thread when the test bounds its latency, as the composer reentrancy, settings-coordinator, and native-restart regressions do | Bound the latency of `Task.Run` work, which waits behind a starved pool |
 | Budget cold process starts | Bound Windows PowerShell 5.1 helper runs with a named timeout, such as `OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS` (120 s by default). Give output-idle fixtures that launch a cold `pwsh` a startup-sized idle budget (`OPENCLAW_CI_PROCESS_TEST_IDLE_SECONDS`, 10 s by default), and make a descendant's readiness observable instead of counting its start as idle time | Assume a 5.1 or `pwsh` cold start finishes in seconds on a loaded runner |
 | Leave CI step headroom | Keep `timeout-minutes` well above observed passing time and act on the step budget warning | Run a 13-15 minute suite under a 15-minute step timeout |
