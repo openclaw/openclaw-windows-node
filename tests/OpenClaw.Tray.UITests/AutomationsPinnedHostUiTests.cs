@@ -20,7 +20,7 @@ public sealed partial class GatewayFixtureUiTests
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             await WaitUiAsync(run, () => FindById(run, "WorkspacePagesCustomize")?.Current.IsOffscreen == false,
                 "Chat customization");
-            var window = FindHub(run);
+            var window = await WaitForHubAsync(run, "pinned Automations chat window");
             ((WindowPattern)window.GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Normal);
             var scale = OwnedWindowCapture.OwnedDpiScale(run, window);
             OwnedWindowCapture.ResizeOwnedPixels(run, window, (int)Math.Round(1000 * scale), (int)Math.Round(900 * scale));

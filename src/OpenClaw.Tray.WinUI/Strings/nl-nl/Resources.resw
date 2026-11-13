@@ -4837,7 +4837,25 @@ Controleer of de gateway actief is.</value>
     <value>Gedeeld token</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>Tik om gedeeld token te kopiëren</value>
+    <value>Gedeeld Gateway-toegangstoken. Klik om het te kopiëren. Houd het geheim.</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>Hoe deze pc de Gateway bereikt. {0} betekent deze pc; {1} betekent het lokale netwerk; Tailscale en SSH gebruiken die verbindingen; {2} betekent een andere host.</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} is de Windows-pc waarop Companion en de Windows-nodefuncties draaien, niet noodzakelijk de Gateway-host.</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>Verbonden clients die door de Gateway worden gemeld. Open Systemen in het webdashboard.</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>Kanalen gereed: {0}/{1}.
+{2}
+
+Open Kanalen in het webdashboard.</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>Geschatte Gateway-gebruikskosten voor vandaag (UTC), in Amerikaanse dollars. Open Gebruik in het webdashboard.</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>via SSH-tunnel</value>

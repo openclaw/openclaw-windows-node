@@ -5,6 +5,12 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class NativeRestartAdmissionTests
 {
+    private const string HandoffTimeoutVariable = "OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS";
+    // Hang guard for dedicated-thread handoffs; it only absorbs OS scheduling latency on loaded runners.
+    private static readonly TimeSpan HandoffTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(HandoffTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(15);
+
     [Theory]
     [InlineData("\"ai-v3:truncated")]
     [InlineData("\"not-a-handle\"")]
@@ -37,14 +43,20 @@ public sealed class NativeRestartAdmissionTests
         var store = new NativeRestartRecoveryStore(temp.Path);
         using var started = new ManualResetEventSlim();
         var lease = OpenClaw.Shared.PersistenceFileLease.Acquire(file);
-        var writer = Task.Run(() => { started.Set(); store.Save(handle); });
+        // The test thread blocks until the writer starts, so the writer needs its own thread rather
+        // than a thread-pool slot that a loaded runner may not grant in time.
+        var writer = Task.Factory.StartNew(
+            () => { started.Set(); store.Save(handle); },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         try
         {
-            Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
+            Assert.True(started.Wait(HandoffTimeout));
             Assert.Throws<InvalidDataException>(() => store.Read());
         }
         finally { lease.Dispose(); }
-        await writer.WaitAsync(TimeSpan.FromSeconds(5));
+        await writer.WaitAsync(HandoffTimeout);
         Assert.Equal(handle, store.Read());
         store.Clear("ai-v3:" + new string('e', 64));
         Assert.Equal(handle, store.Read());

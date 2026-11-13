@@ -290,12 +290,24 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             // that initial realization before preparing either side of this state matrix.
             Assert.Equal("node:gap-1", controller.State.SelectedId);
             await WaitForRowSectionAsync<FrameworkElement>(surface, "node:gap-1", "SystemsDetails");
-            var cards = group.Children.OfType<Expander>().ToArray();
+            Expander[] Rows() => group.Children.OfType<Expander>().ToArray();
+            var cards = Rows();
             Border ContentChrome(Expander card)
             {
                 var chrome = Assert.IsType<Grid>(VisualTreeHelper.GetChild(card, 0));
                 var clip = Assert.Single(chrome.Children.OfType<Border>(), element => element.Name == "ExpanderContentClip");
                 return Assert.IsType<Border>(clip.Child);
+            }
+            // ExpandDown/CollapseUp translate ExpanderContent from template heights measured after the
+            // storyboard starts, so row geometry is final only once that storyboard stops running.
+            static bool ExpandTransitionIdle(Expander card)
+            {
+                var storyboard = VisualTreeHelper.GetChild(card, 0) is FrameworkElement chrome
+                    ? VisualStateManager.GetVisualStateGroups(chrome)
+                        .SingleOrDefault(states => states.Name == "ExpandStates")?.CurrentState?.Storyboard
+                    : null;
+                return storyboard is null ||
+                    storyboard.GetCurrentState() != Microsoft.UI.Xaml.Media.Animation.ClockState.Active;
             }
             if (!expanded)
             {
@@ -305,6 +317,8 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             }
             await TestSupport.WaitForRenderedConditionAsync(() =>
             {
+                cards = Rows();
+                if (cards.Length != 3 || !cards.All(ExpandTransitionIdle)) return false;
                 if (expanded)
                 {
                     var details = TryFind<FrameworkElement>(cards[0], "SystemsDetails");
@@ -318,7 +332,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                     Math.Abs(Bounds(current, group).Top - Bounds(previous, group).Bottom - 8) <= .5).All(gap => gap);
             }, expanded ? "expanded row translation and eight-DIP gaps settle" : "all rows collapse and eight-DIP gaps settle",
                 () => string.Join("; ", cards.Select(card =>
-                    $"{AutomationProperties.GetAutomationId(card)} expanded={card.IsExpanded}, size={card.ActualSize}, content={ContentChrome(card).Visibility}")));
+                    $"{AutomationProperties.GetAutomationId(card)} expanded={card.IsExpanded}, size={card.ActualSize}, content={ContentChrome(card).Visibility}, transitionIdle={ExpandTransitionIdle(card)}")));
             Assert.Equal(expanded, cards[0].IsExpanded);
             Assert.All(cards.Skip(1), card => Assert.False(card.IsExpanded));
             if (!expanded)

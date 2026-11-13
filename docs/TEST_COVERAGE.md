@@ -91,13 +91,21 @@ stable, prerelease, and main invocations can upload in the same caller run.
 The CI Shared-test step uses the existing five-minute hang watchdog and a
 15-minute outer step limit. A hang fails the run and preserves the interrupted
 test sequence without collecting a memory dump; it is not retried or skipped.
+The MCP bearer-rotation regression keeps its deliberately blocking rotation on a
+dedicated thread and bounds each loopback step with
+`OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS` (default 30 s), because the server
+pipeline itself runs on the shared thread pool.
 
 ### OpenClaw.Tray.Tests
 
 The composer lifetime- and voice-disposal reentrancy regressions use dedicated
 workers so their bounded reentrancy assertions (`OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS`,
 default 10 s) measure controller lock ownership rather than shared thread-pool
-scheduling latency.
+scheduling latency. The settings-coordinator and native-restart handoff
+regressions follow the same rule (`OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS`,
+default 15 s). Each Windows PowerShell 5.1 uninstall-helper run is bounded by
+`OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS` (default 120 s) because a
+cold 5.1 start on a loaded runner can exceed 30 s.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
@@ -206,8 +214,12 @@ screenshots and bounded proof outcomes are retained.
 The browser helper discovers the initial `about:blank` page through the owned
 loopback debugger's `/json/list` endpoint and connects directly to that page.
 It does not create another target through the browser-level WebSocket. Startup
-failures report the stage, elapsed time, process state, stderr character count
-and exception type, never raw Edge output or debugger URLs.
+through the first page command is bounded by a 60-second hang guard because the
+job's first, cold Edge launch can take far longer than later launches. Set
+`OPENCLAW_E2E_EDGE_STARTUP_TIMEOUT_SECONDS` (1-3600) to override it. Each
+startup reports cumulative per-stage milliseconds and the stderr character
+count. Failures also report the stage, elapsed time, limit, process state and
+exception type, never raw Edge output or debugger URLs.
 The existing fixture owns Gateway and profile teardown. This is a real released
 WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
 The run's `gateway-release.json`, result report and screenshots identify actual
@@ -372,7 +384,7 @@ input, or classifier/contract change selects `full` fail-closed. A full pull
 request runs all test and E2E lanes plus the x64 publish smoke. Pushes to `main`
 and tags also run ARM64 publish.
 
-The former serialized Windows `test` job is split into three clean-runner lanes.
+The former serialized Windows `test` job is split into clean-runner lanes.
 Each lane restores and builds its own minimal project graph and publishes a
 separate TRX artifact:
 
@@ -380,7 +392,15 @@ separate TRX artifact:
 |---|---|
 | `core-tests` | Shared, Connection, WinNode CLI |
 | `tray-tests` | Tray, SetupEngine, Tray Integration |
-| `ui-tests` | FunctionalUI, Tray UI, Axe.Windows accessibility |
+| `ui-tests` | FunctionalUI, Tray UI (first shard), Axe.Windows accessibility |
+| `tray-ui-shard` | Tray UI (second shard: workspace window, chat layout and setup classes) |
+
+The ordinary Tray UI suite is split by test class across `ui-tests` and
+`tray-ui-shard`, which run in parallel on separate runners. Both use the same
+category exclusions; `ui-tests` excludes exactly the classes `tray-ui-shard`
+selects, so every test runs once. `scripts/test-ci-workflow-contract.ps1`
+enforces that partition, and CI Gate requires both jobs whenever UI tests are
+selected. To rebalance, move whole classes between the two filters.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported

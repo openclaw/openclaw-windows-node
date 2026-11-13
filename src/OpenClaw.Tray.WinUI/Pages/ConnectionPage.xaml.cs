@@ -12,6 +12,7 @@ using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -92,10 +93,12 @@ public sealed partial class ConnectionPage : Page
     private string? _savedGatewaysFingerprint;
     private string? _glanceChipsFingerprint;
     private string? _capabilityPillsFingerprint;
+    private readonly ObservableCollection<FrameworkElement> _glanceChips = [];
 
     public ConnectionPage()
     {
         InitializeComponent();
+        GlanceChipsHost.ItemsSource = _glanceChips;
         Loaded += (_, _) => _ = VisualTestCapture.CaptureAsync(this, "Connection");
     }
 
@@ -565,7 +568,7 @@ public sealed partial class ConnectionPage : Page
             const string emptyFp = "<empty>";
             if (_glanceChipsFingerprint == emptyFp) return;
             _glanceChipsFingerprint = emptyFp;
-            GlanceChipsHost.ItemsSource = Array.Empty<Border>();
+            _glanceChips.Clear();
             return;
         }
 
@@ -575,13 +578,13 @@ public sealed partial class ConnectionPage : Page
         var activeRec = _gatewayRegistry?.GetActive();
 
         // Compute the fingerprint from the same inputs the chips render so
-        // we can short-circuit when nothing observable changed. Cheaper than
-        // re-templating ~5 chip Borders every snapshot tick.
+        // we can short-circuit when nothing observable changed.
         var topology = ClassifyTopology(activeRec);
         var hostname = Environment.MachineName;
         int? presence = self?.PresenceCount;
         int channelTotal = channels?.Length ?? 0;
         int channelOk = ConnectionPageChannelMetrics.CountHealthyChannels(channels);
+        var channelDetails = ConnectionPageChannelMetrics.BuildDetails(channels);
         double todayAmount = 0d;
         if (cost?.Daily is { Count: > 0 })
         {
@@ -596,24 +599,30 @@ public sealed partial class ConnectionPage : Page
         int dailyCount = cost?.Daily?.Count ?? 0;
         var sharedToken = activeRec?.SharedGatewayToken;
         var hasSharedToken = !string.IsNullOrEmpty(sharedToken);
-        var fp = $"{topology}|{hostname}|{presence}|{channelOk}/{channelTotal}|{dailyCount}|${todayAmount:0.00}|st={sharedToken?.Length ?? 0}";
+        var fp = $"{topology}|{hostname}|{presence}|{channelOk}/{channelTotal}|{channelDetails}|{dailyCount}|${todayAmount:0.00}|st={sharedToken?.Length ?? 0}";
         if (_glanceChipsFingerprint == fp) return;
         _glanceChipsFingerprint = fp;
 
-        var chips = new List<Border>(5);
+        var chips = new List<FrameworkElement>(6);
 
         // 1. Topology — Local / via SSH / LAN / Tailscale / Remote.
         //    Tells the user what kind of gateway they're talking to.
         if (topology != null)
         {
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.ServerEnvironment, topology, neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.ServerEnvironment, topology, neutral: true,
+                LocalizationHelper.Format("ConnectionPage_TopologyTooltip",
+                    LocalizationHelper.GetString("ConnectionPage_TopologyLocal"),
+                    LocalizationHelper.GetString("ConnectionPage_TopologyLAN"),
+                    LocalizationHelper.GetString("ConnectionPage_TopologyRemote")),
+                "ConnectionGlanceTopology"));
         }
 
         // 2. Local hostname — "on PERSEID". Tells the user what device the
         //    tray (and therefore Operator + Node) runs on. Free signal.
         if (!string.IsNullOrWhiteSpace(hostname))
         {
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Hostname, string.Format(LocalizationHelper.GetString("ConnectionPage_OnHostname"), hostname), neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Hostname, string.Format(LocalizationHelper.GetString("ConnectionPage_OnHostname"), hostname), neutral: true,
+                LocalizationHelper.Format("ConnectionPage_HostnameTooltip", hostname), "ConnectionGlanceHostname"));
         }
 
         // 3. Presence count — "1 client" / "3 clients" if the gateway has
@@ -621,7 +630,9 @@ public sealed partial class ConnectionPage : Page
         if (presence is int n && n > 0)
         {
             var label = n == 1 ? LocalizationHelper.GetString("ConnectionPage_ClientSingular") : string.Format(LocalizationHelper.GetString("ConnectionPage_ClientsPlural"), n);
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.People, label, neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.People, label, neutral: true,
+                LocalizationHelper.GetString("ConnectionPage_ClientsTooltip"), "ConnectionGlanceClients",
+                () => ((IAppCommands)CurrentApp).OpenDashboard("systems")));
         }
 
         // 4. Channels glance — "2/2 channels ready" when at least one channel
@@ -631,7 +642,9 @@ public sealed partial class ConnectionPage : Page
             var label = channelTotal == 1
                 ? string.Format(LocalizationHelper.GetString("ConnectionPage_ChannelsSingular"), channelOk, channelTotal)
                 : string.Format(LocalizationHelper.GetString("ConnectionPage_ChannelsPlural"), channelOk, channelTotal);
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Channels, label, neutral: channelOk == channelTotal));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Channels, label, neutral: channelOk == channelTotal,
+                LocalizationHelper.Format("ConnectionPage_ChannelsTooltip", channelOk, channelTotal, channelDetails),
+                "ConnectionGlanceChannels", () => ((IAppCommands)CurrentApp).OpenDashboard("channels")));
         }
 
         // 5. Today's $ — falls back to "$0.00 today" so the chip stays in a
@@ -641,22 +654,39 @@ public sealed partial class ConnectionPage : Page
             var label = todayAmount > 0
                 ? string.Format(LocalizationHelper.GetString("ConnectionPage_CostToday"), todayAmount.ToString("0.00"))
                 : LocalizationHelper.GetString("ConnectionPage_CostTodayZero");
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Money, label, neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Money, label, neutral: true,
+                LocalizationHelper.GetString("ConnectionPage_UsageTooltip"), "ConnectionGlanceUsage",
+                () => ((IAppCommands)CurrentApp).OpenDashboard("usage")));
         }
 
         // 6. Shared token — click to copy.
         if (hasSharedToken)
         {
-            var chip = BuildGlanceChip(Helpers.FluentIconCatalog.Lock, LocalizationHelper.GetString("ConnectionPage_SharedTokenChip"), neutral: true);
-            ToolTipService.SetToolTip(chip, LocalizationHelper.GetString("ConnectionPage_TapToCopySharedToken"));
-            chip.Tapped += (_, _) =>
-            {
-                ClipboardHelper.CopyText(sharedToken!);
-            };
-            chips.Add(chip);
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Lock, LocalizationHelper.GetString("ConnectionPage_SharedTokenChip"), neutral: true,
+                LocalizationHelper.GetString("ConnectionPage_TapToCopySharedToken"), "ConnectionGlanceSharedToken",
+                () =>
+                {
+                    var token = _gatewayRegistry?.GetActive()?.SharedGatewayToken;
+                    if (string.IsNullOrEmpty(token))
+                    {
+                        Services.Logger.Warn("[ConnectionPage] The shared Gateway token is no longer available to copy.");
+                        return;
+                    }
+                    ClipboardHelper.CopyText(token);
+                }));
         }
 
-        GlanceChipsHost.ItemsSource = chips;
+        // Retain mounted buttons so data refreshes do not remove keyboard focus.
+        for (int i = _glanceChips.Count - 1; i >= 0; i--)
+        {
+            if (!chips.Contains(_glanceChips[i]))
+                _glanceChips.RemoveAt(i);
+        }
+        for (int i = 0; i < chips.Count; i++)
+        {
+            if (i >= _glanceChips.Count || _glanceChips[i] != chips[i])
+                _glanceChips.Insert(i, chips[i]);
+        }
     }
 
     /// <summary>
@@ -706,32 +736,64 @@ public sealed partial class ConnectionPage : Page
         return int.TryParse(parts[1], out var second) && second >= 16 && second <= 31;
     }
 
-    private Border BuildGlanceChip(string glyph, string label, bool neutral)
+    private FrameworkElement BuildGlanceChip(
+        string glyph, string label, bool neutral, string tooltip, string automationId, Action? onClick = null)
     {
-        var fgKey = neutral ? "TextFillColorSecondaryBrush" : "SystemFillColorCautionBrush";
-        var bgKey = neutral ? "SubtleFillColorSecondaryBrush" : "SystemFillColorCautionBackgroundBrush";
+        var stylePrefix = neutral ? "ConnectionCapabilityPillOff" : "ConnectionCapabilityPillPending";
+        var existing = _glanceChips.FirstOrDefault(
+            chip => AutomationProperties.GetAutomationId(chip) == automationId);
         var stack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        stack.Children.Add(new FontIcon
+        var icon = new FontIcon
         {
             Glyph = glyph,
             FontSize = 11,
-            Foreground = ResolveBrush(fgKey),
             VerticalAlignment = VerticalAlignment.Center,
-        });
-        stack.Children.Add(new TextBlock
+        };
+        AutomationProperties.SetAccessibilityView(icon, AccessibilityView.Raw);
+        stack.Children.Add(icon);
+        var text = new TextBlock
         {
             Text = label,
             FontSize = 11,
-            Foreground = ResolveBrush(fgKey),
             VerticalAlignment = VerticalAlignment.Center,
-        });
-        return new Border
-        {
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 2, 6, 2),
-            Background = ResolveBrush(bgKey),
-            Child = stack,
         };
+        stack.Children.Add(text);
+        FrameworkElement chip;
+        if (onClick is not null)
+        {
+            var button = existing as Button ?? new Button
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(5, 1, 5, 1),
+                MinWidth = 0,
+                MinHeight = 0,
+            };
+            button.Content = stack;
+            button.Style = (Style)Resources[neutral ? "ConnectionGlanceNeutralButtonStyle" : "ConnectionGlanceAttentionButtonStyle"];
+            if (existing is not Button)
+                button.Click += (_, _) => onClick();
+            AutomationProperties.SetName(button, label);
+            chip = button;
+        }
+        else
+        {
+            icon.Style = (Style)Resources[stylePrefix + "IconStyle"];
+            text.Style = (Style)Resources[stylePrefix + "TextStyle"];
+            var border = existing as Border ?? new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+            };
+            border.Style = (Style)Resources[stylePrefix + "BorderStyle"];
+            border.Child = stack;
+            chip = border;
+            AutomationProperties.SetAutomationId(text, automationId);
+            AutomationProperties.SetHelpText(text, tooltip);
+        }
+        AutomationProperties.SetAutomationId(chip, automationId);
+        AutomationProperties.SetHelpText(chip, tooltip);
+        ToolTipService.SetToolTip(chip, tooltip);
+        return chip;
     }
 
     private void ApplyOperatorCard(ConnectionPagePlan plan)
