@@ -33,7 +33,6 @@
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModels.cs" Link="Chat\ChatModels.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatModelChoice.cs" Link="Chat\ChatModelChoice.cs" />
     <Compile Include="..\..\src\OpenClaw.Chat\ChatThinkingProfile.cs" Link="Chat\ChatThinkingProfile.cs" />
-    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatEffortInputPolicy.cs" Link="Chat\ChatEffortInputPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsController.cs" Link="Systems\SystemsController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsLayout.cs" Link="Systems\SystemsLayout.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Systems\SystemsViewport.cs" Link="Systems\SystemsViewport.cs" />
@@ -74,6 +73,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatThroughputTracker.cs" Link="Chat\ChatThroughputTracker.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatMarkdownSanitizer.cs" Link="Chat\ChatMarkdownSanitizer.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatCodeSyntax.cs" Link="Chat\ChatCodeSyntax.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatMarkdownDisclosures.cs" Link="Chat\ChatMarkdownDisclosures.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTelemetryTracker.cs" Link="Chat\ChatTelemetryTracker.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatLifecycleCommandDispatcher.cs" Link="Chat\ChatLifecycleCommandDispatcher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatComposerSubmissionPolicy.cs" Link="Chat\ChatComposerSubmissionPolicy.cs" />
@@ -81,8 +81,11 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatCompactionPresentation.cs" Link="Chat\ChatCompactionPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatHistoryReplayProjection.cs" Link="Chat\ChatHistoryReplayProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolActivityPresentation.cs" Link="Chat\ChatToolActivityPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolRowPresentation.cs" Link="Chat\ChatToolRowPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTimelineAssistantRuns.cs" Link="Chat\ChatTimelineAssistantRuns.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolDetailRequest.cs" Link="Chat\ChatToolDetailRequest.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationPanelState.cs" Link="Chat\ChatConversationPanelState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSessionFilesState.cs" Link="Chat\ChatSessionFilesState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSubagentPresentation.cs" Link="Chat\ChatSubagentPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\TailNavigationPolicy.cs" Link="Chat\TailNavigationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ReactorSlashCommandController.cs" Link="Chat\ReactorSlashCommandController.cs" />
@@ -216,6 +219,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\PairingApprovalCoordinator.cs" Link="Services\PairingApprovalCoordinator.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ToastActivationRouter.cs" Link="Services\ToastActivationRouter.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationService.cs" Link="Services\AppNotificationService.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DesktopCompanionState.cs" Link="Presentation\DesktopCompanionState.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\DesktopCompanionController.cs" Link="Presentation\DesktopCompanionController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationMapper.cs" Link="Services\AppNotificationMapper.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\ChatNotificationSpeechText.cs" Link="Services\ChatNotificationSpeechText.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\AppNotificationPublisher.cs" Link="Services\AppNotificationPublisher.cs" />

@@ -923,7 +923,8 @@ public sealed class WorkspaceNavigationTests
         var layers = chrome.Parent!.Elements().ToList();
         Assert.True(layers.IndexOf(settings) < layers.IndexOf(chrome));
         Assert.True(layers.IndexOf(chrome) < layers.IndexOf(history));
-        Assert.Equal("1", (string?)chrome.Attribute("Grid.Row"));
+        Assert.Null(chrome.Attribute("Grid.Row"));
+        Assert.Equal("2", (string?)chrome.Attribute("Grid.ColumnSpan"));
         Assert.Equal("{Binding Visibility, ElementName=NavigationSection}", (string?)chrome.Attribute("Visibility"));
         Assert.Equal("48", (string?)chrome.Attribute("Width"));
         Assert.Equal("56", (string?)chrome.Attribute("Height"));
@@ -976,7 +977,23 @@ public sealed class WorkspaceNavigationTests
         var document = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var title = document.Descendants().Single(element => element.Name.LocalName == "TitleBar");
-        Assert.Equal("OpenClaw", (string?)title.Attribute("Title"));
+        Assert.Null(title.Attribute("Title"));
+        Assert.Null(title.Attribute("IconSource"));
+        Assert.Equal("Top", (string?)title.Attribute("VerticalAlignment"));
+        Assert.DoesNotContain(title.Parent!.Elements(), element => element.Name.LocalName == "Grid.RowDefinitions");
+        foreach (var name in new[] { "NavigationSection", "SettingsSection", "PaneToggleChrome", "SettingsHistoryBar" })
+        {
+            var surface = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
+            Assert.Null(surface.Attribute("Grid.Row"));
+            Assert.Equal("2", (string?)surface.Attribute("Grid.ColumnSpan"));
+        }
+        var titleColumn = title.Parent.Elements().Single(element => element.Name.LocalName == "Grid.ColumnDefinitions");
+        var navigation = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "NavView");
+        Assert.Equal("256", (string?)titleColumn.Elements().First().Attribute("Width"));
+        Assert.Equal("256", (string?)navigation.Attribute("OpenPaneLength"));
+        Assert.Equal("1", (string?)title.Attribute("Grid.Column"));
+        var homeIcon = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "HomeIcon");
+        Assert.Null(homeIcon.Parent!.Attribute("Margin"));
         Assert.DoesNotContain(title.Descendants(), element => element.Name.LocalName == "Button");
         Assert.DoesNotContain(title.Descendants(), element => element.Name.LocalName == "TextBlock");
         foreach (var name in new[] { "BackButton", "ForwardButton" })
@@ -1017,6 +1034,10 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("ComboBoxItem", newAgent.Name.LocalName);
         Assert.DoesNotContain(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "NewConversationButton");
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("ExtendsContentIntoTitleBar = true;", code);
+        Assert.Contains("SetTitleBar(WorkspaceTitleBar);", code);
+        Assert.DoesNotContain("WorkspaceTitleBar.IconSource", code);
+        Assert.DoesNotContain("SetDragRectangles", code);
         Assert.Contains("desiredItems.Add(NewAgentOption)", code);
         Assert.DoesNotContain("AssistantSelector.Items.Clear()", code);
         Assert.Contains("RestoreAssistantSelection();", code);
@@ -1073,7 +1094,7 @@ public sealed class WorkspaceNavigationTests
         foreach (var element in host.AncestorsAndSelf())
             Assert.Null(element.Attribute("Background"));
         Assert.Null(layout.Attribute("CornerRadius"));
-        Assert.Null(layout.Attribute("Margin"));
+        Assert.Equal("0,32,0,0", (string?)layout.Attribute("Margin"));
         var titleBar = doc.Descendants().Single(element => element.Name.LocalName == "TitleBar");
         Assert.Null(titleBar.Attribute("Background"));
         Assert.DoesNotContain(doc.Descendants(), element =>
@@ -1125,7 +1146,7 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("{ThemeResource SystemFillColorCautionBrush}", (string?)badges[1].Attribute("Background"));
         Assert.DoesNotContain(bell.Descendants(), element => element.Name.LocalName == "InfoBadge");
         Assert.DoesNotContain(doc.Descendants(), element => element.Name.LocalName is "ImageIcon" or "SvgImageSource");
-        Assert.Equal(new[] { "OwnerAvatarStatusDot", "OwnerStatusDot" },
+        Assert.Equal(new[] { "OwnerAvatarStatusDot" },
             owner.Descendants().Where(element => element.Name.LocalName == "FontIcon")
                 .Select(element => (string?)element.Attribute(x + "Name")));
         var window = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
@@ -1273,19 +1294,20 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
-    public void TitleBar_StaysCompactAndRefreshesDragRegionsWhenActionsToggle()
+    public void TitleBar_MatchesPaneToolbarAndRefreshesDragRegionsWhenActionsToggle()
     {
         var doc = XDocument.Load(Source("Windows", "WorkspaceWindow.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var titleBar = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "WorkspaceTitleBar");
         var expanded = titleBar.Descendants().Single(element => (string?)element.Attribute(x + "Key") == "TitleBarExpandedHeight");
-        Assert.Equal("32", expanded.Value);
+        Assert.Equal("56", expanded.Value);
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         var update = code[code.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)..];
         update = update[..update.IndexOf("\n    }", StringComparison.Ordinal)];
         Assert.Contains("WorkspaceTitleBar.RecomputeDragRegions();", update);
         Assert.Contains("TitleBarFooter.HideFlyouts();", update);
         var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
+        Assert.Contains("private const double TitleBarButtonHeight = 40;", footer);
         Assert.Contains("DashboardButton.Height = titleBar ? TitleBarButtonHeight : _paneButtonHeight;", footer);
         var footerXaml = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
         var grid = footerXaml.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "FooterGrid");
@@ -1321,27 +1343,47 @@ public sealed class WorkspaceNavigationTests
     public void RailOwner_UsesCompactPaddingAndRestoresExpandedPadding()
     {
         var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
-        Assert.Contains("OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8);", footer);
+        Assert.Contains("OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8, 4, 8, 4);", footer);
+        // The rail keeps the account at the bottom, below Dashboard and the bell.
+        Assert.Contains("Place(DashboardButton, 0, rail ? 0 : 1);", footer);
+        Assert.Contains("Place(NotificationsButton, rail ? 1 : 0, rail ? 0 : 2);", footer);
+        Assert.Contains("Place(OwnerButton, rail ? 2 : 0, 0);", footer);
+        Assert.Contains("DashboardButton.TabIndex = rail ? 0 : 1;", footer);
+        Assert.Contains("NotificationsButton.TabIndex = rail ? 1 : 2;", footer);
+        Assert.Contains("OwnerButton.TabIndex = rail ? 2 : 0;", footer);
     }
 
     [Fact]
-    public void OwnerFooterStatusDot_PrecedesTextAndSharesLiveThemeResources()
+    public void OwnerFooterStatusDot_OverlaysAvatarAndSharesLiveThemeResources()
     {
         var doc = XDocument.Load(Source("Controls", "WorkspacePaneFooter.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var dot = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerStatusDot");
-        var detail = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerDetail");
-        Assert.Same(dot.Parent, detail.Parent);
-        Assert.Equal("4", (string?)dot.Parent!.Attribute("ColumnSpacing"));
-        Assert.Equal("1", (string?)detail.Attribute("Grid.Column"));
+        var dot = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerAvatarStatusDot");
+        var picture = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerPicture");
+        var ring = dot.Parent!;
+        Assert.Same(picture.Parent, ring.Parent);
+        Assert.Equal("14", (string?)ring.Attribute("Width"));
+        Assert.Equal("14", (string?)ring.Attribute("Height"));
+        Assert.Equal("2", (string?)ring.Attribute("BorderThickness"));
+        Assert.Equal("{ThemeResource ApplicationPageBackgroundThemeBrush}", (string?)ring.Attribute("BorderBrush"));
+        Assert.Equal("Right", (string?)ring.Attribute("HorizontalAlignment"));
+        Assert.Equal("Bottom", (string?)ring.Attribute("VerticalAlignment"));
+        Assert.Equal("0,0,-3.5,-3.5", (string?)ring.Attribute("Margin"));
+        // A sized or clipped overlay Grid cuts the overhanging dots off at the avatar bounds.
+        foreach (var size in new[] { "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight", "Clip" })
+            Assert.Null(ring.Parent!.Attribute(size));
+        // The avatar needs slack in the 40 DIP button; ApplyLayout sets the same expanded padding.
+        var ownerButton = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerButton");
+        Assert.Equal("8,4", (string?)ownerButton.Attribute("Padding"));
+        Assert.DoesNotContain(doc.Descendants(), element => (string?)element.Attribute(x + "Name") == "OwnerDetail");
         Assert.Equal("FontIcon", dot.Name.LocalName);
         Assert.Equal("Raw", (string?)dot.Attribute("AutomationProperties.AccessibilityView"));
         Assert.Equal("False", (string?)dot.Attribute("IsHitTestVisible"));
         Assert.Equal("{StaticResource ConnectionBadgeNeutral}", (string?)dot.Attribute("Style"));
-        Assert.Equal("CharacterEllipsis", (string?)detail.Attribute("TextTrimming"));
         var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
-        Assert.Contains("OwnerStatusDot.Style = style;", footer);
         Assert.Contains("OwnerAvatarStatusDot.Style = style;", footer);
+        Assert.DoesNotContain("OwnerAvatarStatusDot.Visibility =", footer);
+        Assert.Contains("AutomationProperties.SetHelpText(OwnerButton, OwnerStatusText)", footer);
         Assert.Contains("(Style)Resources[$\"ConnectionBadge{accent}\"]", footer);
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("Icon = new FontIcon { Style = ChatFooter.BadgeStyle(model.StatusAccent) }", code);

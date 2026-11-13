@@ -1,6 +1,8 @@
 // Read-only conversation tabs. Bind the current provider/history before Open;
 // requests retain identities only, never cached tool payloads or write authority.
+// Tool details follow the loaded history; the session dashboard follows the session.
 using OpenClaw.Chat;
+using OpenClaw.Shared.Dashboards;
 
 namespace OpenClawTray.Chat;
 
@@ -14,6 +16,12 @@ internal sealed class ChatConversationPanelState
     internal const double DividerWidth = 12;
     internal const string DetailsSlot = "details";
     internal const string SubagentsSlot = "subagents";
+    internal const string DashboardSlot = "dashboard";
+    internal const string FilesSlot = "files";
+    // Closing a dashboard suppresses automatic reveals for that session while chat stays mounted.
+    private readonly HashSet<string> _dismissedDashboards = new(StringComparer.Ordinal);
+    // The dashboard tab was revealed automatically and the user has not opened it yet.
+    private bool _dashboardUnseen;
     private object? _provider;
     private string? _session;
     private long _connectionGeneration;
@@ -29,24 +37,36 @@ internal sealed class ChatConversationPanelState
     internal IReadOnlyList<string> Tabs => _tabs;
     internal string? Selected { get; private set; }
     internal ChatToolDetailRequest? Details { get; private set; }
+    internal BoardSessionTarget? Dashboard { get; private set; }
+    /// <summary>The selection came from an automatic reveal: show it beside a wide conversation only, without focus.</summary>
+    internal bool Passive { get; private set; }
     internal double Width { get; private set; } = 440;
     internal long Revision { get; private set; }
     internal long OpenVersion { get; private set; }
     internal bool IsReady => _session is not null && _isCurrent();
     internal bool AreSubagentsReady => _session is not null && _subagentsCurrent();
 
-    /// <summary>Session/source replacement discards tabs; streaming updates retain them.</summary>
+    /// <summary>
+    /// Provider/session replacement discards all tabs. Connection or history
+    /// replacement discards details and subagents but keeps the session
+    /// dashboard; streaming updates retain them all.
+    /// </summary>
     internal void Bind(object provider, string? session, long connectionGeneration,
         long timelineGeneration, long historyRevision, IReadOnlyList<ChatTimelineItem> entries,
         Func<bool> isCurrent, long profileRevision = 0, Func<bool>? subagentsCurrent = null)
     {
-        if (!ReferenceEquals(_provider, provider) || _session != session ||
-            _connectionGeneration != connectionGeneration || _timelineGeneration != timelineGeneration ||
+        var selectedBefore = Selected;
+        if (!ReferenceEquals(_provider, provider) || _session != session)
+        {
+            Clear();
+            Revision++;
+        }
+        else if (_connectionGeneration != connectionGeneration || _timelineGeneration != timelineGeneration ||
             _historyRevision != historyRevision)
         {
-            _tabs.Clear();
-            Selected = null;
-            Details = null;
+            Remove(DetailsSlot);
+            Remove(SubagentsSlot);
+            Remove(FilesSlot);
             Revision++;
         }
         else if (_profileRevision != profileRevision)
@@ -63,11 +83,15 @@ internal sealed class ChatConversationPanelState
         _entries = entries;
         _isCurrent = isCurrent;
         _subagentsCurrent = subagentsCurrent ?? (() => false);
-        if (!AreSubagentsReady)
+        if (!AreSubagentsReady && (_tabs.Contains(SubagentsSlot) || _tabs.Contains(FilesSlot)))
         {
-            _tabs.Remove(SubagentsSlot);
-            if (Selected == SubagentsSlot) Selected = _tabs.LastOrDefault();
+            var selected = Selected is SubagentsSlot or FilesSlot;
+            Remove(SubagentsSlot);
+            Remove(FilesSlot);
+            if (selected) Selected = _tabs.LastOrDefault();
         }
+        // A fallback chosen here was not requested by the user: never move focus or cover a narrow conversation.
+        if (Selected is not null && Selected != selectedBefore) Passive = true;
     }
 
     internal ChatTimelineItem? Resolve(ChatToolDetailRequest request) =>
@@ -78,53 +102,128 @@ internal sealed class ChatConversationPanelState
     {
         if (Revision != expectedRevision || Resolve(request) is null) return false;
         Details = request;
-        OpenSlot(DetailsSlot);
+        Show(DetailsSlot);
         return true;
     }
 
     internal bool OpenSubagents(long expectedRevision)
     {
         if (Revision != expectedRevision || !AreSubagentsReady) return false;
-        OpenSlot(SubagentsSlot);
+        Show(SubagentsSlot);
         return true;
     }
 
-    private void OpenSlot(string slot)
+    /// <summary>Files share the Subagents admission: the current session on the current connection.</summary>
+    internal bool OpenFiles(long expectedRevision)
     {
-        if (!_tabs.Contains(slot)) _tabs.Add(slot);
-        Selected = slot;
-        OpenVersion++;
+        if (Revision != expectedRevision || !AreSubagentsReady) return false;
+        Show(FilesSlot);
+        return true;
+    }
+
+    /// <summary>Explicit open: selects and focuses the bound session's dashboard and clears its dismissal.</summary>
+    internal bool OpenDashboard(BoardSessionTarget target)
+    {
+        if (_session is null || target.SessionKey != _session) return false;
+        _dismissedDashboards.Remove(target.SessionKey);
+        Dashboard = target;
+        Show(DashboardSlot);
+        return true;
+    }
+
+    /// <summary>Automatic reveal: adds the tab unless dismissed, without replacing an existing selection.</summary>
+    internal bool RevealDashboard(BoardSessionTarget target)
+    {
+        if (_session is null || target.SessionKey != _session || !CanRevealDashboard(target.SessionKey)) return false;
+        _tabs.Add(DashboardSlot);
+        Dashboard = target;
+        _dashboardUnseen = true;
+        if (Selected is null)
+        {
+            Selected = DashboardSlot;
+            Passive = true;
+        }
+        Changed?.Invoke();
+        return true;
+    }
+
+    internal bool CanRevealDashboard(string sessionKey) =>
+        !_tabs.Contains(DashboardSlot) && !_dismissedDashboards.Contains(sessionKey);
+
+    /// <summary>The user asked to see a passively revealed panel.</summary>
+    internal void Engage()
+    {
+        if (!Passive) return;
+        Passive = false;
+        if (Selected == DashboardSlot) _dashboardUnseen = false;
         Changed?.Invoke();
     }
 
+    /// <summary>User tab selection. Reselecting the current tab is ignored so a control echo cannot end a passive reveal.</summary>
     internal void Select(string slot)
     {
         if (!_tabs.Contains(slot) || Selected == slot) return;
         Selected = slot;
+        Passive = false;
+        if (slot == DashboardSlot) _dashboardUnseen = false;
         Changed?.Invoke();
     }
 
     internal void Close(string slot)
     {
-        var index = _tabs.IndexOf(slot);
-        if (index < 0) return;
-        _tabs.RemoveAt(index);
-        if (slot == DetailsSlot) Details = null;
-        if (Selected == slot)
-            Selected = _tabs.Count == 0 ? null : _tabs[Math.Min(index, _tabs.Count - 1)];
-        Changed?.Invoke();
+        if (slot == DashboardSlot && Dashboard is { } dashboard)
+            _dismissedDashboards.Add(dashboard.SessionKey);
+        if (Remove(slot)) Changed?.Invoke();
     }
 
     internal void Invalidate()
     {
-        _tabs.Clear();
-        Selected = null;
-        Details = null;
+        Clear();
         _entries = [];
         _isCurrent = () => false;
         _subagentsCurrent = () => false;
         Revision++;
         Changed?.Invoke();
+    }
+
+    private void Show(string slot)
+    {
+        if (!_tabs.Contains(slot)) _tabs.Add(slot);
+        Selected = slot;
+        Passive = false;
+        if (slot == DashboardSlot) _dashboardUnseen = false;
+        OpenVersion++;
+        Changed?.Invoke();
+    }
+
+    private bool Remove(string slot)
+    {
+        var index = _tabs.IndexOf(slot);
+        if (index < 0) return false;
+        _tabs.RemoveAt(index);
+        if (slot == DetailsSlot) Details = null;
+        if (slot == DashboardSlot)
+        {
+            Dashboard = null;
+            _dashboardUnseen = false;
+        }
+        if (Selected == slot)
+        {
+            Selected = _tabs.Count == 0 ? null : _tabs[Math.Min(index, _tabs.Count - 1)];
+            // Falling back onto a dashboard the user never opened keeps it passive.
+            Passive = Selected == DashboardSlot && _dashboardUnseen;
+        }
+        return true;
+    }
+
+    private void Clear()
+    {
+        _tabs.Clear();
+        Selected = null;
+        Details = null;
+        Dashboard = null;
+        Passive = false;
+        _dashboardUnseen = false;
     }
 
     internal static double MaximumWidthForViewport(double viewportWidth) =>

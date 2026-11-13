@@ -1,3 +1,4 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -47,6 +48,7 @@ public sealed partial class ConnectionPage : Page
     private WslGatewayController? _wslGatewayController;
 
     // ─── UI state ───
+    private readonly HashSet<string> _expandedSavedGatewayIds = new(StringComparer.Ordinal);
     private UserIntent _userIntent = UserIntent.None;
     private GatewayConnectionSnapshot _lastSnapshot = GatewayConnectionSnapshot.Idle;
     private bool _suppressNodeModeToggle;
@@ -1680,9 +1682,9 @@ public sealed partial class ConnectionPage : Page
             ? "paired via device token"
             : authMode;
 
-    private List<Border> BuildSavedGatewayRowControls(IEnumerable<SavedGatewayRow> rows)
+    private List<SettingsExpander> BuildSavedGatewayRowControls(IEnumerable<SavedGatewayRow> rows)
     {
-        var list = new List<Border>();
+        var list = new List<SettingsExpander>();
         foreach (var row in rows)
         {
             list.Add(BuildSavedGatewayRowControl(row));
@@ -1709,24 +1711,24 @@ public sealed partial class ConnectionPage : Page
     /// </summary>
     private FrameworkElement? BuildActiveRowBadge(OverallConnectionState state)
     {
-        // (glyph, brushKey, label) per state. Connected/Ready/Degraded all
+        // Connected/Ready/Degraded all
         // mean "operator is online" — the only case that warrants the
         // affirmative "Connected" badge.
-        (string glyph, string brushKey, string label)? badge = state switch
+        (string brushKey, string label)? badge = state switch
         {
             OverallConnectionState.Connected or
             OverallConnectionState.Ready or
             OverallConnectionState.Degraded =>
-                (Helpers.FluentIconCatalog.StatusOk, "SystemFillColorSuccessBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnected")),
+                ("SystemFillColorSuccessBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnected")),
 
             OverallConnectionState.Connecting =>
-                (Helpers.FluentIconCatalog.Sync, "SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnecting")),
+                ("SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnecting")),
 
             OverallConnectionState.PairingRequired =>
-                (Helpers.FluentIconCatalog.Lock, "SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeAwaitingApproval")),
+                ("SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeAwaitingApproval")),
 
             OverallConnectionState.Disconnecting =>
-                (Helpers.FluentIconCatalog.Sync, "TextFillColorSecondaryBrush", LocalizationHelper.GetString("ConnectionPage_BadgeDisconnecting")),
+                ("TextFillColorSecondaryBrush", LocalizationHelper.GetString("ConnectionPage_BadgeDisconnecting")),
 
             // Idle and Error → no badge; caller renders [Connect].
             // The status strip up top already carries the "broken / can't
@@ -1739,27 +1741,32 @@ public sealed partial class ConnectionPage : Page
         };
 
         if (badge is null) return null;
-        var (glyph, brushKey, label) = badge.Value;
+        var (brushKey, label) = badge.Value;
+        return BuildGatewayRowStatus(brushKey, label);
+    }
 
+    private FrameworkElement BuildGatewayRowStatus(string brushKey, string label)
+    {
         var stack = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        stack.Children.Add(new FontIcon
+        var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
         {
-            Glyph = glyph,
-            FontSize = 12,
-            Foreground = ResolveBrush(brushKey),
+            Width = 10,
+            Height = 10,
+            Fill = ResolveBrush(brushKey),
             VerticalAlignment = VerticalAlignment.Center,
-        });
+        };
+        AutomationProperties.SetAccessibilityView(dot, AccessibilityView.Raw);
+        stack.Children.Add(dot);
         stack.Children.Add(new TextBlock
         {
             Text = label,
-            FontSize = 11,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = ResolveBrush(brushKey),
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
             VerticalAlignment = VerticalAlignment.Center,
         });
         // Accessibility: the badge label is the screen-reader narration for
@@ -1772,23 +1779,25 @@ public sealed partial class ConnectionPage : Page
         return stack;
     }
 
-    private Border BuildSavedGatewayRowControl(SavedGatewayRow row)
+    private SettingsExpander BuildSavedGatewayRowControl(SavedGatewayRow row)
     {
-        // All rows use neutral card chrome. The status badge alone communicates
-        // which row is the active/live gateway; tinting the whole row was visually noisy.
-        var card = new Border
+        var card = new SettingsExpander
         {
-            Background = ResolveBrush("CardBackgroundFillColorSecondaryBrush"),
-            BorderBrush = ResolveBrush("CardStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(12, 8, 8, 8),
-            Margin = new Thickness(0, 0, 0, 6),
+            HeaderIcon = new FontIcon { Glyph = Helpers.FluentIconCatalog.ServerEnvironment },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 0, 0, 4),
+            IsExpanded = _expandedSavedGatewayIds.Contains(row.Id),
         };
+        card.RegisterPropertyChangedCallback(SettingsExpander.IsExpandedProperty, (_, _) =>
+        {
+            if (card.IsExpanded)
+                _expandedSavedGatewayIds.Add(row.Id);
+            else
+                _expandedSavedGatewayIds.Remove(row.Id);
+        });
 
         var grid = new Grid { ColumnSpacing = 8 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
@@ -1797,15 +1806,16 @@ public sealed partial class ConnectionPage : Page
         info.Children.Add(new TextBlock
         {
             Text = row.DisplayName,
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
-        var sub = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var sub = new StackPanel { Spacing = 4 };
         sub.Children.Add(new TextBlock
         {
             Text = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(row.Url),
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
             Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
+            TextWrapping = TextWrapping.Wrap,
         });
         if (!string.IsNullOrEmpty(row.AuthModeLabel))
         {
@@ -1843,11 +1853,14 @@ public sealed partial class ConnectionPage : Page
                 Foreground = ResolveBrush("TextFillColorTertiaryBrush"),
             });
         }
-        info.Children.Add(sub);
-        Grid.SetColumn(info, 0);
-        grid.Children.Add(info);
+        card.Header = info;
+        card.Items.Add(new SettingsCard
+        {
+            Header = sub,
+            Padding = new Thickness(16),
+        });
 
-        // Per-row right-hand affordance: a status badge when the row is the
+        // Per-row affordance: a status badge when the row is the
         // *active* gateway and the snapshot has something live-ish to report,
         // otherwise a [Connect] button to (re)activate the row.
         //
@@ -1858,12 +1871,10 @@ public sealed partial class ConnectionPage : Page
         // pairing request.
         var badge = row.IsActive ? BuildActiveRowBadge(_lastSnapshot.OverallState) : null;
         bool hasLiveAffordance = badge != null;
-        if (hasLiveAffordance)
-        {
-            Grid.SetColumn(badge!, 1);
-            grid.Children.Add(badge!);
-        }
-        else if (ConnectionPageRowState.ShouldShowConnect(
+        info.Children.Add(badge ?? BuildGatewayRowStatus(
+            "TextFillColorSecondaryBrush",
+            LocalizationHelper.GetString("StatusDisplay_Disconnected")));
+        if (ConnectionPageRowState.ShouldShowConnect(
             row.IsActive,
             hasLiveAffordance,
             _currentPlan?.AllowConnectionToggle ?? true))
@@ -1878,7 +1889,7 @@ public sealed partial class ConnectionPage : Page
                 connectBtn,
                 "SavedGatewayConnectAction");
             connectBtn.Click += OnConnectSavedGateway;
-            Grid.SetColumn(connectBtn, 1);
+            Grid.SetColumn(connectBtn, 0);
             grid.Children.Add(connectBtn);
         }
 
@@ -1945,11 +1956,12 @@ public sealed partial class ConnectionPage : Page
             flyout.Items.Add(remove);
         }
         overflowBtn.Flyout = flyout;
-        Grid.SetColumn(overflowBtn, 2);
+        Grid.SetColumn(overflowBtn, 1);
         grid.Children.Add(overflowBtn);
 
-        card.Child = grid;
+        card.Content = grid;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card, row.DisplayName);
+        Helpers.SettingsExpanderAutomation.NameDisclosure(card, row.DisplayName);
         return card;
     }
 

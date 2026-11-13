@@ -423,6 +423,8 @@ Environment-only knobs without a config-file equivalent:
   `openclaw` CLI call during native Gateway setup (`config validate`, `config set`
   for node capabilities, `gateway health`, `devices list`, `devices approve`;
   `NativeGatewayCliTimeout`). Each call includes packaged Node/CLI startup.
+  The same limit is passed to the health command's internal Gateway RPC timeout;
+  the process deadline still includes CLI startup and can expire first.
   Default 240 (4 minutes); a positive integer between 1 and 2147483 overrides it,
   and any other value is ignored with a warning and keeps the default.
 

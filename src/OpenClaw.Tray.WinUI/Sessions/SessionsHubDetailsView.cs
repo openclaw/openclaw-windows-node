@@ -43,7 +43,7 @@ internal static class SessionsHubDetailsView
             .AutomationId("SessionsHubSettings");
         var technical = Expander("",
                 TechnicalFacts(context, row), false, _ => { })
-            .HeaderTemplate(HStack(8,
+            .HeaderContent(HStack(8,
                 SessionsHubView.Glyph("\uE9D9", 14),
                 TextBlock(LocalizationHelper.GetString("ConnectionPage_NodeTechnicalDetails.Text"))))
             .HAlign(HorizontalAlignment.Stretch)

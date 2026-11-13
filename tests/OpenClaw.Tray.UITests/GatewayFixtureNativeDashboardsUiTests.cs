@@ -55,6 +55,8 @@ public sealed partial class GatewayFixtureUiTests
                         ?? throw new InvalidOperationException("The native Workspace title bar is missing.");
                     Assert.Equal(run.AppProcessId, titleBar.Current.ProcessId);
                     Assert.Equal(ControlType.TitleBar, titleBar.Current.ControlType);
+                    Assert.False(string.IsNullOrWhiteSpace(titleBar.Current.Name),
+                        "The Workspace title bar must expose an accessible name.");
                     var chromeRoot = TreeWalker.RawViewWalker.GetParent(titleBar)
                         ?? throw new InvalidOperationException("The native Workspace chrome owner is missing.");
                     Assert.Equal(run.AppProcessId, chromeRoot.Current.ProcessId);
@@ -241,7 +243,8 @@ public sealed partial class GatewayFixtureUiTests
                                 openHostTop = host.Top;
                             var measuredInset = (viewport.Top - host.Top) / scale;
                             var measuredHostMargin = (host.Top - openHostTop!.Value) / scale;
-                            Assert.InRange(Math.Abs(measuredInset - (collapsed ? 56 : 0)), 0, 1);
+                            // Every pinned page clears the 56 DIP title band in both pane states.
+                            Assert.InRange(Math.Abs(measuredInset - 56), 0, 1);
                             Assert.InRange(Math.Abs(measuredHostMargin), 0, 1);
                             var toggleId = collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane";
                             var oppositeId = collapsed ? "WorkspaceTogglePane" : "WorkspaceReopenPane";
@@ -252,7 +255,7 @@ public sealed partial class GatewayFixtureUiTests
                                 var currentHost = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
                                 var currentViewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!
                                     .Current.BoundingRectangle;
-                                return Math.Abs((currentViewport.Top - currentHost.Top) / scale - (collapsed ? 56 : 0)) <= 1 &&
+                                return Math.Abs((currentViewport.Top - currentHost.Top) / scale - 56) <= 1 &&
                                     Math.Abs((currentHost.Top - openHostTop.Value) / scale) <= 1;
                             }, "pinned geometry retained after the physical pane roundtrip");
                             if (collapsed)
@@ -902,7 +905,9 @@ public sealed partial class GatewayFixtureUiTests
                         delivery = "UIA ScrollPattern.LargeIncrement and foreground-gated SendInput MOUSEEVENTF_WHEEL(-120) at the owned gallery. Cursor restored; no keyboard input.",
                         appProcessId = run.AppProcessId }));
                 Assert.All(inputResults, result => Assert.True(result.Error is null, JsonSerializer.Serialize(result)));
-                Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "board.get");
+                // Startup chat may probe its own session. No gallery board may load while browsing.
+                Assert.DoesNotContain(run.Gateway.Requests, request =>
+                    request.Method == "board.get" && request.SessionKey != GatewayScenario.MainSessionKey);
             }, scenario: GatewayScenario.CreateDashboards(), appTheme: "Light");
         }
         finally
@@ -1257,8 +1262,9 @@ public sealed partial class GatewayFixtureUiTests
                     AxeHelper.AssertNoAccessibilityErrors(new IntPtr(hub.Current.NativeWindowHandle),
                         context: $"Dashboards gallery ({theme})", targetProcessId: run.AppProcessId);
                     OwnedWindowCapture.Save(run, hub, $"dashboards-{theme}-gallery.png");
-                    // Gallery cards are static row metadata: no board, ticket, or widget load until one opens.
-                    Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "board.get");
+                    // Gallery cards are static metadata. Only startup chat's main-session probe is allowed.
+                    Assert.DoesNotContain(run.Gateway.Requests, request =>
+                        request.Method == "board.get" && request.SessionKey != GatewayScenario.MainSessionKey);
 
                     AutomationElement? opsCard = null;
                     await WaitUiAsync(run, () => (opsCard = FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey))
@@ -1338,13 +1344,15 @@ public sealed partial class GatewayFixtureUiTests
                     {
                         page = "dashboards?session=" + Uri.EscapeDataString(FixtureBoards.EmptySessionKey) + "&agent=main",
                     });
-                    await WaitUiAsync(run, () => FindById(run, "DashboardEmptyOpenChat") is { Current.IsOffscreen: false },
-                        "empty dashboard action");
-                    // Re-pinning created a new sidebar row; wait for its UIA peer instead of reading it once.
+                    // CI once saw the detail missing right after the action appeared, while the sidebar row was
+                    // being re-added. Check the whole empty state in the last wait before asserting and capturing.
+                    string? emptyDetail = null;
                     await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:dashboards") is { } pin &&
-                        ((SelectionItemPattern)pin.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
-                        "re-pinned Dashboards row selected for the empty dashboard");
-                    Assert.Equal("No content was supplied for this section. Ask your agent in chat.", FindById(run, "DashboardEmptyDetail")!.Current.Name);
+                        ((SelectionItemPattern)pin.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected &&
+                        FindById(run, "DashboardEmptyOpenChat") is { Current.IsOffscreen: false } &&
+                        (emptyDetail = FindById(run, "DashboardEmptyDetail")?.Current.Name) is not null,
+                        "re-pinned Dashboards row selected with the empty dashboard action and detail");
+                    Assert.Equal("No content was supplied for this section. Ask your agent in chat.", emptyDetail);
                     OwnedWindowCapture.Save(run, hub, $"dashboards-{theme}-empty.png");
 
                     await run.InvokeAsync("app.navigate", new { page = "dashboards" });

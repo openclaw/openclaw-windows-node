@@ -40,6 +40,8 @@ public sealed partial class GatewayScenario
     public const string VoiceSessionKey = "agent:main:fixture-voice";
     public const string VoiceTitle = "Fixture: historical realtime voice";
     public const string VoiceFinalSentinel = "FIXTURE VOICE FINAL: all historical voice messages loaded.";
+    public const string MarkdownSelectionSessionKey = "agent:main:fixture-markdown-selection";
+    public const string MarkdownSelectionTitle = "Fixture: Markdown selection";
     public const string OwnerProfileId = "fixture-owner";
 
     private static readonly DateTimeOffset Epoch = new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
@@ -75,6 +77,7 @@ public sealed partial class GatewayScenario
 
     public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
         : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+        : ContainsSession(MarkdownSelectionSessionKey) ? "markdown-selection"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -443,6 +446,20 @@ public sealed partial class GatewayScenario
         return new GatewayScenario(sessions, reads, allowAgentCreation: allowAgentCreation,
             allowSessionMutations: allowSessionMutations, allowChatSend: allowChatSend,
             publishedModelCatalog: publishedModelCatalog);
+    }
+
+    /// <summary>Creates synthetic Markdown history for shipped-app text-selection proof.</summary>
+    public static GatewayScenario CreateMarkdownSelection(string markdownMessage)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(markdownMessage);
+        var browse = CreateBrowse();
+        var selection = CreateSession(MarkdownSelectionSessionKey, MarkdownSelectionTitle, "main", "browse", 5,
+        [
+            "FIXTURE SELECTION BEFORE: a separate message must not be copied.",
+            markdownMessage,
+            "FIXTURE SELECTION AFTER: a separate message must not be copied."
+        ]);
+        return new([.. browse._sessions, selection], browse._reads);
     }
 
     /// <summary>

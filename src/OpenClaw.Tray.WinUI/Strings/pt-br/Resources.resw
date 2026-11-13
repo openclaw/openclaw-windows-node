@@ -17,6 +17,16 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>Lagosta na área de trabalho</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>Mantenha uma lagosta animada na área de trabalho. As notificações aparecem em balões, mesmo quando o OpenClaw está em segundo plano. Arraste para mover; clique com o botão direito para ver as opções.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>Lagosta do OpenClaw na área de trabalho</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Fechar balão</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Abrir notificações</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>Abrir OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Tamanho da lagosta</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Redimensione a lagosta sem alterar o texto do chat ou das notificações.</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Configurações da lagosta na área de trabalho</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Não foi possível exibir a lagosta. Desative e reative Lagosta na área de trabalho em Configurações para tentar novamente. Suas notificações continuam disponíveis no OpenClaw.</value></data>
   <!-- ==================== SettingsWindow.xaml ==================== -->
   <!-- Section headers -->
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
@@ -2333,8 +2343,11 @@ Use uma destas opções:
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Modelo de Fala</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>A conversão de fala em texto está desativada. Configure os modelos aqui e depois ative a capacidade em Permissões quando estiver pronto.</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>A conversão de fala em texto está desativada</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Ative-a em Permissões para alterar essas configurações.</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>Abrir Permissões</value>
@@ -2405,8 +2418,11 @@ Use uma destas opções:
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Escolha a voz usada ao ler as respostas em voz alta.</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>A conversão de texto em fala está desativada. Configure provedores e vozes aqui e depois ative a capacidade em Permissões quando estiver pronto.</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>A conversão de texto em fala está desativada</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Ative-a em Permissões para alterar as configurações de voz local.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Provedor</value>
@@ -3646,7 +3662,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>Usar a interface de chat web do Gateway</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>Mostrar notificações</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3889,10 +3905,10 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>Permite que agentes leiam a localização do dispositivo por meio de comandos location.*.</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3916,11 +3932,11 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>Inativo</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>Ver sessões ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>Ver sessões</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>Ver instâncias ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>Ver instâncias</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>Modo Node</value>
@@ -3937,8 +3953,11 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>Conectar</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>Gerenciar permissões ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>Conexão</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>Gerenciar permissões</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>Ajude-nos a corrigir esta conexão:</value>
@@ -4186,7 +4205,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>Os programas executados pelo agente neste PC ficam contidos.</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>O que fica contido</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4277,7 +4296,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
     <value>Leitura e escrita</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>As pastas de execução do Windows e o espaço de trabalho privado continuam disponíveis. Estar no PATH não concede acesso. Reaplique uma predefinição para redefinir as escolhas de pastas.</value>
+    <value>Pastas protegidas continuam bloqueadas. As pastas de execução do Windows continuam disponíveis; estar no PATH não concede acesso.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>Pastas adicionais</value>
@@ -4300,11 +4319,17 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Adicionar pasta</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>Adicionar uma nova pasta</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 Área de transferência</value>
+    <value>Área de transferência</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>Acesso à área de transferência</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>A área de transferência costuma conter senhas, tokens e textos privados. O acesso de leitura pode vazar isso para o agente (e pela internet, se ativado).</value>
+    <value>A área de transferência costuma conter senhas e textos privados. O acesso de leitura a expõe ao agente.</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>Nenhum (padrão)</value>
@@ -4319,7 +4344,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
     <value>Leitura e escrita</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 Rede</value>
+    <value>Rede</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>Permitir internet</value>
@@ -4331,7 +4356,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
     <value>Dispositivos e compartilhamentos de rede local ainda não estão incluídos.</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ Limites</value>
+    <value>Limites</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>Tempo limite de comando: 30 seg</value>
@@ -4514,8 +4539,11 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Remove a distro WSL (OpenClawGateway), sua imagem de disco, a entrada de inicialização automática, e apaga as credenciais do Gateway. Seu token MCP é preservado. A integração será reiniciada.</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>Remover Gateway local</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>Remover</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Salvo</value>
@@ -5736,7 +5764,7 @@ Abrir Canais no painel web.</value>
     <value>Falha na remoção</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>Remover Gateway local</value>
+    <value>Remover</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>Removendo distro…</value>
@@ -6188,7 +6216,7 @@ Abrir Canais no painel web.</value>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Escolha o modelo usado pelo Gateway</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Modelo</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Modelo personalizado do Hugging Face (opcional)</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>proprietário/repositório, proprietário/repositório:Q4_K_M ou um link huggingface.co</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>proprietário/repositório, proprietário/repositório:Q4_K_M ou um link huggingface.co</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Somente modelos GGUF públicos em um único arquivo. Quando preenchido, é usado no lugar da seleção acima.</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>Este modelo pode não caber</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>Ele precisa de cerca de {0:F1} GB de memória de GPU e {1} tem {2:F1} GB. Ele pode não iniciar ou ficar lento.</value></data>
@@ -6217,7 +6245,7 @@ Abrir Canais no painel web.</value>
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Modelo padrão</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Usar este modelo</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Atualizar</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Gerenciar IA local</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>Gerenciar IA local</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>IA local: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (entre no provedor primeiro)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>O modelo padrão foi atualizado.</value></data>
@@ -6231,7 +6259,7 @@ Abrir Canais no painel web.</value>
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Método de entrada</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Entrar</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>ID do provedor</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>URL base</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>Tipo de API</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>Compatível com OpenAI (Chat Completions)</value></data>
@@ -6239,7 +6267,7 @@ Abrir Canais no painel web.</value>
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>Chave de API (opcional para compatível com OpenAI)</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>IDs dos modelos</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Adicionar provedor</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (conectado)</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Carregando provedores...</value></data>
@@ -6305,12 +6333,12 @@ Abrir Canais no painel web.</value>
   <data name="Onboarding_Welcome_LocalAiAvailabilityDetail" xml:space="preserve"><value>Execute um modelo localmente usando sua {0}.</value></data>
   <data name="VoiceSettingsPage_MiniMaxApiKeyBox.Header" xml:space="preserve"><value>Chave da API</value></data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve"><value>Modelo</value></data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve"><value>speech-2.8-hd</value></data>
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve"><value>speech-2.8-hd</value></data>
   <data name="VoiceSettingsPage_MiniMaxRegionChina.Content" xml:space="preserve"><value>China continental</value></data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve"><value>Região</value></data>
   <data name="VoiceSettingsPage_MiniMaxRegionGlobal.Content" xml:space="preserve"><value>Internacional</value></data>
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve"><value>ID da voz</value></data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve"><value>por exemplo, male-qn-qingse</value></data>
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve"><value>por exemplo, male-qn-qingse</value></data>
   <data name="VoiceSettingsPage_TtsMiniMax.Content" xml:space="preserve"><value>MiniMax (nuvem, requer chave da API)</value></data>
   <data name="Chat_Code_Copy" xml:space="preserve"><value>Copiar código</value></data>
   <data name="Chat_Code_Label" xml:space="preserve"><value>Bloco de código</value></data>
@@ -6326,6 +6354,7 @@ Abrir Canais no painel web.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 mensagem na fila</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copiado</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Falha ao copiar</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Texto da mensagem</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Esforço</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>
@@ -7228,7 +7257,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Acesso para {0}</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Remover permissão para {0}</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Pastas</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Escolha o que o agente pode fazer em cada pasta. Sem acesso bloqueia essa pasta, mas subpastas explicitamente listadas mantêm seu próprio acesso. Pastas protegidas continuam bloqueadas.</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Escolha o que o agente pode fazer em cada pasta; subpastas explicitamente listadas mantêm seu próprio acesso.</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>Sem acesso</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>Perfil de usuário</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7780,10 +7809,36 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancelar</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Novas mensagens. Ir para as mais recentes</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Ir para as mais recentes</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>Navegação pelas mensagens do chat</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>Use as setas para cima e para baixo para navegar entre mensagens, ou Home e End para a primeira e a mais recente.</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagentes, {1} trabalhando, {2} precisam de atenção</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Aguardando subagentes</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparando entrada</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>falhou</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} subagente</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} subagentes</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} com falha</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>em execução</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>interrompido</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} arquivos</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>Lido</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>Editar</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>Editando</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>Editado</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>Criar</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>Criando</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>Criado</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>Excluir</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>Excluindo</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>Excluído</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>Alterar</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>Alterando</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>Alterado</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>Gravar</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>Gravando</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>Gravado</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>Pesquisado</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>Obtido</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>Concluído</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>Revisão do provedor necessária</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>Aviso de revisão do provedor</value></data>
@@ -7830,7 +7885,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Conecte-se ao Gateway para usar esta ação.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Apps conectados</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Dispositivos e Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Dispositivos e Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Dispositivos e Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>Problemas</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Último estado conhecido: offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Último estado conhecido: online</value></data>
@@ -7943,6 +7998,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>Configurações</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>Conversa rápida</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>Resposta rápida</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>Não foi possível abrir a conversa. Tente novamente.</value></data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagentes</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Nenhum subagente na lista de sessões atual.</value></data>
   <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Subagentes: {0} em execução, {1} concluídos</value></data>
@@ -7951,6 +8009,13 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>Concluído</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Interrompido</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Falhou</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>Arquivos</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>Arquivos da sessão: {0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>Ainda não há arquivos nesta sessão.</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>Carregando arquivos...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>Este Gateway não fornece arquivos de sessão.</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>Não foi possível carregar os arquivos. Atualize para tentar novamente.</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>Atualizar arquivos</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agente: {0}</value>
   </data>
@@ -10071,4 +10136,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Painéis da conversa</value></data>
   <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Coletar logs</value></data>
   <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>Não foi possível coletar os logs ({0}). Tente novamente.</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Atualizar</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Atualizar</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Painel</value></data>
 </root>

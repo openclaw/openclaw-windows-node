@@ -161,7 +161,7 @@ internal static class SessionsHubWorktreesView
                     controller.SetWorktreeDetails(record.Id);
                 else if (controller.State.Worktrees.DetailsId == record.Id)
                     controller.SetWorktreeDetails(null);
-            }) with { HeaderTemplate = header })
+            }) with { HeaderContent = header })
             .Background(Theme.Ref("CardBackgroundFillColorSecondaryBrush"))
             .WithBorder(Theme.CardStroke, 1)
             .CornerRadius(8)

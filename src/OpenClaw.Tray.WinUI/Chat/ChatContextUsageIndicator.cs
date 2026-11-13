@@ -73,7 +73,6 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
 
         return Flyout(trigger, Popover(percent, used, limit, context.InputTokens, context.OutputTokens, Props.ViewportWidth))
             .Set(ChatVisuals.StylePicker)
-            .Margin(0, 0, 4, 0)
             .VAlign(VerticalAlignment.Center);
     }
 

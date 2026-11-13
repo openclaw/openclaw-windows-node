@@ -17,6 +17,16 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>桌面龙虾</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>在桌面上显示一只动画龙虾。即使 OpenClaw 在后台运行，通知文字也会显示在对话气泡中。拖动可移动位置，右键单击可查看选项。</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw 桌面龙虾</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>关闭气泡</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>打开通知</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>打开 OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>龙虾大小</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>调整龙虾大小，不改变聊天或通知文字的大小。</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龙虾设置</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>无法显示桌面龙虾。请在设置中关闭再打开“桌面龙虾”以重试。你仍然可以在 OpenClaw 中查看通知。</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>连接</value>
   </data>
@@ -2287,8 +2297,11 @@
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>语音模型</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>语音转文本已禁用。请先在此配置模型，准备好后再在“权限”中启用此功能。</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>语音转文本已禁用</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>请在“权限”中启用后再更改这些设置。</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>打开权限</value>
@@ -2359,8 +2372,11 @@
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>选择朗读响应时使用的语音。</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>文本转语音已禁用。请先在此配置提供程序和语音，准备好后再在“权限”中启用此功能。</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>文本转语音已禁用</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>请在“权限”中启用后再更改本地语音设置。</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>提供商</value>
@@ -2485,13 +2501,13 @@
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
     <value>语音 ID</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>例如 male-qn-qingse</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
     <value>模型</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve">
     <value>speech-2.8-hd</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
@@ -3627,7 +3643,7 @@
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>使用网关的 Web 聊天界面</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>显示通知</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3870,10 +3886,10 @@
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>允许代理通过 location.* 命令读取设备位置。</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3897,11 +3913,11 @@
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>未激活</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>查看会话 ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>查看会话</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>查看实例 ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>查看实例</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>节点模式</value>
@@ -3918,8 +3934,11 @@
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>连接</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>管理权限 ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>管理权限</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>帮助我们修复此连接:</value>
@@ -4167,7 +4186,7 @@
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>代理在此电脑上运行的程序受到隔离。</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>哪些内容受隔离</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4258,7 +4277,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Windows 运行时文件夹和私有工作区仍可用。出现在 PATH 中不会授予访问权限。重新应用预设可重置文件夹选项。</value>
+    <value>受保护的文件夹仍被阻止。Windows 运行时文件夹仍可用；出现在 PATH 中不会授予访问权限。</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>附加文件夹</value>
@@ -4281,11 +4300,17 @@
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>添加文件夹</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>添加新文件夹</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 剪贴板</value>
+    <value>剪贴板</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>剪贴板访问</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>剪贴板通常包含密码、令牌和私人文本。读取权限可能将这些泄露给代理(若启用,也会泄露到互联网)。</value>
+    <value>剪贴板通常包含密码和私人文本。读取权限会将其暴露给代理。</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>无(默认)</value>
@@ -4300,7 +4325,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 网络</value>
+    <value>网络</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>允许互联网</value>
@@ -4312,7 +4337,7 @@
     <value>本地网络设备和共享尚未包含在内。</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ 限制</value>
+    <value>限制</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>命令超时:30 秒</value>
@@ -4537,8 +4562,11 @@
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>删除 WSL 发行版 (OpenClawGateway)、其磁盘映像、自动启动项,并清除网关凭据。您的 MCP 令牌将被保留。引导将重置。</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>删除本地网关</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>移除</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>已保存</value>
@@ -5759,7 +5787,7 @@
     <value>移除失败</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>移除本地网关</value>
+    <value>移除</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>正在移除发行版…</value>
@@ -6151,7 +6179,7 @@
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>选择网关使用的模型</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>自定义 Hugging Face 模型（可选）</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 链接</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 链接</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>仅支持公开的单文件 GGUF 模型。填写后将替代上方的选择。</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>此模型可能无法装入</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>它需要约 {0:F1} GB GPU 内存，而 {1} 只有 {2:F1} GB。它可能无法启动或运行缓慢。</value></data>
@@ -6180,7 +6208,7 @@
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>默认模型</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>使用此模型</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>刷新</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>管理本地 AI</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>管理本地 AI</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>本地 AI：{0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0}（请先登录提供商）</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>默认模型已更新。</value></data>
@@ -6194,7 +6222,7 @@
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>登录方式</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>登录</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>提供商 ID</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>基础 URL</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API 类型</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI 兼容（Chat Completions）</value></data>
@@ -6202,7 +6230,7 @@
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API 密钥（OpenAI 兼容端点可选）</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>模型 ID</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>添加提供商</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0}（已连接）</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>正在加载提供商...</value></data>
@@ -6273,6 +6301,7 @@
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>复制失败</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>消息文本</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
@@ -7175,7 +7204,7 @@
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>{0} 的访问权限</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>移除 {0} 的权限</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>文件夹</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作。“禁止访问”会阻止该文件夹，但明确列出的子文件夹保留各自的访问权限。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作；明确列出的子文件夹保留各自的访问权限。</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>禁止访问</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>用户配置文件目录</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7727,10 +7756,36 @@
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新消息。跳到最新消息</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>跳到最新消息</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>聊天消息导航</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>使用向上和向下键在消息之间跳转，或使用 Home 和 End 键跳转到第一条和最新消息。</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 个子代理，{1} 个正在工作，{2} 个需要关注</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等待子代理</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在准备输入</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>失败</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} 个子代理</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} 个子代理</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} 个失败</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>运行中</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} 个文件</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>已读取</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>编辑</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>正在编辑</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>已编辑</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>创建</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>正在创建</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>已创建</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>删除</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>正在删除</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>已删除</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>更改</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>正在更改</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>已更改</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>写入</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>正在写入</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>已写入</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>已搜索</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>已获取</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>需要提供商审核</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>提供商审核警告</value></data>
@@ -7777,7 +7832,7 @@
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>连接到 Gateway 后才能使用此操作。</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>已连接的应用</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>设备和 Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>设备和 Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>设备和 Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>问题</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>上次已知状态：离线</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>上次已知状态：在线</value></data>
@@ -7890,6 +7945,9 @@
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>设置</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>快速聊天</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>快速回复</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>无法打开聊天。请重试。</value></data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>子代理</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>当前会话列表中没有子代理。</value></data>
   <data name="Chat_Subagents_PillName" xml:space="preserve"><value>子代理：{0} 个运行中，{1} 个已完成</value></data>
@@ -7898,6 +7956,13 @@
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>已停止</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>失败</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>文件</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>会话文件：{0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>此会话中尚无文件。</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>正在加载文件...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>此 Gateway 不提供会话文件。</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>无法加载文件。请刷新以重试。</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>刷新文件</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>代理：{0}</value>
   </data>
@@ -10018,4 +10083,7 @@
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>对话面板</value></data>
   <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>收集日志</value></data>
   <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>无法收集日志（{0}）。请重试。</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>刷新</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>刷新</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>仪表板</value></data>
 </root>

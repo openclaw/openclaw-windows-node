@@ -32,10 +32,17 @@ public sealed class AccessibilityThemeResourceSourceTests
         var title = workspace.Descendants().Single(element =>
             (string?)element.Attribute(x + "Name") == "WorkspaceTitleBar");
         Assert.Null(title.Attribute("Background"));
-        Assert.DoesNotContain(settings.Descendants(), element =>
-            (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}");
-        foreach (var theme in resources.Descendants().Where(element =>
-            element.Name.LocalName == "ResourceDictionary" && element.Attribute(x + "Key") is not null))
+        // The embedded Settings view paints no content layer of its own. Its only reference to the brush is the
+        // zero-size, raw-view probe that rebinds the NavigationView's layer after theme changes.
+        var contentBrushUsers = settings.Descendants().Where(element =>
+            (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}").ToList();
+        var probe = Assert.Single(contentBrushUsers);
+        Assert.Equal("ContentSurfaceSource", (string?)probe.Attribute(x + "Name"));
+        Assert.Equal("0", (string?)probe.Attribute("Width"));
+        Assert.Equal("0", (string?)probe.Attribute("Height"));
+        Assert.Equal("False", (string?)probe.Attribute("IsHitTestVisible"));
+        foreach (var theme in resources.Elements().Single(element =>
+            element.Name.LocalName == "ResourceDictionary.ThemeDictionaries").Elements())
         {
             var canvas = theme.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatCanvasBrush");
             var highContrast = (string?)theme.Attribute(x + "Key") == "HighContrast";

@@ -106,6 +106,11 @@ public sealed partial class DebugPage : Page
         TelemetryProtocols.Orientation = orientation;
         TelemetryActions.Orientation = orientation;
         DetailActions.Orientation = orientation;
+        var compact = e.NewSize.Width < CompactLayoutWidth;
+        Grid.SetRow(ManageConnectionLink, compact ? 1 : 0);
+        Grid.SetColumn(ManageConnectionLink, compact ? 1 : 2);
+        ManageConnectionLink.HorizontalAlignment = compact ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+        ManageConnectionLink.Margin = compact ? new Thickness(0, 4, 0, 0) : new Thickness(0);
     }
 
     public void Initialize()
@@ -120,10 +125,10 @@ public sealed partial class DebugPage : Page
         _appState = CurrentApp.AppState!;
         if (_appState != null) _appState.PropertyChanged += OnAppStateChanged;
         // Listen for Settings → Save round-trips so the gateway URL in
-        // the top InfoBar updates without waiting for a Status flip
+        // the status row updates without waiting for a Status flip
         // (per docs/DATA_FLOW_ARCHITECTURE.md reactive-by-default ethos).
         CurrentApp.SettingsChanged += OnSettingsChanged;
-        UpdateStatusInfoBar();
+        UpdateConnectionStatus();
         UpdateGatewayDoctorCard();
         LoadDeviceIdentity();
         LoadOpenTelemetryEndpoint();
@@ -136,7 +141,7 @@ public sealed partial class DebugPage : Page
         {
             case nameof(AppState.Status):
             case nameof(AppState.GatewaySelf):
-                UpdateStatusInfoBar();
+                UpdateConnectionStatus();
                 UpdateGatewayDoctorCard();
                 break;
         }
@@ -144,7 +149,7 @@ public sealed partial class DebugPage : Page
 
     private void OnSettingsChanged(object? sender, EventArgs e)
     {
-        UpdateStatusInfoBar();
+        UpdateConnectionStatus();
         UpdateGatewayDoctorCard();
         LoadOpenTelemetryEndpoint();
     }
@@ -172,9 +177,7 @@ public sealed partial class DebugPage : Page
         StopCopyFeedbackTimer();
     }
 
-    // ── Top status InfoBar ───────────────────────────────────────────
-
-    private void UpdateStatusInfoBar()
+    private void UpdateConnectionStatus()
     {
         var gatewayUrl = CurrentApp.Settings?.GetEffectiveGatewayUrl();
         var gatewayDisplay = string.IsNullOrWhiteSpace(gatewayUrl)
@@ -182,34 +185,23 @@ public sealed partial class DebugPage : Page
             : gatewayUrl;
         var status = _appState?.Status ?? ConnectionStatus.Disconnected;
 
-        switch (status)
+        ConnectionStatusDot.Style = (Style)Resources[status switch
         {
-            case ConnectionStatus.Connected:
-                StatusInfoBar.Severity = InfoBarSeverity.Success;
-                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusConnectedFormat", gatewayDisplay);
-                break;
-            case ConnectionStatus.Connecting:
-                StatusInfoBar.Severity = InfoBarSeverity.Informational;
-                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusConnectingFormat", gatewayDisplay);
-                break;
-            case ConnectionStatus.Disconnected:
-                StatusInfoBar.Severity = InfoBarSeverity.Warning;
-                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusDisconnectedFormat", gatewayDisplay);
-                break;
-            case ConnectionStatus.Error:
-                StatusInfoBar.Severity = InfoBarSeverity.Error;
-                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusErrorFormat", gatewayDisplay);
-                break;
-            default:
-                StatusInfoBar.Severity = InfoBarSeverity.Informational;
-                StatusInfoBar.Title = LocalizationHelper.GetConnectionStatusText(status);
-                StatusInfoBar.Message = LocalizationHelper.Format("DebugPage_StatusGatewayFormat", gatewayDisplay);
-                break;
-        }
+            ConnectionStatus.Connected => "DiagnosticsStatusSuccess",
+            ConnectionStatus.Disconnected => "DiagnosticsStatusCaution",
+            ConnectionStatus.Error => "DiagnosticsStatusCritical",
+            _ => "DiagnosticsStatusNeutral"
+        }];
+        ConnectionStatusTitle.Text = LocalizationHelper.GetConnectionStatusText(status);
+        var messageKey = status switch
+        {
+            ConnectionStatus.Connected => "DebugPage_StatusConnectedFormat",
+            ConnectionStatus.Connecting => "DebugPage_StatusConnectingFormat",
+            ConnectionStatus.Disconnected => "DebugPage_StatusDisconnectedFormat",
+            ConnectionStatus.Error => "DebugPage_StatusErrorFormat",
+            _ => "DebugPage_StatusGatewayFormat"
+        };
+        ConnectionStatusMessage.Text = LocalizationHelper.Format(messageKey, gatewayDisplay);
     }
 
     private void OnManageOnConnection(object sender, RoutedEventArgs e)

@@ -20,19 +20,62 @@ pixels. Transcript prose is inset 16 pixels from the aligned composer edge.
 Outer gutters are 12 pixels below 640 pixels and 40 pixels above it. The native
 annotated rail overlays only the unused right gutter, leaving transcript and
 composer centered on the viewport, including while the rail is focused.
+The rail represents displayed user and assistant messages, excluding tool,
+reasoning and loading rows. Ticks are visible without hover or focus.
+Their normal, visible-message and hover/pressed treatments follow the web
+position rail at `10285cd35ca7d696957430bbc6c8556f55af79fe`
+(`ui/src/styles/chat/message-layout.css`): 8-by-2-pixel rounded ticks use muted
+gray at 40% opacity, increasing to full muted gray for messages in the viewport.
+Hover and press use the primary text tone, never an accent-colored thumb.
+The hovered tick expands to 32 pixels; its three neighbors expand to 24, 16 and
+12 pixels. Native semantic brushes preserve light, dark and High Contrast;
+High Contrast does not reduce tick opacity. Expansion stays within the unused
+gutter, including on narrow windows. Ticks have
+10-pixel pitch before the rail reaches the transcript viewport height. The
+rail has 8-pixel vertical and 4-pixel horizontal insets. At the viewport cap,
+ticks remain equidistant regardless of message height. Long histories sample
+messages evenly, retaining the first and last, so rendered ticks have at least
+4 logical pixels of clear vertical space after layout rounding. The tick budget
+adapts to the rail height and display scale on resize. Hover and pointer
+navigation resolve the same sampled message; keyboard navigation still reaches
+every message. The rail uses a fixed ordinal range independent of virtualized
+transcript height estimates, keeping its native ticks mounted during navigation.
+Streaming sender/preview updates retain existing labels when their sampled
+identities and row positions are unchanged. Visual updates are coalesced per
+rendered frame; unrelated window layout does not rescan the transcript.
+Hover previews show sender identity and up to 240 characters in
+three lines within 280 pixels, inside a native 12-pixel rounded tooltip.
+Click or drag resolves an ordinal position to the current keyed message, not
+its approximate pixel offset. Keyboard Up/Down, Home/End and Enter/Space provide
+the same destinations. After reading with the wheel or touch, Up/Down starts
+from the first visible message rather than an old rail selection. Consecutive
+rail keys retain their selection while navigation is pending. Touch previews
+use the actual pointer position; native tooltip placement must not shift which
+message is previewed. Native message realization retains bounded layout waits,
+identity checks and cancellation; it does not force synchronous ItemsView layout.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
-leave prose centered. Accessible sender and footer identity remain.
+leave prose centered. Accessible sender and footer identity remain. Like the web
+transcript, one block of agent rows (assistant text, tool rows, tool groups and
+reasoning between user messages, status notices or a change of forwarded sender)
+shows one avatar, on its first row even when that row is a tool call, so tool
+calls and back-to-back runs such as heartbeats no longer repeat it. Inside a
+block, each run owns one actions footer; a run also ends where its recorded
+identity changes and at messages that start their own turn (turn boundaries and
+independent or background messages). Tool rows and groups keep one grid shape whether or not they
+carry the avatar, so they are never rebuilt when it moves.
 
 The writing surface uses a 20-pixel corner radius, 16-pixel editor inset, and a
-96-pixel minimum height. Its vertical padding is 8 pixels and the editor-to-toolbar
-gap is 4 pixels. The editor retains its 44-pixel minimum height and grows with
+96-pixel minimum height. Its padding is 16,12,16,8 pixels and the editor-to-toolbar
+gap is 8 pixels. The editor retains its 44-pixel minimum height and grows with
 multiline input; action targets and text sizes are unchanged. Message surfaces
 use 12-pixel corners and code cards use the web's 10-pixel corners.
 These are chat surface tokens, not replacements for standard control radii.
 General layout spacing is on the 4-pixel grid. The question dock preserves the
 upstream 7/9/11/14-pixel option gaps, insets and typography instead.
 
-Prose uses native body type at 14 pixels with 21-pixel line height. Headings
+Prose and composer input share Segoe UI Variable Text at 14 pixels through
+`ChatVisuals.BodyFontFamily` and `BodySize`. Prose keeps its 21-pixel line height;
+the editor retains native TextBox line metrics. Headings
 use 24/20/16 pixels for H1/H2/H3 and below. Top-level blocks follow the web's
 `--chat-block-gap`: one uniform 14-pixel gap (`ChatVisuals.MessageBlockGap`),
 with zero extra top/bottom block margins, except that a heading after another
@@ -50,9 +93,10 @@ web chip's border or padding. Bold, inline-code and syntax highlighter brushes
 are re-resolved when the element's theme changes.
 Text/media stacks use that same gap. The transcript has an 8-pixel lead-in.
 Assistant turns use 4-pixel outer spacing without extra body padding. User
-bubbles, thinking blocks and tool details use 12-pixel horizontal and 8-pixel
-vertical insets. Related labels, details and action footers use one 4-pixel gap
-rather than accumulating stack spacing and margins. Comparisons
+bubbles use 16-pixel horizontal and 12-pixel vertical insets, with an 8-pixel
+stack gap plus a 2-pixel top margin before their action footer. Thinking blocks
+and tool details keep 12-pixel horizontal and 8-pixel vertical insets.
+Related tool labels, details and action footers keep one 4-pixel gap. Comparisons
 normalize the released web header separately rather than adding fake app chrome.
 Code remains literal and selectable, with native horizontal and vertical
 scrolling rather than truncation. The card follows the web `.code-block-wrapper`:
@@ -224,6 +268,23 @@ This version intentionally has no child transcript, separate child
 discovery/pagination, descendant tree, Stop, persisted layout, or docking
 controls. Its session-list scope is not a claim that every historical child has
 been discovered.
+
+The **Files** pill sits beside the Subagents pill in the same row. It appears
+once the selected chat's Gateway session file list has files, after a failed
+read, or while the
+Files tab is open, and shows "Files" with the file count in secondary text,
+using the same pill look (`ChatPanelPill`). Selecting it opens or reselects the
+Files tab. The tab lists the files the session edited or read, with the
+workspace root, the folder and size of each file, and an Edited, Read or
+Missing badge; untouched files from the workspace root are not shown or
+counted. Rows are not interactive. The list comes from the existing
+`sessions.files.list` read when the chat is selected or its history is
+replaced (for example by a checkpoint restore), after each run ends, and from
+the tab's refresh button. An unsupported Gateway or a failed read shows a
+status line instead of inventing files, and a failed refresh keeps the last
+list. An unsupported Gateway is asked again only by refresh or after
+reconnecting. Disconnect or another chat closes the tab, like Subagents.
+
 `ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
 resizing, 440-DIP initial width and compact layout below 652 DIPs. There is no
 second subagent split/focus owner. Compact presentation retains the hidden main
@@ -269,11 +330,33 @@ detail renderer. Recovery uses the canonical saved result's call and message
 identity, not the invocation's display identity. These rules follow the
 [pinned message-read handler](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/src/gateway/server-methods/chat-message-get-handler.ts).
 
-Consecutive tool groups stay within the exact run identity and legacy turn.
-Every consecutive tool span, including a single call, renders as one collapsed
-summary row that counts operations per category in web order, for example
-`3 commands · 2 reads · 1 other operation`. Failed and interrupted steps stay
-inside their group, where the step row shows an inline red `failed` instead of
+Like the web `coalesceActivityRuns`, tool rows and groups that nothing visible
+separates read as one log even across runs, so a burst of heartbeat calls is one
+group; recorded nesting still never crosses a run. Two or more such calls render
+as one collapsed summary row that counts operations per category in web order,
+then failures (errors only; a stopped call reads Interrupted on its row), for example
+`3 commands · 2 reads · 1 other operation · 1 subagent · 1 failed`. Raw snake_case
+tool names read as titles (`heartbeat_respond` is "Heartbeat Respond"), like the
+web `defaultTitle`. A launch counts as a
+subagent only when it started one; failed launches and launches that opened
+their own session count as other operations. Routine bookkeeping (yields, plan
+progress, process polls and message reactions) is left out of the counts unless
+nothing else remains. A single call keeps its own step row titled like the web
+`ToolRowContent`: `Read SKILL.md`, `Edited`/`Wrote`/`Created`/`Changed` for
+mutations (patches name one file or `N files`), `Searched` and `Fetched` with
+their target, a shell tool's own title or `$ command` with leading `cd`, `set`,
+`export` and `unset` stages removed, and a labeled `sessions_spawn` as its label
+with the subagent's state (running, failed, stopped or elapsed time), classified
+by the same `ChatSubagentPresentation` as the Subagents pill so both always agree.
+An unknown or stale subagent outcome shows no state rather than a duration. Only
+read, search and fetch rows add their dimmed directory or scope, capped at
+`ChatVisuals.ToolRowDetailMaxWidth`; long titles trim with an ellipsis. A patch
+whose text was cut for display shows its input preview instead of a partial file
+summary. Other calls show their input preview. Fields outside the persisted
+display arguments come from the redacted tool input. A row's accessible name is
+its displayed title and state. A single row the user opened stays open when the
+next call turns it into a group. Failed and interrupted steps stay
+inside their group, where the step row shows a muted inline `failed` instead of
 a trailing status. Calls with provider reviews or input still being prepared
 keep their standalone disclosure so the review and live diff stay visible.
 Each row shows its category glyph; hovering or focusing the row header swaps
@@ -293,7 +376,8 @@ A call the Gateway records as wrapping others (`parentToolCallId`, same run)
 lists its nested calls first when expanded, then its own input behind a
 collapsed **Tool input** disclosure, like the web `groupToolCalls` tree. Links
 are never inferred; ambiguous identities and cycles stay top-level. Group
-counts include nested calls but not their wrapper. Each layer keeps its own
+counts include nested calls instead of a completed wrapper, except when all its
+nested calls are routine, as in the web `resolveCompletedActivityWrappers`. Each layer keeps its own
 expansion key, so opening a group never opens its first row.
 The last transcript row keeps a 38-pixel bottom inset above the composer: the
 32-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
@@ -303,6 +387,11 @@ Mica shows through. The real transcript remains opaque and scrolls normally;
 an inner host clips the copied band from its normal rendering. Child replacement,
 resize and detach update or release the surface, clip and brushes. High contrast
 omits the mask, including when switched on while the window stays open.
+While the mask is active, bring-into-view requests inside the transcript, such as
+a keyboard selection caret, extend their target by the band so they land fully
+readable above it. Pointer drag auto-scroll still starts only once the pointer
+leaves the transcript's layout bounds, below the band.
+The composer itself keeps a 12-pixel bottom margin, the same distance from the window edge as the Workspace owner footer buttons.
 Existing chronological messages, reasoning,
 partial-output updates, collapsed-by-default disclosures and explicit group
 expansion are unchanged. This is a focused adaptation of the default web tool
@@ -542,8 +631,8 @@ the actual final message to be visible without invoking **Jump to latest**.
 Streaming follow retains its exact-bottom assertions and the bounded correction
 above, not an extent-follow loop. The existing follow threshold is unchanged.
 Anchoring differs during the bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
-transcript then anchors to the top, so the header stays put and its details
-grow downward, as on the web. Any other reader input or programmatic tail scroll
+transcript then anchors to the top, with the toggled header itself as the anchor, so the header stays put and its details
+grow downward, as on the web, even inside a tall message with later messages below it. Any other reader input or programmatic tail scroll
 restores bottom anchoring.
 Actual tail visibility is tracked separately from follow eligibility. The
 landing predicate uses absolute distance to the current bottom, so an offset
@@ -743,12 +832,12 @@ the successful session remains discoverable without pulling the user back into c
 
 Workspace's sidebar owns session selection; the composer has no session picker.
 The footer has a leading Attach ("+") action followed by the Node Sandbox shield,
-model/reasoning selectors, and quiet secondary actions beside the primary
+one model-name picker, and quiet secondary actions beside the primary
 Send/Stop action. Every control stays
-in one bottom row: model text shrinks rather than moving the selectors above
-the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
-chevron with a 44-pixel target, retaining the full textual automation name and
-tooltip. Attach, model, effort, Node Sandbox, voice and Send remain reachable in narrow
+in one bottom row: model text shrinks rather than moving the picker above
+the actions. Its single flyout contains both the model list and the reasoning
+section, and the trigger's accessible name and tooltip retain the current model
+and reasoning value. Attach, model, Node Sandbox, voice and Send remain reachable in narrow
 layouts through actual-width observation rather than a compact-window mode.
 The [Node Sandbox icon](design/reference/concepts/states/node-sandbox.md) beside
 Attach in the leading group uses the Windows accent and a centered check when the latest SDK probe
@@ -759,10 +848,9 @@ execution on positively unsupported Windows. Failed/uncertain probes never imply
 compatibility; the runner independently admits each command. This does not describe
 Gateway tools or per-command results. Status and system-tools setting changes
 refresh the mounted native composer without replacing drafts or attachments.
-The compact effort trigger has a transparent idle background and the same
-4-pixel interaction corners as the other toolbar controls. Its gauge and
-chevron are vertically centered within the 44-pixel target. The shared toolbar
-resource overrides survive resizing between text and icon layouts without
+The model trigger has a transparent idle background and the same
+4-pixel interaction corners as the other toolbar controls. The shared toolbar
+resource overrides survive resizing without
 replacing native hover, pressed, disabled or keyboard-focus behavior. Picker anchor
 capture preserves existing target mount callbacks.
 There is no composer overflow menu. Voice preferences remain available in
@@ -772,8 +860,11 @@ The composer exposes localized keyboard help: Enter sends, Shift+Enter adds a
 line. Its placeholder follows element-theme and system contrast changes, and its
 local brush is cleared on unmount before Reactor can reuse the TextBox.
 
-The composer context ring follows the web composer's `ContextNotice`. A 16px
-progress ring sits in a 32px toolbar target immediately before the model picker:
+The trailing controls are ordered model picker, context ring, Voice, then
+Send/Stop, with an equal 4-pixel gap between every adjacent button. The model
+picker caret sits 2 pixels below its centered position without shifting the label
+or changing the hit target. The composer context ring follows the web composer's `ContextNotice`. A 16px
+progress ring sits in a 32px toolbar target immediately after the model picker:
 a 2.5px track at 22% of `ChatSecondaryTextBrush` and a round-capped fill that
 sweeps clockwise from twelve o'clock. The fill uses the secondary tone below 85%,
 `SystemFillColorCautionBrush` from 85% and `SystemFillColorCriticalBrush` from 95%.
@@ -801,25 +892,29 @@ Undated duplicates preserve the known measurement timestamp only when their
 effective usage fields are unchanged, so matching older history cannot rewind
 the ring. Changed undated usage does not inherit a measurement timestamp.
 
-The compact effort gauge is an explicitly requested exception to the font-icon
+The effort gauge in the reasoning section is an explicitly requested exception to the font-icon
 convention: `ChatEffortGauge` renders the published web SVG geometry with native
 WinUI paths and an ellipse, not a font approximation or WebView. It preserves the
-24-unit viewbox, 20-pixel display size, 2-unit round strokes, dial opacity and
+24-unit viewbox, 16-pixel display size, 2-unit round strokes, dial opacity and
 needle rotation from -120 to +120 degrees according to the advertised stop index.
 Off and unanchored values use the minimum angle. An advertised inherited default
 may inform the gauge without becoming a persisted override. The icon remains
-decorative; the button keeps the textual accessible name and tooltip.
+decorative; the section retains its textual heading and current value.
 The source is pinned to 2026.9.4 and credited in `THIRD_PARTY_NOTICES.md`.
 
-`ChatReasoningPicker` retires its native slider handlers and pending value changes
-on both element unmount and host disposal. Disposal uses component effect cleanup,
-because Reactor host disposal does not guarantee element `OnUnmount` callbacks.
+`ChatReasoningPicker` retires menu callbacks and dismisses its native menu on
+host disposal using component effect cleanup. Reactor host disposal does not
+guarantee element `OnUnmount` callbacks.
 
 The model picker uses the standard native flyout presenter and an `AutoSuggestBox`
 above one grouped, single-selection `ListView`. Native list-item templates own
-hover, pressed, selected, selected-hover, disabled and keyboard-focus visuals,
-including the selection indicator. Model labels use normal body typography,
-metadata uses captions, and provider group headers use secondary captions.
+hover, pressed, selected, selected-hover, disabled and keyboard-focus visuals.
+Because WinUI's built-in checkmark is for multiselection, the model template's
+inline accent check binds directly to its native container's `IsSelected`;
+there is no separate selection state or custom row interaction template.
+Provider headers omit the native divider so only the Effort separator remains.
+Model labels use normal body typography,
+metadata uses captions, and provider group headers use semibold secondary captions.
 `NativeChatModelPicker` owns that native content through Reactor's generated
 control-wrapper API; `ChatModelPicker` owns its flyout lifetime. Highlighting a
 row does not change the model until activation. Search submission commits only
@@ -827,14 +922,41 @@ a single unambiguous selectable result; otherwise it moves focus into the list.
 Unrelated composer rerenders preserve list navigation, and reopening restores
 the configured selection. The list has a bounded native scroll viewport.
 
-All footer pickers keep top-end placement. Effort retains its custom-content
-native flyout with 12-pixel corners and explicit compact padding, applying
-presenter styles through native setters on mount and update.
-Effort uses a native discrete slider over the
-advertised stops, a textual heading/current value, and Faster/Smarter captions.
-A single advertised stop uses a labeled button. The explicit Default reset
-remains separate from the slider; neither opening the flyout nor its initial
-value writes a setting. A Fast-mode switch is not displayed because that
+The combined flyout keeps top-end placement and a bounded scrolling content
+region. Model, usage and effort flyouts share `DesktopAcrylicBackdrop` and the
+native `LayerOnAcrylicFillColorDefaultBrush` resource, not a second in-app acrylic
+fill over the desktop backdrop. The shared `ChatVisuals.StylePicker` opts ordinary
+flyouts into windowed hosting with `ShouldConstrainToRootBounds=false`: WinUI
+does not connect a system backdrop for root-constrained popups. Menu flyouts
+are already windowed by default. Windows owns transparency settings, fallback
+and high-contrast rendering. `ChatModelPicker` composes the existing model list and inline
+`ChatReasoningPicker`; neither owner duplicates controller or metadata logic.
+The flyout is capped at 354 pixels wide, with an 8-pixel search inset and
+native rows that reproduce the account menu's `MenuFlyoutItem` geometry: a
+28-pixel hover pill 4 pixels from the flyout edge, text 11 pixels inside it, and
+`ControlCornerRadius` corners. Model rows are
+`ListViewItem`s, so search, grouping and virtualization stay native. WinUI draws
+a `ListViewItem` pill 4,2 inside the item bounds, so each row has no margin and
+15,6,15,7 padding (that inset plus the stock 11,4,11,5 padding). Each row has a
+28-pixel check slot (12-pixel check glyph) before a Body title and a Caption
+description in secondary text; provider headings and the No matching models
+caption share the rows' 15-pixel text edge,
+including when the catalog is empty.
+A stock-spaced separator (1 pixel above and below) precedes the Effort row, which
+is a 4-pixel-inset button with the same 28-pixel pill. Its label and current value use
+native Body typography; the current value is muted and right-aligned before
+the far-right chevron.
+The gauge occupies the same 28-pixel leading slot as the check, with a 12-pixel
+gap before the aligned model and Effort labels. The Effort button keeps its native
+1-pixel border inside the stock 11-pixel horizontal content inset. Activating
+it opens an unmodified stock `MenuFlyout` with default `ToggleMenuFlyoutItem`
+templates and the shared acrylic fill,
+containing only advertised choices, with the effective current option checked.
+The usage details flyout uses Body for its labels and values, Caption for the
+speed statistics, and the same 15-pixel text inset.
+There is no slider, Default/reset action or provider
+settings link. Neither opening the flyout nor its initial value writes a
+setting. A Fast-mode switch is not displayed because that
 workflow is not implemented by this composer. No decorative nonfunctional
 web-only controls are added.
 Native virtualization, scroll navigation and list lifetime remain with the
@@ -881,12 +1003,11 @@ display name or the original ID; grouping and wire identities keep the original 
 The picker contains concrete catalog models only, with no Default/reset action.
 An inherited model is shown by name when advertised, otherwise the trigger says
 "Model". Opening or filtering the picker never changes the existing override.
-The effort picker's separate Default reset and controller authorization paths
-are unchanged.
+Controller authorization remains unchanged for model and effort selections.
 No custom-ID, favorites, Fast, temperature or other gateway-backed setting is
 invented.
 Unknown nonempty thinking levels remain visible verbatim and do not check
-Default. Reasoning choices come only from advertised session metadata, compatible
+an unrelated option. Reasoning choices come only from advertised session metadata, compatible
 session defaults, or an exact provider/model catalog entry with no runtime conflict,
 in that order. The first profile owns the choices, including explicit empty lists.
 Structured IDs, labels and order are preserved; legacy `thinkingOptions` use
@@ -896,17 +1017,13 @@ Repeated profiles compare by their ordered options and default, not immutable-ar
 storage identity, so unchanged session/default/catalog metadata does not invalidate
 the composer. Unknown and explicitly empty profiles remain distinct.
 
-Without advertised choices the current value remains visible. A saved override
-can still be cleared with Default; an already-default selector is read-only.
-Default sends explicit JSON null, never an effective `thinkingDefault` value.
-With no override, the slider and gauge show the advertised default's position,
-while only the Default row is selected. Unknown explicit overrides are not
-replaced by an inherited default.
-Pointer previews commit only on release. Cancellation or capture loss while
-pressed restores the current advertised selection without writing an override.
-The native slider owns its value during the gesture, so unrelated snapshot
-refreshes do not overwrite the active preview.
-Deferred capture cleanup is gesture-fenced so it cannot cancel a newer input.
+Without advertised choices the current value remains visible and the Effort
+row is disabled. With no override, the menu checks the advertised default and
+the gauge reflects its position without persisting an override. Unknown explicit
+overrides are not replaced by an inherited default. Focus, opening and dismissal
+never commit a change; activating an advertised option submits its concrete ID.
+The controller's separate clear operation still sends explicit JSON null, but
+the composer picker does not expose a reset action.
 An authoritative session-list row that omits `thinkingLevel` clears the cached
 override, while sparse activity events preserve it. Prepared profile metadata
 may survive transient omissions only for the same identity and scope, and is
@@ -940,6 +1057,34 @@ Attachment, queue, recording, loading, thinking and error presentations use the
 same resources and bounded layouts. Markdown sanitization, disabled HTML,
 inert images, list measurement, timeline keys and scroll-follow remain with
 their existing owners.
+
+Assistant Markdown opts into one Reactor text-selection scope per message,
+spanning paragraphs, headings, list content, tables, code and expanded
+disclosures. Reactor owns pointer and keyboard selection, geometry, scrolling
+and the UI Automation text provider. Neighboring message rows, code toolbar
+labels and buttons, and collapsed disclosure bodies are outside the selected
+document. OpenClaw registers the summary once and supplies disclosure visibility;
+it does not infer selectable text from Reactor's layout tree.
+
+Selection copy has one clipboard writer in Reactor. Its `OnCopyResult` callback
+only updates native localized Copied or Copy failed feedback outside the
+selection scope. Feedback resets after two seconds; content replacement and
+unmount fence stale callbacks and timers. The separate whole-message and code
+Copy buttons retain their existing clipboard and feedback paths. Native
+acceptance for cross-block selection and recycling is required in addition to
+the mounted typography and layout checks.
+
+Assistant Markdown accepts balanced, block-level `<details>` wrappers with a
+nonempty `<summary>` as an OpenClaw extension. The summary may follow the
+opening tag on the same line or the next nonblank line; `<details open>` starts
+expanded. The app recognizes these wrappers only outside Markdown code, quotes,
+lists and table cells. Unsupported attributes, empty or incomplete summaries,
+and unbalanced wrappers remain inert Markdown text. The extension supports
+nested disclosures to a maximum depth of 16 and summary text up to 4096
+characters. A native `Expander` renders each accepted disclosure, and its body
+uses the existing Markdown typography, list, table, quote, code and copy
+presentation. HTML in summary text is not executed; body links and images keep
+the existing sanitization policy.
 
 Assistant links follow the web chat's anchor policy: Markdown links, bare
 `http(s)://` and `www.` URLs become native WinUI hyperlinks in the Windows
@@ -1013,7 +1158,14 @@ only while their own message is hovered or contains keyboard focus, including
 individual messages inside expanded Worked groups. Focusing a group header or
 a sibling message does not reveal other footers. They keep their
 measured space while hidden, so revealing a timestamp or Copy does not move the
-next message. Metadata and action glyphs share a vertical center, with Copy
+next message. In the main transcript only a run's final answer (its last
+non-commentary assistant message) owns the footer, as in the web run frame, and
+a run still generating has no footer yet (waiting for subagents or an answer
+does not count). A merged tool group that spans runs still ends each earlier run,
+and only the run holding a streaming message or running tool waits for its
+footer; earlier paragraphs interleaved with tool
+calls reserve no footer space. A message being read aloud keeps its Stop action
+until playback ends. Metadata and action glyphs share a vertical center, with Copy
 retaining its 32-pixel hit target. A failed queued message keeps its recovery
 actions visible; an active read-aloud operation keeps its Stop action visible. Commentary has
 no final-answer footer. Code-block Copy remains a separate, static header
@@ -1023,7 +1175,5 @@ These rules follow the pinned web
 [running-label gradient](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/base.css#L1276-L1310)
 and [message-footer disclosure](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/chat/grouped.css).
 
-The web's GitHub mark
-and issue/pull-request chips need a custom link renderer, which the consumed
-Reactor `0.1.0-preview.16` declares but does not call (`LinkBuilder` is honored
-from `0.1.0-preview.17`); they remain a follow-up for that upgrade.
+The web's GitHub mark and issue/pull-request chips need a custom link renderer
+and remain a follow-up.

@@ -1,5 +1,7 @@
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using OpenClawTray.Chat;
@@ -44,14 +46,17 @@ public sealed class ReactorMarkdownListProofTests
             await _ui.RunOnUIAsync(() =>
             {
                 _ui.Container.UpdateLayout();
-                var row = Assert.Single(FindLogical<Grid>(root!), IsListRow);
-                var markerBlock = Assert.IsType<TextBlock>(row.Children[0]);
-                var content = Assert.IsType<RichTextBlock>(row.Children[1]);
+                var row = Assert.Single(FindDescendants<Grid>(root!), IsListRow);
+                var markerBlock = Assert.Single(FindDescendants<TextBlock>(row.Children[0]));
+                var content = Assert.Single(FindDescendants<RichTextBlock>(row.Children[1]));
                 Assert.Equal(marker, markerBlock.Text);
                 Assert.Equal(LongText, CollectText(content));
                 Assert.Equal(TextWrapping.Wrap, content.TextWrapping);
-                Assert.True(content.IsTextSelectionEnabled);
-                Assert.Equal(1, Grid.GetColumn(content));
+                Assert.Single(FindDescendants<Control>(root!), control =>
+                    FrameworkElementAutomationPeer.CreatePeerForElement(control)
+                        ?.GetPattern(PatternInterface.Text) is ITextProvider);
+                Assert.False(content.IsTextSelectionEnabled);
+                Assert.Equal(1, Grid.GetColumn((FrameworkElement)row.Children[1]));
                 Assert.InRange(content.ActualWidth, 1, 239);
                 Assert.True(content.ActualWidth + markerBlock.ActualWidth + row.ColumnSpacing <= 241);
                 narrowHeight = content.ActualHeight;
@@ -63,8 +68,8 @@ public sealed class ReactorMarkdownListProofTests
             await _ui.RunOnUIAsync(() =>
             {
                 _ui.Container.UpdateLayout();
-                var row = Assert.Single(FindLogical<Grid>(root!), IsListRow);
-                var content = Assert.IsType<RichTextBlock>(row.Children[1]);
+                var row = Assert.Single(FindDescendants<Grid>(root!), IsListRow);
+                var content = Assert.Single(FindDescendants<RichTextBlock>(row.Children[1]));
                 Assert.True(content.ActualHeight < narrowHeight);
                 Assert.Equal(LongText, CollectText(content));
                 Assert.InRange(content.ActualWidth, 241, 600);
@@ -106,15 +111,15 @@ public sealed class ReactorMarkdownListProofTests
             await _ui.RunOnUIAsync(() =>
             {
                 _ui.Container.UpdateLayout();
-                var rows = FindLogical<Grid>(host!).Where(IsListRow).ToArray();
+                var rows = FindDescendants<Grid>(host!).Where(IsListRow).ToArray();
                 Assert.Equal(3, rows.Length);
                 Assert.All(rows, row =>
                 {
-                    Assert.Equal("\u2022 ", Assert.IsType<TextBlock>(row.Children[0]).Text);
+                    Assert.Equal("\u2022 ", Assert.Single(FindDescendants<TextBlock>(row.Children[0])).Text);
                     Assert.Equal(1, Grid.GetColumn((FrameworkElement)row.Children[1]));
                     Assert.InRange(((FrameworkElement)row.Children[1]).ActualWidth, 1, 279);
                 });
-                var texts = FindLogical<RichTextBlock>(host!).ToArray();
+                var texts = FindDescendants<RichTextBlock>(host!).ToArray();
                 Assert.Contains(texts, text => CollectText(text) == "second paragraph");
                 Assert.Contains(texts, text => CollectText(text) == "nested item");
                 Assert.Contains(texts, text => CollectText(text) == "quoted content");
@@ -141,7 +146,7 @@ public sealed class ReactorMarkdownListProofTests
         grid.ColumnDefinitions[0].Width.IsAuto &&
         grid.ColumnDefinitions[1].Width.IsStar &&
         grid.Children.Count == 2 &&
-        grid.Children[0] is TextBlock;
+        FindDescendants<TextBlock>(grid.Children[0]).Any();
 
     private static IEnumerable<Run> GetRuns(RichTextBlock text) =>
         text.Blocks.OfType<Paragraph>().SelectMany(paragraph => paragraph.Inlines.OfType<Run>());

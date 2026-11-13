@@ -115,14 +115,14 @@ public sealed partial class GatewayFixtureUiTests
                 });
                 return button;
             }
+            // Every embedded page clears the 56 DIP title band, so collapsing the pane no longer moves the scroll viewport.
             bool AllocationSettled(bool collapsed) =>
-                Math.Abs((Bounds(scroll).Top - openScrollTop) / scale - (collapsed ? 56 : 0)) <= 1 &&
+                Math.Abs((Bounds(scroll).Top - openScrollTop) / scale) <= 1 &&
                 Math.Abs((Bounds(FindById(run, "WorkspaceSettingsHost")!).Top - openHostTop) / scale) <= 1;
             void AssertAllocation(bool collapsed)
             {
                 Assert.Equal(scrollIdentity, PageScrollPeer(run).GetRuntimeId());
-                Assert.InRange(Math.Abs((Bounds(scroll).Top - openScrollTop) / scale -
-                    (collapsed ? 56 : 0)), 0, 1);
+                Assert.InRange(Math.Abs((Bounds(scroll).Top - openScrollTop) / scale), 0, 1);
                 Assert.InRange(Math.Abs((Bounds(FindById(run, "WorkspaceSettingsHost")!).Top -
                     openHostTop) / scale), 0, 1);
             }

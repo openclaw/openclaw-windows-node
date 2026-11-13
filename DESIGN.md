@@ -24,7 +24,7 @@ colors:
   setupStepFuture: "#0000005c"
   setupStepConnector: "#00000037"
   setupStepDoneGlyph: "#ffffff"
-  flyoutFill: "#f9f9f9"
+  flyoutFill: "#f9f9f9e6"
   flyoutStroke: "#0000000f"
   nativeSecondary: "#0000009e"
   nativeTertiary: "#00000072"
@@ -37,6 +37,8 @@ colors:
   critical: "#c42b1c"
   subtleHover: rgba(0,0,0,0.037)
   subtlePressed: rgba(0,0,0,0.024)
+  countBadgeFill: rgba(0,0,0,0.143)
+  progressTrack: "#00000072"
   buttonFill: "#ffffffb3"
   buttonHoverFill: "#f9f9f980"
   buttonPressedFill: "#f9f9f94d"
@@ -181,6 +183,11 @@ typography:
     fontSize: 12px
     fontWeight: 400
     lineHeight: 16px
+  captionStrong:
+    fontFamily: '"Segoe UI Variable Small", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontSize: 12px
+    fontWeight: 600
+    lineHeight: 16px
   small:
     fontFamily: '"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
     fontSize: 13px
@@ -202,12 +209,12 @@ typography:
     fontWeight: 400
     lineHeight: 16px
   chatProse:
-    fontFamily: '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontFamily: '"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
     fontSize: 14px
     fontWeight: 400
     lineHeight: 21px
   chatInput:
-    fontFamily: '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
+    fontFamily: '"Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
     fontSize: 14px
     fontWeight: 400
     lineHeight: 20px
@@ -281,11 +288,11 @@ typography:
     fontSize: 13px
     fontWeight: 600
     lineHeight: 18px
-  captionStrong:
-    fontFamily: '"Segoe UI Variable Small", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
-    fontSize: 12px
-    fontWeight: 600
-    lineHeight: 16px
+  listItemIcon:
+    fontFamily: '"Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif'
+    fontSize: 20px
+    fontWeight: 400
+    lineHeight: 20px
   notificationDismissIcon:
     fontFamily: '"Segoe Fluent Icons", "Segoe MDL2 Assets", sans-serif'
     fontSize: 11px
@@ -358,20 +365,34 @@ x-colophon:
         components:
           - ComposerPicker
           - ComposerPickerOptions
+          - ComposerEffortOptions
+          - ChatContextUsage
+          - ChatUsageDetails
           - ChatBubble
           - ChatUserBubble
           - ChatComposer
           - ChatThread
           - ChatCopyButton
+          - LobsterQuickComposer
+          - LobsterQuickChat
+          - LobsterNotification
       - id: settings
         name: Settings
         description: Settings patterns, workspace chrome, identity controls, and flyouts.
         content: References from OpenClaw.Tray.WinUI settings pages, HubWindow, and the Home and Sessions workspace. Iconless settings rows share the card backplate and 16px left text inset. Ordinary rows and expanded children stay passive around their trailing actions; the entire expander header has hover/pressed feedback and immediate browser-native expand/collapse. Native WinUI animation remains a port requirement. The Settings shell sample has no left pane. Shared building blocks remain in Components.
         components:
           - SettingsSectionHeader
+          - CountedSectionHeader
+          - SectionTitle
           - SettingsCard
           - SettingsToggleRow
+          - SettingsFieldRow
+          - SettingsNavigationRow
           - SettingsExpanderRow
+          - ItemExpanderCard
+          - ItemNavigationCard
+          - SubtleExpander
+          - InlineToggleFilter
           - SettingsWindowShell
           - NotificationFlyout
           - NotificationFlyoutEmpty
@@ -390,9 +411,12 @@ x-colophon:
           - Badge
           - BadgeAccent
           - SubtleButton
+          - RefreshButton
+          - OpenInBrowserButton
           - HyperlinkButton
           - ToggleSwitch
           - StatusDot
+          - ProgressBar
           - Avatar
           - AvatarStates
           - InfoBar
@@ -474,13 +498,13 @@ x-colophon:
         themes:
           dark: "#2b2b2b"
           highContrast: "#000000"
-        usage: Cards, flyouts, inputs. Fluent CardBackgroundFillColorDefault.
+        usage: Cards and inputs. Fluent CardBackgroundFillColorDefault. Flyout presenters use flyoutFill instead.
       flyoutFill:
-        resource: FlyoutPresenterBackground
+        resource: LayerOnAcrylicFillColorDefaultBrush
         themes:
-          dark: "#2c2c2c"
+          dark: "#2c2c2ce6"
           highContrast: "#000000"
-        usage: Native AcrylicInAppFillColorDefaultBrush fallback, not a card fill. Light fallback F9F9F9 and dark fallback 2C2C2C come from AcrylicBrush_themeresources.xaml. Browser preview does not reproduce backdrop blur or acrylic noise.
+        usage: Default flyout fill layer over acrylic, mapped exactly to LayerOnAcrylicFillColorDefaultBrush. Native model, usage and effort flyouts bind this resource over DesktopAcrylicBackdrop. Preview retains illustrative E6/FF-alpha light and dark tints and an opaque high-contrast fill, not an exact native brush recipe. Windows owns fallback and transparency settings; browser preview does not reproduce backdrop blur or acrylic noise.
       flyoutStroke:
         resource: FlyoutBorderThemeBrush
         themes:
@@ -627,6 +651,16 @@ x-colophon:
           dark: rgba(255,255,255,0.0419)
           highContrast: transparent
         usage: "Pressed fill for subtle/transparent controls. Fluent SubtleFillColorTertiary (light #06000000)."
+      countBadgeFill:
+        resource: UsageCountPillBrush
+        themes:
+          dark: rgba(255,255,255,0.16)
+          highContrast: "#000000"
+        usage: Fill of the count badge beside a section title (Usage Sessions, Systems Devices and Gateway). TextFillColorPrimary at 16% opacity, so it follows light and dark; high contrast uses SystemColorButtonFaceColor. The resource keeps its original Usage name but is a shared App.xaml brush.
+      progressTrack:
+        resource: ProgressBarBackground
+        themes: { dark: "#ffffff8b", highContrast: "#000000" }
+        usage: Stock ProgressBar track, ControlStrongStrokeColorDefault. Its indicator binds accent (ProgressBarForeground = AccentFillColorDefaultBrush). High contrast uses SystemColorWindowColor for the track, SystemColorHighlightColor for the indicator and SystemColorWindowTextColor for a 1px border.
       buttonFill:
         resource: ButtonBackground
         themes: { dark: "#ffffff0f", highContrast: "#000000" }
@@ -1121,7 +1155,7 @@ Personality: native, trustworthy, calm, precise.
 
 - **ink** {colors.ink}: Primary text, headings. Fluent TextFillColorPrimary on light.
 - **paper** {colors.paper}: App / page background. Mica base / ApplicationPageBackground (light).
-- **surface** {colors.surface}: Cards, flyouts, inputs. Fluent CardBackgroundFillColorDefault.
+- **surface** {colors.surface}: Cards and inputs. Fluent CardBackgroundFillColorDefault. Flyout presenters use `flyoutFill`.
 - **muted** {colors.muted}: Secondary text, captions. Fluent TextFillColorSecondary/Tertiary.
 - **line** {colors.line}: Borders, dividers. Fluent CardStrokeColorDefault / DividerStroke.
 - **accent** {colors.accent}: Primary actions, links, selection, focus. Follows SystemAccentColor (default AccentDark1 on light).
@@ -1135,6 +1169,8 @@ Personality: native, trustworthy, calm, precise.
 - **critical** {colors.critical}: Errors, disconnected, destructive. Fluent SystemFillColorCritical.
 - **subtleHover** {colors.subtleHover}: Hover fill for subtle/transparent controls (icon buttons, inline pickers). Fluent SubtleFillColorSecondary (light #09000000).
 - **subtlePressed** {colors.subtlePressed}: Pressed fill for subtle/transparent controls. Fluent SubtleFillColorTertiary (light #06000000).
+- **countBadgeFill** {colors.countBadgeFill}: Fill of the count badge beside a section title, mapped to `UsageCountPillBrush` (TextFillColorPrimary at 16% opacity). Text on it stays primary ink.
+- **progressTrack** {colors.progressTrack}: Track of the stock WinUI ProgressBar, mapped to `ProgressBarBackground` (`ControlStrongStrokeColorDefault`). The indicator uses `accent`.
 - **SubtleButton states:** {colors.subtleButtonFill}, {colors.subtleButtonHoverFill}, {colors.subtleButtonPressedFill}, {colors.subtleButtonText}, {colors.subtleButtonHoverText}, {colors.subtleButtonPressedText}, {colors.subtleButtonDisabledText}, {colors.subtleButtonBorder}, {colors.subtleButtonHoverBorder}, and {colors.subtleButtonPressedBorder} bind the control-specific `SubtleButton*` resources. Fill and text alpha bytes come directly from WinUI. Hover/pressed borders are transparent only in the light/dark browser preview, where the background already covers the border area; painting the same translucent color twice would create an incorrect dark outline. Native resource bindings remain unchanged. Separate border and foreground roles preserve the native high-contrast overrides; the displayed high-contrast swatches represent this preview's black/white/yellow scheme, not fixed system colors.
 - **control** {colors.control}: Stock input-control fill. The chat writing surface uses `chatSurface`, not this resource; its inner editor stays transparent.
 - **controlHover** {colors.controlHover}: TextBox pointer-over fill, mapped to `ControlFillColorSecondaryBrush`.
@@ -1168,7 +1204,7 @@ Resource mappings are also recorded on `x-colophon.tokens.typography.scale` for 
 
 Use Segoe UI Variable for text and Cascadia Mono (`x-colophon.tokens.typography.mono`) for commands, endpoints, tokens, and logs. Fluent icon glyphs use Segoe Fluent Icons (`x-colophon.tokens.typography.icon`); for example, the selection checkmark is glyph U+E73E, and the chat toolbar uses ChatSubmit (U+E74A), ChatAttach (U+E710, plus), VoiceAct (U+E720), ChevronDown (U+E70D), Stop (U+E71A) and StopFilled (U+E73B).
 
-Chat-local typography follows production rather than substituting the named Gallery styles: `chatProse` is 14/21, `chatInput` is 14px with a 20px browser line box, matching the compact desktop composer reference, `chatPicker` is 13/18, and `chatFooter` is 12/18. Tool and activity row text is 13px like `chatPicker`, thinking text is 12/18 in the secondary tone like `chatFooter`, and list markers and items share `chatProse`. Native text uses maximum-height line stacking and layout rounding. `chatIcon`, `chatActionIcon` and `chatChevron` are actual Segoe Fluent glyphs at 16, 14 and 12px respectively, not generic SVG approximations.
+Chat-local typography follows production rather than substituting the named Gallery styles: `chatProse` and `chatInput` share Segoe UI Variable Text at 14px. Prose retains its 21px line height; input keeps a 20px browser line box, matching the compact desktop composer reference. `chatPicker` is 13/18, and `chatFooter` is 12/18. Tool and activity row text is 13px like `chatPicker`, thinking text is 12/18 in the secondary tone like `chatFooter`, and list markers and items share `chatProse`. Native text uses maximum-height line stacking and layout rounding. `chatIcon`, `chatActionIcon` and `chatChevron` are actual Segoe Fluent glyphs at 16, 14 and 12px respectively, not generic SVG approximations.
 
 ## Layout
 
@@ -1203,6 +1239,31 @@ docking, or persisted geometry in v1.
 
 Use the named shadows in `x-colophon.tokens.shadows` when elevation is needed. Keep shadows soft and shallow; depth should read as Fluent layering, not drop-shadow decoration.
 
+### Default flyout surface and dividers
+
+All flyout and submenu references use one `flyoutFill` backplate,
+`flyoutStroke` frame, `md` corners and the `flyout` shadow. The Light and Dark
+previews retain illustrative tints at E6/FF alpha (about 90%) so
+the underlying surface subtly shows through, as in the supplied Settings
+menu reference. Keep text, glyphs and controls fully opaque; never apply
+opacity to the whole flyout. High Contrast keeps an opaque system-window fill
+and system-colored frame. The design maps `flyoutFill` exactly to
+`LayerOnAcrylicFillColorDefaultBrush` as the fill layer over
+`DesktopAcrylicBackdrop`. Native model, usage and effort flyouts bind this
+resource; the preview swatches are not an exact native brush recipe.
+Windows retains ownership of opaque fallbacks and transparency settings.
+The browser's alpha tint is illustrative, not native acrylic or blur proof.
+
+Flyout section dividers are straight, 1px `setupCardStroke` lines spanning
+the presenter's full inner width, directly between its left and right borders.
+Do not inset them with content padding or assign a fixed pixel width.
+Pad content rows or sections separately so text, controls and row feedback
+keep their existing insets. Preserve vertical divider spacing. This default
+applies to the model picker, usage details and connection-status references,
+and to future flyouts. Notifications and effort submenus share the surface;
+do not add dividers where none exist or change borders inside notification cards.
+These are Colophon defaults, not a claim that production has been ported.
+
 ## Shapes
 
 Use the `rounded` tokens for corner radii: `sm` for buttons and inputs, `md` for cards and flyouts, `lg` for grouped panels, `bubble` (12px) for the user chat bubble and code surfaces (assistant prose is bubbleless), `composer` (20px) for the chat writing surface, and `pill` for status badges and toggles.
@@ -1212,9 +1273,11 @@ Use the `rounded` tokens for corner radii: `sm` for buttons and inputs, `md` for
 The chat transcript and composer ship via Reactor and follow the native chat visual system in [`docs/CHAT_VISUAL_DESIGN.md`](docs/CHAT_VISUAL_DESIGN.md). They align to the reading rhythm of the released web chat without replacing Windows chrome, native input, or gateway contracts.
 
 - **Semantic brushes.** Chat binds the chat-local resources in `Themes/ChatResources.xaml` (Default/Light/HighContrast), not raw palette hex: `ChatCanvasBrush` (transparent; system window in HC), `ChatComposerBrush` and `ChatCardBrush` (`CardBackgroundFillColorDefault`), `ChatStrokeBrush` (`ControlStrokeColorDefault`), `ChatTextBrush` (`TextFillColorPrimary`), `ChatSecondaryTextBrush` (`TextFillColorSecondary`, used for code text), `ChatUserBrush` (accent at low opacity for the user bubble), `ChatUserTextBrush` (`TextFillColorPrimary`), and `ChatCopySuccessBrush` (`SystemFillColorSuccess`). `ChatPickerAccentTextStyle` binds `AccentTextFillColorPrimaryBrush` directly so picker values and checks use the native readable accent in their own theme, including high contrast.
-- **Surface layering.** The Hub title bar and expanded navigation pane reveal Mica; `NavigationViewContentBackground` supplies one content layer (`LayerFillColorDefaultBrush`; system window in HC). The chat canvas is transparent so it neither hides nor doubles that layer, and the composer and code cards use the card fill above it. The standalone chat window uses the same Mica plus one content layer.
-- **Geometry.** The reading column is capped at 768px with a 16px prose inset; outer gutters are 12px below 640px and 40px above. The avatar is omitted below 960px; wider native layouts reserve a 44px gutter on each side of the prose. The writing surface has a 20px radius, 1px border, 96px minimum height, 16,8 inner padding and a 4px editor-to-toolbar gap, and sits 16px above the window's bottom edge. Its 14px TextBox has no padding, a 44px minimum height and 200px maximum height, and draws its placeholder in `ChatMutedTextBrush` (TextFillColorTertiary) so it stays fainter than typed text. Native focus and hover keep the editor fill and border transparent, with no accent underline. Assistant prose is bubbleless at 14/21, with no extra vertical body padding, 8px block gaps and 4px turn spacing. User messages have 12,8 padding, 12px corners and a 720px maximum width; their action footer is separated by one 4px gap. Thinking and tool details use 12,8 insets and 4px internal spacing. The transcript lead-in is 8px. Provider review is a 16px-radius warning card above the composer with findings in a dialog; subagent inspection belongs to the shared conversation panel's Subagents tab. These chat-local density tokens reduce whitespace, not reading type or action targets.
-- **Footer controls.** Workspace shows a leading Add ("+") attach action followed by the Node Sandbox shield, then right-aligned context ring, model, effort, Voice and circular Send/Stop. Only standalone ChatWindow includes the session selector. Controls are 32px tall; icon targets are 32px square with 16px glyphs, except the 14px "+" glyph. While the sandbox is On, Windows 11 shows Segoe Fluent's ShieldTask shield-check (U+F760); Windows 10, whose MDL2 font lacks it, layers an 8px CheckMark (U+E73E) at the shield's center. Send/Stop keeps a 32px circular hit target but paints a compact 24px disc inside it, with the toolbar row 8px from the frame's sides while the editor keeps the 16px inset. The button chrome stays transparent at rest and disabled, with a subtle circular hover/pressed halo. Send carries a 12px Up arrow on `AccentFillColorDefaultBrush`, and Stop a filled 10px square (CheckboxFill U+E73B) rather than the outlined Stop glyph. An unavailable Send uses the quiet `ChatSendDisabledBrush` disc (SubtleFillColorSecondary) and `ChatSendDisabledTextBrush` arrow (TextFillColorTertiary). Model/effort labels use 13px text, a 12px native chevron and 8,4 padding. Attach/Sandbox and Voice/Send have 4px gaps. The model flyout contains an AutoSuggestBox and grouped native list; effort uses a native discrete slider and changes to a 44px gauge trigger at widths <=560px. No fake session selector or separate speaker/settings actions belong in Workspace's composer.
+- **History navigation.** The existing right-gutter native AnnotatedScrollBar uses always-visible ordinal message ticks rather than gallery text labels. Follow the web position rail at `10285cd35ca7d696957430bbc6c8556f55af79fe`: normal ticks are 8x2px with 1px corners, in `ChatHistoryTickBrush` (40% `ChatSecondaryTextBrush`); messages in the viewport use full `ChatSecondaryTextBrush`. Hover and press use `ChatTextBrush` and a 32px tick, with three neighbors at 24/16/12px. Keep expansion inside the gutter, clamping on narrow windows, and preserve full system text contrast in High Contrast. No accent ghost or hover-only rail visibility. The rail grows at 10px per interval with 8px vertical and 4px horizontal insets, capped at the transcript viewport; capped ticks stay equidistant rather than following message pixel heights. Dense histories sample messages evenly, retaining the first and last, with at least 4 logical pixels of clear vertical space between rendered ticks, including display-scale rounding. The tick budget adapts when the rail resizes. A native tooltip with 12px corners presents sender identity and a 240-character, three-line preview within 280px. Hover and press resolve the same sampled keyed message; keyboard navigation retains every message. Keyboard navigation and keyed message jumps preserve the virtualized transcript and the centered composer.
+- **Surface layering.** The Hub title bar and expanded navigation pane reveal Mica; `NavigationViewContentBackground` supplies one content layer (`LayerFillColorDefaultBrush`; system window in HC). The chat canvas is transparent so it neither hides nor doubles that layer, and the composer and code cards use the card fill above it. The standalone chat window uses the same Mica plus one content layer. Pinned pages and other embedded sections use that same single layer rather than an opaque page background. The composer sits 12px above the window's bottom edge, the same distance as the Workspace owner footer buttons, and 4px below the transcript or pending queue.
+- **Geometry.** The reading column is capped at 768px with a 16px prose inset; outer gutters are 12px below 640px and 40px above. The avatar is omitted below 960px; wider native layouts reserve a 44px gutter on each side of the prose. The writing surface has a 20px radius, 1px border, 96px minimum height, 16,12,16,8 inner padding and an 8px editor-to-toolbar gap. Its 14px TextBox has no padding, a 44px minimum height and 200px maximum height, and draws its placeholder in `ChatMutedTextBrush` (TextFillColorTertiary) so it stays fainter than typed text. Native focus and hover keep the editor fill and border transparent, with no accent underline. Assistant prose is bubbleless at 14/21, with no extra vertical body padding, 8px block gaps and 4px turn spacing. User messages have 16,12 padding, 12px corners and a 720px maximum width; their action footer has an 8px stack gap plus a 2px top margin. Thinking and tool details keep 12,8 insets and 4px internal spacing. The transcript lead-in is 8px. Provider review is a 16px-radius warning card above the composer with findings in a dialog; subagent inspection belongs to the shared conversation panel's Subagents tab.
+- **Footer controls.** Workspace shows a leading Add ("+") attach action followed by the Node Sandbox shield, with the context ring immediately right of one model-name picker, then Voice and circular Send/Stop. The model picker's caret sits 2px below its centered position without shifting the label or the hit target, and every adjacent trailing button has an equal 4px gap. Only standalone ChatWindow includes the session selector. Controls are 32px tall; icon targets are 32px square with 16px glyphs, except the 14px "+" glyph. While the sandbox is On, Windows 11 shows Segoe Fluent's ShieldTask shield-check (U+F760); Windows 10, whose MDL2 font lacks it, layers an 8px CheckMark (U+E73E) at the shield's center. Send/Stop keeps a 32px circular hit target but paints a compact 24px disc inside it. Send carries a 12px Up arrow on `AccentFillColorDefaultBrush`, and Stop a filled 10px square (CheckboxFill U+E73B) rather than the outlined Stop glyph; an unavailable Send uses the quiet `ChatSendDisabledBrush` disc and `ChatSendDisabledTextBrush` arrow. The model label uses 13px text, a 12px native chevron and 8,4 padding. Voice/Send have a 4px gap. The single model flyout contains an inset AutoSuggestBox and grouped native model list above an Effort row opening an advertised-choice menu, without a Default/reset action. There is no separate effort toolbar trigger. No fake session selector, separate speaker/settings actions or telemetry strip below the composer belong here.
+- **Usage details.** The 16px context ring has a 2.5px round-capped stroke in a 32px native button; its track sits at 22% opacity. Normal usage uses secondary text ink, caution from 85% and critical from 95%. The tooltip and accessible name retain the formatted context summary. The ring is a keyboard-accessible native button that opens a 300px, trailing-edge-aligned flyout above it with the context window value, a quiet meter and the latest run's Input and Output tokens. It is hidden when the context window size is unknown. Cost, plan usage and throughput are not shown because the client does not receive them. `ChatContextUsage` opens the editable `ChatUsageDetails` reference; `ComposerPicker` opens `ComposerPickerOptions`, which includes search, provider groups, model metadata and the effort section. Both flyouts are also standalone examples on Colophon's Chat page.
 - **Message actions.** Copy is a shared 32px control with a 14px Fluent glyph and 4px padding, not a 20px generic SVG button. Its glyph shares a vertical center with the adjacent metadata. Sent-message metadata and actions reveal only on their own row's hover or keyboard focus, without changing footer geometry. Failed queued messages keep recovery visible, and active read-aloud keeps Stop visible. The assistant footer includes sender, time, model and usage at 12/18. Metadata and action glyphs remain static; only active work labels receive a 2.4-second light flare. Its primary-to-secondary alpha gap is increased by 20 percent so the moving band stands out. Light uses primary ink for the base and the softer ink for the flare; Dark reverses those roles. Native theme resolution keeps the entire sentence readable while making the moving band noticeable. The working claw and clock row stay fully opaque through entrance and timer updates. Native copy confirmation announces Copied; the browser reference does not implement clipboard or speech.
 - **Jump to latest.** A centered 32px circular native button overlays the transcript near its bottom edge while the reader is away from the tail. It has a 16px Fluent Down glyph (U+E74B), no visible text, a 1px `ChatStrokeBrush` outline, `LayerFillColorDefaultBrush` fill and `ChatSecondaryTextBrush` foreground. Native hover, press and keyboard-focus states remain intact. Localized tooltip and accessible name distinguish Jump to latest from new-message feedback; showing the button does not resize the transcript.
 - **Pending queue.** Queued submissions share one `ChatCardBrush` panel directly above the composer, capped at the 768px reading width with the same outer gutters and 20px composer radius. Queue-local tokens use 13,6,4,6 row insets (left, top, right, bottom), 8px column gaps, 14px native outline list/return and trash icons with a 1.75px stroke in their 24px viewbox, a 20px circular operator-avatar fallback and selectable 13/18 primary text. At widths <=560px the avatar is 18px and column gaps are 6px. The always-visible trash target stays 32px square; the reduced right inset preserves the web reference's 20px action-center inset despite the larger native target. The panel has a 4px bottom margin; the composer owns the remaining gap. A 1px `ChatStrokeBrush` divider separates rows. The panel scrolls above 160px or one third of the viewport height, whichever is smaller. Sending disables removal; failures retain their error and removal action. The queue never adds synthetic transcript entries.
@@ -1263,6 +1326,43 @@ The [120-DPI comparison](.agents/design/reference/chat-comparison.png) preserves
 
 The Colophon catalog now uses the actual geometry, semantic alpha brushes and Fluent glyphs. It is **not a verified pixel-identical native renderer**: Mica is wallpaper/activation-dependent; this host's native UI Automation reports Segoe UI Variable while Chromium resolves the requested family to Segoe UI; and text rasterization/layout rounding differ. The installed schema also lacks responsive breakpoints, row-hover opacity, gradient elevation borders and native input/flyout behavior. Fixed-size references must not become production layout code. High-contrast preview swatches are resource simulations, not evidence of Windows HC mode.
 
+The trailing composer controls use the same spacing token `1` (4px) between
+each adjacent button: model picker, usage ring, Voice and Send/Stop. The model
+picker's caret is translated down by token `half` (2px), without moving its
+label or changing the button's hit target.
+
+## Shared non-chat page layout
+
+All non-chat pages use `PageResponsiveLayout`: a centered 1200-DIP maximum
+inner column, horizontal padding of 32 DIPs (20 below the 720-DIP page-host
+breakpoint), 4 DIPs above the heading and 32 below the content. The native
+56-DIP chrome band is allocated once, including full Settings, pinned pages and Notifications,
+so navigating between pages does not move the heading baseline. The compact
+heading inset places page titles at the vertical level of the sidebar's
+assistant name without reducing their title typography. XAML pages
+apply `PageContentLayout`; Reactor pages use the same sizing policy directly.
+Chat retains its separate reading layout.
+
+Full Settings uses this same title position with either an expanded or collapsed
+navigation pane. Opening the section list does not remove the heading's chrome
+clearance or move its title upward.
+Floating notification banners use the same resolved top clearance, preserving
+their own 8-DIP gap below the chrome without moving the page content.
+
+The content background extends behind the native title bar on every page.
+History clearance belongs inside the content frame or the page's scrolling
+viewport, never outside the painted Settings host. Both NavigationViews retain
+only the native 1-DIP left content divider in expanded and minimal states; there is no
+horizontal divider or exposed Mica strip above a page heading.
+
+Page titles, subtitles and body content share the same left edge. Headers are
+plain, without a colored banner, card backplate, border or leading decorative
+icon column. Shared Reactor headings use native 28-DIP semibold title typography
+and a 4-DIP text-stack gap. Real status, metadata and actions remain present;
+Narrow actions reflow below the copy without reparenting native controls.
+Semantic status colors, data charts and Dashboard identity tiles remain distinct
+from decorative page-header color.
+
 ## Dashboards expressive extension
 
 The standalone Dashboards page (`src/OpenClaw.Tray.WinUI/Dashboards/`) is the one place this system spends color on identity, at the product owner's direction: dashboards are visual workspaces, and a gallery of identical gray cards reads as a file list. The extension adds color without weakening the core rules.
@@ -1270,7 +1370,7 @@ The standalone Dashboards page (`src/OpenClaw.Tray.WinUI/Dashboards/`) is the on
 - **Placement.** Dashboards lives beside Chat as a pinnable page, not in the Settings section list. Scopes without saved pin choices show it after Home by default; custom lists and stored explicit empty lists remain unchanged. Older versions erased empty choices, so those missing entries receive the default on upgrade; see [Native Dashboards](docs/DASHBOARDS.md#scope). The page retains the Workspace sidebar and single Back/Forward history, including session deep links.
 - **Palette.** Six categorical hues (blue, teal, purple, pumpkin, berry, green) are theme resources in `Themes/DashboardResources.xaml`: `DashboardHue{n}Brush` (strong, at least 4.5:1 on cards in light and dark), `DashboardHue{n}SubtleBrush` (tinted tiles) and `DashboardHue{n}WashBrush` (card heading and metric backdrops), plus `DashboardOnHueBrush` for text on a strong fill. Light uses Fluent-style shades, dark uses tints. High contrast maps every hue to `SystemColorHighlightColor` and every wash to `SystemColorWindowColor`, so identity never carries meaning on its own.
 - **What hues mean.** A gallery card's hue is stable for its owning agent id (identity band); an author's hue is stable for the author id (board-header avatar). Widget kinds have fixed hues: HTML blue, report purple, website teal, MCP app pumpkin, other plugins green. Hues never encode state: live, approval, error and disconnected keep `positive`, `warning` and `critical`, and actions keep the system `accent`.
-- **Hero.** Gallery and board use the shared `Presentation/Adapters/PageHero.cs` card, with a system-accent wash contained within its border, not a full-page backdrop. The gallery title is Dashboards. Its answer line combines the agent picker and latest reported board update; its caption names the agent to ask for changes. Board view names the board and shows author/update metadata plus the reported Live tag. No summary tiles, decorative agent chip or Needs you section belongs here. The hero, tabs and content scroll together. Narrow actions reflow below the copy. Shared geometry and motion remain owned by `PageHero`, not a Dashboard-specific clone.
+- **Header.** Gallery and board use the plain shared `Presentation/Adapters/PageHero.cs` heading, aligned with the body column. There is no system-accent wash or header card. The gallery title is Dashboards. Its answer line combines the agent picker and latest reported board update; its caption names the agent to ask for changes. Board view names the board and shows author/update metadata plus the reported Live tag. No summary tiles, decorative agent chip or Needs you section belongs here. The header, tabs and content scroll together. Narrow actions reflow below the copy. Shared geometry and motion remain owned by `PageHero`, not a Dashboard-specific clone.
 - **Gallery.** Static cards show a 48-DIP, radius-8 identity tile with initials from up to two title words on an agent-tinted band (80 DIP, or 64 in dense inventories). Titles and summaries lead the Fresh today feature, without a cover. Summaries wrap within 440 DIP and use "No summary available" when absent. Author/update metadata and the optional Live tag share a footer with a right-aligned "Open board" label. Chat is a bordered, labeled sibling action on its own trailing row, never nested inside the card button. A Fresh today shelf requires at least five boards and at least two updates in the current local day; filters appear above five. Returning from a board restores its exact opening card, preserving search/sort and loaded card count, or focuses the named gallery heading if the board disappeared. The board header uses chat, refresh, and More options icons. Back belongs to the title bar.
 - **Results.** Dashboards and Usage share the neutral flyout toast surface: `FlyoutPresenterBackground`, `FlyoutBorderThemeBrush`, a 1px stroke, `ThemeShadow`, radius 8, padding 16x12, maximum width 480, bottom-center with margin 20. Only the icon carries severity color. Passive/error results dismiss after four seconds; errors use assertive announcements.
 - **Responsive geometry.** `Presentation/PageResponsiveLayout.cs` is the canonical host-width contract: Wide 1000+, Medium 720+, Narrow below 720 (minimum supported host 480), inner content maximum 1200, padding 32/20, gaps 8/12/16. Dashboards uses explicit rows/columns, 240-DIP-minimum board tiles, and layout cells outside motion decorators. Mast actions move below text in Narrow and secondary browser actions collapse to More options; filters and Fresh today stack deterministically. Do not infer the tier from window width or lower the shell minimum to manufacture a Narrow capture.
@@ -1295,21 +1395,21 @@ The Systems page (`Systems/SystemsPageView.cs`, Reactor) has more personality th
 | Disk, workers, storage | `SystemsDiskBrush` | #5FD4D9 teal | #00747A teal |
 | Neutral, connected apps | `SystemsNeutralBrush` | `TextFillColorSecondary` | `TextFillColorSecondary` |
 
-- **Usage.** Each hue has a `*TintBrush` (same color at 10-16% opacity) for glyph chips, pills and meter tracks. Success, caution and critical states use the native `SystemFillColor*` brushes with matching `Systems*TintBrush` tints. The shared native adapter `Presentation/Adapters/PageHero.cs` owns the hero's Windows-accent gradient inside the card; there is no full-page wash.
+- **Usage.** Each hue has a `*TintBrush` (same color at 10-16% opacity) for glyph chips, pills and meter tracks. Success, caution and critical states use the native `SystemFillColor*` brushes with matching `Systems*TintBrush` tints. The shared native adapter `Presentation/Adapters/PageHero.cs` renders a plain page heading without an accent gradient or card.
 - **Rules.**
   - Load follows the user's accent. Violet and teal are fixed so the three metrics stay distinguishable.
   - Every hue appears with a glyph and a text label, so status never relies on color alone.
-  - In high contrast, every hue maps to `SystemColorHighlightColor` or window colors. The hero wash is removed.
+  - In high contrast, every hue maps to `SystemColorHighlightColor` or window colors. Page headings remain plain in every theme.
 - **Scope.** Statistics show the latest reported reading, a usage meter and its age; there are no trend charts. Windows nodes report processor count, memory and system-drive space, so no processor usage is shown for them. The page reports desktop availability only. Desktop viewing and setup, storage and backup administration, and other deeper machine work stay in the web interface behind the single page-level "Open in web" button. It opens the web Systems page when supported, or the web root on an older Gateway; it does not promise a selected-machine destination, so the machine identifier remains copyable.
 - **Responsive container.** `Presentation/PageResponsiveLayout.cs` owns page-host (not window) tiers: Wide at 1000 or more effective pixels, Medium at 720-999, Narrow below 720, supported down to 480. Content is centered, capped at 1200, with 32-pixel horizontal margins (20 on Narrow). Horizontal scrolling and measurement are disabled. The hero and inventory share one scroll. The production window minimum remains 800; narrower proof mounts the actual page in the existing test viewport.
-- **Page anatomy.** The shared hero card contains the Systems title, a real Gateway attachment sentence and wrapping Open in web/Add a system actions. The title is 28 semibold, 24 on Narrow; actions center vertically on wider layouts and move below the copy on Narrow. Card radius is 8, padding 24,20 (16 on Narrow), with a noninteractive system-accent gradient inside the card. Online and Issues are the only summary tiles. Measured content width governs their shared layout: two equal columns down to 380, one below it. Online reports machine rows, not connected apps or workers; disconnected copy qualifies retained counts as last reported. Unknown data is not a zero or a successful current report. Refresh is beside the inventory heading. Add a system explains the three pairing steps before opening Connection. "Devices and Gateway" always shows the complete reported inventory in online-first order, without search, status filters or sort controls. Workers and Connected apps retain their own groups. Independent native Expanders preserve siblings and scroll position. Inventory groups keep stable identities when a preceding pairing group is added or removed; a default selection arriving after the initial load expands only after its current native row has loaded. Intentional collapse survives later inventory refreshes.
+- **Page anatomy.** The plain shared header contains the Systems title, a real Gateway attachment sentence and wrapping Open in web/Add a system actions. Open in web is an icon-only SubtleButton with a localized accessible name and destination tooltip. The title is 28 semibold at every width; actions center vertically on wider layouts and move below the copy on Narrow. Header text aligns with the inventory, without card padding, border, leading icon column or accent gradient. Online and Issues are compact, unframed one-line summaries in two equal columns at supported widths: a 20-pixel slot holding a status dot or triangle, a 14-pixel semibold label, then a 12-pixel secondary value (dot, Online, 0 of 0; triangle, Issues, 0). Online uses a semantic status dot; Issues is a SubtleButton, like the Windows Settings update action, enabled only when there are actionable issues. Online reports machine rows, not connected apps or workers; disconnected copy qualifies retained counts as last reported. Unknown data is not a zero or a successful current report. Refresh is an icon-only SubtleButton beside the inventory heading (see Page actions). The Devices and Gateway heading is an 18-pixel semibold title with a trailing count badge (CountedSectionHeader); the count covers only Gateway hosts and nodes, so it can read 0 while a worker is listed below. The Workers and Connected apps group headings use the Settings page section-heading style (`BodyStrongTextBlockStyle`, inset 4 pixels, with the group dot) and keep their "(n)" text. Each heading has 12 pixels above its list, and group headings have an extra 12 pixels above them. Add a system explains the three pairing steps before opening Connection. "Devices and Gateway" always shows the complete reported inventory in online-first order, without search, status filters or sort controls. Workers and Connected apps retain their own groups. Gateway hosts and workers use Toolkit SettingsExpanders; nodes and connected apps retain native Expanders. Independent disclosures preserve siblings and scroll position. Inventory groups keep stable identities when a preceding pairing group is added or removed; a default selection arriving after the initial load expands only after its current native row has loaded. Intentional collapse survives later inventory refreshes.
 - **Row attention.** There is no Needs you section or separate Issues view. Pending pairing requests appear first as distinct rows with Wants to join and Review. Machines and workers carry all existing approval, reapproval, offline, update, disabled-permission or reported-error badges in one stable wrapping host below the name and subtitle at every width. This intentionally replaces wide inline placement, preserving the identity's full width and the badge host's native parent across tier changes. Identity stack spacing is 2; the badge host has a 4-pixel top margin, 6-pixel item gaps and 4-pixel line gaps. Badge order, copy and motion remain unchanged. Only names ellipsize; badges retain their words and full-reason tooltips. Issues counts badged inventory entries and pending-request rows, not individual reasons; its action reveals, focuses and highlights the first current badged row without hiding inventory. Row details retain the explanation and appropriate resolution action. Pairing review and offline recovery open Connection; local Windows permission review opens Permissions; remote administration uses Open in web. Systems does not approve pairings or repair remote operating systems. Backup reads, the Last backup tile and backup badges remain closed.
 - **Inline details.** Multiple rows may remain expanded independently. Names and subtitles stay single-line with ellipsis and tooltips. Status is a glyph and text, not a filled pill, capped in width so it cannot starve the name. On Narrow, metadata moves below the subtitle, decorative badges disappear, and the chevron stays centered at the right. One native CommandBar owns all node actions and reverse-priority dynamic overflow, with mutations disabled when pairing access is absent. Flat, small-heading sections place Capabilities in a fixed 340-pixel column, then a 32-pixel gap, then Resources, Desktop availability and Related sessions, only on Wide; Medium and Narrow stack with a fixed 16-pixel gap. Resource tiles use equal columns, at least 160 pixels each with 12-pixel gaps, computed from the available inline pane after padding and the container cap. A single tile in the last row stretches across the available columns; other incomplete rows retain equal tile widths. Tiles show value, label and meter without icon badges; freshness sits beside Resources and report age at the right. Every page poll re-renders ages and Live versus Last known, including when nothing, a worker or a connected app is selected, without an extra Gateway read. Presence-only apps expose diagnostic presence data, never machine actions, resources or sessions.
-- **Header spacing and metadata.** Machine header content has 8-DIP vertical padding so badges do not touch the native row border. Medium and Wide rows reserve the same 180-DIP metadata column, with status and secondary text aligned at its start; Narrow rows keep metadata below the identity. Update summaries use the short localized "Update required" label, with full instructions retained in the tooltip and expanded details. The Expander still owns its template, chrome and interaction states.
+- **Header spacing and metadata.** Node and connected-app header content has 8-DIP vertical padding so badges do not touch the native row border. Gateway host and worker headers use the actual Toolkit SettingsExpander, matching Connection's saved-Gateway row: a plain 20-pixel server HeaderIcon, a regular Body name, then a Caption status with a 10-pixel semantic dot. The name/status stack has no extra gap; Toolkit owns the header padding, icon gap, disclosure caret and interaction states. The ellipsis command menu sits in the header Content slot immediately before the native caret, not in the expanded body. They have no tinted avatar or trailing status column. Expanded Systems details use a flat SettingsCard item inside the native frame, not a second enclosing card. Platform and kind remain available in accessible help and expanded details. Node and connected-app rows reserve the same 180-DIP metadata column on Medium and Wide, with status and secondary text aligned at its start; Narrow rows keep metadata below the identity. Update summaries use the short localized "Update required" label, with full instructions retained in the tooltip and expanded details.
 - **Dialogs.** Add and Forget use native ContentDialog title templates with an inline glyph badge. Width is capped at the smaller of 560 and viewport minus 48 on the visible dialog card, so the native overlay spans the window and the card stays centered. Forget explains unpairing from the reviewed Gateway and reapproval, without speculating about active sessions. A 120-pixel label column presents platform, last seen and paired date; below 400 pixels of dialog width labels move above values. The scoped native footer keeps Forget left with AccentButtonStyle and Cancel right normally, and stacks full-width primary then close buttons on Narrow. Forget has no default button and initially focuses Cancel. Add initially focuses Open Connection. Responsive updates never reset focus. Confirmation retains its Gateway epoch guard.
-- **Disclosure and copy.** Diagnostics starts collapsed, with commands and PATH in nested expanders. Copied diagnostic summaries are allowlisted and exclude both raw commands and PATH. Related sessions use a subtle icon-only chat button whose accessible name includes the title. No selection animation or resource history is shown.
+- **Disclosure and copy.** Gateway host and worker Machine details is a flat SettingsCard item inside the SettingsExpander and collapses with its other content. There is no separate Diagnostics heading or disclosure. One 32-DIP icon-only SubtleButton directly beside Machine details copies the existing allowlisted debug summary; there is no separate identifier copy button in the facts or labeled Copy debug info footer. Node Diagnostics still starts collapsed. Commands and PATH retain their nested disclosures. Copied diagnostic summaries are allowlisted and exclude both raw commands and PATH. Related sessions use a subtle icon-only chat button whose accessible name includes the title. No selection animation or resource history is shown.
 - **Motion and mast alignment.** The shared hero supplies reduced-motion-aware entrance, reflow and attention-jump transitions; the page applies them to inventory and pairing rows too and observes changes to Windows animation settings. Open in web and Add a system retain native control states and centered glyphs, without icon-specific offsets. Refresh remains a separate inventory action.
-- **Hero focus continuity.** The native hero adapter keeps glyph, copy and action containers as fixed siblings under one three-column, two-row Grid. Narrow placement changes only Grid attachments, spans, margins and alignment, never the action parent. Crossing 720 in either direction must retain the original native Add button, action host and focused object without programmatic refocusing.
+- **Header focus continuity.** The native header adapter keeps copy and action containers as fixed siblings under one two-column, two-row Grid. Narrow placement changes only Grid attachments, spans, margins and alignment, never the action parent. Crossing 720 in either direction must retain the original native Add button, action host and focused object without programmatic refocusing.
 - **Reported labels and dates.** Records and examples are never invented. Known capabilities use native translations. Unrecognized capability labels only replace separators and capitalize the first character; the exact Gateway ID remains in the tooltip and permission lookup.
 
 Disconnected inventory keeps one error recovery banner under the hero and an
@@ -1322,6 +1422,30 @@ completed native proof.
 
 ## Workspace shell
 
+The main window extends its shell to the top client edge for Chat, Dashboards
+and Settings. There is no separate branded title row, claw image or visible
+OpenClaw title. The stock WinUI `TitleBar` overlays the top of the content area;
+its leading column reserves the current Workspace sidebar width, including after
+a resize, so the pane,
+history and search controls remain clickable beside native dragging. Windows
+continues to own caption buttons, snap, resize and window movement. Chat retains
+a 32-DIP content inset beneath the native caption band; embedded pages retain
+their existing history allocation. Both NavigationViews disable automatic
+title-bar padding so the shell itself is not pushed down again. The
+content layer has square corners, keeping its leading edge straight to the top.
+Pinned pages and other embedded sections sit over the Workspace NavigationView's
+own content layer, so they show the same Mica plus one `LayerFillColorDefaultBrush`
+layer as Home chat. `SettingsShellView` removes its inner NavigationView's content
+layer and leading stroke while it is content-only, and restores both when the
+section list returns; the host adds no opaque page background.
+Collapsed-pane Dashboard and notification buttons are 40x40 DIP with 16-DIP
+glyphs, centered in a 56-DIP native title-bar band to align with the pane toggle.
+The right-header footer adds no trailing margin; the stock TitleBar retains
+its minimum drag region and system-caption inset.
+The window's title and icon remain available to Windows task switching. The older screenshot
+and WorkspaceShell browser reference below retain their historical title-row
+geometry and are not current full-bleed chrome proof.
+
 The native workspace sidebar starts at 256 DIPs. Its trailing 4-DIP splitter
 (spacing step `1`) has no visible grip, stays within the pane's trailing inset,
 and supports dragging and Left/Right keys when focused. The pane
@@ -1333,6 +1457,61 @@ pane edge. Narrow panes truncate the footer status rather than wrapping it.
 The agent selector retains its original sizing with 4,8,0,8 padding;
 the native ComboBox already reserves its own chevron column.
 Full Settings retains its separate navigation layout.
+
+### Desktop lobster quick chat
+
+Left-click opens a speech bubble containing the shared Reactor timeline and
+composer, focusing the message field when it is ready so typing can start
+immediately. Clicking the message field transfers keyboard input from other
+windows' text fields. Right-click retains the native options menu. Dragging
+wakes a sleeping lobster without opening either surface or counting a tap.
+The quick-chat overlay uses a 440-DIP-wide, 640-DIP-tall
+window including the existing 180-DIP mascot, with a content-sized chat host
+capped at 360 DIPs. The empty bubble has no heading or reserved transcript gap.
+Its Close control uses the native SubtleButton style. Attach, the message field,
+Mic and Send share one row with 8-DIP padding and 32-DIP action targets. The
+quick-chat and notification bubbles both use a 4-DIP outer inset, and
+notification rows retain an 8-DIP gap. The title has an 8-DIP left and 4-DIP top
+margin; Close has a 4-DIP top margin and padding. The message has 8-DIP horizontal
+margins, and notification actions have 8-DIP left and bottom margins. The
+compact editor has 4 DIPs of top padding with zero padding on other sides.
+The editor grows vertically as text wraps, up to its existing 200-DIP limit. It
+shrinks to the monitor work area and retains the mascot's bottom-right anchor.
+Desktop lobster settings use a native settings expander with its independent
+enable toggle in the header and a size dropdown in the expanded child row.
+The lobster is enabled by default unless the user has explicitly saved it off.
+The options menu's Desktop lobster settings action opens General settings
+instead of hiding the lobster. Its settings toggle remains the visibility control.
+The fixed choices are 50%, 75%, 100%, 125%, 150%, 175% and 200%, defaulting to 100%.
+The persisted size affects only the mascot. The mascot's layout and native hit region grow
+together; the popup widths, text and action targets do not scale. The bubble has no
+speech tail because acrylic fills its window rectangle. The options menu contains no preview action.
+The bubble and quick chat live in a windowed `Popup` that carries a
+`DesktopAcrylicBackdrop`, so the desktop behind them is blurred. Inside, the frame uses
+`LayerOnAcrylicFillColorDefaultBrush` with the `SurfaceStrokeColorFlyoutBrush` stroke,
+matching the flyout surface. The mascot stays in the transparent overlay window. The popup
+follows the app theme. Chat inside binds the existing `ChatResources`, composer geometry and text styles.
+The compact layout omits model, reasoning and sandbox controls, welcome
+suggestions, placement pickers and usage
+strip, not the shared send, streaming, stop, permission or error behavior.
+
+The lobster retains a dedicated conversation per Gateway for its view lifetime.
+Dismissal hides its mounted composer rather than discarding the draft. Chat
+notifications offer Quick reply, which opens the originating session in the
+same bubble; system alerts without a chat route do not invent a reply target.
+Chat-response notifications do not replace an already open chat. Other incoming
+notifications replace an open chat without discarding its draft or starting
+typing focus. Reopening chat restores its retained composer. Clearing
+notifications does not close an open chat. Attach uses the native multi-file
+picker owned by the lobster window; late selections are ignored after hiding or
+switching Gateway. Mic uses the shared voice service and local speech model,
+offers Permissions or Voice settings when unavailable, and cancels capture when
+chat is hidden. Disconnected chat offers
+Open Connection; an unavailable Gateway session-creation API is a visible error,
+not permission to send into the user's main conversation.
+Loading and recovery content use an 8-DIP inset. The inactive spinner reserves
+no space, and recovery actions share one row. Session failures offer Retry;
+Open Connection appears only when the chat connection is unavailable.
 
 ### Navigation search popup
 
@@ -1371,7 +1550,7 @@ Current Settings keeps Gateway administration together: Connection first, follow
 
 - **Pane and toolbar.** The `NavigationViewExpandedPaneBackground` reveals Mica; there is no extra pane border or general 8px inset. PaneHeader margin is 4,8,4,8. The 40x40 pane button sits at x=4, y=8 below the title bar. Back/Forward align to the right of the same 40px toolbar with an 8px gap and the default SubtleButton padding, yielding 40px widths. Their disabled state represents empty navigation history. The selector sits 8px below the toolbar, with 4,8,0,8 padding and the native trailing 12px U+E70D glyph. It shows No agents loaded until production has a roster; selected agents use `AgentIdentityBadge`.
 - **Menu.** Home is a 36px row with 4px horizontal and 2px vertical outer margins, a 3x16 accent indicator and the original `Chat.svg` at 22px centered in a 24px column. The iconless native presenter reserves 8px before that column, followed by a 16px gap to Home. The Sessions header is 40px tall with 16px leading and 4px trailing insets, 14px semibold text, and a 40x36 add button. No conversations to show replaces session rows in the supplied state; add is disabled while disconnected.
-- **Owner footer.** The PaneFooter uses 4,8,4,8 margins and a 4px column gap. The Owner button is the shared `UserIdentityBadge`, with native SubtleButton states, 8px padding and a retained 1px border, a 24px PersonPicture, 12px column spacing and a 10px status dot followed by a 4px gap and Caption text. `statusTone` follows connection state, never authorization. It reads the authenticated `users.self` profile or falls back to Owner. Chat and Settings share this footer (`WorkspacePaneFooter`): Owner, then 40x36 Dashboard and notification SubtleButtons vertically centered against it. Both use 16px monochrome Segoe Fluent glyphs in the default text color: Dashboard is ViewDashboard U+F246 and the bell is Ringer U+EA8F with a 16px InfoBadge at its top-right. The Settings compact rail stacks the three as 40px icons, and while Chat's pane is hidden only Dashboard and the bell appear in the title bar.
+- **Owner footer.** The PaneFooter uses 4,8,4,8 margins and a 4px column gap. With the NavigationView pane's own 4px inset the buttons end 12px above the window's bottom edge, the same distance as the chat composer card, so the account row and the composer share a baseline. The shared `UserIdentityBadge` uses native SubtleButton states, a retained 1px border, a 24px PersonPicture, 12px text gap and name-only copy. Its connection dot overlays the avatar with a separating stroke; see User identity badge below. `statusTone` follows connection state, never authorization. It reads the authenticated `users.self` profile or falls back to Owner. Chat and Settings share this footer (`WorkspacePaneFooter`): Owner, then Dashboard and notification SubtleButtons vertically centered against it. Both use 16px monochrome Segoe Fluent glyphs in the default text color: Dashboard is ViewDashboard U+F246 and the bell is Ringer U+EA8F. The Settings compact rail stacks Dashboard and the bell above the account as 40px icons, keeping the account at the bottom, and while Chat's pane is hidden only Dashboard and the bell appear in the title bar.
 - **Connection status.** `Controls/GatewayStatusContent.xaml` is a 304px flyout of Gateway, Operator, and Node rows split by 1px `line` dividers, closing with an Open Connection link. Each row pairs a 10px status dot with a body-strong label over a caption `muted` detail, and reveals an `accent` action link (Reconnect, Approve) only when that layer needs one. The dot binds the Fluent system fill for its state: `positive` connected, `warning` attention, `critical` error, `muted` unknown, never color alone.
 - **Notifications.** `NotificationFlyout` and `NotificationFlyoutEmpty` map the populated and empty states of `Controls/NotificationFlyoutContent.xaml`. They retain separate presenter and card layers, native alpha, and exact authored spacing. See the notification mapping below; the former generic `surface`/`line` shell and 12px presenter inset were incorrect.
 - **Artwork and glyphs.** Pane, Back, Forward and Add use actual Segoe Fluent glyphs U+E90C, U+E76B, U+E76C and U+E710 at 16px, not hand-drawn SVG substitutes. Home and Notifications use exact production SVG bytes, including their authored gradients; these are artwork, not theme-color tokens. The title uses `BrandAssets.RedBotMarkUri` at 16px with a 16px gap before its 12px title. Native caption glyph references are U+E921, U+E922 and U+E8BB. The owner fallback uses PersonPicture's Contact glyph U+E77B at 24 * 0.42 = 10.08px.
@@ -1381,13 +1560,27 @@ Workspace button instances reuse SubtleButton's resource-bound states rather tha
 
 This is a production-structure and geometry reference, not a pixel-identity claim. The supplied screenshot's client is approximately 1266x852 effective pixels; the preview uses that height and follows its available width. Mica's wallpaper tint, font rasterization, OS caption actions and native NavigationView interaction cannot be reproduced by this renderer. The pane button has hover/pressed/focus styling, but collapse/reopen remains a native action: production hides the pane entirely, shows a 56px ReopenPaneSlot, and transfers focus. Do not approximate that behavior by shrinking focusable children to zero width. The preview notification button opens the shared populated flyout; the empty reference is a separate Settings example. Neither reads live notifications.
 
+### User identity badge
+
+The shared native footer and Colophon `UserIdentityBadge` place the connection dot on the
+24px PersonPicture's bottom-right arc, centered at 20.5,20.5 within the avatar
+slot. A 10px colored disc has a 2px `paper` separating stroke (14px total).
+It overlays without adding a column or shifting the name. The button is 40 DIPs
+high with name-only visible copy. Native vertical padding is 4 DIPs, leaving
+slack around the 24-DIP PersonPicture inside the 1-DIP button border; an exact
+24-DIP content box rounds below the avatar at some display scales and clips it.
+The avatar overlay Grid has no explicit size so the dots can overhang it. Connection
+status remains in native UIA HelpText and the tooltip in both expanded and rail
+layouts; the preview includes it in the accessible name. This is connection
+state, not personal availability. The separate update dot remains at the top-right.
+
 ### Notification presenter and card mapping
 
 The [user-supplied native empty-state capture](.agents/design/reference/notification-native-empty.png) is the visual target, not a screenshot of this browser preview. Its approximately 482px outer width and 440px card width are consistent with native 386px and 352px widths at 125% scale.
 
 | Part | Native mapping retained in the preview |
 | --- | --- |
-| Presenter | `FlyoutPresenterBackground` (`AcrylicInAppFillColorDefaultBrush`), `FlyoutBorderThemeBrush`, 1px light/dark border, 8px `OverlayCornerRadius` |
+| Presenter | `FlyoutPresenterBackground` (`AcrylicInAppFillColorDefaultBrush`), `FlyoutBorderThemeBrush`, 1px light/dark border, 8px `OverlayCornerRadius`. The current preview uses the shared translucent `flyoutFill` approximation |
 | Presenter padding | 16,15,16,17, exactly `FlyoutContentPadding`; outer width 386 = 352 + 16 + 16 + 1 + 1 |
 | Card fill and frame | Existing `setupCardFill` / `setupCardStroke`, which bind the same native card brushes. Light fill is white at B3/FF alpha, not opaque white or the generic `surface` swatch |
 | Clear-all row | Margin 2,0,2,8; shared HyperlinkButton with native 4,0 content padding and a retained transparent 1px border |
@@ -1398,27 +1591,35 @@ The [user-supplied native empty-state capture](.agents/design/reference/notifica
 | Empty header | The collapsed Clear all button leaves its parent Grid's 8px bottom margin; do not remove that spacer |
 | Footer | Margin 2,8,2,0; shared Open notifications link and native tertiary count. Empty state has no count |
 
-The [native acrylic dictionary](https://github.com/microsoft/microsoft-ui-xaml/blob/09cfc8ff3fbf556166dd813ae9b81646716f54bf/controls/dev/Materials/Acrylic/AcrylicBrush_themeresources.xaml) defines the light fallback as F9F9F9 and dark fallback as 2C2C2C. Sampling the supplied screenshot's blank presenter area gives mainly 249-250 per channel; its white card is mainly 253-254. Compositing the native B3-alpha white card over F9F9F9 gives approximately 253, preserving the small native contrast without inventing another gray panel.
+The [native acrylic dictionary](https://github.com/microsoft/microsoft-ui-xaml/blob/09cfc8ff3fbf556166dd813ae9b81646716f54bf/controls/dev/Materials/Acrylic/AcrylicBrush_themeresources.xaml) defines the light fallback as F9F9F9 and dark fallback as 2C2C2C. Sampling the supplied screenshot's blank presenter area gives mainly 249-250 per channel; its white card is mainly 253-254. Compositing the native B3-alpha white card over opaque F9F9F9 gives approximately 253. That historical fallback comparison predates the shared translucent flyout preview; current browser pixels depend on the surface beneath it.
 
 The named `flyout` shadow uses an 8px downward offset, 16px CSS blur and 14% black as a light-preview reference. The [native popup's medium shadow clearance](https://github.com/microsoft/microsoft-ui-xaml/blob/09cfc8ff3fbf556166dd813ae9b81646716f54bf/dxaml/xcp/components/graphics/ThemeShadow.cpp) is 10,2,10,18; the preview reserves those same outside insets instead of the old 32px margin. These insets are separate from content padding. Colophon's portal still positions its entire scroll box, including clearance, rather than anchoring the presenter like WinUI.
 
-**Pixel identity remains unverified.** The flat fallback cannot reproduce acrylic noise/backdrop composition, Chromium text measurement/rasterization differs from WinUI, and a CSS shadow is not the native composition shadow (including its dark-theme recipe). The empty example is content-sized, not forced to a screenshot height. The native high-contrast presenter uses a 2px border, while this schema keeps the authored 1px border. The exact resource and authored geometry mappings above are not a substitute for a same-scale native/browser image comparison. Production keeps the stock [FlyoutPresenter](https://github.com/microsoft/microsoft-ui-xaml/blob/09cfc8ff3fbf556166dd813ae9b81646716f54bf/controls/dev/CommonStyles/FlyoutPresenter_themeresources.xaml) and system resources; no application or installed-plugin code is changed.
+**Pixel identity remains unverified.** A translucent tint cannot reproduce acrylic noise or blurred backdrop composition, Chromium text measurement/rasterization differs from WinUI, and a CSS shadow is not the native composition shadow (including its dark-theme recipe). The empty example is content-sized, not forced to a screenshot height. The native high-contrast presenter uses a 2px border, while this schema keeps the authored 1px border. The exact resource and authored geometry mappings above are not a substitute for a same-scale native/browser image comparison. Production keeps the stock [FlyoutPresenter](https://github.com/microsoft/microsoft-ui-xaml/blob/09cfc8ff3fbf556166dd813ae9b81646716f54bf/controls/dev/CommonStyles/FlyoutPresenter_themeresources.xaml) and system resources; no application or installed-plugin code is changed.
 
 ## Components
 
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.
 Optional click-through flows would live in `.agents/design/prototypes.jsonc`; none are defined yet.
 
-The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 40 definitions has exactly one standalone page assignment: Components 15, Setup 7, Chat 7, and Settings 11. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
+The catalog is organized into four families through `x-colophon.tokens.pages` above. The entry with `id: components` selects the built-in Components page; Setup, Chat, and Settings select their feature-specific previews. Each of the 57 definitions has exactly one standalone page assignment: Components 18, Setup 7, Chat 13, and Settings 19. Page selections do not copy or remove definitions, so shared controls still resolve inside compositions and flyouts. Keep control examples and variants beside their basic control, not on another feature page. The old synthetic Connection example screen and separate RecommendedBadge definition have been removed.
 
 Every interactive control documents its hover and pressed states; static controls say so. States bind Fluent resources (`SubtleFillColorSecondary` for hover, `SubtleFillColorTertiary` for pressed, accent variants for primary actions), never raw hex.
 
 ComposerPickerOptions rows use full-row `subtleHover` and `subtlePressed` fills with `sm` corners, both in the catalog and in opened composer flyouts. Pointer exit restores transparency; hover never changes the checked row, accent checkmark or layout. These tokens stay transparent in high contrast, so the preview does not reproduce native MenuFlyout system-highlight overrides.
 
-- **Basic controls and their examples (15).** Button (accent), ButtonStandard (normal), SubtleButton (native default style), HyperlinkButton, TextBox, Field, Badge, BadgeAccent, ToggleSwitch, StatusDot, Avatar, AvatarStates, InfoBar, InfoBarStates, and Card. ButtonStandard references Button and overrides its state brushes, just as BadgeAccent references Badge; neither duplicates shared markup. TextBox is the reusable default WinUI single-line input. Field composes a label and TextBox; its Gateway address example passes the label and placeholder into that shared control. AvatarStates and InfoBarStates demonstrate their parent control's presentations, not separate app features.
+The effort layout replaces the inline slider and Default action with one Effort row and its current value. The latest user-edited Colophon row and production use Body for both, with a muted, right-aligned selected value and the chevron at the far right. Production takes its geometry from the stock WinUI `MenuFlyoutItem` metrics (4,2 item margin, 11,4,11,5 desktop padding, `ControlCornerRadius`) rather than a bespoke 32px row: model names and the Effort label share one left edge after the stock 28px check slot, which holds the 12px selection check and the 16px effort gauge. Provider category headings use Caption Strong on that same 15px text edge. The edge-to-edge divider keeps stock separator spacing (1px above and below) in production; the Colophon preview retains its authored 4px top margin. Activating the row opens `ComposerEffortOptions`, illustrated with Low, Medium and High choices, Medium checked. Production uses an unmodified stock `MenuFlyout` and `ToggleMenuFlyoutItem` templates (only the acrylic fill is shared with the model flyout), containing the advertised profile's choices and checking the effective explicit or inherited value without writing an override. The model flyout retains an 8px search margin. Each model row is a `ListViewItem` with no margin and 15,6,15,7 padding: WinUI draws its hover and selection pill 4,2 inside the item bounds, which gives the stock `MenuFlyoutItem` result (a 28px pill 4px from the flyout edge with text 11px inside it). Browser previews do not commit an effort change or reproduce native submenu focus, placement and dismissal. The `components.jsonc` previews have not been re-synced to the stock metrics.
+
+The native model picker's No matching models caption aligns with the rows' 15px
+text edge on both sides (4px item margin plus 11px item padding) and uses spacing
+token `1` (4px) above and below, rather than touching
+the flyout frame. This applies to an empty catalog and an unmatched search.
+Keep the Effort separator edge to edge; do not pad the whole presenter.
+
+- **Basic controls and their examples (18).** Button (accent), ButtonStandard (normal), SubtleButton (native default style), RefreshButton and OpenInBrowserButton (icon-only SubtleButton page actions), HyperlinkButton, TextBox, Field, Badge, BadgeAccent, ToggleSwitch, StatusDot, ProgressBar, Avatar, AvatarStates, InfoBar, InfoBarStates, and Card. ButtonStandard references Button and overrides its state brushes, just as BadgeAccent references Badge and RefreshButton and OpenInBrowserButton reference SubtleButton; none duplicates shared markup. TextBox is the reusable default WinUI single-line input. Field composes a label and TextBox; its Gateway address example passes the label and placeholder into that shared control. AvatarStates and InfoBarStates demonstrate their parent control's presentations, not separate app features.
 - **Setup (7).** SetupCompanion, SetupStepTimeline, ProviderArtwork, SetupOptionCard, CapabilityOptionRow, SetupPhaseStatus, and the SetupWizardShell frame, ported from `OpenClaw.SetupEngine.UI`. Setup shows Recommended as inline accent text, not BadgeAccent. See the Setup window section.
-- **Chat (7).** ChatBubble (assistant prose), ChatUserBubble (sent user message), ChatComposer, ChatThread, ComposerPicker, ComposerPickerOptions, and ChatCopyButton. See the Chat surface section.
-- **Settings and workspace (11).** SettingsSectionHeader, SettingsCard, SettingsToggleRow, SettingsExpanderRow, and SettingsWindowShell, plus the native workspace identity controls (AgentIdentityBadge, UserIdentityBadge), ConnectionStatusFlyout, NotificationFlyout, NotificationFlyoutEmpty, and WorkspaceShell. These come from `OpenClaw.Tray.WinUI` pages, `HubWindow`, and `WorkspaceWindow`. See the Workspace shell section.
+- **Chat (10).** ChatBubble (assistant prose), ChatUserBubble (sent user message), ChatComposer, ChatThread, ComposerPicker, ComposerPickerOptions, ComposerEffortOptions, ChatContextUsage, ChatUsageDetails, and ChatCopyButton. See the Chat surface section.
+- **Settings and workspace (19).** SettingsSectionHeader, CountedSectionHeader, SectionTitle, SettingsCard, SettingsToggleRow, SettingsFieldRow, SettingsNavigationRow, SettingsExpanderRow, ItemExpanderCard, ItemNavigationCard, SubtleExpander, InlineToggleFilter, and SettingsWindowShell, plus the native workspace identity controls (AgentIdentityBadge, UserIdentityBadge), ConnectionStatusFlyout, NotificationFlyout, NotificationFlyoutEmpty, and WorkspaceShell. These come from `OpenClaw.Tray.WinUI` pages, `HubWindow`, and `WorkspaceWindow`. See the Workspace shell section.
 
 TextBox ships as the stock `Microsoft.UI.Xaml.Controls.TextBox`, as used by `DirectUrlBox` in `Pages/ConnectionPage.xaml`, not a custom control template. The Colophon preview uses 14px body text, 32px single-line height, `sm` corners, exact text-control padding, pointer-over and disabled resource tokens, and the accent focus underline. WinUI has no separate pressed background for the input itself; pressing enters its focused state. The browser preview approximates the native elevation border with `controlLine` and does not reproduce the native focused-fill transition or clear-button template.
 
@@ -1479,9 +1680,134 @@ SettingsCard, SettingsToggleRow and the expanded child have **no row-wide hover 
 
 SettingsWindowShell is a content-only sample: the left navigation subtree is removed, not hidden or reduced to zero width. Its content fills the available width with 24px padding. This is a user-directed catalog change, not a change to the shipping HubWindow NavigationView or the separate WorkspaceShell.
 
+### Settings pages built from rows
+
+Pages that edit configuration (Models, Voice & Audio, Local AI, Permissions and Sandbox) are lists of SettingsCard rows, never a bordered card holding stacked labeled fields. The shared recipe:
+
+- **One setting, one card.** The card Header is the localized title and the control sits in Content on the right: a ToggleSwitch with empty On and Off text (SettingsToggleRow), a ComboBox, TextBox, PasswordBox or Slider (SettingsFieldRow), or a short action. Help or status text is the card Description in Caption `muted`, never a second TextBlock stacked in the Header. Cards sit 4px apart on every one of these pages, including the hand-built cards on General.
+- **Section headings, not card titles.** A group of rows has one Body Strong heading with the shared 4,18,4,4 margin (Add a model provider, Speech Model, Voice Chat, Companion Voice, llama-server, Folders, Clipboard, Network, Limits), with an optional Caption `muted` line under it. Do not repeat the heading inside a card, and do not prefix a heading with an emoji.
+- **No field header.** The title is the only visible label, so the control drops its own Header, which would duplicate it. Keep the control's accessible name by binding `AutomationProperties.Name` to the card Header, and keep the same localized string: move the `x:Uid` that supplied the control Header to the card instead of adding a second resource. A placeholder keeps its own `x:Uid` on the control.
+- **Field width.** A field reserves 240px through the page's `SettingsFieldMinWidth` resource and may cap at 300 to 400px with left alignment. The card wraps the field below its title when narrow, so never use a fixed width wider than the narrowest supported page host.
+- **One slot for one value.** A field with its own action (Save API key, Sign in, Preview Voice, Switch model) shares the Content slot, 8px apart. A status line and a progress bar for a download sit in the Header under the status text, and the explanatory copy is the Description, with Download, Delete and Preview buttons in Content.
+- **Status rows.** A row that reports state puts a 10px StatusDot and the status text in the Header, the detail in the Description, and the actions (Start, Stop, Restart, Repair connection) in Content. Facts such as Version, Endpoint and Process are their own rows with the label as Header and the value in Content in `muted`.
+- **Choice rows.** A short exclusive choice (Clipboard access: None, Read, Write, Read & write) is one card whose Content is a ComboBox, never a stack of RadioButtons in the Header. A choice made of tiles, such as the Sandbox security presets, stays a row of buttons under a section heading, not a bordered wrapper.
+- **Add actions are their own card, with the explanation as its subtitle.** The action that adds an item to a list (Add folder) is the first card under its section heading, following the Windows Settings "Add a new network" pattern: the Header names the action (Add a new folder), the Caption `muted` Description is the section's explanation, and an accent Button (`AccentButtonStyle`) sits in Content on the right. It is not a click-enabled card with an icon, and not a bare Button below the list. The list it extends follows it, 4px apart.
+- **Subtitles live in the card.** Do not stack a separate subtitle TextBlock between a section heading and its first card. The explanation is the Description of that card (the folder help on Add a new folder, the clipboard warning on Clipboard access). A Description fits on one line at the standard page width, so keep it to one short sentence (about 100 characters) and move secondary detail to a footnote or the card that needs it. Wrapping is for narrow hosts only. Add a second line only when dropping it would hide a security consequence the user must see.
+- **Lists of items are rows too.** Each folder in a list is a SettingsCard with the path as Header, the detail as Description and the access ComboBox in Content. A list that must keep its own scrolling and keyboard model stays a ListView whose item container is stripped to a bare presenter.
+- **Details that explain scope use SettingsExpander.** Information that is read, not edited (What gets contained), is a SettingsExpander whose items are SettingsCards, each with a semantic HeaderIcon (success or caution), collapsed by default.
+- **Notices are InfoBars, and they lock their group.** A capability notice is a Warning InfoBar that is not closable, with a Title, a Message and the Open Permissions action in ActionButton. It is open only while the capability is off. While it is open, the rows it governs are disabled as one group by hosting them in a single ContentControl whose `IsEnabled` follows the capability, so the rows show their native disabled state and stay visible. A setting that does not depend on the capability, such as the Gateway voice toggle, stays outside that group. A privacy note that is always true stays a SettingsCard with a caution HeaderIcon.
+- **Navigation is a separate card.** Opening another page, such as Manage Local AI from Models, is a SettingsNavigationRow beside the setting it relates to, not a link inside the setting's card.
+- **Page actions stay in the header.** Refresh is the icon-only SubtleButton at the right of the page title, not a button in a row.
+- **Provider panels swap whole.** Rows that depend on a choice (the Kokoro, Piper, Windows, ElevenLabs and MiniMax voice rows, or the Gateway and Custom provider rows) live in one panel that shows or hides as a unit, so the list never leaves an empty card.
+- **Interactive transcripts stay out of rows.** The inline voice test panel is its own surface under the download row, not content squeezed into a card.
+- **Related rows share one frame.** Rows that describe one subject sit in a single joined group instead of floating 4px apart: the llama-server status with its Version, Endpoint and Process facts, each Voice & Audio section (Speech Model, Voice Chat, Companion Voice), the Local AI model row with its change-model rows, the exec policy rows (Default action, the Executable-path allowlist heading, its entries, Add entry), the Permissions Integrations rows (Local MCP Server and its endpoint, which joins when the server is on), and the Automations job form. One Border paints the `setupCardFill` backplate and the 1px `setupCardStroke` frame at `md` corners, rows are transparent, and a 1px divider separates neighbors, with the first row's top corners and the last row's bottom corners rounded to match. Production is the `presentation:SettingsCardGroup.IsEnabled` attached property on that Border: it flattens each SettingsCard and any `IsRow` Border in document order, so a non-card row such as the entries list joins the group too. Rows that are collapsed, or sit under a collapsed panel, are skipped and the group re-applies when their visibility changes, so dividers and the rounded first and last corners always follow what is on screen. Unrelated settings, and anything that is a list of independent items, keep separate cards 4px apart. A notice, a status line, a progress bar or a test surface that belongs under the group stays outside it, directly below.
+- **Read-only data lists keep one frame.** A read-only list of tags or entries, such as the Node allowlist, sits in one bordered surface at `sm` corners under its heading row, with its add row as a separate card, rather than one card per entry. When the list belongs to a connected group (the executable-path entries), it is a row of that group instead and shares the group frame.
+- **Icons are optional and decorative.** A row may carry one leading HeaderIcon when its subject is a distinct thing the user recognizes at a glance, as each Permissions capability does with its emoji (lightning, globe, camera, palette, monitor, pin, speaker, microphone, llama) and Node mode and Local MCP Server do with a Fluent glyph. Use the same kind of icon for every row of one list so the titles share a left edge, hide it from accessibility (it only repeats the title), and never rely on it alone. Pages whose rows are plain settings (Models, Voice & Audio, Sandbox) stay iconless. A section heading never carries an emoji.
+
 The expander group has one straight, full-width 1px divider and one backplate. The child uses the shared ToggleSwitch inside the adapted Toolkit item layout, not a padded standalone SettingsToggleRow inside another padded container. Standalone and expanded switches both center their 40x20 track in a 36px-high control slot. SettingsWindowShell references these same definitions. High-contrast previews retain the system-colored frame; they do not claim native Windows high-contrast proof.
 
+#### Automations page
+
+Automations (formerly Cron Jobs) follows the same page recipe as Default model and Local AI. The header is the Title "Automations" with a Caption `muted` subtitle, a Refresh SubtleButton, and the accent New job button at the right, with no emoji in the title. Below it, in order: a Gateway-disconnected InfoBar, the job form when open, a completed-job InfoBar, a scheduler SettingsCard (10px StatusDot and Enabled or Disabled in the Header, the next wake time as Caption Description), a "Jobs" Body Strong section heading with a count badge, and the job list.
+
+- **Every job is an ItemExpanderCard.** Production is a Toolkit SettingsExpander: the job name is the Header, the schedule in monospace plus the summary line is the Description, and the result badge, Running badge and enabled ToggleSwitch sit in Content. The expanded body is one SettingsCard holding the prompt, timestamps, scope chips, the Run now, Edit, History and Remove buttons and the run history. Cards sit 4px apart.
+- **The job form is a connected group.** A Body Strong heading (New cron job or Edit job) sits above one `SettingsCardGroup`: Name, Schedule, the schedule-specific rows (Quick presets, Expression and Timezone for Cron; Every and Unit; Run at and Delete job after it runs), Prompt, Delivery and Channel. Advanced options (Session behavior and Wake mode) is a SettingsExpander under the group, followed by the validation message and the right-aligned Cancel and accent Create job or Save changes buttons. Fields reserve 240px and cap at 400px; Quick presets and Prompt stack their control below the title.
+- **Editing is inline.** The form replaces the card being edited and returns to its home slot, just above the completed-job notice, on Cancel or Save.
+
+### Section headers with a count badge
+
+CountedSectionHeader pairs a section title with a count badge on its right and an optional Caption detail beneath, as in the Usage Sessions heading (Sessions, 12, "12 shown · 12 loaded") and Systems Devices and Gateway. The title is `bodyLargeStrong` (18/24 SemiBold, `ink`); Usage's Sessions title is a 20px semibold variant. The badge is a `pill` with `countBadgeFill`, Caption text in `ink`, 8,2 padding and a 24px minimum width and height. It sits 8px right of the title, vertically centered, and is read-only. The detail line is `muted` Caption, 12px below the title row. Native code hides the badge from accessibility and puts the count in the title's accessible name (for example "Devices and Gateway (0)"). Use it for a list whose size matters at a glance; do not use it for status (use Badge) or for unrelated numbers.
+
+### Standalone section titles
+
+SectionTitle is the CountedSectionHeader title on its own: `bodyLargeStrong` (18/24 SemiBold, `ink`) with no badge or detail line and a 4,12,4,0 margin. Production sets FontSize 18 and FontWeight SemiBold on the TextBlock, as the Systems Devices and Gateway title does. The Sandbox "Custom permissions" label is the first use: it appears under the security preset tiles when the effective settings no longer match a preset, and it is a Polite live region. Pick the heading by weight of the group: SettingsSectionHeader (14 semibold) above a stack of cards, CountedSectionHeader when the count matters, SectionTitle for a larger standalone label.
+
+### Item cards for enumerable system items
+
+ItemExpanderCard is the shared card for every list of enumerable system items: a saved Gateway on Connection, and a Gateway host or worker on Systems. Production is the Toolkit SettingsExpander built in `ConnectionPage.BuildSavedGatewayRowControl` (Connection) and `SystemsSettingsExpanderView` (Systems). One card shows one item with, left to right: a 20px item icon (`listItemIcon`), a Body name over a Caption status line (10px StatusDot, 4px gap, text), an optional text action such as Connect, a 32x32 icon-only SubtleButton More (U+E712) opening a MenuFlyout, a 4px gap, and the 32x32 disclosure chevron. Details expand inside the same frame as one joined item below a full-width 1px divider: Caption `muted` lines for the endpoint, then bullet-prefixed facts such as authentication mode, via SSH, WSL and last connected time.
+
+Rules for every card that uses it:
+
+- More sits immediately before the chevron in the header Content slot and is its own control. It never expands or collapses the card, and it never moves into the expanded body.
+- The whole header except Connect and More is the disclosure target, with `subtleHover` and `subtlePressed` feedback.
+- One backplate: `setupCardFill`, 1px `setupCardStroke`, `md` corners. Never inset another rounded card into the expanded body.
+- Status is a dot plus text, never color alone. Connected is `positive`, Connecting and Awaiting approval use the caution dot, and Disconnected uses the neutral dot. The status text is also the live-region name when the state changes.
+- Keep 4px between cards in a list. Retain each card's disclosure state and AutomationId across refreshes, and set wrap thresholds to 0 so More stays beside the chevron at narrow widths.
+- The accessible name of the card is the item name, and More is named "Options for {name}".
+- Use it for items that have identity, live status and per-item actions. Use SettingsExpanderRow for iconless preference groups, and put CountedSectionHeader above the list when its size matters.
+
+#### Navigation variant
+
+ItemNavigationCard is the compact card for an item whose main action is to open it rather than expand it, as for each session on the Sessions page (production: Toolkit SettingsCard with `IsClickEnabled` in `SessionsPage.xaml`). It has exactly two rows of text and four columns. Left to right: a 10px StatusDot on the left with no status text, a Body name over a Caption `muted` detail line, a context meter column, a right-aligned Caption `muted` age, the 32x32 icon-only SubtleButton More, and the trailing ChevronRight navigation glyph. The meter column sits to the right of the names: the stock ProgressBar on the Body row and its Caption token counts on the detail row, so both columns share the same two row heights (20px and 16px). The card is 68px tall (36px of text plus 16px padding above and below), the native SettingsCard minimum.
+
+- The whole card is the navigation target with `subtleHover` and `subtlePressed` feedback; click, Enter and Space open the item. There is no separate Open or accent button in the row.
+- The meter is the stock WinUI ProgressBar (see ProgressBar), not a restyled or hand-drawn bar: no custom height, corner radius or brushes. Keep its column a fixed 160px so meters, ages and More align between rows, and hide only its contents when usage is unknown.
+- Without status text, the dot is never the only carrier of state: its tooltip names the state and the card's accessible help text repeats it (Ready, Working, Needs attention). `positive` is working, `critical` needs attention and the neutral dot is ready.
+- More is its own control, keeps its Options name and menu (Open dashboard, Reset, Compact, Checkpoints, Export, Delete), and never navigates. It stays disabled while the item cannot be edited.
+- Frame, 4px gap between cards and retained identity are exactly as for the expander card. Never add details inside the card; if the item needs in-place details, use the expander variant instead.
+- The card's accessible name is Open in chat and the row carries the session name; the tooltip says what opens.
+
+#### Usage sessions
+
+Usage sessions are the one navigation-style card that also expands, so they keep the ItemNavigationCard text rows and 68px height on the stock Expander (production: `UsageSessionsSection` in the Usage page). The header is, left to right: the 32px agent avatar instead of the status dot, a Body name over a Caption `muted` detail line (20px and 16px rows, 15px padding above and below plus the Expander's 1px border, so a card is 68px tall like the Sessions cards and sits 4px from the next), a fixed 128px right-aligned column with the cost on the Body row over the Caption `muted` token count, a regular Open chat Button and the native chevron.
+
+- Open chat is a standard Button (not subtle, not accent) with the chat glyph U+E8BD and the text Open chat; at Narrow widths it is glyph only with a tooltip. It sits in the header before the chevron, is its own control that never expands the card, and is disabled while the Gateway is unavailable. Its accessible name is "Open chat: {name}".
+- Keep the real Expander, its AutomationIds and the details body. The chevron and the rest of the header expand the card.
+- The automation pill is the only extra header element; it is cropped to the 20px row so automation cards are not taller than the others.
+
+#### Archived variant and SubtleExpander
+
+Archived sessions sit in a SubtleExpander below the active list (production: the stock Expander in `SessionsPage.xaml` with its chrome removed). The header is plain Body `muted` text, flush with the cards, with the native chevron on its right: no fill, border or frame in any state, so it reads as a footer link rather than a card. Its content has no frame either, only 4px above the list, and holds the same card frame as the navigation variant with everything that implies a live session removed: a neutral dot, the name over a Caption `muted` age, no meter, no More menu and no chevron, because an archived session has nowhere to navigate. The one action is a SubtleButton text button, Unarchive session, on the right.
+
+- Keep the real Expander. Its ExpandCollapse pattern, AutomationId and Expanding and Collapsed events drive the lazy load and the UI tests.
+- Override the Expander resources on the instance (transparent header and content brushes, `ExpanderHeaderForeground` as `muted`). Header padding and the content border and padding are template-scoped, so zero them in a Loaded handler rather than restyling the Expander globally.
+- Replace the card list with one Body `muted` message while it is empty, loading or unavailable. The expander is disabled while the Gateway is disconnected.
+- Use SubtleExpander only for a lone secondary disclosure. A list of items that each expand in place uses ItemExpanderCard.
+
+#### InlineToggleFilter
+
+The Sessions toolbar filters (Show completed, Show background) are InlineToggleFilters: a Body `muted` label, then the stock ToggleSwitch on the same line with no header above it and no On or Off text, as in an inline Sort by or Filter by selector. They sit on the tab bar's line, between the tabs and Refresh, 12px apart, and the switch takes its accessible name from the label.
+
+#### ProgressBar
+
+ProgressBar is the stock determinate WinUI control, shown at 160px wide. It is a 3px accent indicator with fully rounded ends (`ProgressBarCornerRadius` 1.5) over a 1px `progressTrack` line (`ProgressBarTrackHeight` 1, corner radius 0.5), centered vertically in a 3px minimum height. The indicator binds `accent` (`ProgressBarForeground`, `AccentFillColorDefaultBrush`) and the track binds `progressTrack` (`ProgressBarBackground`, `ControlStrongStrokeColorDefault`). High contrast adds a 1px `SystemColorWindowTextColor` border. Use it as shipped: set only `Value`, `Maximum` and a width, never a custom height, corner radius or template. Paused, error and indeterminate states and the native 167ms color and indicator transitions are native behavior that the preview does not reproduce. Give it an accessible name when it stands alone; beside text that states the value, such as token counts, it may share that text's meaning.
+
 ### Toolkit settings expander geometry
+
+Connection uses a fixed Connection page title above the live status card.
+The status card retains its connection controls and Operator details; there
+is no separate Channels/integrations Dashboard card. Manage permissions is
+a full-width clickable SettingsCard with the native navigation chevron,
+outside the Node mode card.
+
+The Gateways heading, Scan and Add gateway actions sit directly on the page,
+without a surrounding card. Each saved Gateway is a standalone native
+SettingsExpander: server icon, Body name, Caption status with a 10px semantic
+dot, independent trailing Connect/menu actions and the native disclosure
+chevron. Endpoint and authentication details expand within the same frame
+using the Toolkit's joined item background and separator, never another
+rounded card inset into a card. Keep 4px gaps between Gateway rows and retain
+each Gateway's disclosure state across status refreshes. The server icon is
+an intentional device-inventory variant of the iconless preference rows.
+Gateway actions and connection-state ownership do not change.
+
+General notification preferences use the SettingsExpanderRow pattern. The
+Show notifications switch remains independently interactive in the header.
+Expanded content contains Sound, followed by Show notifications for and eight
+separate, full-width checkbox rows. Preserve existing localized category names,
+settings bindings and the 16px leading inset. Do not indent categories into a
+second column or add a Send test notification action. The group starts collapsed.
+
+The Advanced expander's Enable Diagnostics row uses the same 16px leading
+inset, rather than the Toolkit's icon-column indentation. The Local Gateway
+removal card uses Remove Local Gateway as its Body header, the existing
+removal explanation as a muted Caption subtitle, and a trailing Remove button.
+Removal confirmation and lifecycle behavior remain unchanged.
+
+About's App info and Gateway info details are native SettingsCard items, not
+transparent ItemsHeader content. Reuse the Toolkit's SettingsCardBackground
+theme mapping and item border treatment, including its high-contrast brushes.
+Keep the existing 16px detail inset without adding a second padded backplate.
 
 SettingsExpanderRow uses Community Toolkit's [SettingsExpander template](https://github.com/CommunityToolkit/Windows/blob/34a57f969bf7966e0a3cbe9d4d10a47758d097a0/components/SettingsControls/src/SettingsExpander/SettingsExpander.xaml) and [SettingsCard template](https://github.com/CommunityToolkit/Windows/blob/34a57f969bf7966e0a3cbe9d4d10a47758d097a0/components/SettingsControls/src/SettingsCard/SettingsCard.xaml) as geometry references, with user-directed iconless alignment, equal two-line row spacing and full-header disclosure feedback. Production SandboxPage uses a stock WinUI Expander and intentionally does not use the Toolkit's item indentation. Application code remains unchanged.
 
@@ -1521,7 +1847,21 @@ pills retain native contrast borders and inherited interaction-state foregrounds
 Their tinted backgrounds fill the outer border edge to align with informational pills.
 Connection-type explanations use the same localized labels as the visible pills.
 
+Diagnostics leads with an unframed status row: a 10px StatusDot, localized
+status and message, and the shared HyperlinkButton on the right for Manage on
+Connection page. Preserve semantic success, caution, critical and neutral
+theme brushes without tinting the row background. At compact widths, the link
+wraps beneath the text. Developer tools has no persistent For engineers banner.
+
 SubtleButton follows [`SubtleButtonStyle` and `ButtonPadding` in WinUI](https://github.com/microsoft/microsoft-ui-xaml/blob/main/controls/dev/CommonStyles/Button_themeresources.xaml): 11,5,11,6 content padding, a 1px border, `ControlCornerRadius` (4px), and normal-weight 14px content. The default example is content-sized text, not a 40x40 icon button. The workspace's 40x40 icon buttons and their local padding overrides are usage variants, not defaults of the style. Rest and disabled backgrounds remain transparent in light/dark; hover and pressed states change background, border, and foreground through the native resource aliases above. Ship with `Style="{StaticResource SubtleButtonStyle}"` and leave its template intact.
+
+### Page actions: Refresh and Open in browser
+
+Two page-level actions are always icon-only SubtleButtons, never normal, accent or text-plus-icon buttons. The Systems page is the reference. RefreshButton (Refresh glyph U+E72C) and OpenInBrowserButton (OpenInNewWindow glyph U+E8A7) are 32x32 targets with zero padding and 16px glyphs. They keep every SubtleButton state and high-contrast binding. A tooltip and accessible name carry the label, since there is no visible text.
+
+- **Open in browser** sits at the top right of the page header action host, before Refresh and before any primary accent action such as Add a system. Its tooltip and name give the destination, and it is hidden or disabled when the Gateway cannot serve it.
+- **Refresh** sits right-aligned beside the heading of the list or page it reloads, or in the header action host when the page has a single list. A 16px ProgressRing replaces the glyph and the button is disabled while the reload runs. Disconnected or unreadable pages disable it.
+- **Apply on every page.** Header and heading actions on Systems, Usage, Dashboards, Sessions, Automations, Workspace, Config, Models, Connection and the legacy web chat header follow this pattern. A Refresh or Open in browser inside a row of equal-weight text actions (such as the Diagnostics log detail toolbar) or a primary call to action in an empty state keeps its text label.
 
 The browser paints backgrounds through the border box rather than using WinUI's `BackgroundSizing=InnerBorderEdge`. SubtleButton therefore keeps its 1px border transparent in light/dark, including hover and pressed states, so the edge receives exactly one layer of the subtle fill. High-contrast borders and keyboard-only focus remain visible. This preview compensation must not replace the native `SubtleButtonStyle` resource bindings.
 
@@ -1554,10 +1894,9 @@ breakpoint comparisons, but never round up the count of tiles that fit.
 `PageHero` provides opt-in native Reactor headers, summaries and attention
 badges. It does not own page data, navigation or localized copy. Headers keep
 actions under the same native parent across narrow/wide changes. Use the
-existing title scale (28 DIPs, 24 on narrow), 8-DIP card radius, Fluent card
-fill/stroke and a decorative system-accent wash (15%, 5%, then transparent).
-High contrast removes the wash and replaces sidebar artwork with a Fluent
-glyph. Summary tiles use 36-DIP icon wells with a separate 12-DIP text gap;
+existing title scale (28 DIPs at every width) on a plain, borderless header,
+without a card fill, decorative wash or leading artwork. Summary tiles use
+36-DIP icon wells with a separate 12-DIP text gap;
 actionable tiles stretch like static tiles. Summaries use all columns from
 760 DIPs, two from 380, and one below; an odd last tile spans both columns.
 Tile padding is 16/14 DIPs. Attention badges are 20 DIPs high with 8-DIP
@@ -1572,9 +1911,10 @@ while the highlight was active.
 Pages may implement `ISettingsPageContentInset` to retain full-frame backdrops
 while reserving the 56-DIP history band inside their content. Apply updates,
 including zero, without remounting. Ordinary pages keep their existing host
-allocation. This foundation does not change Settings navigation, pane
+allocation inside the content frame so the background remains full-height.
+This foundation does not change Settings navigation, pane
 preferences, Back to app, Escape handling or Dashboard dispatch, and does not
-migrate existing pages to the new components.
+migrate page data or action ownership into the shared components.
 
 ### Automations page anatomy
 

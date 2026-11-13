@@ -104,16 +104,46 @@ public sealed class DiagnosticsPageContractTests
     }
 
     [Fact]
-    public void DebugPage_LeadsWithStatusInfoBar_NotIdentity()
+    public void DebugPage_LeadsWithUnframedStatusAndConnectionLink_NotIdentity()
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
-        var statusIndex = xaml.IndexOf("StatusInfoBar", StringComparison.Ordinal);
+        var statusIndex = xaml.IndexOf("ConnectionStatusRow", StringComparison.Ordinal);
         var identityIndex = xaml.IndexOf("DeviceIdText", StringComparison.Ordinal);
-        Assert.True(statusIndex > 0, "Status InfoBar must be present");
+        Assert.True(statusIndex > 0, "Connection status row must be present");
         Assert.True(identityIndex > 0, "Device identity must be present");
         // Rubber-duck fix v2 #4: identity is not the lead of the page.
         Assert.True(statusIndex < identityIndex,
-            "Status InfoBar must appear before Device identity in the XAML.");
+            "Connection status must appear before Device identity in the XAML.");
+        Assert.DoesNotContain("StatusInfoBar", xaml);
+        Assert.DoesNotContain("DiagnosticsPage_DeveloperWarning", xaml);
+        Assert.DoesNotContain("For engineers", xaml);
+        var document = System.Xml.Linq.XDocument.Parse(xaml);
+        var names = System.Xml.Linq.XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+        var statusRow = Assert.Single(document.Descendants(), element =>
+            (string?)element.Attribute(names + "Name") == "ConnectionStatusRow");
+        Assert.Null(statusRow.Attribute("Background"));
+        Assert.Contains(statusRow.Elements(), element => element.Name.LocalName == "Ellipse");
+        var link = Assert.Single(statusRow.Elements(), element => element.Name.LocalName == "HyperlinkButton");
+        Assert.Equal("2", (string?)link.Attribute("Grid.Column"));
+        Assert.Equal("OnManageOnConnection", (string?)link.Attribute("Click"));
+    }
+
+    [Fact]
+    public void About_InfoExpandersUseNativeSettingsCardBackgrounds()
+    {
+        var document = System.Xml.Linq.XDocument.Parse(Read("src", "OpenClaw.Tray.WinUI", "Pages", "AboutPage.xaml"));
+        var names = System.Xml.Linq.XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+        foreach (var uid in new[] { "SettingsPage_AppInfoExpander", "SettingsPage_GatewayInfoExpander" })
+        {
+            var expander = Assert.Single(document.Descendants(), element =>
+                (string?)element.Attribute(names + "Uid") == uid);
+            Assert.DoesNotContain(expander.Elements(), element => element.Name.LocalName == "SettingsExpander.ItemsHeader");
+            var items = Assert.Single(expander.Elements(), element => element.Name.LocalName == "SettingsExpander.Items");
+            var card = Assert.Single(items.Elements());
+            Assert.Equal("SettingsCard", card.Name.LocalName);
+            Assert.Null(card.Attribute("Background"));
+            Assert.Equal("Stretch", (string?)card.Attribute("HorizontalContentAlignment"));
+        }
     }
 
     [Fact]
@@ -292,14 +322,17 @@ public sealed class DiagnosticsPageContractTests
     {
         var xaml = Read("src", "OpenClaw.Tray.WinUI", "Pages", "DebugPage.xaml");
 
+        // Both views use the shared page column (PageContentLayout) instead of a local MaxWidth/Padding pair.
         Assert.Matches(
             new System.Text.RegularExpressions.Regex(
-                @"x:Name=""MainView""[\s\S]{0,500}<Grid HorizontalAlignment=""Stretch"">[\s\S]{0,300}<StackPanel HorizontalAlignment=""Stretch""[\s\S]{0,160}MaxWidth=""900""[\s\S]{0,160}Padding=""24,24,24,24"""),
+                @"x:Name=""MainView""[\s\S]{0,500}<Grid HorizontalAlignment=""Stretch"">\s*<StackPanel presentation:PageContentLayout\.IsEnabled=""True"""),
             xaml);
         Assert.Matches(
             new System.Text.RegularExpressions.Regex(
-                @"x:Name=""DetailView""[\s\S]{0,400}HorizontalAlignment=""Stretch""[\s\S]{0,300}<Grid MaxWidth=""900""[\s\S]{0,160}HorizontalAlignment=""Stretch""[\s\S]{0,160}Padding=""24,24,24,24"""),
+                @"x:Name=""DetailView""[\s\S]{0,400}HorizontalAlignment=""Stretch"">\s*<Grid presentation:PageContentLayout\.IsEnabled=""True"""),
             xaml);
+        Assert.DoesNotContain("MaxWidth=\"900\"", xaml);
+        Assert.DoesNotContain("Padding=\"24,24,24,24\"", xaml);
     }
 
     [Fact]
@@ -444,9 +477,33 @@ public sealed class DiagnosticsPageContractTests
         Assert.Contains("RefreshGatewayInfo", aboutCs);
         Assert.Contains("SettingsAppInfoProjection.ResolveDisplayVersion(", aboutCs);
         Assert.Contains("PackageHelper.PackageVersion", aboutCs);
-        Assert.Contains("Click=\"OnTestNotification\"", settingsXaml);
-        Assert.Contains("new ToastContentBuilder()", settingsCs);
+        Assert.DoesNotContain("TestNotificationButton", settingsXaml);
+        Assert.DoesNotContain("OnTestNotification", settingsCs);
         var general = System.Xml.Linq.XDocument.Parse(settingsXaml);
+        var notifications = Assert.Single(general.Descendants(), element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "GeneralNotificationsCard");
+        Assert.Equal("SettingsExpander", notifications.Name.LocalName);
+        Assert.Equal("False", (string?)notifications.Attribute("IsExpanded"));
+        var categoryRows = notifications.Descendants().Where(element =>
+            element.Name.LocalName == "SettingsCard"
+            && element.Descendants().Any(child => child.Name.LocalName == "CheckBox")).ToArray();
+        Assert.Equal(8, categoryRows.Length);
+        Assert.All(categoryRows, row => Assert.Single(row.Descendants(),
+            child => child.Name.LocalName == "CheckBox"));
+        var diagnostics = Assert.Single(general.Descendants(), element =>
+            (string?)element.Attribute("AutomationProperties.AutomationId") == "SettingsPageShowDiagnostics");
+        var diagnosticsRow = diagnostics.Ancestors().First(element => element.Name.LocalName == "SettingsCard");
+        Assert.Equal("16,16,44,16", (string?)diagnosticsRow.Attribute("Padding"));
+        var removalTitle = Assert.Single(general.Descendants(), element =>
+            (string?)element.Attribute(System.Xml.Linq.XName.Get("Uid", "http://schemas.microsoft.com/winfx/2006/xaml"))
+                == "SettingsPage_RemoveLocalGateway");
+        Assert.Equal("TextBlock", removalTitle.Name.LocalName);
+        Assert.Equal("Remove Local Gateway", (string?)removalTitle.Attribute("Text"));
+        var removalDetail = Assert.Single(general.Descendants(), element =>
+            (string?)element.Attribute(System.Xml.Linq.XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))
+                == "GatewayBodyText");
+        Assert.Equal("{StaticResource CaptionTextBlockStyle}", (string?)removalDetail.Attribute("Style"));
+        Assert.Equal("{ThemeResource TextFillColorSecondaryBrush}", (string?)removalDetail.Attribute("Foreground"));
         foreach (var (id, property, binding) in new[]
         {
             ("SettingsPageNotifications", "IsOn", "ShowNotifications"),

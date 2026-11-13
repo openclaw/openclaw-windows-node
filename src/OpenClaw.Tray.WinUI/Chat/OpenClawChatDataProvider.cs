@@ -1247,6 +1247,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         _bridge.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
 
     internal long? ToolOutputConnectionEpoch => _bridge.ChatMessageReadConnectionEpoch;
+    internal Task<SessionFileList> ListSessionFilesAsync(string sessionKey) => _bridge.ListSessionFilesAsync(sessionKey);
     internal ChatToolDetailsProfileState ToolDetailsProfileState => _bridge.ToolDetailsProfileState;
     internal ChatToolDetailsProfileState ReadToolDetailsProfileState() => ToolDetailsProfileState;
     internal event EventHandler? ToolDetailsInvalidated;
@@ -1537,6 +1538,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             if (gate.RequestRemoteBackfill)
                 _ = FetchRemoteUserMessageAsync(threadId, openResetGateOnSuccess: true);
             Logger.Debug($"[Reset] Dropping stale chat message after reset for threadId='{threadId}' role='{role}'");
+            return;
+        }
+
+        if (role == "assistant" &&
+            message.ReplacesStreamText &&
+            string.IsNullOrEmpty(message.Text) &&
+            !message.IsTranscriptSnapshot &&
+            string.Equals(message.State, "delta", StringComparison.OrdinalIgnoreCase) &&
+            (message.RunId ?? message.Presentation.RunId) is { Length: > 0 } retiringRunId)
+        {
+            message.SuppressNotification();
+            var snapshot = _state.RetireAssistantStream(
+                threadId,
+                retiringRunId,
+                ProjectionContext(),
+                gate.RuntimeGeneration);
+            if (snapshot is not null)
+                Publish(snapshot);
             return;
         }
 

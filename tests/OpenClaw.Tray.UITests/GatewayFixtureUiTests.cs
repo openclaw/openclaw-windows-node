@@ -28,6 +28,18 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     private static readonly TimeSpan HandoffSettleTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(HandoffSettleTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(45);
+    private const string ReconnectSendTimeoutVariable = "OPENCLAW_GATEWAY_FIXTURE_RECONNECT_TIMEOUT_SECONDS";
+    // Post-reconnect composer and action checks, tunable for triage.
+    private static readonly TimeSpan ReconnectSendTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ReconnectSendTimeoutVariable), out var reconnectSeconds) && reconnectSeconds > 0
+            ? TimeSpan.FromSeconds(reconnectSeconds) : TimeSpan.FromSeconds(30);
+    // Fixed waits of the reconnect test (5 x 20 s default) plus both ReconnectSendTimeout waits and slack,
+    // so the wait's own failure message is reported before the body deadline.
+    private static readonly TimeSpan ReconnectTestBudget =
+        TimeSpan.FromSeconds(120) + ReconnectSendTimeout + ReconnectSendTimeout;
+    // The primary action is the Stop affordance during a turn and the Send label otherwise. The
+    // fixture forces OPENCLAW_LANGUAGE=en-US, so the localized label resolves to this value.
+    private const string SendActionName = "Send";
     // The footer photo is a flat disc about 24 DIPs across, so a painted one covers hundreds of pixels at any display scale.
     private const int OwnerPhotoChannelTolerance = 8;
     private const int OwnerPhotoMinimumPixels = 150;
@@ -1525,33 +1537,32 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 "session-scoped worker model request");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerModelPicker") is { } picker
                 && picker.Current.IsEnabled
-                && picker.Current.Name == "Model: Fixture Worker", "worker-scoped model picker");
-            Invoke(FindById(run, "ChatComposerModelPicker")!);
+                && ModelPickerNames(picker, "Fixture Worker"), "worker-scoped model picker");
+            await InvokeWhenEnabledAsync(run, () => FindById(run, "ChatComposerModelPicker"), "worker-scoped model picker invocation");
             await WaitUiAsync(run, () => FindById(run, "ChatModelChoice_fixture/worker") is { } choice
                 && choice.Current.IsEnabled
                 && choice.Current.Name.Contains("Fixture Worker", StringComparison.Ordinal),
                 "worker-scoped model choice");
             await CaptureIfRequestedAsync(run, "worker-session-model-catalog.png");
-            Assert.True(FindById(run, "WorkspaceBack")!.Current.IsEnabled);
-            Invoke(FindById(run, "WorkspaceBack")!);
+            await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceBack"), "back to the original session");
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle)
                 && IsVisibleInTimeline(run, GatewayScenario.LongHistoryFinalMarker), "back to original session and transcript");
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerModelPicker")?.Current.Name == "Model: Fixture Browse",
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerModelPicker") is { } picker
+                && ModelPickerNames(picker, "Fixture Browse"),
                 "gateway model catalog after leaving worker session");
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
-            Assert.True(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
-            Invoke(FindById(run, "WorkspaceForward")!);
+            await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceForward"), "forward across agents");
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.OtherSessionTitle)
                 && IsVisibleInTimeline(run, GatewayScenario.OtherHistoryMarker), "forward across agents");
             Assert.False(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
             await run.InvokeAsync("app.navigate", new { page = "workspace:notifications" });
-            Invoke(FindById(run, "WorkspaceBack")!);
+            await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceBack"), "back from the notifications page");
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.OtherSessionTitle), "back from notifications");
-            Invoke(FindById(run, "WorkspaceBack")!);
+            await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceBack"), "back to the first conversation");
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle), "back to first conversation");
             await SelectSessionAsync(run, GatewayScenario.EmptyTitle, GatewayScenario.EmptySessionKey);
             Assert.False(FindById(run, "WorkspaceForward")!.Current.IsEnabled);
-            Invoke(FindById(run, "WorkspaceBack")!);
+            await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceBack"), "back after branching history");
             await WaitUiAsync(run, () => SessionSelected(run, GatewayScenario.LongSessionTitle), "back after branching history");
             Assert.Equal(draft, ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         });
@@ -1567,10 +1578,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await SelectSessionAsync(run, GatewayScenario.EdgeTitle, GatewayScenario.EdgeSessionKey);
             await WaitUiAsync(run, () => FindById(run, "ChatComposerModelPicker") is { } picker
                 && picker.Current.IsEnabled
-                && picker.Current.Name == "Model: Fixture Retained Research", "retained current-model label");
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerReasoningPicker")?.Current.IsEnabled == true,
-                "reasoning from retained model metadata");
+                && ModelPickerNames(picker, "Fixture Retained Research"), "retained current-model label");
             Invoke(FindById(run, "ChatComposerModelPicker")!);
+            await WaitUiAsync(run, () => FindById(run, "ChatReasoningPicker")?.Current.IsEnabled == true,
+                "reasoning from retained model metadata");
             await WaitUiAsync(run, () => FindById(run, "ChatModelChoice_fixture/research") is { } choice
                 && !choice.Current.IsEnabled
                 && choice.Current.Name.Contains("Fixture Retained Research", StringComparison.Ordinal),
@@ -2185,6 +2196,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             observe?.Invoke(snapshot);
             return loaded;
         }, $"history loaded for {key}");
+
+    // The combined picker exposes "Model: <name>. Reasoning: <label>" as one accessible name.
+    private static bool ModelPickerNames(AutomationElement picker, string model) =>
+        picker.Current.Name.StartsWith($"Model: {model}. Reasoning: ", StringComparison.Ordinal);
 
     private static bool SessionSelected(GatewayFixtureRun run, string title)
     {

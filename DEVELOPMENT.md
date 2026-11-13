@@ -194,6 +194,33 @@ dotnet build src/OpenClaw.Shared
 dotnet build src/OpenClaw.Tray.WinUI -r win-x64
 ```
 
+### Validate a locally built Reactor package
+
+Both Reactor references use `OpenClawReactorVersion`, which defaults to the
+pinned published version. Set this MSBuild property only after the matching
+`Microsoft.UI.Reactor` and `Microsoft.UI.Reactor.Advanced` packages have been
+built and verified. A process-scoped environment variable applies the same
+version to `build.ps1` and test projects that reference Companion:
+
+```powershell
+$env:OpenClawReactorVersion = $verifiedPackageVersion
+$env:RestoreConfigFile = $localNuGetConfig
+try {
+    .\build.ps1
+} finally {
+    Remove-Item Env:\OpenClawReactorVersion -ErrorAction SilentlyContinue
+    Remove-Item Env:\RestoreConfigFile -ErrorAction SilentlyContinue
+}
+```
+
+Use an untracked NuGet configuration containing the verified local feed and
+nuget.org. Map `Microsoft.UI.Reactor` and `Microsoft.UI.Reactor.Advanced` to the
+local source, and all other packages to nuget.org. The repository's normal
+configuration maps every package to nuget.org, so adding a source without
+adjusting source mapping is insufficient. Keep the local feed path and package
+version out of the product's pinned defaults. After removing the override,
+restore again with the normal configuration before building published packages.
+
 ### Platform and Architecture Notes
 
 #### x64 vs ARM64
@@ -1277,6 +1304,7 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 | `OPENCLAW_LANGUAGE=fr-fr` | Override UI language (validated: en-us, fr-fr, nl-nl, pt-br, zh-cn, zh-tw) |
 | `OPENCLAW_GATEWAY_PORT=19001` | Override default gateway port for local dev |
 | `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT=600` | Native Gateway startup budget in whole seconds (30-3600, default 300) |
+| `OPENCLAW_NATIVE_GATEWAY_INSPECT_TIMEOUT=30` | Native Gateway ownership-inspection deadline in whole seconds (5-120, default 15) |
 | `OPENCLAW_VISUAL_TEST=1` | Enable automatic screenshot capture on page transitions |
 | `OPENCLAW_VISUAL_TEST_DIR=path` | Output directory for visual test screenshots |
 

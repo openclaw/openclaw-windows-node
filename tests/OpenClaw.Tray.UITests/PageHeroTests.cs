@@ -78,7 +78,7 @@ public sealed class PageHeroTests(UIThreadFixture ui)
                     Assert.Same(action, FocusManager.GetFocusedElement(surface!.XamlRoot));
                     var host = Assert.IsType<Grid>(parent);
                     Assert.Equal(narrow ? 1 : 0, NativeGrid.GetRow(host));
-                    Assert.Equal(narrow ? 1 : 2, NativeGrid.GetColumn(host));
+                    Assert.Equal(narrow ? 0 : 1, NativeGrid.GetColumn(host));
                     Assert.Equal(narrow ? 2 : 1, NativeGrid.GetColumnSpan(host));
                     Assert.Same(Find(surface!, "HeroGrid"), VisualTreeHelper.GetParent(host));
                     Assert.Equal("Caption", Assert.IsType<TextBlock>(Find(surface!, "Caption")).Text);
@@ -202,19 +202,15 @@ public sealed class PageHeroTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 var hero = Assert.IsType<Border>(Find(surface!, "ThemeHero"));
-                Assert.NotNull(hero.Background);
-                Assert.NotNull(hero.BorderBrush);
-                var marker = Assert.IsType<Border>(Find(surface!, "ThemeHero:Glyph"));
-                if (highContrast)
-                {
-                    Assert.IsType<TextBlock>(marker.Child);
-                    Assert.Null(Find(surface!, "PageHeroAccentWash"));
-                }
-                else
-                {
-                    Assert.IsType<Image>(marker.Child);
-                    Assert.NotNull(Find(surface!, "PageHeroAccentWash"));
-                }
+                Assert.Null(hero.Background);
+                Assert.Equal(new Thickness(0), hero.BorderThickness);
+                Assert.Equal(new Thickness(0), hero.Padding);
+                Assert.Null(Find(surface!, "ThemeHero:Glyph"));
+                Assert.Null(Find(surface!, "PageHeroAccentWash"));
+                var heading = Assert.IsType<TextBlock>(Find(surface!, "ThemeTitle"));
+                var origin = heading.TransformToVisual(hero).TransformPoint(new Windows.Foundation.Point());
+                Assert.InRange(Math.Abs(origin.X), 0, 1);
+                Assert.InRange(Math.Abs(origin.Y), 0, 1);
                 var badge = Find(surface!, "Attention")!;
                 Assert.Equal("Needs attention. One item needs review", AutomationProperties.GetName(badge));
                 Assert.Equal("One item needs review", AutomationProperties.GetItemStatus(badge));
