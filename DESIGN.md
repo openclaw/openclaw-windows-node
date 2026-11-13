@@ -1395,6 +1395,17 @@ The animation reference is WinUI's [Expander.xaml](https://github.com/microsoft/
 
 StatusDot is a non-interactive 10x10 indicator with `pill` corners and a semantic fill. Its standalone preview uses explicit Auto Layout so the empty span retains its width and height instead of collapsing as inline text.
 
+Connection-page glance pills all provide explanatory tooltips and accessible help.
+Channels includes each channel's reported status and redacted error, updating even
+when the ready count is unchanged. Channels, clients and today's cost use native
+subtle buttons to open the Gateway Dashboard's Channels, Systems and Usage views.
+The shared-token pill is a native copy button; its tooltip never contains the
+credential. Connection type and local hostname remain informational, not buttons.
+Data refreshes update retained buttons without dropping keyboard focus. Action
+pills retain native contrast borders and inherited interaction-state foregrounds.
+Their tinted backgrounds fill the outer border edge to align with informational pills.
+Connection-type explanations use the same localized labels as the visible pills.
+
 SubtleButton follows [`SubtleButtonStyle` and `ButtonPadding` in WinUI](https://github.com/microsoft/microsoft-ui-xaml/blob/main/controls/dev/CommonStyles/Button_themeresources.xaml): 11,5,11,6 content padding, a 1px border, `ControlCornerRadius` (4px), and normal-weight 14px content. The default example is content-sized text, not a 40x40 icon button. The workspace's 40x40 icon buttons and their local padding overrides are usage variants, not defaults of the style. Rest and disabled backgrounds remain transparent in light/dark; hover and pressed states change background, border, and foreground through the native resource aliases above. Ship with `Style="{StaticResource SubtleButtonStyle}"` and leave its template intact.
 
 The browser paints backgrounds through the border box rather than using WinUI's `BackgroundSizing=InnerBorderEdge`. SubtleButton therefore keeps its 1px border transparent in light/dark, including hover and pressed states, so the edge receives exactly one layer of the subtle fill. High-contrast borders and keyboard-only focus remain visible. This preview compensation must not replace the native `SubtleButtonStyle` resource bindings.
