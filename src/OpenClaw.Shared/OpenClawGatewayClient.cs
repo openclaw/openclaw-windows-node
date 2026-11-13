@@ -5504,6 +5504,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             {
                 session.RuntimeMs = null;
                 session.EndedAt = null;
+                session.StartedAt = null;
             }
             session.LastRunId = incomingRunId;
         }

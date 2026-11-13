@@ -81,6 +81,7 @@ static class FluentIconCatalog
 
     // ── Affordances ────────────────────────────────────────────────
     public const string ChevronR = "\uE76C";       // ChevronRight
+    public const string Subagent = "\uE99A";       // Robot — chat subagents pill and rows
     public const string ChevronDown = "\uE70D";    // ChevronDown
     public const string BulletedList = "\uE8FD";   // BulletedList, chat tool activity summary row
     public const string Stop = "\uE71A";           // Stop

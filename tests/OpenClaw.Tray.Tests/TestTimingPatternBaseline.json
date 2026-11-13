@@ -97,7 +97,7 @@
     "tests/OpenClaw.Tray.UITests/OnboardingAiPageTests.cs": 3,
     "tests/OpenClaw.Tray.UITests/OnboardingNativeProof.cs": 1,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.ComposerReview.cs": 15,
-    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Conversation.cs": 35,
+    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Conversation.cs": 33,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Panels.cs": 17,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.WorkAlignment.cs": 14,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.cs": 139,
