@@ -16,7 +16,7 @@ Finite deadline for each test-project invocation, from 1 to 1800 seconds.
 Defaults to 900 seconds. A timeout still terminates only the owned process tree.
 .PARAMETER StepTimeoutMinutes
 The calling workflow step's timeout-minutes. When set, reports the share of that budget used
-and warns at 80% or more. Defaults to 0, which skips the report.
+and warns at 80% or more. Defaults to OPENCLAW_CI_STEP_TIMEOUT_MINUTES, or 0, which skips the report.
 #>
 [CmdletBinding()]
 param(
@@ -36,6 +36,12 @@ param(
     [int]$StepTimeoutMinutes = 0
 )
 $stepBudget = [Diagnostics.Stopwatch]::StartNew()
+if (-not $PSBoundParameters.ContainsKey('StepTimeoutMinutes')) {
+    # CI passes the budget in the step environment so an older candidate's runner, run by alpha
+    # promotion, never receives a parameter it does not declare.
+    . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+    $StepTimeoutMinutes = Get-CiStepTimeoutMinutes
+}
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $resolvedApp = (Resolve-Path -LiteralPath $AppPath).Path
