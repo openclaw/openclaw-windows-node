@@ -4,10 +4,11 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:OpenClawTray.Controls"
+    xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
     xmlns:winex="using:WinUIEx"
     MinWidth="800" MinHeight="560">
     <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
-    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown">
+    <Grid x:Name="Root" PreviewKeyDown="OnKeyDown" KeyDown="OnRootKeyDown">
         <Grid.Resources>
             <DataTemplate x:Key="AgentIdentityTemplate">
                 <controls:AgentIdentityBadge/>
@@ -29,8 +30,12 @@
                                               Visibility="Collapsed" Margin="0,0,4,0" VerticalAlignment="Center"/>
             </TitleBar.RightHeader>
         </TitleBar>
-        <Grid x:Name="NavigationSection" Grid.Row="1">
-        <NavigationView x:Name="NavView"
+        <Grid x:Name="NavigationSection" Grid.Row="1" SizeChanged="OnNavigationSizeChanged">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="SidebarColumn" Width="256" MinWidth="192" MaxWidth="480"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <NavigationView x:Name="NavView" Grid.ColumnSpan="2"
                         AutomationProperties.AutomationId="WorkspaceNavigation"
                         PaneDisplayMode="Left" OpenPaneLength="256" CompactPaneLength="0"
                         IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
@@ -78,7 +83,7 @@
                         </StackPanel>
                     </Grid>
                     <ComboBox x:Name="AssistantSelector" x:Uid="WorkspaceShell_Assistant"
-                              Padding="4,8,28,8"
+                              Padding="4,8,0,8"
                               HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" SelectionChanged="OnAssistantChanged"
                               Background="Transparent" BorderThickness="0" CornerRadius="{ThemeResource ControlCornerRadius}"
                               AutomationProperties.AutomationId="WorkspaceAssistantSelector">
@@ -181,18 +186,15 @@
                 <Grid x:Name="ContentHost" Grid.Row="2" AutomationProperties.AutomationId="WorkspaceContent"/>
             </Grid>
         </NavigationView>
-        <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                AutomationProperties.AutomationId="WorkspaceTogglePane"
-                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
-            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-        </Button>
-        <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
-                AutomationProperties.AutomationId="WorkspaceReopenPane"
-                Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
-                Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
-            <FontIcon Glyph="&#xE90C;" FontSize="16"/>
-        </Button>
+        <!-- Measure the splitter's column, not the NavigationView that spans the whole window. -->
+        <Border IsHitTestVisible="False" SizeChanged="OnSidebarSizeChanged"/>
+        <toolkit:GridSplitter x:Name="SidebarSplitter" x:Uid="WorkspaceSidebarSplitter"
+                              AutomationProperties.AutomationId="WorkspaceSidebarSplitter"
+                              ResizeDirection="Columns" ResizeBehavior="CurrentAndNext"
+                              PreviewKeyDown="OnSidebarPreviewKeyDown"
+                              IsThumbVisible="False"
+                              HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                              Width="4" MinWidth="4" Padding="0" Background="Transparent"/>
         </Grid>
         <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
               AutomationProperties.AutomationId="WorkspaceSettingsHost">
@@ -202,7 +204,24 @@
                      Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
                      AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>
         </Grid>
-        <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" Orientation="Horizontal" Spacing="4"
+        <!-- Keep only the pane buttons above full-frame embedded pages, not the Chat surface. -->
+        <Grid x:Name="PaneToggleChrome" Grid.Row="1" TabIndex="0"
+              Visibility="{Binding Visibility, ElementName=NavigationSection}"
+              HorizontalAlignment="Left" VerticalAlignment="Top" Width="48" Height="56">
+            <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                    AutomationProperties.AutomationId="WorkspaceTogglePane"
+                    HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                    Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+            </Button>
+            <Button x:Name="ReopenPaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
+                    AutomationProperties.AutomationId="WorkspaceReopenPane"
+                    Visibility="Collapsed" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,8,0,0"
+                    Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                <FontIcon Glyph="&#xE90C;" FontSize="16"/>
+            </Button>
+        </Grid>
+        <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" TabIndex="1" Orientation="Horizontal" Spacing="4"
                     Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
             <Button x:Name="SettingsBackButton" x:Uid="NavBackButton" Click="OnBack"
                     Width="40" Height="40" Padding="0"

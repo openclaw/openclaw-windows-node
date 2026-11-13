@@ -16,6 +16,7 @@ namespace OpenClawTray.Pages;
 
 public sealed partial class VoiceSettingsPage : Page
 {
+    private const double CompactActionsWidth = 720;
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private VoiceService? _voiceService;
     private bool _suppressEvents = true; // suppress until Initialize/LoadSettings runs
@@ -36,6 +37,7 @@ public sealed partial class VoiceSettingsPage : Page
     public VoiceSettingsPage()
     {
         InitializeComponent();
+        SizeChanged += OnLayoutSizeChanged;
         Loaded += (_, _) =>
         {
             UpdateModelStatus();
@@ -55,6 +57,14 @@ public sealed partial class VoiceSettingsPage : Page
                 _inlineTestVoiceService = null;
             }
         };
+    }
+
+    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var orientation = e.NewSize.Width < CompactActionsWidth ? Orientation.Vertical : Orientation.Horizontal;
+        DownloadActions.Orientation = orientation;
+        KokoroActions.Orientation = orientation;
+        PiperActions.Orientation = orientation;
     }
 
     public void Initialize(VoiceService? voiceService)

@@ -112,6 +112,24 @@ public partial class App
         }
 
         var connectionManager = _connectionManager;
+        var automationsOverview = _automationsOverview;
+        if (automationsOverview is not null)
+            steps.Add(new AppShutdownStep("Automations overview", () =>
+            {
+                automationsOverview.Dispose();
+                if (ReferenceEquals(_automationsOverview, automationsOverview))
+                    _automationsOverview = null;
+                return ValueTask.CompletedTask;
+            }));
+        var usageProviderReads = _usageProviderReads;
+        if (usageProviderReads is not null)
+            steps.Add(new AppShutdownStep("Usage provider reads", () =>
+            {
+                usageProviderReads.Dispose();
+                if (ReferenceEquals(_usageProviderReads, usageProviderReads))
+                    _usageProviderReads = null;
+                return ValueTask.CompletedTask;
+            }));
         if (connectionManager is not null)
         {
             steps.Add(new AppShutdownStep("gateway client", async () =>
@@ -196,6 +214,8 @@ public partial class App
         {
             _settingsPersistenceNotification?.Dispose();
             _settingsPersistenceNotification = null;
+            _inboxGatewaySource?.Dispose();
+            _inboxGatewaySource = null;
             if (_appState != null)
                 _appState.PropertyChanged -= OnAppStateChanged;
             PermissionsRuntimeChanged = null;

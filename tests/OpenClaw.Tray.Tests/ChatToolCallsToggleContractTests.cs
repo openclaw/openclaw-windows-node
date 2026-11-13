@@ -57,6 +57,36 @@ public sealed class ChatToolCallsToggleContractTests
         Assert.Contains("target.Child = host;", host);
     }
 
+    [Fact]
+    public void ShowThinkingSetting_GatesSuppliedReasoningButNotRunStatus()
+    {
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
+        var app = Read("src", "OpenClaw.Tray.WinUI", "App.xaml.cs");
+        var coordinator = Read("src", "OpenClaw.Tray.WinUI", "App.SettingsChangeCoordinator.cs");
+        var page = Read("src", "OpenClaw.Tray.WinUI", "Pages", "SettingsPage.xaml");
+
+        Assert.Contains("public static void SetThinkingVisible(bool", root);
+        Assert.Contains("UseState(s_showChatThinking", root);
+        Assert.Contains("ShowReasoning: showChatThinking &&", root);
+        Assert.Contains("ShowReasoningPreview: showChatThinking &&", root);
+        Assert.Contains("ReasoningStream: showChatThinking && timeline.TurnActive", root);
+        Assert.DoesNotContain("showChatThinking", root[root.IndexOf("ChatRunProgressProjection.Project(", StringComparison.Ordinal)..root.IndexOf("ShowReasoning:", StringComparison.Ordinal)]);
+        Assert.Contains("SetThinkingVisible(_settings.ShowChatThinking)", app);
+        Assert.Contains("SetThinkingVisible(settings.ShowChatThinking)", coordinator);
+        Assert.Contains("AutomationProperties.AutomationId=\"SettingsPageShowThinking\"", page);
+    }
+
+    [Fact]
+    public void HistoryLoadingAndFailureStates_HaveStableAutomationIds()
+    {
+        var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
+        var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
+
+        foreach (var id in new[] { "ChatTimelineLoadingSkeleton", "ChatHistoryUnavailable", "ChatHistoryFailedStatus", "ChatHistoryRetry" })
+            Assert.Contains($"\"{id}\"", timeline);
+        Assert.Contains("nativeProvider.RetryHistoryAsync(", root);
+    }
+
     private static string Read(params string[] parts)
         => File.ReadAllText(Path.Combine(new[] { TestRepositoryPaths.GetRepositoryRoot() }.Concat(parts).ToArray()));
 }

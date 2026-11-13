@@ -113,6 +113,25 @@ public sealed class GatewayFixtureIsolationContractTests
         Assert.Contains("return;", body[..body.IndexOf("ShouldShowToast(", StringComparison.Ordinal)]);
     }
 
+    [Fact]
+    public void ChatOriginModal_AwaitsSelectorFromRetainedWindowBeforeExpansion()
+    {
+        var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "tests", "OpenClaw.Tray.UITests", "GatewayFixtureSettingsModalUiTests.cs"));
+
+        Assert.DoesNotContain("FindById(run, \"WorkspaceAssistantSelector\")!", source);
+        Assert.Matches(
+            @"var (?<selector>\w+) = await WaitForModalAssistantSelectorAsync\(run, window\);\s*" +
+            @"\(\(ExpandCollapsePattern\)\k<selector>\.GetCurrentPattern\(ExpandCollapsePattern\.Pattern\)\)\.Expand\(\);",
+            source);
+        var admission = BodyAfter(source,
+            "private static async Task<AutomationElement> WaitForModalAssistantSelectorAsync(");
+        admission = admission[..admission.IndexOf("[GatewayFixtureUiTheory]", StringComparison.Ordinal)];
+        Assert.Contains("await WaitUiAsync(run,", admission);
+        Assert.Contains("window.FindFirst(TreeScope.Descendants,", admission);
+        Assert.DoesNotContain("FindById(", admission);
+    }
+
     private static string ReadTraySource(params string[] parts) =>
         File.ReadAllText(Path.Combine(
             [TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", .. parts]));

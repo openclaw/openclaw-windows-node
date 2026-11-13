@@ -1,7 +1,7 @@
 <Project>
 
   <PropertyGroup>
-    <MicrosoftWindowsAppSDKVersion>2.6.4</MicrosoftWindowsAppSDKVersion>
+    <MicrosoftWindowsAppSDKVersion>2.6.5</MicrosoftWindowsAppSDKVersion>
     <MicrosoftWindowsSdkBuildToolsVersion>10.0.28000.2957</MicrosoftWindowsSdkBuildToolsVersion>
   </PropertyGroup>
 

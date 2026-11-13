@@ -22,6 +22,7 @@ namespace OpenClawTray.Pages;
 /// </summary>
 public sealed partial class LocalAiPage : Page
 {
+    private const double CompactActionsWidth = 720;
     private const double BytesPerGigabyte = 1024d * 1024 * 1024;
     private LocalAiPageViewModel? _viewModel;
     private IReadOnlyList<LocalAiModelOption>? _renderedModelOptions;
@@ -31,8 +32,17 @@ public sealed partial class LocalAiPage : Page
     public LocalAiPage()
     {
         InitializeComponent();
+        SizeChanged += OnLayoutSizeChanged;
         DataContextChanged += OnDataContextChanged;
         Unloaded += OnUnloaded;
+    }
+
+    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var orientation = e.NewSize.Width < CompactActionsWidth ? Orientation.Vertical : Orientation.Horizontal;
+        EngineActions.Orientation = orientation;
+        ModelActions.Orientation = orientation;
+        GatewayActions.Orientation = orientation;
     }
 
     private void OnDataContextChanged(FrameworkElement sender, DataContextChangedEventArgs args)

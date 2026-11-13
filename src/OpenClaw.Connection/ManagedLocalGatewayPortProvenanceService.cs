@@ -410,18 +410,25 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             return classified[0];
         }
 
+        var unverified = classified
+            .Where(item => item.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
+            .ToArray();
         var ownerSummary = string.Join(
             "; ",
-            classified
-                .Where(item => item.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
+            unverified
                 .Select(item =>
                     $"{item.ProcessName ?? "unknown"} (PID {item.ProcessId?.ToString() ?? "?"}): " +
                     (item.Detail ?? "listener verification failed"))
                 .Distinct(StringComparer.Ordinal));
+        var failureReason = unverified.All(item =>
+            item.FailureReason == GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening)
+            ? GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening
+            : GatewayEndpointProvenanceFailureReason.None;
         return new GatewayEndpointProvenance(
             GatewayEndpointProvenanceKind.UnknownListener,
             uri.Port,
-            Detail: $"Loopback port {uri.Port} listener verification failed: {ownerSummary}.");
+            Detail: $"Loopback port {uri.Port} listener verification failed: {ownerSummary}.",
+            FailureReason: failureReason);
     }
 
     public async Task<ManagedLocalPortConflictRepairResult> RepairConflictAsync(
@@ -569,6 +576,7 @@ public sealed class ManagedLocalGatewayPortProvenanceService
                 $"Proven obsolete native OpenClaw gateway '{taskName}' owns loopback port {port}.");
         }
 
+        var trustedRelayWithoutGuestOwner = isWslRelay && trustedRelay;
         var detail = isWslRelay
             ? relayPath is null
                 ? "WSL relay executable path could not be read."
@@ -583,7 +591,10 @@ public sealed class ManagedLocalGatewayPortProvenanceService
             listener.ProcessName,
             listener.ProcessStartTimeUtc,
             listener.ProcessPath,
-            Detail: detail);
+            Detail: detail,
+            FailureReason: trustedRelayWithoutGuestOwner
+                ? GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening
+                : GatewayEndpointProvenanceFailureReason.None);
     }
 
     private bool IsProvenObsoleteNativeGateway(

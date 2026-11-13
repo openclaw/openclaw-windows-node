@@ -30,7 +30,7 @@ public sealed class GatewayFixtureProfile : IDisposable
     public bool ConnectGateway { get; }
 
     public GatewayFixtureProfile(Uri endpoint, string token, bool enableNodeBrowserProxy = false,
-        bool connectGateway = true)
+        string appTheme = "Light", bool connectGateway = true)
     {
         ValidateEndpoint(endpoint);
         ArgumentException.ThrowIfNullOrWhiteSpace(token);
@@ -72,7 +72,7 @@ public sealed class GatewayFixtureProfile : IDisposable
                 VoiceAudioFeedback = false,
                 UseLegacyWebChat = false,
                 ShowCompletedSessions = true,
-                AppTheme = "Light",
+                AppTheme = appTheme,
                 OpenTelemetryEndpoint = null
             };
             File.WriteAllText(Path.Combine(DataDirectory, "settings.json"), settings.ToJson());
@@ -187,6 +187,16 @@ public sealed class GatewayFixtureProfile : IDisposable
                 _disposed = true;
                 return;
             }
+            catch (DirectoryNotFoundException) when (!Directory.Exists(RunDirectory))
+            {
+                _disposed = true;
+                return;
+            }
+            catch (FileNotFoundException) when (!Directory.Exists(RunDirectory))
+            {
+                _disposed = true;
+                return;
+            }
             catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33)
             {
                 // Process exit can precede release of the final Windows log handle.
@@ -204,11 +214,33 @@ public sealed class GatewayFixtureProfile : IDisposable
             throw new IOException("Refusing fixture cleanup through a reparse point.");
         foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
         {
-            var attributes = File.GetAttributes(entry);
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(entry);
+            }
+            catch (FileNotFoundException)
+            {
+                // WebView2 may remove a temporary file after enumeration.
+                continue;
+            }
+            catch (DirectoryNotFoundException)
+            {
+                continue;
+            }
             if ((attributes & FileAttributes.ReparsePoint) != 0)
                 throw new IOException("Refusing fixture cleanup containing a reparse point.");
             if ((attributes & FileAttributes.Directory) != 0)
-                EnsureNoReparsePoints(entry);
+            {
+                try
+                {
+                    EnsureNoReparsePoints(entry);
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    // The enumerated child directory has already disappeared.
+                }
+            }
         }
     }
 }
