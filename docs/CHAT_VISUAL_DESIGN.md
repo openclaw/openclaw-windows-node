@@ -435,69 +435,73 @@ source/account admission, draft retention and safe download owners. Canvas and
 MCP Apps require their reviewed authenticated content boundary, host lifetime and
 permission adapters. None is represented by a placeholder tab or a new RPC here.
 
-Initial transcript tail navigation retains its native layout gate. Entering a
-transcript control through keyboard focus cancels pending automatic
-navigation just as pointer and keyboard input do. Focus at the tail can retain
-follow mode; moving away stops it. No renderer performs its own scroll loop.
-The owner observes synchronous `GettingFocus`, including handled events, and
-uses the event's requested focus state. A child control can consume `GotFocus`,
-and its asynchronous delivery can occur after focus has moved again.
-An explicit jump in an already laid-out view drains pending layout work before
-dispatch instead of waiting for a future layout-change event.
-Programmatic realization focus does not cancel navigation.
-Item-target navigation uses the existing `ItemsRepeater.GetOrCreateElement`,
-waits for stable rendered row geometry, then dispatches `UIElement.StartBringIntoView`
-after rechecking the row index, source identity and navigation generation.
-It never calls the synchronous `ItemsView.StartBringItemIntoView` path, whose
-recycled-container ancestor loop can hang the released runtime
+Conversation scrolling has one owner. `ChatScrollPolicy` is a pure state
+machine that decides every scroll; the native adapter in
+`ReactorItemsViewScrollController.cs` only translates WinUI events into its
+inputs and applies its commands, and is the only code that scrolls the
+conversation. It has three modes:
+
+- **Landing**: opening a conversation, switching sessions, sending a message or
+  **Jump to latest** reaches the bottom once, then becomes Following. A landing
+  that exhausts its bounded retries still becomes Following.
+- **Following**: streaming, reflow and viewport resize keep the bottom pinned to
+  within one pixel. Native bottom anchoring handles ordinary growth; a new tail
+  row, or any gap that remains once layout settles (including an overshoot past
+  a re-estimated extent), brings the tail row back to the viewport bottom.
+- **Reading**: content changes never move what the reader is looking at.
+
+Only a user action leaves Following: a user scroll that leaves the bottom, a
+keyboard-focused destination outside the follow range, or toggling a
+disclosure header by pointer, Enter or Space. Movement without user input,
+including virtualized extent re-estimates, the view's own corrections and
+programmatic focus, is drift: it never leaves Following and is pinned back.
+Reaching the bottom, or scrolling back within the follow range, re-enters Following. A toggled disclosure anchors the
+transcript from the top, so its header stays put and its details grow
+downward, as on the web; the reader's next input restores bottom anchoring.
+
+Layout changes must not patch scrolling. A broken rule is fixed in
+`ChatScrollPolicy` with a new `ChatScrollPolicyTests` case;
+`ConversationScrolling_HasOneNativeOwner` fails if other chat code scrolls the
+conversation. The composer's slash-command list and the model and placement
+pickers scroll their own popup lists and are explicitly allowed.
+
+The adapter keeps native mechanics only. Landing waits for layout (and, for
+**Jump to latest**, a rendered frame and an idle view), realizes the tail row
+with `ItemsRepeater.GetOrCreateElement`, waits for stable rendered row geometry,
+then dispatches `UIElement.StartBringIntoView` after rechecking the row index,
+source identity and navigation generation. It never calls the synchronous
+`ItemsView.StartBringItemIntoView` path, whose recycled-container ancestor loop
+can hang the released runtime
 ([upstream fix](https://github.com/microsoft/microsoft-ui-xaml/pull/12320)).
-Realization is bounded and is cancelled by input, completion, unload or replacement.
-A viewport resize can arm one additional discrete tail request if realizing variable-height
-rows moves the extent away from a followed tail. This correction waits for
-layout, a rendering boundary, and an idle scroll view. It adjusts the offset to
-the current extent without synchronously realizing another item. Initial,
-new-message and explicit jump navigation retain index-based brings.
-Streaming extent growth can also arm one correction per immutable transcript
-content revision while following more than one DIP away from the exact bottom.
-It cannot arm while a disclosure, keyboard reader, or pending reader bring owns
-the native anchor, even when the reader remains within the follow threshold.
-Typing and tail-visibility rerenders retain that revision. Correction-induced
-remeasurement cannot replenish its budget, and reader input clears unused credit.
-Resizing does not itself start a bring, and this is not a continuous extent-follow loop. A correction does
-not start while initial positioning is still pending, so it cannot impose its
-follow requirement on that initial request. A reader who has scrolled up is not
-pulled back down. Pointer, keyboard, touch, and scrollbar interaction cancel
-pending navigation; follow state is then taken from the current position, so a
-click or key press at the tail keeps following new replies. The correction
-rechecks follow eligibility at dispatch so a newer UI Automation scroll-away also
-takes precedence. Session replacement, unload, and disposal fence late callbacks.
-Initial landing confirmation waits for the current tail item's native bring to
-complete and its layout to settle before retrying; missing events remain bounded.
-It schedules retries after the rendering callback returns and fences them against
-cancellation or replacement. If rows or the native scroll view disappear during
-initial positioning, it rearms when they return. Normal follow cannot interrupt
-initial positioning.
-If a completed bring needs an offset correction, the current tail row remains
-the native anchor at an interior ratio until completion or cancellation.
-The anchor callback rechecks the navigation generation, row index and source
-identity without realizing another row. This avoids both disabled-anchor layout
-cycles and edge anchoring undoing the correction as the virtualized extent changes.
-Normal bottom anchoring uses the nearest representable ratio below `1.0`
+Landing confirmation waits for the native bring to complete and layout to
+settle, schedules retries after the rendering callback returns, and keeps the
+current tail row as an interior native anchor during a bounded offset
+correction. A pin uses the same staged tail-row bring rather than an offset
+scroll: scrolling to the extent end enters WinUI's extent-edge mode, where
+remeasured virtual rows snap the offset back. A pin never restarts a bring that
+is still settling, is admitted against the settled live geometry, and stops
+after a bounded number of attempts that never observe the bottom. Only a new
+immutable transcript content revision (including same-key streaming) or a
+viewport resize grants that budget; correction-induced remeasurement and
+same-revision rerenders such as typing or tail visibility cannot replenish it.
+Landing and Reading, including a toggled disclosure or keyboard reader, never
+pin. While native anchoring holds the bottom, streaming issues no navigation.
+Bottom anchoring uses the nearest representable ratio below `1.0`
 (`Math.BitDecrement(1.0)`). This selects native content anchoring at the bottom,
 not WinUI's special extent-edge mode at exactly `1.0`, which can undo an offset
 as variable-height virtualized rows remeasure. The native scrollbar-end proof
 uses the same 900/1300-DIP window widths at every display scale; it still requires
 the actual final message to be visible without invoking **Jump to latest**.
-Streaming follow retains its exact-bottom assertions and the bounded correction
-above, not an extent-follow loop. The existing follow threshold is unchanged.
-Anchoring differs during the bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
-transcript then anchors to the top, so the header stays put and its details
-grow downward, as on the web. Any other reader input or programmatic tail scroll
-restores bottom anchoring.
-Actual tail visibility is tracked separately from follow eligibility. The
-landing predicate uses absolute distance to the current bottom, so an offset
-beyond a reduced extent does not count as landed. The wider follow-intent
-threshold and the existing correction budget remain unchanged.
+At-bottom uses absolute distance to the current bottom (one pixel either way),
+so an offset beyond a reduced extent does not count as landed or followed.
+Pointer, wheel, keyboard, keyboard focus, touch and scrollbar input cancel
+pending navigation. The adapter observes synchronous `GettingFocus`, including
+handled events; programmatic realization focus does not cancel navigation.
+Session replacement, unload and disposal fence late callbacks; cleared rows or
+a replaced scroll view rearm landing when they return.
+**Jump to latest** visibility comes from the policy mode, not the raw offset: it
+is offered only while Reading, so an overshoot or a pending pin cannot flash it.
+The
 **Jump to latest** button stays mounted as an overlay, so showing it does not
 shrink the transcript viewport or move the composer.
 It is a 32-pixel circular native button with a 16-pixel Fluent down arrow,
