@@ -444,6 +444,15 @@ orchestration. Three narrower owners sit behind it:
 - `DevicePairApprovalCoordinator` owns typed device role-upgrade approval and its
   one-in-flight plus one-queued bounded node reconnect workflow.
 
+Scheduled operator reconnects acquire the current lifecycle-attempt lease before
+disconnecting or connecting. A disconnect that wins the transition queue invalidates
+that attempt, even when the active Gateway id and user intent remain unchanged.
+Removing the active saved Gateway commits `RemoveAndSave` before disconnecting,
+so a failed save leaves the live connection and user intent unchanged. After a
+successful save, `DisconnectByUserAsync(gatewayId)` records intent for the removed
+Gateway and tears down only that live owner under the transition semaphore. A
+queued switch cannot disconnect the replacement Gateway or change its intent.
+
 `GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`,
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
