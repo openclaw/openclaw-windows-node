@@ -410,10 +410,24 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var element = parent.FindFirst(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.AutomationIdProperty, id));
-                if (element is not null)
-                    Assert.True(NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId),
-                        $"Systems observation '{id}' must belong to the retained native window and process.");
+                if (element is null)
+                    return null;
+                // Polls run while Systems re-renders (refresh, error and live readings). A peer that is
+                // detached or replaced is not observable yet: reject the whole observation so a found but
+                // unproven element can never satisfy an absence check. Foreign evidence still fails.
+                var evidence = NativeUiOwnership.Classify(window, element, run.AppProcessId);
+                Assert.True(evidence != NativeUiOwnership.Evidence.Foreign,
+                    $"Systems observation '{id}' must belong to the retained native window and process.");
+                if (evidence != NativeUiOwnership.Evidence.Owned)
+                    throw new ElementNotAvailableException($"Systems observation '{id}' ownership is not observable yet.");
                 return element;
+            }
+            bool OwnedNow(AutomationElement element, string what)
+            {
+                var evidence = NativeUiOwnership.Classify(window, element, run.AppProcessId);
+                Assert.True(evidence != NativeUiOwnership.Evidence.Foreign,
+                    $"{what} must belong to the captured native window and process.");
+                return evidence == NativeUiOwnership.Evidence.Owned;
             }
             AutomationElement? Find(string id) => FindUnder(window, id);
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
@@ -433,15 +447,30 @@ public sealed partial class GatewayFixtureUiTests
             }, "normal Systems window");
             Assert.NotNull(paneToggle);
             var records = new List<object>();
-            async Task Capture(string state, params AutomationElement[] requiredVisible)
+            // Finders run inside the poll: Systems re-renders live readings, so a control found earlier
+            // can be replaced before the capture asserts it.
+            async Task Capture(string state, params Func<AutomationElement?>[] requiredVisible)
             {
                 var name = $"{theme}-{state}.png";
                 OwnedWindowCapture.ViewportSnapshot? frame = null;
                 await WaitUiAsync(run, () =>
-                    (frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll")) is not null,
-                    $"owned Systems viewport ready for {state}");
+                {
+                    frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
+                    if (frame is null)
+                        return false;
+                    var required = new List<AutomationElement> { frame.Element };
+                    foreach (var find in requiredVisible)
+                    {
+                        // A replacement peer can exist before its first layout; Save asserts settled geometry.
+                        if (find() is not { Current.IsOffscreen: false } element ||
+                            element.Current.BoundingRectangle is not { Width: > 0, Height: > 0 })
+                            return false;
+                        required.Add(element);
+                    }
+                    OwnedWindowCapture.Save(run, window, name, [.. required]);
+                    return true;
+                }, $"owned Systems viewport and required controls captured for {state}");
                 Assert.NotNull(frame);
-                OwnedWindowCapture.Save(run, window, name, [frame.Element, .. requiredVisible]);
                 frame.AssertUnchanged();
                 var bounds = frame.WindowBounds;
                 var viewport = frame.Bounds;
@@ -495,7 +524,7 @@ public sealed partial class GatewayFixtureUiTests
                 },
                     $"collapsed {width} DIP Systems content remains below navigation chrome");
                 Assert.NotNull(pageMarker);
-                await Capture($"collapsed-{width}-top", pageMarker);
+                await Capture($"collapsed-{width}-top", () => Find("SystemsPageMarker"));
                 if (width == 1000)
                 {
                     currentScroll.SetScrollPercent(ScrollPattern.NoScroll, 35);
@@ -518,10 +547,11 @@ public sealed partial class GatewayFixtureUiTests
                     previousCollapsedWidth = -1d;
                     return false;
                 }
-                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, frame.Element, run.AppProcessId),
-                    "Systems scroll viewport must belong to the captured native window and process.");
-                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, marker, run.AppProcessId),
-                    "Systems page marker must belong to the captured native window and process.");
+                if (!OwnedNow(frame.Element, "Systems scroll viewport") || !OwnedNow(marker, "Systems page marker"))
+                {
+                    previousCollapsedWidth = -1d;
+                    return false;
+                }
                 var viewport = frame.Bounds;
                 var pattern = (ScrollPattern)frame.Element.GetCurrentPattern(ScrollPattern.Pattern);
                 if (viewport.IsEmpty || viewport.Width <= 0 || viewport.Height <= 0 ||
@@ -568,7 +598,7 @@ public sealed partial class GatewayFixtureUiTests
                 "expanding navigation removes the Systems scroll-only inset");
             Assert.NotNull(currentViewport);
             Assert.NotNull(pageMarker);
-            await Capture("expanded-1000-top", pageMarker);
+            await Capture("expanded-1000-top", () => Find("SystemsPageMarker"));
             currentViewport.AssertUnchanged();
             var chromeWidth = currentViewport.WindowBounds.Width - currentViewport.Bounds.Width;
             var statsWindowWidth = 1000 * scale + chromeWidth;
@@ -711,8 +741,8 @@ public sealed partial class GatewayFixtureUiTests
                         memory.Current.BoundingRectangle.Width / scale >= 160 &&
                         disk.Current.BoundingRectangle.Width / scale >= 160))
                         return false;
-                    Assert.True(NativeUiOwnership.IsOwnedDescendant(window, gatewayRow, run.AppProcessId));
-                    Assert.True(NativeUiOwnership.IsOwnedDescendant(window, studioRow, run.AppProcessId));
+                    if (!OwnedNow(gatewayRow, "Gateway machine row") || !OwnedNow(studioRow, "Studio machine row"))
+                        return false;
                     var gatewayPattern = (ExpandCollapsePattern)gatewayRow.GetCurrentPattern(ExpandCollapsePattern.Pattern);
                     var studioPattern = (ExpandCollapsePattern)studioRow.GetCurrentPattern(ExpandCollapsePattern.Pattern);
                     cpuTile = cpu;
@@ -746,7 +776,8 @@ public sealed partial class GatewayFixtureUiTests
             Assert.NotNull(cpuTile);
             Assert.NotNull(memoryTile);
             Assert.NotNull(diskTile);
-            await Capture("expanded-1000-host-stat-tiles", cpuTile, memoryTile, diskTile);
+            await Capture("expanded-1000-host-stat-tiles",
+                () => Studio("SystemsStat_cpu"), () => Studio("SystemsStat_memory"), () => Studio("SystemsStat_disk"));
             gatewayDisclosure.Expand();
             studioDisclosure.Collapse();
             studioDisclosure.Expand();
@@ -768,7 +799,7 @@ public sealed partial class GatewayFixtureUiTests
                 !gatewayRow.Current.IsOffscreen,
                 "both expanded machine rows occupy the viewport");
             Assert.NotNull(selectedName);
-            await Capture("two-open-rows", selectedName);
+            await Capture("two-open-rows", () => Find("SystemsSelectedName"));
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
             AutomationElement? issuesButton = null;
             await WaitUiAsync(run, () =>
@@ -813,7 +844,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.NotNull(retryButton);
             Assert.NotNull(inventoryConnection);
             Assert.Contains(run.Gateway.Requests, request => request.Method == "environments.list" && request.Outcome == "error:UNAVAILABLE");
-            await Capture("inventory-error-recovery", retryButton, inventoryConnection);
+            await Capture("inventory-error-recovery", () => Find("SystemsRetry"), () => Find("SystemsInventoryConnection"));
             run.Gateway.SetSystemsInventoryUnavailable(false);
             Invoke(retryButton);
             await WaitUiAsync(run, () => Find("SystemsRetry") is null &&
@@ -847,7 +878,6 @@ public sealed partial class GatewayFixtureUiTests
             var inventoryIds = new[] { "SystemsRow_gateway", "SystemsRow_node:fixture-studio",
                 "SystemsRow_node:fixture-macbook", "SystemsRow_node:fixture-pi" };
             AutomationElement? disconnectedConnection = null;
-            AutomationElement[] disconnectedRows = [];
             await WaitUiAsync(run, () =>
             {
                 if (Find("SystemsDisconnectedConnection") is not { Current.IsOffscreen: false } connection)
@@ -864,7 +894,6 @@ public sealed partial class GatewayFixtureUiTests
                     rows.Add(row);
                 }
                 var gatewayPattern = (ExpandCollapsePattern)rows[0].GetCurrentPattern(ExpandCollapsePattern.Pattern);
-                disconnectedRows = rows.ToArray();
                 disconnectedConnection = connection;
                 disconnectedGatewayDisclosure = gatewayPattern;
                 return true;
@@ -872,7 +901,8 @@ public sealed partial class GatewayFixtureUiTests
                 "settled disconnected inventory retains all four collapsed last-known machines");
             Assert.NotNull(disconnectedConnection);
             await Capture("disconnected-last-known",
-                disconnectedRows.Prepend(disconnectedConnection).ToArray());
+                [() => Find("SystemsDisconnectedConnection"),
+                    .. inventoryIds.Select(id => (Func<AutomationElement?>)(() => Find(id)))]);
             disconnectedGatewayDisclosure.Expand();
             AutomationElement? knownGateway = null;
             OwnedWindowCapture.ViewportSnapshot? knownScrollFrame = null;
@@ -880,10 +910,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () =>
             {
                 var row = Find("SystemsRow_gateway");
-                if (row is null)
+                if (row is null || !OwnedNow(row, "Last-known Gateway row"))
                     return false;
-                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, row, run.AppProcessId),
-                    "Last-known Gateway row must belong to the captured native window and process.");
                 if (((ExpandCollapsePattern)row.GetCurrentPattern(ExpandCollapsePattern.Pattern))
                     .Current.ExpandCollapseState != ExpandCollapseState.Expanded)
                     return false;
@@ -929,7 +957,9 @@ public sealed partial class GatewayFixtureUiTests
             Assert.NotNull(knownStatistics);
             Assert.NotNull(knownSample);
             Assert.NotNull(knownDisk);
-            await Capture("disconnected-expanded-resources", knownCapabilities, knownStatistics, knownSample, knownDisk);
+            await Capture("disconnected-expanded-resources",
+                () => GatewayContent("SystemsCapabilitiesHeading"), () => GatewayContent("SystemsStatisticsHeading"),
+                () => GatewayContent("SystemsStatsSampled"), () => GatewayContent("SystemsStat_disk:/data"));
             await run.WriteReportAsync("passed");
             output.WriteLine($"{theme} daily Systems frames: {run.ArtifactsDirectory}");
         }

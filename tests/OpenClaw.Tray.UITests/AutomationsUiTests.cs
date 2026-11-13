@@ -680,10 +680,12 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Equal($"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone.",
                     removeText.DocumentRange.GetText(-1).TrimEnd('\r', '\n'));
                 var removeDialog = FindById(run, "AutomationsConfirmDialog")!;
-                var cancel = removeDialog.FindFirst(TreeScope.Descendants, new AndCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                    new PropertyCondition(AutomationElement.NameProperty, "Cancel")));
-                await WaitUiAsync(run, () => cancel.Current.HasKeyboardFocus, "Cancel receives destructive initial focus");
+                // Re-acquire Cancel on every poll: a dialog re-render can replace the button's peer.
+                await WaitUiAsync(run, () => FindById(run, "AutomationsConfirmDialog")?.FindFirst(TreeScope.Descendants,
+                    new AndCondition(
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                        new PropertyCondition(AutomationElement.NameProperty, "Cancel"))) is { Current.HasKeyboardFocus: true },
+                    "Cancel receives destructive initial focus");
                 Assert.Equal(ControlType.Window, removeDialog.Current.ControlType);
                 Assert.True(((WindowPattern)removeDialog.GetCurrentPattern(WindowPattern.Pattern)).Current.IsModal);
                 await ScanStateAsync("remove confirmation");
@@ -1564,8 +1566,11 @@ public sealed partial class GatewayFixtureUiTests
         var marker = window.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "CronPageMarker"));
         if (marker is null) return null;
-        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, marker, run.AppProcessId),
+        // Polled while Automations re-renders: a marker peer that is detached or replaced proves nothing yet.
+        var markerEvidence = NativeUiOwnership.Classify(window, marker, run.AppProcessId);
+        Assert.True(markerEvidence != NativeUiOwnership.Evidence.Foreign,
             "Automations page marker must belong to the retained native window.");
+        if (markerEvidence != NativeUiOwnership.Evidence.Owned) return null;
         var markerIdentity = marker.GetRuntimeId();
         bool IsMarker(AutomationElement? element) => element is not null
             && NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId)
