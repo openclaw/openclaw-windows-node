@@ -274,12 +274,14 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await CaptureAsync(surface, "Feedback-provider-review");
             await ui.RunOnUIAsync(() => findings!.Hide());
-            await SettleAsync();
+            await UntilAsync(() => !VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+                    .Any(popup => popup.Child is ContentDialog), "provider findings dialog closed");
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Grid>(surface, "ChatSubagent_child") is { IsLoaded: true },
+                "Subagents tab with the waiting child");
             await CaptureAsync(surface, "Feedback-child-details");
             await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
-            await SettleAsync();
+            await UntilAsync(() => PanelCollapsed(surface), "Subagents tab closed");
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
                 FindControl<TextBlock>(host, "ChatRunProgressText").Text));
 

@@ -24,7 +24,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 }],
             };
             await ui.RunOnUIAsync(() => provider.Publish(reviewed));
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Border>(surface, "ChatProviderReview") is not null, "provider review card");
             await ui.RunOnUIAsync(() =>
             {
                 var card = FindControl<Border>(surface, "ChatProviderReview");
@@ -46,15 +46,13 @@ public sealed partial class ReactorChatLayoutProofTests
                 // Disconnect tears the open dialog down without raising its Closed event.
                 provider.Publish(reviewed with { ConnectionStatus = "Disconnected" });
             });
-            await SettleAsync();
+            await UntilAsync(() => OpenDialogs(surface).Length == 0, "dialog torn down by the disconnect");
             await ui.RunOnUIAsync(() => provider.Publish(reviewed));
+            await UntilAsync(() => FindOptional<Border>(surface, "ChatProviderReview") is not null,
+                "provider review card after reconnect");
+            // test-timing-exception: negative-progress probe. A stale open state would reopen the dialog on a later render.
             await SettleAsync();
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.NotNull(FindControl<Border>(surface, "ChatProviderReview"));
-                Assert.Empty(OpenDialogs(surface));
-            });
+            await ui.RunOnUIAsync(() => Assert.Empty(OpenDialogs(surface)));
         });
     }
 

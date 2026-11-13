@@ -46,12 +46,14 @@ public sealed partial class ReactorChatLayoutProofTests
             }));
             await AwaitInitialTailAsync(surface, "proof", "scroll-39");
             ScrollView? scroll = null;
+            ItemsView? timeline = null;
+            Button? reader = null;
             await ui.RunOnUIAsync(() =>
             {
-                var items = Assert.Single(FindDescendants<ItemsView>(surface));
-                scroll = items.ScrollView;
+                timeline = Assert.Single(FindDescendants<ItemsView>(surface));
+                scroll = timeline.ScrollView;
                 var repeater = Assert.Single(FindDescendants<ItemsRepeater>(scroll));
-                var reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
+                reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
                     .Select(index => repeater.TryGetElement(index)).OfType<ItemContainer>()
                     .SelectMany(row => FindDescendants<Button>(row))
                     .First(button => button.IsLoaded && button.IsEnabled && button.IsTabStop &&
@@ -59,13 +61,16 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.True(FindControl<TextBox>(surface, "ChatComposerInput").Focus(FocusState.Programmatic));
                 Assert.True(reader.Focus(FocusState.Keyboard));
             });
-            await SettleAsync();
+            // The keyboard-focused row becomes ItemsView's current item, which it may later re-reveal.
+            // Its focus scroll must also finish before the reader moves elsewhere.
+            await UntilAsync(Steady(() => timeline!.CurrentItemIndex >= 0 && InViewport(reader!, scroll!), scroll!),
+                "reader row focused, current and scrolled into view");
             if (tabs == DetailsThenSubagents)
             {
                 // Two open tabs: closing the selected Subagents tab must not drop focus into the transcript.
                 await ui.RunOnUIAsync(() => scroll!.ScrollTo(0, 0,
                     new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore)));
-                await SettleAsync();
+                await UntilAsync(Steady(() => scroll!.VerticalOffset <= 1, scroll!), "reader at the first message");
                 await OpenPanelToolAsync(surface);
             }
             await ui.RunOnUIAsync(() =>
@@ -78,33 +83,44 @@ public sealed partial class ReactorChatLayoutProofTests
                 () => scroll!.VerticalOffset <= 1 && FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
                 "parent reading its earlier messages"));
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
-            await SettleAsync();
+            var subagentsIndex = tabs == DetailsThenSubagents ? 1 : 0;
+            // Closing from the tab strip: keyboard focus is on the tab being closed.
+            await UntilAsync(() => FocusTab(surface, subagentsIndex + 1, subagentsIndex), "Subagents tab selected and focused");
             if (tabs == SubagentsThenDetails)
             {
                 // Closing the selected first tab must leave focus on the remaining tab. Details opens
                 // without keyboard focus, which ItemsView would redirect to the reader's earlier row.
                 await ExpandPanelToolAsync(surface, "one");
                 await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatToolDetails_one")));
-                await SettleAsync();
+                await UntilAsync(() => TabsSelected(surface, 2, 1), "Tool details tab opened");
                 await ui.RunOnUIAsync(() => FindControl<TabView>(surface, "ConversationPanelTabs").SelectedIndex = 0);
-                await SettleAsync();
+                await UntilAsync(() => FocusTab(surface, 2, 0), "Subagents tab reselected and focused");
                 await ui.RunOnUIAsync(() =>
                 {
                     var subagentsTab = Assert.IsType<TabViewItem>(
                         FindControl<TabView>(surface, "ConversationPanelTabs").TabItems[0]);
                     Assert.Equal("Subagents", subagentsTab.Header);
-                    Assert.True(subagentsTab.Focus(FocusState.Keyboard));
                     Assert.InRange(scroll!.VerticalOffset, 0, 1);
                 });
             }
             await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
+            // Focus returns to the composer (the pill's opener) or to the remaining tab.
+            await UntilAsync(() => tabs == SubagentsOnly
+                    ? PanelCollapsed(surface) && FocusManager.GetFocusedElement(surface.XamlRoot) is TextBox
+                    : SelectedTabFocused(surface, 1, 0),
+                "focus restored after the close");
+            // test-timing-exception: negative-progress probe. ItemsView's stale reveal lands frames after the close.
             await SettleAsync();
+            // The panel close also reflows the transcript width; assert once it has stopped moving.
+            await UntilAsync(Steady(() => true, scroll!), "transcript settled after the close");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(scroll, Assert.Single(FindDescendants<ItemsView>(
                     FindControl<Border>(surface, "ChatConversation"))).ScrollView);
                 Assert.True(scroll!.ScrollableHeight > 0);
-                Assert.InRange(scroll.VerticalOffset, 0, 1);
+                // Widening the transcript reflows text above the reader by a few pixels; the regression is a
+                // jump of many rows back to ItemsView's last current item.
+                Assert.InRange(scroll.VerticalOffset, 0, CloseReflowTolerance);
                 Assert.Equal(1, FindControl<Button>(surface, "ChatJumpLatest").Opacity);
                 if (tabs != SubagentsOnly)
                 {
@@ -116,6 +132,7 @@ public sealed partial class ReactorChatLayoutProofTests
     }
 
     private const string SubagentsOnly = "subagents";
+    private const double CloseReflowTolerance = 16;
     private const string DetailsThenSubagents = "details-then-subagents";
     private const string SubagentsThenDetails = "subagents-then-details";
 
@@ -160,7 +177,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 }]);
                 provider.Publish(snapshot);
             });
-            await SettleAsync();
+            await UntilAsync(() => PillReady(surface), "Subagents pill");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
@@ -172,7 +189,10 @@ public sealed partial class ReactorChatLayoutProofTests
                 pillBorder = Assert.IsType<SolidColorBrush>(pill.BorderBrush).Color;
                 Invoke(pill);
             });
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Grid>(surface, "ConversationPanel") is { Visibility: Visibility.Visible } &&
+                    FindOptional<Border>(surface, "ChatSubagentsPane") is { } pane &&
+                    FindDescendants<ProgressRing>(pane).Any(ring => ring.IsLoaded),
+                "Subagents list with its running spinner");
             await ui.RunOnUIAsync(() =>
             {
                 // Selecting the tab keeps the pill's neutral border.
@@ -244,7 +264,11 @@ public sealed partial class ReactorChatLayoutProofTests
                 });
                 surface.Width = width < 652 ? 1100 : 480;
             });
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Grid>(surface, "ChatSubagent_child") is { } row &&
+                    AutomationProperties.GetName(row).Contains(", Done, ", StringComparison.Ordinal) &&
+                    FindOptional<Border>(surface, "ChatConversation") is { } conversation &&
+                    conversation.Visibility == (width < 652 ? Visibility.Visible : Visibility.Collapsed),
+                "settled subagent at the new width");
             await ui.RunOnUIAsync(() =>
             {
                 var pane = FindControl<Border>(surface, "ChatSubagentsPane");
@@ -261,7 +285,9 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Equal("Subagents: 0 running, 2 finished", AutomationProperties.GetName(settledPill));
                 CloseSubagentsTab(surface);
             });
-            await SettleAsync();
+            await UntilAsync(() => PanelCollapsed(surface) &&
+                    FindOptional<Button>(surface, "ChatSubagentsPill") is null,
+                "closed tab with no running subagents");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
@@ -289,17 +315,17 @@ public sealed partial class ReactorChatLayoutProofTests
                         Activity = ChatActivity.Working }],
             };
             await ui.RunOnUIAsync(() => provider.Publish(children));
-            await SettleAsync();
+            await UntilAsync(() => PillReady(surface), "Subagents pill");
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Grid>(surface, "ConversationPanel") is { Visibility: Visibility.Visible },
+                "Subagents tab");
             await ui.RunOnUIAsync(() => provider.Publish(snapshot));
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Border>(surface, "ChatSubagentsPane") is { } pane &&
+                    FindDescendants<TextBlock>(pane).Any(text => text.Text == "No subagents in the current session list.") &&
+                    FindOptional<Button>(surface, "ChatSubagentsPill") is null,
+                "empty list after the children were removed");
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Contains(FindDescendants<TextBlock>(FindControl<Border>(surface, "ChatSubagentsPane")),
-                    text => text.Text == "No subagents in the current session list.");
-                Assert.DoesNotContain(FindDescendants<Button>(surface),
-                    button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill");
                 provider.Publish(children with
                 {
                     Threads = [snapshot.Threads[0], new ChatThread
@@ -319,25 +345,19 @@ public sealed partial class ReactorChatLayoutProofTests
             {
                 provider.Publish(children with { ConnectionStatus = "Disconnected" });
             });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
-                Assert.DoesNotContain(FindDescendants<Button>(surface),
-                    button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill");
-                provider.Publish(children);
-            });
-            await SettleAsync();
+            await UntilAsync(() => PanelCollapsed(surface) && FindOptional<Button>(surface, "ChatSubagentsPill") is null,
+                "disconnect withdrawing the tab and pill");
+            await ui.RunOnUIAsync(() => provider.Publish(children));
+            await UntilAsync(() => PillReady(surface), "pill after reconnect");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
                 Invoke(FindControl<Button>(surface, "ChatSubagentsPill"));
             });
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Grid>(surface, "ConversationPanel") is { Visibility: Visibility.Visible },
+                "Subagents tab after reconnect");
             await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession("child")));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal(Visibility.Collapsed,
-                FindControl<Grid>(surface, "ConversationPanel").Visibility));
+            await UntilAsync(() => PanelCollapsed(surface), "parent selection change closing the tab");
         });
     }
 
@@ -369,7 +389,8 @@ public sealed partial class ReactorChatLayoutProofTests
                     .Any(button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill"),
                 "subagents pill from the production provider"));
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
-            await SettleAsync();
+            await UntilAsync(() => FindOptional<Grid>(surface, $"ChatSubagent_{childKey}") is not null,
+                "provider child row");
             await ui.RunOnUIAsync(() =>
             {
                 var row = FindControl<Grid>(surface, $"ChatSubagent_{childKey}");
@@ -397,12 +418,13 @@ public sealed partial class ReactorChatLayoutProofTests
                     new ChatThread { Id = "child", Title = "Research", ParentSessionKey = "proof", IsSubagent = true,
                         Activity = ChatActivity.Working }],
             }));
-            await SettleAsync();
+            await UntilAsync(() => PillReady(surface), "Subagents pill");
             await OpenPanelToolAsync(surface);
             if (width < 652)
             {
                 await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ConversationPanelToggle")));
-                await SettleAsync();
+                await UntilAsync(() => FindOptional<Border>(surface, "ChatConversation") is { Visibility: Visibility.Visible },
+                    "conversation shown again in the compact layout");
             }
             TextBox? composer = null;
             await ui.RunOnUIAsync(() =>
@@ -412,19 +434,17 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.True(opener.Focus(FocusState.Programmatic));
                 Invoke(opener);
             });
-            await SettleAsync();
+            await UntilAsync(() => SelectedTabFocused(surface, 2, 1), "Subagents tab beside Tool details");
             ScrollViewer? list = null;
             await ui.RunOnUIAsync(() =>
             {
                 var tabs = FindControl<TabView>(surface, "ConversationPanelTabs");
-                Assert.Equal(2, tabs.TabItems.Count);
-                Assert.Equal(1, tabs.SelectedIndex);
                 Assert.Equal("Subagents", Assert.IsType<TabViewItem>(tabs.TabItems[1]).Header);
-                Assert.Same(tabs.SelectedItem, FocusManager.GetFocusedElement(surface.XamlRoot));
                 list = FindControl<ScrollViewer>(surface, "ChatSubagentsList");
                 tabs.SelectedIndex = 0;
             });
-            await SettleAsync();
+            await UntilAsync(() => IsShown(FindOptional<ScrollViewer>(surface, "ConversationToolDetailsReader")),
+                "Tool details tab body");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Contains(FindDescendants<RichTextBlock>(
@@ -432,7 +452,8 @@ public sealed partial class ReactorChatLayoutProofTests
                     text => CollectText(text).Contains("Retained tool result", StringComparison.Ordinal));
                 FindControl<TabView>(surface, "ConversationPanelTabs").SelectedIndex = 1;
             });
-            await SettleAsync();
+            await UntilAsync(() => IsShown(FindOptional<ScrollViewer>(surface, "ChatSubagentsList")),
+                "Subagents tab body");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(list, FindControl<ScrollViewer>(surface, "ChatSubagentsList"));
@@ -447,20 +468,16 @@ public sealed partial class ReactorChatLayoutProofTests
                 var details = (TabViewItem)tabs.TabItems[0];
                 Invoke(FindDescendants<Button>(details).Single(button => button.Name == "CloseButton"));
             });
-            await SettleAsync();
+            await UntilAsync(() => PanelTabs(surface) is { TabItems.Count: 1 }, "Tool details tab closed");
+            await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
+            await UntilAsync(() => PanelTabs(surface) is { TabItems.Count: 0 } &&
+                    FindOptional<Button>(surface, "ChatSubagentsPill") is { } pill &&
+                    ReferenceEquals(pill, FocusManager.GetFocusedElement(surface.XamlRoot)),
+                "focus returned to the pill after the last tab closed");
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Single(FindControl<TabView>(surface, "ConversationPanelTabs").TabItems);
-                CloseSubagentsTab(surface);
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
-            {
-                Assert.Empty(FindControl<TabView>(surface, "ConversationPanelTabs").TabItems);
                 Assert.Equal(Visibility.Visible, FindControl<Border>(surface, "ChatConversation").Visibility);
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
-                Assert.Same(FindControl<Button>(surface, "ChatSubagentsPill"),
-                    FocusManager.GetFocusedElement(surface.XamlRoot));
             });
         });
     }
@@ -471,4 +488,67 @@ public sealed partial class ReactorChatLayoutProofTests
             .OfType<TabViewItem>().Single(item => Equals(item.Header, "Subagents"));
         Invoke(FindDescendants<Button>(tab).Single(button => button.Name == "CloseButton"));
     }
+
+    /// <summary>Waits on the UI thread until <paramref name="condition"/> holds after a rendered frame.</summary>
+    private Task UntilAsync(Func<bool> condition, string operation) =>
+        ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(condition, operation));
+
+    private static T? FindOptional<T>(DependencyObject root, string id) where T : FrameworkElement =>
+        FindDescendants<T>(root).SingleOrDefault(control => AutomationProperties.GetAutomationId(control) == id);
+
+    private static TabView? PanelTabs(DependencyObject root) => FindOptional<TabView>(root, "ConversationPanelTabs");
+
+    private static bool PanelCollapsed(DependencyObject root) =>
+        FindOptional<Grid>(root, "ConversationPanel") is { Visibility: Visibility.Collapsed };
+
+    /// <summary>
+    /// Holds once <paramref name="condition"/> is true and the transcript has been idle at the same
+    /// offset for several consecutive checks, so a queued focus or tail scroll cannot still move it.
+    /// </summary>
+    private static Func<bool> Steady(Func<bool> condition, ScrollView scroll)
+    {
+        const int RequiredSamples = 3;
+        double? previous = null;
+        var samples = 0;
+        return () =>
+        {
+            var offset = scroll.VerticalOffset;
+            samples = condition() && scroll.State == ScrollingInteractionState.Idle && previous == offset
+                ? samples + 1 : 0;
+            previous = offset;
+            return samples >= RequiredSamples;
+        };
+    }
+
+    private static bool InViewport(FrameworkElement element, ScrollView scroll)
+    {
+        if (!element.IsLoaded) return false;
+        var bounds = element.TransformToVisual(scroll).TransformBounds(
+            new global::Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
+        return bounds.Top >= -0.5 && bounds.Bottom <= scroll.ViewportHeight + 0.5;
+    }
+
+    private static bool PillReady(FrameworkElement surface) =>
+        FindOptional<Button>(surface, "ChatSubagentsPill") is { IsLoaded: true } pill &&
+        FindDescendants<TextBlock>(pill).Any(text => AutomationProperties.GetAutomationId(text) == "ChatSubagentsPillCount");
+
+    private static bool IsShown(UIElement? element)
+    {
+        for (DependencyObject? node = element; node is not null; node = VisualTreeHelper.GetParent(node))
+            if (node is UIElement { Visibility: Visibility.Collapsed }) return false;
+        return element is FrameworkElement { IsLoaded: true };
+    }
+
+    private static bool TabsSelected(FrameworkElement surface, int count, int selected) =>
+        PanelTabs(surface) is { } view && view.TabItems.Count == count && view.SelectedIndex == selected;
+
+    /// <summary>Once the selected tab item has loaded, gives it keyboard focus; holds when it has focus.</summary>
+    private static bool FocusTab(FrameworkElement surface, int count, int selected) =>
+        TabsSelected(surface, count, selected) && PanelTabs(surface)!.TabItems[selected] is TabViewItem { IsLoaded: true } tab &&
+        (ReferenceEquals(tab, FocusManager.GetFocusedElement(surface.XamlRoot)) || tab.Focus(FocusState.Keyboard));
+
+    /// <summary>The tab strip shows <paramref name="count"/> tabs and keyboard focus is on the selected one.</summary>
+    private static bool SelectedTabFocused(FrameworkElement surface, int count, int selected) =>
+        TabsSelected(surface, count, selected) && PanelTabs(surface) is { } view &&
+        ReferenceEquals(view.TabItems[selected], FocusManager.GetFocusedElement(surface.XamlRoot));
 }
