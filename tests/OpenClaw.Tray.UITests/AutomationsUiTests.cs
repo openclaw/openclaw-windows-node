@@ -796,14 +796,7 @@ public sealed partial class GatewayFixtureUiTests
     {
         await WithAppAsync(async run =>
         {
-            await run.InvokeAsync("app.navigate", new { page = "settings" });
-            await WaitUiAsync(run, () => FindById(run, "SettingsPageAppTheme") is not null, "theme setting");
-            ((ExpandCollapsePattern)FindById(run, "SettingsPageAppTheme")!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-            await WaitUiAsync(run, () => FindText(run, "Light") is not null, "Light theme");
-            var light = AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.NameProperty, "Light")).Cast<AutomationElement>())
-                .First(element => element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
-            ((SelectionItemPattern)light.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            await SelectAppThemeAsync(run, "Light");
             await OpenMainAutomationsAsync(run, maximize: false);
             try
             {
@@ -1200,13 +1193,25 @@ public sealed partial class GatewayFixtureUiTests
     private static async Task SelectAppThemeAsync(GatewayFixtureRun run, string theme)
     {
         await run.InvokeAsync("app.navigate", new { page = "settings" });
-        await WaitUiAsync(run, () => FindById(run, "SettingsPageAppTheme") is not null, "theme setting");
-        ((ExpandCollapsePattern)FindById(run, "SettingsPageAppTheme")!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUiAsync(run, () => FindText(run, theme) is not null, "theme choice");
-        var option = AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.NameProperty, theme)).Cast<AutomationElement>())
-            .First(element => element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
-        ((SelectionItemPattern)option.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        // The selector is in the UIA tree before the arriving page can open it; an early Expand is ignored.
+        AutomationElement? selector = null;
+        await WaitUiAsync(run, () => (selector = FindById(run, "SettingsPageAppTheme")) is
+            { Current.IsOffscreen: false, Current.IsEnabled: true }, "theme selector ready");
+        var expander = (ExpandCollapsePattern)selector!.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+        expander.Expand();
+        await WaitUiAsync(run, () => expander.Current.ExpandCollapseState == ExpandCollapseState.Expanded,
+            "theme dropdown expanded");
+        // Wait for the dropdown's own list item: the closed selector already shows the current theme's name.
+        var themeOption = new AndCondition(
+            new PropertyCondition(AutomationElement.NameProperty, theme),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+        AutomationElement? option = null;
+        await WaitUiAsync(run, () => (option = FindInApp(run, themeOption)) is not null &&
+            option.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _), "theme choice");
+        ((SelectionItemPattern)option!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        expander.Collapse();
+        await WaitUiAsync(run, () => expander.Current.ExpandCollapseState == ExpandCollapseState.Collapsed,
+            "theme dropdown closed");
     }
 
     private static async Task OpenMainAutomationsAsync(GatewayFixtureRun run, bool maximize = true)
