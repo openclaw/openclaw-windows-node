@@ -243,7 +243,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                     Assert.True(scroll.ViewportHeight >= 280);
                     Assert.InRange(header.ActualHeight, 1, 300);
                 }
-                OnboardingNativeProof.AssertFullyVisible(SetupCompanion.Find(page)!.Mascot, root);
+                OnboardingNativeProof.AssertFullyVisible((await OnboardingNativeProof.CompanionAsync(page)).Mascot, root);
                 OnboardingNativeProof.AssertFullyVisible(header, root);
                 Assert.Empty(TestSupport.FindDescendants<ListViewItem>(scroll));
                 using (await OnboardingNativeProof.CaptureAsync(window, $"ai-focused-default-{theme}", output,

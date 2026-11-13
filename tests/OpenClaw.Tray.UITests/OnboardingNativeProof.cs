@@ -385,6 +385,19 @@ internal static class OnboardingNativeProof
         }
     }
 
+    /// <summary>
+    /// Waits until <paramref name="page"/> is parented beside a setup companion and returns that capture.
+    /// The companion lookup walks the live visual tree, so it is null until the page is mounted.
+    /// </summary>
+    internal static async Task<OpenClaw.SetupEngine.UI.Controls.SetupCompanion> CompanionAsync(FrameworkElement page)
+    {
+        OpenClaw.SetupEngine.UI.Controls.SetupCompanion? companion = null;
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => (companion = OpenClaw.SetupEngine.UI.Controls.SetupCompanion.Find(page)) is not null,
+            $"setup companion beside {page.GetType().Name}");
+        return companion!;
+    }
+
     internal static void AssertFullyVisible(FrameworkElement element, FrameworkElement viewport)
     {
         Assert.True(element.IsLoaded && element.Visibility == Visibility.Visible);
