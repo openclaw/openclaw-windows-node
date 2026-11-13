@@ -109,7 +109,8 @@ the process tree and reports the script's last output and errors.
 The composer lifetime- and voice-disposal reentrancy regressions use dedicated
 workers so their bounded reentrancy assertions (`OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS`,
 default 10 s) measure controller lock ownership rather than shared thread-pool
-scheduling latency. The settings-coordinator and native-restart handoff
+scheduling latency. The composer view-model reentrancy and dispose-linearization
+regressions use the same budget for their hang guards. The settings-coordinator and native-restart handoff
 regressions follow the same rule (`OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS`,
 default 15 s). Each Windows PowerShell 5.1 uninstall-helper run is bounded by
 `OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS` (default 120 s) because a
