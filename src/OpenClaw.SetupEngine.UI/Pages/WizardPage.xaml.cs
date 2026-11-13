@@ -706,9 +706,7 @@ public sealed partial class WizardPage : Page
             panel.Children.Add(new TextBlock
             {
                 Text = option.Hint,
-                FontSize = 12,
-                Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
-                TextWrapping = TextWrapping.Wrap,
+                Style = PageTextStyle("SetupFootnoteTextStyle"),
                 TextTrimming = TextTrimming.None
             });
         }
@@ -729,6 +727,11 @@ public sealed partial class WizardPage : Page
     private static bool IsBackOption(WizardOptionValue option) =>
         string.Equals(option.Value, "__back", StringComparison.OrdinalIgnoreCase)
         || string.Equals(option.Value, "back", StringComparison.OrdinalIgnoreCase);
+
+    private static OpenClaw.SetupEngine.UI.Themes.SetupResources? s_setupResources;
+
+    // Styles bind ThemeResource brushes, so code-built text follows the page theme, not the app theme.
+    private static Style PageTextStyle(string key) => (Style)(s_setupResources ??= new())[key];
 
     private static Brush ResourceBrush(string key)
     {
@@ -1093,18 +1096,14 @@ public sealed partial class WizardPage : Page
         stack.Children.Add(new TextBlock
         {
             Text = question,
-            FontSize = 13,
-            Foreground = ResourceBrush("TextFillColorTertiaryBrush"),
-            TextWrapping = TextWrapping.Wrap,
+            Style = PageTextStyle("SetupRowTertiaryTextStyle"),
         });
         if (!string.IsNullOrWhiteSpace(answer))
         {
             stack.Children.Add(new TextBlock
             {
                 Text = answer,
-                FontSize = 13,
-                Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
-                TextWrapping = TextWrapping.Wrap,
+                Style = PageTextStyle("SetupRowDescriptionTextStyle"),
             });
         }
 

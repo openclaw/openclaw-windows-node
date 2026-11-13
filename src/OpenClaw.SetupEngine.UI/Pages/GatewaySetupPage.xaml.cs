@@ -3,7 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
-using OpenClawTray.Helpers;
+using OpenClaw.SetupEngine.UI.Controls;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
 
@@ -16,6 +16,7 @@ public sealed partial class GatewaySetupPage : Page
     public GatewaySetupPage()
     {
         InitializeComponent();
+        AutomationProperties.SetName(ExactCommandsText, SetupLocalization.GetString("Onboarding_V2_ExactCommands.Header"));
         Unloaded += (_, _) => DetachTailscale();
     }
 
@@ -28,14 +29,11 @@ public sealed partial class GatewaySetupPage : Page
         var summary = SetupReviewSummaryBuilder.Build(_draft.Config, _window.DataDir, _window.LocalDataDir);
         DistroCard.Header = summary.DistroTitle;
         DistroCard.Description = summary.DistroDescription;
-        DistroCard.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Terminal, 20);
+        DistroDetail.Text = $"{DisplayBaseDistro(_draft.Config)} · WSL · {_draft.Config.DistroName}";
         CliCard.Description = summary.InstallerDescription;
-        var cliIcon = FluentIconCatalog.Build(FluentIconCatalog.Terminal, 20);
-        cliIcon.IsTextScaleFactorEnabled = false;
-        AutomationProperties.SetAccessibilityView(cliIcon, AccessibilityView.Raw);
-        CliCard.HeaderIcon = cliIcon;
-        GatewayCard.Description = $"{summary.GatewayDescription}\n{summary.GatewayEndpoint}";
-        GatewayCard.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.ServerEnvironment, 20);
+        CliDetail.Text = summary.InstallerBadge;
+        GatewayCard.Description = summary.GatewayDescription;
+        GatewayDetail.Text = summary.GatewayEndpoint;
         ExactCommandsText.Text = summary.ExactCommands;
         LocalAiCard.Description = SetupLocalization.GetString(_draft.Config.LocalAi.Enabled ? "Onboarding_V2_SelectedReview" : "Onboarding_V2_OptionalOff");
         LocalAiCard.Visibility = _draft.Config.LocalAi.Enabled || _window.IsLocalAiRecovery
@@ -43,16 +41,37 @@ public sealed partial class GatewaySetupPage : Page
         _applying = true;
         ReplacementOptions.Visibility = _draft.ReplacementReviewRequired && !_window.IsLocalAiRecovery
             ? Visibility.Visible : Visibility.Collapsed;
-        ReplacementWarning.Message = _draft.ReplacementSummary;
+        Announce(ReplacementWarningTitle, SetupLocalization.GetString("Onboarding_V2_ReplacementWarning.Title"));
+        ReplacementWarningText.Text = _draft.ReplacementSummary;
         ReplacementConsent.Content = SetupLocalization.Format("Onboarding_V2_ReplaceDistro", _draft.Config.DistroName);
         ReplacementConsent.IsChecked = _draft.ReplacementReviewRequired && _draft.ReplacementConfirmed;
         _applying = false;
         StartupPreferenceRow.Visibility = _window.ShowStartupPreference ? Visibility.Visible : Visibility.Collapsed;
         StartupPreferenceToggle.IsOn = _window.AutoStartAfterSetup;
+        SetupRowPresentation.StyleHeaders(DistroCard, CliCard, GatewayCard, LocalAiCard, StartupPreferenceRow);
         TailscaleOptions.StateChanged += Tailscale_StateChanged;
         TailscaleOptions.Initialize(_draft);
         ApplyInstallGuidance();
+        SetExactCommands(false);
     }
+
+    private static string DisplayBaseDistro(SetupConfig config) =>
+        (string.IsNullOrWhiteSpace(config.BaseDistro) ? "Ubuntu-24.04" : config.BaseDistro).Replace('-', ' ');
+
+    private void SetExactCommands(bool open)
+    {
+        ExactCommandsPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        ExactCommandsLink.Content = SetupLocalization.GetString(open
+            ? "Onboarding_Review_HideCommands" : "Onboarding_Review_ShowCommands");
+    }
+
+    private void ApplyCompanionLine() => _window?.SetCompanionLine(
+        ReplacementOptions.Visibility == Visibility.Visible && ReplacementConsent.IsChecked != true
+            ? "Onboarding_Bubble_Confirm"
+            : "Onboarding_Bubble_Plan");
+
+    private void ExactCommands_Click(object sender, RoutedEventArgs e) =>
+        SetExactCommands(ExactCommandsPanel.Visibility != Visibility.Visible);
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
@@ -86,15 +105,25 @@ public sealed partial class GatewaySetupPage : Page
         PrimaryButton.Content = requirements.Count == 0 || _primaryRequirement == SetupInstallRequirement.Replacement
             ? SetupLocalization.GetString("Onboarding_V2_Install.Content")
             : SetupLocalization.GetString($"Onboarding_V2_Action{requirements[0]}");
+        ApplyCompanionLine();
         if (otherRequirements.Length == 0) return;
-        ReviewRequired.Title = SetupLocalization.GetString($"Onboarding_V2_Blocker{otherRequirements[0]}");
-        ReviewRequired.Message = string.Join("\n", otherRequirements.Select(requirement =>
+        Announce(ReviewRequiredTitle, SetupLocalization.GetString($"Onboarding_V2_Blocker{otherRequirements[0]}"));
+        ReviewRequiredText.Text = string.Join("\n", otherRequirements.Select(requirement =>
             SetupLocalization.Format($"Onboarding_V2_Requirement{requirement}", _draft.Config.DistroName)));
     }
 
     private void Startup_Toggled(object sender, RoutedEventArgs e)
     {
         if (_window is not null) _window.AutoStartAfterSetup = StartupPreferenceToggle.IsOn;
+    }
+
+    // Warning rows are plain layout, so their title text carries the live announcement.
+    private static void Announce(TextBlock title, string text)
+    {
+        if (title.Text == text) return;
+        title.Text = text;
+        (FrameworkElementAutomationPeer.FromElement(title) ?? FrameworkElementAutomationPeer.CreatePeerForElement(title))
+            ?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
     private void LocalAi_Click(object sender, RoutedEventArgs e) => _window?.NavigateToLocalAiSetup();
     private void ReplacementConsent_Changed(object sender, RoutedEventArgs e)

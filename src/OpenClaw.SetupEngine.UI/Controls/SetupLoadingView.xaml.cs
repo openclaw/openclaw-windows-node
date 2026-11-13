@@ -16,6 +16,21 @@ public sealed partial class SetupLoadingView : UserControl, IDisposable
         CancelButton.Content = SetupLocalization.GetString("Onboarding_AiSetup_Cancel.Content");
     }
 
+    /// <summary>
+    /// True inside the setup window's page column, where the companion already shows the mascot.
+    /// </summary>
+    public bool IsEmbedded
+    {
+        get => _embedded;
+        set
+        {
+            _embedded = value;
+            VisualStateManager.GoToState(this, value ? "Embedded" : "Standalone", false);
+        }
+    }
+
+    private bool _embedded;
+
     public void SetCancellation(SetupLoadingProgress.Scope scope, Action cancel)
     {
         _cancellable = scope;

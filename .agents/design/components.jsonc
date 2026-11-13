@@ -7,7 +7,7 @@
   "components": [
     {
       "name": "Button",
-      "note": "Basic control. Accent variation: ship the stock WinUI Button with AccentButtonStyle. ButtonStandard references this shared markup and overrides its state brushes for the normal style; a variant class cannot override inline token styling. Both use exact ButtonPadding 11,5,11,6, a retained 1px ButtonBorderThemeThickness, ControlCornerRadius 4, normal-weight 14px content, and the native 83ms linear background-only transition. Accent fill/foreground use accent/accentInk at rest; existing chatAction tokens already bind the same AccentButton hover, pressed-fill, and disabled resources. Pressed text and state borders have dedicated aliases, including high-contrast system colors. Width and height follow content; MinWidth 100 belongs only to wizard instances. Browser limits: elevation borders are flat swatches, the body line box is 20px, and the focus outline is not WinUI's system focus visual. Keep the native template, gradient brush, text measurement and FocusVisualMargin=-3 when shipping.",
+      "note": "Basic control. Accent variation: ship the stock WinUI Button with AccentButtonStyle. ButtonStandard references this shared markup and overrides its state brushes for the normal style; a variant class cannot override inline token styling. Both use exact ButtonPadding 11,5,11,6, a retained 1px ButtonBorderThemeThickness, ControlCornerRadius 4, normal-weight 14px content, and the native 83ms linear background-only transition. Accent fill/foreground use accent/accentInk at rest; existing chatAction tokens already bind the same AccentButton hover, pressed-fill, and disabled resources. Pressed text and state borders have dedicated aliases, including high-contrast system colors. Width and height follow content; setup wizard instances add SetupPrimaryButtonStyle (accent, MinWidth 180, MinHeight 40) or SetupSecondaryButtonStyle (normal, MinWidth 180, MinHeight 40). Browser limits: elevation borders are flat swatches, the body line box is 20px, and the focus outline is not WinUI's system focus visual. Keep the native template, gradient brush, text measurement and FocusVisualMargin=-3 when shipping.",
       "props": {
         "children": "Save changes",
         "disabled": "false"
@@ -61,7 +61,7 @@
     },
     {
       "name": "ButtonStandard",
-      "note": "Normal variation of the shared Button, not a second implementation. Ship a stock WinUI Button with DefaultButtonStyle (no AccentButtonStyle), as used by Back in SetupEngine.UI/Pages/CapabilitiesPage.xaml. Inherits exact padding, 1px border, 4px corners, regular 14px content, disabled semantics, keyboard focus and 83ms background transition. Dedicated Button* resource tokens preserve normal, pointer-over, pressed and disabled fill/foreground/border, including high contrast. The native rest/hover ControlElevationBorderBrush remains a gradient; this renderer can only show its default flat stroke swatch and cannot reproduce BackgroundSizing=InnerBorderEdge. Native font metrics and system focus remain platform-owned. Use this same variation for ordinary secondary actions such as SettingsCard's Change.",
+      "note": "Normal variation of the shared Button, not a second implementation. Ship a stock WinUI Button with DefaultButtonStyle (no AccentButtonStyle), as used by Back in SetupEngine.UI/Pages/CapabilitiesPage.xaml through SetupSecondaryButtonStyle (BasedOn DefaultButtonStyle, MinWidth 180, MinHeight 40). Inherits exact padding, 1px border, 4px corners, regular 14px content, disabled semantics, keyboard focus and 83ms background transition. Dedicated Button* resource tokens preserve normal, pointer-over, pressed and disabled fill/foreground/border, including high contrast. The native rest/hover ControlElevationBorderBrush remains a gradient; this renderer can only show its default flat stroke swatch and cannot reproduce BackgroundSizing=InnerBorderEdge. Native font metrics and system focus remain platform-owned. Use this same variation for ordinary secondary actions such as SettingsCard's Change.",
       "props": {
         "children": "Standard button",
         "disabled": "false"
@@ -257,7 +257,7 @@
     },
     {
       "name": "BadgeAccent",
-      "note": "Outlined accent variation of Badge, derived from production Controls/RecommendedBadge.xaml at 0131e4ce1f7937b22c69b289564087061687fa14. Caption text and a 1px border bind AccentTextFillColorPrimaryBrush (accentText), not AccentFillColorDefaultBrush. Transparent fill, sm (4px) corners, and native 8,4 padding. Disabled text and border bind TextFillColorDisabledBrush. Read-only, with no hover/pressed action. This component reference is a named variant of the shared Badge, not a second implementation.",
+      "note": "Outlined accent variation of Badge, originally derived from Controls/RecommendedBadge.xaml at 0131e4ce1f7937b22c69b289564087061687fa14. Caption text and a 1px border bind AccentTextFillColorPrimaryBrush (accentText), not AccentFillColorDefaultBrush. Transparent fill, sm (4px) corners, and native 8,4 padding. Disabled text and border bind TextFillColorDisabledBrush. Read-only, with no hover/pressed action. This component reference is a named variant of the shared Badge, not a second implementation. The setup wizard no longer uses it: setup's RecommendedBadge now renders inline SemiBold accent caption text (see CapabilityOptionRow).",
       "props": { "children": "Recommended" },
       "root": {
         "id": "badge-accent-root",
@@ -3056,24 +3056,184 @@
     },
 
     {
-      "name": "SetupProgressIndicator",
-      "note": "Setup control. The wizard step dots (SetupProgressIndicator.cs). Non-interactive, non-focusable, accessibility-hidden, so no hover/pressed states. The active step is a 20x8 pill in `accent` (SetupIndicatorAccentBrush = SystemAccentColorLight2 dark / Dark1 light); inactive steps are 8x8 dots in `muted` (SetupInactiveDotBrush = ControlStrongFill). Dot spacing is token `2` (8px); every dot uses the `sm` radius (4px).",
+      "name": "SetupStepTimeline",
+      "note": "Setup control from Controls/SetupStepTimeline.xaml and SetupStepRow.xaml. Always four steps, labelled by the Onboarding_Steps_ChooseTools, _SetUp, _ConnectAi and _StartChatting resources (Choose your PC tools, Set up, Connect your AI, Start chatting); previewed Done, Done, Current, Upcoming. Rows stack 14px apart; the preview places them absolutely at their native offsets. Each row has a 36px node column and a growing label column; the 24px node host is centered 16px in, on the 18px label line. Current is a 12px `accent` (SetupAccentBrush) dot over a 24px radial SetupStepGlowBrush glow at 0.55 opacity, with a SemiBold label (smallStrong) and its detail always shown. Upcoming is a 10px ring with a 1px setupStepFuture stroke. Done is a 10px `positive` circle holding a 7px U+E73E check in setupStepDoneGlyph. Skipped renders exactly as Done but is announced as skipped. Labels are 13/18 (small) primary text at opacity 0.68 for Upcoming and 0.8 for Done (1 for Current, hovered rows and high contrast); the preview cannot express opacity and shows them at full strength. Hovering a row reveals its 12/16 secondary detail (Onboarding_Steps_*Detail) over 160ms and echoes it in the SetupCompanion bubble. Connectors are 1px setupStepConnector lines that stop 3px short of each node. Advancing pours `accent` down the connector over 300ms (QuadraticEase in-out), then applies the new states, pops the new current node (320ms overshoot toward 16px, settling at 12px) and fades the pour over 150ms; connectors always return to setupStepConnector at rest. All motion is skipped when Windows animations are off. The timeline has no actions and no keyboard stops: no hover/pressed fills, no focus. Its automation name is Onboarding_Flow_Position (\"Step 3 of 4\") and each row is named \"{label}, {state}\" (not started, current step, done, skipped). The radial glow is native-only; this renderer has no radial gradient.",
       "root": {
-        "id": "setup-progress-root",
-        "el": "div",
-        "attrs": { "role": "img", "aria-label": "Step 2 of 4" },
-        "layout": { "mode": "horizontal", "gap": "2", "align": "center" },
+        "id": "setup-timeline-root",
+        "el": "ol",
+        "attrs": { "aria-label": "Step 3 of 4" },
+        "layout": { "mode": "freeform", "width": 320, "height": 131 },
         "children": [
-          { "id": "setup-progress-d1", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } },
-          { "id": "setup-progress-d2", "el": "span", "layout": { "width": 20, "height": 8 }, "appearance": { "background": "accent", "radius": "sm" } },
-          { "id": "setup-progress-d3", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } },
-          { "id": "setup-progress-d4", "el": "span", "layout": { "width": 8, "height": 8 }, "appearance": { "background": "muted", "radius": "sm" } }
+          { "id": "setup-timeline-connector-1", "el": "span", "attrs": { "aria-hidden": "true" }, "position": { "mode": "absolute", "x": 15.5, "y": 17 }, "layout": { "width": 1, "height": 16 }, "appearance": { "background": "setupStepConnector" } },
+          { "id": "setup-timeline-connector-2", "el": "span", "attrs": { "aria-hidden": "true" }, "position": { "mode": "absolute", "x": 15.5, "y": 49 }, "layout": { "width": 1, "height": 15 }, "appearance": { "background": "setupStepConnector" } },
+          { "id": "setup-timeline-connector-3", "el": "span", "attrs": { "aria-hidden": "true" }, "position": { "mode": "absolute", "x": 15.5, "y": 82 }, "layout": { "width": 1, "height": 32 }, "appearance": { "background": "setupStepConnector" } },
+          {
+            "id": "setup-timeline-step-1",
+            "el": "li",
+            "attrs": { "aria-label": "Choose your PC tools, done" },
+            "position": { "mode": "absolute", "x": 0, "y": 0 },
+            "layout": { "mode": "horizontal", "align": "start", "width": 320 },
+            "children": [
+              {
+                "id": "setup-timeline-node-1",
+                "el": "span",
+                "attrs": { "aria-hidden": "true" },
+                "layout": { "mode": "freeform", "width": 36, "height": 18 },
+                "children": [
+                  {
+                    "id": "setup-timeline-done-1",
+                    "el": "span",
+                    "position": { "mode": "absolute", "x": 11, "y": 4 },
+                    "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 10, "height": 10 },
+                    "appearance": { "background": "positive", "color": "setupStepDoneGlyph", "radius": "pill" },
+                    "children": [
+                      { "id": "setup-timeline-check-1", "el": "span", "attrs": { "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:7px;line-height:7px" }, "appearance": { "color": "setupStepDoneGlyph" }, "children": [ "\uE73E" ] }
+                    ]
+                  }
+                ]
+              },
+              { "id": "setup-timeline-label-1", "el": "span", "layout": { "grow": true }, "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeText" }, "children": [ "Choose your PC tools" ] }
+            ]
+          },
+          {
+            "id": "setup-timeline-step-2",
+            "el": "li",
+            "attrs": { "aria-label": "Set up, done" },
+            "position": { "mode": "absolute", "x": 0, "y": 32 },
+            "layout": { "mode": "horizontal", "align": "start", "width": 320 },
+            "children": [
+              {
+                "id": "setup-timeline-node-2",
+                "el": "span",
+                "attrs": { "aria-hidden": "true" },
+                "layout": { "mode": "freeform", "width": 36, "height": 18 },
+                "children": [
+                  {
+                    "id": "setup-timeline-done-2",
+                    "el": "span",
+                    "position": { "mode": "absolute", "x": 11, "y": 4 },
+                    "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 10, "height": 10 },
+                    "appearance": { "background": "positive", "color": "setupStepDoneGlyph", "radius": "pill" },
+                    "children": [
+                      { "id": "setup-timeline-check-2", "el": "span", "attrs": { "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:7px;line-height:7px" }, "appearance": { "color": "setupStepDoneGlyph" }, "children": [ "\uE73E" ] }
+                    ]
+                  }
+                ]
+              },
+              { "id": "setup-timeline-label-2", "el": "span", "layout": { "grow": true }, "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeText" }, "children": [ "Set up" ] }
+            ]
+          },
+          {
+            "id": "setup-timeline-step-3",
+            "el": "li",
+            "attrs": { "aria-label": "Connect your AI, current step", "aria-current": "step" },
+            "position": { "mode": "absolute", "x": 0, "y": 64 },
+            "layout": { "mode": "horizontal", "align": "start", "width": 320 },
+            "children": [
+              {
+                "id": "setup-timeline-node-3",
+                "el": "span",
+                "attrs": { "aria-hidden": "true" },
+                "layout": { "mode": "freeform", "width": 36, "height": 18 },
+                "children": [
+                  { "id": "setup-timeline-current-3", "el": "span", "position": { "mode": "absolute", "x": 10, "y": 3 }, "layout": { "width": 12, "height": 12 }, "appearance": { "background": "accent", "radius": "pill" } }
+                ]
+              },
+              {
+                "id": "setup-timeline-text-3",
+                "el": "span",
+                "layout": { "mode": "vertical", "gap": "0", "grow": true },
+                "children": [
+                  { "id": "setup-timeline-label-3", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "smallStrong", "color": "nativeText" }, "children": [ "Connect your AI" ] },
+                  { "id": "setup-timeline-detail-3", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "nativeSecondary" }, "children": [ "Use a provider or a model you choose." ] }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "setup-timeline-step-4",
+            "el": "li",
+            "attrs": { "aria-label": "Start chatting, not started" },
+            "position": { "mode": "absolute", "x": 0, "y": 113 },
+            "layout": { "mode": "horizontal", "align": "start", "width": 320 },
+            "children": [
+              {
+                "id": "setup-timeline-node-4",
+                "el": "span",
+                "attrs": { "aria-hidden": "true" },
+                "layout": { "mode": "freeform", "width": 36, "height": 18 },
+                "children": [
+                  { "id": "setup-timeline-ring-4", "el": "span", "position": { "mode": "absolute", "x": 11, "y": 4 }, "layout": { "width": 10, "height": 10 }, "appearance": { "background": "$none", "borderColor": "setupStepFuture", "borderWidth": 1, "radius": "pill" } }
+                ]
+              },
+              { "id": "setup-timeline-label-4", "el": "span", "layout": { "grow": true }, "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeText" }, "children": [ "Start chatting" ] }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "SetupCompanion",
+      "note": "Setup composite from Controls/SetupCompanion.xaml: the left pane of the setup window. Native pane width comes from SetupWindowSizing.CompanionPaneWidth (472px at the 1120px reference window, proportional below it with a 380px floor, growing by half the extra width above it); the preview uses the 472x688 reference content area. Star rows split the free height 146:66 above and below a 336x259 hero block (24px right margin), with the timeline 64px above the bottom. The speech bubble is centered at the top of the hero: setupBubble fill, `setupBubble` (16px) corners, 18,12 padding, Segoe UI Variable Display 18/24 SemiBold (setupBubbleText) in setupBubbleInk, centered, max text width 300, with a 14px tail rotated 45 degrees. Its 1px border is CardStrokeColorDefault in light, transparent in dark and the window-text system color in high contrast; the preview omits it. The mascot is the 230x230 OnboardingMascot control drawn 29px below the hero top; this catalog shows a labelled placeholder, not the real art or its moods. Behind it, a 680px radial SetupGlowBrush (setupGlow core) and a 158x44 radial SetupMascotShadowBrush (setupMascotShadow core) ground the mascot; the preview approximates both with smaller flat ellipses. Optional, not previewed: a 54px Restart badge (SystemFillColorCaution circle, white U+E72C) and a 40px Success badge (SystemFillColorSuccess circle with a 3px base-fill ring, white U+E73E). The embedded SetupStepTimeline sits 134px from the pane edge (scaled with the pane, max width 320). Bubble text cross-fades 75ms out and 75ms in; hovering a timeline row shows that step's detail in the bubble; when a step advances the mascot hops 6px over 360ms. All motion is skipped when Windows animations are off. High contrast removes the glow and shadow and switches the bubble to window system colors. The pane is not focusable and has no hover/pressed states; the badges and decorative layers are hidden from automation.",
+      "props": { "line": "You decide what I can do." },
+      "root": {
+        "id": "setup-companion-root",
+        "el": "aside",
+        "layout": { "mode": "freeform", "width": 472, "height": 688 },
+        "children": [
+          {
+            "id": "setup-companion-hero",
+            "el": "div",
+            "position": { "mode": "absolute", "x": 56, "y": 161 },
+            "layout": { "mode": "freeform", "width": 336, "height": 259 },
+            "children": [
+              { "id": "setup-companion-glow", "el": "span", "attrs": { "aria-hidden": "true" }, "position": { "mode": "absolute", "x": 18, "y": -6 }, "layout": { "width": 300, "height": 300 }, "appearance": { "background": "setupGlow", "radius": "pill" } },
+              { "id": "setup-companion-shadow", "el": "span", "attrs": { "aria-hidden": "true" }, "position": { "mode": "absolute", "x": 89, "y": 210 }, "layout": { "width": 158, "height": 44 }, "appearance": { "background": "setupMascotShadow", "radius": "pill" } },
+              {
+                "id": "setup-companion-mascot",
+                "el": "span",
+                "attrs": { "role": "img", "aria-label": "OpenClaw mascot placeholder" },
+                "position": { "mode": "absolute", "x": 53, "y": 29 },
+                "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 230, "height": 230 },
+                "appearance": { "background": "setupTile", "radius": "pill" },
+                "children": [
+                  { "id": "setup-companion-mascot-label", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "nativeTertiary" }, "children": [ "OnboardingMascot" ] }
+                ]
+              },
+              {
+                "id": "setup-companion-bubble",
+                "el": "div",
+                "attrs": { "role": "status" },
+                "position": { "mode": "absolute", "x": 0, "y": 0 },
+                "layout": { "mode": "vertical", "align": "center", "width": 336 },
+                "children": [
+                  {
+                    "id": "setup-companion-bubble-body",
+                    "el": "p",
+                    "layout": { "padding": { "x": "setupBubbleX", "y": "3" }, "width": "hug" },
+                    "appearance": { "fontFamily": "display", "textStyle": "setupBubbleText", "color": "setupBubbleInk", "background": "setupBubble", "radius": "setupBubble", "textAlign": "center" },
+                    "children": [ "{line}" ]
+                  },
+                  {
+                    "id": "setup-companion-bubble-tail",
+                    "el": "svg",
+                    "attrs": { "viewBox": "0 0 14 7", "aria-hidden": "true", "focusable": "false" },
+                    "layout": { "width": 14, "height": 7 },
+                    "children": [
+                      { "id": "setup-companion-bubble-tail-shape", "el": "polygon", "attrs": { "points": "0,0 14,0 7,7", "fill": "var(--color-setupBubble)" } }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          { "id": "setup-companion-timeline", "component": "SetupStepTimeline", "position": { "mode": "absolute", "x": 134, "y": 493 } }
         ]
       }
     },
     {
       "name": "ProviderArtwork",
-      "note": "Non-interactive provider tile from Controls/ProviderArtwork.xaml. Native size is 42x42: a 24x24 content grid, 8px padding and a 1px border on each side. The Border explicitly requests Dark, binding SolidBackgroundFillColorBaseBrush and CardStrokeColorDefaultBrush even on light pages. The scalable SVG preserves those bounds and 4px outer corners when SetupOptionCard displays it through the native 32x32 Viewbox. The 24px Fluent fallback glyph is representative, not provider branding; image loading stays native.",
+      "note": "Non-interactive provider tile from Controls/ProviderArtwork.xaml. Native size is 42x42: a 24x24 content grid, 8px padding and a 1px border on each side. The Border explicitly requests Dark, binding SolidBackgroundFillColorBaseBrush and CardStrokeColorDefaultBrush even on light pages. The scalable SVG preserves those bounds and 4px outer corners when SetupOptionCard displays it through the native 24x24 Viewbox inside its 40px setupTile tile. The 24px Fluent fallback glyph is representative, not provider branding; image loading stays native.",
       "root": {
         "id": "provider-artwork-root",
         "el": "svg",
@@ -3105,7 +3265,7 @@
     },
     {
       "name": "SetupOptionCard",
-      "note": "One-row provider group derived from AiSetupPage.xaml at 0131e4ce1f7937b22c69b289564087061687fa14. The outer Border owns CardBackgroundFillColorDefaultBrush, a 1px CardStrokeColorDefaultBrush stroke and 8px corners. Inherited SettingsCardPadding is 16 on all sides. A 32px ProviderArtwork Viewbox precedes the Body Strong/Caption stack by 12px; stack spacing is 4px. Body action text precedes a 13px chevron with 14px margin. By design, the catalog interaction matches CapabilityOptionRow: subtleHover/subtlePressed fill, sm corners and the shared renderer transition. The outer border and bottom divider remain setupCardStroke in every state. Pointer exit restores transparency without layout changes or tinting child text/artwork. This intentionally differs from the stock CompactChoice square corners, SettingsCard state brushes and 83ms transition; native min/max sizes and adaptive reflow remain port notes. This row is an action, not a selected ListViewItem.",
+      "note": "AI provider row from the CompactChoice ChoiceTemplate in Pages/AiSetupPage.xaml: a SetupActionCard (Toolkit SettingsCard with IsClickEnabled) restyled by the setup-scoped SettingsCard overrides in Themes/SetupResources.xaml. There is no group backplate or outer frame: the row is transparent with square corners and a bottom-only 1px setupHairline divider (DividerStrokeColorDefault); its group adds one top hairline. Padding is 0,10,0,10 (setupRowY) and MinHeight 64. A 40px setupTile tile with 8px (`md`) corners holds a 24x24 Viewbox containing ProviderArtwork, 16px before the title/detail stack. The title uses setupRowTitle (SetupRowTitleTextStyle, 15/22 SemiBold) and the detail uses `small` (SetupRowDescriptionTextStyle, 13/18) in nativeSecondary, 2px apart. Body action text (max width 112) precedes the 13px chevron with a 14px leading margin. Hover and pressed fill the row with subtleHover / subtlePressed, which is exactly what SettingsCardBackgroundPointerOver / Pressed now bind in setup; the hairline stays setupHairline in every state and text/artwork are never tinted. Disabled keeps a transparent fill (SettingsCardBackgroundDisabled) with disabledText. The native Toolkit template owns the state transition, focus visual and adaptive reflow; the preview uses the shared renderer transition. This row is an action, not a selected ListViewItem, and has no Recommended label.",
       "props": {
         "title": "Sign in with GitHub",
         "detail": "Use your Copilot subscription. No API key needed.",
@@ -3115,12 +3275,7 @@
         "id": "setup-option-root",
         "el": "div",
         "layout": { "mode": "vertical", "width": "fill" },
-        "appearance": {
-          "background": "setupCardFill",
-          "borderColor": "setupCardStroke",
-          "borderWidth": 1,
-          "radius": "md"
-        },
+        "appearance": { "background": "$none" },
         "children": [
           {
             "id": "setup-option-action",
@@ -3128,14 +3283,14 @@
             "attrs": { "type": "button", "aria-label": "{title}" },
             "layout": {
               "mode": "horizontal",
-              "padding": "4",
+              "padding": { "left": "0", "top": "setupRowY", "right": "0", "bottom": "setupRowY" },
               "align": "center",
               "width": "fill"
             },
             "appearance": {
               "background": "$none",
               "borderWidth": 0,
-              "radius": "sm",
+              "radius": "$none",
               "textAlign": "left"
             },
             "control": {
@@ -3146,25 +3301,26 @@
               "hover": { "background": "subtleHover" },
               "pressed": { "background": "subtlePressed" },
               "hoverPressed": { "background": "subtlePressed" },
-              "disabled": { "color": "disabledText", "background": "setupOptionDisabled" }
+              "disabled": { "color": "disabledText", "background": "$none" }
             },
             "children": [
               {
-                "id": "setup-option-art-slot",
+                "id": "setup-option-tile",
                 "el": "span",
-                "layout": { "mode": "horizontal", "width": 32, "height": 32 },
-                "margin": { "right": "3" },
+                "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 40, "height": 40 },
+                "margin": { "right": "4" },
+                "appearance": { "background": "setupTile", "radius": "md" },
                 "children": [
-                  { "id": "setup-option-art", "component": "ProviderArtwork", "layout": { "width": 32, "height": 32 } }
+                  { "id": "setup-option-art", "component": "ProviderArtwork", "layout": { "width": 24, "height": 24 } }
                 ]
               },
               {
                 "id": "setup-option-text",
                 "el": "div",
-                "layout": { "mode": "vertical", "gap": "1", "grow": true },
+                "layout": { "mode": "vertical", "gap": "half", "grow": true },
                 "children": [
-                  { "id": "setup-option-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "bodyStrong", "color": "nativeText" }, "children": [ "{title}" ] },
-                  { "id": "setup-option-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+                  { "id": "setup-option-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "setupRowTitle", "color": "nativeText" }, "children": [ "{title}" ] },
+                  { "id": "setup-option-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeSecondary" }, "children": [ "{detail}" ] }
                 ]
               },
               {
@@ -3190,14 +3346,14 @@
             "el": "div",
             "attrs": { "aria-hidden": "true" },
             "layout": { "height": 1, "width": "fill" },
-            "appearance": { "background": "setupCardStroke" }
+            "appearance": { "background": "setupHairline" }
           }
         ]
       }
     },
     {
       "name": "CapabilityOptionRow",
-      "note": "CapabilitiesPage.xaml Balanced profile in a one-row group. The group owns the alpha-preserving CardBackgroundFillColorDefaultBrush backplate, 1px CardStrokeColorDefaultBrush border and 8px corners. Its transparent row has exact 16,12 padding. Body Strong title and the shared BadgeAccent sit together on the first line, 8px apart and vertically centered; Caption detail follows 4px below. Nested instances clear the standalone backplate so their enclosing group paints it once. Subtle hover/pressed are preview approximations; native ListView selection, focus and high-contrast template states remain native behavior.",
+      "note": "Balanced profile choice from Pages/CapabilitiesPage.xaml, previewed selected because it is the recommended default. Each profile is a ListViewItem using SetupChoiceItemStyle: padding 16,0,0,0 and MinHeight 64, with no card backplate. The native ListView selection pill (3x16 `accent`) sits in the 16px leading gutter. Setup overrides ListViewItemBackgroundSelected to transparent, so selection shows only the pill and the accent tile, not a filled row. Content is a two-column grid with 16px spacing: a 40px SetupGlyphTile (8px `md` corners, 20px Segoe Fluent glyph) and a text stack with 12px top/bottom and 16px trailing margin. At rest the tile is setupTile with a nativeSecondary glyph; when its row is selected it turns setupTileSelected (SetupTileSelectedBrush, accent at 12% light / 16% dark) with an `accent` glyph. The title uses setupRowTitle (15/22 SemiBold); Recommended is inline SemiBold caption text (captionStrong, SetupInlineRecommendedTextStyle) in `accent`, 8px after the title, not the outlined BadgeAccent. The detail uses `small` (13/18) in nativeSecondary, 2px below. A 1px setupHairline spans the text column at the row bottom, starting after the tile; the last profile has none. Hover/pressed use subtleHover / subtlePressed, matching the native ListViewItem pointer-over and pressed brushes (setup also maps selected pointer-over/pressed to the same subtle fills). Native focus visuals, the pill animation, keyboard selection (SingleSelectionFollowsFocus) and high-contrast selection colors remain ListView behavior. The row's automation name includes the Recommended label.",
       "props": {
         "title": "Balanced",
         "detail": "Commands, Canvas, screen capture and voice."
@@ -3206,19 +3362,13 @@
         "id": "capability-row-root",
         "el": "div",
         "layout": { "mode": "vertical", "width": "fill" },
-        "appearance": { "background": "setupCardFill", "borderColor": "setupCardStroke", "borderWidth": 1, "radius": "md" },
+        "appearance": { "background": "$none" },
         "children": [
           {
             "id": "capability-row-action",
             "el": "button",
-            "attrs": { "type": "button", "aria-label": "{title}: {detail}" },
-            "layout": {
-              "mode": "vertical",
-              "gap": "1",
-              "padding": { "x": "4", "y": "3" },
-              "align": "start",
-              "width": "fill"
-            },
+            "attrs": { "type": "button", "role": "option", "aria-selected": "true", "aria-label": "{title} (Recommended): {detail}" },
+            "layout": { "mode": "horizontal", "padding": "0", "align": "center", "width": "fill" },
             "appearance": {
               "background": "$none",
               "borderWidth": 0,
@@ -3236,15 +3386,56 @@
             },
             "children": [
               {
-                "id": "capability-row-heading",
-                "el": "div",
-                "layout": { "mode": "horizontal", "gap": "2", "align": "center", "width": "hug" },
+                "id": "capability-row-gutter",
+                "el": "span",
+                "attrs": { "aria-hidden": "true" },
+                "layout": { "mode": "horizontal", "align": "center", "width": 16 },
                 "children": [
-                  { "id": "capability-row-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "bodyStrong", "color": "nativeText" }, "children": [ "{title}" ] },
-                  { "id": "capability-row-badge", "component": "BadgeAccent" }
+                  { "id": "capability-row-pill", "el": "span", "layout": { "width": 3, "height": 16 }, "appearance": { "background": "accent", "radius": "pill" } }
                 ]
               },
-              { "id": "capability-row-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" }, "children": [ "{detail}" ] }
+              {
+                "id": "capability-row-tile",
+                "el": "span",
+                "attrs": { "aria-hidden": "true" },
+                "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 40, "height": 40 },
+                "margin": { "right": "4" },
+                "appearance": { "background": "setupTileSelected", "radius": "md" },
+                "children": [
+                  { "id": "capability-row-glyph", "el": "span", "attrs": { "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:20px;line-height:20px" }, "appearance": { "color": "accent" }, "children": [ "\uE945" ] }
+                ]
+              },
+              {
+                "id": "capability-row-column",
+                "el": "div",
+                "layout": { "mode": "vertical", "width": "fill", "grow": true },
+                "children": [
+                  {
+                    "id": "capability-row-text",
+                    "el": "div",
+                    "layout": { "mode": "vertical", "gap": "half", "padding": { "left": "0", "top": "3", "right": "4", "bottom": "3" }, "width": "fill" },
+                    "children": [
+                      {
+                        "id": "capability-row-heading",
+                        "el": "div",
+                        "layout": { "mode": "horizontal", "gap": "2", "align": "center", "width": "hug" },
+                        "children": [
+                          { "id": "capability-row-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "setupRowTitle", "color": "nativeText" }, "children": [ "{title}" ] },
+                          { "id": "capability-row-recommended", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "captionStrong", "color": "accent" }, "children": [ "Recommended" ] }
+                        ]
+                      },
+                      { "id": "capability-row-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeSecondary" }, "children": [ "{detail}" ] }
+                    ]
+                  },
+                  {
+                    "id": "capability-row-hairline",
+                    "el": "div",
+                    "attrs": { "aria-hidden": "true" },
+                    "layout": { "height": 1, "width": "fill" },
+                    "appearance": { "background": "setupHairline" }
+                  }
+                ]
+              }
             ]
           }
         ]
@@ -3252,111 +3443,227 @@
     },
     {
       "name": "SetupPhaseStatus",
-      "note": "Setup control. The inline phase result row (Controls/SetupPhaseStatus.xaml). Non-interactive. A horizontal row, token `2` (8px) gap, pairing a status indicator with `caption` text (max width 160px) in `muted`. Running shows a 20x20 ProgressRing; Complete shows the Segoe Fluent StatusOk check (U+E73E) in `positive` (SystemFillColorSuccess); Failed shows StatusErr (U+EA39) in `critical` (SystemFillColorCritical); Cancelled shows Exit (U+E711) in `muted`. Previewed in the Complete state.",
+      "note": "Setup control from Controls/SetupPhaseStatus.xaml: one installation phase row on ProgressPage (Prepare your PC, Install the Gateway, Start and check connection). Non-interactive and not focusable, so no hover/pressed states. A Grid of Auto,*,Auto columns with 12px spacing, MinHeight 56, 0,8 padding and a bottom 1px setupHairline border. The leading 18x22 slot shows the state: Pending is a 9px ring with a 1px nativeTertiary stroke; Running is an 18x18 ProgressRing in `accent` (SetupAccentBrush), active only while Running; Complete is StatusOk (U+E73E) at 16px in `positive`; Failed is StatusErr (U+EA39) at 16px in `critical`; Cancelled is Exit (U+E711) at 16px in nativeSecondary. The title is 15/22 in nativeSecondary at rest and becomes nativeText SemiBold (setupRowTitle) while Running or Failed. An optional activity line uses SetupRowDescriptionTextStyle (`small`, 13/18, nativeSecondary) and is a polite live region. The trailing status (Onboarding_V4_Status*: Waiting, In progress, Complete, Needs attention, Cancelled) uses SetupRowStatusTextStyle (smallStrong, 13/18 SemiBold), right-aligned with a 160px maximum width: nativeTertiary at rest, `accent` while Running, `positive` when Complete and `critical` when Failed; it is also a polite live region. The row's automation name is \"{title}, {status}\". Previewed Running; the SVG arc approximates the native indeterminate ProgressRing, whose animation stays native.",
       "props": {
-        "children": "Gateway connected"
+        "title": "Prepare your PC",
+        "activity": "Clean up stale WSL distro",
+        "status": "In progress"
       },
       "root": {
         "id": "setup-phase-root",
         "el": "div",
-        "attrs": { "role": "status" },
-        "layout": { "mode": "horizontal", "gap": "2", "align": "center" },
+        "attrs": { "role": "group", "aria-label": "{title}, {status}" },
+        "layout": { "mode": "vertical", "width": "fill" },
         "children": [
           {
-            "id": "setup-phase-glyph",
-            "el": "span",
-            "attrs": {
-              "aria-hidden": "true",
-              "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:16px"
-            },
-            "appearance": { "color": "positive" },
-            "children": [ "\uE73E" ]
+            "id": "setup-phase-row",
+            "el": "div",
+            "layout": { "mode": "horizontal", "gap": "3", "padding": { "x": "0", "y": "2" }, "align": "center", "width": "fill" },
+            "children": [
+              {
+                "id": "setup-phase-slot",
+                "el": "span",
+                "attrs": { "aria-hidden": "true" },
+                "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 18, "height": 22 },
+                "children": [
+                  {
+                    "id": "setup-phase-ring",
+                    "el": "svg",
+                    "attrs": { "viewBox": "0 0 18 18", "aria-hidden": "true", "focusable": "false" },
+                    "layout": { "width": 18, "height": 18 },
+                    "children": [
+                      {
+                        "id": "setup-phase-ring-arc",
+                        "el": "circle",
+                        "attrs": {
+                          "cx": 9, "cy": 9, "r": 8,
+                          "fill": "none",
+                          "stroke": "var(--color-accent)",
+                          "stroke-width": 2,
+                          "stroke-linecap": "round",
+                          "stroke-dasharray": "30 21",
+                          "transform": "rotate(-90 9 9)"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "setup-phase-text",
+                "el": "div",
+                "layout": { "mode": "vertical", "gap": "half", "grow": true },
+                "children": [
+                  { "id": "setup-phase-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "setupRowTitle", "color": "nativeText" }, "children": [ "{title}" ] },
+                  { "id": "setup-phase-activity", "el": "span", "attrs": { "aria-live": "polite" }, "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeSecondary" }, "children": [ "{activity}" ] }
+                ]
+              },
+              {
+                "id": "setup-phase-status",
+                "el": "span",
+                "attrs": { "aria-live": "polite" },
+                "layout": { "width": "hug" },
+                "appearance": { "fontFamily": "body", "textStyle": "smallStrong", "color": "accent", "textAlign": "right" },
+                "children": [ "{status}" ]
+              }
+            ]
           },
           {
-            "id": "setup-phase-text",
-            "el": "span",
-            "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted" },
-            "children": [ "{children}" ]
+            "id": "setup-phase-divider",
+            "el": "div",
+            "attrs": { "aria-hidden": "true" },
+            "layout": { "height": 1, "width": "fill" },
+            "appearance": { "background": "setupHairline" }
           }
         ]
       }
     },
     {
       "name": "SetupWizardShell",
-      "note": "Illustrative onboarding frame composed from shared controls, not an executable wizard. The capability group follows CapabilitiesPage.xaml: one setupCardFill backplate with a 1px setupCardStroke border and md corners behind transparent rows. The grouped preview has one straight, full-width 1px setupCardStroke separator between options, with no spacing or rounded ends. Balanced reuses CapabilityOptionRow with its standalone group paint cleared; Open has no recommended badge. Native 40,4,40,24 page padding is represented by chatGutter/1/5. The footer retains shared Button and SetupProgressIndicator instances; navigation, native minimum sizes and mascot behavior remain outside this preview.",
+      "note": "Illustrative two-pane setup window composed from shared controls, not an executable wizard. SetupWindow.xaml has a 32px custom title bar (24px OnboardingMascot icon, 14px start padding, \"OpenClaw setup\" caption in nativeSecondary) over Mica, with SetupBackdropTintBrush (setupBackdropTint, a left-to-right gradient that fades out) across the window. The left column is SetupCompanion (472px at the 1120x720 reference size). The right column is capped at 648px: a 600px content column plus a 48px right gutter (spacing `7`). Each page uses SetupPagePadding 0,40,0,40 (chatGutter top and bottom) and three rows: a left-aligned hero (SetupHeroTitleTextStyle, titleLarge 40/52, and SetupHeroSubtitleTextStyle, bodyLarge 18/24, both nativeText, 10px apart), a scrolling body with 24/16 top/bottom margins, and a right-aligned footer. The body shows hairline-separated rows with no card backplate: the CapabilitiesPage profile ListView reuses CapabilityOptionRow for the selected Balanced row, with Strict and Open inline (Open is last and has no hairline). The native page continues with the Choose tools individually SettingsExpander (8 capability toggle rows inside) and the Connection options rows, omitted here. The footer (SetupFooterPanel with SetupNavPanelStyle, 8px spacing; it stacks actions one per row when the page column is too narrow) holds ButtonStandard Back (SetupSecondaryButtonStyle, MinWidth 180, MinHeight 40) and Button Next (SetupPrimaryButtonStyle, AccentButtonStyle, MinWidth 180, MinHeight 40); fixed preview widths stand in for those minimums and native buttons grow for localization. The flat tint swatch, max widths and star rows are preview approximations; window sizing, navigation and motion stay native.",
       "root": {
         "id": "setup-wizard-root",
         "el": "section",
-        "layout": {
-          "mode": "vertical",
-          "gap": "5",
-          "padding": { "left": "chatGutter", "right": "chatGutter", "top": "1", "bottom": "5" },
-          "width": "fill"
-        },
+        "layout": { "mode": "vertical", "width": "fill" },
         "appearance": { "background": "paper" },
         "children": [
           {
-            "id": "setup-wizard-header",
+            "id": "setup-wizard-titlebar",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "1", "align": "center" },
+            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "padding": { "left": "setupTitleBarStart", "top": "0", "right": "0", "bottom": "0" }, "width": "fill", "height": 32 },
             "children": [
-              { "id": "setup-wizard-title", "el": "h1", "appearance": { "fontFamily": "display", "textStyle": "title", "color": "ink", "textAlign": "center" }, "children": [ "Set up your Windows node" ] },
-              { "id": "setup-wizard-status", "el": "p", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "muted", "textAlign": "center" }, "children": [ "Step 2 of 4 · Choose capabilities" ] }
+              { "id": "setup-wizard-titlebar-icon", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 24, "height": 24 }, "appearance": { "background": "setupTile", "radius": "pill" } },
+              { "id": "setup-wizard-titlebar-text", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "caption", "color": "nativeSecondary" }, "children": [ "OpenClaw setup" ] }
             ]
           },
           {
-            "id": "setup-wizard-card",
+            "id": "setup-wizard-panes",
             "el": "div",
-            "layout": { "mode": "vertical", "gap": "2", "width": "fill" },
+            "layout": { "mode": "horizontal", "align": "start", "width": "fill" },
             "children": [
-              { "id": "setup-wizard-card-title", "el": "h2", "appearance": { "fontFamily": "display", "textStyle": "subtitle", "color": "ink" }, "children": [ "Choose what this node can do" ] },
+              { "id": "setup-wizard-companion", "component": "SetupCompanion", "props": { "line": "You decide what I can do." }, "appearance": { "background": "setupBackdropTint" } },
               {
-                "id": "setup-wizard-option-group",
-                "el": "div",
-                "layout": { "mode": "vertical", "width": "fill" },
-                "appearance": { "background": "setupCardFill", "borderColor": "setupCardStroke", "borderWidth": 1, "radius": "md" },
+                "id": "setup-wizard-content",
+                "el": "main",
+                "layout": {
+                  "mode": "vertical",
+                  "padding": { "left": "0", "top": "chatGutter", "right": "0", "bottom": "chatGutter" },
+                  "width": "fill",
+                  "grow": true
+                },
                 "children": [
                   {
-                    "id": "setup-wizard-opt-1",
-                    "component": "CapabilityOptionRow",
-                    "appearance": { "background": "$none", "borderColor": "$none", "borderWidth": 0, "radius": "$none" }
-                  },
-                  {
-                    "id": "setup-wizard-option-divider",
-                    "el": "div",
-                    "attrs": { "aria-hidden": "true" },
-                    "layout": { "width": "fill", "height": 1 },
-                    "appearance": { "background": "setupCardStroke", "radius": "$none" }
-                  },
-                  {
-                    "id": "setup-wizard-opt-2",
-                    "el": "button",
-                    "attrs": { "type": "button" },
-                    "layout": { "mode": "vertical", "gap": "1", "padding": { "x": "4", "y": "3" }, "width": "fill", "align": "start" },
-                    "appearance": { "background": "$none", "borderWidth": 0, "radius": "sm", "textAlign": "left" },
-                    "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
-                    "states": {
-                      "hover": { "background": "subtleHover" },
-                      "pressed": { "background": "subtlePressed" },
-                      "hoverPressed": { "background": "subtlePressed" }
-                    },
+                    "id": "setup-wizard-hero",
+                    "el": "header",
+                    "layout": { "mode": "vertical", "gap": "setupHeroGap", "width": "fill" },
+                    "margin": { "right": "7" },
                     "children": [
-                      { "id": "setup-wizard-open-title", "el": "span", "appearance": { "textStyle": "bodyStrong", "color": "nativeText" }, "children": [ "Open" ] },
-                      { "id": "setup-wizard-open-detail", "el": "span", "appearance": { "textStyle": "caption", "color": "muted" }, "children": [ "All eight capabilities, including Camera, Location and Browser control." ] }
+                      { "id": "setup-wizard-title", "el": "h1", "appearance": { "fontFamily": "display", "textStyle": "titleLarge", "color": "nativeText" }, "children": [ "What can your assistant use?" ] },
+                      { "id": "setup-wizard-subtitle", "el": "p", "appearance": { "fontFamily": "body", "textStyle": "bodyLarge", "color": "nativeText" }, "children": [ "Start with a set that suits you. Change it any time." ] }
+                    ]
+                  },
+                  {
+                    "id": "setup-wizard-body",
+                    "el": "div",
+                    "attrs": { "role": "listbox", "aria-label": "Capability profile" },
+                    "layout": { "mode": "vertical", "width": "fill", "grow": true },
+                    "margin": { "top": "5", "right": "7", "bottom": "4" },
+                    "children": [
+                      {
+                        "id": "setup-wizard-strict",
+                        "el": "button",
+                        "attrs": { "type": "button", "role": "option", "aria-selected": "false", "aria-label": "Strict: Canvas and screen capture. Command execution is off." },
+                        "layout": { "mode": "horizontal", "padding": "0", "align": "center", "width": "fill" },
+                        "appearance": { "background": "$none", "borderWidth": 0, "radius": "sm", "textAlign": "left" },
+                        "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                        "states": {
+                          "hover": { "background": "subtleHover" },
+                          "pressed": { "background": "subtlePressed" },
+                          "hoverPressed": { "background": "subtlePressed" }
+                        },
+                        "children": [
+                          { "id": "setup-wizard-strict-gutter", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
+                          {
+                            "id": "setup-wizard-strict-tile",
+                            "el": "span",
+                            "attrs": { "aria-hidden": "true" },
+                            "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 40, "height": 40 },
+                            "margin": { "right": "4" },
+                            "appearance": { "background": "setupTile", "radius": "md" },
+                            "children": [
+                              { "id": "setup-wizard-strict-glyph", "el": "span", "attrs": { "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:20px;line-height:20px" }, "appearance": { "color": "nativeSecondary" }, "children": [ "\uE924" ] }
+                            ]
+                          },
+                          {
+                            "id": "setup-wizard-strict-column",
+                            "el": "div",
+                            "layout": { "mode": "vertical", "width": "fill", "grow": true },
+                            "children": [
+                              {
+                                "id": "setup-wizard-strict-text",
+                                "el": "div",
+                                "layout": { "mode": "vertical", "gap": "half", "padding": { "left": "0", "top": "3", "right": "4", "bottom": "3" }, "width": "fill" },
+                                "children": [
+                                  { "id": "setup-wizard-strict-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "setupRowTitle", "color": "nativeText" }, "children": [ "Strict" ] },
+                                  { "id": "setup-wizard-strict-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeSecondary" }, "children": [ "Canvas and screen capture. Command execution is off." ] }
+                                ]
+                              },
+                              { "id": "setup-wizard-strict-hairline", "el": "div", "attrs": { "aria-hidden": "true" }, "layout": { "height": 1, "width": "fill" }, "appearance": { "background": "setupHairline" } }
+                            ]
+                          }
+                        ]
+                      },
+                      { "id": "setup-wizard-balanced", "component": "CapabilityOptionRow" },
+                      {
+                        "id": "setup-wizard-open",
+                        "el": "button",
+                        "attrs": { "type": "button", "role": "option", "aria-selected": "false", "aria-label": "Open: all eight capabilities, including Camera, Location and Browser control." },
+                        "layout": { "mode": "horizontal", "padding": "0", "align": "center", "width": "fill" },
+                        "appearance": { "background": "$none", "borderWidth": 0, "radius": "sm", "textAlign": "left" },
+                        "control": { "chrome": "none", "focus": { "kind": "outline", "color": "accent" } },
+                        "states": {
+                          "hover": { "background": "subtleHover" },
+                          "pressed": { "background": "subtlePressed" },
+                          "hoverPressed": { "background": "subtlePressed" }
+                        },
+                        "children": [
+                          { "id": "setup-wizard-open-gutter", "el": "span", "attrs": { "aria-hidden": "true" }, "layout": { "width": 16 } },
+                          {
+                            "id": "setup-wizard-open-tile",
+                            "el": "span",
+                            "attrs": { "aria-hidden": "true" },
+                            "layout": { "mode": "horizontal", "align": "center", "justify": "center", "width": 40, "height": 40 },
+                            "margin": { "right": "4" },
+                            "appearance": { "background": "setupTile", "radius": "md" },
+                            "children": [
+                              { "id": "setup-wizard-open-glyph", "el": "span", "attrs": { "style": "font-family:'Segoe Fluent Icons','Segoe MDL2 Assets',sans-serif;font-size:20px;line-height:20px" }, "appearance": { "color": "nativeSecondary" }, "children": [ "\uE71D" ] }
+                            ]
+                          },
+                          {
+                            "id": "setup-wizard-open-text",
+                            "el": "div",
+                            "layout": { "mode": "vertical", "gap": "half", "padding": { "left": "0", "top": "3", "right": "4", "bottom": "3" }, "width": "fill", "grow": true },
+                            "children": [
+                              { "id": "setup-wizard-open-title", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "setupRowTitle", "color": "nativeText" }, "children": [ "Open" ] },
+                              { "id": "setup-wizard-open-detail", "el": "span", "appearance": { "fontFamily": "body", "textStyle": "small", "color": "nativeSecondary" }, "children": [ "All eight capabilities, including Camera, Location and Browser control." ] }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "setup-wizard-footer",
+                    "el": "nav",
+                    "layout": { "mode": "horizontal", "gap": "2", "align": "center", "justify": "end", "width": "fill" },
+                    "margin": { "right": "7" },
+                    "children": [
+                      { "id": "setup-wizard-back", "component": "ButtonStandard", "props": { "children": "Back" }, "layout": { "width": 180, "height": 40 } },
+                      { "id": "setup-wizard-next", "component": "Button", "props": { "children": "Next" }, "layout": { "width": 180, "height": 40 } }
                     ]
                   }
                 ]
               }
-            ]
-          },
-          {
-            "id": "setup-wizard-footer",
-            "el": "div",
-            "layout": { "mode": "horizontal", "gap": "2", "align": "center", "justify": "space-between", "width": "fill" },
-            "children": [
-              { "id": "setup-wizard-back", "component": "ButtonStandard", "props": { "children": "Back" }, "layout": { "width": 100 } },
-              { "id": "setup-wizard-progress", "component": "SetupProgressIndicator" },
-              { "id": "setup-wizard-next", "component": "Button", "props": { "children": "Continue" }, "layout": { "width": 100 } }
             ]
           }
         ]

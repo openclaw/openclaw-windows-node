@@ -1608,7 +1608,7 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("restartRequired: result.RequiresRestart", progress);
         Assert.Contains("if (args.RequiresRestart)", complete);
-        Assert.Contains("OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?", complete);
+        Assert.Contains("SetupLocalization.GetString(\"Onboarding_Complete_RestartPrompt\")", complete);
         Assert.Contains("Content=\"Yes, restart now\"", xaml);
         Assert.Contains("Content=\"No, I'm not ready yet\"", xaml);
         Assert.Contains("Path.Combine(Environment.SystemDirectory, \"shutdown.exe\")", restartLauncher);
@@ -2042,7 +2042,9 @@ public sealed class AppRefactorContractTests
         var viewport = choices.Ancestors(xaml + "ScrollViewer").Single();
 
         Assert.Equal(xaml + "ScrollViewer", viewport.Name);
-        Assert.Equal("560", (string?)viewport.Attribute("MaxWidth"));
+        // The shell's page column caps the viewport at the 600-DIP design width plus its gutter.
+        Assert.Null(viewport.Attribute("MaxWidth"));
+        Assert.Equal("{StaticResource SetupGutterMargin}", (string?)choices.Parent!.Attribute("Margin"));
         Assert.Equal("Stretch", (string?)viewport.Attribute("HorizontalAlignment"));
         Assert.Equal("Stretch", (string?)viewport.Attribute("HorizontalContentAlignment"));
         Assert.Null(choices.Attribute("MaxWidth"));
@@ -2073,7 +2075,7 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("x:Name=\"InstallCard\"", xaml);
         Assert.DoesNotContain("x:Name=\"ConnectCard\"", xaml);
         Assert.DoesNotContain("UpdateCardSelection", welcomePage);
-        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<Grid Grid.Row=\"2\"");
+        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<controls:SetupFooterPanel Grid.Row=\"2\"");
         Assert.DoesNotContain("GatewayChoiceSelector.SelectedIndex = 0;", welcomePage);
         Assert.Contains("_suppressSelectionWrite = true", welcomePage);
         Assert.Contains("SetupWindow.Active?.WelcomeGatewayChoice", welcomePage);

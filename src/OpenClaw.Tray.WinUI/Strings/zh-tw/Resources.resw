@@ -6286,7 +6286,7 @@
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>登入時啟動 OpenClaw</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>頻道、整合與閘道設定</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是協助您在電腦上完成工作的 AI 助理。</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 會將 AI 助理連接到您電腦上的工具。它能做什麼由您決定，而且隨時可以變更。</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>設定你的 AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>探索現有提供者對話（選用）</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>正在啟動提供者設定…</value></data>
@@ -6386,7 +6386,7 @@
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>此設定主機中無法使用連線編輯器</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>從 Companion 應用程式開啟設定以使用原生連線編輯器。</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>電腦功能</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>您的助理可以使用什麼？</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>選擇代理可在此電腦上使用的功能。這些選擇不會授予 Windows 隱私存取權或執行核准。</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>透過已連線的 Gateway 提供此電腦的功能。</value></data>
@@ -6411,8 +6411,8 @@
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>此取代可能永久刪除 WSL 資料</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>僅取代指定名稱的 WSL 安裝。其他已儲存的 Gateway 連線仍然可用。</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>返回檢閱</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway 設定</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>在安裝開始前檢閱將發生的變更。</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>準備安裝</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>以下是將在這台電腦上進行的動作。</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>本機 Gateway 服務</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6423,15 +6423,13 @@
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>檢閱必要選項</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>安裝前請檢閱所選 Local AI 和 Tailscale 的先決條件，並確認任何 WSL 取代。</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>安裝</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>歡迎使用 OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>來認識您的新夥伴吧。</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>與您的 AI 聊天</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>在原生 Chat 中使用您選擇的 AI 提供者。</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>讓代理在此電腦上提供協助</value></data>
   <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>選擇要啟用的電腦能力。Windows 權限和執行核准仍然分別管理。</value></data>
   <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>讓 Gateway 始終由您掌控</value></data>
-  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>在此執行私人 WSL Gateway，或連線至現有 Gateway。</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>開始之前</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI 代理程式功能強大，授予其電腦存取權也有風險。它們可能犯錯、變更或刪除檔案，或洩漏私人資訊。&#x0a;&#x0a;您可以控制並限制 OpenClaw 對電腦的存取。</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>在這台電腦上執行私人 Gateway，或連線至現有 Gateway。</value></data>
   <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>繼續</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>重試</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>遠端、本機 MCP 或稍後設定</value></data>
@@ -6517,8 +6515,8 @@
   <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>連線 / 設定</value></data>
   <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>提供者標誌無法使用（{0}）。仍可設定提供者。</value></data>
   <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>您的代理可以做什麼</value></data>
-  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>選擇預設。展開「微調」可查看或變更各項能力。</value></data>
-  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>微調</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>從適合您的一組工具開始，隨時可以變更。</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>逐一選擇工具</value></data>
   <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>能力無法使用</value></data>
   <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>開啟 Node mode 或 Local MCP Server 即可使用這些能力。您的選擇會保留。</value></data>
   <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>自訂：逐項選取能力</value></data>
@@ -6582,10 +6580,7 @@
   <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>已完成 {0} 個步驟，共 {1} 個</value></data>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>已取消</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0}，共 {1}</value></data>
-  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>您的 AI 已就緒</value></data>
-  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>與我的代理程式聊天</value></data>
-  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>開啟 Chat，與代理程式聊天。</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>與我的代理程式聊天</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>一切就緒！</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新檢查就緒狀態</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>正在準備 AI 選項</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>正在準備閘道</value></data>
@@ -6614,7 +6609,6 @@
   <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>正在完成設定</value></data>
   <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>正在套用您的選項、重新啟動 OpenClaw 並檢查 AI。這可能需要幾分鐘。</value></data>
   <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>設定需要處理。不會自動重複任何 AI 操作。請關閉此視窗，在「連線」中檢查已儲存的閘道，然後明確重新開啟 AI 設定進行驗證。</value></data>
-  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>已驗證的模型：{0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>正在重新驗證相同的 Gateway、代理程式和模型...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>正在完成您的 Windows 設定選項...</value></data>
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>正在開啟您選擇的應用程式頁面...</value></data>
@@ -6635,7 +6629,7 @@
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>關閉</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>深入瞭解風險與安全</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>設定 OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>OpenClaw 應該安裝在哪裡？</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Gateway 將您的 AI 助理連接到應用程式與工具。請選擇執行位置，您可以稍後變更。</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway 設定方式</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>選擇一種 Gateway 設定方式。</value></data>
@@ -9941,6 +9935,60 @@
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>顯示未路由的工作階段</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已封存「{0}」（{1}）。</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>關閉通知</value></data>
+  <data name="Onboarding_Bubble_Ai" xml:space="preserve"><value>幫我選個大腦吧。</value></data>
+  <data name="Onboarding_Bubble_Capabilities" xml:space="preserve"><value>我能做什麼，由您決定。</value></data>
+  <data name="Onboarding_Bubble_Checking" xml:space="preserve"><value>正在和您的 AI 確認。</value></data>
+  <data name="Onboarding_Bubble_Confirm" xml:space="preserve"><value>先確認一件事。</value></data>
+  <data name="Onboarding_Bubble_Connect" xml:space="preserve"><value>告訴我您的 Gateway 在哪裡。</value></data>
+  <data name="Onboarding_Bubble_Done" xml:space="preserve"><value>我們成功了。</value></data>
+  <data name="Onboarding_Bubble_Failed" xml:space="preserve"><value>沒有成功。</value></data>
+  <data name="Onboarding_Bubble_Gateway" xml:space="preserve"><value>幫我選個家吧。</value></data>
+  <data name="Onboarding_Bubble_Installed" xml:space="preserve"><value>我的新家準備好了。</value></data>
+  <data name="Onboarding_Bubble_MoreOptions" xml:space="preserve"><value>還有幾個選項。</value></data>
+  <data name="Onboarding_Bubble_Plan" xml:space="preserve"><value>計畫是這樣的。</value></data>
+  <data name="Onboarding_Bubble_Ready" xml:space="preserve"><value>隨時待命。</value></data>
+  <data name="Onboarding_Bubble_Restart" xml:space="preserve"><value>馬上就好。</value></data>
+  <data name="Onboarding_Bubble_Tools" xml:space="preserve"><value>開啟您想用的吧。</value></data>
+  <data name="Onboarding_Bubble_Welcome" xml:space="preserve"><value>您好。我們開始設定吧。</value></data>
+  <data name="Onboarding_Bubble_Working" xml:space="preserve"><value>正在處理…</value></data>
+  <data name="Onboarding_Progress_HideDetails" xml:space="preserve"><value>隱藏詳細資料</value></data>
+  <data name="Onboarding_Progress_OpenLog.Content" xml:space="preserve"><value>開啟記錄檔</value></data>
+  <data name="Onboarding_Progress_ShowDetails" xml:space="preserve"><value>顯示詳細資料</value></data>
+  <data name="Onboarding_Ready_Prompt" xml:space="preserve"><value>OpenClaw 已準備就緒</value></data>
+  <data name="Onboarding_Ready_OpenChat" xml:space="preserve"><value>開啟 Chat</value></data>
+  <data name="Onboarding_Ready_ModelTitle" xml:space="preserve"><value>AI 已就緒</value></data>
+  <data name="Onboarding_Ready_CapabilitiesDescription" xml:space="preserve"><value>可隨時在 Companion 設定中編輯</value></data>
+  <data name="Onboarding_Ready_CapabilitiesTitle" xml:space="preserve"><value>已套用功能設定檔</value></data>
+  <data name="Onboarding_Ready_PairedDescription" xml:space="preserve"><value>這台電腦已連線，可以使用</value></data>
+  <data name="Onboarding_Ready_PairedTitle" xml:space="preserve"><value>裝置已配對</value></data>
+  <data name="Onboarding_Ready_GatewayDescription" xml:space="preserve"><value>在這台電腦上執行</value></data>
+  <data name="Onboarding_Review_HideCommands" xml:space="preserve"><value>隱藏確切的命令和檔案位置</value></data>
+  <data name="Onboarding_Review_ShowCommands" xml:space="preserve"><value>顯示確切的命令和檔案位置</value></data>
+  <data name="Onboarding_Steps_ChooseTools" xml:space="preserve"><value>選擇電腦工具</value></data>
+  <data name="Onboarding_Steps_ChooseToolsDetail" xml:space="preserve"><value>從適合您的存取權開始。</value></data>
+  <data name="Onboarding_Steps_ConnectAi" xml:space="preserve"><value>連接您的 AI</value></data>
+  <data name="Onboarding_Steps_ConnectAiDetail" xml:space="preserve"><value>使用您選擇的提供者或模型。</value></data>
+  <data name="Onboarding_Steps_ItemName" xml:space="preserve"><value>{0}，{1}</value></data>
+  <data name="Onboarding_Steps_SetUp" xml:space="preserve"><value>安裝設定</value></data>
+  <data name="Onboarding_Steps_SetUpDetail" xml:space="preserve"><value>OpenClaw 正在安裝，您可以繼續使用電腦。</value></data>
+  <data name="Onboarding_Steps_StartChatting" xml:space="preserve"><value>開始聊天</value></data>
+  <data name="Onboarding_Steps_StartChattingDetail" xml:space="preserve"><value>開啟 Chat，打聲招呼。</value></data>
+  <data name="Onboarding_Steps_StateCurrent" xml:space="preserve"><value>目前步驟</value></data>
+  <data name="Onboarding_Steps_StateDone" xml:space="preserve"><value>已完成</value></data>
+  <data name="Onboarding_Steps_StateSkipped" xml:space="preserve"><value>已略過</value></data>
+  <data name="Onboarding_Steps_StateUpcoming" xml:space="preserve"><value>尚未開始</value></data>
+  <data name="Onboarding_Tools_OnNow" xml:space="preserve"><value>已開啟：{0}</value></data>
+  <data name="Onboarding_Welcome_Safety.Text" xml:space="preserve"><value>AI 代理程式功能強大，授予其電腦存取權也有風險。它們可能犯錯、變更或刪除檔案，或洩漏私人資訊。您可以控制並限制 OpenClaw 對電腦的存取。</value></data>
+  <data name="Onboarding_Complete_RestartTitle" xml:space="preserve"><value>重新啟動 Windows 以繼續</value></data>
+  <data name="Onboarding_Complete_RestartPrompt" xml:space="preserve"><value>OpenClaw 需要重新啟動 Windows 才能完成安裝。請先儲存您的工作。</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>開始之前</value></data>
+  <data name="Onboarding_Ready_GatewayNativeTitle" xml:space="preserve"><value>原生 Gateway 正在執行</value></data>
+  <data name="Onboarding_Ready_GatewayWslTitle" xml:space="preserve"><value>WSL Gateway 正在執行</value></data>
+  <data name="Onboarding_Ready_GatewayWslDescription" xml:space="preserve"><value>託管在這台電腦的 WSL 中</value></data>
+  <data name="Onboarding_Ready_GatewayConnectedTitle" xml:space="preserve"><value>Gateway 已連線</value></data>
+  <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>在這台電腦上執行</value></data>
+  <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>遠端 Gateway 已連線</value></data>
+  <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>已為此設定驗證</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁開啟詳細資料</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>工具詳細資料</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>這些詳細資料已無法使用。如有需要，請重新連線，然後從目前對話重新開啟工具。</value></data>
