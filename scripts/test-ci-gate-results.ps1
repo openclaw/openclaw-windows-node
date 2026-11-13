@@ -33,6 +33,8 @@ function New-GateArguments {
         TrayUiShardResult = "skipped"
         GatewayFixtureResult = "skipped"
         GatewayFixtureShardResult = "skipped"
+        NewTestSoakRequired = "false"
+        NewTestSoakResult = "skipped"
         SetupE2eRequired = "false"
         SetupE2eResult = "skipped"
         RevocationE2eRequired = "false"
@@ -170,6 +172,26 @@ foreach ($result in @("failure", "cancelled", "skipped", "", "unknown")) {
 foreach ($result in @("success", "failure", "cancelled", "", "unknown")) {
     Assert-GateFails -Overrides @{ GatewayFixtureShardResult = $result } `
         -Scenario "UI unselected but Gateway fixture shard returned '$result'"
+}
+
+# Pull requests require the new-test soak; other events must skip it.
+$soakArguments = New-GateArguments
+$soakArguments.NewTestSoakRequired = "true"
+$soakArguments.NewTestSoakResult = "success"
+if ((Invoke-Gate $soakArguments) -ne "targeted") {
+    throw "A pull request with a successful new-test soak should pass."
+}
+foreach ($result in @("failure", "cancelled", "skipped", "", "unknown")) {
+    Assert-GateFails -BaseArguments $soakArguments -Overrides @{ NewTestSoakResult = $result } `
+        -Scenario "Pull request new-test soak returned '$result'"
+}
+foreach ($result in @("success", "failure", "cancelled", "", "unknown")) {
+    Assert-GateFails -Overrides @{ NewTestSoakResult = $result } `
+        -Scenario "Non-pull-request event but new-test soak returned '$result'"
+}
+foreach ($value in @("", "invalid")) {
+    Assert-GateFails -Overrides @{ NewTestSoakRequired = $value } `
+        -Scenario "New-test soak requirement was '$value'"
 }
 
 $fullArguments = New-GateArguments
