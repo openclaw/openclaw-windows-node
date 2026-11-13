@@ -7696,6 +7696,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nouveaux messages. Aller aux plus récents</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Aller aux plus récents</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>Navigation dans les messages</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>Utilisez Haut et Bas pour parcourir les messages, ou Début et Fin pour le premier et le dernier message.</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} sous-agents, {1} en cours, {2} nécessitent votre attention</value></data>
   <data name="Chat_Children_Idle" xml:space="preserve"><value>Inactif</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>En attente des sous-agents</value></data>

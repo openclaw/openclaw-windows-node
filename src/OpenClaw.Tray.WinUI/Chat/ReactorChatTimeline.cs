@@ -178,6 +178,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         var rows = BuildRows(props with { ViewportWidth = viewportWidth });
+        var historyAnchors = ChatHistoryNavigation.Project(rows);
         var enteringWorkKeys = toolActivityMotionState.Current.Update(
             rows.Where(row => row.Activity?.IsCompletedWork == true).Select(row => row.Key),
             props.Timeline.SessionId,
@@ -268,7 +269,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     jumpRevision,
                     initialTailRequestKey,
                     displayedTailKey,
-                    setAtTail)
+                    setAtTail,
+                    historyAnchors)
                 .Grid(row: 1, column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
                 .AutomationName("Chat messages")
@@ -278,12 +280,22 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .Ref(annotatedScrollBarRef)
                 .Width(ChatVisuals.RailWidth(viewportWidth))
                 .MinWidth(0)
-                .Opacity(navigationVisible ? 1 : 0)
+                .Set(control => control.Style = (Microsoft.UI.Xaml.Style)
+                    Microsoft.UI.Xaml.Application.Current.Resources["ChatHistoryScrollBarStyle"])
+                .MaxHeight(Math.Max(1, historyAnchors.Count - 1) * ChatVisuals.HistoryTickSpacing
+                    + 2 * ChatVisuals.HistoryRailInset)
+                .VAlign(VerticalAlignment.Stretch)
+                .IsTabStop(historyAnchors.Count > 0)
+                .IsHitTestVisible(historyAnchors.Count > 0)
+                .Opacity(historyAnchors.Count > 0 ? 1 : 0)
                 .OnGotFocus((_, _) => setNavigationVisible(true))
                 .OnLostFocus((_, _) => setNavigationVisible(false))
                 .Grid(row: 1, column: 0)
                 .HAlign(HorizontalAlignment.Right)
-                .AutomationName("Chat message navigation"),
+                .AutomationId("ChatHistoryNavigation")
+                .AutomationName(LocalizedOrDefault("Chat_HistoryNavigation", "Chat message navigation"))
+                .HelpText(LocalizedOrDefault("Chat_HistoryNavigation_Help",
+                    "Use Up and Down to jump between messages, or Home and End for the first and latest message.")),
             (props.HistoryFailed && props.Mode == ReactorChatTimelineMode.Timeline
                     ? BuildHistoryFailedBanner(props, viewportWidth)
                     : Empty())

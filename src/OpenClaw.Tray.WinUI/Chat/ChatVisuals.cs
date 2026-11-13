@@ -231,10 +231,15 @@ internal static class ChatVisuals
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
+    internal const double HistoryTickSpacing = 10;
+    internal const double HistoryTickHeight = 2;
+    internal const double HistoryTickMinimumGap = 4;
+    internal const double HistoryRailInset = 8;
+    internal const int HistoryPreviewLength = 240;
 
     internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;
-    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 32;
+    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 40;
     internal static double ProseWidth(double width) =>
         Math.Min(ReadingWidth - 2 * ProseInset, width - 2 * (Gutter(width) + ProseInset));
 

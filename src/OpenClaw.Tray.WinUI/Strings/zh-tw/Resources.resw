@@ -7696,6 +7696,8 @@
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新訊息。跳至最新訊息</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>跳至最新訊息</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>聊天訊息導覽</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>使用向上和向下鍵在訊息之間跳轉，或使用 Home 和 End 鍵跳至第一則和最新訊息。</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 個子代理程式，{1} 個正在工作，{2} 個需要關注</value></data>
   <data name="Chat_Children_Idle" xml:space="preserve"><value>閒置</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等候子代理程式</value></data>
