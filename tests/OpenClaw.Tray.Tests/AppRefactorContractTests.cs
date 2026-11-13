@@ -764,7 +764,7 @@ public sealed class AppRefactorContractTests
         var enable = ExtractMethod(source, "SetMcpEnabled");
         var refresh = ExtractMethod(source, "RefreshMcpOnlyCapabilities");
         var register = ExtractMethod(source, "RegisterCapabilities");
-        var start = ExtractMethod(source, "StartMcpServer");
+        var start = ExtractMethod(source, "StartMcpServerLocked");
 
         AssertInOrder(
             enable,
