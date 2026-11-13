@@ -80,11 +80,11 @@ public sealed partial class AiCompletionPage : Page
         BackButton.Visibility = back is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    public void ConfigureRecovery(Action refresh, Func<FrameworkElement, Task>? collectLogs)
+    public void ConfigureRecovery(Action? refresh, Func<FrameworkElement, Task>? collectLogs)
     {
         _refresh = refresh;
         _collectLogs = collectLogs;
-        RetryButton.Visibility = Visibility.Visible;
+        RetryButton.Visibility = refresh is null && _retry is null ? Visibility.Collapsed : Visibility.Visible;
         CollectLogsButton.Visibility = Visibility.Visible;
         CollectLogsButton.IsEnabled = collectLogs is not null && !_collectingLogs;
     }

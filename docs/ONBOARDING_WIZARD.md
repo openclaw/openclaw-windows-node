@@ -67,6 +67,9 @@ Settings, including this Companion profile's latest setup logs. Review the
 preview before copying or saving it. Collection failures stay visible on the
 page and can be retried. Native pre-restart completion failures also record the
 failed stage and sanitized exception in the setup log.
+If returning with **Back** fails during cleanup, readiness and navigation remain
+unavailable. **Collect logs** remains visible, and the title-bar close action can
+close the window. A readiness refresh cannot bypass the failed cleanup.
 
 WSL Local AI withdrawal confirms a Gateway restart even when the saved provider
 is already absent. A previous Companion process may have removed the saved route
@@ -81,8 +84,7 @@ Cancel setup (or Retry setup). Both share the setup footer minimum width
 progress is shown in the page body and in the companion's step timeline, not on
 a separate footer row. Other setup pages use `SetupFooterPanel`, which keeps
 actions in one right-aligned row and stacks them one per row when the page
-column is too narrow, for example the Back, Retry and Close finishing-failure
-actions at the minimum window width.
+column is too narrow, including longer localized finishing-failure labels.
 
 The Gateway chooser shows Local AI availability in a subtle, transparent status row
 below all three choices and above "Remote, local MCP or set up later", not inside

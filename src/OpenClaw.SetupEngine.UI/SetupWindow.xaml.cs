@@ -868,7 +868,11 @@ public sealed partial class SetupWindow : Window
         catch (Exception error)
         {
             System.Diagnostics.Trace.TraceWarning("Returning from setup completion failed ({0}).", error.GetType().Name);
-            if (!_isClosed && RootFrame.Content is AiCompletionPage page) page.ShowFailure(error: error);
+            if (!_isClosed && RootFrame.Content is AiCompletionPage page)
+            {
+                page.ShowFailure(error: error);
+                page.ConfigureRecovery(refresh: null, collectLogs: _collectLogs);
+            }
         }
     }
     private void RequireVerifiedGateway(GatewayAiSetupCompletion completion)
