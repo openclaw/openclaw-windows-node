@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClaw.TestSupport;
@@ -26,7 +27,8 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => provider.Publish(snapshot with
             {
                 Threads = [snapshot.Threads[0],
-                    new ChatThread { Id = "child", Title = "Child", ParentSessionKey = "proof", IsSubagent = true }],
+                    new ChatThread { Id = "child", Title = "Child", ParentSessionKey = "proof", IsSubagent = true,
+                        Activity = ChatActivity.Working }],
                 Timelines = new Dictionary<string, ChatTimelineState>
                 {
                     ["proof"] = ChatTimelineState.Initial() with
@@ -145,6 +147,7 @@ public sealed partial class ReactorChatLayoutProofTests
             };
             TextBox? composer = null;
             ItemsView? parentTimeline = null;
+            global::Windows.UI.Color pillBorder = default;
             await ui.RunOnUIAsync(() =>
             {
                 Assert.DoesNotContain(FindDescendants<Button>(surface),
@@ -166,9 +169,41 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Equal("2", FindControl<TextBlock>(pill, "ChatSubagentsPillCount").Text);
                 Assert.Single(FindDescendants<ProgressRing>(pill));
                 Assert.True(Bounds(pill, surface).Bottom <= Bounds(composer!, surface).Top);
+                pillBorder = Assert.IsType<SolidColorBrush>(pill.BorderBrush).Color;
                 Invoke(pill);
             });
             await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                // Selecting the tab keeps the pill's neutral border.
+                var pill = FindControl<Button>(surface, "ChatSubagentsPill");
+                Assert.Equal(pillBorder, Assert.IsType<SolidColorBrush>(pill.BorderBrush).Color);
+                var pane = FindControl<Border>(surface, "ChatSubagentsPane");
+                var badgeRing = Assert.Single(FindDescendants<ProgressRing>(pane));
+                // ProgressRing's default 16-DIP minimum would crop the badge spinner.
+                Assert.Equal(ChatVisuals.SubagentBadgeSpinnerSize, badgeRing.ActualWidth, 0.5);
+                var avatar = Bounds(Assert.IsType<Grid>(VisualTreeHelper.GetParent(
+                    VisualTreeHelper.GetParent(badgeRing))), surface);
+                var ring = Bounds(badgeRing, surface);
+                Assert.True(ring.Right <= avatar.Right + 0.5 && ring.Bottom <= avatar.Bottom + 0.5);
+                var spinners = new List<ProgressRing> { badgeRing };
+                if (width >= 652)
+                {
+                    // The compact layout hides the conversation, and the pill with it, while the tab shows.
+                    var pillRing = Assert.Single(FindDescendants<ProgressRing>(pill));
+                    Assert.Equal(ChatVisuals.SubagentPillIconSize, pillRing.ActualWidth, 0.5);
+                    spinners.Add(pillRing);
+                }
+                foreach (var spinner in spinners)
+                    Assert.InRange(Assert.Single(FindDescendants<AnimatedVisualPlayer>(spinner)).PlaybackRate, 0.1, 0.9);
+                // Working status uses the same secondary text as the group heading, not accent text.
+                var heading = FindDescendants<TextBlock>(FindControl<StackPanel>(pane, "ChatSubagentsGroup_Running"))
+                    .First(text => text.Text == "Running");
+                var status = FindDescendants<TextBlock>(FindControl<Grid>(pane, "ChatSubagent_child"))
+                    .Single(text => text.Text.StartsWith("Working", StringComparison.Ordinal));
+                Assert.Equal(Assert.IsType<SolidColorBrush>(heading.Foreground).Color,
+                    Assert.IsType<SolidColorBrush>(status.Foreground).Color);
+            });
             await ui.RunOnUIAsync(() =>
             {
                 var pane = FindControl<Border>(surface, "ChatSubagentsPane");
@@ -219,6 +254,11 @@ public sealed partial class ReactorChatLayoutProofTests
                     AutomationProperties.GetName(FindControl<Grid>(pane, "ChatSubagent_child")));
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Equal(Draft, composer!.Text);
+                // While its tab stays open, the pill remains and shows the settled state.
+                var settledPill = FindControl<Button>(surface, "ChatSubagentsPill");
+                Assert.Equal("2", FindControl<TextBlock>(settledPill, "ChatSubagentsPillCount").Text);
+                Assert.Empty(FindDescendants<ProgressRing>(settledPill));
+                Assert.Equal("Subagents: 0 running, 2 finished", AutomationProperties.GetName(settledPill));
                 CloseSubagentsTab(surface);
             });
             await SettleAsync();
@@ -226,10 +266,9 @@ public sealed partial class ReactorChatLayoutProofTests
             {
                 Assert.Equal(Visibility.Collapsed, FindControl<Grid>(surface, "ConversationPanel").Visibility);
                 Assert.Equal(Visibility.Visible, FindControl<Border>(surface, "ChatConversation").Visibility);
-                var settledPill = FindControl<Button>(surface, "ChatSubagentsPill");
-                Assert.Equal("2", FindControl<TextBlock>(settledPill, "ChatSubagentsPillCount").Text);
-                Assert.Empty(FindDescendants<ProgressRing>(settledPill));
-                Assert.Equal("Subagents: 0 running, 2 finished", AutomationProperties.GetName(settledPill));
+                // With nothing running and the tab closed, finished subagents leave no pill behind.
+                Assert.DoesNotContain(FindDescendants<Button>(surface),
+                    button => AutomationProperties.GetAutomationId(button) == "ChatSubagentsPill");
                 Assert.Equal(Draft, composer!.Text);
                 Assert.Single(session.ViewModel.PendingAttachments);
             });
@@ -246,7 +285,8 @@ public sealed partial class ReactorChatLayoutProofTests
             var children = snapshot with
             {
                 Threads = [snapshot.Threads[0],
-                    new ChatThread { Id = "child", Title = "Child", ParentSessionKey = "proof", IsSubagent = true }],
+                    new ChatThread { Id = "child", Title = "Child", ParentSessionKey = "proof", IsSubagent = true,
+                        Activity = ChatActivity.Working }],
             };
             await ui.RunOnUIAsync(() => provider.Publish(children));
             await SettleAsync();

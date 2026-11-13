@@ -1098,11 +1098,11 @@ minimum and a 12-DIP splitter. Below 652 DIPs the selected tab shows in place.
 The Subagents pill above the composer is 28 DIPs tall, fully rounded, with a
 14-DIP spinner or robot glyph, 13-DIP primary label followed by a secondary-text
 count, `ChatCardBrush` fill and
-`ChatStrokeBrush` border (accent border while its tab is selected). Subagent
-rows have a 32-DIP running or 24-DIP settled avatar with a 16-DIP state badge,
+`ChatStrokeBrush` border, also while its tab is selected. Subagent
+rows have a 32-DIP running or 24-DIP settled avatar with a 16-DIP state badge
+overhanging inside a 4-DIP-larger slot,
 56/40-DIP minimum heights, 14-DIP semibold titles and 12-DIP status and elapsed
-text; failures use the critical brush and working status uses the accent text
-brush. Surfaces bind native layer and chat stroke resources. No custom palette,
+text; failures use the critical brush and other statuses use secondary text. Surfaces bind native layer and chat stroke resources. No custom palette,
 docking, or persisted geometry in v1.
 
 1. **One subject per screen.** Decide what the screen is for and let that element win.

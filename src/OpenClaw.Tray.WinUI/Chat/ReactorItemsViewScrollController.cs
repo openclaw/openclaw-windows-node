@@ -126,9 +126,6 @@ file sealed class InitialTailPositioner : IDisposable
     // Exactly 1 selects WinUI's extent-edge mode, which can undo an offset as virtual
     // rows remeasure. The nearest interior point anchors content at its bottom instead.
     private static readonly double TailAnchorRatio = Math.BitDecrement(1.0);
-    // Rendered frames after a resize or re-show during which ItemsView's unfocused reveal of its
-    // last current row is rejected. Explicit reveals outside this window (for example UIA ScrollItem) proceed.
-    private const int NativeRevealGuardFrames = 30;
 
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
@@ -151,8 +148,6 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _readerAnchored;
     private int? _readerBringCorrelationId;
     private FrameworkElement? _tailBringTarget;
-    private int _nativeRevealFrames;
-    private EventHandler<object>? _nativeRevealRendering;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
@@ -584,10 +579,9 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs args)
     {
-        if (args.NewSize.Width == args.PreviousSize.Width && args.NewSize.Height == args.PreviousSize.Height)
-            return;
-        ArmNativeRevealGuard();
-        if (args.PreviousSize.Width <= 0 || args.PreviousSize.Height <= 0)
+        if (args.PreviousSize.Width <= 0 || args.PreviousSize.Height <= 0
+            || (args.NewSize.Width == args.PreviousSize.Width
+                && args.NewSize.Height == args.PreviousSize.Height))
             return;
 
         _reflowCorrection.Arm();
@@ -620,11 +614,11 @@ file sealed class InitialTailPositioner : IDisposable
         var requested = args.RequestEventArgs?.TargetElement;
         if (requested is not null && ReferenceEquals(requested, _tailBringTarget))
             _tailBringTarget = null;
-        else if (ReferenceEquals(sender, _scrollView) && !args.Cancel && _nativeRevealFrames > 0
-            && requested is ItemContainer container && !ContainsFocus(container))
+        else if (ReferenceEquals(sender, _scrollView) && !args.Cancel && IsStaleCurrentItemReveal(sender, requested))
         {
-            // After a resize or re-show (for example when a side panel closes), ItemsView re-reveals
-            // its last current row without focus. That would pull the reader away from their place.
+            // ItemsView re-reveals its last keyboard-current row without focus when it is resized or
+            // shown again (for example when a side panel closes). With focus elsewhere, that would
+            // pull the reader away from their place.
             args.Cancel = true;
             return;
         }
@@ -943,24 +937,12 @@ file sealed class InitialTailPositioner : IDisposable
             ? items[request.Index]
             : null;
 
-    private void ArmNativeRevealGuard()
-    {
-        _nativeRevealFrames = NativeRevealGuardFrames;
-        if (_nativeRevealRendering is not null) return;
-        _nativeRevealRendering = (_, _) =>
-        {
-            if (--_nativeRevealFrames <= 0) DetachNativeRevealGuard();
-        };
-        CompositionTarget.Rendering += _nativeRevealRendering;
-    }
-
-    private void DetachNativeRevealGuard()
-    {
-        _nativeRevealFrames = 0;
-        if (_nativeRevealRendering is null) return;
-        CompositionTarget.Rendering -= _nativeRevealRendering;
-        _nativeRevealRendering = null;
-    }
+    private bool IsStaleCurrentItemReveal(WinUIScrollView scrollView, UIElement? target) =>
+        target is ItemContainer container
+        && itemsView is { CurrentItemIndex: >= 0 and var currentIndex }
+        && scrollView.Content is ItemsRepeater repeater
+        && repeater.GetElementIndex(container) == currentIndex
+        && !ContainsFocus(itemsView);
 
     private static bool ContainsFocus(UIElement container)
     {
@@ -984,7 +966,6 @@ file sealed class InitialTailPositioner : IDisposable
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         _tailBringTarget = null;
-        DetachNativeRevealGuard();
         DetachLayout();
         DetachScrollView();
     }
@@ -1063,7 +1044,6 @@ file sealed class InitialTailPositioner : IDisposable
         _tailNavigationQueue.Clear();
         _explicitJumpPending = false;
         _tailBringTarget = null;
-        DetachNativeRevealGuard();
         DetachLayout();
         DetachScrollView();
         itemsView.Loaded -= OnLoaded;

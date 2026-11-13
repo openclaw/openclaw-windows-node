@@ -193,15 +193,19 @@ review never reopens it. The native card never acknowledges or resumes the run;
 continuation remains a web-chat action.
 
 Child-agent status instead opens through the **Subagents** pill above the
-composer. The pill appears only while the selected chat has non-archived direct
-subagents in the Gateway's current session snapshot. Like GitHub's status pills,
+composer. The pill appears while any of the selected chat's non-archived direct
+subagents in the Gateway's current session snapshot is running, waiting, or
+queued, and stays while the Subagents tab is open. Once every subagent has
+finished and the tab is closed, it hides; the parent agent reports the results
+in the transcript. Like GitHub's status pills,
 it shows "Subagents" followed by the total count in secondary text. A spinner
 replaces the robot glyph while any subagent is running; the accessible name and
 tooltip state the running and finished counts. Its label inherits the button's
 state foreground, and the count drops its secondary tint in High Contrast, so
-hover and pressed states stay legible. It draws an
-accent border while its tab is selected. Selecting it opens or reselects the
-Subagents tab in the shared conversation panel.
+hover and pressed states stay legible. Its border stays neutral while its tab is
+selected. Selecting it opens or reselects the
+Subagents tab in the shared conversation panel. Subagent spinners run at a
+slower rate than the default ring and opt out of its 16-DIP minimum size.
 
 The tab is a status list only. **Running** (working, waiting, or queued) and
 **Finished** (done, stopped, failed, or an unknown outcome) sections show counts.

@@ -22,6 +22,37 @@ internal static class ChatVisuals
         element.Set(text => TextShimmer(text, active))
             .OnUnmount(control => TextShimmer((TextBlock)control, false));
 
+    /// <summary>
+    /// A small, slower indeterminate ring. ProgressRing's default style has a 16px minimum, which
+    /// would crop smaller rings, and its Lottie player runs at a fixed rate unless slowed here.
+    /// </summary>
+    internal static Element SubagentSpinner(double size) =>
+        Factories.ProgressRing().IsActive(true).Size(size, size).MinWidth(0).MinHeight(0)
+            .OnMount(control =>
+            {
+                var ring = (ProgressRing)control;
+                ring.Loaded -= SlowSpinner;
+                ring.Loaded += SlowSpinner;
+                SlowSpinner(ring, null!);
+            });
+
+    private static void SlowSpinner(object sender, RoutedEventArgs args)
+    {
+        if (sender is ProgressRing ring && FindDescendant<AnimatedVisualPlayer>(ring) is { } player)
+            player.PlaybackRate = SubagentSpinnerPlaybackRate;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match) return match;
+            if (FindDescendant<T>(child) is { } nested) return nested;
+        }
+        return null;
+    }
+
     internal static void StopToolRowShimmers(FrameworkElement control)
     {
         // Reactor preview.16 tears down Expander.Content but does not visit its Header slot.
@@ -251,6 +282,10 @@ internal static class ChatVisuals
     internal const double SubagentAvatarSize = 32;
     internal const double SubagentAvatarGlyphSize = 16;
     internal const double SubagentBadgeSize = 16;
+    internal const double SubagentBadgeSpinnerSize = 10;
+    internal const double SubagentBadgeOverhang = 4;
+    // Subagent spinners sit beside text for minutes; the default Lottie rate reads as busy.
+    private const double SubagentSpinnerPlaybackRate = 0.6;
     internal const double SubagentRowMinHeight = 56;
     internal const double SubagentFinishedRowMinHeight = 40;
     // Web .chat-composer-neighbor-card: 18px icon column, 10px gaps, 10/12 insets, 16px radius, 52px minimum.

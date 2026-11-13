@@ -105,9 +105,7 @@ internal sealed class ReactorChatSubagents : Component<ReactorChatSubagentsProps
                         .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(child.Title),
                     showDetail
                         ? TextBlock(detail).FontSize(12)
-                            .Foreground(Theme.Ref(failed ? "SystemFillColorCriticalBrush"
-                                : row.Status == ChatSubagentStatus.Working ? "AccentTextFillColorPrimaryBrush"
-                                : "ChatSecondaryTextBrush"))
+                            .Foreground(Theme.Ref(failed ? "SystemFillColorCriticalBrush" : "ChatSecondaryTextBrush"))
                             .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(detail)
                         : Empty())
                     .VAlign(VerticalAlignment.Center).Margin(ChatVisuals.DetailHorizontalInset, 0).Grid(column: 1),
@@ -132,27 +130,29 @@ internal sealed class ReactorChatSubagents : Component<ReactorChatSubagentsProps
         };
         Element? badge = row.Status switch
         {
-            ChatSubagentStatus.Working or ChatSubagentStatus.AwaitingSubagents => ProgressRing().IsActive(true)
-                .Size(ChatVisuals.SubagentBadgeSize - 4, ChatVisuals.SubagentBadgeSize - 4),
+            ChatSubagentStatus.Working or ChatSubagentStatus.AwaitingSubagents =>
+                ChatVisuals.SubagentSpinner(ChatVisuals.SubagentBadgeSpinnerSize),
             ChatSubagentStatus.Done => Glyph(FluentIconCatalog.Check, "SystemFillColorSuccessBrush"),
             ChatSubagentStatus.Failed => Glyph(FluentIconCatalog.StatusErr, "SystemFillColorCriticalBrush"),
             _ => null,
         };
+        // The badge overhangs the avatar inside the slot; a negative margin would clip it.
+        var slot = size + ChatVisuals.SubagentBadgeOverhang;
         return Grid([GridSize.Star()], [GridSize.Star()],
                 Border(TextBlock(FluentIconCatalog.Subagent).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
                         .FontSize(row.IsRunning ? ChatVisuals.SubagentAvatarGlyphSize : ChatVisuals.SubagentAvatarGlyphSize - 4)
                         .Foreground(Theme.Ref("ChatTextBrush"))
                         .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
-                    .Size(size, size).CornerRadius(size / 2).Background(Theme.Ref(fill)),
+                    .Size(size, size).CornerRadius(size / 2).Background(Theme.Ref(fill))
+                    .HAlign(HorizontalAlignment.Left).VAlign(VerticalAlignment.Top),
                 badge is null ? Empty()
                     : Border(badge.HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
                         .Size(ChatVisuals.SubagentBadgeSize, ChatVisuals.SubagentBadgeSize)
                         .CornerRadius(ChatVisuals.SubagentBadgeSize / 2)
                         .Background(Theme.Ref("ChatCardBrush"))
                         .BorderBrush(Theme.Ref("ChatStrokeBrush")).BorderThickness(1)
-                        .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom)
-                        .Margin(0, 0, -4, -4))
-            .Size(size, size).VAlign(VerticalAlignment.Center)
+                        .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Bottom))
+            .Size(slot, slot).VAlign(VerticalAlignment.Center)
             .AccessibilityView(AccessibilityView.Raw);
     }
 
