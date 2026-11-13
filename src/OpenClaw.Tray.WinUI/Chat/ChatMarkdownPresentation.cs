@@ -319,14 +319,17 @@ internal static class ChatMarkdownPresentation
                         .Grid(column: 1))
                     .Margin(ChatVisuals.CodeInset, ChatVisuals.CodeHeaderTopInset,
                         ChatVisuals.CodeHeaderTrailingInset, ChatVisuals.CodeHeaderBottomInset),
-                ScrollViewer((RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize })
+                // Declare selection on the record: Reactor writes this non-nullable flag on
+                // every mount before setters run, and its pool keeps a returned RichTextBlock
+                // selectable, so a setter-only true flipped a recycled control off and back
+                // on and WinUI faulted releasing stale selection grippers mid-flip.
+                ScrollViewer((RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize, IsTextSelectionEnabled = true })
                         .Set(text =>
                         {
                             text.Style = (Style)Application.Current.Resources["ChatCodeTextStyle"];
                             text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
                             text.LineHeight = ChatVisuals.CodeLineHeight;
                             text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
-                            text.IsTextSelectionEnabled = true;
                             text.TextWrapping = TextWrapping.NoWrap;
                             ApplyCodeSyntax(text, code, language);
                         })

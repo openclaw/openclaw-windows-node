@@ -1953,9 +1953,10 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("\"Chat_Tool_OutputLabel\"", renderer);
         Assert.Contains(".Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset,", renderer);
         Assert.Contains("reserveActionSpace ? ToolDetailsCommandTextInset : ChatVisuals.DetailHorizontalInset", renderer);
-        Assert.Contains("var body = RichTextBlock(content)", renderer);
+        Assert.Contains("var body = (RichTextBlock(content) with { IsTextSelectionEnabled = true })", renderer);
         Assert.Contains(".MaxHeight(240)", renderer);
-        Assert.Contains("text.IsTextSelectionEnabled = true", renderer);
+        // A setter-only selection flag is overwritten with false on every Reactor pass.
+        Assert.DoesNotContain("text.IsTextSelectionEnabled = true", renderer);
         Assert.DoesNotContain("var stateText =", renderer);
         Assert.DoesNotContain("var glyph =", renderer);
         Assert.Contains(".AutomationId(", renderer);

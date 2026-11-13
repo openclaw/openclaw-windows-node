@@ -394,7 +394,10 @@ internal static class ToolCallCardRenderer
         string label, string content, ChatTimelineItem? input = null, bool panel = false,
         bool commandOutput = false, bool reserveActionSpace = false)
     {
-        var body = RichTextBlock(content)
+        // Selection lives on the record (see ChatMarkdownPresentation.CodeBlock): a
+        // setter-only value is overwritten with false whenever Reactor mounts a
+        // recycled control.
+        var body = (RichTextBlock(content) with { IsTextSelectionEnabled = true })
             .Set(text =>
             {
                 // Reactor pools RichTextBlocks without clearing Markdown highlighters.
@@ -407,7 +410,6 @@ internal static class ToolCallCardRenderer
                 text.FontSize = 12;
                 text.FontWeight = FontWeights.Normal;
                 text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
-                text.IsTextSelectionEnabled = true;
                 ChatToolInputSyntax.Apply(text, content, input);
             });
 
