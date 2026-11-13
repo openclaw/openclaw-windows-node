@@ -91,7 +91,13 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(target);
                 ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
             }
-            await TestSupport.WaitForRenderedConditionAsync(() => bubble.ActualHeight > 0, "popup before resizing");
+            // The popup and mascot reconcile on separate Reactor hosts; settle the arrival mood
+            // before counting mood changes during scaling.
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => bubble.ActualHeight > 0 && mascot.Mood == OnboardingMascotMood.Happy,
+                "popup layout and arrival mood before resizing",
+                () => $"Mood: {mascot.Mood}; bubble height: {bubble.ActualHeight}");
+            Assert.Same(mascot, Mascot(root));
             var frame = Assert.IsType<Border>(bubble.Children[0]);
             var popupContent = frame.Child;
             var originalWidth = frame.ActualWidth;
@@ -419,7 +425,11 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             var message = Control<TextBlock>(host, "DesktopCompanionMessage");
             window.ApplyTheme("Dark");
             window.Present(new() { Title = "First", Message = "First arrival" });
-            await TestSupport.WaitForRenderedConditionAsync(() => message.Text == "First arrival", "first Reactor render");
+            // The popup and mascot reconcile on separate Reactor hosts.
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => message.Text == "First arrival" && mascot.Mood == OnboardingMascotMood.Happy,
+                "first Reactor render and arrival mood",
+                () => $"Mood: {mascot.Mood}; text: {message.Text}");
             Assert.Equal(OnboardingMascotMood.Happy, mascot.Mood);
             var bubble = Control<StackPanel>(host, "DesktopCompanionBubble");
             var frame = Assert.IsType<Border>(bubble.Children[0]);
@@ -434,7 +444,11 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 Assert.NotEqual(darkFill, Assert.IsType<SolidColorBrush>(frame.Background).Color);
                 Assert.Equal(0, moodChanges);
                 window.Present(new() { Title = "Second", Message = "Second arrival" });
-                await TestSupport.WaitForRenderedConditionAsync(() => message.Text == "Second arrival", "second Reactor render");
+                // The arrival replays the entrance (Idle, then Happy) in the mascot host's own render.
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => message.Text == "Second arrival" && moodChanges == 2 && mascot.Mood == OnboardingMascotMood.Happy,
+                    "second Reactor render and replayed arrival mood",
+                    () => $"Mood: {mascot.Mood}; mood changes: {moodChanges}; text: {message.Text}");
                 Assert.Same(mascot, Mascot(host));
                 Assert.Same(message, Control<TextBlock>(host, "DesktopCompanionMessage"));
                 Assert.Equal(2, moodChanges);
