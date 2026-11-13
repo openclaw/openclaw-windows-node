@@ -799,10 +799,12 @@ pixels and sits 6 pixels from its neighbors. Its 24-pixel removal target is name
 for the file ("Remove attachment {name}"), stays in layout and in keyboard and UI
 Automation order, and is visible on hover, keyboard focus or touch-capable devices.
 Pills are keyed to their attachment; removing one moves focus to the next file's
-removal target, or to the editor after the last file. The rail leaves room for
-focus visuals and, while it can scroll, for the overlaid horizontal scroll bar,
-instead of growing the composer for every file. Video-specific previews are not
-invented by the native file rail.
+removal target, or to the editor after the last file. Pills wrap onto new rows and
+grow the composer, like the GitHub Copilot app; past four rows at default text
+size (136 pixels) the rail scrolls vertically, keeping a trailing gutter for the
+overlaid scroll bar, so many files cannot push the transcript off screen. The rail
+also leaves room for focus visuals.
+Video-specific previews are not invented by the native file rail.
 
 On history reload, message-wide structured user attachments appear on the first
 nonempty text part only, not again on later text parts from that same message.

@@ -45,6 +45,10 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
     private static readonly ConditionalWeakTable<ChatAttachment, string> s_keys = new();
     private static long s_nextKey;
 
+    // Everything in the pill except the name: 8/2 padding, 1/1 border, glyph, name gap, 2px gap and remove target.
+    private const double ChatAttachmentChipChrome =
+        8 + 2 + 2 + ChatVisuals.AttachmentGlyphSize + ChatVisuals.AttachmentChipGap + 2 + ChatVisuals.AttachmentRemoveSize;
+
     /// <summary>Stable reconciliation key for one pending attachment instance.</summary>
     internal static string KeyFor(ChatAttachment attachment) =>
         s_keys.GetValue(attachment, static _ =>
@@ -106,10 +110,13 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
             .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
 
         return Border(Grid(
-                [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                // Auto columns keep the pill's measured width equal to its content. A star name column
+                // let flex measurement squeeze short names into an ellipsis; the name's MaxWidth trims instead.
+                [GridSize.Auto, GridSize.Auto, GridSize.Auto],
                 [GridSize.Auto],
                 glyph.Grid(column: 0),
-                name.Margin(ChatVisuals.AttachmentChipGap, 0, 0, 0).Grid(column: 1),
+                name.MaxWidth(Math.Max(0, Props.MaxWidth - ChatAttachmentChipChrome))
+                    .Margin(ChatVisuals.AttachmentChipGap, 0, 0, 0).Grid(column: 1),
                 remove.Margin(2, 0, 0, 0).Grid(column: 2)))
             // A minimum, not a fixed height, so scaled file names grow the pill instead of clipping.
             .MinHeight(ChatVisuals.AttachmentChipHeight)

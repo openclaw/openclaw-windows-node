@@ -3035,7 +3035,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 var rail = FindControl<ScrollViewer>(surface, "ChatAttachmentRail");
-                Assert.True(rail.ScrollableWidth > 0);
+                // Pills wrap onto new rows instead of scrolling sideways.
+                Assert.Equal(0, rail.ScrollableWidth);
                 var chips = FindDescendants<Border>(rail).Where(chip =>
                     AutomationProperties.GetAutomationId(chip) == "ChatAttachmentChip").ToArray();
                 Assert.Equal(6, chips.Length);
@@ -3043,12 +3044,20 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 {
                     Assert.True(chip.ActualHeight >= ChatVisuals.AttachmentChipHeight - 0.5);
                     Assert.True(chip.ActualWidth <= ChatVisuals.AttachmentChipMaxWidth + 0.5);
+                    Assert.True(Bounds(chip, surface).Right <= Bounds(rail, surface).Right + 0.5);
                 });
-                // Text scaling may grow pills; the rail adds only focus room and scroll-bar clearance.
-                Assert.InRange(rail.ActualHeight, 1,
-                    chips.Max(chip => chip.ActualHeight) + 6 + ChatVisuals.AttachmentRailScrollBarInset + 1);
-                // Pills size to their names: a short name stays well below a trimmed long one.
+                var rows = chips.Select(chip => Math.Round(Bounds(chip, surface).Top)).Distinct().Count();
+                Assert.True(rows >= 2, $"Expected wrapped rows, got {rows}.");
+                // The composer grows with the rows up to the cap, then the rail scrolls vertically.
+                Assert.True(rail.ActualHeight <= ChatVisuals.AttachmentRailMaxHeight + 0.5);
+                if (rows > ChatVisuals.AttachmentRailMaxRows)
+                    Assert.True(rail.ScrollableHeight > 0);
+                else
+                    Assert.Equal(0, rail.ScrollableHeight);
+                // Pills size to their names: a short name stays well below a trimmed long one and is not trimmed.
                 Assert.True(chips[0].ActualWidth < chips[1].ActualWidth - 40);
+                var shortName = Assert.Single(FindDescendants<TextBlock>(chips[0]), text => text.Text == "a.txt");
+                Assert.False(shortName.IsTextTrimmed);
                 removals = FindDescendants<Button>(rail).Where(button =>
                     AutomationProperties.GetName(button)?.StartsWith("Remove attachment ", StringComparison.Ordinal) == true)
                     .ToArray();
@@ -3057,16 +3066,26 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     removals.Select(AutomationProperties.GetName));
                 Assert.All(removals, button =>
                 {
-                    Assert.True(button.ActualWidth >= ChatVisuals.AttachmentRemoveSize &&
-                        button.ActualHeight >= ChatVisuals.AttachmentRemoveSize);
-                    Assert.InRange(Bounds(button, surface).Top, Bounds(rail, surface).Top, Bounds(rail, surface).Bottom);
-                    // The overlaid horizontal scroll bar must not cover the removal targets.
-                    Assert.True(Bounds(button, surface).Bottom
-                        <= Bounds(rail, surface).Bottom - ChatVisuals.AttachmentRailScrollBarInset + 0.5);
+                    Assert.True(button.ActualWidth >= ChatVisuals.AttachmentRemoveSize - 0.5 &&
+                        button.ActualHeight >= ChatVisuals.AttachmentRemoveSize - 0.5);
+                    // The always-reserved trailing gutter keeps the overlaid scroll bar off removal targets.
+                    Assert.True(Bounds(button, surface).Right
+                        <= Bounds(rail, surface).Right - ChatVisuals.AttachmentRailScrollBarInset + 0.5);
                 });
                 // A resting system pointer can hover at most one pill; the others stay hidden.
                 if (!touch)
                     Assert.True(removals.Count(button => button.Opacity != 0) <= 1);
+                Assert.True(removals[^1].Focus(FocusState.Keyboard));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                // Keyboard focus scrolls a pill that starts below the capped rail into view.
+                var rail = FindControl<ScrollViewer>(surface, "ChatAttachmentRail");
+                var target = Bounds(removals[^1], surface);
+                var viewport = Bounds(rail, surface);
+                Assert.True(target.Top >= viewport.Top - 0.5 && target.Bottom <= viewport.Bottom + 0.5,
+                    $"Focused removal {target} is outside the rail viewport {viewport}.");
                 Assert.True(removals[1].Focus(FocusState.Keyboard));
             });
             await SettleAsync();

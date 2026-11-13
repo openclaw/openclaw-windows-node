@@ -71,8 +71,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         controllerRef.Current = controller;
         var (attachmentFocus, setAttachmentFocus) = UseState<ChatAttachmentFocusRequest?>(null);
         var attachmentFocusToken = UseRef(0L);
-        var (attachmentRailScrollable, setAttachmentRailScrollable) = UseState(false);
-        var attachmentRailScrollToken = UseRef(0L);
         var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>
         {
             if (GetBitmapClipboardContent() is not { } clipboardContent)
@@ -370,6 +368,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                         focusState => RemoveAttachment(attachment, focusState),
                         attachmentChipMaxWidth,
                         attachmentFocus?.Key == key ? attachmentFocus : null))
+                    // Flex rows shrink children by default, which trims names inside a too-narrow pill.
+                    .Flex(grow: 0, shrink: 0)
                     .WithKey(key);
             })
             .ToArray();
@@ -825,28 +825,24 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .AutomationId("ChatPlacementProgress")
                 .LiveRegion(AutomationLiveSetting.Polite));
         if (attachmentRows.Length > 0)
-            composerChildren.Add(ScrollViewer(HStack(ChatVisuals.AttachmentChipGap, attachmentRows)
-                    // Vertical room keeps focus visuals inside the clipped horizontal scroller. While the
-                    // rail can scroll, the bottom inset also clears the overlaid horizontal scroll bar.
-                    .Padding(0, 3, 0, 3 + (attachmentRailScrollable ? ChatVisuals.AttachmentRailScrollBarInset : 0)))
+            // Pills wrap onto new rows and grow the composer. Past AttachmentRailMaxRows the rail
+            // scrolls vertically so many files cannot push the transcript off screen.
+            composerChildren.Add(ScrollViewer(Border(FlexRow(attachmentRows) with
+                    {
+                        Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
+                        ColumnGap = ChatVisuals.AttachmentChipGap,
+                        RowGap = ChatVisuals.AttachmentChipGap,
+                    })
+                    // Vertical room keeps focus visuals inside the clipped scroller. The trailing gutter is
+                    // always reserved: toggling it with overflow could keep its own overflow alive.
+                    .Padding(0, 3, ChatVisuals.AttachmentRailScrollBarInset, 3))
+                .MaxHeight(ChatVisuals.AttachmentRailMaxHeight)
                 .AutomationId("ChatAttachmentRail")
                 .Set(scroll =>
                 {
-                    scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-                    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
-                    scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
-                })
-                .OnMount(control =>
-                {
-                    var scroll = (Microsoft.UI.Xaml.Controls.ScrollViewer)control;
-                    attachmentRailScrollToken.Current = scroll.RegisterPropertyChangedCallback(
-                        Microsoft.UI.Xaml.Controls.ScrollViewer.ScrollableWidthProperty,
-                        (sender, _) => setAttachmentRailScrollable(
-                            ((Microsoft.UI.Xaml.Controls.ScrollViewer)sender).ScrollableWidth > 0));
-                    setAttachmentRailScrollable(scroll.ScrollableWidth > 0);
-                })
-                .OnUnmount(control => ((Microsoft.UI.Xaml.Controls.ScrollViewer)control).UnregisterPropertyChangedCallback(
-                    Microsoft.UI.Xaml.Controls.ScrollViewer.ScrollableWidthProperty, attachmentRailScrollToken.Current)));
+                    scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+                }));
         // Status and attachment rows can be inserted before this stable editor/toolbar tail.
         composerChildren.Add(input.WithKey("chat-composer-input"));
         composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));

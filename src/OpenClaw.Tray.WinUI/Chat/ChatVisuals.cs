@@ -198,7 +198,13 @@ internal static class ChatVisuals
     internal const double AttachmentChipGap = 6;
     internal const double AttachmentGlyphSize = 14;
     internal const double AttachmentRemoveSize = 24;
-    // WinUI's expanded horizontal ScrollBar (ScrollBarSize) overlays content instead of reserving space.
+    // Pills wrap onto new rows; past this height (four rows at default text size) the rail scrolls
+    // instead of growing further. Scaled text makes rows taller, so fewer rows fit before scrolling.
+    internal const int AttachmentRailMaxRows = 4;
+    // Includes the rail's 3px top and bottom focus padding.
+    internal const double AttachmentRailMaxHeight =
+        AttachmentRailMaxRows * AttachmentChipHeight + (AttachmentRailMaxRows - 1) * AttachmentChipGap + 6;
+    // WinUI's expanded ScrollBar (ScrollBarSize) overlays content instead of reserving space.
     internal const double AttachmentRailScrollBarInset = 12;
     // Space between the writing surface and the window's bottom edge.
     internal const double ComposerBottomInset = 16;
