@@ -209,15 +209,43 @@ internal static class ChatMarkdownPresentation
         }
     }
 
-    /// <summary>Only direct message blocks share rhythm; list and quote interiors remain untouched.</summary>
-    internal static Element MessageBlocks(Element element, bool compactSecondaryReading = false) =>
+    /// <summary>
+    /// Renders recognized disclosures as native expanders between Markdown parts. The renderer
+    /// receives each Markdown part and whether it leads its message or disclosure body.
+    /// </summary>
+    internal static Element Disclosures(
+        IReadOnlyList<ChatMarkdownPart> parts, Func<string, bool, Element> renderMarkdown,
+        bool compactSecondaryReading = false)
+    {
+        if (parts is [ChatMarkdownText markdown])
+            return renderMarkdown(markdown.Text, true);
+        // A disclosure and the Markdown around it share the message's block rhythm.
+        return VStack(BlockRhythm(compactSecondaryReading), parts.Select((part, index) => part switch
+        {
+            ChatMarkdownText text => renderMarkdown(text.Text, index == 0),
+            ChatMarkdownDisclosure disclosure =>
+                Component<ChatMarkdownDisclosureView, ChatMarkdownDisclosureProps>(
+                    new(disclosure, renderMarkdown, compactSecondaryReading)).WithKey($"disclosure:{index}"),
+            _ => throw new InvalidOperationException("Unknown chat Markdown part."),
+        }).ToArray());
+    }
+
+    // Compact thinking text keeps its tighter pre-web rhythm.
+    private static double BlockRhythm(bool compactSecondaryReading) =>
+        compactSecondaryReading ? ChatVisuals.BlockGap : ChatVisuals.MessageBlockGap;
+
+    /// <summary>
+    /// Only direct message blocks share rhythm; list and quote interiors remain untouched.
+    /// Markdown that follows a disclosure does not lead the message, so a heading that opens it
+    /// keeps its lead-in.
+    /// </summary>
+    internal static Element MessageBlocks(Element element, bool compactSecondaryReading = false, bool leading = true) =>
         element is StackElement stack
             ? stack with
             {
-                // Compact thinking text keeps its tighter pre-web rhythm.
-                Spacing = compactSecondaryReading ? ChatVisuals.BlockGap : ChatVisuals.MessageBlockGap,
+                Spacing = BlockRhythm(compactSecondaryReading),
                 Children = stack.Children
-                    .Select((child, index) => ResetBlockEdges(child, index == 0 || compactSecondaryReading))
+                    .Select((child, index) => ResetBlockEdges(child, (leading && index == 0) || compactSecondaryReading))
                     .ToArray(),
             }
             : element;
@@ -461,5 +489,26 @@ internal static class ChatMarkdownPresentation
     {
         var value = LocalizationHelper.GetString(key);
         return string.IsNullOrWhiteSpace(value) || value == key ? fallback : value;
+    }
+}
+
+internal sealed record ChatMarkdownDisclosureProps(
+    ChatMarkdownDisclosure Disclosure, Func<string, bool, Element> RenderMarkdown, bool CompactSecondaryReading);
+
+internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclosureProps>
+{
+    public override Element Render()
+    {
+        var disclosure = Props.Disclosure;
+        var (expanded, setExpanded) = UseState(disclosure.InitiallyExpanded);
+        return Expander(
+                disclosure.Summary,
+                ChatMarkdownPresentation.Disclosures(
+                    disclosure.Body, Props.RenderMarkdown, Props.CompactSecondaryReading),
+                expanded,
+                setExpanded)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationName(disclosure.Summary);
     }
 }

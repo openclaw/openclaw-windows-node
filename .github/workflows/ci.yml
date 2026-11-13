@@ -224,6 +224,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-reactor-packages.ps1
 
+    - name: Validate UI profile isolation behavior
+      shell: pwsh
+      run: ./scripts/test-ci-ui-profile.ps1
+
     - name: Validate MSIX CI artifacts
       shell: pwsh
       run: ./scripts/test-msix-ci-artifacts.ps1
@@ -698,16 +702,22 @@ jobs:
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
-      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
-      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
-      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - name: Configure isolated UI product roots
+      shell: pwsh
+      run: |
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Set-CiUiTestEnvironment.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline UI environment helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Set-CiUiTestEnvironment.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -RepoRoot $env:GITHUB_WORKSPACE -EnvironmentFile $env:GITHUB_ENV
 
     - *promotion-version-tag
 
@@ -807,7 +817,7 @@ jobs:
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&FullyQualifiedName!~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.&FullyQualifiedName!~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests."
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&Category!=NativeMarkdownProof&FullyQualifiedName!~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.&FullyQualifiedName!~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests."
         -HangTimeoutSeconds 300
         -CollectNativeFailureMetadata
         -CaptureHostExit
@@ -879,6 +889,23 @@ jobs:
         -AnimationPreference Disabled
         -RequireAllTestsPassed
         -HangTimeoutSeconds 120
+
+    # Native Expander templates cannot safely outlive theme resource replacement in the
+    # shared WinUI testhost, so the disclosure proofs (Light + link/content policy) run in their
+    # own process. Dark and HighContrast are screenshot-only (OPENCLAW_VISUAL_TEST=1).
+    # A promoted alpha that predates these proofs has none to run; ordinary CI always runs them,
+    # including after earlier UI test failures, and the proof runner fails on zero tests.
+    - name: Run native Markdown disclosure proofs
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' && (inputs.promotion_alpha == '' || hashFiles('tests/OpenClaw.Tray.UITests/ReactorMarkdownDisclosureProofTests.cs') != '') }}
+      timeout-minutes: 10
+      shell: pwsh
+      run: |
+        ./scripts/run-proof-tests.ps1 `
+          -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' `
+          -Filter 'Category=NativeMarkdownProof' `
+          -ResultName markdown-disclosure `
+          -RuntimeIdentifier win-x64 `
+          -ResultsDirectory TestResults\Markdown
 
     # Accessibility Insights CI pass: scans each page in the real app process.
     - name: Run Accessibility Tests (Axe.Windows)
@@ -954,16 +981,22 @@ jobs:
     runs-on: windows-latest
     env:
       OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
-      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
-      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
-      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local
     steps:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
+
+    - name: Configure isolated UI product roots
+      shell: pwsh
+      run: |
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Set-CiUiTestEnvironment.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline UI environment helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Set-CiUiTestEnvironment.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -RepoRoot $env:GITHUB_WORKSPACE -EnvironmentFile $env:GITHUB_ENV
 
     - *promotion-version-tag
 
@@ -1040,7 +1073,7 @@ jobs:
         -ResultsDirectory TestResults\TrayUIShard
         -TrxFileName OpenClaw.Tray.UITests.Shard.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&(FullyQualifiedName~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.|FullyQualifiedName~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests.)"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&Category!=NativeMarkdownProof&(FullyQualifiedName~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.|FullyQualifiedName~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests.)"
         -HangTimeoutSeconds 300
         -CollectNativeFailureMetadata
         -CaptureHostExit

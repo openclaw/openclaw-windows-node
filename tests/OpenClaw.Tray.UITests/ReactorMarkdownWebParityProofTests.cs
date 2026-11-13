@@ -2,6 +2,8 @@
 // Run with --filter FullyQualifiedName~ReactorMarkdownWebParityProofTests.
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -142,6 +144,22 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 Assert.Equal(TextAlignment.Right, bullet.TextAlignment);
                 Assert.Equal(ChatVisuals.ListMarkerColumn, bullet.MinWidth);
 
+                // Numbers take the prose tone in the same column, and both lists keep the web's item gap.
+                var numberRow = Assert.IsType<Grid>(VisualTreeHelper.GetParent(listItem));
+                var number = Assert.IsType<TextBlock>(numberRow.Children[0]);
+                Assert.Equal("1.", number.Text.TrimEnd());
+                Assert.Same(Application.Current.Resources["ChatSecondaryTextStyle"], number.Style);
+                Assert.Equal(TextAlignment.Right, number.TextAlignment);
+                Assert.Equal(ChatVisuals.ListMarkerColumn, number.MinWidth);
+                Assert.Equal(ChatVisuals.ListItemGap, Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(numberRow)).Spacing);
+                var bulletRow = Assert.IsType<Grid>(VisualTreeHelper.GetParent(tightItem));
+                Assert.Equal(ChatVisuals.ListItemGap, Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(bulletRow)).Spacing);
+
+                // A thematic break is a 1-pixel themed divider that screen readers skip.
+                var divider = Assert.Single(FindDescendants<Border>(root!), border => border.Height == 1);
+                Assert.IsType<SolidColorBrush>(divider.Background);
+                Assert.Equal(AccessibilityView.Raw, AutomationProperties.GetAccessibilityView(divider));
+
                 // Re-rendering unchanged Markdown keeps Reactor's code paragraph, the user's
                 // selection and the syntax colors.
                 var paragraph = code.Blocks[0];
@@ -165,16 +183,17 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
             });
 
             // A High Contrast transition (which need not change ActualTheme) drops and then
-            // restores syntax, bold and inline-code highlighters on mounted Markdown.
-            var probe = ChatMarkdownPresentation.IsHighContrast;
+            // restores syntax, bold and inline-code highlighters on mounted Markdown. Drive the
+            // shared owner directly so a private Markdown contrast path cannot pass this proof.
+            var probe = ChatThemeChanges.IsHighContrast;
             try
             {
-                ChatMarkdownPresentation.IsHighContrast = static () => true;
-                ChatMarkdownPresentation.RefreshAfterContrastChange();
+                ChatThemeChanges.IsHighContrast = static () => true;
+                ChatThemeChanges.Refresh();
                 Assert.True(await PollAsync(() => FindDescendants<RichTextBlock>(root!).All(text => text.TextHighlighters.Count == 0)),
                     "High Contrast clears chat highlighters");
-                ChatMarkdownPresentation.IsHighContrast = static () => false;
-                ChatMarkdownPresentation.RefreshAfterContrastChange();
+                ChatThemeChanges.IsHighContrast = static () => false;
+                ChatThemeChanges.Refresh();
                 Assert.True(await PollAsync(() =>
                         FindDescendants<RichTextBlock>(root!).Any(text => Text(text) == TypeScript && text.TextHighlighters.Count > 0) &&
                         FindDescendants<RichTextBlock>(root!).Any(text =>
@@ -183,7 +202,7 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
             }
             finally
             {
-                ChatMarkdownPresentation.IsHighContrast = probe;
+                ChatThemeChanges.IsHighContrast = probe;
             }
 
             // Unmounting returns the code control to Reactor's pool without our highlighters.

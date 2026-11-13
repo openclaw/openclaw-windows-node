@@ -5,21 +5,6 @@ namespace OpenClaw.Tray.Tests;
 public sealed class CiNugetCacheWorkflowTests
 {
     [Fact]
-    public void UiLane_IsolatesEveryProductRootAndSeparatesNativeOnboardingProof()
-    {
-        var job = ExtractJob(ReadWorkflow(), "ui-tests", "build-msix");
-        Assert.Contains(@"OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests", job);
-        Assert.Contains(@"OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming", job);
-        Assert.Contains(@"OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local", job);
-        Assert.Contains("OPENCLAW_REPO_ROOT: ${{ github.workspace }}", job);
-        // The ordinary suite is split across ui-tests and tray-ui-shard; both keep the lane exclusions.
-        Assert.Equal(2, CountOccurrences(job, "-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&"));
-        Assert.Contains("-Filter \"Category=AnimationPreferenceEnabled\"", job);
-        Assert.Contains("-Filter \"FullyQualifiedName~PageHeroAnimationsDisabledTests\"", job);
-        Assert.DoesNotContain("FullyQualifiedName!~Onboarding", job);
-    }
-
-    [Fact]
     public void UiLane_RunsSteadyResourceAutomationsProofUnderTheProductionProfile()
     {
         var job = ExtractJob(ReadWorkflow(), "ui-tests", "build-msix");

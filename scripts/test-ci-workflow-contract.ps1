@@ -699,7 +699,7 @@ $trayUiShardStep = Get-StepBlock -Text $trayUiShardJob -Name "Run Tray UI Tests"
 # The ordinary Tray UI suite runs as two parallel shards. Both start with the same lane
 # exclusions; ui-tests negates exactly the classes tray-ui-shard selects, so the union is
 # the unsharded suite with no test run twice.
-$trayUiBaseFilter = 'Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled'
+$trayUiBaseFilter = 'Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&Category!=NativeMarkdownProof'
 function Get-StepTestFilter {
     param([Parameter(Mandatory)][string]$Step)
     $filterMatches = [regex]::Matches($Step, '-Filter "(?<filter>[^"]+)"')
@@ -712,7 +712,7 @@ $shardFilter = Get-StepTestFilter $trayUiShardStep
 if (-not $primaryFilter.StartsWith("$trayUiBaseFilter&", [StringComparison]::Ordinal) -or
     -not $shardFilter.StartsWith("$trayUiBaseFilter&(", [StringComparison]::Ordinal) -or
     -not $shardFilter.EndsWith(')', [StringComparison]::Ordinal)) {
-    throw "Tray UI shards must both exclude cases owned by the accessibility, native-onboarding, Gateway fixture and animation-preference lanes."
+    throw "Tray UI shards must both exclude cases owned by the accessibility, native-onboarding, Gateway fixture, production-resource, animation-preference and native-Markdown proof lanes."
 }
 $excludedClasses = @($primaryFilter.Substring($trayUiBaseFilter.Length + 1).Split('&') | ForEach-Object {
         if ($_ -notmatch '^FullyQualifiedName!~(?<prefix>.+)$' -or $Matches.prefix -notmatch $shardClassPattern) {
@@ -775,11 +775,32 @@ foreach ($token in @(
 }
 Assert-Contains -Text $workflow -Expected './scripts/test-native-animation-preference.ps1' `
     -Message 'Native animation prerequisite failures and restoration must be tested.'
+$markdownProofStep = Get-StepBlock -Text $uiJob -Name "Run native Markdown disclosure proofs"
+Assert-Contains -Text $markdownProofStep -Expected "-Filter 'Category=NativeMarkdownProof'" `
+    -Message "Native Markdown disclosure proofs must run as one isolated run-proof-tests.ps1 invocation."
+Assert-NotContains -Text $markdownProofStep -Unexpected "foreach" `
+    -Message "Native Markdown disclosure proofs must not fan out per theme; Dark and HighContrast are screenshot-only."
+Assert-Contains -Text $markdownProofStep -Expected "      if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' && (inputs.promotion_alpha == '' || hashFiles('tests/OpenClaw.Tray.UITests/ReactorMarkdownDisclosureProofTests.cs') != '') }}" `
+    -Message "Native Markdown disclosure proofs must run after earlier UI test failures and always outside release promotion; a promotion may skip them only when the candidate has none."
 foreach ($shard in @(
         @{ Name = 'ui-tests'; Job = $uiJob; Step = $trayUiStep; Trx = 'OpenClaw.Tray.UITests.trx' },
         @{ Name = 'tray-ui-shard'; Job = $trayUiShardJob; Step = $trayUiShardStep; Trx = 'OpenClaw.Tray.UITests.Shard.trx' })) {
     $trayUiJob = $shard.Job
     $shardStep = $shard.Step
+    # Each shard binds its isolated product roots through the pipeline-owned exporter, before
+    # anything builds or runs; test-ci-ui-profile.ps1 executes that step.
+    $rootsStep = Get-StepBlock -Text $trayUiJob -Name "Configure isolated UI product roots"
+    Assert-Contains -Text $rootsStep -Expected 'git show "${env:GITHUB_SHA}:scripts/Set-CiUiTestEnvironment.ps1"' `
+        -Message "Tray UI shard '$($shard.Name)' must load its UI root exporter from the pipeline revision."
+    if ($trayUiJob.IndexOf('name: Configure isolated UI product roots', [StringComparison]::Ordinal) -gt
+        $trayUiJob.IndexOf('name: Setup .NET 10', [StringComparison]::Ordinal)) {
+        throw "Tray UI shard '$($shard.Name)' must bind its isolated roots before it builds."
+    }
+    $jobHeader = $trayUiJob.Substring(0, $trayUiJob.IndexOf('    steps:', [StringComparison]::Ordinal))
+    foreach ($inlineRoot in @('OPENCLAW_REPO_ROOT:', 'OPENCLAW_TRAY_DATA_DIR:', 'OPENCLAW_TRAY_APPDATA_DIR:', 'OPENCLAW_TRAY_LOCALAPPDATA_DIR:')) {
+        Assert-NotContains -Text $jobHeader -Unexpected $inlineRoot `
+            -Message "Tray UI shard '$($shard.Name)' must take '$inlineRoot' from the pipeline exporter, not a job-level binding."
+    }
     Assert-Contains -Text $shardStep -Expected "timeout-minutes: 25" `
         -Message "Tray UI tests in '$($shard.Name)' must have an outer timeout with headroom over their shard runtime rather than consuming the six-hour job limit."
     Assert-Contains -Text $shardStep -Expected "-HangTimeoutSeconds 300" `
