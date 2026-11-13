@@ -47,6 +47,7 @@ internal sealed partial class SettingsShellView : UserControl
     private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
     private AppNotificationService? _appNotificationService;
     private readonly AppNotificationInfoBarPresenter _appNotificationInfoBarPresenter = new();
+    private readonly KeyedMenuRows _agentNavRows = new();
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
     private AppNotificationInfoBarPresentation _currentAppNotificationPresentation =
         AppNotificationInfoBarPresentation.Hidden;
@@ -735,22 +736,27 @@ internal sealed partial class SettingsShellView : UserControl
         if (!data.TryGetProperty("agents", out var agentsEl) ||
             agentsEl.ValueKind != System.Text.Json.JsonValueKind.Array) return;
 
-        AgentsNavItem.MenuItems.Clear();
-
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal);
+        var ids = new List<string>();
         foreach (var agent in agentsEl.EnumerateArray())
         {
             var id = agent.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
-            if (string.IsNullOrEmpty(id)) continue;
+            if (string.IsNullOrEmpty(id) || labels.ContainsKey(id)) continue;
             var name = agent.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
+            labels[id] = name ?? id;
+            ids.Add(id);
+        }
 
-            var agentItem = new NavigationViewItem
-            {
-                Content = name ?? id,
-                Tag = $"agent:{id}",
-                Icon = BuildAgentItemIcon()
-            };
-
-            AgentsNavItem.MenuItems.Add(agentItem);
+        // Each agents.list response rebuilds this menu. Replacing its rows lets WinUI call into collected
+        // items when the pane later changes (see KeyedMenuRows), so rows are reused in place.
+        _agentNavRows.Adopt("main", DefaultAgentNavItem);
+        var rows = _agentNavRows.Sync(AgentsNavItem.MenuItems, 0, ids,
+            id => new NavigationViewItem { Tag = $"agent:{id}", Icon = BuildAgentItemIcon() });
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var row = (NavigationViewItem)rows[i];
+            if (!Equals(row.Content, labels[ids[i]]))
+                row.Content = labels[ids[i]];
         }
     }
 

@@ -32,7 +32,8 @@ internal sealed record ReactorChatComposerViewProps(
     ChatComposerSession Session,
     ChatComposerInputs Inputs,
     ChatDataSnapshot InputSnapshot,
-    Action OnSendRequested);
+    Action OnSendRequested,
+    bool Compact = false);
 
 /// <summary>
 /// Declarative Reactor view for the composer. It owns control construction, popup/
@@ -69,6 +70,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
         var controllerRef = UseRef(controller);
         controllerRef.Current = controller;
+        var (attachmentFocus, setAttachmentFocus) = UseState<ChatAttachmentFocusRequest?>(null);
+        var attachmentFocusToken = UseRef(0L);
         var viewModelRef = UseRef(vm);
         viewModelRef.Current = vm;
         // TextBox raises TextChanged after the edit, but Reactor corrects any
@@ -336,24 +339,72 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
         }
 
-        var attachmentRows = vm.PendingAttachments
-            .Select(attachment =>
-                (Element)Border(Grid(
-                    [GridSize.Auto, GridSize.Star(), GridSize.Auto],
-                    [GridSize.Auto],
-                    TextBlock(FluentIconCatalog.Document).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                        .FontSize(16).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center)
-                        .Set(text => text.IsTextScaleFactorEnabled = false).Grid(column: 0),
-                    TextBlock(attachment.FileName).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis)
-                        .Foreground(Theme.Ref("ChatTextBrush"))
-                        .ToolTip(attachment.FileName).VAlign(VerticalAlignment.Center).Grid(column: 1),
-                    IconButton(FluentIconCatalog.Exit,
-                        Localized("Chat_Attachment_Remove", "Remove attachment"),
-                        () => controller.RemoveAttachment(attachment)).Grid(column: 2)))
-                    .Padding(8, 4).CornerRadius(8)
-                    .Width(Math.Min(240, Math.Max(128, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 32)))
-                    .MinHeight(56).Margin(4)
-                    .Background(Theme.Ref("ChatCardBrush")))
+        // The row's real width: the composer's prose insets, its 1px border on each side and the
+        // reserved scroll-bar gutter. No floor, so a long pill never overflows a very narrow row.
+        var attachmentChipMaxWidth = Math.Min(ChatVisuals.AttachmentChipMaxWidth,
+            Math.Max(0, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 2 * ChatVisuals.ProseInset
+                - 2 - ChatVisuals.AttachmentRailScrollBarInset));
+        // Images render as tiles on their own row above the file pills, so visual and focus order is
+        // images first, then files, each in attach order.
+        static IReadOnlyList<ChatAttachment> RailOrder(IReadOnlyList<ChatAttachment> attachments) =>
+            attachments.Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is not null)
+                .Concat(attachments.Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is null))
+                .ToArray();
+        void RemoveAttachment(ChatAttachment attachment, FocusState focusState)
+        {
+            // Read the live list: the view model replaces it on every removal, so a list captured
+            // at render time is stale when two removals happen before the next render. Keyed chips
+            // unmount the focused button, so keyboard and pointer focus move on deliberately.
+            var current = RailOrder(vm.PendingAttachments);
+            var index = -1;
+            for (var candidate = 0; candidate < current.Count; candidate++)
+            {
+                if (ReferenceEquals(current[candidate], attachment))
+                {
+                    index = candidate;
+                    break;
+                }
+            }
+            var successor = index < 0 ? null
+                : index + 1 < current.Count ? current[index + 1]
+                : index > 0 ? current[index - 1]
+                : null;
+            controller.RemoveAttachment(attachment);
+            if (focusState == FocusState.Unfocused)
+                return;
+            if (successor is not null)
+                setAttachmentFocus(new(ChatAttachmentChip.KeyFor(successor), ++attachmentFocusToken.Current, focusState));
+            else
+                inputControl.Current?.Focus(focusState);
+        }
+        Element AttachmentChip(ChatAttachment attachment, ImageBrush? thumbnail)
+        {
+            var key = ChatAttachmentChip.KeyFor(attachment);
+            var removeLabel = string.IsNullOrWhiteSpace(attachment.FileName)
+                ? Localized("Chat_Attachment_Remove", "Remove attachment")
+                : string.Format(CultureInfo.CurrentCulture,
+                    Localized("Chat_Attachment_RemoveNamedFormat", "Remove attachment {0}"),
+                    attachment.FileName);
+            return Component<ChatAttachmentChip, ChatAttachmentChipProps>(new(
+                    attachment.FileName,
+                    removeLabel,
+                    focusState => RemoveAttachment(attachment, focusState),
+                    attachmentChipMaxWidth,
+                    attachmentFocus?.Key == key ? attachmentFocus : null,
+                    thumbnail))
+                // Flex rows shrink children by default, which trims names inside a too-narrow pill.
+                .Flex(grow: 0, shrink: 0)
+                .WithKey(key);
+        }
+        var pendingAttachments = vm.PendingAttachments;
+        var imageTiles = pendingAttachments
+            .Select(attachment => (attachment, thumbnail: ChatAttachmentChip.ThumbnailFor(attachment)))
+            .Where(item => item.thumbnail is not null)
+            .Select(item => AttachmentChip(item.attachment, item.thumbnail))
+            .ToArray();
+        var filePills = pendingAttachments
+            .Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is null)
+            .Select(attachment => AttachmentChip(attachment, null))
             .ToArray();
         var audioLevel = Math.Clamp(vm.VoiceAudioLevel, 0f, 1f);
         var voiceFeedbackText = string.IsNullOrWhiteSpace(vm.VoiceTranscript)
@@ -540,9 +591,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 Send();
             })
             .TextWrapping(TextWrapping.Wrap)
-            .MinHeight(44)
+            .MinHeight(props.Compact ? 32 : 44)
             .MaxHeight(200)
-            .Padding(0)
+            .Padding(props.Compact ? new Thickness(0, 4, 0, 0) : new Thickness(0))
             .IsEnabled(inputs.ConnectionState == "connected")
             .BorderThickness(0)
             .BorderBrush(transparentInputBrush)
@@ -586,7 +637,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         UseEffect((Func<Action>)(() =>
         {
             if (inputControl.Current is { } anchor)
-                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible);
+                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible, windowed: props.Compact);
             else
                 CloseSlashPopup(slashPopup);
             return static () => { };
@@ -816,31 +867,64 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .AutomationId("ChatPlacementProgress")
                 .LiveRegion(AutomationLiveSetting.Polite));
-        if (attachmentRows.Length > 0)
-            composerChildren.Add(ScrollViewer(HStack(8, attachmentRows))
+        if (imageTiles.Length + filePills.Length > 0)
+        {
+            Element WrapRow(Element[] children, string key) => children.Length == 0
+                ? Empty().WithKey(key)
+                : (FlexRow(children) with
+                {
+                    Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
+                    ColumnGap = ChatVisuals.AttachmentChipGap,
+                    RowGap = ChatVisuals.AttachmentChipGap,
+                }).WithKey(key);
+            // Image tiles wrap on their own row above the file pills, and both grow the composer. The
+            // cap allows one row of tiles plus four pill rows before the rail scrolls vertically.
+            var railMaxHeight = ChatVisuals.AttachmentRailMaxHeight + (imageTiles.Length > 0
+                ? ChatVisuals.AttachmentThumbnailCell + (filePills.Length > 0 ? ChatVisuals.AttachmentRailRowGap : 0)
+                : 0);
+            composerChildren.Add(ScrollViewer(Border(VStack(
+                        imageTiles.Length > 0 && filePills.Length > 0 ? ChatVisuals.AttachmentRailRowGap : 0,
+                        WrapRow(imageTiles, "attachment-images"),
+                        WrapRow(filePills, "attachment-files")))
+                    // Vertical room keeps focus visuals inside the clipped scroller. The trailing gutter is
+                    // always reserved: toggling it with overflow could keep its own overflow alive.
+                    .Padding(0, 3, ChatVisuals.AttachmentRailScrollBarInset, 3))
+                .MaxHeight(railMaxHeight)
                 .AutomationId("ChatAttachmentRail")
                 .Set(scroll =>
                 {
-                    scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-                    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
-                    scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
+                    scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
                 }));
+        }
         // Status and attachment rows can be inserted before this stable editor/toolbar tail.
-        composerChildren.Add(input.WithKey("chat-composer-input"));
-        composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        if (props.Compact)
+            composerChildren.Add(Grid(
+                [GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto],
+                attachButton.VAlign(VerticalAlignment.Bottom).Grid(column: 0),
+                input.WithKey("chat-composer-input").Margin(8, 0).Grid(column: 1),
+                voiceButton.VAlign(VerticalAlignment.Bottom).Grid(column: 2),
+                primaryAction.VAlign(VerticalAlignment.Bottom).Margin(4, 0, 0, 0).Grid(column: 3)));
+        else
+        {
+            composerChildren.Add(input.WithKey("chat-composer-input"));
+            composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        }
 
         var writingSurface = Border(
             VStack(ChatVisuals.CompactGap, composerChildren.ToArray())
-            .Padding(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset))
+            .Padding(props.Compact ? new Thickness(8) : new Thickness(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset, ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset)))
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
-            .MinHeight(ChatVisuals.ComposerMinHeight)
+            .MinHeight(props.Compact ? 50 : ChatVisuals.ComposerMinHeight)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId("ChatWritingSurface");
         var surfaces = new List<Element>();
-        surfaces.Add(inputs.ShowPlacementPickers
+        if (!props.Compact)
+            surfaces.Add(inputs.ShowPlacementPickers
             ? ReactorChatWelcome.Header(agent, viewportWidth)
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)
@@ -868,15 +952,17 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .MaxWidth(480).HAlign(HorizontalAlignment.Left)
                 .AutomationId("ChatPlacementPickers"));
         }
-        else
+        else if (!props.Compact)
         {
             surfaces.Add(Empty());
         }
         surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
         return Border(VStack(8, surfaces.ToArray())
                 .MaxWidth(ChatVisuals.ReadingWidth)
-                .Margin(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap,
-                    ChatVisuals.Gutter(viewportWidth), ChatVisuals.ComposerBottomInset)
+                .Margin(props.Compact
+                    ? new Thickness(0)
+                    : new Thickness(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap,
+                        ChatVisuals.Gutter(viewportWidth), ChatVisuals.ComposerBottomInset))
                 .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
@@ -905,15 +991,18 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Ref<Microsoft.UI.Xaml.Controls.Primitives.Popup?> popupRef,
         TextBox anchor,
         FrameworkElement? content,
-        bool visible)
+        bool visible,
+        bool windowed)
     {
         var popup = popupRef.Current;
         if (popup is null)
         {
+            // The desktop lobster's host window is click-through and clipped to the mascot,
+            // so its quick chat needs a windowed popup that can leave those bounds.
             popup = new Microsoft.UI.Xaml.Controls.Primitives.Popup
             {
                 IsLightDismissEnabled = false,
-                ShouldConstrainToRootBounds = true,
+                ShouldConstrainToRootBounds = !windowed,
             };
             popupRef.Current = popup;
         }

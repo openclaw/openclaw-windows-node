@@ -70,6 +70,8 @@ public interface ISettingsEditor
     bool GlobalHotkeyEnabled { set; }
     bool UseLegacyWebChat { set; }
     bool ShowNotifications { set; }
+    bool ShowDesktopCompanion { set; }
+    int DesktopCompanionScalePercent { set; }
     string NotificationSound { set; }
     string AppTheme { set; }
 
@@ -127,6 +129,8 @@ public sealed record SettingsSnapshot
         GlobalHotkeyEnabled = data.GlobalHotkeyEnabled,
         UseLegacyWebChat = data.UseLegacyWebChat,
         ShowNotifications = data.ShowNotifications,
+        ShowDesktopCompanion = data.ShowDesktopCompanion,
+        DesktopCompanionScalePercent = OpenClaw.Shared.DesktopCompanionScale.Normalize(data.DesktopCompanionScalePercent),
         NotificationSound = data.NotificationSound ?? "Default",
         AppTheme = SettingsManager.NormalizeAppTheme(data.AppTheme),
         ShowDiagnosticsEffective = data.ShowDiagnostics ?? Helpers.DiagnosticsGate.BuildDefault,
@@ -172,6 +176,8 @@ public sealed record SettingsSnapshot
     public bool GlobalHotkeyEnabled { get; init; }
     public bool UseLegacyWebChat { get; init; }
     public bool ShowNotifications { get; init; }
+    public bool ShowDesktopCompanion { get; init; }
+    public int DesktopCompanionScalePercent { get; init; } = OpenClaw.Shared.DesktopCompanionScale.DefaultPercent;
     public string NotificationSound { get; init; } = "Default";
     public string AppTheme { get; init; } = "System";
 

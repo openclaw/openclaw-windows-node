@@ -17,6 +17,19 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>Desktop lobster</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>Keep an animated lobster on your desktop. Notification text appears in speech bubbles, even when OpenClaw is in the background. Drag to move; right-click for options.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw desktop lobster</value></data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>Quick chat</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>Quick reply</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>Chat could not open. Try again.</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Dismiss bubble</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Open notifications</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>Open OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Lobster size</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Resize the lobster without changing chat or notification text.</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Desktop lobster settings</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>The desktop lobster could not be shown. Turn Desktop lobster off and on again in Settings to retry. Your notifications are still available in OpenClaw.</value></data>
   <!-- ==================== SettingsWindow.xaml ==================== -->
   <!-- Section headers -->
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
@@ -6337,6 +6350,7 @@ Open Channels in the web dashboard.</value>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Add model provider...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>Remove attachment {0}</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>

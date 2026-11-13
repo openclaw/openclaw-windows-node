@@ -5,6 +5,7 @@ using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
 using OpenClaw.SetupEngine.UI.Pages;
@@ -383,22 +384,122 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
         });
     }
 
+    // CI flake (NodeModeCard clipped): scrolling to the card brought the fine-tune expander's end into
+    // view, which grew it by about 175 DIP and pushed the card below the viewport after the measured scroll.
+    [Fact]
+    public async Task SettledCapabilityScroll_FollowsExtentGrowthCausedByTheScroll()
+    {
+        OnboardingNativeProof.AssertIsolatedRoots();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var target = new SettingsCard { Header = "Node mode", Height = 61 };
+            var lazy = new Border { Height = 400 };
+            var content = new StackPanel();
+            content.Children.Add(lazy);
+            content.Children.Add(new Border { Height = 400 });
+            content.Children.Add(target);
+            content.Children.Add(new Border { Height = 200 });
+            var scroll = new ScrollViewer { Content = content };
+            var root = new Grid { Width = 600, Height = 299 };
+            root.Children.Add(scroll);
+            var grown = false;
+            // Like a virtualized section realizing its end: the first view near the bottom grows content
+            // above the target after the scroll has already landed.
+            scroll.ViewChanged += (_, args) =>
+            {
+                if (grown || args.IsIntermediate || scroll.VerticalOffset < 300) return;
+                grown = true;
+                lazy.Height += 175;
+            };
+            var window = OnboardingNativeProof.CreateWindow(() => new Window { Content = root });
+            try
+            {
+                window.AppWindow.Resize(new(800, 500));
+                window.Activate();
+                window.AppWindow.Move(new(-32000, -32000));
+                await TestSupport.WaitForRenderedConditionAsync(() => target.IsLoaded, "growth regression loaded");
+                root.UpdateLayout();
+                await OnboardingNativeProof.NextCompositionAsync();
+
+                await ScrollMeasuredTargetIntoViewportAsync(target, scroll, ui);
+
+                Assert.True(grown, "The scroll must have triggered the late growth above the target.");
+                OnboardingNativeProof.AssertFullyVisible(target, scroll);
+            }
+            finally
+            {
+                window.Close();
+                await ui.YieldToRenderAsync();
+            }
+        });
+    }
+
+    /// <summary>
+    /// Scrolls the target to the middle of the viewport and waits until it stays there. Scrolling can
+    /// realize content above the target (the fine-tune expander grows by about 175 DIP when its end comes
+    /// into view), so a single measured scroll can land on a stale position. The target position is
+    /// measured on each check. When the target is outside the viewport and the previous scroll has
+    /// completed, the scroll is aimed at the target's new position. The helper finishes when the scroll
+    /// has reported completion, the extent and offset have not changed across a composed frame, and either
+    /// the target is inside the viewport (the same physical-edge rule as AssertFullyVisible) or the scroll
+    /// already sits at the target's position, so the caller's assertion reports any real clipping.
+    /// </summary>
     private static async Task ScrollMeasuredTargetIntoViewportAsync(
         FrameworkElement target, ScrollViewer scroll, UIThreadFixture ui)
     {
         var root = Assert.IsAssignableFrom<FrameworkElement>(scroll.XamlRoot.Content);
-        root.UpdateLayout();
-        var bounds = target.TransformToVisual(scroll).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
-        var offset = Math.Clamp(scroll.VerticalOffset + bounds.Top +
-            (bounds.Height - scroll.ViewportHeight) / 2, 0, scroll.ScrollableHeight);
-        scroll.ChangeView(null, offset, null, disableAnimation: true);
-        await TestSupport.WaitForRenderedConditionAsync(
-            () => Math.Abs(scroll.VerticalOffset - offset) < 1, "measured capability scroll");
+        var frame = 0;
+        var viewChangeDone = true;
+        (double Extent, double Offset, int Frame)? stable = null;
+        double? requestedOffset = null;
+        Windows.Foundation.Rect bounds = default;
+        void CountFrame(object? sender, object args) => frame++;
+        void ViewChanged(object? sender, ScrollViewerViewChangedEventArgs args)
+        {
+            if (!args.IsIntermediate) viewChangeDone = true;
+        }
+        CompositionTarget.Rendering += CountFrame;
+        scroll.ViewChanged += ViewChanged;
+        try
+        {
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+            {
+                root.UpdateLayout();
+                bounds = target.TransformToVisual(scroll).TransformBounds(new(0, 0, target.ActualWidth, target.ActualHeight));
+                var inside = NativeProofLayout.ContainsPhysicalEdges((bounds.Left, 0, bounds.Right, scroll.ViewportHeight),
+                    (bounds.Left, bounds.Top, bounds.Right, bounds.Bottom), scroll.XamlRoot.RasterizationScale);
+                var state = (scroll.ScrollableHeight, scroll.VerticalOffset);
+                if (stable is not { } last || Math.Abs(last.Extent - state.ScrollableHeight) >= 0.5 ||
+                    Math.Abs(last.Offset - state.VerticalOffset) >= 0.5)
+                    stable = (state.ScrollableHeight, state.VerticalOffset, frame);
+                if (inside)
+                    return viewChangeDone && frame > stable.Value.Frame;
+                if (!viewChangeDone)
+                    return false;
+                var offset = Math.Clamp(scroll.VerticalOffset + bounds.Top +
+                    (bounds.Height - scroll.ViewportHeight) / 2, 0, scroll.ScrollableHeight);
+                var scale = scroll.XamlRoot.RasterizationScale;
+                if (NativeProofLayout.PhysicalEdge(offset, scale) == NativeProofLayout.PhysicalEdge(scroll.VerticalOffset, scale))
+                    // Already at the target's position and settled: stop and let AssertFullyVisible report real
+                    // clipping with its geometry instead of timing out.
+                    return frame > stable.Value.Frame;
+                requestedOffset = offset;
+                // A refused ChangeView raises no final ViewChanged.
+                viewChangeDone = !scroll.ChangeView(null, offset, null, disableAnimation: true);
+                return false;
+            }, "measured capability scroll settles with the target inside the viewport",
+                () => $"target={bounds}; viewport={scroll.ViewportHeight}; offset={scroll.VerticalOffset}; " +
+                    $"requested={requestedOffset}; scrollable={scroll.ScrollableHeight}; viewChangeDone={viewChangeDone}");
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= CountFrame;
+            scroll.ViewChanged -= ViewChanged;
+        }
         await ui.YieldToRenderAsync();
         await OnboardingNativeProof.NextCompositionAsync();
         root.UpdateLayout();
     }
-
     private static async Task SaveCapabilitiesAsync(SetupWindow window, CapabilitiesPage page, UIThreadFixture ui,
         ITestOutputHelper output, string name)
     {

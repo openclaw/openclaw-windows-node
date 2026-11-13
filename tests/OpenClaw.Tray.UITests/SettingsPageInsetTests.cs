@@ -1,6 +1,11 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Controls;
+using OpenClawTray.Pages;
 using OpenClawTray.Presentation;
 
 namespace OpenClaw.Tray.UITests;
@@ -9,6 +14,60 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class SettingsPageInsetTests(UIThreadFixture ui)
 {
+    [Fact]
+    public async Task DesktopLobster_HasNamedDisclosureAndIndependentToggleWithNoneditableSizePicker()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(() =>
+        {
+            using var resources = new ChatThemeProofScope("Light");
+            var page = new SettingsPage();
+            ui.Container.Children.Add(page);
+            try
+            {
+                ui.Container.UpdateLayout();
+                var card = Assert.IsType<SettingsExpander>(page.FindName("DesktopCompanionExpander"));
+                var disclosure = Assert.Single(Descendants(card).OfType<Expander>());
+                var peer = FrameworkElementAutomationPeer.CreatePeerForElement(disclosure);
+                Assert.Equal("Desktop lobster", peer.GetName());
+                var expansion = Assert.IsAssignableFrom<IExpandCollapseProvider>(
+                    peer.GetPattern(PatternInterface.ExpandCollapse));
+                Assert.False(card.IsExpanded);
+                expansion.Expand();
+                Assert.True(card.IsExpanded);
+
+                var toggle = Assert.IsType<ToggleSwitch>(card.Content);
+                var togglePeer = FrameworkElementAutomationPeer.CreatePeerForElement(toggle);
+                var toggling = Assert.IsAssignableFrom<IToggleProvider>(
+                    togglePeer.GetPattern(PatternInterface.Toggle));
+                toggling.Toggle();
+                Assert.True(toggle.IsOn);
+                Assert.True(card.IsExpanded);
+                expansion.Collapse();
+                Assert.False(card.IsExpanded);
+                Assert.True(toggle.IsOn);
+
+                var sizeCard = Assert.IsType<SettingsCard>(Assert.Single(card.Items));
+                Assert.False(Assert.IsType<ComboBox>(sizeCard.Content).IsEditable);
+            }
+            finally
+            {
+                ui.Container.Children.Remove(page);
+            }
+        });
+    }
+
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            yield return child;
+            foreach (var descendant in Descendants(child))
+                yield return descendant;
+        }
+    }
+
     [Fact]
     public async Task Shell_DeliversFullAndEmbeddedInsetsWithoutMovingBackdropOrReplacingContent()
     {

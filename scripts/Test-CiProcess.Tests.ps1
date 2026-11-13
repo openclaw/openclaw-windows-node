@@ -2,6 +2,17 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $runner = Join-Path $PSScriptRoot 'Invoke-CiProcess.ps1'
 $shell = (Get-Process -Id $PID).Path
+# Output-idle budget for every fixture. Each fixture starts a cold pwsh child, which took up to
+# 7 s to print anything on a contended host, so a 2 s budget measured startup, not idleness.
+# Fixture durations derive from this budget so each case still proves the same behavior.
+$idleSeconds = 10
+$parsedIdle = 0
+if ([int]::TryParse($env:OPENCLAW_CI_PROCESS_TEST_IDLE_SECONDS, [ref]$parsedIdle) -and $parsedIdle -gt 0) {
+    $idleSeconds = $parsedIdle
+}
+# Silent fixtures must fail within this bound; held processes outlive it.
+$promptSeconds = $idleSeconds + 13
+$holdSeconds = $promptSeconds * 2
 $root = Join-Path ([IO.Path]::GetTempPath()) "ci-process-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory $root | Out-Null
 try {
@@ -16,7 +27,7 @@ exit 7
 '@)
     Push-Location $root
     try {
-        & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, 'space "quote"') -IdleTimeoutSeconds 2 -OutputPath 'output.log'
+        & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, 'space "quote"') -IdleTimeoutSeconds $idleSeconds -OutputPath 'output.log'
     } finally { Pop-Location }
     $text = [IO.File]::ReadAllText($output)
     if ($LASTEXITCODE -ne 7 -or $text -notmatch 'space "quote"' -or
@@ -24,33 +35,39 @@ exit 7
         throw 'CI process lost exit status, argument boundaries, stderr or trailing output.'
     }
 
+    # Progress for longer than the idle budget proves output resets the deadline.
     [IO.File]::WriteAllText($child, @'
+param([int]$Seconds)
 $elapsed = [Diagnostics.Stopwatch]::StartNew()
-while ($elapsed.ElapsedMilliseconds -lt 5000) {
+while ($elapsed.ElapsedMilliseconds -lt $Seconds * 1000) {
     [Console]::Out.Write('fixture progressing ')
     [Threading.Thread]::Sleep(100)
 }
 exit 0
 '@)
-    & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child) -IdleTimeoutSeconds 2 -OutputPath $output
+    & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, [string]($idleSeconds + 3)) -IdleTimeoutSeconds $idleSeconds -OutputPath $output
     if ($LASTEXITCODE -ne 0) { throw 'A progressing fixture exceeded its output-idle deadline.' }
 
     [IO.File]::WriteAllText($child, @'
-param([string]$Receipt)
+param([string]$Receipt, [int]$HoldSeconds)
+[IO.File]::WriteAllText("$Receipt.entered", [string][Diagnostics.Stopwatch]::GetTimestamp())
 [IO.File]::WriteAllText($Receipt, [string]$PID)
 [Console]::Out.WriteLine('fixture entered')
-[Threading.Thread]::Sleep(30000)
+[Threading.Thread]::Sleep($HoldSeconds * 1000)
 '@)
     $receipt = Join-Path $root 'pid.txt'
     $timedOut = $false
-    $elapsed = [Diagnostics.Stopwatch]::StartNew()
     try {
-        & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, $receipt) -IdleTimeoutSeconds 2 -OutputPath $output
+        & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, $receipt, [string]$holdSeconds) -IdleTimeoutSeconds $idleSeconds -OutputPath $output
     } catch {
         if ($_.Exception.Message -notmatch 'produced no output') { throw }
         $timedOut = $true
     }
-    if (-not $timedOut -or $elapsed.Elapsed.TotalSeconds -ge 15 -or -not (Test-Path $receipt)) {
+    # Measure from body entry on the system-wide monotonic clock, so a slow cold start or a
+    # wall-clock adjustment cannot affect the bound.
+    if (-not $timedOut -or -not (Test-Path $receipt) -or -not (Test-Path "$receipt.entered") -or
+        ([Diagnostics.Stopwatch]::GetTimestamp() - [long][IO.File]::ReadAllText("$receipt.entered")) /
+            [Diagnostics.Stopwatch]::Frequency -ge $promptSeconds) {
         throw 'Silent fixture did not fail promptly after entering its body.'
     }
     $childId = [int][IO.File]::ReadAllText($receipt)
@@ -61,16 +78,28 @@ param([string]$Receipt)
         throw 'Timeout did not retain progress and the failure reason.'
     }
 
+    # The root reports progress until its descendant signals that it has printed, so the
+    # descendant's cold start is outside the measured window. The descendant (and, in live-root,
+    # the root) then holds the inherited pipe silently, so only the idle deadline can end the run.
     [IO.File]::WriteAllText($child, @'
-param([string]$Receipt, [string]$Mode)
+param([string]$Receipt, [string]$Mode, [int]$HoldSeconds)
+$ready = "$Receipt.ready"
 $start = [Diagnostics.ProcessStartInfo]::new((Get-Process -Id $PID).Path)
 $start.UseShellExecute = $false
-foreach ($argument in @('-NoProfile', '-Command', "[Console]::Out.WriteLine('descendant entered'); [Threading.Thread]::Sleep(30000)")) {
+# Pass the path as data so quotes in a temp path cannot break the command.
+$start.Environment['OPENCLAW_TEST_DESCENDANT_READY'] = $ready
+$descendantCommand = "[Console]::Out.WriteLine('descendant entered'); [IO.File]::WriteAllText(`$env:OPENCLAW_TEST_DESCENDANT_READY, 'ready'); [Threading.Thread]::Sleep($($HoldSeconds * 1000))"
+foreach ($argument in @('-NoProfile', '-Command', $descendantCommand)) {
     $start.ArgumentList.Add($argument)
 }
 $descendant = [Diagnostics.Process]::Start($start)
 [IO.File]::WriteAllText($Receipt, [string]$descendant.Id)
-if ($Mode -eq 'live-root') { [Threading.Thread]::Sleep(30000) }
+$waiting = [Diagnostics.Stopwatch]::StartNew()
+while (-not (Test-Path -LiteralPath $ready) -and $waiting.ElapsedMilliseconds -lt $HoldSeconds * 1000) {
+    [Console]::Out.Write('awaiting descendant ')
+    [Threading.Thread]::Sleep(100)
+}
+if ($Mode -eq 'live-root') { [Threading.Thread]::Sleep($HoldSeconds * 1000) }
 exit 0
 '@)
     foreach ($mode in @('live-root', 'exited-root')) {
@@ -78,13 +107,22 @@ exit 0
         $timedOut = $false
         try {
             try {
-                & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, $descendantReceipt, $mode) -IdleTimeoutSeconds 2 -OutputPath $output
+                & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, $descendantReceipt, $mode, [string]$holdSeconds) -IdleTimeoutSeconds $idleSeconds -OutputPath $output
             } catch {
                 if ($_.Exception.Message -notmatch 'produced no output') { throw }
                 $timedOut = $true
             }
             if (-not $timedOut -or [IO.File]::ReadAllText($output) -notmatch 'descendant entered') {
                 throw "Descendant output lifecycle was not bounded: $mode."
+            }
+            # Without readiness the descendant may have ended on its own, which would not prove
+            # that the timeout bounded a live descendant.
+            if (-not (Test-Path -LiteralPath "$descendantReceipt.ready")) {
+                throw "Descendant never reported readiness: $mode."
+            }
+            $rootExitedNote = [IO.File]::ReadAllText($output) -match 'The root exited but its output streams remained open'
+            if ($rootExitedNote -ne ($mode -eq 'exited-root')) {
+                throw "Timeout misreported whether the root had exited: $mode."
             }
             if ([IO.File]::ReadAllText($output) -notmatch 'CI output readers settled after cancellation') {
                 throw "Pending readers survived timeout before descendant cleanup: $mode."

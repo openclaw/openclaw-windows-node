@@ -565,7 +565,7 @@ public sealed class NativeGatewaySetupUxContractTests
         Assert.DoesNotContain("RunInWslAsync", host);
         Assert.Contains("[\"setup\"]", host);
         Assert.Contains("[\"config\", \"validate\", \"--json\"]", host);
-        Assert.Contains("[\"gateway\", \"health\", \"--json\"]", host);
+        Assert.Contains("[\"gateway\", \"health\", \"--json\", \"--timeout\", timeoutMilliseconds]", host);
         Assert.False(File.Exists(Path.Combine(root, "src", "OpenClaw.SetupEngine", "NativeGatewayTerminalCommand.cs")));
     }
 

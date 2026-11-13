@@ -17,6 +17,16 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>Bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>Houd een geanimeerde kreeft op je bureaublad. Meldingen verschijnen in tekstballonnen, ook als OpenClaw op de achtergrond draait. Sleep om te verplaatsen; klik met de rechtermuisknop voor opties.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw-bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Tekstballon sluiten</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Meldingen openen</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>OpenClaw openen</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Grootte van de kreeft</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Pas de grootte van de kreeft aan zonder de chat- of meldingstekst te wijzigen.</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Instellingen voor bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>De bureaubladkreeft kon niet worden weergegeven. Schakel Bureaubladkreeft uit en weer in via Instellingen om het opnieuw te proberen. Je meldingen blijven beschikbaar in OpenClaw.</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>VERBINDING</value>
   </data>
@@ -6269,6 +6279,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Modellen zoeken</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Modelprovider toevoegen...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Bijlage verwijderen</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>Bijlage {0} verwijderen</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Berichten laden...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
@@ -7914,6 +7925,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>Instellingen</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>Snelle chat</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>Snel antwoorden</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>De chat kan niet worden geopend. Probeer het opnieuw.</value></data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagenten</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Geen subagenten in de huidige sessielijst.</value></data>
   <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Subagenten: {0} actief, {1} klaar</value></data>

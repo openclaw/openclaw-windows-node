@@ -278,6 +278,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ToastService? _toastService;
     private AppNotificationService? _appNotificationService;
     private SettingsPersistenceNotification? _settingsPersistenceNotification;
+    private DesktopCompanionController? _desktopCompanion;
     internal AppNotificationService? AppNotifications => _appNotificationService;
     private InboxGatewaySource? _inboxGatewaySource;
     /// <summary>Inbox rows, tab counts and badge: app notifications plus live Gateway facts.</summary>
@@ -555,6 +556,34 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _services = null;
             Logger.Error($"Service provider initialization failed: {ex}");
         }
+    }
+
+    private void InitializeDesktopCompanion()
+    {
+        if (SettingsStore is not { } store || _appNotificationService is null || _dispatcherQueue is null)
+        {
+            Logger.Warn("Desktop lobster cannot start because its presentation services are unavailable.");
+            return;
+        }
+        _desktopCompanion = new DesktopCompanionController(
+            store, _appNotificationService, new WinUIDispatcher(_dispatcherQueue),
+            () => new DesktopCompanionWindow(
+                () => _windowManager?.ShowHub("notifications"),
+                () => ShowHub("chat"),
+                () => ShowHub("settings")),
+            exception =>
+            {
+                Logger.Error($"Desktop lobster failed: {exception.GetType().Name}: {exception.Message}");
+                _appNotificationService.Show(new AppNotification
+                {
+                    Title = LocalizationHelper.GetString("DesktopCompanion_Name"),
+                    Message = LocalizationHelper.GetString("DesktopCompanion_Failed"),
+                    Source = "desktop-companion",
+                    Severity = AppNotificationSeverity.Error,
+                    DedupeKey = "desktop-companion-failed",
+                });
+            });
+        _desktopCompanion.Start();
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args) =>
@@ -916,6 +945,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // can never delay or preempt tray initialization. It only needs the
         // dispatcher + settings (created above) and failures are non-fatal.
         InitializeServiceProvider();
+        InitializeDesktopCompanion();
         if (_localAiGatewayLifecycle.CanStartWslAutomatically)
             StartLocalAiRouterInBackground();
 
