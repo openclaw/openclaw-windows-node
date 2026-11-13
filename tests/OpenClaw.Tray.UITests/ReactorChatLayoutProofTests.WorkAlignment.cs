@@ -244,9 +244,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Single(FindDescendants<Expander>(surface)).IsExpanded = true;
             });
             await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Single(FindDescendants<Expander>(surface),
-                expander => !expander.IsExpanded).IsExpanded = true);
-            await SettleAsync();
+            // The lone failed call is its own collapsed step row inside Worked; there is no group to open.
+            await ui.RunOnUIAsync(() =>
+            {
+                var row = Assert.Single(FindDescendants<Expander>(surface), expander => !expander.IsExpanded);
+                Assert.Equal("ChatToolCall_tool", AutomationProperties.GetAutomationId(row));
+            });
             await AwaitDisclosureAnimationsAsync(surface);
 
             foreach (var viewport in new[] { width, width == 480 ? 1100 : 480 })
@@ -784,10 +787,13 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} header right", headerBounds.Right, rowBounds.Right, WorkEdgeTolerance);
 
         var texts = WorkHeaderTexts(surface, row);
-        Assert.True(texts.Count is 2 or 3,
-            $"{label}: expected an icon, a title and an optional status, found {texts.Count} text blocks.");
+        Assert.True(texts.Count is >= 2 and <= 4,
+            $"{label}: expected an icon, a title, an optional detail and an optional status, found {texts.Count} text blocks.");
         var icon = texts[0];
         var title = texts[1];
+        // Like the web, read, search and fetch rows show a dimmed detail beside the title, in the title's own grid.
+        if (texts.Count == 4)
+            Assert.Same(VisualTreeHelper.GetParent(title), VisualTreeHelper.GetParent(texts[2]));
         Assert.True(FluentIconCatalog.IsPuaGlyph(icon.Text), $"{label}: the first header text is not an icon glyph.");
         Assert.False(icon.IsTextScaleFactorEnabled, $"{label}: the icon must not scale with the text size.");
         var disclosureGlyph = icon.Text is FluentIconCatalog.ChevronR or FluentIconCatalog.ChevronDown;
@@ -805,8 +811,9 @@ public sealed partial class ReactorChatLayoutProofTests
             AssertWorkAligned($"{label} header text {index} vertical centre", bounds.Top + bounds.Height / 2,
                 headerCenter, WorkCenterTolerance);
         }
-        if (texts.Count == 3)
-            AssertWorkAligned($"{label} status gap", Bounds(texts[2], surface).Left - Bounds(title, surface).Right,
+        for (var index = 2; index < texts.Count; index++)
+            AssertWorkAligned($"{label} header text {index} gap",
+                Bounds(texts[index], surface).Left - Bounds(texts[index - 1], surface).Right,
                 WorkStatusGap, WorkNestedTolerance);
         Assert.True(Bounds(texts[^1], surface).Right <= rowBounds.Right + WorkEdgeTolerance,
             $"{label}: the last header text extends past the row.");

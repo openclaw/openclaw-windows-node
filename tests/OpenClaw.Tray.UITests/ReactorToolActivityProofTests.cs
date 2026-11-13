@@ -342,7 +342,11 @@ public sealed class ReactorToolActivityProofTests
                 new("answer", ChatTimelineItemKind.Assistant, "Preserved answer",
                     Presentation: new(Phase: "final_answer", RunId: "r")),
             };
-            var timeline = BuildTimeline(entries, 1) with { SessionId = "agent:a:dashboard:d" };
+            var timeline = BuildTimeline(entries, 1) with
+            {
+                SessionId = "agent:a:dashboard:d",
+                ToolExpansionState = new ChatToolActivityExpansionState(),
+            };
             var rows = ChatToolActivityPresentation.Project(entries, timeline.SessionId, 1);
             Assert.Equal("Preserved answer", rows[1].Entry!.Text);
             var work = rows[0];
@@ -371,6 +375,7 @@ public sealed class ReactorToolActivityProofTests
                     text => text.Text == "Worked · 1 tool call");
                 Assert.Contains(FindLogical<TextBlock>(root!), text => text.Text == "Checking");
                 // A lone tool keeps its own step row, as the web Worked body renders single-call groups.
+                // Its output is built only once the row opens.
                 var row = Assert.Single(FindLogical<Expander>(root!), expander => !ReferenceEquals(expander, disclosure));
                 Assert.False(row.IsExpanded);
                 Assert.Equal("ChatToolCall_read", AutomationProperties.GetAutomationId(row));

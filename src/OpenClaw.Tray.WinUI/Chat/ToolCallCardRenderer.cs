@@ -90,7 +90,9 @@ internal static class ToolCallCardRenderer
                 ? LocalizedOrDefault("Chat_Tool_FailedInline", "failed") : statusLabel;
         var accessibleTitle = rowText is null ? toolName
             : string.IsNullOrWhiteSpace(detail) ? rowText : $"{rowText} {detail}";
-        Element body = hasDetails
+        // Like a wrapper's nested rows, a row's details exist only while it is open, so long
+        // histories of single calls do not build every hidden output.
+        Element body = hasDetails && (isExpanded || props.ToolExpansionState is null)
             ? Component<ToolDetailsBody, ToolDetailsBodyProps>(new(props, entry, details, recovery))
                 .Margin(0, 2, 0, 6)
             : Empty();
@@ -99,7 +101,8 @@ internal static class ToolCallCardRenderer
         if (children is { Count: > 0 })
         {
             body = isExpanded || props.ToolExpansionState is null
-                ? BuildNestedToolBody(props, expansionKey, children, hasDetails ? body : null, onExpansionChanged)
+                ? BuildNestedToolBody(props, expansionKey, children,
+                    hasDetails ? body : null, onExpansionChanged)
                 : Empty();
         }
         var expander = Expander(
