@@ -15,11 +15,53 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class DashboardWidgetCellTests
 {
+    private const string WidgetWebViewWarmupVariable = "OPENCLAW_UI_WIDGET_WEBVIEW_WARMUP_SECONDS";
+    // The first widget WebView2 in a test process loads the runtime and starts its browser. On CI that one-time
+    // cost has paused the whole test process for 30+ s, which the widget boundary deadline then counted.
+    private static readonly TimeSpan WidgetWebViewWarmupTimeout = TimeSpan.FromSeconds(
+        int.TryParse(Environment.GetEnvironmentVariable(WidgetWebViewWarmupVariable), out var seconds) && seconds > 0
+            ? seconds : 120);
+    private static WebView2? s_warmWidgetWebView;
+
+    /// <summary>
+    /// Starts one widget-profile WebView2 per test process so boundary deadlines exclude runtime cold start.
+    /// It stays open: closing it lets the browser process exit, and the next widget would pay a fresh launch.
+    /// </summary>
+    private Task EnsureWidgetWebViewWarmAsync() => ui.RunOnUIAsync(async () =>
+    {
+        if (s_warmWidgetWebView is not null)
+            return;
+        var webView = new WebView2();
+        ui.Container.Children.Add(webView);
+        var budget = System.Diagnostics.Stopwatch.StartNew();
+        TimeSpan Remaining() => WidgetWebViewWarmupTimeout - budget.Elapsed is var left && left > TimeSpan.Zero
+            ? left : TimeSpan.Zero;
+        try
+        {
+            var environment = await BoardWebViewEnvironment.GetAsync().WaitAsync(Remaining());
+            await webView.EnsureCoreWebView2Async(environment,
+                    BoardWebViewEnvironment.CreateControllerOptions(environment, BoardWebViewEnvironment.WidgetProfile))
+                .AsTask().WaitAsync(Remaining());
+            s_warmWidgetWebView = webView;
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"Widget WebView2 did not start within {WidgetWebViewWarmupTimeout} (set {WidgetWebViewWarmupVariable} to widen).");
+        }
+        finally
+        {
+            ui.Container.Children.Remove(webView);
+            if (s_warmWidgetWebView is null)
+                webView.Close();
+        }
+    });
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task RejectedTicket_NeverRendersBeforeAnAuthorizedReplacement(bool revoked)
     {
+        await EnsureWidgetWebViewWarmAsync();
         var scenario = GatewayScenario.CreateDashboards();
         await using var server = await FixtureGatewayServer.StartAsync(scenario, "synthetic-widget-proof");
         var boards = scenario.Boards!;
@@ -68,6 +110,7 @@ public sealed partial class DashboardWidgetCellTests
     [InlineData(true)]
     public async Task ConnectionChange_CancelsUndeliveredHtmlButRetainsCompletedDocumentsAndTabs(bool completed)
     {
+        await EnsureWidgetWebViewWarmAsync();
         var scenario = GatewayScenario.CreateDashboards();
         var boards = scenario.Boards!;
         var sandboxGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -224,6 +267,7 @@ public sealed partial class DashboardWidgetCellTests
     [Fact]
     public async Task HostileWidgetBridge_ClosesRealTransferredPortsWithoutHostActions()
     {
+        await EnsureWidgetWebViewWarmAsync();
         var scenario = GatewayScenario.CreateDashboards();
         scenario.Boards!.SetWidgetDocument(FixtureBoards.OpsSessionKey, "status-card", """
             <p>Untrusted fixture document</p><script>
@@ -340,11 +384,15 @@ public sealed partial class DashboardWidgetCellTests
         {
             if (DateTime.UtcNow >= deadline)
             {
-                var hosts = await ui.RunOnUIAsync(() => Task.FromResult(string.Join(" | ",
-                    FindDescendants<BoardWidgetWebHost>(root).Select(host =>
+                // Judge and describe one UI turn: after a process stall, queued host continuations can run
+                // between a failed check and the deadline, and the failure must not report a satisfied state.
+                var (settled, hosts, extra) = await ui.RunOnUIAsync(() => Task.FromResult((ready(),
+                    string.Join(" | ", FindDescendants<BoardWidgetWebHost>(root).Select(host =>
                         HostField<BoardWidgetWebHostState>(host, "_state") is { } state
-                            ? $"{state.Status}: {state.Detail ?? "-"}" : "no state"))));
-                var extra = observed is null ? "" : "; " + await ui.RunOnUIAsync(() => Task.FromResult(observed()));
+                            ? $"{state.Status}: {state.Detail ?? "-"}" : "no state")),
+                    observed is null ? "" : "; " + observed())));
+                if (settled)
+                    return;
                 Assert.Fail($"Native widget HTTP/relay boundary did not settle within {BoardWidgetDocumentLoader.DefaultTimeout}. " +
                     $"Hosts=[{hosts}]{extra}; RecentLog=[{RecentDashboardLog()}]");
             }
