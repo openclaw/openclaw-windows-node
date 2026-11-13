@@ -323,6 +323,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             entries, PanelSourceCurrent, panelProfile.Revision, SubagentsSourceCurrent);
         var panelRevision = _panels.Revision;
 
+        // One child list feeds the Subagents pill, its tab and the spawn rows in the timeline.
+        var subagentChildren = isGatewayConnected && effectiveThread is not null
+            ? snapshot.Threads.Where(child => child.IsSubagent && !child.IsArchived
+                && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
+            : Array.Empty<ChatThread>();
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
             entries,
@@ -370,7 +375,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ReadToolDetailsProfileState: dataProvider is null ? null : dataProvider.ReadToolDetailsProfileState,
             UserDisplayName: props.UserDisplayName,
             UserProfilePicture: props.UserProfilePicture,
-            OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null);
+            OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null,
+            ChildThreads: subagentChildren);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
@@ -567,10 +573,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .IsVisible(composerVisible)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
-        var subagentChildren = isGatewayConnected && effectiveThread is not null
-            ? snapshot.Threads.Where(child => child.IsSubagent && !child.IsArchived
-                && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
-            : [];
         var conversation = Grid(
             [GridSize.Star()],
             [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto,

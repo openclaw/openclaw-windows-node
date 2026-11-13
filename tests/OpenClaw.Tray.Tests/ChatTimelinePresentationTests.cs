@@ -1447,7 +1447,8 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains(".OnUnmount(control => TextShimmer((TextBlock)control, false))", visuals);
 
         var renderer = File.ReadAllText(Path.Combine(chat, "ToolCallCardRenderer.cs"));
-        Assert.Contains(".WithTextShimmer(entry.ToolResult is null or ChatToolCallStatus.InProgress)", renderer);
+        Assert.Contains("entry.ToolResult is null or ChatToolCallStatus.InProgress", renderer);
+        Assert.Contains(".WithTextShimmer(running)", renderer);
         Assert.Contains(".WithTextShimmer(summary.IsRunning)", renderer);
         Assert.Contains(".OnUnmount(ChatVisuals.StopToolRowShimmers)", renderer);
         var progress = File.ReadAllText(Path.Combine(chat, "ReactorRunProgress.cs"));
@@ -1904,7 +1905,7 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("var chronologicalEntries = ChatReasoningPresentation.Project(", timeline);
         Assert.Contains("props.Timeline.Entries, props.Timeline.ReasoningStream", timeline);
         Assert.Contains("ChatToolActivityPresentation.Project(", timeline);
-        Assert.Contains("ChatTimelineAssistantRuns.Describe(chronologicalEntries)", timeline);
+        Assert.Contains("ChatTimelineAssistantRuns.Describe(\n            projectedRows,", timeline.ReplaceLineEndings("\n"));
         Assert.DoesNotContain("OrderEntriesForPresentation", timeline);
         Assert.Contains("includeMetadata: row.IsAssistantRunEnd", timeline);
     }

@@ -21,7 +21,15 @@ Outer gutters are 12 pixels below 640 pixels and 40 pixels above it. The native
 annotated rail overlays only the unused right gutter, leaving transcript and
 composer centered on the viewport, including while the rail is focused.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
-leave prose centered. Accessible sender and footer identity remain.
+leave prose centered. Accessible sender and footer identity remain. Like the web
+transcript, one block of agent rows (assistant text, tool rows, tool groups and
+reasoning between user messages, status notices or a change of forwarded sender)
+shows one avatar, on its first row even when that row is a tool call, so tool
+calls and back-to-back runs such as heartbeats no longer repeat it. Inside a
+block, each run owns one actions footer; a run also ends where its recorded
+identity changes and at messages that start their own turn (turn boundaries and
+independent or background messages). Tool rows and groups keep one grid shape whether or not they
+carry the avatar, so they are never rebuilt when it moves.
 
 The writing surface uses a 20-pixel corner radius, 16-pixel editor inset, and a
 96-pixel minimum height. Its vertical padding is 8 pixels and the editor-to-toolbar
@@ -269,11 +277,33 @@ detail renderer. Recovery uses the canonical saved result's call and message
 identity, not the invocation's display identity. These rules follow the
 [pinned message-read handler](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/src/gateway/server-methods/chat-message-get-handler.ts).
 
-Consecutive tool groups stay within the exact run identity and legacy turn.
-Every consecutive tool span, including a single call, renders as one collapsed
-summary row that counts operations per category in web order, for example
-`3 commands · 2 reads · 1 other operation`. Failed and interrupted steps stay
-inside their group, where the step row shows an inline red `failed` instead of
+Like the web `coalesceActivityRuns`, tool rows and groups that nothing visible
+separates read as one log even across runs, so a burst of heartbeat calls is one
+group; recorded nesting still never crosses a run. Two or more such calls render
+as one collapsed summary row that counts operations per category in web order,
+then failures (errors only; a stopped call reads Interrupted on its row), for example
+`3 commands · 2 reads · 1 other operation · 1 subagent · 1 failed`. Raw snake_case
+tool names read as titles (`heartbeat_respond` is "Heartbeat Respond"), like the
+web `defaultTitle`. A launch counts as a
+subagent only when it started one; failed launches and launches that opened
+their own session count as other operations. Routine bookkeeping (yields, plan
+progress, process polls and message reactions) is left out of the counts unless
+nothing else remains. A single call keeps its own step row titled like the web
+`ToolRowContent`: `Read SKILL.md`, `Edited`/`Wrote`/`Created`/`Changed` for
+mutations (patches name one file or `N files`), `Searched` and `Fetched` with
+their target, a shell tool's own title or `$ command` with leading `cd`, `set`,
+`export` and `unset` stages removed, and a labeled `sessions_spawn` as its label
+with the subagent's state (running, failed, stopped or elapsed time), classified
+by the same `ChatSubagentPresentation` as the Subagents pill so both always agree.
+An unknown or stale subagent outcome shows no state rather than a duration. Only
+read, search and fetch rows add their dimmed directory or scope, capped at
+`ChatVisuals.ToolRowDetailMaxWidth`; long titles trim with an ellipsis. A patch
+whose text was cut for display shows its input preview instead of a partial file
+summary. Other calls show their input preview. Fields outside the persisted
+display arguments come from the redacted tool input. A row's accessible name is
+its displayed title and state. A single row the user opened stays open when the
+next call turns it into a group. Failed and interrupted steps stay
+inside their group, where the step row shows a muted inline `failed` instead of
 a trailing status. Calls with provider reviews or input still being prepared
 keep their standalone disclosure so the review and live diff stay visible.
 Each row shows its category glyph; hovering or focusing the row header swaps
@@ -293,7 +323,8 @@ A call the Gateway records as wrapping others (`parentToolCallId`, same run)
 lists its nested calls first when expanded, then its own input behind a
 collapsed **Tool input** disclosure, like the web `groupToolCalls` tree. Links
 are never inferred; ambiguous identities and cycles stay top-level. Group
-counts include nested calls but not their wrapper. Each layer keeps its own
+counts include nested calls instead of a completed wrapper, except when all its
+nested calls are routine, as in the web `resolveCompletedActivityWrappers`. Each layer keeps its own
 expansion key, so opening a group never opens its first row.
 The last transcript row keeps a 38-pixel bottom inset above the composer: the
 32-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
@@ -991,7 +1022,14 @@ only while their own message is hovered or contains keyboard focus, including
 individual messages inside expanded Worked groups. Focusing a group header or
 a sibling message does not reveal other footers. They keep their
 measured space while hidden, so revealing a timestamp or Copy does not move the
-next message. Metadata and action glyphs share a vertical center, with Copy
+next message. In the main transcript only a run's final answer (its last
+non-commentary assistant message) owns the footer, as in the web run frame, and
+a run still generating has no footer yet (waiting for subagents or an answer
+does not count). A merged tool group that spans runs still ends each earlier run,
+and only the run holding a streaming message or running tool waits for its
+footer; earlier paragraphs interleaved with tool
+calls reserve no footer space. A message being read aloud keeps its Stop action
+until playback ends. Metadata and action glyphs share a vertical center, with Copy
 retaining its 32-pixel hit target. A failed queued message keeps its recovery
 actions visible; an active read-aloud operation keeps its Stop action visible. Commentary has
 no final-answer footer. Code-block Copy remains a separate, static header

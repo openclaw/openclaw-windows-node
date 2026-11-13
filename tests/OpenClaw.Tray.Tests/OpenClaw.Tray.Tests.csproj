@@ -81,6 +81,8 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatCompactionPresentation.cs" Link="Chat\ChatCompactionPresentation.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatHistoryReplayProjection.cs" Link="Chat\ChatHistoryReplayProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolActivityPresentation.cs" Link="Chat\ChatToolActivityPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolRowPresentation.cs" Link="Chat\ChatToolRowPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatTimelineAssistantRuns.cs" Link="Chat\ChatTimelineAssistantRuns.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolDetailRequest.cs" Link="Chat\ChatToolDetailRequest.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationPanelState.cs" Link="Chat\ChatConversationPanelState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSubagentPresentation.cs" Link="Chat\ChatSubagentPresentation.cs" />

@@ -267,7 +267,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     AssertWorkHeader(surface, tool, Bounds(tool, surface), "tool");
                     var header = Assert.IsAssignableFrom<DependencyObject>(tool.Header);
                     var title = Assert.Single(FindDescendants<TextBlock>(header),
-                        text => text.Text.StartsWith("dotnet test ", StringComparison.Ordinal));
+                        text => text.Text.StartsWith("$ dotnet test ", StringComparison.Ordinal));
                     var status = Assert.Single(FindDescendants<TextBlock>(header), text => text.Text == "failed");
                     var icon = Assert.Single(FindDescendants<TextBlock>(header),
                         text => text.Text != title.Text && text.Text != status.Text);

@@ -7730,6 +7730,30 @@
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等候子代理程式</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在準備輸入</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>失敗</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} 個子代理程式</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} 個子代理程式</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} 個失敗</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>執行中</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} 個檔案</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>已讀取</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>編輯</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>正在編輯</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>已編輯</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>建立</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>正在建立</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>已建立</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>刪除</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>正在刪除</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>已刪除</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>變更</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>正在變更</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>已變更</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>寫入</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>正在寫入</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>已寫入</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>已搜尋</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>已擷取</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>需要提供者審核</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>提供者審核警告</value></data>

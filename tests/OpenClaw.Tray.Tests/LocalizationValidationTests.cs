@@ -1263,6 +1263,8 @@ public class LocalizationValidationTests
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],
                     // The web's lowercase code-block label is the same word in French and Dutch.
                     "Chat_Code_LanguageFallback" => ["fr-fr", "nl-nl"],
+                    // Dutch uses the English loanword for the web's subagent count.
+                    "Chat_Activity_SubagentOne" or "Chat_Activity_SubagentMany" => ["nl-nl"],
                     // Key-cap label printed on those locales' keyboards; French keyboards print "Échap".
                     "SettingsShell_BackToAppKeyHint" => ["nl-nl", "pt-br", "zh-cn", "zh-tw"],
                     _ => [],
