@@ -7929,6 +7929,13 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>Terminé</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Arrêté</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Échec</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>Fichiers</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>Fichiers de la session : {0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>Aucun fichier dans cette session pour le moment.</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>Chargement des fichiers...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>Ce Gateway ne fournit pas les fichiers de session.</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>Impossible de charger les fichiers. Actualisez pour réessayer.</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>Actualiser les fichiers</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent : {0}</value>
   </data>

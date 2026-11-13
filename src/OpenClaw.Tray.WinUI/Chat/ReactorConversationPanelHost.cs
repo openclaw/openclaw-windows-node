@@ -18,7 +18,7 @@ namespace OpenClawTray.Chat;
 internal sealed record ReactorConversationPanelHostProps(
     Element Conversation, ChatConversationPanelState State, Action<bool>? ConversationVisibilityChanged = null,
     ChatTimelinePresentationContext? Timeline = null, Element? Subagents = null,
-    DashboardsPageState? Dashboards = null);
+    DashboardsPageState? Dashboards = null, Element? Files = null);
 
 /// <summary>Applies native tab selection, split sizing, compact presentation and focus.</summary>
 internal sealed class ReactorConversationPanelHost : Component<ReactorConversationPanelHostProps>
@@ -96,6 +96,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 {
                     ChatConversationPanelState.SubagentsSlot => Props.Subagents ?? Empty(),
                     ChatConversationPanelState.DashboardSlot => DashboardBody(state.Dashboard, Props.Dashboards),
+                    ChatConversationPanelState.FilesSlot => Props.Files ?? Empty(),
                     _ => state.Details is { } request && state.Resolve(request) is { } entry
                         ? ToolCallCardRenderer.BuildPanelDetails(
                             Props.Timeline ?? new(request.SessionKey, [], false, null), entry)
@@ -181,6 +182,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
     {
         ChatConversationPanelState.SubagentsSlot => LocalizationHelper.GetString("Chat_Subagents_Title"),
         ChatConversationPanelState.DashboardSlot => Text("Dashboard"),
+        ChatConversationPanelState.FilesSlot => LocalizationHelper.GetString("Chat_Files_Title"),
         _ => Text("Details"),
     };
 

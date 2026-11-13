@@ -1093,6 +1093,13 @@ public sealed partial class ReactorChatLayoutProofTests
     private sealed class ConversationParityBridge(ChatHistoryInfo history, SessionInfo session) : IChatGatewayBridge
     {
         public SessionInfo[] Children { get; set; } = [];
+        public SessionFileList? Files { get; set; }
+        public async Task<SessionFileList> ListSessionFilesAsync(string sessionKey)
+        {
+            // A real read completes after the render that started it.
+            await Task.Yield();
+            return Files ?? new SessionFileList { Key = sessionKey, IsSupported = false };
+        }
         public System.Collections.Concurrent.ConcurrentQueue<string> HistoryRequests { get; } = new();
         public bool IsConnected => true;
         public ConnectionStatus CurrentStatus => ConnectionStatus.Connected;

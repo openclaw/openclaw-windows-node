@@ -8000,6 +8000,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>Done</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Stopped</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Failed</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>Files</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>Session files: {0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>No files in this session yet.</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>Loading files...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>This Gateway does not provide session files.</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>Files could not be loaded. Refresh to try again.</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>Refresh files</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>
