@@ -2298,12 +2298,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     {
         await WithChatAsync(480, async (surface, _, _, provider) =>
         {
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(surface, "ChatComposerModelPicker");
-                button.Flyout.ShowAt(button);
-            });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: true);
             await ui.RunOnUIAsync(() =>
             {
                 var popup = ModelPopup(surface);
@@ -2314,7 +2309,17 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.True(FindControl<ListViewItem>(popup, "ChatModelChoice_github-copilot/claude-opus-4.7").IsSelected);
                 FindControl<AutoSuggestBox>(popup, "ChatModelSearch").Text = query;
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                if (TryModelPopup(surface) is not { } popup) return false;
+                return FindDescendants<ListView>(popup).Any(list =>
+                    AutomationProperties.GetAutomationId(list) == "ChatModelList" && list.Items.Count == count) &&
+                    FindDescendants<ListViewItem>(popup).Count(row =>
+                        row is { IsLoaded: true, ActualHeight: > 0 } &&
+                        AutomationProperties.GetAutomationId(row).StartsWith("ChatModelChoice_", StringComparison.Ordinal)) == count &&
+                    FindDescendants<TextBlock>(popup).Any(text =>
+                        text is { IsLoaded: true, ActualHeight: > 0 } && text.Text == heading);
+            }, $"filtered model rows and provider heading for {query}"));
             Assert.Null(provider.SelectedModel);
             Assert.Equal(0, provider.ClearModelCalls);
             await ui.RunOnUIAsync(() =>
@@ -2324,9 +2329,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(count, FindControl<ListView>(popup, "ChatModelList").Items.Count);
                 Assert.Equal(count, FindDescendants<ListViewItem>(popup).Count(button =>
                     AutomationProperties.GetAutomationId(button).StartsWith("ChatModelChoice_", StringComparison.Ordinal)));
-                Invoke(FindControl<ListViewItem>(popup, "ChatModelChoice_" + selectionId));
             });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: false, () =>
+                Invoke(FindControl<ListViewItem>(ModelPopup(surface), "ChatModelChoice_" + selectionId)));
             Assert.Equal(selectionId, provider.SelectedModel);
             Assert.Equal(0, provider.ClearModelCalls);
         }, "provider-names");
@@ -2370,6 +2375,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     {
         await WithChatAsync(800, async (surface, _, _, _) =>
         {
+            // This measures stock item chrome, not the popup's compositor entrance transform.
+            await ui.RunOnUIAsync(() =>
+                FindControl<Button>(surface, "ChatComposerModelPicker").Flyout.AreOpenCloseAnimationsEnabled = false);
             await ChangeModelFlyoutAsync(surface, open: true);
             ListViewItem? row = null;
             var scale = 1d;
@@ -2386,36 +2394,59 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 FindControl<ListView>(popup, "ChatModelList").SelectedItem = row.Content;
                 scale = row.XamlRoot.RasterizationScale;
             });
-            // The pill fades in and the transition exposes no completion signal. // test-timing-exception: fade-in animation has no observable end state
-            await Task.Delay(500);
             byte[] pixels = [];
             int width = 0, height = 0;
+            int left = int.MaxValue, right = -1, top = int.MaxValue, bottom = -1;
             await ui.RunOnUIAsync(async () =>
             {
+                using var deadline = new CancellationTokenSource(RenderedConditionTimeout);
                 var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap();
-                await bitmap.RenderAsync(row);
-                width = bitmap.PixelWidth;
-                height = bitmap.PixelHeight;
-                pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(
-                    await bitmap.GetPixelsAsync());
-            });
-            int left = int.MaxValue, right = -1, top = int.MaxValue, bottom = -1;
-            for (var y = 0; y < height; y++)
-                for (var x = 0; x < width; x++)
+                (int Left, int Right, int Top, int Bottom, int Width, int Height)? previousBounds = null;
+                var stableSamples = 0;
+                // Native selection animates both color and geometry without a public completion
+                // event. Observe opaque pixels and stable bounds across rendered frames.
+                while (true)
                 {
-                    var i = (y * width + x) * 4;
-                    if (pixels[i + 2] <= 200 || pixels[i + 1] >= 80 || pixels[i] >= 80) continue;
-                    left = Math.Min(left, x);
-                    right = Math.Max(right, x);
-                    top = Math.Min(top, y);
-                    bottom = Math.Max(bottom, y);
+                    var frame = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    void Rendered(object? sender, object args) => frame.TrySetResult();
+                    CompositionTarget.Rendering += Rendered;
+                    try { await frame.Task.WaitAsync(deadline.Token); }
+                    finally { CompositionTarget.Rendering -= Rendered; }
+                    await bitmap.RenderAsync(row).AsTask(deadline.Token);
+                    width = bitmap.PixelWidth;
+                    height = bitmap.PixelHeight;
+                    pixels = System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(
+                        await bitmap.GetPixelsAsync().AsTask(deadline.Token));
+                    var opaqueRed = false;
+                    left = top = int.MaxValue;
+                    right = bottom = -1;
+                    for (var y = 0; y < height; y++)
+                    for (var x = 0; x < width; x++)
+                    {
+                        var i = (y * width + x) * 4;
+                        if (pixels[i] == 0 && pixels[i + 1] == 0 && pixels[i + 2] == 255 && pixels[i + 3] == 255)
+                            opaqueRed = true;
+                        // RenderTargetBitmap is premultiplied BGRA. Count the red brush at
+                        // half-pixel coverage, including anti-aliased edges at fractional DPI.
+                        var alpha = pixels[i + 3];
+                        if (alpha < 128 || pixels[i + 2] != alpha || pixels[i + 1] != 0 || pixels[i] != 0) continue;
+                        left = Math.Min(left, x);
+                        right = Math.Max(right, x);
+                        top = Math.Min(top, y);
+                        bottom = Math.Max(bottom, y);
+                    }
+                    var bounds = (left, right, top, bottom, width, height);
+                    stableSamples = opaqueRed && previousBounds == bounds ? stableSamples + 1 : 0;
+                    if (stableSamples == 2) break;
+                    previousBounds = opaqueRed ? bounds : null;
                 }
-            // ListViewItem draws its pill 4px (horizontal) and 2px (vertical) inside its bounds, the inset a stock
-            // MenuFlyoutItem gets from its 4,2 margin. The item itself therefore carries no margin.
-            Assert.InRange(left / scale, 3.5, 4.5);
-            Assert.InRange((width - 1 - right) / scale, 3.5, 4.5);
-            Assert.InRange(top / scale, 1.5, 2.5);
-            Assert.InRange((height - 1 - bottom) / scale, 1.5, 2.5);
+            });
+            // Stock menu chrome is inset 4 DIPs horizontally and 2 vertically. Native layout
+            // rounds to physical pixels before bitmap capture, which can add one edge pixel.
+            Assert.InRange(Math.Abs(left - Math.Round(4 * scale)), 0, 1);
+            Assert.InRange(Math.Abs(width - 1 - right - Math.Round(4 * scale)), 0, 1);
+            Assert.InRange(Math.Abs(top - Math.Round(2 * scale)), 0, 1);
+            Assert.InRange(Math.Abs(height - 1 - bottom - Math.Round(2 * scale)), 0, 1);
         }, "provider-names");
     }
 
@@ -2429,7 +2460,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             ListView? originalList = null;
             AutoSuggestBox? originalSearch = null;
             await ChangeModelFlyoutAsync(surface, open: true);
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width -
+                    (width == 320 ? 264 : 354)) < 0.01,
+                "model picker renders the initial viewport width",
+                () => $"Surface={surface.ActualWidth}; picker={FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width}"));
             await ui.RunOnUIAsync(() =>
             {
                 var flyout = FindControl<Button>(surface, "ChatComposerModelPicker").Flyout;
@@ -2482,7 +2517,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 surface.Width = width == 320 ? 800 : 320;
                 session.ViewModel.SetDraft(Draft + " changed");
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(surface.ActualWidth - (width == 320 ? 800 : 320)) < 1 &&
+                    FindControl<TextBox>(surface, "ChatComposerInput").Text == Draft + " changed" &&
+                    Math.Abs(FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width -
+                        (width == 320 ? 354 : 264)) < 0.01,
+                "resized composer renders the changed draft and picker width",
+                () => $"Surface={surface.ActualWidth}; picker={FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width}"));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.False(FindControl<Button>(surface, "ChatComposerModelPicker").Flyout.IsConstrainedToRootBounds);
@@ -2647,10 +2688,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         using var environment = new OpenClaw.TestSupport.EnvironmentScope("OPENCLAW_PROOF_THEME", theme);
         await WithChatAsync(width, async (surface, _, _, provider) =>
         {
-            await ui.RunOnUIAsync(() => surface.Width = width + 16);
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => surface.Width = width);
-            await SettleAsync();
+            foreach (var targetWidth in new[] { width + 16, width })
+            {
+                await ui.RunOnUIAsync(() => surface.Width = targetWidth);
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => Math.Abs(surface.ActualWidth - targetWidth) < 1,
+                    "combined picker host resized"));
+            }
             await ui.RunOnUIAsync(() =>
             {
                 var button = FindControl<Button>(surface, "ChatComposerModelPicker");
@@ -2659,8 +2703,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedRight,
                     button.Flyout.Placement);
             });
-            await ChangeFlyoutAsync(surface, "ChatComposerModelPicker", open: true);
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: true);
             await ui.RunOnUIAsync(() =>
             {
                 var popup = ModelPopup(surface);
@@ -2817,7 +2860,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 surface = new Border { Child = host, Width = 480, Height = 720 };
                 ui.Container.Children.Add(surface);
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindDescendants<Button>(surface!).Any(button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatReasoningPicker" &&
+                    button is { IsLoaded: true, ActualHeight: > 0 } &&
+                    button.Flyout is MenuFlyout { Items.Count: 3 }),
+                "reasoning picker mounts its menu actions"));
             await ui.RunOnUIAsync(() =>
             {
                 var button = FindControl<Button>(surface!, "ChatReasoningPicker");
@@ -2825,7 +2873,6 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 option = Assert.IsType<ToggleMenuFlyoutItem>(menu.Items[1]);
                 Invoke(option);
             });
-            await SettleAsync();
             Assert.Equal(new[] { "low" }, selected);
 
             await ui.RunOnUIAsync(() =>
@@ -2835,7 +2882,6 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 surface!.Child = null;
                 Invoke(option!);
             });
-            await SettleAsync();
             Assert.Empty(selected);
         }
         finally
@@ -2925,13 +2971,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     var menu = ReasoningMenu(surface);
                     Invoke(menu.Items[scenario == "mandatory-profile" ? 1 : 0]);
                 });
-                await SettleAsync();
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => provider.SetThinkingLevelCalls == 1, "advertised effort selection reaches the provider"));
                 Assert.Equal(scenario == "off-profile" ? "off" : scenario == "mandatory-profile" ? "future/Exact" : null,
                     provider.SelectedThinkingLevel);
                 Assert.Equal(0, provider.ClearThinkingLevelCalls);
             }
             await ChangeFlyoutAsync(surface, "ChatComposerModelPicker", open: false);
-            await SettleAsync();
             if (!captureMenu)
                 await CaptureAsync(surface, $"Reasoning-{scenario}-{(current is null ? "default" : "saved")}-480");
         }, scenario, thinkingLevel: current);
@@ -2949,7 +2995,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.DoesNotContain(menu.Items.OfType<ToggleMenuFlyoutItem>(), item => item.IsChecked);
                 Invoke(Assert.Single(menu.Items.OfType<ToggleMenuFlyoutItem>(), item => item.Text == "medium"));
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => provider.SetThinkingLevelCalls == 1, "concrete effort value reaches the provider"));
             Assert.Equal("medium", provider.SelectedThinkingLevel);
             Assert.Equal(0, provider.ClearThinkingLevelCalls);
         }, thinkingLevel: "xhigh");
@@ -2961,30 +3008,20 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         await WithChatAsync(480, async (surface, _, _, provider) =>
         {
             await OpenReasoningAsync(surface);
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(ReasoningPopup(surface), "ChatReasoningPicker");
-                ReasoningMenu(surface).ShowAt(button);
-            });
-            await WaitReasoningMenuAsync(surface);
+            await OpenReasoningMenuAsync(surface);
             await CloseReasoningMenuAsync(surface, menu =>
             {
                 Invoke(Assert.Single(menu.Items.OfType<ToggleMenuFlyoutItem>(), item => item.Text == "high"));
                 menu.Hide();
             });
             Assert.Equal("high", provider.SelectedThinkingLevel);
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(ReasoningPopup(surface), "ChatReasoningPicker");
-                ReasoningMenu(surface).ShowAt(button);
-            });
-            await WaitReasoningMenuAsync(surface);
+            await OpenReasoningMenuAsync(surface);
             await ui.RunOnUIAsync(() =>
             {
                 var menu = ReasoningMenu(surface);
                 Assert.Equal("off", Assert.Single(menu.Items.OfType<ToggleMenuFlyoutItem>(), item => item.IsChecked).Text);
-                menu.Hide();
             });
+            await CloseReasoningMenuAsync(surface, menu => menu.Hide());
         }, thinkingLevel: "off");
     }
 
@@ -2994,12 +3031,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         await WithChatAsync(480, async (surface, _, _, provider) =>
         {
             await OpenReasoningAsync(surface);
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(ReasoningPopup(surface), "ChatReasoningPicker");
-                ReasoningMenu(surface).ShowAt(button);
-            });
-            await WaitReasoningMenuAsync(surface);
+            await OpenReasoningMenuAsync(surface);
             await ui.RunOnUIAsync(() =>
             {
                 var menu = ReasoningMenu(surface);
@@ -3008,10 +3040,10 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Same(Application.Current.Resources["DefaultMenuFlyoutPresenterStyle"], presenter.Style.BasedOn);
                 Assert.All(menu.Items, item => Assert.Null(item.Style));
                 Assert.True(menu.Items[3].Focus(FocusState.Keyboard));
-                menu.Hide();
-                Assert.Equal(0, provider.SetThinkingLevelCalls);
-                Assert.Equal(0, provider.ClearThinkingLevelCalls);
             });
+            await CloseReasoningMenuAsync(surface, menu => menu.Hide());
+            Assert.Equal(0, provider.SetThinkingLevelCalls);
+            Assert.Equal(0, provider.ClearThinkingLevelCalls);
         }, thinkingLevel: "off");
     }
 
@@ -3623,8 +3655,29 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
     }
 
-    private Task ChangeModelFlyoutAsync(Border surface, bool open, Action? transition = null) =>
-        ChangeFlyoutAsync(surface, "ChatComposerModelPicker", open, transition);
+    private async Task ChangeModelFlyoutAsync(Border surface, bool open, Action? transition = null)
+    {
+        await ChangeFlyoutAsync(surface, "ChatComposerModelPicker", open, transition);
+        if (!open) return;
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+        {
+            if (TryModelPopup(surface) is not { ActualWidth: > 0, ActualHeight: > 0 } popup)
+                return false;
+            var list = FindDescendants<ListView>(popup).SingleOrDefault(control =>
+                AutomationProperties.GetAutomationId(control) == "ChatModelList");
+            if (list is null) return false;
+            if (list.Items.Count == 0)
+                return FindDescendants<NativeChatModelPicker>(popup).SingleOrDefault()?.Layout.Children
+                    .OfType<TextBlock>().Any(text =>
+                        text is { IsLoaded: true, Visibility: Visibility.Visible, ActualHeight: > 0 }) == true;
+            var rows = FindDescendants<ListViewItem>(list).ToArray();
+            return rows.Length > 0 && rows.All(row =>
+                row is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } &&
+                FindDescendants<FontIcon>(row).Any(icon => icon.Name == "ModelSelectedCheck" &&
+                    icon.GetBindingExpression(UIElement.VisibilityProperty) is not null &&
+                    icon.Visibility == (row.IsSelected ? Visibility.Visible : Visibility.Collapsed)));
+        }, "model rows realize their templates and selection bindings"));
+    }
 
     private const string FlyoutTransitionTimeoutVariable = "OPENCLAW_UI_FLYOUT_TIMEOUT_SECONDS";
     private static readonly TimeSpan FlyoutTransitionTimeout =
@@ -3889,51 +3942,73 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
     }
 
-    private static FrameworkElement ModelPopup(Border surface) =>
-        Assert.Single(
-            VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
-                .Select(popup => popup.Child).OfType<FrameworkElement>(),
-            root => FindDescendants<AutoSuggestBox>(root)
+    private static FrameworkElement? TryModelPopup(Border surface) =>
+        VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+            .Select(popup => popup.Child).OfType<FrameworkElement>()
+            .SingleOrDefault(root => FindDescendants<AutoSuggestBox>(root)
                 .Any(search => AutomationProperties.GetAutomationId(search) == "ChatModelSearch"));
 
-    private async Task OpenReasoningAsync(Border surface)
-    {
-        await ui.RunOnUIAsync(() =>
-        {
-            var button = FindControl<Button>(surface, "ChatComposerModelPicker");
-            Assert.IsType<Flyout>(button.Flyout).ShowAt(button);
-        });
-        await SettleAsync();
-    }
+    private static FrameworkElement ModelPopup(Border surface) =>
+        Assert.IsAssignableFrom<FrameworkElement>(TryModelPopup(surface));
+
+    private Task OpenReasoningAsync(Border surface) => ChangeModelFlyoutAsync(surface, open: true);
 
     private static FrameworkElement ReasoningPopup(Border surface) => ModelPopup(surface);
 
-    private Task WaitReasoningMenuAsync(Border surface) =>
-        ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
-            () => ReasoningMenu(surface) is { IsOpen: true } menu && menu.Items.All(item => item.ActualHeight > 0),
-            "the reasoning menu opens with laid-out items",
-            () => ReasoningMenu(surface) is { } menu
-                ? $"IsOpen={menu.IsOpen}; heights=[{string.Join(", ", menu.Items.Select(item => item.ActualHeight))}]"
-                : "no menu"));
+    private async Task OpenReasoningMenuAsync(Border surface)
+    {
+        var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        MenuFlyout? menu = null;
+        void OnOpened(object? sender, object args) => opened.TrySetResult();
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                var button = FindControl<Button>(ReasoningPopup(surface), "ChatReasoningPicker");
+                menu = ReasoningMenu(surface);
+                Assert.False(menu.IsOpen);
+                menu.Opened += OnOpened;
+                menu.ShowAt(button);
+            });
+            await opened.Task.WaitAsync(FlyoutTransitionTimeout);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => menu!.Items.All(item => item is { IsLoaded: true, ActualHeight: > 0 }),
+                "opened reasoning menu items laid out"));
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (menu is not null) menu.Opened -= OnOpened;
+            });
+        }
+    }
 
     // IsOpen turns false when the close transition starts, and a ShowAt during that transition is ignored.
     // The Closed event is the signal that the flyout accepts a new ShowAt.
     private async Task CloseReasoningMenuAsync(Border surface, Action<MenuFlyout> close)
     {
-        var closed = false;
-        await ui.RunOnUIAsync(() =>
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        MenuFlyout? menu = null;
+        void OnClosed(object? sender, object args) => closed.TrySetResult();
+        try
         {
-            var menu = ReasoningMenu(surface);
-            void OnClosed(object? sender, object args)
+            await ui.RunOnUIAsync(() =>
             {
-                menu.Closed -= OnClosed;
-                closed = true;
-            }
-            menu.Closed += OnClosed;
-            close(menu);
-        });
-        await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
-            () => closed, "the reasoning menu finishes closing"));
+                menu = ReasoningMenu(surface);
+                Assert.True(menu.IsOpen);
+                menu.Closed += OnClosed;
+                close(menu);
+            });
+            await closed.Task.WaitAsync(FlyoutTransitionTimeout);
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (menu is not null) menu.Closed -= OnClosed;
+            });
+        }
     }
 
     private static MenuFlyout ReasoningMenu(Border surface) =>
