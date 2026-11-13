@@ -18,6 +18,7 @@ param(
     [Parameter(Mandatory)][string]$UiResult,
     [Parameter(Mandatory)][string]$TrayUiShardResult,
     [Parameter(Mandatory)][string]$GatewayFixtureResult,
+    [Parameter(Mandatory)][string]$GatewayFixtureShardResult,
     [Parameter(Mandatory)][string]$SetupE2eRequired,
     [Parameter(Mandatory)][string]$SetupE2eResult,
     [Parameter(Mandatory)][string]$RevocationE2eRequired,
@@ -129,6 +130,8 @@ Assert-LaneResult "UI tests" $required.ui $UiResult
 # The ordinary Tray UI suite is split across ui-tests and this parallel shard.
 Assert-LaneResult "Tray UI shard" $required.ui $TrayUiShardResult
 Assert-LaneResult "Gateway fixture tests" $required.ui $GatewayFixtureResult
+# The fixture UI scenarios are split across gateway-fixture and this parallel shard.
+Assert-LaneResult "Gateway fixture shard" $required.ui $GatewayFixtureShardResult
 Assert-LaneResult "setup E2E" $required.setup_e2e $SetupE2eResult
 Assert-LaneResult "revocation E2E" $required.revocation_e2e $RevocationE2eResult
 Assert-LaneResult "network E2E" $required.network_e2e $NetworkE2eResult

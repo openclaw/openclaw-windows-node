@@ -318,8 +318,12 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             (nativeProvider is null || panelSession is not null && current.CurrentHistoryThreads?.Contains(panelSession) == true) &&
             (panelSession is null || (current.TimelineGenerations?.GetValueOrDefault(panelSession) ?? 0) == timelineGeneration &&
                 (current.HistoryRevisions?.GetValueOrDefault(panelSession) ?? 0) == historyRevision);
+        bool SubagentsSourceCurrent() => selectedIdRef.Current == panelSession &&
+            (nativeProvider is null || nativeProvider.ToolDetailsGeneration == panelConnection) &&
+            latestSnapshot.Current is { } current &&
+            string.Equals(ToConnectionState(current.ConnectionStatus), "connected", StringComparison.Ordinal);
         _panels.Bind(props.Provider, panelSession, panelConnection, timelineGeneration, historyRevision,
-            entries, PanelSourceCurrent, panelProfile.Revision);
+            entries, PanelSourceCurrent, panelProfile.Revision, SubagentsSourceCurrent);
         var panelRevision = _panels.Revision;
 
         var timelineProps = new ChatTimelinePresentationContext(
@@ -367,11 +371,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             LoadToolOutputAsync: dataProvider is null ? null : dataProvider.LoadToolOutputAsync,
             ToolDetailsProfileState: dataProvider?.ToolDetailsProfileState ?? default,
             ReadToolDetailsProfileState: dataProvider is null ? null : dataProvider.ReadToolDetailsProfileState,
-            ChildThreads: isGatewayConnected && effectiveThread is not null
-                ? snapshot.Threads.Where(child => !child.IsArchived
-                    && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
-                : [],
-            ProviderReview: isGatewayConnected ? effectiveThread?.ProviderReview : null,
             UserDisplayName: props.UserDisplayName,
             UserProfilePicture: props.UserProfilePicture,
             OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null);
@@ -573,9 +572,14 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .IsVisible(composerVisible)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
+        var subagentChildren = isGatewayConnected && effectiveThread is not null
+            ? snapshot.Threads.Where(child => child.IsSubagent && !child.IsArchived
+                && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
+            : [];
         var conversation = Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : props.Compact ? (isEmptyConversation ? GridSize.Auto : GridSize.Star()) : GridSize.Star(), GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
+            [showWelcome ? GridSize.Auto : props.Compact ? (isEmptyConversation ? GridSize.Auto : GridSize.Star()) : GridSize.Star(),
+                GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
             showWelcome || (props.Compact && isEmptyConversation)
                 ? Empty().Grid(row: 0)
                 : props.Compact
@@ -584,7 +588,13 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
             ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
                 .WithKey("chat-pending-messages").Grid(row: 2),
-            composerArea.Grid(row: 3))
+            Component<ReactorChatProviderReview, ReactorChatProviderReviewProps>(
+                    new(isGatewayConnected ? effectiveThread?.ProviderReview : null, viewportWidth))
+                .WithKey("chat-provider-review").Grid(row: 3),
+            Component<ReactorChatSubagentsPill, ReactorChatSubagentsPillProps>(
+                    new(_panels, subagentChildren, viewportWidth))
+                .WithKey("chat-subagents-pill").Grid(row: 4),
+            composerArea.Grid(row: 5))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .Set(grid =>
             {
@@ -595,8 +605,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .VAlign(VerticalAlignment.Stretch)
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth, setViewportHeight))
             .OnUnmount(ChatVisuals.StopObserving);
+        var subagents = Component<ReactorChatSubagents, ReactorChatSubagentsProps>(new(subagentChildren, _panels));
         return Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(
-            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps));
+            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents));
     }
 
     private static Element RenderLoading() =>

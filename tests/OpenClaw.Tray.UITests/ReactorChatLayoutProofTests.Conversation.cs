@@ -226,7 +226,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 snapshot.Threads[0] with { WaitingForSubagents = true,
                     ProviderReview = new("provider-review", "proof-run", "Synthetic review explanation",
                         "Continue only after reviewing the request.", false) },
-                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof",
+                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof", IsSubagent = true,
                     Activity = ChatActivity.Working, CurrentActivity = "Checking the synthetic change" }] };
             await PublishAsync();
             await ResumeFollowingAsync(surface);
@@ -243,18 +243,45 @@ public sealed partial class ReactorChatLayoutProofTests
                 return bounds.Top >= 0 && bounds.Bottom <= scroll.ActualHeight;
             }, "visible waiting-for-subagents feedback"));
             await CaptureAsync(surface, "Feedback-child-wait");
-            await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatChildActivity").IsExpanded = true);
-            await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatProviderReview").IsExpanded = true);
-            await SettleAsync();
-            await AwaitDisclosureAnimationsAsync(surface);
-            await CaptureAsync(surface, "Feedback-provider-review");
             await ui.RunOnUIAsync(() =>
             {
-                var details = FindControl<ScrollViewer>(surface, "ChatActivityDetails");
-                details.ChangeView(null, details.ScrollableHeight, null, disableAnimation: true);
+                var review = FindControl<Border>(surface, "ChatProviderReview");
+                Assert.Equal("Session stopped as a precaution. " +
+                    "The provider stopped this session. Review its findings before starting more work.",
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(review));
+                Assert.DoesNotContain(FindDescendants<Expander>(surface), expander =>
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(expander) == "ChatProviderReview");
+                var composerBounds = Bounds(FindControl<TextBox>(surface, "ChatComposerInput"), surface);
+                var reviewBounds = Bounds(review, surface);
+                Assert.True(reviewBounds.Bottom <= composerBounds.Top);
+                Assert.InRange(reviewBounds.Width, 0, ChatVisuals.ReadingWidth + 1);
+                Invoke(FindControl<Button>(review, "ChatProviderReviewOpen"));
             });
-            await SettleAsync();
+            ContentDialog? findings = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                findings = VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+                    .SelectMany(popup => popup.Child is ContentDialog direct
+                        ? new[] { direct } : FindDescendants<ContentDialog>(popup.Child)).SingleOrDefault();
+                return findings is { IsLoaded: true };
+            }, "provider findings dialog"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var text = FindDescendants<TextBlock>(findings!).Select(block => block.Text).ToArray();
+                Assert.Contains("Provider findings", text);
+                Assert.Contains("Synthetic review explanation", text);
+                Assert.Contains("This session can't continue. It remains stopped.", text);
+            });
+            await CaptureAsync(surface, "Feedback-provider-review");
+            await ui.RunOnUIAsync(() => findings!.Hide());
+            await UntilAsync(() => !VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+                    .Any(popup => popup.Child is ContentDialog), "provider findings dialog closed");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
+            await UntilAsync(() => FindOptional<Grid>(surface, "ChatSubagent_child") is { IsLoaded: true },
+                "Subagents tab with the waiting child");
             await CaptureAsync(surface, "Feedback-child-details");
+            await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
+            await UntilAsync(() => PanelCollapsed(surface), "Subagents tab closed");
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
                 FindControl<TextBlock>(host, "ChatRunProgressText").Text));
 
@@ -1065,14 +1092,20 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private sealed class ConversationParityBridge(ChatHistoryInfo history, SessionInfo session) : IChatGatewayBridge
     {
+        public SessionInfo[] Children { get; set; } = [];
+        public System.Collections.Concurrent.ConcurrentQueue<string> HistoryRequests { get; } = new();
         public bool IsConnected => true;
         public ConnectionStatus CurrentStatus => ConnectionStatus.Connected;
         public string MainSessionKey => history.SessionKey;
         public bool HasHandshakeSnapshot => true;
-        public SessionInfo[] GetSessionList() => [session.Clone()];
+        public SessionInfo[] GetSessionList() => new[] { session }.Concat(Children).Select(row => row.Clone()).ToArray();
         public ModelsListInfo? GetCurrentModelsList() => null;
         public void StartProactiveBootstrap() => SessionsUpdated?.Invoke(this, GetSessionList());
-        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) => Task.FromResult(history);
+        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
+        {
+            HistoryRequests.Enqueue(sessionKey ?? "");
+            return Task.FromResult(history);
+        }
         public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
             Task.FromResult(new CommandCatalog { IsSupported = false });
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId,

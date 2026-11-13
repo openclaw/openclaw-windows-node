@@ -6,6 +6,22 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void ActiveSavedGatewayRemoval_RecordsPinnedUserIntentAfterSavingRemoval()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs"));
+        var removal = ExtractMethod(source, "OnSavedRowRemoveAsync");
+
+        // Retire when saved-row removal has a behavioral seam independent of the native dialog.
+        AssertInOrder(removal,
+            "_gatewayRegistry?.RemoveAndSave(gwId)",
+            "if (wasActive && _connectionManager != null)",
+            "await _connectionManager.DisconnectByUserAsync(gwId)");
+        Assert.DoesNotContain("_connectionManager.DisconnectAsync()", removal);
+    }
+
+    [Fact]
     public void AutomationsOverview_HasOneLazyHostOwnerBoundToTheLiveClientAndDisposedBeforeGateway()
     {
         var source = ReadAppSources();
@@ -1547,7 +1563,8 @@ public sealed class AppRefactorContractTests
         AssertInOrder(
             remove,
             "_gatewayRegistry?.RemoveAndSave(gwId)",
-            "await _connectionManager.DisconnectAsync()");
+            "return;",
+            "await _connectionManager.DisconnectByUserAsync(gwId)");
     }
 
     [Fact]

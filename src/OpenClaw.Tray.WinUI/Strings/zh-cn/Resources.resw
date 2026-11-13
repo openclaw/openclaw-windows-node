@@ -6278,6 +6278,7 @@
   <data name="Chat_Model_Search" xml:space="preserve"><value>搜索模型</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>添加模型提供商...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>移除附件 {0}</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在加载消息...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
@@ -7737,7 +7738,6 @@
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新消息。跳到最新消息</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>跳到最新消息</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 个子代理，{1} 个正在工作，{2} 个需要关注</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>空闲</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等待子代理</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在准备输入</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>失败</value></data>
@@ -7749,6 +7749,17 @@
   <data name="Chat_Review_Denied" xml:space="preserve"><value>提供商未批准该请求</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>未能加载更早的历史记录。请重新加载对话后重试。</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>请先在网页聊天中审核此请求，然后继续。</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>会话已出于预防暂停</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>会话已出于预防停止</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>提供方无法确认代理已理解你的指示。请先查看其审核结果，然后再继续。</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>提供方已暂停此会话。请先在网页聊天中审核此请求，然后继续。</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>提供方停止了此会话，且没有可查看的审核结果。此会话无法继续。</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>提供方停止了此会话。请先查看其审核结果，然后再开始更多工作。</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>查看审核结果</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>提供方审核结果</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>继续消息</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>此会话无法继续，将保持停止状态。</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>关闭</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>提供商审核超时</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>提供商审核已取消</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>添加系统</value></data>
@@ -7892,6 +7903,14 @@
   <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>快速聊天</value></data>
   <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>快速回复</value></data>
   <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>无法打开聊天。请重试。</value></data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>子代理</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>当前会话列表中没有子代理。</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>子代理：{0} 个运行中，{1} 个已完成</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>运行中</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>排队中</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>失败</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>代理：{0}</value>
   </data>
@@ -10005,8 +10024,9 @@
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁打开详情</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>工具详情</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>这些详情已不可用。如有需要，请重新连接，然后从当前对话重新打开工具。</value></data>
-  <data name="Chat_Panel_Resize" xml:space="preserve"><value>调整详情面板大小</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>调整对话面板大小</value></data>
   <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>使用左右方向键调整大小。Home 键选择最小宽度；End 键选择最大宽度。</value></data>
   <data name="Chat_Panel_Back" xml:space="preserve"><value>返回对话</value></data>
-  <data name="Chat_Panel_Show" xml:space="preserve"><value>显示详情</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>显示面板</value></data>
+  <data name="Chat_Panel_Tabs" xml:space="preserve"><value>对话面板</value></data>
 </root>

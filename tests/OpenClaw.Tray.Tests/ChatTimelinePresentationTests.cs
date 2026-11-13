@@ -1574,6 +1574,14 @@ public sealed class ChatTimelinePresentationTests
             composer.Split(
                 "ComposerAutomationVisibility.Prepare(",
                 StringSplitOptions.None).Length - 1);
+        var attachmentChip = File.ReadAllText(Path.Combine(
+            TestRepositoryPaths.GetRepositoryRoot(),
+            "src",
+            "OpenClaw.Tray.WinUI",
+            "Chat",
+            "ChatAttachmentChip.cs"));
+        Assert.Contains("ComposerAutomationVisibility.Prepare(button)", attachmentChip);
+        Assert.Contains("ComposerAutomationVisibility.Detach((FrameworkElement)control)", attachmentChip);
         Assert.Contains("\"ChatComposerAttach\"", composer);
         Assert.DoesNotContain("\"ChatComposerMore\"", composer);
         Assert.DoesNotContain("\"ChatComposerSessionPicker\"", composer);

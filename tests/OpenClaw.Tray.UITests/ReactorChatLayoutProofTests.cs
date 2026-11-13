@@ -1941,20 +1941,55 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         var copied = new List<string>();
         await WithChatAsync(800, async (surface, host, _, _) =>
         {
-            await ui.RunOnUIAsync(() =>
+            // ChatCopyButton reverts its feedback on a timer that starts once the feedback reaches the button,
+            // so record each label transition with its time instead of sampling the label after a settle a
+            // loaded runner can stretch past the timer.
+            var labels = new List<(string Label, TimeSpan Elapsed)>();
+            var clock = new System.Diagnostics.Stopwatch();
+            Button? codeCopy = null;
+            string? idleLabel = null;
+            long? callback = null;
+            try
             {
-                Invoke(Assert.Single(CodeCopyButtons(surface)));
-                Invoke(Assert.Single(FindDescendants<Button>(host), button =>
-                    AutomationProperties.GetAutomationId(button).Contains("kind:Assistant", StringComparison.Ordinal)));
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
+                await ui.RunOnUIAsync(() =>
+                {
+                    codeCopy = Assert.Single(CodeCopyButtons(surface));
+                    idleLabel = AutomationProperties.GetName(codeCopy);
+                    callback = codeCopy.RegisterPropertyChangedCallback(AutomationProperties.NameProperty,
+                        (sender, _) => labels.Add((AutomationProperties.GetName(sender), clock.Elapsed)));
+                    clock.Start();
+                    Invoke(codeCopy);
+                    Invoke(Assert.Single(FindDescendants<Button>(host), button =>
+                        AutomationProperties.GetAutomationId(button).Contains("kind:Assistant", StringComparison.Ordinal)));
+                });
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => labels.Count > 0, "code copy feedback label",
+                    () => $"label='{AutomationProperties.GetName(codeCopy!)}', codeCopyButtons={CodeCopyButtons(surface).Length}, " +
+                        $"sameButton={CodeCopyButtons(surface).Contains(codeCopy)}, copies={copied.Count}"));
+                // Read the current label in the same UI turn as the recorded transitions so a timer tick
+                // cannot land between them.
+                await ui.RunOnUIAsync(() =>
+                {
+                    var expected = success ? "Copied" : "Copy failed";
+                    Assert.Equal("Copy code", idleLabel);
+                    Assert.Same(codeCopy, Assert.Single(CodeCopyButtons(surface)));
+                    var observed = labels.Select(change => change.Label).ToArray();
+                    // The feedback is shown first; the only later change is its timed return to the idle label,
+                    // which the product timer cannot raise until the feedback has been shown for its interval.
+                    Assert.Equal(observed.Length == 1 ? new[] { expected } : new[] { expected, idleLabel! }, observed);
+                    if (observed.Length == 2)
+                        Assert.True(labels[1].Elapsed - labels[0].Elapsed >= ChatCopyButton.DefaultResetAfter - CopyFeedbackTimerTolerance,
+                            $"Feedback was shown for only {(labels[1].Elapsed - labels[0].Elapsed).TotalMilliseconds:0} ms.");
+                    Assert.Equal(observed[^1], AutomationProperties.GetName(codeCopy));
+                    Assert.Equal(2, copied.Count);
+                    Assert.Contains(AssistantMessage, copied);
+                });
+            }
+            finally
             {
-                var expected = success ? "Copied" : "Copy failed";
-                Assert.Equal(expected, AutomationProperties.GetName(Assert.Single(CodeCopyButtons(surface))));
-                Assert.Equal(2, copied.Count);
-                Assert.Contains(AssistantMessage, copied);
-            });
+                if (callback is { } token)
+                    await ui.RunOnUIAsync(() => codeCopy!.UnregisterPropertyChangedCallback(AutomationProperties.NameProperty, token));
+            }
             await CaptureAsync(surface, success ? "Copied-message-and-code-800" : "Copy-failed-message-and-code-800");
         }, "parity", text => { copied.Add(text); return success; });
     }
@@ -2001,6 +2036,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    // DispatcherQueueTimer ticks are not early, but its clock and Stopwatch can differ by a timer quantum.
+    private static readonly TimeSpan CopyFeedbackTimerTolerance = TimeSpan.FromMilliseconds(100);
+
     private static Button[] CodeCopyButtons(DependencyObject root) =>
         FindDescendants<Button>(root).Where(button =>
             AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_code_", StringComparison.Ordinal)).ToArray();
@@ -2027,50 +2065,106 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         await WithChatAsync(480, async (surface, host, _, _) =>
         {
             Action<ChatCopyButtonProps>? update = null;
+            ChatCopyButtonProps? rendered = null;
             var writes = new List<string>();
             var succeeds = true;
+            // A window no test run can outlast keeps feedback visible until a phase observes it; the short
+            // window is used only where a reset must happen.
+            var held = TimeSpan.FromMinutes(5);
+            var resetAfter = TimeSpan.FromMilliseconds(400);
             var props = new ChatCopyButtonProps("first", "one", "Copy",
-                text => { writes.Add(text); return succeeds; }, ResetAfter: TimeSpan.FromMilliseconds(400));
+                text => { writes.Add(text); return succeeds; }, ResetAfter: held);
             await ui.RunOnUIAsync(() => host.Mount(_ =>
-                Component<CopyProbe, CopyProbeProps>(new(props, setter => update = setter))));
-            await SettleAsync();
+                Component<CopyProbe, CopyProbeProps>(new(props, setter => update = setter, value => rendered = value))));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => rendered == props && FindDescendants<Button>(surface).Any(control =>
+                    AutomationProperties.GetAutomationId(control) == "ChatCopy_first"),
+                "copy probe button"));
             var button = await ui.RunOnUIAsync(() => Task.FromResult(FindControl<Button>(surface, "ChatCopy_first")));
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copied", AutomationProperties.GetName(button)));
-            await Task.Delay(220);
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await Task.Delay(150);
-            await ui.RunOnUIAsync(() => Assert.Equal("Copied", AutomationProperties.GetName(button)));
-            await Task.Delay(350);
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copy", AutomationProperties.GetName(button)));
-            succeeds = false;
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copy failed", AutomationProperties.GetName(button)));
-            await ui.RunOnUIAsync(() => update!(props with { Text = "two" }));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var labels = new List<(string Label, TimeSpan Elapsed)>();
+            string Label() => AutomationProperties.GetName(button);
+            string Transitions() => string.Join(", ", labels.Select(change => $"{change.Label}@{change.Elapsed.TotalMilliseconds:0}ms"));
+            Task WaitAsync(Func<bool> condition, string operation) =>
+                WaitForRenderedConditionAsync(condition, operation, () => $"label='{Label()}'; transitions: {Transitions()}");
+            async Task ApplyAsync(ChatCopyButtonProps next)
             {
-                Assert.Same(button, FindControl<Button>(surface, "ChatCopy_first"));
-                Assert.Equal("Copy", AutomationProperties.GetName(button));
-            });
-            succeeds = true;
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => update!(props with { Identity = "second", Text = "two" }));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copy", AutomationProperties.GetName(button)));
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => host.Mount(_ => Empty()));
-            await Task.Delay(500);
-            await ui.RunOnUIAsync(() => Assert.Equal("Copied", AutomationProperties.GetName(button)));
-            Assert.Equal(new[] { "one", "one", "one", "two", "two" }, writes);
+                props = next;
+                await ui.RunOnUIAsync(() => update!(next));
+                await ui.RunOnUIAsync(() => WaitAsync(() => rendered == next, "copy probe props applied"));
+            }
+            // Click and arm the observing wait in the same UI turn, so the feedback cannot render and
+            // reset in a dispatch gap before the wait starts.
+            Task ClickAndWaitAsync(Func<bool> condition, string operation) =>
+                ui.RunOnUIAsync(async () =>
+                {
+                    Invoke(button);
+                    await WaitAsync(condition, operation);
+                });
+            long? callback = null;
+            try
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    callback = button.RegisterPropertyChangedCallback(AutomationProperties.NameProperty,
+                        (sender, _) => labels.Add((AutomationProperties.GetName(sender), clock.Elapsed)));
+                });
+
+                // A second click restarts the reset window with the current props: the first feedback holds a
+                // window it cannot reach, so only the restarted 400 ms window can return the idle label.
+                await ClickAndWaitAsync(() => Label() == "Copied", "first copy feedback");
+                await ApplyAsync(props with { ResetAfter = resetAfter });
+                var secondClick = TimeSpan.Zero;
+                await ClickAndWaitAsync(() =>
+                {
+                    if (secondClick == TimeSpan.Zero) secondClick = clock.Elapsed;
+                    return Label() == "Copy";
+                }, "repeated copy feedback reset");
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Equal(new[] { "Copied", "Copy" }, labels.Select(change => change.Label));
+                    Assert.True(labels[1].Elapsed >= secondClick + resetAfter - CopyFeedbackTimerTolerance,
+                        $"Reset came before the restarted window: {Transitions()}; second click {secondClick.TotalMilliseconds:0}ms.");
+                });
+
+                // With the window held, only a content or identity change can clear the feedback.
+                await ApplyAsync(props with { ResetAfter = held });
+                succeeds = false;
+                await ClickAndWaitAsync(() => Label() == "Copy failed", "copy failure feedback");
+                await ApplyAsync(props with { Text = "two" });
+                await ui.RunOnUIAsync(() => WaitAsync(() => Label() == "Copy", "content change clears feedback"));
+                await ui.RunOnUIAsync(() => Assert.Same(button, FindControl<Button>(surface, "ChatCopy_first")));
+                succeeds = true;
+                await ClickAndWaitAsync(() => Label() == "Copied", "copy feedback for new text");
+                await ApplyAsync(props with { Identity = "second" });
+                await ui.RunOnUIAsync(() => WaitAsync(() => Label() == "Copy", "identity change clears feedback"));
+
+                // Disposal cancels a reset that would otherwise fire: unmount in the turn that observes the feedback.
+                // Outside a render, Mount retires the old root synchronously, so the button's cleanup cancels
+                // its timer before Mount returns.
+                await ApplyAsync(props with { ResetAfter = resetAfter });
+                var unmounted = false;
+                await ClickAndWaitAsync(() =>
+                {
+                    if (!unmounted && Label() == "Copied")
+                    {
+                        host.Mount(_ => Empty());
+                        unmounted = true;
+                    }
+                    return unmounted;
+                }, "copy feedback before disposal");
+                // Proving the absence of a reset requires waiting past its full window.
+                await Task.Delay(resetAfter + CopyFeedbackTimerTolerance);
+                await ui.RunOnUIAsync(() => Assert.Equal("Copied", Label()));
+                Assert.Equal(new[] { "one", "one", "one", "two", "two" }, writes);
+            }
+            finally
+            {
+                if (callback is { } token)
+                    await ui.RunOnUIAsync(() => button.UnregisterPropertyChangedCallback(AutomationProperties.NameProperty, token));
+            }
         });
     }
-
     [Fact]
     public void ClipboardStatus_ReportsKnownFailureAndDoesNotSwallowProgrammingErrors()
     {
@@ -2083,7 +2177,10 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             ClipboardHelper.TryCopyText("fixture", true, (_, _) => throw new InvalidOperationException()));
     }
 
-    private sealed record CopyProbeProps(ChatCopyButtonProps Initial, Action<Action<ChatCopyButtonProps>> Ready);
+    private sealed record CopyProbeProps(
+        ChatCopyButtonProps Initial,
+        Action<Action<ChatCopyButtonProps>> Ready,
+        Action<ChatCopyButtonProps>? Rendered = null);
 
     private sealed class CopyProbe : Component<CopyProbeProps>
     {
@@ -2091,6 +2188,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         {
             var (value, setValue) = UseState(Props.Initial);
             UseEffect((Func<Action>)(() => { Props.Ready(setValue); return () => { }; }), Array.Empty<object>());
+            // Effects run after the commit, so the button has been rendered with these props.
+            UseEffect((Func<Action>)(() => { Props.Rendered?.Invoke(value); return () => { }; }), value);
             return Component<ChatCopyButton, ChatCopyButtonProps>(value);
         }
     }
@@ -3080,6 +3179,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Theory]
+    [InlineData(260)]
     [InlineData(320)]
     [InlineData(480)]
     [InlineData(800)]
@@ -3087,33 +3187,203 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     {
         await WithChatAsync(width, async (surface, _, session, _) =>
         {
-            await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments(
-                Enumerable.Range(1, 6).Select(index => new OpenClaw.Shared.ChatAttachment
+            var attachments = new[] { "a.txt" }
+                .Concat(Enumerable.Range(2, 5).Select(index => $"Attachment {index} with a long descriptive filename.txt"))
+                .Select(fileName => new OpenClaw.Shared.ChatAttachment
                 {
-                    FileName = $"Attachment {index} with a long descriptive filename.txt",
-                    MimeType = "text/plain", Content = "dGVzdA==",
-                }).ToArray()));
-            await SettleAsync();
+                    FileName = fileName, MimeType = "text/plain", Content = "dGVzdA==",
+                }).ToArray();
+            var touch = new Windows.Devices.Input.TouchCapabilities().TouchPresent != 0;
+            var pointerAway = false;
+            Button[] removals = [];
+            await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments(attachments));
+            string? lastRailLayout = null;
+            // Wait for six laid-out pills whose wrapped geometry is unchanged across two checks.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                if (FindDescendants<ScrollViewer>(surface).FirstOrDefault(scroll =>
+                        AutomationProperties.GetAutomationId(scroll) == "ChatAttachmentRail") is not { } rail)
+                    return false;
+                var laidOut = FindDescendants<Border>(rail).Where(chip =>
+                    AutomationProperties.GetAutomationId(chip) == "ChatAttachmentChip"
+                    && chip.IsLoaded && chip.ActualWidth > 0).ToArray();
+                if (laidOut.Length != 6)
+                    return false;
+                var layout = string.Join(";", laidOut.Select(chip => Bounds(chip, surface).ToString()))
+                    + $"|{rail.ActualHeight}|{rail.ScrollableHeight}";
+                var stable = layout == lastRailLayout;
+                lastRailLayout = layout;
+                return stable;
+            }, "six stable attachment pills"));
             await ui.RunOnUIAsync(() =>
             {
                 var rail = FindControl<ScrollViewer>(surface, "ChatAttachmentRail");
-                Assert.InRange(rail.ActualHeight, 1, 96);
-                Assert.True(rail.ScrollableWidth > 0);
-                var removals = FindDescendants<Button>(rail).Where(button =>
-                    AutomationProperties.GetName(button) == "Remove attachment").ToArray();
-                Assert.Equal(6, removals.Length);
+                // Pills wrap onto new rows instead of scrolling sideways.
+                Assert.Equal(0, rail.ScrollableWidth);
+                var chips = FindDescendants<Border>(rail).Where(chip =>
+                    AutomationProperties.GetAutomationId(chip) == "ChatAttachmentChip").ToArray();
+                Assert.Equal(6, chips.Length);
+                Assert.All(chips, chip =>
+                {
+                    Assert.True(chip.ActualHeight >= ChatVisuals.AttachmentChipHeight - 0.5);
+                    Assert.True(chip.ActualWidth <= ChatVisuals.AttachmentChipMaxWidth + 0.5);
+                    Assert.True(Bounds(chip, surface).Right <= Bounds(rail, surface).Right + 0.5);
+                });
+                var rows = chips.Select(chip => Math.Round(Bounds(chip, surface).Top)).Distinct().Count();
+                Assert.True(rows >= 2, $"Expected wrapped rows, got {rows}.");
+                // The composer grows with the rows up to the cap, then the rail scrolls vertically. Measure the
+                // rows rather than counting them, because scaled text makes each row taller.
+                Assert.True(rail.ActualHeight <= ChatVisuals.AttachmentRailMaxHeight + 0.5);
+                var neededHeight = chips.Max(chip => Bounds(chip, surface).Bottom)
+                    - chips.Min(chip => Bounds(chip, surface).Top) + 6;
+                if (neededHeight > ChatVisuals.AttachmentRailMaxHeight + 0.5)
+                    Assert.True(rail.ScrollableHeight > 0);
+                else
+                    Assert.Equal(0, rail.ScrollableHeight, 0.5);
+                // Pills size to their names: a short name stays well below a trimmed long one and is not trimmed.
+                Assert.True(chips[0].ActualWidth < chips[1].ActualWidth - 40);
+                var shortName = Assert.Single(FindDescendants<TextBlock>(chips[0]), text => text.Text == "a.txt");
+                Assert.False(shortName.IsTextTrimmed);
+                removals = FindDescendants<Button>(rail).Where(button =>
+                    AutomationProperties.GetName(button)?.StartsWith("Remove attachment ", StringComparison.Ordinal) == true)
+                    .ToArray();
+                Assert.Equal(
+                    attachments.Select(attachment => $"Remove attachment {attachment.FileName}"),
+                    removals.Select(AutomationProperties.GetName));
                 Assert.All(removals, button =>
                 {
-                    Assert.True(button.ActualWidth >= 32 && button.ActualHeight >= 32);
-                    Assert.InRange(Bounds(button, surface).Top, Bounds(rail, surface).Top, Bounds(rail, surface).Bottom);
-                    Assert.True(Bounds(button, surface).Bottom <= Bounds(rail, surface).Bottom);
+                    Assert.True(button.ActualWidth >= ChatVisuals.AttachmentRemoveSize - 0.5 &&
+                        button.ActualHeight >= ChatVisuals.AttachmentRemoveSize - 0.5);
+                    // The always-reserved trailing gutter keeps the overlaid scroll bar off removal targets.
+                    Assert.True(Bounds(button, surface).Right
+                        <= Bounds(rail, surface).Right - ChatVisuals.AttachmentRailScrollBarInset + 0.5);
                 });
-                Invoke(removals[0]);
+                // A resting system pointer can hover at most one pill; the others stay hidden.
+                if (!touch)
+                    Assert.True(removals.Count(button => button.Opacity != 0) <= 1);
+                pointerAway = !touch && removals.All(button => button.Opacity == 0);
+                // Pointer focus (as after a mouse removal) is not a reveal reason on its own.
+                Assert.True(removals[2].Focus(FocusState.Pointer));
             });
+            // test-timing-exception: this proves pointer focus does not reveal the button; no positive signal exists.
             await SettleAsync();
-            Assert.Equal(5, session.ViewModel.PendingAttachments.Count);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(FocusState.Pointer, removals[2].FocusState);
+                if (pointerAway)
+                    Assert.Equal(0, removals[2].Opacity);
+                Assert.True(removals[^1].Focus(FocusState.Keyboard));
+            });
+            Rect lastTarget = default, lastViewport = default;
+            // Keyboard focus scrolls a pill that starts below the capped rail into view.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var rail = FindControl<ScrollViewer>(surface, "ChatAttachmentRail");
+                lastTarget = Bounds(removals[^1], surface);
+                lastViewport = Bounds(rail, surface);
+                return removals[^1].FocusState == FocusState.Keyboard
+                    && lastTarget.Top >= lastViewport.Top - 0.5 && lastTarget.Bottom <= lastViewport.Bottom + 0.5;
+            }, "the focused last removal scrolled into the rail viewport",
+                () => $"Focused removal {lastTarget} is outside the rail viewport {lastViewport}."));
+            await ui.RunOnUIAsync(() => Assert.True(removals[1].Focus(FocusState.Keyboard)));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => removals[1].Opacity == 1, "keyboard focus reveals the remove button"));
+            await ui.RunOnUIAsync(() =>
+            {
+                if (!touch)
+                    Assert.True(removals.Where((_, index) => index != 1).Count(button => button.Opacity != 0) <= 1);
+                Invoke(removals[1]);
+            });
+            string FocusedRemovalName() => FocusManager.GetFocusedElement(surface.XamlRoot) is Button button
+                ? AutomationProperties.GetName(button) ?? "" : "";
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    session.ViewModel.PendingAttachments.Count == 5
+                    && FocusedRemovalName() == $"Remove attachment {attachments[2].FileName}"
+                    && FocusManager.GetFocusedElement(surface.XamlRoot) is Button { Opacity: 1 },
+                "focus moves to the next file's revealed remove button",
+                () => $"pending {session.ViewModel.PendingAttachments.Count}, focused '{FocusedRemovalName()}'"));
+            await ui.RunOnUIAsync(() =>
+            {
+                // Removal targets the activated file, and keyboard focus moves to the next file's remove button.
+                Assert.Equal(attachments.Where((_, index) => index != 1), session.ViewModel.PendingAttachments);
+
+                // Two removals before the next render must pick the successor from the live list.
+                Button Removal(int attachment) => Assert.Single(FindDescendants<Button>(surface), button =>
+                    AutomationProperties.GetName(button) == $"Remove attachment {attachments[attachment].FileName}");
+                var fifth = Removal(4);
+                var last = Removal(5);
+                Assert.True(fifth.Focus(FocusState.Keyboard));
+                Invoke(fifth);
+                Assert.True(last.Focus(FocusState.Keyboard));
+                Invoke(last);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    session.ViewModel.PendingAttachments.Count == 3
+                    && FocusedRemovalName() == $"Remove attachment {attachments[3].FileName}",
+                "focus moves to the surviving file after two removals",
+                () => $"pending {session.ViewModel.PendingAttachments.Count}, focused '{FocusedRemovalName()}'"));
+            await ui.RunOnUIAsync(() =>
+                Assert.Equal(new[] { attachments[0], attachments[2], attachments[3] }, session.ViewModel.PendingAttachments));
             if (width == 480)
                 await CaptureAsync(surface, "Attachment-rail-480");
+        });
+    }
+
+    [Theory]
+    [InlineData(260)]
+    [InlineData(480)]
+    public async Task AttachmentRail_ShowsImagesAsTilesAboveFilePills(int width)
+    {
+        // An 8x8 two-band PNG; the SVG is not a raster preview and stays a file pill.
+        const string Png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAeSURBVChTY4iuv/YfH2ZAF0DHVFDwaaX1f3yYDgoArv+wgQZn710AAAAASUVORK5CYII=";
+        await WithChatAsync(width, async (surface, _, session, _) =>
+        {
+            var notes = new OpenClaw.Shared.ChatAttachment { FileName = "notes.txt", MimeType = "text/plain", Content = "dGVzdA==" };
+            var chart = new OpenClaw.Shared.ChatAttachment { Type = "image", FileName = "chart.png", MimeType = "image/png", Content = Png };
+            var logo = new OpenClaw.Shared.ChatAttachment { Type = "image", FileName = "logo.svg", MimeType = "image/svg+xml", Content = "PHN2Zy8+" };
+            await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments([notes, chart, logo]));
+            FrameworkElement[] Tagged(string id) => FindDescendants<FrameworkElement>(surface)
+                .Where(element => AutomationProperties.GetAutomationId(element) == id && element.ActualWidth > 0).ToArray();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Tagged("ChatAttachmentImage").Length == 1 && Tagged("ChatAttachmentChip").Length == 2,
+                "one image tile and two file pills"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var tile = Assert.Single(Tagged("ChatAttachmentImage"));
+                var pills = Tagged("ChatAttachmentChip");
+                var image = Assert.Single(FindDescendants<Border>(tile), border =>
+                    border.Background is ImageBrush);
+                Assert.Equal(ChatVisuals.AttachmentThumbnailSize, image.ActualWidth, 0.5);
+                Assert.Equal(ChatVisuals.AttachmentThumbnailSize, image.ActualHeight, 0.5);
+                // Tiles sit on their own row above the file pills.
+                Assert.True(Bounds(tile, surface).Bottom <= pills.Min(pill => Bounds(pill, surface).Top) + 0.5);
+                Assert.Equal(
+                    new[] { "Remove attachment notes.txt", "Remove attachment logo.svg" },
+                    pills.Select(pill => AutomationProperties.GetName(
+                        Assert.Single(FindDescendants<Button>(pill)))));
+                // The remove badge overlaps the tile's top-right corner.
+                var badge = Assert.Single(FindDescendants<Button>(tile));
+                Assert.Equal("Remove attachment chart.png", AutomationProperties.GetName(badge));
+                var badgeBounds = Bounds(badge, surface);
+                var imageBounds = Bounds(image, surface);
+                Assert.True(badgeBounds.Right > imageBounds.Right && badgeBounds.Left < imageBounds.Right);
+                Assert.True(badgeBounds.Top < imageBounds.Top && badgeBounds.Bottom > imageBounds.Top);
+                Assert.True(badge.Focus(FocusState.Keyboard));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Assert.Single(FindDescendants<Button>(Assert.Single(Tagged("ChatAttachmentImage")))).Opacity == 1,
+                "keyboard focus reveals the image remove badge"));
+            if (width == 480)
+                await CaptureAsync(surface, "Attachment-images-480");
+            await ui.RunOnUIAsync(() => Invoke(Assert.Single(FindDescendants<Button>(Assert.Single(Tagged("ChatAttachmentImage"))))));
+            // Visual order is images, then files, so removing the only image focuses the first file.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => session.ViewModel.PendingAttachments.Count == 2
+                    && FocusManager.GetFocusedElement(surface.XamlRoot) is Button focused
+                    && AutomationProperties.GetName(focused) == "Remove attachment notes.txt"
+                    && Tagged("ChatAttachmentImage").Length == 0,
+                "removing the image moves focus to the first file pill"));
+            await ui.RunOnUIAsync(() => Assert.Equal(new[] { notes, logo }, session.ViewModel.PendingAttachments));
         });
     }
 

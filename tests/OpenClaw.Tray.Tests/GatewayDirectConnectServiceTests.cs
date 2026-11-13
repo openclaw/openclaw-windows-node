@@ -1320,7 +1320,7 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
         }
 
         public Task ConnectNodeOnlyAsync(string? gatewayId = null) => Task.CompletedTask;
-        public Task DisconnectByUserAsync() => DisconnectAsync();
+        public Task DisconnectByUserAsync(string? gatewayId = null) => DisconnectAsync();
         public Task ReconnectAsync() => Task.CompletedTask;
         public Task<bool> ReconnectIfCurrentAsync(
             string gatewayId,

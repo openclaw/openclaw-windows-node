@@ -13,6 +13,7 @@ internal sealed class ChatConversationPanelState
     internal const double ResizeStep = 16;
     internal const double DividerWidth = 12;
     internal const string DetailsSlot = "details";
+    internal const string SubagentsSlot = "subagents";
     private object? _provider;
     private string? _session;
     private long _connectionGeneration;
@@ -21,6 +22,7 @@ internal sealed class ChatConversationPanelState
     private long _profileRevision;
     private IReadOnlyList<ChatTimelineItem> _entries = [];
     private Func<bool> _isCurrent = () => false;
+    private Func<bool> _subagentsCurrent = () => false;
     private readonly List<string> _tabs = [];
 
     internal event Action? Changed;
@@ -31,11 +33,12 @@ internal sealed class ChatConversationPanelState
     internal long Revision { get; private set; }
     internal long OpenVersion { get; private set; }
     internal bool IsReady => _session is not null && _isCurrent();
+    internal bool AreSubagentsReady => _session is not null && _subagentsCurrent();
 
     /// <summary>Session/source replacement discards tabs; streaming updates retain them.</summary>
     internal void Bind(object provider, string? session, long connectionGeneration,
         long timelineGeneration, long historyRevision, IReadOnlyList<ChatTimelineItem> entries,
-        Func<bool> isCurrent, long profileRevision = 0)
+        Func<bool> isCurrent, long profileRevision = 0, Func<bool>? subagentsCurrent = null)
     {
         if (!ReferenceEquals(_provider, provider) || _session != session ||
             _connectionGeneration != connectionGeneration || _timelineGeneration != timelineGeneration ||
@@ -59,6 +62,12 @@ internal sealed class ChatConversationPanelState
         _profileRevision = profileRevision;
         _entries = entries;
         _isCurrent = isCurrent;
+        _subagentsCurrent = subagentsCurrent ?? (() => false);
+        if (!AreSubagentsReady)
+        {
+            _tabs.Remove(SubagentsSlot);
+            if (Selected == SubagentsSlot) Selected = _tabs.LastOrDefault();
+        }
     }
 
     internal ChatTimelineItem? Resolve(ChatToolDetailRequest request) =>
@@ -68,12 +77,24 @@ internal sealed class ChatConversationPanelState
     internal bool Open(ChatToolDetailRequest request, long expectedRevision)
     {
         if (Revision != expectedRevision || Resolve(request) is null) return false;
-        if (!_tabs.Contains(DetailsSlot)) _tabs.Add(DetailsSlot);
         Details = request;
-        Selected = DetailsSlot;
+        OpenSlot(DetailsSlot);
+        return true;
+    }
+
+    internal bool OpenSubagents(long expectedRevision)
+    {
+        if (Revision != expectedRevision || !AreSubagentsReady) return false;
+        OpenSlot(SubagentsSlot);
+        return true;
+    }
+
+    private void OpenSlot(string slot)
+    {
+        if (!_tabs.Contains(slot)) _tabs.Add(slot);
+        Selected = slot;
         OpenVersion++;
         Changed?.Invoke();
-        return true;
     }
 
     internal void Select(string slot)
@@ -101,6 +122,7 @@ internal sealed class ChatConversationPanelState
         Details = null;
         _entries = [];
         _isCurrent = () => false;
+        _subagentsCurrent = () => false;
         Revision++;
         Changed?.Invoke();
     }
