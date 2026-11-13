@@ -1726,6 +1726,35 @@ foreach ($jobName in @('build-x64', 'build-arm64', 'build-msix')) {
         -Message "Release build '$jobName' must export the runner-temporary helper path for subsequent build steps."
 }
 
+# Windows ARM64 pwsh crash workaround (PowerShell/PowerShell#28186, actions/runner-images#15107):
+# only the setup-dotnet steps of jobs that can run on windows-11-arm carry the gen0 budget, as an
+# active entry of the step's own env map (not a comment, `with:` input, or job/workflow env).
+function Get-StepEnvironmentLines {
+    param([Parameter(Mandatory)][string]$Step)
+
+    $lines = $Step -split '\r?\n'
+    $start = [Array]::FindIndex($lines, [Predicate[string]] { param($line) $line -ceq '      env:' })
+    if ($start -lt 0) { return @() }
+    $entries = foreach ($line in $lines[($start + 1)..($lines.Count - 1)]) {
+        if ($line -notmatch '^        ') { break }
+        if ($line.TrimStart().StartsWith('#')) { continue }
+        $line.Trim()
+    }
+    return @($entries)
+}
+foreach ($armSetup in @(
+        @{ Job = 'build-arm64'; Step = 'Setup .NET 10' },
+        @{ Job = 'build-msix'; Step = 'Setup .NET from global.json' })) {
+    $setupStep = Get-StepBlock -Text (Get-JobBlock $armSetup.Job) -Name $armSetup.Step
+    if ((Get-StepEnvironmentLines -Step $setupStep) -cnotcontains "DOTNET_GCgen0size: '4000000'") {
+        throw "ARM64-capable job '$($armSetup.Job)' must scope the pwsh CLR crash workaround to the env map of '$($armSetup.Step)'."
+    }
+}
+$gen0Occurrences = [regex]::Matches($workflow, '(?im)^(?!\s*#).*DOTNET_GCgen0size').Count
+if ($gen0Occurrences -ne 2) {
+    throw "The pwsh CLR crash workaround must stay in the two ARM64-capable setup-dotnet steps only (found $gen0Occurrences active entries); builds and tests keep default GC settings. If you add an ARM64-capable setup-dotnet step, add it to this list and update the count."
+}
+
 $buildMsixJob = Get-JobBlock "build-msix"
 Assert-JobDependencies -Name 'build-msix' -Expected @('change-classification', 'metadata', 'reserve-msix-version', 'sign-cleanup-host')
 foreach ($token in @(

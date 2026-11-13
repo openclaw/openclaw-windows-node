@@ -1853,6 +1853,11 @@ jobs:
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
+      env:
+        # windows-11-arm: pwsh launched by setup-dotnet can crash with Internal CLR error 0x80131506
+        # (PowerShell/PowerShell#28186, actions/runner-images#15107). A 64 MiB gen0 budget avoids it
+        # for this step only. Remove once the image ships a PowerShell release containing #28186.
+        DOTNET_GCgen0size: '4000000'
       with:
         dotnet-version: 10.0.x
 
@@ -1954,6 +1959,11 @@ jobs:
 
     - name: Setup .NET from global.json
       uses: actions/setup-dotnet@v6
+      env:
+        # windows-11-arm: pwsh launched by setup-dotnet can crash with Internal CLR error 0x80131506
+        # (PowerShell/PowerShell#28186, actions/runner-images#15107). A 64 MiB gen0 budget avoids it
+        # for this step only. Remove once the image ships a PowerShell release containing #28186.
+        DOTNET_GCgen0size: '4000000'
       with:
         global-json-file: global.json
 
