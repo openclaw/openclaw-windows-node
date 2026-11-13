@@ -707,8 +707,8 @@ foreach ($token in @(
 }
 Assert-Contains -Text $workflow -Expected './scripts/test-native-animation-preference.ps1' `
     -Message 'Native animation prerequisite failures and restoration must be tested.'
-Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
-    -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
+Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 25" `
+    -Message "Tray UI tests must have an outer timeout with headroom over their 13-15 minute runtime rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
 Assert-Contains -Text $trayUiStep -Expected "-CollectNativeFailureMetadata" `
