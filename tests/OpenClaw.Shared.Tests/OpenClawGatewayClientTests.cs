@@ -3573,6 +3573,26 @@ public class OpenClawGatewayClientTests
         Assert.Equal("envelope", live.RunId);
     }
 
+    [Fact]
+    public void EmptyLiveAssistantSnapshot_ReachesConsumersAsStreamRetirement()
+    {
+        var helper = new GatewayClientTestHelper();
+        ChatMessageInfo? received = null;
+        helper.Client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage("""
+            {"type":"event","event":"chat","payload":{"sessionKey":"main","runId":"r1",
+             "state":"delta","replace":true,"deltaText":"",
+             "message":{"role":"assistant","content":[{"type":"text","text":""}]}}}
+            """);
+
+        Assert.NotNull(received);
+        Assert.Equal("", received.Text);
+        Assert.Equal("r1", received.RunId);
+        Assert.True(received.ReplacesStreamText);
+        Assert.False(received.IsTranscriptSnapshot);
+    }
+
     [Theory]
     [InlineData("""{"role":"assistant","__openclaw":{"mirrorOrigin":"codex-app-server","idempotencyKey":"not-a-run"}}""", null)]
     [InlineData("""{"role":"assistant","api":"cli","idempotencyKey":"cli-assistant:run-a:user"}""", "run-a")]

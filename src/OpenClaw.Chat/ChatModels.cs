@@ -316,6 +316,7 @@ public record ChatMessageEvent(string Text, string? ReasoningText = null, bool R
     OpenClaw.Shared.ChatMessagePresentation? Presentation = null, bool IsContentPart = false,
     bool ReplacesStreamText = false, bool ActivatesTurn = true) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
+public record ChatAssistantStreamRetireEvent(string RunId) : ChatEvent;
 public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
