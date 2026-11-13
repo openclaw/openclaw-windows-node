@@ -1460,8 +1460,11 @@ Full Settings retains its separate navigation layout.
 ### Desktop lobster quick chat
 
 Left-click opens a speech bubble containing the shared Reactor timeline and
-composer. Right-click retains the native options menu, and dragging does not
-open either surface. The quick-chat overlay uses a 440-DIP-wide, 640-DIP-tall
+composer, focusing the message field when it is ready so typing can start
+immediately. Clicking the message field transfers keyboard input from other
+windows' text fields. Right-click retains the native options menu. Dragging
+wakes a sleeping lobster without opening either surface or counting a tap.
+The quick-chat overlay uses a 440-DIP-wide, 640-DIP-tall
 window including the existing 180-DIP mascot, with a content-sized chat host
 capped at 360 DIPs. The empty bubble has no heading or reserved transcript gap.
 Its Close control uses the native SubtleButton style. Attach, the message field,
@@ -1495,8 +1498,9 @@ The lobster retains a dedicated conversation per Gateway for its view lifetime.
 Dismissal hides its mounted composer rather than discarding the draft. Chat
 notifications offer Quick reply, which opens the originating session in the
 same bubble; system alerts without a chat route do not invent a reply target.
-Incoming notifications replace an open chat without discarding its draft or
-starting typing focus. Reopening chat restores its retained composer. Clearing
+Chat-response notifications do not replace an already open chat. Other incoming
+notifications replace an open chat without discarding its draft or starting
+typing focus. Reopening chat restores its retained composer. Clearing
 notifications does not close an open chat. Attach uses the native multi-file
 picker owned by the lobster window; late selections are ignored after hiding or
 switching Gateway. Mic uses the shared voice service and local speech model,

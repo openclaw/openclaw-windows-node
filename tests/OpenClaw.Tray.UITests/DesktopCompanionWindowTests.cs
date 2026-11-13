@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
 using OpenClaw.SetupEngine;
@@ -218,6 +219,32 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             ((IInvokeProvider)dismiss.GetPattern(PatternInterface.Invoke)).Invoke();
             await TestSupport.WaitForRenderedConditionAsync(
                 () => Control<StackPanel>(root, "DesktopCompanionBubble").Visibility == Visibility.Collapsed, "chat dismissed");
+        });
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("connection", false)]
+    [InlineData("chat:", false)]
+    [InlineData("chat:agent%3Amain%3Areply", true)]
+    public Task OpenChat_OnlySuppressesRoutedChatNotifications(string? actionRoute, bool staysOpen) =>
+        WithWindowAsync(async window =>
+        {
+            var root = (FrameworkElement)window.Content;
+            var mascot = Control<Button>(root, "DesktopCompanionMascot");
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(mascot);
+            ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+            var title = Control<TextBlock>(root, "DesktopCompanionTitle");
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => title.Visibility == Visibility.Collapsed, "open quick chat");
+            var chatSize = window.AppWindow.Size;
+            window.Present(new() { Title = "Incoming", Message = "Response", ActionRoute = actionRoute });
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => title.Visibility == (staysOpen ? Visibility.Collapsed : Visibility.Visible),
+                "notification routing");
+            if (staysOpen)
+                Assert.Equal(chatSize, window.AppWindow.Size);
+            else
+                Assert.Equal("Incoming", title.Text);
         });
 
     [Theory]
@@ -507,6 +534,149 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
     [NativePointerTheory]
     [InlineData(false)]
     [InlineData(true)]
+    public Task BubbleEditor_ClickTakesTypingFocusFromAnotherProcess(bool otherEditorFocused) =>
+        WithWindowAsync(async window =>
+        {
+            await PositionForPointerProofAsync(window, activate: false);
+            var root = (FrameworkElement)window.Content;
+            var peer = FrameworkElementAutomationPeer.CreatePeerForElement(Control<Button>(root, "DesktopCompanionMascot"));
+            ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+            var chat = Assert.IsType<DesktopCompanionChatHost>(
+                typeof(DesktopCompanionWindow).GetField("_chat",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(window));
+            // Exercise the popup's native input boundary independently of Gateway readiness.
+            var input = new TextBox { Height = 32, VerticalAlignment = VerticalAlignment.Top };
+            var inputPressed = false;
+            var inputGotFocus = false;
+            input.GotFocus += (_, _) => inputGotFocus = true;
+            input.AddHandler(UIElement.PointerPressedEvent,
+                new PointerEventHandler((_, _) => inputPressed = true), true);
+            chat.Content.Children.Add(input);
+            using var other = OwnedFocusProcess.Create(otherEditorFocused);
+            Assert.True(GetCursorPos(out var saved));
+            Assert.True(other.Start());
+            System.Windows.Automation.AutomationElement? otherEditor = null;
+            var pressed = false;
+            try
+            {
+                IntPtr otherHwnd = default;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () =>
+                    {
+                        Assert.False(other.HasExited, "The owned focus proof process exited before showing its window.");
+                        other.Refresh();
+                        otherHwnd = other.MainWindowHandle;
+                        if (otherHwnd == IntPtr.Zero || !input.IsLoaded || input.ActualWidth <= 0) return false;
+                        otherEditor = System.Windows.Automation.AutomationElement.FromHandle(otherHwnd).FindFirst(
+                            System.Windows.Automation.TreeScope.Descendants,
+                            new System.Windows.Automation.PropertyCondition(
+                                System.Windows.Automation.AutomationElement.AutomationIdProperty,
+                                "OwnedFocusControl"));
+                        return otherEditor is not null && !otherEditor.Current.IsOffscreen &&
+                            otherEditor.Current.BoundingRectangle.Width > 0;
+                    },
+                    "other window and bubble editor loaded",
+                    () => $"other HWND={otherHwnd}; editor found={otherEditor is not null}; input loaded={input.IsLoaded}");
+                var otherControl = otherEditor!;
+                var otherBounds = otherControl.Current.BoundingRectangle;
+                var otherPoint = new NativePoint
+                {
+                    X = (int)Math.Round(otherBounds.Left + otherBounds.Width / 2),
+                    Y = (int)Math.Round(otherBounds.Top + otherBounds.Height / 2),
+                };
+                var otherAt = WindowFromPoint(otherPoint);
+                GetWindowThreadProcessId(otherAt, out var otherProcess);
+                Assert.True(otherProcess == (uint)other.Id,
+                    $"The owned external editor is obscured by process {otherProcess}; expected {other.Id}. No input was sent.");
+                otherHwnd = GetAncestor(otherAt, 2);
+                Assert.True(SetCursorPos(otherPoint.X, otherPoint.Y));
+                SendMouseButton(0x0002);
+                pressed = true;
+                SendMouseButton(0x0004);
+                pressed = false;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => GetForegroundWindow() == otherHwnd, "other window foreground from owned click");
+                if (otherEditorFocused)
+                    await TestSupport.WaitForRenderedConditionAsync(
+                        () => otherControl.Current.HasKeyboardFocus, "other process editor keyboard focus");
+                var popup = Assert.Single(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot),
+                    popup => ReferenceEquals(popup.Child, BubbleRoot));
+                NativePoint point = default;
+                NativePoint? previousPoint = null;
+                var stableFrames = 0;
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                {
+                    var location = input.TransformToVisual(BubbleRoot).TransformPoint(
+                        new(input.ActualWidth / 2, input.ActualHeight / 2));
+                    var scale = root.XamlRoot.RasterizationScale;
+                    point = new()
+                    {
+                        X = window.AppWindow.Position.X + (int)Math.Round((popup.HorizontalOffset + location.X) * scale),
+                        Y = window.AppWindow.Position.Y + (int)Math.Round((popup.VerticalOffset + location.Y) * scale),
+                    };
+                    stableFrames = previousPoint is { } previous && point.X == previous.X && point.Y == previous.Y
+                        ? stableFrames + 1 : 0;
+                    previousPoint = point;
+                    return stableFrames >= 3;
+                }, "stable bubble input position");
+                var at = WindowFromPoint(point);
+                GetWindowThreadProcessId(at, out var process);
+                Assert.True(process == (uint)Environment.ProcessId,
+                    $"The bubble input at ({point.X},{point.Y}) is obscured by process {process}; no input was sent.");
+                Assert.True(SetCursorPos(point.X, point.Y));
+                SendMouseButton(0x0002);
+                pressed = true;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => inputPressed, "pointer press on bubble editor");
+                SendMouseButton(0x0004);
+                pressed = false;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => inputGotFocus && ReferenceEquals(input, FocusManager.GetFocusedElement(input.XamlRoot)) &&
+                        GetForegroundWindow() == WinRT.Interop.WindowNative.GetWindowHandle(window),
+                    "bubble editor keyboard focus",
+                    () => $"focus={FocusManager.GetFocusedElement(input.XamlRoot)?.GetType().Name}; " +
+                        $"foreground={GetForegroundWindow()}; owner={WinRT.Interop.WindowNative.GetWindowHandle(window)}");
+                var expected = "";
+                foreach (var character in "lobster")
+                {
+                    expected += character;
+                    await Task.Run(() =>
+                    {
+                        GetWindowThreadProcessId(GetForegroundWindow(), out var foregroundProcess);
+                        Assert.Equal((uint)Environment.ProcessId, foregroundProcess);
+                        System.Windows.Forms.SendKeys.SendWait(character.ToString());
+                    });
+                    await TestSupport.WaitForRenderedConditionAsync(
+                        () => input.Text == expected, "typed character in the bubble editor",
+                        () => $"input length={input.Text.Length}; expected length={expected.Length}");
+                }
+                if (otherEditorFocused)
+                    Assert.Empty(((System.Windows.Automation.ValuePattern)otherControl.GetCurrentPattern(
+                        System.Windows.Automation.ValuePattern.Pattern)).Current.Value);
+            }
+            finally
+            {
+                try
+                {
+                    if (pressed) SendMouseButton(0x0004);
+                    input.IsEnabled = false;
+                    chat.Content.Children.Remove(input);
+                    Assert.True(SetCursorPos(saved.X, saved.Y));
+                }
+                finally
+                {
+                    if (!other.HasExited)
+                    {
+                        other.Kill();
+                        await other.WaitForExitAsync().WaitAsync(TestSupport.RenderedConditionTimeout);
+                    }
+                }
+            }
+        });
+
+    [NativePointerTheory]
+    [InlineData(false)]
+    [InlineData(true)]
     public Task Drag_MovesWithPointer_WithoutOpeningMenu_AndPreservesClick(bool showBubble) =>
         WithWindowAsync(async window =>
         {
@@ -522,20 +692,22 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             var origin = window.AppWindow.Position;
             await DragAsync(window, target, -120, -60);
             Assert.Equal(new PointInt32(origin.X - 120, origin.Y - 60), window.AppWindow.Position);
-            Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
+            Assert.Empty(OpenPopups(root));
             Assert.True(target.PointerCaptures is not { Count: > 0 });
 
             await DragAsync(window, target, 60, 30);
             Assert.Equal(new PointInt32(origin.X - 60, origin.Y - 30), window.AppWindow.Position);
-            Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
+            Assert.Empty(OpenPopups(root));
             Assert.Equal(showBubble ? Visibility.Visible : Visibility.Collapsed,
                 Control<StackPanel>(root, "DesktopCompanionBubble").Visibility);
 
             var peer = FrameworkElementAutomationPeer.CreatePeerForElement(target);
             ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
             await TestSupport.WaitForRenderedConditionAsync(
-                () => Control<TextBlock>(root, "DesktopCompanionTitle").Text ==
-                    OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_QuickChat"), "chat after dragging");
+                () => Control<TextBlock>(root, "DesktopCompanionTitle").Visibility ==
+                    Visibility.Collapsed &&
+                    Control<StackPanel>(root, "DesktopCompanionBubble").Visibility == Visibility.Visible,
+                "chat after dragging");
         });
 
     [NativePointerTheory]
@@ -568,8 +740,9 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => rightClick
                         ? VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot).Count > 0
-                        : Control<TextBlock>(root, "DesktopCompanionTitle").Text ==
-                            OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_QuickChat"), "pointer action");
+                        : Control<TextBlock>(root, "DesktopCompanionTitle").Visibility == Visibility.Collapsed &&
+                            Control<StackPanel>(root, "DesktopCompanionBubble").Visibility == Visibility.Visible,
+                    "pointer action");
                 Assert.Equal(origin, MascotCenter(window));
             }
             finally
@@ -621,8 +794,9 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(target);
                 ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
                 await TestSupport.WaitForRenderedConditionAsync(
-                    () => Control<TextBlock>(root, "DesktopCompanionTitle").Text ==
-                        OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_QuickChat"), "chat after canceled drag");
+                    () => Control<TextBlock>(root, "DesktopCompanionTitle").Visibility == Visibility.Collapsed &&
+                        Control<StackPanel>(root, "DesktopCompanionBubble").Visibility == Visibility.Visible,
+                    "chat after canceled drag");
             }
             finally
             {
@@ -635,9 +809,9 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
     private static bool NearSize(FrameworkElement root, double actual, double expected) =>
         Math.Abs(actual - expected) <= 1d / root.XamlRoot.RasterizationScale + 0.01;
 
-    private static async Task PositionForPointerProofAsync(DesktopCompanionWindow window)
+    private static async Task PositionForPointerProofAsync(DesktopCompanionWindow window, bool activate = true)
     {
-        OnboardingNativeProof.ActivateOwned(window);
+        if (activate) OnboardingNativeProof.ActivateOwned(window);
         // Avoid the shell's bottom-right notification surface without interacting with it.
         var work = DisplayArea.GetFromWindowId(window.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
         window.AppWindow.Move(new(work.X + (work.Width - window.AppWindow.Size.Width) / 2,
@@ -751,6 +925,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(NativePoint point);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
     [DllImport("user32.dll")] private static extern uint SendInput(uint count, NativeInput[] inputs, int size);
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { public int Left, Top, Right, Bottom; }
