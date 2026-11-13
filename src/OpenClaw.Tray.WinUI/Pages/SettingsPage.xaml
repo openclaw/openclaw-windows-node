@@ -231,6 +231,47 @@
                     </toolkit:SettingsCard.Content>
                 </toolkit:SettingsCard>
 
+                <toolkit:SettingsExpander x:Name="DesktopCompanionExpander" x:Uid="DesktopCompanion_Expander"
+                                          Header="Desktop lobster"
+                                          Description="Keep an animated lobster on your desktop. Notification text appears in speech bubbles, even when OpenClaw is in the background. Drag to move; right-click for options."
+                                          IsExpanded="False"
+                                          AutomationProperties.AutomationId="SettingsPageDesktopCompanionExpander">
+                    <toolkit:SettingsExpander.Content>
+                        <ToggleSwitch MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ShowDesktopCompanion, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="SettingsPageDesktopCompanion"
+                                      AutomationProperties.Name="{Binding Header, ElementName=DesktopCompanionExpander}"/>
+                    </toolkit:SettingsExpander.Content>
+                    <toolkit:SettingsExpander.Items>
+                        <toolkit:SettingsCard Padding="16,16,44,16">
+                            <toolkit:SettingsCard.Header>
+                                <StackPanel>
+                                    <TextBlock x:Name="DesktopCompanionScaleLabel" x:Uid="DesktopCompanion_Scale"
+                                               Text="Lobster size" Style="{StaticResource BodyTextBlockStyle}"/>
+                                    <TextBlock x:Uid="DesktopCompanion_ScaleDescription"
+                                               Text="Resize the lobster without changing chat or notification text."
+                                               Style="{StaticResource CaptionTextBlockStyle}"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </toolkit:SettingsCard.Header>
+                            <toolkit:SettingsCard.Content>
+                                <ComboBox MinWidth="120"
+                                          IsEnabled="{Binding ShowDesktopCompanion}"
+                                          ItemsSource="{Binding DesktopCompanionScaleOptions}"
+                                          SelectedItem="{Binding DesktopCompanionScalePercent, Mode=TwoWay}"
+                                          AutomationProperties.AutomationId="SettingsPageDesktopCompanionScale"
+                                          AutomationProperties.LabeledBy="{Binding ElementName=DesktopCompanionScaleLabel}">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock><Run Text="{Binding}"/><Run Text="%"/></TextBlock>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </toolkit:SettingsCard.Content>
+                        </toolkit:SettingsCard>
+                    </toolkit:SettingsExpander.Items>
+                </toolkit:SettingsExpander>
+
                 <!-- ═════════ Chat ═════════ -->
                 <TextBlock x:Uid="SettingsPage_Chat" Text="Chat" Style="{StaticResource BodyStrongTextBlockStyle}"
                            Margin="{StaticResource SectionHeaderMargin}"/>

@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\OpenClaw.SetupEngine.UI\NativeGatewaySetupHost.cs" Link="NativeGatewaySetupHost.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\SetupLocalAiHost.cs" Link="Services\SetupLocalAiHost.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiSetupRouteResolver.cs" Link="Services\LocalAiSetupRouteResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Services\LocalAiGatewayDistroResolver.cs" Link="Services\LocalAiGatewayDistroResolver.cs" />

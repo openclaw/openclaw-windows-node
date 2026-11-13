@@ -6,6 +6,432 @@
   },
   "components": [
     {
+      "name": "LobsterNotification",
+      "note": "DesktopCompanionSurface notification preview. The bubble retains 4-DIP padding and 8-DIP row gaps. The title has 8-DIP left and 4-DIP top margins; Close has a 4-DIP top margin and padding. The message has 8-DIP horizontal margins, and actions have 8-DIP left and bottom margins. Synthetic content only; dismissal, speech tail, animated mascot and desktop transparency are not simulated.",
+      "props": {
+        "title": "Hello from OpenClaw",
+        "message": "I'm here when you need me. New notifications appear here."
+      },
+      "root": {
+        "id": "lobster-notification",
+        "el": "section",
+        "attrs": {
+          "aria-label": "Lobster notification"
+        },
+        "layout": {
+          "mode": "vertical",
+          "gap": "2",
+          "padding": "1",
+          "width": 352,
+          "height": "hug"
+        },
+        "appearance": {
+          "background": "paper",
+          "borderColor": "line",
+          "borderWidth": 1,
+          "radius": "bubble"
+        },
+        "children": [
+          {
+            "id": "lobster-notification-header",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "gap": "2",
+              "align": "center",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "lobster-notification-title",
+                "el": "span",
+                "layout": {
+                  "width": "fill"
+                },
+                "margin": {
+                  "top": "1",
+                  "left": "2"
+                },
+                "appearance": {
+                  "textStyle": "bodyStrong",
+                  "color": "ink"
+                },
+                "children": [
+                  "{title}"
+                ]
+              },
+              {
+                "id": "lobster-notification-close",
+                "component": "SubtleButton",
+                "props": {
+                  "label": "",
+                  "accessibleName": "Dismiss"
+                },
+                "layout": {
+                  "width": 28,
+                  "height": 28,
+                  "padding": "1"
+                },
+                "appearance": {
+                  "textStyle": "notificationDismissIcon"
+                },
+                "margin": {
+                  "top": "1"
+                }
+              }
+            ]
+          },
+          {
+            "id": "lobster-notification-message",
+            "el": "p",
+            "margin": {
+              "top": "0",
+              "right": "2",
+              "bottom": "0",
+              "left": "2"
+            },
+            "appearance": {
+              "textStyle": "body",
+              "color": "ink"
+            },
+            "children": [
+              "{message}"
+            ]
+          },
+          {
+            "id": "lobster-notification-open",
+            "component": "HyperlinkButton",
+            "props": {
+              "children": "Open notifications"
+            },
+            "layout": {
+              "padding": "0"
+            },
+            "margin": {
+              "bottom": "2",
+              "left": "2"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LobsterQuickComposer",
+      "note": "Compact variant of the shared native ReactorChatComposer, not the Workspace toolbar. Attach, transparent editor, Voice and Send share one row. Native targets are 32 DIPs, surface padding is 8 DIPs, editor top padding is 4 DIPs, minimum outer height is 50 DIPs, radius is 20 DIPs. The textarea is editable, but native automatic height growth up to 200 DIPs and send eligibility are not simulated. Native Attach opens the owned multi-file picker; Voice uses the shared local speech service with permission/model readiness guidance and hidden-host cancellation. This preview does not attach, record, send or contact a Gateway.",
+      "props": {
+        "draft": "",
+        "placeholder": "Message Assistant (Enter to send)"
+      },
+      "root": {
+        "id": "lobster-composer",
+        "el": "div",
+        "layout": {
+          "mode": "horizontal",
+          "gap": "1",
+          "align": "end",
+          "padding": "2",
+          "width": "fill",
+          "height": "hug"
+        },
+        "appearance": {
+          "background": "chatSurface",
+          "borderColor": "chatStroke",
+          "borderWidth": 1,
+          "radius": "composer"
+        },
+        "children": [
+          {
+            "id": "lobster-attach",
+            "component": "SubtleButton",
+            "props": {
+              "label": "",
+              "accessibleName": "Attach"
+            },
+            "layout": {
+              "width": 32,
+              "height": 32,
+              "padding": "0"
+            },
+            "appearance": {
+              "textStyle": "chatIcon",
+              "color": "chatSecondary"
+            }
+          },
+          {
+            "id": "lobster-input",
+            "el": "textarea",
+            "attrs": {
+              "rows": "1",
+              "placeholder": "{placeholder}",
+              "aria-label": "Message Assistant"
+            },
+            "layout": {
+              "width": "fill",
+              "height": 32,
+              "padding": {
+                "top": "1",
+                "right": "0",
+                "bottom": "0",
+                "left": "0"
+              }
+            },
+            "appearance": {
+              "textStyle": "chatInput",
+              "color": "chatText",
+              "background": "$none",
+              "borderWidth": 0
+            },
+            "control": {
+              "chrome": "none",
+              "focus": {
+                "kind": "outline",
+                "color": "chatCanvas"
+              }
+            },
+            "children": [
+              "{draft}"
+            ]
+          },
+          {
+            "id": "lobster-mic",
+            "component": "SubtleButton",
+            "props": {
+              "label": "",
+              "accessibleName": "Voice"
+            },
+            "layout": {
+              "width": 32,
+              "height": 32,
+              "padding": "0"
+            },
+            "appearance": {
+              "textStyle": "chatIcon",
+              "color": "chatSecondary"
+            }
+          },
+          {
+            "id": "lobster-send",
+            "component": "Button",
+            "props": {
+              "children": ""
+            },
+            "attrs": {
+              "aria-label": "Send",
+              "title": "Send"
+            },
+            "layout": {
+              "width": 32,
+              "height": 32,
+              "padding": "0"
+            },
+            "appearance": {
+              "textStyle": "chatIcon",
+              "radius": "pill"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "LobsterQuickChat",
+      "note": "Editable reference for DesktopCompanionSurface and the compact Reactor chat, with user-directed November 11 spacing tweaks ported to production. Outer bubble is approximately 432 DIPs wide inside the 440-DIP window, with 4-DIP padding, 12-DIP corners and a subtle 28-DIP Close button. Notifications use the same inset and replace open chat while preserving its draft. No Quick chat heading. Synthetic transcript content is illustrative, not live history. The screenshot's partially scrolled thinking panel/table, clipping, native scrollbar, speech tail, animated mascot, desktop transparency and window hit region are not reproduced here. Paper approximates the native SolidBackgroundFillColorBaseBrush shell; shipping code remains authoritative. Edit draft and answer props to explore content. Close/Copy/Send controls are visual only.",
+      "props": {
+        "draft": "",
+        "answer": "This is a synthetic streaming answer."
+      },
+      "root": {
+        "id": "lobster-quick-chat",
+        "el": "section",
+        "attrs": {
+          "aria-label": "Lobster quick chat"
+        },
+        "layout": {
+          "mode": "vertical",
+          "gap": "0",
+          "padding": "1",
+          "width": 432,
+          "height": "hug"
+        },
+        "appearance": {
+          "background": "paper",
+          "borderColor": "line",
+          "borderWidth": 1,
+          "radius": "bubble"
+        },
+        "children": [
+          {
+            "id": "lobster-header",
+            "el": "div",
+            "layout": {
+              "mode": "horizontal",
+              "justify": "end",
+              "width": "fill"
+            },
+            "children": [
+              {
+                "id": "lobster-close",
+                "component": "SubtleButton",
+                "props": {
+                  "label": "",
+                  "accessibleName": "Dismiss"
+                },
+                "layout": {
+                  "width": 28,
+                  "height": 28,
+                  "padding": "1"
+                },
+                "appearance": {
+                  "textStyle": "notificationDismissIcon"
+                }
+              }
+            ]
+          },
+          {
+            "id": "lobster-transcript",
+            "el": "div",
+            "layout": {
+              "mode": "vertical",
+              "gap": "4",
+              "padding": "4",
+              "width": "fill"
+            },
+            "appearance": {
+              "textStyle": "chatProse",
+              "color": "chatText"
+            },
+            "children": [
+              {
+                "id": "lobster-answer",
+                "el": "p",
+                "margin": "0",
+                "children": [
+                  "{answer}"
+                ]
+              },
+              {
+                "id": "lobster-code",
+                "el": "div",
+                "layout": {
+                  "mode": "vertical",
+                  "gap": "3",
+                  "padding": "3",
+                  "width": "fill"
+                },
+                "appearance": {
+                  "background": "chatSurface",
+                  "borderColor": "chatStroke",
+                  "borderWidth": 1,
+                  "radius": "bubble",
+                  "fontFamily": "mono",
+                  "textStyle": "caption"
+                },
+                "children": [
+                  {
+                    "id": "lobster-code-header",
+                    "el": "div",
+                    "layout": {
+                      "mode": "horizontal",
+                      "justify": "space-between",
+                      "align": "center",
+                      "width": "fill"
+                    },
+                    "children": [
+                      {
+                        "id": "lobster-code-language",
+                        "el": "span",
+                        "children": [
+                          "csharp"
+                        ]
+                      },
+                      {
+                        "id": "lobster-code-copy",
+                        "component": "ChatCopyButton"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "lobster-code-text",
+                    "el": "code",
+                    "children": [
+                      "var ready = true;"
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "lobster-table",
+                "el": "table",
+                "layout": {
+                  "width": "fill"
+                },
+                "children": [
+                  {
+                    "id": "lobster-table-head",
+                    "el": "thead",
+                    "children": [
+                      {
+                        "id": "lobster-table-head-row",
+                        "el": "tr",
+                        "children": [
+                          {
+                            "id": "lobster-table-check",
+                            "el": "th",
+                            "children": [
+                              "Check"
+                            ]
+                          },
+                          {
+                            "id": "lobster-table-result",
+                            "el": "th",
+                            "children": [
+                              "Result"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "lobster-table-body",
+                    "el": "tbody",
+                    "children": [
+                      {
+                        "id": "lobster-table-row",
+                        "el": "tr",
+                        "children": [
+                          {
+                            "id": "lobster-table-provider",
+                            "el": "td",
+                            "children": [
+                              "Provider"
+                            ]
+                          },
+                          {
+                            "id": "lobster-table-status",
+                            "el": "td",
+                            "children": [
+                              "Not contacted"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "lobster-composer-slot",
+            "component": "LobsterQuickComposer",
+            "props": {
+              "draft": "{draft}"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "Button",
       "note": "Basic control. Accent variation: ship the stock WinUI Button with AccentButtonStyle. ButtonStandard references this shared markup and overrides its state brushes for the normal style; a variant class cannot override inline token styling. Both use exact ButtonPadding 11,5,11,6, a retained 1px ButtonBorderThemeThickness, ControlCornerRadius 4, normal-weight 14px content, and the native 83ms linear background-only transition. Accent fill/foreground use accent/accentInk at rest; existing chatAction tokens already bind the same AccentButton hover, pressed-fill, and disabled resources. Pressed text and state borders have dedicated aliases, including high-contrast system colors. Width and height follow content; setup wizard instances add SetupPrimaryButtonStyle (accent, MinWidth 180, MinHeight 40) or SetupSecondaryButtonStyle (normal, MinWidth 180, MinHeight 40). Browser limits: elevation borders are flat swatches, the body line box is 20px, and the focus outline is not WinUI's system focus visual. Keep the native template, gradient brush, text measurement and FocusVisualMargin=-3 when shipping.",
       "props": {

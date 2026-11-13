@@ -46,21 +46,60 @@ public sealed partial class GatewayFixtureUiTests
         Assert.Equal(40, measured.RootElement.GetProperty("Height").GetDouble());
     }
 
+    // Layout-only Grids have no UIA peer. Measure the actual interactive controls.
+    private static readonly string[] UsageRequiredRangeControls = { "UsagePresets", "UsageOptions", "UsageRefresh" };
+    private static readonly string[] UsageOptionalRangeControls = { "UsageFacet_agent", "UsageQuery", "UsageStartDate", "UsageEndDate" };
+
     private static System.Windows.Rect UsageRangeBounds(GatewayFixtureRun run)
     {
-        // Layout-only Grids have no UIA peer. Measure the actual interactive controls.
         var bounds = System.Windows.Rect.Empty;
-        foreach (var id in new[] { "UsagePresets", "UsageOptions", "UsageRefresh" })
+        foreach (var id in UsageRequiredRangeControls)
         {
             var control = FindById(run, id)
                 ?? throw new InvalidOperationException($"Missing Usage range control {id}.");
             Assert.False(control.Current.IsOffscreen);
             bounds.Union(control.Current.BoundingRectangle);
         }
-        foreach (var id in new[] { "UsageFacet_agent", "UsageQuery", "UsageStartDate", "UsageEndDate" })
+        foreach (var id in UsageOptionalRangeControls)
             if (FindById(run, id) is { } control)
                 bounds.Union(control.Current.BoundingRectangle);
         return bounds;
+    }
+
+    private readonly record struct UsageHeroBounds(System.Windows.Rect Page, System.Windows.Rect Hero,
+        System.Windows.Rect Range, System.Windows.Rect OpenWeb, System.Windows.Rect Export);
+
+    private sealed record UsageHeroLayout(UsageHeroBounds Bounds, AutomationElement Marker);
+
+    /// <summary>
+    /// Reads every peer the hero proof measures in one pass, or returns null while any is missing,
+    /// offscreen or being replaced. A resize across a width tier and the asynchronous host-warning
+    /// banner can re-render the shell, so a poll must re-acquire these peers instead of asserting them.
+    /// </summary>
+    private static UsageHeroLayout? TryReadUsageHeroLayout(GatewayFixtureRun run)
+    {
+        try
+        {
+            if (FindById(run, "UsagePageRoot") is not { } page || FindById(run, "UsageMast") is not { } hero ||
+                FindById(run, "UsageOpenWeb") is not { } openWeb || FindById(run, "UsageExport") is not { } export ||
+                FindById(run, "UsagePageMarker") is not { Current.IsOffscreen: false } marker)
+                return null;
+            var range = System.Windows.Rect.Empty;
+            foreach (var id in UsageRequiredRangeControls)
+            {
+                if (FindById(run, id) is not { Current.IsOffscreen: false } control) return null;
+                range.Union(control.Current.BoundingRectangle);
+            }
+            foreach (var id in UsageOptionalRangeControls)
+                if (FindById(run, id) is { } control)
+                    range.Union(control.Current.BoundingRectangle);
+            return new(new(page.Current.BoundingRectangle, hero.Current.BoundingRectangle, range,
+                openWeb.Current.BoundingRectangle, export.Current.BoundingRectangle), marker);
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
     }
 
     [GatewayFixtureUiFact]
@@ -548,12 +587,18 @@ public sealed partial class GatewayFixtureUiTests
                     var topRestored = target != 1400;
                     try
                     {
-                        var scroll = (ScrollPattern)FindById(run, "UsagePageRoot")!.GetCurrentPattern(ScrollPattern.Pattern);
+                        AutomationElement? scrollHost = null;
+                        await WaitUiAsync(run, () => (scrollHost = FindById(run, "UsagePageRoot")) is not null,
+                            "Usage page scroll host");
+                        var scroll = (ScrollPattern)scrollHost!.GetCurrentPattern(ScrollPattern.Pattern);
                         scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
+                        var beforeHostWidth = 0d;
                         await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
-                            FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage top before hero capture");
+                            FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false } &&
+                            FindById(run, "UsagePageRoot") is { } topHost &&
+                            (beforeHostWidth = topHost.Current.BoundingRectangle.Width) > 0, "Usage top before hero capture");
                         var before = UsageWindowBounds(handle);
-                        var beforeHost = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width / scale;
+                        var beforeHost = beforeHostWidth / scale;
                         var expected = ResizeUsageWindow(handle, target == 0 ? 1000 : target + before.Width / scale - beforeHost,
                             scale, capToDisplay: target == 1400);
                         await WaitUiAsync(run, () =>
@@ -561,32 +606,32 @@ public sealed partial class GatewayFixtureUiTests
                             var bounds = UsageWindowBounds(handle);
                             return bounds.Width == expected.Width && bounds.Height == expected.Height;
                         }, "exact hero capture window bounds");
-                        double? previous = null;
+                        UsageHeroLayout? previous = null;
+                        UsageHeroLayout? settled = null;
                         await run.WaitForAsync(async () =>
                         {
                             await Task.Delay(UsageResizeSampleInterval);
-                            var width = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width;
-                            var stable = previous is { } value && Math.Abs(value - width) < 0.01;
-                            previous = width;
+                            var current = TryReadUsageHeroLayout(run);
+                            var stable = current is not null && previous is not null && current.Bounds == previous.Bounds;
+                            previous = current;
+                            if (stable) settled = current;
                             return stable;
-                        }, "stable hero capture host width");
+                        }, "stable hero capture layout with page, hero, actions, visible marker and visible range controls");
+                        var layout = settled!.Bounds;
                         var frame = UsageWindowBounds(handle);
-                        var page = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle;
+                        var page = layout.Page;
                         var client = OwnedWindowCapture.ReadOwnedClientBounds(run, window);
                         var samplingAperture = System.Windows.Rect.Intersect(page, client);
                         Assert.True(!samplingAperture.IsEmpty && samplingAperture.Width > 0 && samplingAperture.Height > 0);
                         var host = page.Width / scale;
-                        var hero = FindById(run, "UsageMast")!.Current.BoundingRectangle;
-                        var range = UsageRangeBounds(run);
+                        var hero = layout.Hero;
+                        var range = layout.Range;
                         Assert.True(hero.Left >= page.Left && hero.Right <= page.Right);
                         Assert.True(range.Top >= hero.Bottom, "Range controls overlap the Usage hero.");
-                        foreach (var id in new[] { "UsageOpenWeb", "UsageExport" })
-                        {
-                            var action = FindById(run, id)!.Current.BoundingRectangle;
+                        foreach (var action in new[] { layout.OpenWeb, layout.Export })
                             Assert.True(action.Left >= hero.Left && action.Right <= hero.Right);
-                        }
                         var file = name + ".png";
-                        OwnedWindowCapture.Save(run, window, file, FindById(run, "UsagePageMarker")!);
+                        OwnedWindowCapture.Save(run, window, file, settled.Marker);
                         using var capture = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.ArtifactsDirectory, name + ".json")));
                         var manifest = new
                         {

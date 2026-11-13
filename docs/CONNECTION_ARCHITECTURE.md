@@ -444,6 +444,15 @@ orchestration. Three narrower owners sit behind it:
 - `DevicePairApprovalCoordinator` owns typed device role-upgrade approval and its
   one-in-flight plus one-queued bounded node reconnect workflow.
 
+Scheduled operator reconnects acquire the current lifecycle-attempt lease before
+disconnecting or connecting. A disconnect that wins the transition queue invalidates
+that attempt, even when the active Gateway id and user intent remain unchanged.
+Removing the active saved Gateway commits `RemoveAndSave` before disconnecting,
+so a failed save leaves the live connection and user intent unchanged. After a
+successful save, `DisconnectByUserAsync(gatewayId)` records intent for the removed
+Gateway and tears down only that live owner under the transition semaphore. A
+queued switch cannot disconnect the replacement Gateway or change its intent.
+
 `GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`,
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
@@ -940,6 +949,29 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 - **Local setup**: `NodeService.ConnectAsync()` creates its own client (used only during WSL local gateway setup)
 
 Both paths dispose old clients before creating new ones.
+
+Within a client, `WebSocketClientBase` reports transport loss once per current
+socket generation, including client abort, oversized messages and listen errors.
+Oversized-message cleanup runs before waiting for the peer's close handshake.
+`OpenClawGatewayClient.OnDisconnected` is the invalidation owner: it clears the
+live handshake, canonical session key and advertised methods/capabilities, and
+fails wizard requests with `GatewayConnectionLostException`; other pending
+waiters are canceled. Listen errors use that same cleanup before publishing
+Error. Invalidation is serialized with socket publication; transport events and
+node invocation cancellation run outside that lock. Superseded listeners and
+disposal do not invalidate a replacement connection. Client-initiated aborts
+still run that cleanup but do not add a Disconnected status or observation;
+their callers keep their existing Error or quiet-retry policy. Each loss
+callback runs separately, so a failing step is logged without skipping the
+remaining cleanup, status notifications or the client-owned reconnect. Status
+delivery stops once the client is disposed or the connection is replaced, so a
+stale Disconnected cannot follow a newer connection's Connecting.
+
+Health checks capture their socket and generation before sending or starting
+recovery. Backoff and reconnect authorization recheck that ownership, so delayed
+health work cannot replace a newer open socket. An explicit `ConnectAsync` may
+still publish a new attempt; failed or closed attempts retain the existing
+single-flight recovery policy.
 
 ## Setup-code and pairing flow
 

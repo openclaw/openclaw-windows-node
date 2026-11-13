@@ -17,6 +17,16 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>桌面龍蝦</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>在桌面上顯示一隻動畫龍蝦。即使 OpenClaw 在背景執行，通知文字也會顯示在對話泡泡中。拖曳可移動位置，按右鍵可查看選項。</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw 桌面龍蝦</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>關閉泡泡</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>開啟通知</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>開啟 OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>龍蝦大小</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>調整龍蝦大小，不改變聊天或通知文字的大小。</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龍蝦設定</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>無法顯示桌面龍蝦。請在設定中關閉再開啟「桌面龍蝦」以重試。你仍然可以在 OpenClaw 中查看通知。</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>連線</value>
   </data>
@@ -6268,6 +6278,7 @@
   <data name="Chat_Model_Search" xml:space="preserve"><value>搜尋模型</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>新增模型提供者...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>移除附件 {0}</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在載入訊息...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 則佇列訊息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已複製</value></data>
@@ -7889,6 +7900,9 @@
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>設定</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>快速聊天</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>快速回覆</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>無法開啟聊天。請重試。</value></data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>子代理程式</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>目前的工作階段清單中沒有子代理程式。</value></data>
   <data name="Chat_Subagents_PillName" xml:space="preserve"><value>子代理程式：{0} 個執行中，{1} 個已完成</value></data>

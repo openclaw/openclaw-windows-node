@@ -222,6 +222,29 @@ internal static class ChatVisuals
     internal const double ComposerSendGlyphSize = 12;
     internal const double ComposerStopGlyphSize = 10;
     internal const double ComposerToolbarInset = 8;
+    // Pending attachments are compact pills: a 14px document glyph, 12px SemiBold name and a
+    // 24px remove target revealed on hover, focus or touch, sized to the name up to the max width.
+    internal const double AttachmentChipHeight = 28;
+    internal const double AttachmentChipMaxWidth = 216;
+    internal const double AttachmentChipGap = 6;
+    internal const double AttachmentGlyphSize = 14;
+    internal const double AttachmentRemoveSize = 24;
+    // Image attachments are square tiles on their own row above the file pills, sized like the web
+    // composer's 56px thumbnails. The remove badge overlaps the tile's top-right corner by this inset.
+    internal const double AttachmentThumbnailSize = 56;
+    internal const double AttachmentThumbnailBadgeInset = 6;
+    internal const double AttachmentThumbnailCell = AttachmentThumbnailSize + AttachmentThumbnailBadgeInset;
+    // Physical-pixel decode bound: sharp at 300% scale without holding full-size images.
+    internal const uint AttachmentThumbnailDecodeSize = 192;
+    internal const double AttachmentRailRowGap = 8;
+    // Pills wrap onto new rows; past this height (four rows at default text size) the rail scrolls
+    // instead of growing further. Scaled text makes rows taller, so fewer rows fit before scrolling.
+    internal const int AttachmentRailMaxRows = 4;
+    // Includes the rail's 3px top and bottom focus padding.
+    internal const double AttachmentRailMaxHeight =
+        AttachmentRailMaxRows * AttachmentChipHeight + (AttachmentRailMaxRows - 1) * AttachmentChipGap + 6;
+    // WinUI's expanded ScrollBar (ScrollBarSize) overlays content instead of reserving space.
+    internal const double AttachmentRailScrollBarInset = 12;
     // Space between the writing surface and the window's bottom edge.
     internal const double ComposerBottomInset = 16;
     internal const double SurfaceRadius = 12;

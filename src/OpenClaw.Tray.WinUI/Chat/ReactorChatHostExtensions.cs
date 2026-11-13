@@ -61,7 +61,8 @@ public static class ReactorChatHostExtensions
         Action onSandboxSettingsClick,
         Action? onSessionNavigationStarting = null,
         Action<string, string?>? onSessionSelected = null,
-        Action<string>? onSpeechTargetChanged = null)
+        Action<string>? onSpeechTargetChanged = null,
+        Func<IDisposable>? beginModal = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);
@@ -91,6 +92,7 @@ public static class ReactorChatHostExtensions
                 XamlRoot = target.XamlRoot,
             };
             dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+            using var modal = beginModal?.Invoke();
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
 
@@ -120,7 +122,8 @@ public static class ReactorChatHostExtensions
         IChatAgentRosterSource? agentRosterSource = null,
         string userDisplayName = "",
         ImageSource? userProfilePicture = null,
-        ChatDashboardBinding? dashboards = null)
+        ChatDashboardBinding? dashboards = null,
+        bool compact = false)
     {
         ArgumentNullException.ThrowIfNull(composerSession);
         MountedReactorChat? mounted = null;
@@ -150,7 +153,8 @@ public static class ReactorChatHostExtensions
                 InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
                 AgentRosterSource: agentRosterSource,
                 UserDisplayName: userDisplayName,
-                UserProfilePicture: userProfilePicture)
+                UserProfilePicture: userProfilePicture,
+                Compact: compact)
             {
                 Dashboards = dashboards,
             };
