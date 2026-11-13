@@ -6301,6 +6301,7 @@
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>复制失败</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>消息文本</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
@@ -7759,6 +7760,30 @@
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等待子代理</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在准备输入</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>失败</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} 个子代理</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} 个子代理</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} 个失败</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>运行中</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} 个文件</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>已读取</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>编辑</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>正在编辑</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>已编辑</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>创建</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>正在创建</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>已创建</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>删除</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>正在删除</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>已删除</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>更改</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>正在更改</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>已更改</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>写入</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>正在写入</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>已写入</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>已搜索</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>已获取</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>需要提供商审核</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>提供商审核警告</value></data>
@@ -7929,6 +7954,13 @@
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>已停止</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>失败</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>文件</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>会话文件：{0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>此会话中尚无文件。</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>正在加载文件...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>此 Gateway 不提供会话文件。</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>无法加载文件。请刷新以重试。</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>刷新文件</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>代理：{0}</value>
   </data>

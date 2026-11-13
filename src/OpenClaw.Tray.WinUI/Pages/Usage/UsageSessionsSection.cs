@@ -257,7 +257,7 @@ internal sealed class UsageSessionCard : Component<UsageSessionCardProps>
         var expander = Expander(row.Title,
                 UsageSessionsSection.Details(Props.State, detail, Props.Layout, selected ? "" : "_" + row.Key),
                 open, Expand)
-            .HeaderTemplate(UsageSessionsSection.Row(row, Props.Actions, Props.Layout))
+            .HeaderContent(UsageSessionsSection.Row(row, Props.Actions, Props.Layout))
             .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .ItemStatus(S(open ? "Usage_Selected" : "Usage_Sessions_SelectHint"))
             .AutomationName(row.Title).AutomationId("UsageSessionExpander_" + row.Key);

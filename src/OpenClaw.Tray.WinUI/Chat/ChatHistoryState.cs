@@ -280,6 +280,14 @@ internal sealed class ChatHistoryState
             $"{kind}|{text}";
         static string SequenceKey(ChatTimelineItemKind kind, int sequence) =>
             $"{kind}|{sequence}";
+        static bool HasConflictingToolIdentity(ChatTimelineItem left, ChatTimelineItem right) =>
+            left.Kind == ChatTimelineItemKind.ToolCall &&
+            right.Kind == ChatTimelineItemKind.ToolCall &&
+            left.ToolCallId is { Length: > 0 } leftCallId &&
+            left.ToolRunId is { Length: > 0 } leftRunId &&
+            right.ToolCallId is { Length: > 0 } rightCallId &&
+            right.ToolRunId is { Length: > 0 } rightRunId &&
+            (leftCallId != rightCallId || leftRunId != rightRunId);
 
         var contentTimestamps = new Dictionary<string, List<(long Timestamp, ChatTimelineItem Entry)>>(
             StringComparer.Ordinal);
@@ -356,9 +364,46 @@ internal sealed class ChatHistoryState
         var nextId = Math.Max(rebuilt.NextId, maxSuffix + 1);
         var entries = rebuilt.Entries.ToBuilder();
         var remappedEntryIds = new Dictionary<string, string>(StringComparer.Ordinal);
+        var rebuiltTools = new Dictionary<(string CallId, string RunId), int>();
+        for (var index = 0; index < rebuilt.Entries.Count; index++)
+        {
+            if (rebuilt.Entries[index] is
+                {
+                    Kind: ChatTimelineItemKind.ToolCall,
+                    ToolCallId: { Length: > 0 } callId,
+                    ToolRunId: { Length: > 0 } runId,
+                })
+            {
+                rebuiltTools.TryAdd((callId, runId), index);
+            }
+        }
         foreach (var entry in prior.Entries)
         {
             priorMetadata.TryGetValue(entry.Id, out var metadata);
+            // A live tool row and its persisted call share a call ID within one run; IDs can
+            // repeat across runs. Match these first so a still-running call keeps its live
+            // state after it takes the persisted row's identity.
+            if (entry is
+                {
+                    Kind: ChatTimelineItemKind.ToolCall,
+                    ToolCallId: { Length: > 0 } callId,
+                    ToolRunId: { Length: > 0 } runId,
+                } &&
+                rebuiltTools.TryGetValue((callId, runId), out var toolIndex))
+            {
+                var persisted = rebuilt.Entries[toolIndex];
+                remappedEntryIds[entry.Id] = persisted.Id;
+                // History marks a call without a saved result Interrupted; a persisted outcome is canonical.
+                if (persisted.ToolResult == ChatToolCallStatus.Interrupted &&
+                    entry.ToolResult != ChatToolCallStatus.Interrupted)
+                {
+                    entries[toolIndex] = entry with { Id = persisted.Id };
+                }
+                // Live tool rows carry timestamps, so a same-label sibling must not content-match this row.
+                if (contentTimestamps.TryGetValue(ContentKey(persisted.Kind, persisted.Text), out var persistedTimes))
+                    persistedTimes.RemoveAll(value => value.Entry.Id == persisted.Id);
+                continue;
+            }
             if (!string.IsNullOrEmpty(metadata?.GatewayMessageId) &&
                 messageIds.TryGetValue(metadata.GatewayMessageId, out var matchingId))
             {
@@ -398,7 +443,8 @@ internal sealed class ChatHistoryState
             {
                 var priorSeconds = timestamp.ToUnixTimeSeconds();
                 var match = rebuiltTimes.FindIndex(value =>
-                    Math.Abs(value.Timestamp - priorSeconds) <= 2);
+                    Math.Abs(value.Timestamp - priorSeconds) <= 2 &&
+                    !HasConflictingToolIdentity(entry, value.Entry));
                 if (match >= 0)
                 {
                     remappedEntryIds[entry.Id] = rebuiltTimes[match].Entry.Id;

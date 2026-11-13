@@ -6373,6 +6373,7 @@ Open Channels in the web dashboard.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Copy failed</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Message text</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
@@ -7830,6 +7831,30 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Waiting for subagents</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparing input</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>failed</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} subagent</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} subagents</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} failed</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>running</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>stopped</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} files</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>Read</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>Edit</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>Editing</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>Edited</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>Create</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>Creating</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>Deleting</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>Deleted</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>Change</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>Changing</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>Changed</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>Write</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>Writing</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>Wrote</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>Searched</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>Fetched</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>Completed</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>Provider review required</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>Provider review warning</value></data>
@@ -8000,6 +8025,13 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>Done</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Stopped</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Failed</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>Files</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>Session files: {0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>No files in this session yet.</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>Loading files...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>This Gateway does not provide session files.</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>Files could not be loaded. Refresh to try again.</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>Refresh files</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>

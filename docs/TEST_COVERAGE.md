@@ -109,14 +109,18 @@ the process tree and reports the script's last output and errors.
 The composer lifetime- and voice-disposal reentrancy regressions use dedicated
 workers so their bounded reentrancy assertions (`OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS`,
 default 10 s) measure controller lock ownership rather than shared thread-pool
-scheduling latency. The settings-coordinator and native-restart handoff
+scheduling latency. The composer view-model reentrancy and dispose-linearization
+regressions use the same budget for their hang guards. The settings-coordinator and native-restart handoff
 regressions follow the same rule (`OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS`,
 default 15 s). Each Windows PowerShell 5.1 uninstall-helper run is bounded by
 `OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS` (default 120 s) because a
 cold 5.1 start on a loaded runner can exceed 30 s. The isolated wizard
 console-tail regressions wait through the tail's real poll interval and retry
 backoff, so each step is bounded by `OPENCLAW_TRAY_TEST_WIZARD_TAIL_TIMEOUT_SECONDS`
-(default 30 s).
+(default 30 s). The chat-readiness loopback regressions bound each exchange with
+`OPENCLAW_TRAY_TEST_CHAT_READINESS_TIMEOUT_SECONDS` (default 30 s) rather than the
+product's 3 s per-probe client timeout, because their fake server runs on the
+shared thread pool.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
@@ -600,6 +604,7 @@ separate TRX artifact:
 | `tray-ui-shard` | Tray UI (second shard: workspace window and chat layout classes) |
 | `gateway-fixture` | Mock Gateway fixture UI (shard A), profile/app checks, Release correlation and reader proofs, stable-profile compatibility |
 | `gateway-fixture-shard` | Mock Gateway fixture UI (shard B: Automations, Inbox, Dashboards, Usage and MainSearch scenarios) |
+| `new-test-soak` | Pull requests only: the Shared, Tray and Tray UI (including fixture UI) tests the pull request adds or changes, run repeatedly |
 
 The ordinary Tray UI suite is split by test class across `ui-tests` and
 `tray-ui-shard`, which run in parallel on separate runners. Both use the same
@@ -620,6 +625,50 @@ full-suite budget. The workflow contract checks that both filters come from
 that list, that every prefix still selects a scenario, and that no prefix
 overlaps another. To rebalance, move whole prefixes in that list. Local runs
 default to `-UiShard All`, which runs every scenario.
+
+On pull requests, `new-test-soak` catches an intermittent new test before it
+reaches main, where one passing run in its own pull request proves little.
+- `scripts/Get-CiChangedTests.ps1` diffs the pull request against its base and
+  selects each Shared, Tray and Tray UI test method whose lines changed,
+  including comment and string edits inside a test and lines next to a
+  deletion. A change elsewhere in a test type (for example a helper) selects the
+  tests of the nearest enclosing type that has tests, including its nested
+  types, and a change outside such a type selects the file's tests. Blank and
+  comment-only lines outside tests select nothing, unless they replaced code.
+- Tray UI tests are soaked only when the pull request changes the test method
+  itself. A helper change in a large UI file would otherwise run many native
+  tests the pull request did not write. Those tests are listed as not soaked.
+- `scripts/Invoke-CiTestSoak.ps1` builds each selected project once and runs
+  the selection repeatedly. Some runs start CPU burners so the tests also run on
+  a loaded machine. Each run gets its own `OPENCLAW_TRAY_*` data folders. Any
+  failed run, or a run without exactly one test report, fails the job, and CI
+  Gate requires the job on pull requests. A pull request that changes no tests
+  skips the soak.
+- Settings are step environment variables, never runner arguments:
+
+  | Variable | Default | Meaning |
+  |---|---|---|
+  | `OPENCLAW_CI_SOAK_ITERATIONS` | 10 | Runs per project |
+  | `OPENCLAW_CI_SOAK_CONTENTION_ITERATIONS` | 3 | Runs, spread evenly from the start, that start CPU burners |
+  | `OPENCLAW_CI_SOAK_CONTENTION_WORKERS` | half the logical processors | Burner processes |
+  | `OPENCLAW_CI_SOAK_MAX_TESTS` | 30 | Selected Shared or Tray tests per project; the rest are reported as not soaked |
+  | `OPENCLAW_CI_SOAK_MAX_UI_TESTS` | 8 | Selected Tray UI tests |
+  | `OPENCLAW_CI_SOAK_HANG_SECONDS` | 300 | Blame-hang timeout for one test; no dump is collected |
+
+- The step keeps a 40-minute budget shared by every project. A build or run that
+  would not finish within 90% of it (estimated at 1.5 times the slowest
+  comparable work so far) is not started. Repeat runs of a project also stop at
+  its share of the time left, so a slow project cannot take the first runs of
+  the projects after it. A warning annotation and the summary say how many runs
+  completed. A budget-limited soak still passes.
+- Tests that need their own lane environment (production resources, animation
+  preference, native onboarding, accessibility and native keyboard proof) are
+  excluded here and still run in their lanes. After the first run, the soak
+  warns about each selected test that did not run. A selection that runs no
+  test passes.
+- The soak does not see changes it cannot map to tests: helpers in other files,
+  partial classes split across files, non-C# fixture data, product code, and
+  test projects outside Shared, Tray and Tray UI.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported

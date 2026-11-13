@@ -1002,6 +1002,19 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             {
                 await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= observeExportFrame);
             }
+            // The restored label is button content, which Reactor presents on a later layout pass;
+            // measure the mast only once its children stop moving.
+            string? previousMast = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var mast = Get<Grid>(host, "UsageMastGrid");
+                var layout = string.Join("|", mast.Children.OfType<FrameworkElement>().Select(child =>
+                    $"{child.Visibility}:{child.TransformToVisual(mast).TransformBounds(new Windows.Foundation.Rect(0, 0, child.ActualWidth, child.ActualHeight))}"))
+                    + $"|{mast.ActualWidth}";
+                var stable = layout == previousMast && UsageActionSettled(host, "UsageExport");
+                previousMast = layout;
+                return stable;
+            }, "Usage mast layout settled after the export label is restored", () => $"mast={previousMast}"));
             await ui.RunOnUIAsync(async () =>
             {
                 foreach (var id in new[] { "UsageStage", "UsageContributorLayout", "UsageDetailLayout" })

@@ -149,6 +149,7 @@ file sealed class InitialTailPositioner : IDisposable
     private int? _readerBringCorrelationId;
     private FrameworkElement? _tailBringTarget;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
+    private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _disclosureAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
     private Microsoft.UI.Xaml.Controls.Primitives.IScrollController? _inputScrollController;
@@ -720,24 +721,56 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnReaderInput(object? source, bool mayToggleDisclosure)
     {
         CancelPendingNavigation();
-        if (mayToggleDisclosure && _scrollView is { } scrollView && IsDisclosureHeader(source))
+        if (mayToggleDisclosure && _scrollView is { } scrollView && DisclosureHeader(source) is { } header)
         {
             _disclosureAnchored = true;
             scrollView.VerticalAnchorRatio = 0;
+            // Top anchoring alone lets the native scroller pin the realized row whose top is
+            // nearest the viewport top. For a disclosure inside a tall message that can be the
+            // next row, so the details would still grow upward. Pin the toggled header itself.
+            if (_disclosureAnchorRequested is not null)
+                scrollView.AnchorRequested -= _disclosureAnchorRequested;
+            var repeater = scrollView.Content as Microsoft.UI.Xaml.Controls.ItemsRepeater;
+            var row = RepeaterRow(repeater, header);
+            var rowItem = row?.DataContext;
+            _disclosureAnchorRequested = (sender, args) =>
+            {
+                // A recycled row stays loaded off screen and may later show another message;
+                // only pin the header while it still belongs to the toggled message.
+                if (ReferenceEquals(sender, _scrollView) && header.IsLoaded && header.Visibility == Visibility.Visible
+                    && row is not null && ReferenceEquals(row.DataContext, rowItem)
+                    && ReferenceEquals(RepeaterRow(repeater, header), row))
+                    args.AnchorElement = header;
+            };
+            scrollView.AnchorRequested += _disclosureAnchorRequested;
         }
     }
 
-    private bool IsDisclosureHeader(object? source)
+    private static FrameworkElement? RepeaterRow(Microsoft.UI.Xaml.Controls.ItemsRepeater? repeater, DependencyObject element)
+    {
+        if (repeater is null)
+            return null;
+        for (var parent = VisualTreeHelper.GetParent(element); parent is not null;
+             element = parent, parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (ReferenceEquals(parent, repeater))
+                return element as FrameworkElement;
+        }
+
+        return null;
+    }
+
+    private FrameworkElement? DisclosureHeader(object? source)
     {
         for (var element = source as UIElement;
              element is not null && !ReferenceEquals(element, itemsView);
              element = VisualTreeHelper.GetParent(element) as UIElement)
         {
-            if (element is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton { Name: "ExpanderHeader" })
-                return true;
+            if (element is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton { Name: "ExpanderHeader" } header)
+                return header;
         }
 
-        return false;
+        return null;
     }
 
     private void RestoreTailAnchor()
@@ -752,9 +785,12 @@ file sealed class InitialTailPositioner : IDisposable
         {
             if (_offsetCorrectionAnchorRequested is not null)
                 _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
+            if (_disclosureAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _disclosureAnchorRequested;
             _scrollView.VerticalAnchorRatio = TailAnchorRatio;
         }
         _offsetCorrectionAnchorRequested = null;
+        _disclosureAnchorRequested = null;
     }
 
     private void OnReaderFocus(UIElement sender, GettingFocusEventArgs args)
@@ -1016,6 +1052,8 @@ file sealed class InitialTailPositioner : IDisposable
         {
             if (_offsetCorrectionAnchorRequested is not null)
                 _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
+            if (_disclosureAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _disclosureAnchorRequested;
             _scrollView.VerticalAnchorRatio = double.NaN;
             _scrollView.ViewChanged -= OnViewChanged;
             _scrollView.StateChanged -= OnScrollStateChanged;
@@ -1029,6 +1067,7 @@ file sealed class InitialTailPositioner : IDisposable
         _readerAnchored = false;
         _readerBringCorrelationId = null;
         _offsetCorrectionAnchorRequested = null;
+        _disclosureAnchorRequested = null;
         _reportedAtTail = null;
     }
 

@@ -40,15 +40,15 @@ function Initialize-ReactorPackages {
     param([string]$Directory)
 
     [IO.Directory]::CreateDirectory($Directory) | Out-Null
-    $release = 'https://github.com/microsoft/microsoft-ui-reactor/releases/download/v0.1.0-preview.17'
+    $release = 'https://github.com/microsoft/microsoft-ui-reactor/releases/download/v0.1.0-preview.18'
     foreach ($package in @(
-        @{ Name = 'Microsoft.UI.Reactor.0.1.0-preview.17.nupkg'; Sha256 = '7A2BC9C416671F0F8A6B0E397FC6784A3DED7D605D7AD6AA52D14228BDE55A74' },
-        @{ Name = 'Microsoft.UI.Reactor.Advanced.0.1.0-preview.17.nupkg'; Sha256 = '0DD50EB6F7D4F54EFF0C8A5372137BC0B6D0338615CFF5FA45103946B37715E3' }
+        @{ Name = 'Microsoft.UI.Reactor.0.1.0-preview.18.nupkg'; Sha256 = '4E7EE4646EFF4E6F69F2C827A481F190F9DEAA1C5022055BD7F5E7532094D588' },
+        @{ Name = 'Microsoft.UI.Reactor.Advanced.0.1.0-preview.18.nupkg'; Sha256 = 'F9E6CC4030768B1FAE8DBC35C1DDEFF8BA0E2992C83C5AA211D12518E8E3EF6D' }
     )) {
         Save-VerifiedReactorPackage -Uri "$release/$($package.Name)" -Sha256 $package.Sha256 `
             -Destination (Join-Path $Directory $package.Name)
     }
-    Write-Host 'Official Reactor preview.17 packages verified.'
+    Write-Host 'Official Reactor preview.18 packages verified.'
 }
 
 if ($MyInvocation.InvocationName -ne '.') {

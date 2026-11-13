@@ -395,8 +395,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ValidateChatRun(sessionKey, runId);
-        if (stream is not ("lifecycle" or "assistant" or "tool"))
-            throw new ArgumentException("Expected a lifecycle, assistant or tool stream.", nameof(stream));
+        if (stream is not ("lifecycle" or "assistant" or "tool" or "item"))
+            throw new ArgumentException("Expected a lifecycle, assistant, tool or item stream.", nameof(stream));
         ArgumentNullException.ThrowIfNull(data);
         var message = new
         {

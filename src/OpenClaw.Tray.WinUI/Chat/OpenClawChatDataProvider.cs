@@ -1247,6 +1247,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         _bridge.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
 
     internal long? ToolOutputConnectionEpoch => _bridge.ChatMessageReadConnectionEpoch;
+    internal Task<SessionFileList> ListSessionFilesAsync(string sessionKey) => _bridge.ListSessionFilesAsync(sessionKey);
     internal ChatToolDetailsProfileState ToolDetailsProfileState => _bridge.ToolDetailsProfileState;
     internal ChatToolDetailsProfileState ReadToolDetailsProfileState() => ToolDetailsProfileState;
     internal event EventHandler? ToolDetailsInvalidated;

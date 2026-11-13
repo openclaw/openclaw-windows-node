@@ -1,5 +1,5 @@
 // Subagents pill above the composer. It summarizes the selected chat's direct subagents and
-// opens the shared Subagents tab: Component<ReactorChatSubagentsPill, ReactorChatSubagentsPillProps>(new(panels, children, width)).
+// opens the shared Subagents tab: Component<ReactorChatSubagentsPill, ReactorChatSubagentsPillProps>(new(panels, children)).
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
@@ -11,7 +11,7 @@ using static Microsoft.UI.Reactor.Factories;
 namespace OpenClawTray.Chat;
 
 internal sealed record ReactorChatSubagentsPillProps(
-    ChatConversationPanelState Panels, IReadOnlyList<ChatThread> Children, double ViewportWidth);
+    ChatConversationPanelState Panels, IReadOnlyList<ChatThread> Children);
 
 /// <summary>Shown while subagents run or the Subagents tab is open; shows a live count and selects the tab.</summary>
 internal sealed class ReactorChatSubagentsPill : Component<ReactorChatSubagentsPillProps>
@@ -46,38 +46,16 @@ internal sealed class ReactorChatSubagentsPill : Component<ReactorChatSubagentsP
         var count = summary.Total.ToString(System.Globalization.CultureInfo.CurrentCulture);
         var accessibleName = string.Format(L("Chat_Subagents_PillName", "Subagents: {0} running, {1} finished"),
             running, summary.Finished.Count);
-        // Text inherits the Button's state foreground so hover and High Contrast stay legible;
-        // only the decorative de-emphasis is local, and High Contrast drops it.
-        TextBlockElement Muted(TextBlockElement text) =>
-            highContrast ? text : text.Foreground(Theme.Ref("ChatSecondaryTextBrush"));
         Element icon = running > 0
             ? ChatVisuals.SubagentSpinner(ChatVisuals.SubagentPillIconSize)
                 .AccessibilityView(AccessibilityView.Raw).AutomationId("ChatSubagentsPillSpinner")
-            : Muted(TextBlock(FluentIconCatalog.Subagent).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                .FontSize(ChatVisuals.SubagentPillIconSize))
+            : ChatPanelPill.Muted(TextBlock(FluentIconCatalog.Subagent).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
+                .FontSize(ChatVisuals.SubagentPillIconSize), highContrast)
                 .AccessibilityView(AccessibilityView.Raw);
         var revisionAtRender = panels.Revision;
-        var gutter = ChatVisuals.Gutter(Props.ViewportWidth);
-        return Border(
-                Button(HStack(6, icon.VAlign(VerticalAlignment.Center),
-                        TextBlock(label).FontSize(ChatVisuals.ToolRowFontSize)
-                            .VAlign(VerticalAlignment.Center),
-                        Muted(TextBlock(count).FontSize(ChatVisuals.ToolRowFontSize))
-                            .VAlign(VerticalAlignment.Center).AutomationId("ChatSubagentsPillCount"))
-                        .WithKey(highContrast ? "pill-hc" : "pill"),
-                    () => panels.OpenSubagents(revisionAtRender))
-                    .MinHeight(ChatVisuals.SubagentPillHeight).Padding(10, 2)
-                    .CornerRadius(ChatVisuals.SubagentPillHeight / 2)
-                    .Background(Theme.Ref("ChatCardBrush"))
-                    .BorderBrush(Theme.Ref("ChatStrokeBrush"))
-                    .BorderThickness(1)
-                    .HAlign(HorizontalAlignment.Left)
-                    .ToolTip(accessibleName)
-                    .AutomationName(accessibleName)
-                    .AutomationId("ChatSubagentsPill"))
-            .MaxWidth(ChatVisuals.ReadingWidth)
-            .Margin(gutter, ChatVisuals.CompactGap, gutter, 0)
-            .HAlign(HorizontalAlignment.Stretch)
+        // The chat root places this pill in the reading-width pill row.
+        return ChatPanelPill.Render(icon, label, count, "ChatSubagentsPillCount", accessibleName, "ChatSubagentsPill",
+                highContrast, () => panels.OpenSubagents(revisionAtRender))
             .OnMount(control => ChatThemeChanges.Watch((FrameworkElement)control,
                 () => setThemeRevision(++themeRevision.Current)))
             .OnUnmount(control => ChatThemeChanges.Unwatch((FrameworkElement)control));
