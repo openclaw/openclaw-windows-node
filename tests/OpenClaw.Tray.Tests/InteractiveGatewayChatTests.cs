@@ -12,6 +12,103 @@ namespace OpenClaw.Tray.Tests;
 [Collection("Chat telemetry")]
 public sealed class InteractiveGatewayChatTests
 {
+    private static readonly TimeSpan HistoryMergeTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
+
+    [Fact]
+    public async Task HistoryReadMergesRetainedItemStreamWithoutLosingRunningState()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const string key = GatewayScenario.EmptySessionKey;
+        const string runId = "fixture-chat-1";
+        const string callId = "fixture-history-call";
+        const string prompt = "Synthetic history merge proof.";
+        provider.Changed += (_, args) =>
+        {
+            snapshots.Enqueue(args.Snapshot);
+            var tool = args.Snapshot.Timelines.GetValueOrDefault(key)?.Entries
+                .FirstOrDefault(entry => entry.ToolCallId == callId);
+            if (tool?.ToolResult == ChatToolCallStatus.InProgress) started.TrySetResult();
+            if (tool?.ToolResult == ChatToolCallStatus.Success) completed.TrySetResult();
+        };
+        await provider.LoadAsync();
+        await provider.SendMessageAsync(key, prompt);
+        await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "start" });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = $"tool:{callId}", toolCallId = callId, name = "exec", kind = "tool",
+            phase = "start", title = "Exec echo fixture-only", status = "running",
+            meta = "echo fixture-only", commandBearing = true,
+        });
+        await started.Task.WaitAsync(HistoryMergeTimeout);
+        var live = Assert.Single(Latest(snapshots, key)!.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.False(Latest(snapshots, key)!.HistoryLoaded);
+        Assert.Equal("Exec echo fixture-only", live.Text);
+        Assert.Null(live.ToolArgs);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.history");
+
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var messages = new List<object>
+        {
+            new { role = "user", content = prompt, timestamp, __openclaw = new { id = "fixture-history-user", seq = 1 } },
+            new
+            {
+                role = "assistant", timestamp,
+                __openclaw = new { id = "fixture-history-call-message", seq = 2, runId },
+                content = new[] { new { type = "toolCall", id = callId, name = "exec", arguments = new { command = "echo fixture-only" } } },
+            },
+        };
+        var sessionId = client.GetSessionList().Single(session => session.Key == key).SessionId;
+        server.OverrideChatRead("chat.history", _ => new { sessionKey = key, sessionId, messages });
+        // The same provider retains the live row across both initial and forced wire reads.
+        for (var read = 0; read < 2; read++)
+        {
+            await provider.LoadHistoryAsync(key, force: read > 0);
+            var merged = Latest(snapshots, key)!;
+            Assert.True(merged.HistoryLoaded);
+            var running = Assert.Single(merged.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+            Assert.Equal(callId, running.ToolCallId);
+            Assert.Equal(runId, running.ToolRunId);
+            Assert.Equal(ChatToolCallStatus.InProgress, running.ToolResult);
+            Assert.Equal(read + 1, server.Requests.Count(request => request.Method == "chat.history"));
+        }
+
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = $"tool:{callId}", toolCallId = callId, name = "exec", kind = "tool",
+            phase = "end", title = "Exec echo fixture-only", status = "completed",
+        });
+        await completed.Task.WaitAsync(HistoryMergeTimeout);
+        messages.Add(new
+        {
+            role = "toolResult", toolCallId = callId, toolName = "exec", content = "fixture-only", timestamp,
+            __openclaw = new { id = "fixture-history-result", seq = 3, runId },
+        });
+        await provider.LoadHistoryAsync(key, force: true);
+        var saved = Assert.Single(Latest(snapshots, key)!.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal(callId, saved.ToolCallId);
+        Assert.Equal(ChatToolCallStatus.Success, saved.ToolResult);
+        Assert.Equal("fixture-only", saved.ToolOutput);
+        Assert.Equal(3, server.Requests.Count(request => request.Method == "chat.history"));
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

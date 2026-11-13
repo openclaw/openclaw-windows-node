@@ -70,6 +70,28 @@ an installed-profile upgrade or Store migration.
 
 ## Build and explore
 
+### Retained live rows and history
+
+`InteractiveGatewayChatTests.HistoryReadMergesRetainedItemStreamWithoutLosingRunningState`
+uses the real WebSocket client, chat bridge and provider with the fixture's
+`PublishChatRunEventAsync` item frames and `OverrideChatRead` transcript response.
+It retains the same live tool row across an initial history read and a forced
+read while the tool is running, then verifies the saved result after completion.
+The test checks actual history-request counts and requires a single correlated
+tool row; it does not restart the provider or reconnect.
+
+Run this transport/provider regression without launching a desktop app:
+
+```powershell
+dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --filter 'FullyQualifiedName~InteractiveGatewayChatTests.HistoryReadMergesRetainedItemStreamWithoutLosingRunningState'
+```
+
+For manual proof, selecting an already-loaded conversation only uses cached
+history, and reconnecting can clear the live timeline. Neither substitutes for
+observing retained live entries before a real history request and checking the
+merged result afterward. The fixture test is not native rendering or paired
+Gateway proof.
+
 ### Assistant continuity capture
 
 The opt-in UI case
