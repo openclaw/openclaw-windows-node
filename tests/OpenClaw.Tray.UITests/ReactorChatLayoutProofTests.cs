@@ -1876,20 +1876,55 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         var copied = new List<string>();
         await WithChatAsync(800, async (surface, host, _, _) =>
         {
-            await ui.RunOnUIAsync(() =>
+            // ChatCopyButton reverts its feedback on a timer that starts once the feedback reaches the button,
+            // so record each label transition with its time instead of sampling the label after a settle a
+            // loaded runner can stretch past the timer.
+            var labels = new List<(string Label, TimeSpan Elapsed)>();
+            var clock = new System.Diagnostics.Stopwatch();
+            Button? codeCopy = null;
+            string? idleLabel = null;
+            long? callback = null;
+            try
             {
-                Invoke(Assert.Single(CodeCopyButtons(surface)));
-                Invoke(Assert.Single(FindDescendants<Button>(host), button =>
-                    AutomationProperties.GetAutomationId(button).Contains("kind:Assistant", StringComparison.Ordinal)));
-            });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
+                await ui.RunOnUIAsync(() =>
+                {
+                    codeCopy = Assert.Single(CodeCopyButtons(surface));
+                    idleLabel = AutomationProperties.GetName(codeCopy);
+                    callback = codeCopy.RegisterPropertyChangedCallback(AutomationProperties.NameProperty,
+                        (sender, _) => labels.Add((AutomationProperties.GetName(sender), clock.Elapsed)));
+                    clock.Start();
+                    Invoke(codeCopy);
+                    Invoke(Assert.Single(FindDescendants<Button>(host), button =>
+                        AutomationProperties.GetAutomationId(button).Contains("kind:Assistant", StringComparison.Ordinal)));
+                });
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => labels.Count > 0, "code copy feedback label",
+                    () => $"label='{AutomationProperties.GetName(codeCopy!)}', codeCopyButtons={CodeCopyButtons(surface).Length}, " +
+                        $"sameButton={CodeCopyButtons(surface).Contains(codeCopy)}, copies={copied.Count}"));
+                // Read the current label in the same UI turn as the recorded transitions so a timer tick
+                // cannot land between them.
+                await ui.RunOnUIAsync(() =>
+                {
+                    var expected = success ? "Copied" : "Copy failed";
+                    Assert.Equal("Copy code", idleLabel);
+                    Assert.Same(codeCopy, Assert.Single(CodeCopyButtons(surface)));
+                    var observed = labels.Select(change => change.Label).ToArray();
+                    // The feedback is shown first; the only later change is its timed return to the idle label,
+                    // which the product timer cannot raise until the feedback has been shown for its interval.
+                    Assert.Equal(observed.Length == 1 ? new[] { expected } : new[] { expected, idleLabel! }, observed);
+                    if (observed.Length == 2)
+                        Assert.True(labels[1].Elapsed - labels[0].Elapsed >= ChatCopyButton.DefaultResetAfter - CopyFeedbackTimerTolerance,
+                            $"Feedback was shown for only {(labels[1].Elapsed - labels[0].Elapsed).TotalMilliseconds:0} ms.");
+                    Assert.Equal(observed[^1], AutomationProperties.GetName(codeCopy));
+                    Assert.Equal(2, copied.Count);
+                    Assert.Contains(AssistantMessage, copied);
+                });
+            }
+            finally
             {
-                var expected = success ? "Copied" : "Copy failed";
-                Assert.Equal(expected, AutomationProperties.GetName(Assert.Single(CodeCopyButtons(surface))));
-                Assert.Equal(2, copied.Count);
-                Assert.Contains(AssistantMessage, copied);
-            });
+                if (callback is { } token)
+                    await ui.RunOnUIAsync(() => codeCopy!.UnregisterPropertyChangedCallback(AutomationProperties.NameProperty, token));
+            }
             await CaptureAsync(surface, success ? "Copied-message-and-code-800" : "Copy-failed-message-and-code-800");
         }, "parity", text => { copied.Add(text); return success; });
     }
@@ -1936,6 +1971,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    // DispatcherQueueTimer ticks are not early, but its clock and Stopwatch can differ by a timer quantum.
+    private static readonly TimeSpan CopyFeedbackTimerTolerance = TimeSpan.FromMilliseconds(100);
+
     private static Button[] CodeCopyButtons(DependencyObject root) =>
         FindDescendants<Button>(root).Where(button =>
             AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_code_", StringComparison.Ordinal)).ToArray();
@@ -1962,50 +2000,106 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         await WithChatAsync(480, async (surface, host, _, _) =>
         {
             Action<ChatCopyButtonProps>? update = null;
+            ChatCopyButtonProps? rendered = null;
             var writes = new List<string>();
             var succeeds = true;
+            // A window no test run can outlast keeps feedback visible until a phase observes it; the short
+            // window is used only where a reset must happen.
+            var held = TimeSpan.FromMinutes(5);
+            var resetAfter = TimeSpan.FromMilliseconds(400);
             var props = new ChatCopyButtonProps("first", "one", "Copy",
-                text => { writes.Add(text); return succeeds; }, ResetAfter: TimeSpan.FromMilliseconds(400));
+                text => { writes.Add(text); return succeeds; }, ResetAfter: held);
             await ui.RunOnUIAsync(() => host.Mount(_ =>
-                Component<CopyProbe, CopyProbeProps>(new(props, setter => update = setter))));
-            await SettleAsync();
+                Component<CopyProbe, CopyProbeProps>(new(props, setter => update = setter, value => rendered = value))));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => rendered == props && FindDescendants<Button>(surface).Any(control =>
+                    AutomationProperties.GetAutomationId(control) == "ChatCopy_first"),
+                "copy probe button"));
             var button = await ui.RunOnUIAsync(() => Task.FromResult(FindControl<Button>(surface, "ChatCopy_first")));
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copied", AutomationProperties.GetName(button)));
-            await Task.Delay(220);
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await Task.Delay(150);
-            await ui.RunOnUIAsync(() => Assert.Equal("Copied", AutomationProperties.GetName(button)));
-            await Task.Delay(350);
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copy", AutomationProperties.GetName(button)));
-            succeeds = false;
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copy failed", AutomationProperties.GetName(button)));
-            await ui.RunOnUIAsync(() => update!(props with { Text = "two" }));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var labels = new List<(string Label, TimeSpan Elapsed)>();
+            string Label() => AutomationProperties.GetName(button);
+            string Transitions() => string.Join(", ", labels.Select(change => $"{change.Label}@{change.Elapsed.TotalMilliseconds:0}ms"));
+            Task WaitAsync(Func<bool> condition, string operation) =>
+                WaitForRenderedConditionAsync(condition, operation, () => $"label='{Label()}'; transitions: {Transitions()}");
+            async Task ApplyAsync(ChatCopyButtonProps next)
             {
-                Assert.Same(button, FindControl<Button>(surface, "ChatCopy_first"));
-                Assert.Equal("Copy", AutomationProperties.GetName(button));
-            });
-            succeeds = true;
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => update!(props with { Identity = "second", Text = "two" }));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Equal("Copy", AutomationProperties.GetName(button)));
-            await ui.RunOnUIAsync(() => Invoke(button));
-            await SettleAsync();
-            await ui.RunOnUIAsync(() => host.Mount(_ => Empty()));
-            await Task.Delay(500);
-            await ui.RunOnUIAsync(() => Assert.Equal("Copied", AutomationProperties.GetName(button)));
-            Assert.Equal(new[] { "one", "one", "one", "two", "two" }, writes);
+                props = next;
+                await ui.RunOnUIAsync(() => update!(next));
+                await ui.RunOnUIAsync(() => WaitAsync(() => rendered == next, "copy probe props applied"));
+            }
+            // Click and arm the observing wait in the same UI turn, so the feedback cannot render and
+            // reset in a dispatch gap before the wait starts.
+            Task ClickAndWaitAsync(Func<bool> condition, string operation) =>
+                ui.RunOnUIAsync(async () =>
+                {
+                    Invoke(button);
+                    await WaitAsync(condition, operation);
+                });
+            long? callback = null;
+            try
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    callback = button.RegisterPropertyChangedCallback(AutomationProperties.NameProperty,
+                        (sender, _) => labels.Add((AutomationProperties.GetName(sender), clock.Elapsed)));
+                });
+
+                // A second click restarts the reset window with the current props: the first feedback holds a
+                // window it cannot reach, so only the restarted 400 ms window can return the idle label.
+                await ClickAndWaitAsync(() => Label() == "Copied", "first copy feedback");
+                await ApplyAsync(props with { ResetAfter = resetAfter });
+                var secondClick = TimeSpan.Zero;
+                await ClickAndWaitAsync(() =>
+                {
+                    if (secondClick == TimeSpan.Zero) secondClick = clock.Elapsed;
+                    return Label() == "Copy";
+                }, "repeated copy feedback reset");
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.Equal(new[] { "Copied", "Copy" }, labels.Select(change => change.Label));
+                    Assert.True(labels[1].Elapsed >= secondClick + resetAfter - CopyFeedbackTimerTolerance,
+                        $"Reset came before the restarted window: {Transitions()}; second click {secondClick.TotalMilliseconds:0}ms.");
+                });
+
+                // With the window held, only a content or identity change can clear the feedback.
+                await ApplyAsync(props with { ResetAfter = held });
+                succeeds = false;
+                await ClickAndWaitAsync(() => Label() == "Copy failed", "copy failure feedback");
+                await ApplyAsync(props with { Text = "two" });
+                await ui.RunOnUIAsync(() => WaitAsync(() => Label() == "Copy", "content change clears feedback"));
+                await ui.RunOnUIAsync(() => Assert.Same(button, FindControl<Button>(surface, "ChatCopy_first")));
+                succeeds = true;
+                await ClickAndWaitAsync(() => Label() == "Copied", "copy feedback for new text");
+                await ApplyAsync(props with { Identity = "second" });
+                await ui.RunOnUIAsync(() => WaitAsync(() => Label() == "Copy", "identity change clears feedback"));
+
+                // Disposal cancels a reset that would otherwise fire: unmount in the turn that observes the feedback.
+                // Outside a render, Mount retires the old root synchronously, so the button's cleanup cancels
+                // its timer before Mount returns.
+                await ApplyAsync(props with { ResetAfter = resetAfter });
+                var unmounted = false;
+                await ClickAndWaitAsync(() =>
+                {
+                    if (!unmounted && Label() == "Copied")
+                    {
+                        host.Mount(_ => Empty());
+                        unmounted = true;
+                    }
+                    return unmounted;
+                }, "copy feedback before disposal");
+                // Proving the absence of a reset requires waiting past its full window.
+                await Task.Delay(resetAfter + CopyFeedbackTimerTolerance);
+                await ui.RunOnUIAsync(() => Assert.Equal("Copied", Label()));
+                Assert.Equal(new[] { "one", "one", "one", "two", "two" }, writes);
+            }
+            finally
+            {
+                if (callback is { } token)
+                    await ui.RunOnUIAsync(() => button.UnregisterPropertyChangedCallback(AutomationProperties.NameProperty, token));
+            }
         });
     }
-
     [Fact]
     public void ClipboardStatus_ReportsKnownFailureAndDoesNotSwallowProgrammingErrors()
     {
@@ -2018,7 +2112,10 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             ClipboardHelper.TryCopyText("fixture", true, (_, _) => throw new InvalidOperationException()));
     }
 
-    private sealed record CopyProbeProps(ChatCopyButtonProps Initial, Action<Action<ChatCopyButtonProps>> Ready);
+    private sealed record CopyProbeProps(
+        ChatCopyButtonProps Initial,
+        Action<Action<ChatCopyButtonProps>> Ready,
+        Action<ChatCopyButtonProps>? Rendered = null);
 
     private sealed class CopyProbe : Component<CopyProbeProps>
     {
@@ -2026,6 +2123,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         {
             var (value, setValue) = UseState(Props.Initial);
             UseEffect((Func<Action>)(() => { Props.Ready(setValue); return () => { }; }), Array.Empty<object>());
+            // Effects run after the commit, so the button has been rendered with these props.
+            UseEffect((Func<Action>)(() => { Props.Rendered?.Invoke(value); return () => { }; }), value);
             return Component<ChatCopyButton, ChatCopyButtonProps>(value);
         }
     }
