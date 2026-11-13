@@ -104,3 +104,18 @@ public sealed record MdInlineText(
 
 /// <summary>Soft or hard line break inside an inline sequence.</summary>
 public sealed record MdInlineLineBreak(bool IsHard) : MdInline;
+
+/// <summary>
+/// How <see cref="ChatMarkdownAstBuilder"/> collapses an anchor to inert text.
+/// </summary>
+public enum MdLinkFlattening
+{
+    /// <summary>Display renderer default: <c>"display (href)"</c>, so the
+    /// destination stays visible but is never a clickable hyperlink.</summary>
+    DisplayWithHref,
+
+    /// <summary>Speech projection: display text only. A text-less anchor or
+    /// an autolink whose display is its own href emits nothing, so no URL is
+    /// ever read aloud.</summary>
+    DisplayOnly,
+}
