@@ -773,16 +773,18 @@ Two checks enforce the riskiest patterns:
 - `TestTimingPatternGuard` counts, per test file, literal hang guards under
   10 s and fixed delays or settle counts, and, in Tray UI test files that use
   UI Automation, one-shot lookups. `tests\OpenClaw.Tray.Tests\TestTimingPatternBaseline.json`
-  records the existing counts, which may only shrink. It runs in the Tray tests and, through
+  records the existing counts. A count above its baseline fails; a count below it
+  only warns, so a pull request that removes patterns stays green. It runs in the Tray tests and, through
   `.\scripts\validate-test-timing-patterns.ps1`, in always-on fast validation,
   so a pull request that changes only UI or Shared tests is still checked. A
   failure names the file, lines, and replacement helper, plus each rule's total.
   For a deliberate case, such as a bounded negative-progress probe, add
   `// test-timing-exception: <reason>` on that line or on a comment line above.
-  After removing occurrences, lower the baseline by rerunning with
-  `OPENCLAW_UPDATE_TEST_TIMING_BASELINE=1` or
-  `.\scripts\validate-test-timing-patterns.ps1 -LowerBaseline`; neither raises
-  a count. When a rename or move carries existing occurrences to another file,
+  To tighten the baseline after removing occurrences, run
+  `.\scripts\validate-test-timing-patterns.ps1 -LowerBaseline` (or set
+  `OPENCLAW_UPDATE_TEST_TIMING_BASELINE=1` for the Tray test) and commit the
+  file; neither raises a count. Until then, the removed headroom in that file
+  could be reused, so lower it in the same change when convenient. When a rename or move carries existing occurrences to another file,
   move their baseline entry in the same change; the rule totals must not grow.
   The guard counts occurrences rather than tracking each one, and it does not
   recognize every equivalent form (for example a target-typed

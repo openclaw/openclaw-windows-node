@@ -107,6 +107,8 @@ fixed delays, and one-shot UI Automation lookups. Do not raise its baseline to
 admit new code; use the named helper or a justified
 `// test-timing-exception: <reason>` comment. A rename or move may carry an
 existing baseline entry to the new file when the rule totals stay unchanged.
+When a change removes occurrences, lower the baseline in the same change with
+`.\scripts\validate-test-timing-patterns.ps1 -LowerBaseline`.
 
 ## Preserve valuable contracts
 

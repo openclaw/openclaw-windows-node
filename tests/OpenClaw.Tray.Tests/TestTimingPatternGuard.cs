@@ -1,11 +1,13 @@
 // Ratchet for the timing patterns behind recent CI flakes in repository test code.
 // Each rule counts occurrences per test file. TestTimingPatternBaseline.json records the counts
-// when the guard was introduced; a count may only shrink. Two entry points share this file:
+// when the guard was introduced; growth fails, and shrunk counts are reported for tightening.
+// Two entry points share this file:
 //   - TestDeterminismGuardTests (Tray.Tests, part of the required local closeout), and
 //   - scripts/validate-test-timing-patterns.ps1 (Add-Type in always-on CI fast validation, so a
 //     UI-test-only or Shared-test-only pull request cannot bypass it).
 // Usage:
-//   var failures = TestTimingPatternGuard.Evaluate(repositoryRoot, lowerBaseline: false);
+//   var result = TestTimingPatternGuard.Evaluate(repositoryRoot, lowerBaseline: false);
+//   // result.Failures must be empty; result.Shrunk lists entries that can be lowered.
 // Keep this file free of test-framework dependencies and C# features newer than C# 11 so
 // PowerShell's Add-Type can compile it.
 #nullable enable
@@ -77,10 +79,12 @@ public static class TestTimingPatternGuard
     };
 
     /// <summary>
-    /// Compares repository test code with the checked-in baseline and returns one message per
-    /// violation. With <paramref name="lowerBaseline"/>, shrunk counts are written back; counts are never raised.
+    /// Compares repository test code with the checked-in baseline. Growth is a failure. A shrunk
+    /// count is reported so the baseline can be tightened, but does not fail: pull requests that
+    /// remove patterns stay green. With <paramref name="lowerBaseline"/>, shrunk counts are written
+    /// back; counts are never raised. Totals give reviewers context for a moved baseline entry.
     /// </summary>
-    public static IReadOnlyList<string> Evaluate(string repositoryRoot, bool lowerBaseline)
+    public static EvaluationResult Evaluate(string repositoryRoot, bool lowerBaseline)
     {
         var baselinePath = Path.Combine(repositoryRoot, BaselineRelativePath.Replace('/', Path.DirectorySeparatorChar));
         var baseline = ReadBaseline(baselinePath);
@@ -107,26 +111,32 @@ public static class TestTimingPatternGuard
             {
                 var count = actual[rule.Id].TryGetValue(pair.Key, out var lines) ? lines.Count : 0;
                 if (count < pair.Value)
-                    shrunk.Add($"{pair.Key}: {rule.Id} dropped from {pair.Value} to {count}. Lower the baseline in " +
-                        $"{BaselineRelativePath}, or rerun with {LowerBaselineVariable}=1.");
+                    shrunk.Add($"{pair.Key}: {rule.Id} dropped from {pair.Value} to {count}.");
             }
         }
         if (shrunk.Count > 0 && lowerBaseline)
-            WriteLoweredBaseline(baselinePath, baseline, actual);
-        else
-            failures.AddRange(shrunk);
-        if (failures.Count > 0)
         {
-            // A file rename or test move must keep each rule's total unchanged when its entry moves.
-            foreach (var rule in Rules)
-            {
-                var observed = actual[rule.Id].Values.Sum(lines => lines.Count);
-                var allowed = baseline.TryGetValue(rule.Id, out var entries) ? entries.Values.Sum() : 0;
-                failures.Add($"Total {rule.Id}: {observed} occurrence(s), baseline {allowed}.");
-            }
+            WriteLoweredBaseline(baselinePath, baseline, actual);
+            shrunk.Clear();
         }
-        return failures;
+
+        var totals = new List<string>();
+        foreach (var rule in Rules)
+        {
+            var observed = actual[rule.Id].Values.Sum(lines => lines.Count);
+            var allowed = baseline.TryGetValue(rule.Id, out var entries) ? entries.Values.Sum() : 0;
+            totals.Add($"Total {rule.Id}: {observed} occurrence(s), baseline {allowed}.");
+        }
+        return new EvaluationResult(failures, shrunk, totals);
     }
+
+    /// <param name="Failures">Growth beyond the baseline; each one fails the guard.</param>
+    /// <param name="Shrunk">Counts below the baseline; tighten with the lower-baseline command.</param>
+    /// <param name="Totals">Per-rule totals, for reviewing an entry moved with renamed code.</param>
+    public sealed record EvaluationResult(
+        IReadOnlyList<string> Failures, IReadOnlyList<string> Shrunk, IReadOnlyList<string> Totals);
+
+    public const string LowerBaselineCommand = @".\scripts\validate-test-timing-patterns.ps1 -LowerBaseline";
 
     public static Dictionary<string, SortedDictionary<string, List<int>>> ScanRepository(string repositoryRoot)
     {

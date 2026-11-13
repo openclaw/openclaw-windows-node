@@ -11,14 +11,14 @@ public sealed class TestDeterminismGuardTests
     [Fact]
     public void TestCode_DoesNotAddTimingSensitivePatterns()
     {
-        var failures = TestTimingPatternGuard.Evaluate(
+        var result = TestTimingPatternGuard.Evaluate(
             TestRepositoryPaths.GetRepositoryRoot(),
             lowerBaseline: Environment.GetEnvironmentVariable(TestTimingPatternGuard.LowerBaselineVariable) == "1");
 
-        Assert.True(failures.Count == 0,
-            "Timing-sensitive test patterns changed. New occurrences need the named helper or an explicit " +
+        Assert.True(result.Failures.Count == 0,
+            "New timing-sensitive test patterns. Use the named helper or an explicit " +
             $"'// {TestTimingPatternGuard.ExceptionMarker} <reason>' comment. See {TestTimingPatternGuard.GuideAnchor}." +
-            Environment.NewLine + string.Join(Environment.NewLine, failures));
+            Environment.NewLine + string.Join(Environment.NewLine, result.Failures.Concat(result.Totals)));
     }
 
     [Theory]
@@ -90,26 +90,31 @@ public sealed class TestDeterminismGuardTests
     }
 
     [Fact]
-    public void Evaluate_FailsNewOccurrencesAndShrunkCountsAndOnlyEverLowersTheBaseline()
+    public void Evaluate_FailsOnlyGrowthAndLowersButNeverRaisesTheBaseline()
     {
         using var repository = new TempRepository();
         repository.Write("tests/OpenClaw.Shared.Tests/A.cs", "Thread.Sleep(1); Thread.Sleep(2);");
         repository.Write("tests/OpenClaw.Shared.Tests/B.cs", "await Task.Delay(5);");
         repository.WriteBaseline("""{ "fixed-delay-readiness": { "tests/OpenClaw.Shared.Tests/A.cs": 3 } }""");
 
-        var failures = TestTimingPatternGuard.Evaluate(repository.Root, lowerBaseline: true);
-
-        // B.cs is new and still fails; A.cs shrank from 3 to 2 and is lowered, never raised for B.cs.
-        // The unchanged total shows a reviewer when an entry only moved between files.
-        var failure = Assert.Single(failures, message => !message.StartsWith("Total ", StringComparison.Ordinal));
+        // A.cs shrank from 3 to 2: reported for tightening, not a failure. B.cs is new growth.
+        var result = TestTimingPatternGuard.Evaluate(repository.Root, lowerBaseline: false);
+        var failure = Assert.Single(result.Failures);
         Assert.StartsWith("tests/OpenClaw.Shared.Tests/B.cs: fixed-delay-readiness has 1 occurrence(s), baseline 0.", failure);
-        Assert.Contains("Total fixed-delay-readiness: 3 occurrence(s), baseline 3.", failures);
+        Assert.Equal("tests/OpenClaw.Shared.Tests/A.cs: fixed-delay-readiness dropped from 3 to 2.", Assert.Single(result.Shrunk));
+        // The unchanged total shows a reviewer when an entry only moved between files.
+        Assert.Contains("Total fixed-delay-readiness: 3 occurrence(s), baseline 3.", result.Totals);
+
+        var lowered = TestTimingPatternGuard.Evaluate(repository.Root, lowerBaseline: true);
+        Assert.Single(lowered.Failures);
+        Assert.Empty(lowered.Shrunk);
         Assert.Contains("\"tests/OpenClaw.Shared.Tests/A.cs\": 2", repository.ReadBaseline());
         Assert.DoesNotContain("B.cs", repository.ReadBaseline());
 
-        repository.Write("tests/OpenClaw.Shared.Tests/A.cs", "Thread.Sleep(1);");
-        Assert.Contains(TestTimingPatternGuard.Evaluate(repository.Root, lowerBaseline: false),
-            message => message.Contains("A.cs: fixed-delay-readiness dropped from 2 to 1", StringComparison.Ordinal));
+        repository.Write("tests/OpenClaw.Shared.Tests/B.cs", "");
+        var clean = TestTimingPatternGuard.Evaluate(repository.Root, lowerBaseline: false);
+        Assert.Empty(clean.Failures);
+        Assert.Empty(clean.Shrunk);
     }
 
     private static string UiAutomationSource(string body) => "using System.Windows.Automation;\n" + body;
