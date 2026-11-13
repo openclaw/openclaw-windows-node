@@ -45,6 +45,9 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
     private static readonly ConditionalWeakTable<ChatAttachment, string> s_keys = new();
     private static long s_nextKey;
 
+    // Queried once per process: pills re-render on every composer render, including each keystroke.
+    private static readonly Lazy<bool> TouchPresent = new(() => new TouchCapabilities().TouchPresent != 0);
+
     // Everything in the pill except the name: 8/2 padding, 1/1 border, glyph, name gap, 2px gap and remove target.
     private const double ChatAttachmentChipChrome =
         8 + 2 + 2 + ChatVisuals.AttachmentGlyphSize + ChatVisuals.AttachmentChipGap + 2 + ChatVisuals.AttachmentRemoveSize;
@@ -60,7 +63,7 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
         var (focused, setFocused) = UseState(false);
         var removeButton = UseRef<Button?>(null);
         var handledFocusToken = UseRef(Props.FocusRequest?.Token ?? 0L);
-        var touch = new TouchCapabilities().TouchPresent != 0;
+        var touch = TouchPresent.Value;
 
         var glyph = TextBlock(FluentIconCatalog.Document)
             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
@@ -131,7 +134,10 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
             .AutomationId("ChatAttachmentChip")
             .OnPointerEntered((_, _) => setHovered(true))
             .OnPointerExited((_, _) => setHovered(false))
-            .OnGotFocus((_, _) => setFocused(true))
+            // Pointer focus (for example a mouse removal handing focus to this pill) is not a reveal
+            // reason: hover already covers the mouse, and the button would stay visible after it leaves.
+            .OnGotFocus((_, args) => setFocused(
+                args.OriginalSource is not Control { FocusState: FocusState.Pointer }))
             .OnLostFocus((_, _) => setFocused(false));
     }
 }

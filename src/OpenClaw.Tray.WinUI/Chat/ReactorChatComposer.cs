@@ -324,8 +324,11 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
         }
 
+        // The row's real width: the composer's prose insets, its 1px border on each side and the
+        // reserved scroll-bar gutter. No floor, so a long pill never overflows a very narrow row.
         var attachmentChipMaxWidth = Math.Min(ChatVisuals.AttachmentChipMaxWidth,
-            Math.Max(96, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 2 * ChatVisuals.ProseInset));
+            Math.Max(0, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 2 * ChatVisuals.ProseInset
+                - 2 - ChatVisuals.AttachmentRailScrollBarInset));
         void RemoveAttachment(ChatAttachment attachment, FocusState focusState)
         {
             // Read the live list: the view model replaces it on every removal, so a list captured

@@ -3015,6 +3015,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Theory]
+    [InlineData(260)]
     [InlineData(320)]
     [InlineData(480)]
     [InlineData(800)]
@@ -3029,6 +3030,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     FileName = fileName, MimeType = "text/plain", Content = "dGVzdA==",
                 }).ToArray();
             var touch = new Windows.Devices.Input.TouchCapabilities().TouchPresent != 0;
+            var pointerAway = false;
             Button[] removals = [];
             await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments(attachments));
             await SettleAsync();
@@ -3048,12 +3050,15 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 });
                 var rows = chips.Select(chip => Math.Round(Bounds(chip, surface).Top)).Distinct().Count();
                 Assert.True(rows >= 2, $"Expected wrapped rows, got {rows}.");
-                // The composer grows with the rows up to the cap, then the rail scrolls vertically.
+                // The composer grows with the rows up to the cap, then the rail scrolls vertically. Measure the
+                // rows rather than counting them, because scaled text makes each row taller.
                 Assert.True(rail.ActualHeight <= ChatVisuals.AttachmentRailMaxHeight + 0.5);
-                if (rows > ChatVisuals.AttachmentRailMaxRows)
+                var neededHeight = chips.Max(chip => Bounds(chip, surface).Bottom)
+                    - chips.Min(chip => Bounds(chip, surface).Top) + 6;
+                if (neededHeight > ChatVisuals.AttachmentRailMaxHeight + 0.5)
                     Assert.True(rail.ScrollableHeight > 0);
                 else
-                    Assert.Equal(0, rail.ScrollableHeight);
+                    Assert.Equal(0, rail.ScrollableHeight, 0.5);
                 // Pills size to their names: a short name stays well below a trimmed long one and is not trimmed.
                 Assert.True(chips[0].ActualWidth < chips[1].ActualWidth - 40);
                 var shortName = Assert.Single(FindDescendants<TextBlock>(chips[0]), text => text.Text == "a.txt");
@@ -3075,6 +3080,16 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 // A resting system pointer can hover at most one pill; the others stay hidden.
                 if (!touch)
                     Assert.True(removals.Count(button => button.Opacity != 0) <= 1);
+                pointerAway = !touch && removals.All(button => button.Opacity == 0);
+                // Pointer focus (as after a mouse removal) is not a reveal reason on its own.
+                Assert.True(removals[2].Focus(FocusState.Pointer));
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(FocusState.Pointer, removals[2].FocusState);
+                if (pointerAway)
+                    Assert.Equal(0, removals[2].Opacity);
                 Assert.True(removals[^1].Focus(FocusState.Keyboard));
             });
             await SettleAsync();
