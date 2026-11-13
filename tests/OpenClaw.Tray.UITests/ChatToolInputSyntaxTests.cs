@@ -197,6 +197,9 @@ public sealed class ChatToolInputSyntaxTests(UIThreadFixture ui)
             var window = new Window { Content = surface };
             window.AppWindow.MoveAndResize(new(-32000, -32000, 1150, 850));
             window.Activate();
+            // Reactor does not keep managed wrappers for mounted controls. Collect them before the
+            // reader is captured so retention cannot depend on a managed RichTextBlock wrapper.
+            GC.Collect(); GC.WaitForPendingFinalizers(); GC.Collect();
             try
             {
                 Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
