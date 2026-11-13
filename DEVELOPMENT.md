@@ -1277,6 +1277,7 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 | `OPENCLAW_LANGUAGE=fr-fr` | Override UI language (validated: en-us, fr-fr, nl-nl, pt-br, zh-cn, zh-tw) |
 | `OPENCLAW_GATEWAY_PORT=19001` | Override default gateway port for local dev |
 | `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT=600` | Native Gateway startup budget in whole seconds (30-3600, default 300) |
+| `OPENCLAW_NATIVE_GATEWAY_INSPECT_TIMEOUT=30` | Native Gateway ownership-inspection deadline in whole seconds (5-120, default 15) |
 | `OPENCLAW_VISUAL_TEST=1` | Enable automatic screenshot capture on page transitions |
 | `OPENCLAW_VISUAL_TEST_DIR=path` | Output directory for visual test screenshots |
 

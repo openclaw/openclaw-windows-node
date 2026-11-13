@@ -89,13 +89,13 @@ public sealed partial class SandboxPage : Page
         {
             NetInternetToggle.IsOn = settings.SystemRunAllowOutbound;
             LoadFolders();
-            (settings.SandboxClipboard switch
+            ClipboardCombo.SelectedIndex = settings.SandboxClipboard switch
             {
-                SandboxClipboardMode.Read => ClipboardReadRadio,
-                SandboxClipboardMode.Write => ClipboardWriteRadio,
-                SandboxClipboardMode.Both => ClipboardBothRadio,
-                _ => ClipboardNoneRadio,
-            }).IsChecked = true;
+                SandboxClipboardMode.Read => 1,
+                SandboxClipboardMode.Write => 2,
+                SandboxClipboardMode.Both => 3,
+                _ => 0,
+            };
             var seconds = Math.Clamp(settings.SandboxTimeoutMs / 1000, 5, 300);
             TimeoutSlider.Value = seconds;
             TimeoutLabel.Text = LocalizationHelper.Format("SandboxPage_TimeoutFormat", seconds);
@@ -356,9 +356,9 @@ public sealed partial class SandboxPage : Page
         Save();
         LoadFolders();
     }
-    private void OnClipboardChanged(object sender, RoutedEventArgs e)
+    private void OnClipboardChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_suppress || sender is not RadioButton radio || radio.Tag is not string tag || CurrentApp.Settings is not { } settings) return;
+        if (_suppress || ClipboardCombo.SelectedItem is not ComboBoxItem { Tag: string tag } || CurrentApp.Settings is not { } settings) return;
         settings.SandboxClipboard = Enum.TryParse<SandboxClipboardMode>(tag, out var value) ? value : SandboxClipboardMode.None;
         Save();
     }

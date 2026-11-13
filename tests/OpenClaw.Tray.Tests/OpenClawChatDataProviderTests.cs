@@ -713,6 +713,14 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         };
     }
 
+    // Live chat delta frame; like the Gateway, text is the reply so far and the envelope supplies the run.
+    private static ChatMessageInfo AssistantDelta(string text, string? runId = null, string sessionKey = "main") =>
+        new()
+        {
+            SessionKey = sessionKey, RunId = runId, Role = "assistant", Text = text, State = "delta",
+            Presentation = new(RunId: runId),
+        };
+
     [Theory]
     [InlineData("/new", "New")]
     [InlineData(" /RESET ", "Reset")]
@@ -3401,6 +3409,46 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                        message.SendState == ChatQueuedMessageSendState.Failed);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectionLostDuringActiveSend_KeepsQueuedMessageUnsentWhicheverNotificationArrivesFirst(
+        bool statusBeforeCancellation)
+    {
+        // The client cancels a dispatched chat.send when its connection drops and then reports the
+        // disconnect, but the provider can observe the two in either order. The active message may
+        // have reached the gateway, so its cancellation is not a send failure, and the queued
+        // message must not be dispatched into the dropped connection.
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var activeSend = provider.SendMessageAsync("main", "active across drop");
+        await provider.SendMessageAsync("main", "queued across drop");
+        if (statusBeforeCancellation)
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        sendGate.SetException(new OperationCanceledException("Request canceled"));
+        await activeSend;
+        if (!statusBeforeCancellation)
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.DoesNotContain(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Text.Contains("Request canceled", StringComparison.Ordinal));
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal("queued across drop", queued.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Failed, queued.SendState);
+        Assert.Equal(
+            "The connection dropped before the gateway accepted this message.",
+            queued.ErrorText);
+        Assert.Equal(["active across drop"], bridge.SentMessages);
+        Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.Error);
+    }
+
     [Fact]
     public async Task Status_ReconnectAfterActiveRun_DoesNotStrandFutureSendBehindStaleRunId()
     {
@@ -3520,14 +3568,14 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         await provider.LoadAsync();
         await provider.SendMessageAsync("main", "First question");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Old partial"}""", runId: "old-run"));
+        bridge.RaiseChat(AssistantDelta("Old partial", "old-run"));
         await provider.StopResponseAsync("main");
         Assert.Contains("old-run", bridge.AbortedRunIds);
         Assert.False(snapshots[^1].Timelines["main"].TurnActive);
 
         if (terminalCleanupBeforeNewRun)
         {
-            bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"STALE idle delta"}""", runId: "old-run"));
+            bridge.RaiseChat(AssistantDelta("STALE idle delta", "old-run"));
             bridge.RaiseChat(new ChatMessageInfo
             {
                 SessionKey = "main", RunId = "old-run", Role = "assistant",
@@ -3540,12 +3588,12 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         await provider.SendMessageAsync("main", "Second question");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"New partial"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("New partial", "new-run"));
         Assert.True(snapshots[^1].Timelines["main"].TurnActive);
         notifications.Clear();
 
         var beforeLateEvents = snapshots[^1].Timelines["main"];
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"STALE delta"}""", runId: "old-run"));
+        bridge.RaiseChat(AssistantDelta("STALE delta", "old-run"));
         Assert.True(snapshots[^1].Timelines["main"].TurnActive);
         Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries,
             e => e.Text.Contains("STALE", StringComparison.Ordinal));
@@ -3564,7 +3612,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "old-run"));
         Assert.Equal(beforeLateFinal, snapshots[^1].Timelines["main"]);
 
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":" Still active after old events."}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("New partial Still active after old events.", "new-run"));
         Assert.True(snapshots[^1].Timelines["main"].TurnActive);
         Assert.Contains(snapshots[^1].Timelines["main"].Entries,
             e => e.Text == "New partial Still active after old events.");
@@ -3680,7 +3728,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old"));
         await provider.StopResponseAsync("main");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Current partial"}""", runId: "new"));
+        bridge.RaiseChat(AssistantDelta("Current partial", "new"));
         var current = snapshots[^1].Timelines["main"];
         Final("old", "Stale final");
         Assert.Equal(current, snapshots[^1].Timelines["main"]);
@@ -4103,7 +4151,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-2"));
             if (agentStream)
             {
-                bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Working..."}""", runId: "run-2"));
+                bridge.RaiseChat(AssistantDelta("Working...", "run-2"));
                 bridge.RaiseAgent(MakeAgentEvent("tool",
                     """{"phase":"start","toolCallId":"call","name":"read_file","args":{"path":"fixture.txt"}}""",
                     runId: "run-2"));
@@ -4908,7 +4956,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             Key = "main"
         });
 
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale agent"}""", runId: "old-run"));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"stale agent"}""", runId: "old-run"));
         bridge.RaiseChat(new ChatMessageInfo
         {
             SessionKey = "main",
@@ -5369,7 +5417,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run");
         staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
         bridge.RaiseAgent(staleStart);
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale old run"}""", runId: "old-run"));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"stale old run"}""", runId: "old-run"));
 
         var latest = snapshots[^1];
         Assert.Empty(latest.Timelines["main"].Entries);
@@ -5422,7 +5470,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             Ts = resetTs + 2_000
         });
 
-        var staleAgent = MakeAgentEvent("assistant", """{"delta":"stale agent after gate"}""");
+        var staleAgent = MakeAgentEvent("reasoning", """{"delta":"stale agent after gate"}""");
         staleAgent.Ts = preResetTs;
         bridge.RaiseAgent(staleAgent);
 
@@ -5502,7 +5550,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         var staleStart = MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run");
         staleStart.Ts = DateTimeOffset.UtcNow.AddSeconds(1).ToUnixTimeMilliseconds();
         bridge.RaiseAgent(staleStart);
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"stale old run"}""", runId: "old-run"));
+        bridge.RaiseAgent(MakeAgentEvent("reasoning", """{"delta":"stale old run"}""", runId: "old-run"));
 
         var latest = snapshots.Count > 0 ? snapshots[^1] : await provider.LoadAsync();
         Assert.Empty(latest.Timelines["main"].Entries);
@@ -5641,7 +5689,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         start.Ts = skewedStartTs;
         bridge.RaiseAgent(start);
         var early = MakeAgentEvent(
-            "assistant",
+            "reasoning",
             """{"delta":"early skewed assistant"}""",
             runId: "skewed-run");
         early.Ts = skewedStartTs + 1;
@@ -5896,7 +5944,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             OpenClawSeq = 2,
         });
         var sameRunFrame = MakeAgentEvent(
-            "assistant",
+            "reasoning",
             """{"delta":"same-run partial"}""",
             runId: "current-run");
         sameRunFrame.Ts = lifecycleTimestamp + 3;
@@ -6038,12 +6086,9 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             Ts = echoTimestamp,
         });
 
-        var staleOutput = MakeAgentEvent(
-            "assistant",
-            """{"delta":"stale lifecycle output"}""",
-            runId: "stale-run");
+        var staleOutput = AssistantDelta("stale lifecycle output", "stale-run");
         staleOutput.Ts = echoTimestamp + 1;
-        bridge.RaiseAgent(staleOutput);
+        bridge.RaiseChat(staleOutput);
         var staleTerminal = MakeAgentEvent(
             "lifecycle",
             """{"phase":"error"}""",
@@ -6052,12 +6097,9 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseAgent(staleTerminal);
         Assert.True(snapshots[^1].Timelines["main"].TurnActive);
 
-        var currentFrame = MakeAgentEvent(
-            "assistant",
-            $$"""{"delta":"{{currentOutput}}"}""",
-            runId: "current-run");
+        var currentFrame = AssistantDelta(currentOutput, "current-run");
         currentFrame.Ts = echoTimestamp + 3;
-        bridge.RaiseAgent(currentFrame);
+        bridge.RaiseChat(currentFrame);
         var currentTerminal = MakeAgentEvent(
             "lifecycle",
             """{"phase":"error"}""",
@@ -6193,7 +6235,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         start.Ts = freshTs;
         bridge.RaiseAgent(start);
         var early = MakeAgentEvent(
-            "assistant",
+            "reasoning",
             """{"delta":"early assistant"}""",
             runId: "gateway-run");
         early.Ts = freshTs;
@@ -6659,10 +6701,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 notification.Kind == ChatProviderNotificationKind.Error &&
                 notification.Message == "agent abort failed"));
 
-        bridge.RaiseAgent(MakeAgentEvent(
-            "assistant",
-            """{"delta":"accepted after rollback"}""",
-            runId: "gateway-run"));
+        bridge.RaiseChat(AssistantDelta("accepted after rollback", "gateway-run"));
 
         Assert.Single(
             bridge.AbortedRunIds,
@@ -6702,7 +6741,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         await provider.SendMessageAsync("main", "new question");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Current partial"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("Current partial", "new-run"));
         var current = snapshots[^1].Timelines["main"];
         Assert.True(current.TurnActive);
         notifications.Clear();
@@ -6726,7 +6765,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             Assert.Empty(notifications);
             var beforeStaleFrames = snapshots[^1].Timelines["main"];
             bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "old-run"));
-            bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Stale resumed output"}""", runId: "old-run"));
+            bridge.RaiseChat(AssistantDelta("Stale resumed output", "old-run"));
             bridge.RaiseChat(new ChatMessageInfo
             {
                 SessionKey = "main", RunId = "old-run", Role = "assistant",
@@ -6734,7 +6773,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             });
             Assert.Equal(beforeStaleFrames, snapshots[^1].Timelines["main"]);
         }
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":" still streaming"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("Current partial still streaming", "new-run"));
         Assert.True(snapshots[^1].Timelines["main"].TurnActive);
         Assert.Contains(snapshots[^1].Timelines["main"].Entries,
             entry => entry.Text == "Current partial still streaming");
@@ -6817,7 +6856,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "old-run"));
         await provider.SendMessageAsync("main", "new question");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"New stream"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("New stream", "new-run"));
         notifications.Clear();
         var text = mediaOnly ? "" : "Same final";
         for (var repeat = 0; repeat < 2; repeat++)
@@ -6872,7 +6911,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         await provider.LoadAsync();
         await provider.SendMessageAsync("main", "new question");
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"New stream"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("New stream", "new-run"));
         for (var index = 1; index <= 2; index++)
         {
             bridge.RaiseChat(new ChatMessageInfo
@@ -8427,23 +8466,201 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
     // ── Parity additions: streaming, lifecycle, reasoning, history, abort ──
 
-    [Fact]
-    public async Task AgentEvent_AssistantDelta_AppendsStreamingAssistantEntry()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveReply_RendersChatFramesAndIgnoresAgentAssistantText(bool chatAhead)
     {
+        // Gateways without chat-only-assistant-text also send the reply as phased agent deltas.
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         await provider.LoadAsync();
-        snapshots.Clear();
+        ChatMessageInfo Chat(string text, string state)
+        {
+            var payload = JsonDocument.Parse($$"""{"sessionKey":"main","runId":"r1","state":"{{state}}"}""").RootElement;
+            var message = JsonSerializer.SerializeToElement(
+                new { role = "assistant", content = new[] { new { type = "text", text } } });
+            return new ChatMessageInfo
+            {
+                SessionKey = "main", RunId = "r1", Role = "assistant", Text = text, State = state,
+                Presentation = OpenClawGatewayClient.ReadChatPresentation(message, payload),
+            };
+        }
+        AgentEventInfo Agent(string delta, string text) => MakeAgentEvent("assistant",
+            JsonSerializer.Serialize(new { itemId = "i1", delta, text, phase = "final_answer" }), runId: "r1");
+        string Reply() => Assert.Single(snapshots[^1].Timelines["main"].Entries).Text;
 
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Hel"}"""));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"lo "}"""));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"world"}"""));
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r1"));
+        bridge.RaiseAgent(Agent("Yep", "Yep"));
+        Assert.Empty(snapshots[^1].Timelines["main"].Entries);
+        bridge.RaiseChat(Chat(chatAhead ? "Yep—Tony" : "Yep", "delta"));
+        Assert.Equal(chatAhead ? "Yep—Tony" : "Yep", Reply());
+        bridge.RaiseAgent(Agent("—Tony here.", "Yep—Tony here."));
+        Assert.Equal(chatAhead ? "Yep—Tony" : "Yep", Reply());
+        bridge.RaiseChat(Chat("Yep—Tony here.", "delta"));
+        Assert.Equal("Yep—Tony here.", Reply());
+
+        bridge.RaiseChat(Chat("Yep—Tony here.", "final"));
+        var reply = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal("Yep—Tony here.", reply.Text);
+        Assert.False(reply.IsStreaming);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"text","text":"Yep—Tony here.","textSignature":"{\"v\":1,\"id\":\"msg_1\",\"phase\":\"final_answer\"}"}""", null, false)]
+    [InlineData("""{"type":"text","text":"Yep—Tony here.","textSignature":"{\"v\":1,\"id\":\"msg_1\",\"phase\":\"final_answer\"}"}""", null, true)]
+    [InlineData("""{"type":"text","text":"Yep—Tony here."}""", "final_answer", false)]
+    [InlineData("""{"type":"text","text":"Yep—Tony here."}""", "final_answer", true)]
+    public async Task LiveReply_UnphasedChatDeltasThenResponsesFinalRenderOneBubble(
+        string block, string? messagePhase, bool lifecycleEndBeforeFinal)
+    {
+        // Responses-API finals carry final_answer on the persisted message; live chat deltas never do.
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r1"));
+        bridge.RaiseChat(AssistantDelta("Yep", "r1"));
+        bridge.RaiseChat(AssistantDelta("Yep—Tony here.", "r1"));
+        if (lifecycleEndBeforeFinal)
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "r1"));
+        var phaseProperty = messagePhase is null ? "" : $"\"phase\":\"{messagePhase}\",";
+        using var json = JsonDocument.Parse(
+            "{\"messages\":[{\"role\":\"assistant\"," + phaseProperty +
+            "\"__openclaw\":{\"runId\":\"r1\"},\"content\":[" + block + "]}]}");
+        var final = Assert.Single(ParseHistoryPayload(json.RootElement).Messages);
+        final.State = "final";
+        bridge.RaiseChat(final);
 
         var timeline = snapshots[^1].Timelines["main"];
-        var assistant = Assert.Single(timeline.Entries);
-        Assert.Equal(ChatTimelineItemKind.Assistant, assistant.Kind);
-        Assert.Equal("Hello world", assistant.Text);
-        Assert.True(assistant.IsStreaming);
-        Assert.True(timeline.TurnActive);
+        var reply = Assert.Single(timeline.Entries);
+        Assert.Equal("Yep—Tony here.", reply.Text);
+        Assert.False(reply.IsStreaming);
+        Assert.False(timeline.TurnActive);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveReply_PersistedFinalAnswerRowFinishesStreamingBubble(bool clearAfterRow)
+    {
+        // Gateway 2026.11.1 saves the reply row before its unsigned chat final, then clears the
+        // live preview unless the held final supersedes that clear.
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await using var lifetime = provider;
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var processMessage = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        void Frame(string eventName, object payload) =>
+            processMessage.Invoke(client, [JsonSerializer.Serialize(new { type = "event", @event = eventName, payload })]);
+        object Text(string text) => new { type = "text", text };
+        const string reply = "Test received. 👋";
+
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r1"));
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 1, state = "delta", deltaText = "Test",
+            message = new { role = "assistant", content = new[] { Text("Test") }, timestamp = 1 } });
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 2, state = "delta", deltaText = " received. 👋",
+            message = new { role = "assistant", content = new[] { Text(reply) }, timestamp = 2 } });
+        Frame("session.message", new
+        {
+            sessionKey = "main", runId = "r1", hasActiveRun = true, activeRunIds = new[] { "r1" },
+            messageId = "m2", messageSeq = 2,
+            message = new
+            {
+                role = "assistant", timestamp = 3, __openclaw = new { id = "m2", seq = 2, runId = "r1" },
+                content = new object[]
+                {
+                    new { type = "text", text = reply,
+                        textSignature = """{"v":1,"id":"msg_1","phase":"final_answer"}""" },
+                },
+            },
+        });
+        if (clearAfterRow)
+            Frame("chat", new { runId = "r1", sessionKey = "main", seq = 3, state = "delta", replace = true,
+                deltaText = "", message = new { role = "assistant", content = new[] { Text("") }, timestamp = 4 } });
+        var saved = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+        Assert.Equal(reply, saved.Text);
+        Assert.Equal("m2", saved.Presentation?.MessageId);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "r1"));
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = clearAfterRow ? 4 : 3, state = "final",
+            message = new { role = "assistant", content = new[] { Text(reply) }, timestamp = 5,
+                __openclaw = new { runId = "r1", idempotencyKey = "r1:assistant" } } });
+
+        var timeline = snapshots[^1].Timelines["main"];
+        var bubble = Assert.Single(timeline.Entries);
+        Assert.Equal(reply, bubble.Text);
+        Assert.False(bubble.IsStreaming);
+        Assert.False(timeline.TurnActive);
+    }
+
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, false, true)]
+    public async Task LiveReply_EmptyReplacementRetiresOnlyUnpersistedPreview(
+        bool clearBeforeRow, bool previewMatchesSavedText, bool endBeforeClear)
+    {
+        // Gateway 2026.11.1 clears the live preview when it saves the assistant row: after the row
+        // while that row is still publishing, otherwise before it.
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        await using var lifetime = provider;
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var processMessage = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        void Frame(string eventName, object payload) =>
+            processMessage.Invoke(client, [JsonSerializer.Serialize(new { type = "event", @event = eventName, payload })]);
+        object Text(string text) => new { type = "text", text };
+        void End() => bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "r1"));
+        void Clear() => Frame("chat", new { runId = "r1", sessionKey = "main", seq = 2, state = "delta", replace = true,
+            deltaText = "", message = new { role = "assistant", content = new[] { Text("") }, timestamp = 2 } });
+        const string reply = "Three demos completed successfully.";
+        var preview = previewMatchesSavedText ? reply : "Three dem";
+
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r1"));
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 1, state = "delta", deltaText = preview,
+            message = new { role = "assistant", content = new[] { Text(preview) }, timestamp = 1 } });
+        bridge.RaiseAgent(MakeAgentEvent("tool",
+            """{"phase":"start","name":"sessions_yield","toolCallId":"yield-1"}""", runId: "r1"));
+        if (clearBeforeRow)
+            Clear();
+        Frame("session.message", new
+        {
+            sessionKey = "main", runId = "r1", hasActiveRun = true, activeRunIds = new[] { "r1" },
+            messageId = "m1", messageSeq = 3,
+            message = new
+            {
+                role = "assistant", timestamp = 3, stopReason = "toolUse",
+                __openclaw = new { id = "m1", seq = 3, runId = "r1" },
+                content = new object[]
+                {
+                    Text(reply),
+                    new { type = "toolCall", id = "yield-1", name = "sessions_yield", arguments = new { } },
+                },
+            },
+        });
+        if (endBeforeClear)
+            End();
+        if (!clearBeforeRow)
+            Clear();
+        var saved = Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal(reply, saved.Text);
+        Assert.Equal("m1", saved.Presentation?.MessageId);
+        if (!endBeforeClear)
+            End();
+        Frame("chat", new { runId = "r1", sessionKey = "main", seq = 3, state = "final",
+            message = new { role = "assistant", content = new[] { Text(reply) }, timestamp = 4,
+                __openclaw = new { runId = "r1", idempotencyKey = "r1:assistant" } } });
+
+        var entries = snapshots[^1].Timelines["main"].Entries;
+        var assistant = Assert.Single(entries, entry => entry.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal(reply, assistant.Text);
+        Assert.False(assistant.IsStreaming);
+        Assert.Single(entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
     }
 
     [Fact]
@@ -8479,7 +8696,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         await provider.LoadAsync();
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"hi"}"""));
+        bridge.RaiseChat(AssistantDelta("hi", "run-1"));
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "run-1"));
 
         var snap = await provider.LoadAsync();
@@ -8496,8 +8713,12 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         await provider.LoadAsync();
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Hello world"}""", runId: "run-1"));
-        clock.Advance(TimeSpan.FromSeconds(2));
+        bridge.RaiseChat(AssistantDelta("Hello", "run-1"));
+        clock.Advance(TimeSpan.FromSeconds(1));
+        bridge.RaiseChat(AssistantDelta("Hello world", "run-1"));
+        // Cumulative chat frames count only their growth: 11 characters over 1 s.
+        Assert.Equal(11d / ChatThroughputTracker.CharactersPerToken, provider.GetThroughput("main").LiveTokensPerSecond);
+        clock.Advance(TimeSpan.FromSeconds(1));
         bridge.RaiseChat(new ChatMessageInfo
         {
             SessionKey = "main",
@@ -8530,7 +8751,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.NotNull(provider.GetThroughput("main").LiveTokensPerSecond);
         clock.Advance(TimeSpan.FromSeconds(1));
         bridge.RaiseAgent(MakeAgentEvent("usage", """{"outputTokens":100}""", runId: "run-1"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Hello world"}""", runId: "run-1"));
+        bridge.RaiseChat(AssistantDelta("Hello world", "run-1"));
         bridge.RaiseChat(new ChatMessageInfo
         {
             SessionKey = "main",
@@ -11443,7 +11664,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             if (receipt)
                 bridge.RaiseAgent(MakeAgentEvent("thinking",
                     """{"phase":"persisted","itemId":"i","messageRunId":"r","messageId":"saved-other"}""", runId: "r"));
-            bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"Ans"}""", runId: "r"));
+            bridge.RaiseChat(AssistantDelta("Ans", "r"));
             var answerId = Assert.Single(snapshots[^1].Timelines["main"].Entries).Id;
             using var json = JsonDocument.Parse("""
                 {"messages":[{"role":"assistant","phase":"final_answer","__openclaw":{"id":"m","runId":"r"},"content":[
@@ -12291,7 +12512,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
         bridge.RaiseAgent(MakeAgentEvent("tool",
             """{"phase":"start","name":"system.run","toolCallId":"shared-tool"}""", runId: "new-run"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"New stream"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("New stream", "new-run"));
         var before = snapshots[^1].Timelines["main"];
         notifications.Clear();
 
@@ -12307,7 +12528,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal(before.ActiveAssistantId, after.ActiveAssistantId);
         Assert.True(after.TurnActive);
         Assert.Empty(notifications);
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":" continues"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("New stream continues", "new-run"));
         Assert.Equal("New stream continues",
             snapshots[^1].Timelines["main"].Entries.Single(entry => entry.Id == before.ActiveAssistantId).Text);
     }
@@ -12347,7 +12568,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
         bridge.RaiseAgent(MakeAgentEvent("tool",
             """{"phase":"start","name":"system.run","toolCallId":"new-tool"}""", runId: "new-run"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"New stream"}""", runId: "new-run"));
+        bridge.RaiseChat(AssistantDelta("New stream", "new-run"));
         var before = snapshots[^1].Timelines["main"];
         var data = reason switch
         {
@@ -12932,7 +13153,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         await provider.LoadAsync();
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-        bridge.RaiseAgent(MakeAgentEvent("assistant", """{"delta":"partial answer"}"""));
+        bridge.RaiseChat(AssistantDelta("partial answer", "run-1"));
         snapshots.Clear();
 
         await provider.StopResponseAsync("main");

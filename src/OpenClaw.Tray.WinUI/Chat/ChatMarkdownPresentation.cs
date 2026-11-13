@@ -65,49 +65,25 @@ internal static class ChatMarkdownPresentation
             });
 
     /// <summary>High Contrast probe; tests may substitute it to exercise contrast transitions.</summary>
-    internal static Func<bool> IsHighContrast { get; set; } =
-        static () => new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
-
-    // Contrast changes do not necessarily change ActualTheme, so mounted Markdown and code
-    // surfaces also restyle on system color changes, which include High Contrast toggles.
-    private static readonly object s_contrastLock = new();
-    private static readonly HashSet<FrameworkElement> s_contrastTargets = [];
-    private static global::Windows.UI.ViewManagement.UISettings? s_uiSettings;
-
-    private static void WatchContrast(FrameworkElement target)
+    internal static Func<bool> IsHighContrast
     {
-        lock (s_contrastLock)
+        get => ChatThemeChanges.IsHighContrast;
+        set => ChatThemeChanges.IsHighContrast = value;
+    }
+
+    private static void WatchContrast(FrameworkElement target) =>
+        ChatThemeChanges.Watch(target, () =>
         {
-            if (s_uiSettings is null)
-            {
-                s_uiSettings = new global::Windows.UI.ViewManagement.UISettings();
-                s_uiSettings.ColorValuesChanged += (_, _) => RefreshAfterContrastChange();
-            }
-            s_contrastTargets.Add(target);
-        }
-    }
+            if (target is Border border)
+                RequeueInlineStyling(border);
+            else if (target is RichTextBlock code)
+                RefreshCodeSyntax(code);
+        });
 
-    private static void UnwatchContrast(FrameworkElement target)
-    {
-        lock (s_contrastLock)
-            s_contrastTargets.Remove(target);
-    }
+    private static void UnwatchContrast(FrameworkElement target) => ChatThemeChanges.Unwatch(target);
 
     /// <summary>Restyles every mounted Markdown and code surface on its own UI thread.</summary>
-    internal static void RefreshAfterContrastChange()
-    {
-        FrameworkElement[] targets;
-        lock (s_contrastLock)
-            targets = [.. s_contrastTargets];
-        foreach (var target in targets)
-            target.DispatcherQueue?.TryEnqueue(() =>
-            {
-                if (target is Border border)
-                    RequeueInlineStyling(border);
-                else if (target is RichTextBlock code)
-                    RefreshCodeSyntax(code);
-            });
-    }
+    internal static void RefreshAfterContrastChange() => ChatThemeChanges.Refresh();
 
     private static void StyleInlines(DependencyObject root, bool compactSecondaryReading)
     {
@@ -116,6 +92,7 @@ internal static class ChatMarkdownPresentation
             // Fenced code owns its syntax highlighters; see ApplyCodeSyntax.
             if (IsCodeText(rich))
                 return;
+            rich.FontFamily = new FontFamily(ChatVisuals.BodyFontFamily);
             // Tight list items and table cells bypass the Paragraph hook; give them the prose tone.
             if (!compactSecondaryReading && rich.Style is null)
             {
@@ -206,13 +183,13 @@ internal static class ChatMarkdownPresentation
         rich.TextHighlighters.Clear();
         if (codeRanges.Count + strongCodeRanges.Count + strongRanges.Count == 0 || IsHighContrast())
             return;
-        // Web prose uses the softer text tone and strong text the brighter one; inline
+        // Prose and strong text share the primary tone (strong keeps its weight); inline
         // code keeps its surrounding tone on a subtle chip.
         var isDark = rich.ActualTheme == ElementTheme.Dark;
         if (ThemeRef.Resolve("ControlFillColorSecondaryBrush", isDark) is not Brush chip ||
             ThemeRef.Resolve("SubtleFillColorTransparentBrush", isDark) is not Brush clear ||
             ThemeRef.Resolve("TextFillColorPrimaryBrush", isDark) is not Brush strongText ||
-            ThemeRef.Resolve("TextFillColorSecondaryBrush", isDark) is not Brush proseText)
+            ThemeRef.Resolve("TextFillColorPrimaryBrush", isDark) is not Brush proseText)
             return;
         AddHighlighter(strongRanges, clear, strongText);
         AddHighlighter(codeRanges, chip, proseText);
@@ -281,6 +258,7 @@ internal static class ChatMarkdownPresentation
             ? "ChatSecondaryTextStyle"
             : "ChatMutedTextStyle";
         var column = (marker with { TextAlignment = TextAlignment.Right })
+            .FontFamily(ChatVisuals.BodyFontFamily)
             .MinWidth(ChatVisuals.ListMarkerColumn)
             .Set(text =>
             {
@@ -307,6 +285,7 @@ internal static class ChatMarkdownPresentation
         {
             return (rich with
             {
+                FontFamily = new FontFamily(ChatVisuals.BodyFontFamily),
                 FontSize = size,
                 FontWeight = heading ? FontWeights.SemiBold : FontWeights.Normal,
                 LineHeight = heading ? size * 1.4 : ChatVisuals.BodyLineHeight,

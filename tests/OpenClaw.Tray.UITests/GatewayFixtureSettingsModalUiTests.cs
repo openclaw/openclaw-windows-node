@@ -49,8 +49,18 @@ public sealed partial class GatewayFixtureUiTests
             }
             else
             {
-                ((ExpandCollapsePattern)FindById(run, "WorkspaceAssistantSelector")!
-                    .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+                if (destination is null)
+                {
+                    var toggle = window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceTogglePane"));
+                    if (toggle is { Current.IsOffscreen: false })
+                        Invoke(toggle);
+                    await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceReopenPane"))
+                        is { Current.IsOffscreen: false }, "collapsed pane before assistant selection");
+                }
+                var selector = await WaitForModalAssistantSelectorAsync(run, window);
+                ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
                 await WaitUiAsync(run, () => FindById(run, "WorkspaceNewAgent") is not null, "new assistant action");
                 Invoke(FindById(run, "WorkspaceNewAgent")!);
                 await WaitUiAsync(run, () => FindById(run, "AgentCreationDialog") is not null, "chat-origin ContentDialog");
@@ -144,6 +154,33 @@ public sealed partial class GatewayFixtureUiTests
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "agents.create");
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.reset");
         }, scenario: scenario);
+    }
+
+    private static async Task<AutomationElement> WaitForModalAssistantSelectorAsync(
+        GatewayFixtureRun run, AutomationElement window)
+    {
+        var reopenInvoked = false;
+        AutomationElement? selector = null;
+        await WaitUiAsync(run, () =>
+        {
+            // A ready composer does not establish that its NavigationView pane is open.
+            var reopen = window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceReopenPane"));
+            if (reopen is { Current.IsOffscreen: false })
+            {
+                if (!reopenInvoked && reopen.Current.IsEnabled)
+                {
+                    reopenInvoked = true;
+                    Invoke(reopen);
+                }
+                return false;
+            }
+
+            selector = window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, SessionAgentSelectorId));
+            return selector is { Current.IsOffscreen: false, Current.IsEnabled: true };
+        }, "open pane and live assistant selector in the retained Workspace window");
+        return selector!;
     }
 
     [GatewayFixtureUiTheory]

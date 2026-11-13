@@ -17,6 +17,16 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>Bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>Houd een geanimeerde kreeft op je bureaublad. Meldingen verschijnen in tekstballonnen, ook als OpenClaw op de achtergrond draait. Sleep om te verplaatsen; klik met de rechtermuisknop voor opties.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw-bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Tekstballon sluiten</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Meldingen openen</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>OpenClaw openen</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Grootte van de kreeft</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Pas de grootte van de kreeft aan zonder de chat- of meldingstekst te wijzigen.</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Instellingen voor bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>De bureaubladkreeft kon niet worden weergegeven. Schakel Bureaubladkreeft uit en weer in via Instellingen om het opnieuw te proberen. Je meldingen blijven beschikbaar in OpenClaw.</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>VERBINDING</value>
   </data>
@@ -2288,8 +2298,11 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Spraakmodel</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Spraak-naar-tekst is uitgeschakeld. Configureer de modellen hier en schakel de mogelijkheid in Machtigingen in wanneer je klaar bent.</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Spraak-naar-tekst is uitgeschakeld</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Schakel het in bij Machtigingen om deze instellingen te wijzigen.</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>Machtigingen openen</value>
@@ -2360,8 +2373,11 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Kies de stem die wordt gebruikt bij het hardop voorlezen van antwoorden.</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Tekst-naar-spraak is uitgeschakeld. Configureer de providers en stemmen hier en schakel de mogelijkheid in Machtigingen in wanneer je klaar bent.</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Tekst-naar-spraak is uitgeschakeld</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Schakel het in bij Machtigingen om de lokale steminstellingen te wijzigen.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Aanbieder</value>
@@ -2486,13 +2502,13 @@ Gebruik een van deze opties:
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
     <value>Stem-ID</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>bijv. male-qn-qingse</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
     <value>Spraakmodel</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve">
     <value>speech-2.8-hd</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
@@ -2912,14 +2928,32 @@ Gebruik een van deze opties:
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Redenering</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>Tokens per seconde: laatste modelantwoord, gemiddelde (μ) en 95e percentiel (p95) van recente modelaanroepen in deze sessie. ~ geeft een live schatting tijdens het streamen aan.</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>Details van contextgebruik openen</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>Gebruik van het contextvenster</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>Contextgebruik van de sessie: {0} van {1} ({2}%)</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>Bericht aan assistent (Enter om te verzenden)</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>Contextvenster</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>Tokens van laatste uitvoering</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>Invoer</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>Uitvoer</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>Details van contextgebruik</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>Enter om te verzenden, Shift+Enter voor een nieuwe regel.</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>Bericht aan {0}</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>Verbinden…</value>
@@ -3610,7 +3644,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>Webchatinterface van gateway gebruiken</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>Meldingen weergeven</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3853,10 +3887,10 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>Hiermee kunnen agents de apparaatlocatie lezen via location.*-opdrachten.</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3880,11 +3914,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>Inactief</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>Sessies bekijken ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>Sessies bekijken</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>Instanties bekijken ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>Instanties bekijken</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>Nodemodus</value>
@@ -3901,8 +3935,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>Verbinden</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>Machtigingen beheren ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>Verbinding</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>Machtigingen beheren</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>Help ons deze verbinding te herstellen:</value>
@@ -4150,7 +4187,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>Programma's die de agent op deze pc uitvoert zijn ingesloten.</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>Wat er wordt ingesloten</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4241,7 +4278,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Windows-runtimemappen en privéwerkruimte blijven beschikbaar. Vermelding in PATH verleent geen toegang. Pas een voorinstelling opnieuw toe om mapkeuzes te herstellen.</value>
+    <value>Beschermde mappen blijven geblokkeerd. Windows-runtimemappen blijven beschikbaar; vermelding in PATH verleent geen toegang.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>Extra mappen</value>
@@ -4264,11 +4301,17 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Map toevoegen</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>Een nieuwe map toevoegen</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 Klembord</value>
+    <value>Klembord</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>Klembordtoegang</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>Het klembord bevat vaak wachtwoorden, tokens en privétekst. Leestoegang kan deze lekken naar de agent (en via internet, indien ingeschakeld).</value>
+    <value>Het klembord bevat vaak wachtwoorden en privétekst. Leestoegang maakt deze zichtbaar voor de agent.</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>Geen (standaard)</value>
@@ -4283,7 +4326,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Lezen &amp; schrijven</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 Netwerk</value>
+    <value>Netwerk</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>Internet toestaan</value>
@@ -4295,7 +4338,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Lokale netwerkapparaten en gedeelde mappen zijn nog niet inbegrepen.</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ Limieten</value>
+    <value>Limieten</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>Time-out van opdracht: 30 sec</value>
@@ -4520,8 +4563,11 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Verwijdert de WSL-distributie (OpenClawGateway), de schijfafbeelding, het item voor automatisch starten en wist de gateway-referenties. Uw MCP-token blijft behouden. Onboarding wordt gereset.</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>Lokale gateway verwijderen</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>Verwijderen</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Opgeslagen</value>
@@ -4819,7 +4865,25 @@ Controleer of de gateway actief is.</value>
     <value>Gedeeld token</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>Tik om gedeeld token te kopiëren</value>
+    <value>Gedeeld Gateway-toegangstoken. Klik om het te kopiëren. Houd het geheim.</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>Hoe deze pc de Gateway bereikt. {0} betekent deze pc; {1} betekent het lokale netwerk; Tailscale en SSH gebruiken die verbindingen; {2} betekent een andere host.</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} is de Windows-pc waarop Companion en de Windows-nodefuncties draaien, niet noodzakelijk de Gateway-host.</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>Verbonden clients die door de Gateway worden gemeld. Open Systemen in het webdashboard.</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>Kanalen gereed: {0}/{1}.
+{2}
+
+Open Kanalen in het webdashboard.</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>Geschatte Gateway-gebruikskosten voor vandaag (UTC), in Amerikaanse dollars. Open Gebruik in het webdashboard.</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>via SSH-tunnel</value>
@@ -5778,7 +5842,7 @@ Controleer of de gateway actief is.</value>
     <value>Verwijderen mislukt</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>Lokale gateway verwijderen</value>
+    <value>Verwijderen</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>Distro verwijderen…</value>
@@ -6170,7 +6234,7 @@ Controleer of de gateway actief is.</value>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Kies het model dat de gateway gebruikt</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Aangepast Hugging Face-model (optioneel)</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>eigenaar/repo, eigenaar/repo:Q4_K_M of een huggingface.co-link</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>eigenaar/repo, eigenaar/repo:Q4_K_M of een huggingface.co-link</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Alleen openbare GGUF-modellen in één bestand. Als dit is ingevuld, wordt het gebruikt in plaats van de selectie hierboven.</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>Dit model past mogelijk niet</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>Het heeft ongeveer {0:F1} GB GPU-geheugen nodig en {1} heeft {2:F1} GB. Het start mogelijk niet of werkt traag.</value></data>
@@ -6199,7 +6263,7 @@ Controleer of de gateway actief is.</value>
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Standaardmodel</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Dit model gebruiken</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Vernieuwen</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Lokale AI beheren</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>Lokale AI beheren</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Lokale AI: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (meld u eerst aan bij de provider)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>Het standaardmodel is bijgewerkt.</value></data>
@@ -6213,7 +6277,7 @@ Controleer of de gateway actief is.</value>
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Aanmeldmethode</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Aanmelden</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider-ID</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Basis-URL</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API-type</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatibel (Chat Completions)</value></data>
@@ -6221,7 +6285,7 @@ Controleer of de gateway actief is.</value>
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API-sleutel (optioneel voor OpenAI-compatibel)</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model-ID's</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Provider toevoegen</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (verbonden)</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Providers laden...</value></data>
@@ -6287,6 +6351,7 @@ Controleer of de gateway actief is.</value>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Modellen zoeken</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Modelprovider toevoegen...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Bijlage verwijderen</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>Bijlage {0} verwijderen</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Berichten laden...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
@@ -6305,7 +6370,7 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>OpenClaw starten bij aanmelden</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Kanalen, integraties en gateway-instellingen</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is uw AI-assistent om dingen gedaan te krijgen op uw pc.</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw verbindt een AI-assistent met de tools op je pc. Jij kiest wat de assistent mag doen, en je kunt dat altijd aanpassen.</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Stel je AI in</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Bestaande providergesprekken ontdekken (optioneel)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Provider instellen…</value></data>
@@ -6405,7 +6470,7 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>Verbindingseditor is niet beschikbaar in deze instelhost</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Open de installatie vanuit de Companion-app om de ingebouwde verbindingseditor te gebruiken.</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Terug</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>Pc-mogelijkheden</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>Wat mag je assistent gebruiken?</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Kies wat agents op deze pc mogen gebruiken. Deze keuzes verlenen geen Windows-privacytoegang of toestemming voor uitvoering.</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Bied de mogelijkheden van deze pc aan via een verbonden Gateway.</value></data>
@@ -6430,8 +6495,8 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>Deze vervanging kan WSL-gegevens permanent verwijderen</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Alleen de genoemde WSL-installatie wordt vervangen. Andere opgeslagen Gateway-verbindingen blijven beschikbaar.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Terug naar overzicht</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway instellen</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Controleer wat er verandert voordat de installatie begint.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Klaar om te installeren</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Dit gaat er op deze pc gebeuren.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Lokale Gateway-service</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6442,15 +6507,13 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Controleer de vereiste keuzes</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Controleer de vereisten voor geselecteerde Local AI en Tailscale en bevestig WSL-vervanging vóór installatie.</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Installeren</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Welkom bij OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Maak kennis met je nieuwe hulpje.</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Chat met uw AI</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Gebruik de ingebouwde Chat met een AI-provider naar keuze.</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Laat agents helpen op deze pc</value></data>
   <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>Kies welke pc-mogelijkheden u inschakelt. Windows-machtigingen en uitvoeringsgoedkeuringen blijven apart.</value></data>
   <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>Houd controle over uw Gateway</value></data>
-  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Draai hier een privé-WSL Gateway of verbind met een bestaande.</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Voordat u begint</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI-agents zijn krachtig en toegang tot uw pc geven brengt risico’s met zich mee. Ze kunnen fouten maken, bestanden wijzigen of verwijderen, of privégegevens blootstellen.&#x0a;&#x0a;U kunt de toegang van OpenClaw tot uw pc beheren en beperken.</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Draai een privé-Gateway op deze pc of verbind met een bestaande.</value></data>
   <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Doorgaan</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Extern, lokale MCP of later instellen</value></data>
@@ -6536,8 +6599,8 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>Verbinden / Instellen</value></data>
   <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>Providerlogo niet beschikbaar ({0}). Het instellen van de provider blijft beschikbaar.</value></data>
   <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>Wat je agent kan doen</value></data>
-  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Kies een profiel. Open Fijn afstellen om afzonderlijke capaciteiten te bekijken of wijzigen.</value></data>
-  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Fijn afstellen</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Begin met een set die bij je past. Je kunt dit altijd wijzigen.</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Tools afzonderlijk kiezen</value></data>
   <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>Capaciteiten zijn niet beschikbaar</value></data>
   <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>Schakel Node mode of Local MCP Server in om deze capaciteiten te gebruiken. Je keuzes blijven bewaard.</value></data>
   <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Aangepast: kies afzonderlijke capaciteiten</value></data>
@@ -6601,10 +6664,7 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>{0} van {1} stappen voltooid</value></data>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Geannuleerd</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} van {1}</value></data>
-  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Uw AI is klaar</value></data>
-  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Met mijn agent praten</value></data>
-  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat met je agent.</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Met mijn agent praten</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Helemaal klaar!</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Gereedheid opnieuw controleren</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Je AI-keuzes voorbereiden</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Gateway voorbereiden</value></data>
@@ -6633,7 +6693,6 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Configuratie voltooien</value></data>
   <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Je keuzes toepassen, OpenClaw opnieuw starten en je AI controleren. Dit kan enkele minuten duren.</value></data>
   <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>De configuratie heeft aandacht nodig. Geen AI-actie wordt automatisch herhaald. Sluit dit venster, controleer de opgeslagen gateway in Verbinding en open de AI-configuratie expliciet opnieuw om deze te verifiëren.</value></data>
-  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Geverifieerd model: {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Dezelfde Gateway, agent en hetzelfde model opnieuw controleren...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Uw Windows-instellingen afronden...</value></data>
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Uw gekozen app-pagina openen...</value></data>
@@ -6654,7 +6713,7 @@ Controleer of de gateway actief is.</value>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Meer informatie over risico’s en veiligheid</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>OpenClaw instellen</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Waar moet OpenClaw draaien?</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>De Gateway verbindt uw AI-assistent met uw apps en tools. Kies waar deze draait. U kunt dit later wijzigen.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway-installatiemethode</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Kies één Gateway-installatiemethode.</value></data>
@@ -7199,7 +7258,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Toegang voor {0}</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Machtiging voor {0} verwijderen</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Mappen</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Kies wat de agent in elke map mag doen. Geen toegang blokkeert die map, maar expliciet vermelde submappen behouden hun eigen toegang. Beschermde mappen blijven geblokkeerd.</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Kies wat de agent in elke map mag doen; expliciet vermelde submappen behouden hun eigen toegang.</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>Geen toegang</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>Gebruikersprofiel</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7619,7 +7678,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Instellingen voor sandboxomgeving</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>Beschikbaar</value>
+    <value>Ingeschakeld</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>Compatibiliteit</value>
@@ -7698,7 +7757,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>Portalen</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>Werkbomen</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>Het gevraagde item is hier niet meer beschikbaar.</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>Sommige dashboardbestemmingen zijn niet beschikbaar voor deze gatewayversie.</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}: kies eerst een assistent.</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>Uploads opruimen is geblokkeerd</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>Controleer de maptoegang en machtigingen voor privégegevens. Oude uploads kunnen blijven staan totdat opruimen weer mogelijk is. Probeer voltooide uploads niet automatisch opnieuw.</value></data>
@@ -7753,7 +7811,6 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Naar nieuwste gaan</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagenten, {1} bezig, {2} vereisen aandacht</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>Inactief</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Wachten op subagenten</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Invoer voorbereiden</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>mislukt</value></data>
@@ -7765,6 +7822,17 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Review_Denied" xml:space="preserve"><value>De provider heeft het verzoek niet goedgekeurd</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>Oudere geschiedenis is niet geladen. Probeer het opnieuw nadat het gesprek is herladen.</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>Beoordeel dit verzoek in de webchat voordat u doorgaat.</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>Sessie uit voorzorg gepauzeerd</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>Sessie uit voorzorg gestopt</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>De provider kon niet bevestigen dat de agent uw instructies begreep. Bekijk de bevindingen voordat u doorgaat.</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>De provider heeft deze sessie gepauzeerd. Beoordeel dit verzoek in de webchat voordat u doorgaat.</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>De provider heeft deze sessie gestopt zonder te beoordelen bevindingen. De sessie kan niet doorgaan.</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>De provider heeft deze sessie gestopt. Bekijk de bevindingen voordat u meer werk start.</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>Bevindingen bekijken</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>Bevindingen van de provider</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>Vervolgbericht</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>Deze sessie kan niet doorgaan. Ze blijft gestopt.</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>Sluiten</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Time-out bij controle door provider</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>Controle door provider geannuleerd</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Systeem toevoegen</value></data>
@@ -7792,7 +7860,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Maak verbinding met de Gateway om deze actie te gebruiken.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Verbonden apps</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Apparaten en Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Apparaten en Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Apparaten en Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>Problemen</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Laatst bekend offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Laatst bekend online</value></data>
@@ -7905,6 +7973,17 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>Instellingen</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>Snelle chat</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>Snel antwoorden</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>De chat kan niet worden geopend. Probeer het opnieuw.</value></data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagenten</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Geen subagenten in de huidige sessielijst.</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Subagenten: {0} actief, {1} klaar</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>Actief</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>In wachtrij</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>Klaar</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Gestopt</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Mislukt</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>
@@ -9961,4 +10040,69 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>niet-gerouteerde sessies weergegeven</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>"{0}" gearchiveerd ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Melding sluiten</value></data>
+  <data name="Onboarding_Bubble_Ai" xml:space="preserve"><value>Kies een brein voor me.</value></data>
+  <data name="Onboarding_Bubble_Capabilities" xml:space="preserve"><value>Jij bepaalt wat ik mag doen.</value></data>
+  <data name="Onboarding_Bubble_Checking" xml:space="preserve"><value>Even overleggen met je AI.</value></data>
+  <data name="Onboarding_Bubble_Confirm" xml:space="preserve"><value>Eerst nog één ding bevestigen.</value></data>
+  <data name="Onboarding_Bubble_Connect" xml:space="preserve"><value>Wijs me de weg naar je Gateway.</value></data>
+  <data name="Onboarding_Bubble_Done" xml:space="preserve"><value>Het is ons gelukt.</value></data>
+  <data name="Onboarding_Bubble_Failed" xml:space="preserve"><value>Dat werkte niet.</value></data>
+  <data name="Onboarding_Bubble_Gateway" xml:space="preserve"><value>Kies een thuis voor me.</value></data>
+  <data name="Onboarding_Bubble_Installed" xml:space="preserve"><value>Mijn nieuwe thuis is klaar.</value></data>
+  <data name="Onboarding_Bubble_MoreOptions" xml:space="preserve"><value>Nog een paar opties.</value></data>
+  <data name="Onboarding_Bubble_Plan" xml:space="preserve"><value>Dit is het plan.</value></data>
+  <data name="Onboarding_Bubble_Ready" xml:space="preserve"><value>Zeg het maar.</value></data>
+  <data name="Onboarding_Bubble_Restart" xml:space="preserve"><value>Bijna klaar.</value></data>
+  <data name="Onboarding_Bubble_Tools" xml:space="preserve"><value>Zet aan wat je wilt.</value></data>
+  <data name="Onboarding_Bubble_Welcome" xml:space="preserve"><value>Hoi. Laten we je op weg helpen.</value></data>
+  <data name="Onboarding_Bubble_Working" xml:space="preserve"><value>Ik ben ermee bezig…</value></data>
+  <data name="Onboarding_Progress_HideDetails" xml:space="preserve"><value>Details verbergen</value></data>
+  <data name="Onboarding_Progress_OpenLog.Content" xml:space="preserve"><value>Logbestand openen</value></data>
+  <data name="Onboarding_Progress_ShowDetails" xml:space="preserve"><value>Details weergeven</value></data>
+  <data name="Onboarding_Ready_Prompt" xml:space="preserve"><value>OpenClaw staat klaar</value></data>
+  <data name="Onboarding_Ready_OpenChat" xml:space="preserve"><value>Chat openen</value></data>
+  <data name="Onboarding_Ready_ModelTitle" xml:space="preserve"><value>AI klaar</value></data>
+  <data name="Onboarding_Ready_CapabilitiesDescription" xml:space="preserve"><value>Altijd te wijzigen in de instellingen van Companion</value></data>
+  <data name="Onboarding_Ready_CapabilitiesTitle" xml:space="preserve"><value>Mogelijkhedenprofiel toegepast</value></data>
+  <data name="Onboarding_Ready_PairedDescription" xml:space="preserve"><value>Deze pc is verbonden en klaar voor gebruik</value></data>
+  <data name="Onboarding_Ready_PairedTitle" xml:space="preserve"><value>Apparaat gekoppeld</value></data>
+  <data name="Onboarding_Ready_GatewayDescription" xml:space="preserve"><value>Draait op deze pc</value></data>
+  <data name="Onboarding_Review_HideCommands" xml:space="preserve"><value>Exacte opdrachten en bestandslocaties verbergen</value></data>
+  <data name="Onboarding_Review_ShowCommands" xml:space="preserve"><value>Exacte opdrachten en bestandslocaties weergeven</value></data>
+  <data name="Onboarding_Steps_ChooseTools" xml:space="preserve"><value>Kies je pc-tools</value></data>
+  <data name="Onboarding_Steps_ChooseToolsDetail" xml:space="preserve"><value>Begin met de toegang die bij je past.</value></data>
+  <data name="Onboarding_Steps_ConnectAi" xml:space="preserve"><value>Verbind je AI</value></data>
+  <data name="Onboarding_Steps_ConnectAiDetail" xml:space="preserve"><value>Gebruik een provider of een model naar keuze.</value></data>
+  <data name="Onboarding_Steps_ItemName" xml:space="preserve"><value>{0} ({1})</value></data>
+  <data name="Onboarding_Steps_SetUp" xml:space="preserve"><value>Installeren</value></data>
+  <data name="Onboarding_Steps_SetUpDetail" xml:space="preserve"><value>OpenClaw wordt geïnstalleerd. Je kunt je pc gewoon blijven gebruiken.</value></data>
+  <data name="Onboarding_Steps_StartChatting" xml:space="preserve"><value>Begin met chatten</value></data>
+  <data name="Onboarding_Steps_StartChattingDetail" xml:space="preserve"><value>Open Chat en zeg hallo.</value></data>
+  <data name="Onboarding_Steps_StateCurrent" xml:space="preserve"><value>huidige stap</value></data>
+  <data name="Onboarding_Steps_StateDone" xml:space="preserve"><value>voltooid</value></data>
+  <data name="Onboarding_Steps_StateSkipped" xml:space="preserve"><value>overgeslagen</value></data>
+  <data name="Onboarding_Steps_StateUpcoming" xml:space="preserve"><value>niet gestart</value></data>
+  <data name="Onboarding_Tools_OnNow" xml:space="preserve"><value>Nu aan: {0}</value></data>
+  <data name="Onboarding_Welcome_Safety.Text" xml:space="preserve"><value>AI-agents zijn krachtig en toegang tot je pc geven brengt risico’s met zich mee. Ze kunnen fouten maken, bestanden wijzigen of verwijderen, of privégegevens blootstellen. Je kunt de toegang van OpenClaw tot je pc beheren en beperken.</value></data>
+  <data name="Onboarding_Complete_RestartTitle" xml:space="preserve"><value>Start Windows opnieuw om door te gaan</value></data>
+  <data name="Onboarding_Complete_RestartPrompt" xml:space="preserve"><value>OpenClaw moet Windows opnieuw opstarten om de installatie te voltooien. Sla eerst je werk op.</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Voordat u begint</value></data>
+  <data name="Onboarding_Ready_GatewayNativeTitle" xml:space="preserve"><value>Native Gateway actief</value></data>
+  <data name="Onboarding_Ready_GatewayWslTitle" xml:space="preserve"><value>WSL Gateway actief</value></data>
+  <data name="Onboarding_Ready_GatewayWslDescription" xml:space="preserve"><value>Gehost op deze pc in WSL</value></data>
+  <data name="Onboarding_Ready_GatewayConnectedTitle" xml:space="preserve"><value>Gateway verbonden</value></data>
+  <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>Draait op deze pc</value></data>
+  <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Externe Gateway verbonden</value></data>
+  <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Geverifieerd voor deze installatie</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Details naast het gesprek openen</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Tooldetails</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Deze details zijn niet meer beschikbaar. Maak indien nodig opnieuw verbinding en open de tool opnieuw vanuit het huidige gesprek.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Formaat van gesprekspaneel wijzigen</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Gebruik de pijltoetsen links en rechts om het formaat te wijzigen. Home kiest de minimale breedte; End kiest de maximale breedte.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Paneel weergeven</value></data>
+  <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Gesprekspanelen</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Vernieuwen</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
 </root>

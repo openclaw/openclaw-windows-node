@@ -254,7 +254,26 @@ Chat and Settings end with one shared `WorkspacePaneFooter`: account, Dashboard,
 and the notifications bell, always visible. Settings' compact rail stacks the
 same three as 40 DIP icons, with connection status as a dot on the avatar.
 Diagnostics and App settings live at the end of "This Computer". Dashboard and
-Ctrl+Shift+D open the Gateway Dashboard home through `GatewayDashboardLauncher`.
+Ctrl+Shift+D open the verified counterpart of the visible page or chat through
+`GatewayDashboardLauncher`, falling back to Dashboard home when no verified
+route is available. Chat handoff uses `/chat?session=<encoded-full-session-key>`
+without checking Gateway release numbers. The Gateway owns resolution of its
+current session routes and configured main key. This query compatibility path
+is present in both the
+[older bootstrap](https://github.com/openclaw/openclaw/blob/3a9d69db306cd7f081e06254cb89c4bcc14a7107/ui/src/app/bootstrap-location.ts)
+and [current released parser](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/app/released-session-query.ts).
+Settings and search web destinations also use established routes, not Gateway
+release allowlists. Their route contracts are recorded in the
+[older route table](https://github.com/openclaw/openclaw/blob/3a9d69db306cd7f081e06254cb89c4bcc14a7107/ui/src/app-route-paths.ts)
+and [current released route table](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/app-route-paths.ts).
+Systems links use `/systems`, the same route the native Systems page's Open in
+web action uses when the Gateway reports environments, not the separate Devices
+settings page. The current released route table defines `/systems`; the older
+table does not. Gateways without that page cannot provide an equivalent Systems
+destination, and their web app opens its default view for any route it lacks.
+These navigation contracts are not capability negotiation. Search still gates
+remote reads on advertised methods and operator permissions, fences stale
+connection/profile results, and limits admin-only destinations to administrators.
 Each bell opens `NotificationFlyoutContent` using the existing
 `AppNotificationService`, without replacing chat or changing history. Its
 explicit Open notifications link and existing deep links retain the full page.
@@ -424,6 +443,15 @@ orchestration. Three narrower owners sit behind it:
   durable two-role token clear gate, and operator token-mismatch recovery timing.
 - `DevicePairApprovalCoordinator` owns typed device role-upgrade approval and its
   one-in-flight plus one-queued bounded node reconnect workflow.
+
+Scheduled operator reconnects acquire the current lifecycle-attempt lease before
+disconnecting or connecting. A disconnect that wins the transition queue invalidates
+that attempt, even when the active Gateway id and user intent remain unchanged.
+Removing the active saved Gateway commits `RemoveAndSave` before disconnecting,
+so a failed save leaves the live connection and user intent unchanged. After a
+successful save, `DisconnectByUserAsync(gatewayId)` records intent for the removed
+Gateway and tears down only that live owner under the transition semaphore. A
+queued switch cannot disconnect the replacement Gateway or change its intent.
 
 `GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`,
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
@@ -939,6 +967,29 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 - **Local setup**: `NodeService.ConnectAsync()` creates its own client (used only during WSL local gateway setup)
 
 Both paths dispose old clients before creating new ones.
+
+Within a client, `WebSocketClientBase` reports transport loss once per current
+socket generation, including client abort, oversized messages and listen errors.
+Oversized-message cleanup runs before waiting for the peer's close handshake.
+`OpenClawGatewayClient.OnDisconnected` is the invalidation owner: it clears the
+live handshake, canonical session key and advertised methods/capabilities, and
+fails wizard requests with `GatewayConnectionLostException`; other pending
+waiters are canceled. Listen errors use that same cleanup before publishing
+Error. Invalidation is serialized with socket publication; transport events and
+node invocation cancellation run outside that lock. Superseded listeners and
+disposal do not invalidate a replacement connection. Client-initiated aborts
+still run that cleanup but do not add a Disconnected status or observation;
+their callers keep their existing Error or quiet-retry policy. Each loss
+callback runs separately, so a failing step is logged without skipping the
+remaining cleanup, status notifications or the client-owned reconnect. Status
+delivery stops once the client is disposed or the connection is replaced, so a
+stale Disconnected cannot follow a newer connection's Connecting.
+
+Health checks capture their socket and generation before sending or starting
+recovery. Backoff and reconnect authorization recheck that ownership, so delayed
+health work cannot replace a newer open socket. An explicit `ConnectAsync` may
+still publish a new attempt; failed or closed attempts retain the existing
+single-flight recovery policy.
 
 ## Setup-code and pairing flow
 

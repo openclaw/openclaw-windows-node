@@ -10,7 +10,7 @@ public sealed partial class GatewayFixtureUiTests
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "GatewayFixture")]
-    public async Task NotificationAction_BrowserRefusalAndSeparateRetryKeepReminderUntilItsOwnActionSucceeds(
+    public async Task NotificationAction_BrowserRefusalRetryAndSuccessRetainReminderUntilExplicitDismissal(
         bool settingsBanner)
     {
         const string reminderTitle = "Slack channel needs attention";
@@ -83,19 +83,23 @@ public sealed partial class GatewayFixtureUiTests
                 FindButtons(run, actionLabel).Count == 1, "original action available again on the selected surface");
             Invoke(Assert.Single(FindButtons(run, actionLabel)));
             await WaitForDashboardLaunchesAsync(run, 3, "original notification action accepted by the browser boundary");
-            await WaitUiAsync(run, () => FindButtons(run, actionLabel).Count == 0,
-                "accepted notification removed from its source surface");
+            await WaitUiAsync(run, () => FindButtons(run, actionLabel).Count == 1,
+                "accepted notification retained on its source surface");
             AssertDashboardLaunches(run, DashboardOutcome.SimulatedFailure, DashboardOutcome.Opened, DashboardOutcome.Opened);
 
             await run.InvokeAsync("app.navigate", new { page = inboxRoute });
-            // Other reminders, including host capability warnings, must not make this test
-            // depend on an empty inbox. Only the clicked reminder is meant to disappear.
             await WaitUiAsync(run, () => FindById(run, "NotificationsPageMarker") is { Current.IsOffscreen: false } &&
-                FindButtons(run, "Dismiss " + reminderTitle).Count == 0,
-                "original reminder absent from the inbox after its own action succeeded");
+                FindButtons(run, "Dismiss " + reminderTitle).Count == 1,
+                "original reminder retained in the inbox after its own action succeeded");
+            await ExpandNotificationReminderAsync(run, reminderTitle, actionLabel);
+            await CaptureIfRequestedAsync(run, "notification-retained-after-admission.png");
+
+            Invoke(Assert.Single(FindButtons(run, "Dismiss " + reminderTitle)));
+            await WaitUiAsync(run, () => FindButtons(run, "Dismiss " + reminderTitle).Count == 0,
+                "original reminder explicitly dismissed from the inbox");
             Assert.Empty(FindButtons(run, "Dismiss " + reminderTitle));
             Assert.Empty(FindButtons(run, actionLabel));
-            await CaptureIfRequestedAsync(run, "notification-dismissed-after-admission.png");
+            await CaptureIfRequestedAsync(run, "notification-explicitly-dismissed.png");
         }, scenario: GatewayScenario.CreateChannelIssue("Fixture channel authorization failed."));
     }
 
@@ -113,7 +117,8 @@ public sealed partial class GatewayFixtureUiTests
         while (reminderRow.Current.ControlType != ControlType.ListItem)
             reminderRow = TreeWalker.ControlViewWalker.GetParent(reminderRow)
                 ?? throw new InvalidOperationException("Reminder has no Inbox list-item ancestor.");
-        Assert.Equal(run.AppProcessId, reminderRow.Current.ProcessId);
+        var owner = Assert.Single(AppWindows(run),
+            window => NativeUiOwnership.IsOwnedDescendant(window, reminderRow, run.AppProcessId));
         if (reminderRow.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll))
             ((ScrollItemPattern)scroll).ScrollIntoView();
         var expander = Assert.Single(reminderRow.FindAll(TreeScope.Descendants,
@@ -135,7 +140,7 @@ public sealed partial class GatewayFixtureUiTests
                 double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) &&
                 bounds.Width > 0 && bounds.Height > 0 &&
                 reminderRow.Current.BoundingRectangle.Contains(bounds) &&
-                AppWindows(run).Any(window => window.Current.BoundingRectangle.Contains(bounds));
+                owner.Current.BoundingRectangle.Contains(bounds);
         }, "expanded notification action visible and enabled");
     }
 }

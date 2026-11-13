@@ -35,7 +35,9 @@ public sealed partial class GatewayFixtureUiTests
             }
             Assert.False(FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false });
             var scope = FindById(run, "ScopeExpander")!;
-            ((ExpandCollapsePattern)scope.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            var scopeToggle = Assert.Single(scope.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true)).Cast<AutomationElement>());
+            ((ExpandCollapsePattern)scopeToggle.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
             await WaitUiAsync(run, () => FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false },
                 "contained operations in the expanded scope section");
             var operations = FindById(run, "SandboxContainedOperations")!;
@@ -107,7 +109,15 @@ public sealed partial class GatewayFixtureUiTests
                 if (route != "settings")
                     Assert.Null(FindById(run, "SettingsPageNotifyHealth"));
                 else
-                    Assert.NotNull(FindById(run, "SettingsPageNotifyHealth"));
+                {
+                    // Notification options live in a disclosure that starts collapsed.
+                    var disclosure = Assert.Single(FindById(run, "GeneralNotificationsCard")!.FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                        .Cast<AutomationElement>());
+                    ((ExpandCollapsePattern)disclosure.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+                    await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null,
+                        "notification options in the expanded General disclosure");
+                }
                 if (route != "permissions")
                     Assert.Null(FindById(run, "SettingsPageScreenRecording"));
                 if (route != "about")
@@ -214,6 +224,7 @@ public sealed partial class GatewayFixtureUiTests
             var connectionWindow = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionPageMarker")) is not null);
             var connectionHeading = FindById(run, "ConnectionPageMarker")!;
+            Assert.Equal("Connection", connectionHeading.Current.Name);
             await WaitForStablePageGeometryAsync(run, connectionWindow, connectionHeading.Current.BoundingRectangle.Left);
             OwnedWindowCapture.Save(run, connectionWindow, "connection-offline.png", connection, connectionHeading);
             ReleaseHandshake();
@@ -323,27 +334,55 @@ public sealed partial class GatewayFixtureUiTests
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 
+    // A non-editable WinUI ComboBox exposes its choice through Selection, not Value.
+    private static string SelectedComboText(AutomationElement combo)
+    {
+        if (combo.TryGetCurrentPattern(SelectionPattern.Pattern, out var selection))
+        {
+            var selected = ((SelectionPattern)selection).Current.GetSelection();
+            if (selected.Length == 1) return selected[0].Current.Name;
+        }
+        return combo.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))?.Current.Name ?? string.Empty;
+    }
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
-    public async Task ClipboardExpander_ExposesNamedSelectableRadioChildren()
+    public async Task ClipboardAccess_ExposesNamedSelectableOptions()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "sandbox" });
-            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardExpander") is not null, "clipboard expander");
-            var expander = FindById(run, "SandboxClipboardExpander")!;
-            Assert.Equal("📋 Clipboard", expander.Current.Name);
-            var expand = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            if (expand.Current.ExpandCollapseState != ExpandCollapseState.Expanded) expand.Expand();
-            var radios = expander.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton));
-            var items = radios.Cast<AutomationElement>().ToArray();
-            Assert.Equal(new[] { "None (default)", "Read: agent can see what you copied", "Write: agent can replace your clipboard (cannot read it)", "Read & write" }, items.Select(item => item.Current.Name));
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardAccess") is not null, "clipboard access selector");
+            var combo = FindById(run, "SandboxClipboardAccess")!;
+            Assert.Equal(ControlType.ComboBox, combo.Current.ControlType);
+            Assert.Equal("Clipboard access", combo.Current.Name);
+            Assert.Equal("None (default)", SelectedComboText(combo));
+            var expand = (ExpandCollapsePattern)combo.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            // Hosts that cannot run the sandbox (for example Windows Server) disable permission editing, and a
+            // collapsed ComboBox exposes no options, so the popup checks need an enabled selector.
+            if (!combo.Current.IsEnabled)
+            {
+                output.WriteLine("Clipboard access is disabled on this host; popup option checks need a sandbox-capable host.");
+                return;
+            }
+            expand.Expand();
+            await WaitUiAsync(run, () => expand.Current.ExpandCollapseState == ExpandCollapseState.Expanded,
+                "clipboard options popup open");
+            // The open popup repeats the options under the window root; the selector owns the canonical four.
+            AutomationElement[] Options() => combo.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().Where(item => item.Current.Name is "None (default)" or "Read & write"
+                    || item.Current.Name.StartsWith("Read:", StringComparison.Ordinal)
+                    || item.Current.Name.StartsWith("Write:", StringComparison.Ordinal)).ToArray();
+            await WaitUiAsync(run, () => Options().Length == 4, "clipboard options listed");
+            var items = Options();
+            Assert.Equal(new[] { "None (default)", "Read: agent can see what you copied", "Write: agent can replace your clipboard (cannot read it)", "Read & write" },
+                items.Select(item => item.Current.Name));
             Assert.All(items, item => Assert.True(item.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _)));
             Assert.Single(items, item => ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             expand.Collapse();
-            expand.Expand();
-            Assert.Equal(4, expander.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Count);
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 
@@ -355,6 +394,20 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "GeneralNotificationsCard") is not null,
+                "notification disclosure");
+            void ExpandNotifications()
+            {
+                var expander = FindById(run, "GeneralNotificationsCard")!;
+                var header = Assert.Single(expander.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                    .Cast<AutomationElement>());
+                var pattern = (ExpandCollapsePattern)header.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                Assert.Equal(ExpandCollapseState.Collapsed, pattern.Current.ExpandCollapseState);
+                pattern.Expand();
+            }
+            Assert.True(FindById(run, "SettingsPageSound") is null or { Current.IsOffscreen: true });
+            ExpandNotifications();
             await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null, "notification settings");
             Assert.NotNull(FindById(run, "SettingsPageMarker"));
             Assert.Null(FindById(run, "SettingsNavNotificationPreferences"));
@@ -390,6 +443,9 @@ public sealed partial class GatewayFixtureUiTests
             await run.InvokeAsync("app.navigate", new { page = "about" });
             await WaitUiAsync(run, () => FindById(run, "AboutPageMarker") is not null, "leave General");
             await run.InvokeAsync("app.navigate", new { page = "notification-preferences" });
+            await WaitUiAsync(run, () => FindById(run, "GeneralNotificationsCard") is not null,
+                "preferences alias notification disclosure");
+            ExpandNotifications();
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null
                 && FindById(run, "SettingsPageNotifyHealth") is not null, "preferences alias opens General");
             Assert.Equal(expected,
@@ -532,7 +588,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => !HasValue("alpha") && HasValue("bravo"), "alpha removed and bravo retained");
             var focused = AutomationElement.FocusedElement;
             Assert.NotNull(focused);
-            Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                "Focus must remain in the owned native window.");
             output.WriteLine($"Focus after removal: type=[{focused.Current.ControlType.ProgrammaticName}] id=[{focused.Current.AutomationId}].");
             var discard = window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "DiscardButton"));
@@ -550,7 +607,8 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => !previousFocus.SequenceEqual(AutomationElement.FocusedElement.GetRuntimeId()), "focus advances after Tab");
                 focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 reachedBravo |= Automation.Compare(bravoRemove, focused);
                 reachedDiscard = Automation.Compare(discard, focused);
             }
@@ -646,6 +704,12 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "settings" });
+            AutomationElement? notificationsCard = null;
+            await WaitUiAsync(run, () => (notificationsCard = FindById(run, "GeneralNotificationsCard")) is not null, "notification disclosure");
+            var notificationsHeader = Assert.Single(notificationsCard!.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                .Cast<AutomationElement>());
+            ((ExpandCollapsePattern)notificationsHeader.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
             await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null
                 && FindText(run, "Show notifications for:") is not null, "notification context and checkboxes");
             var heading = FindText(run, "Show notifications for:")!;
@@ -671,7 +735,8 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 actual.Add(focused.Current.Name);
                 if (i + 1 < expected.Length)
                 {
@@ -696,178 +761,45 @@ public sealed partial class GatewayFixtureUiTests
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
     [Trait("KeyboardProof", "Required")]
-    public async Task ClipboardExpander_SupportsKeyboardSelectionAndCollapse()
+    public async Task ClipboardAccess_SupportsKeyboardSelectionAndFocusTraversal()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "sandbox" });
-            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardExpander") is not null, "Clipboard expander");
-            var expander = FindById(run, "SandboxClipboardExpander")!;
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardAccess") is not null, "Clipboard access selector");
+            var combo = FindById(run, "SandboxClipboardAccess")!;
             var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxClipboardExpander")) is not null);
-            Assert.Equal("📋 Clipboard", expander.Current.Name);
-            var pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            if (pattern.Current.ExpandCollapseState != ExpandCollapseState.Expanded) pattern.Expand();
-            var radios = expander.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Cast<AutomationElement>().ToArray();
-            Assert.Equal(4, radios.Length);
-            output.WriteLine($"Clipboard radio enabled states: {string.Join(", ", radios.Select(r => r.Current.IsEnabled))}.");
-            Assert.All(radios, radio => Assert.True(radio.Current.IsEnabled,
-                "Clipboard keyboard proof requires enabled sandbox controls; check this host's support state."));
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxClipboardAccess")) is not null);
+            Assert.Equal("Clipboard access", combo.Current.Name);
+            Assert.True(combo.Current.IsEnabled,
+                "Clipboard keyboard proof requires enabled sandbox controls; check this host's support state.");
+            string Value() => SelectedComboText(FindById(run, "SandboxClipboardAccess")!);
+            Assert.Equal("None (default)", Value());
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
-            radios[0].SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(radios[0], AutomationElement.FocusedElement), "first Clipboard option focused");
-            // Individual WinUI RadioButtons move focus with arrows; Space commits the choice.
+            combo.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(combo, AutomationElement.FocusedElement), "Clipboard access focused");
+            // A closed ComboBox commits the neighbouring option on Down without opening its popup.
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Down);
-            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "next Clipboard option focused");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Space);
-            await WaitUiAsync(run, () => ((SelectionItemPattern)radios[1].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected &&
-                !((SelectionItemPattern)radios[0].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
-                "Space selects Read and unselects None");
-            Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "selected Clipboard option remains focused");
-            // GroupName makes selection exclusive, but each standalone radio remains a tab stop.
-            foreach (var index in new[] { 2, 3 })
-            {
-                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
-                await WaitUiAsync(run, () => Automation.Compare(radios[index], AutomationElement.FocusedElement),
-                    $"Tab focuses Clipboard option {index}");
-                AssertReadSelection(radios, "forward Tab");
-            }
+            await WaitUiAsync(run, () => Value() == "Read: agent can see what you copied", "Down selects Read");
+            Assert.True(Automation.Compare(combo, AutomationElement.FocusedElement), "The selector keeps focus after selecting.");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
-            await WaitUiAsync(run, () => !radios.Any(radio => Automation.Compare(radio, AutomationElement.FocusedElement)), "focus leaves Clipboard options");
+            await WaitUiAsync(run, () => !Automation.Compare(combo, AutomationElement.FocusedElement), "focus leaves Clipboard access");
             var after = AutomationElement.FocusedElement;
             Assert.NotNull(after);
-            Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
-            AssertReadSelection(radios, "outside group");
-            foreach (var index in new[] { 3, 2, 1 })
-            {
-                NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
-                await WaitUiAsync(run, () => Automation.Compare(radios[index], AutomationElement.FocusedElement),
-                    $"Shift+Tab focuses Clipboard option {index}");
-                AssertReadSelection(radios, "reverse Shift+Tab");
-            }
-            Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "Reverse traversal returns to Read without changing selection.");
-            LogClipboardState("before Collapse");
-            pattern.Collapse();
-            LogClipboardState("after Collapse");
-            try
-            {
-                // UIA command completion does not imply the native collapse transition has settled.
-                await WaitUiAsync(run, ClipboardIsCollapsedAndHidden, "Clipboard collapsed and options hidden");
-            }
-            catch
-            {
-                LogClipboardState("collapse wait failed");
-                throw;
-            }
-            expander = FindById(run, "SandboxClipboardExpander")!;
-            pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            expander.SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(expander, AutomationElement.FocusedElement), "collapsed Clipboard expander focused");
-            LogClipboardState("after expander focus");
-            Assert.True(ClipboardIsCollapsedAndHidden(), "Focusing the collapsed Clipboard expander must not reopen its options.");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
-            await WaitUiAsync(run, () => !Automation.Compare(expander, AutomationElement.FocusedElement), "focus leaves collapsed expander");
-            LogClipboardState("after Tab");
-            Assert.True(ClipboardIsCollapsedAndHidden(), "Tab must leave Clipboard options collapsed and hidden.");
-            after = AutomationElement.FocusedElement;
-            Assert.NotNull(after);
-            Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
-            pattern.Expand();
-            await WaitUiAsync(run, () =>
-            {
-                var live = FindById(run, "SandboxClipboardExpander");
-                return live is not null &&
-                    ((ExpandCollapsePattern)live.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
-                    ClipboardRadios(live) is { Length: 4 } options && options.All(radio => !radio.Current.IsOffscreen);
-            }, "Clipboard expanded and options visible again");
-            radios = ClipboardRadios(FindById(run, "SandboxClipboardExpander")!);
-            AssertReadSelection(radios, "reexpanded group after Tab exclusion");
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, after, run.AppProcessId),
+                "Focus must remain in the owned native window.");
+            Assert.Equal("Read: agent can see what you copied", Value());
+            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
+            await WaitUiAsync(run, () => Automation.Compare(combo, AutomationElement.FocusedElement), "Shift+Tab returns to Clipboard access");
+            Assert.Equal("Read: agent can see what you copied", Value());
 
             await run.InvokeAsync("app.navigate", new { page = "permissions" });
             await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker") is { Current.IsOffscreen: false }, "Permissions page active");
             await run.InvokeAsync("app.navigate", new { page = "sandbox" });
-            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardExpander") is not null, "Clipboard page reactivated");
-            var restored = FindById(run, "SandboxClipboardExpander")!;
-            var restoredPattern = (ExpandCollapsePattern)restored.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            if (restoredPattern.Current.ExpandCollapseState != ExpandCollapseState.Expanded) restoredPattern.Expand();
-            var restoredRadios = restored.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Cast<AutomationElement>().ToArray();
-            Assert.Equal(4, restoredRadios.Length);
-            await WaitUiAsync(run, () => restoredRadios.Select((radio, index) =>
-                    ((SelectionItemPattern)radio.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected == (index == 1)).All(matches => matches),
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardAccess") is not null, "Sandbox page reactivated");
+            await WaitUiAsync(run, () => Value() == "Read: agent can see what you copied",
                 "keyboard-selected Clipboard permission persists after page reactivation");
-
-            AutomationElement[] ClipboardRadios(AutomationElement owner) => owner.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Cast<AutomationElement>().ToArray();
-
-            bool ClipboardIsCollapsedAndHidden()
-            {
-                var live = FindById(run, "SandboxClipboardExpander");
-                return live is not null &&
-                    ((ExpandCollapsePattern)live.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState == ExpandCollapseState.Collapsed &&
-                    ClipboardRadios(live).All(radio => radio.Current.IsOffscreen);
-            }
-
-            void LogClipboardState(string phase)
-            {
-                try
-                {
-                    var live = FindById(run, "SandboxClipboardExpander");
-                    if (live is null)
-                    {
-                        output.WriteLine($"Clipboard {phase}: peer unavailable.");
-                        return;
-                    }
-                    var state = ((ExpandCollapsePattern)live.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState;
-                    var options = ClipboardRadios(live);
-                    var focused = AutomationElement.FocusedElement;
-                    var inTargetWindow = false;
-                    if (focused is not null && focused.Current.ProcessId == run.AppProcessId)
-                    {
-                        for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
-                        {
-                            if (!Automation.Compare(current, window)) continue;
-                            inTargetWindow = true;
-                            break;
-                        }
-                    }
-                    // Only known synthetic controls and ownership booleans, never arbitrary desktop content.
-                    output.WriteLine($"Clipboard {phase}: state={state}; options={options.Length}; targetWindow={inTargetWindow}.");
-                    for (var index = 0; index < options.Length; index++)
-                    {
-                        var radio = options[index];
-                        output.WriteLine($"Clipboard option {index}: offscreen={radio.Current.IsOffscreen}; focused={radio.Current.HasKeyboardFocus}; " +
-                            $"selected={((SelectionItemPattern)radio.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected}.");
-                    }
-                }
-                catch (ElementNotAvailableException)
-                {
-                    output.WriteLine($"Clipboard {phase}: peer unavailable during transition.");
-                }
-            }
-
-            void AssertReadSelection(AutomationElement[] options, string phase)
-            {
-                var focused = AutomationElement.FocusedElement;
-                Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
-                var inTargetWindow = false;
-                for (var current = focused; current is not null; current = TreeWalker.ControlViewWalker.GetParent(current))
-                {
-                    if (!Automation.Compare(current, window)) continue;
-                    inTargetWindow = true;
-                    break;
-                }
-                Assert.True(inTargetWindow, "Clipboard traversal must remain in its owned window.");
-                var selected = options.Select(radio =>
-                    ((SelectionItemPattern)radio.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected).ToArray();
-                Assert.Equal(new[] { false, true, false, false }, selected);
-                // Report only fixture ordinals and booleans, never arbitrary focused-control properties.
-                output.WriteLine($"Clipboard {phase}: focused option={Array.FindIndex(options, radio => Automation.Compare(radio, focused))}; " +
-                    $"selected={string.Join(",", selected)}; targetWindow={inTargetWindow}.");
-            }
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 

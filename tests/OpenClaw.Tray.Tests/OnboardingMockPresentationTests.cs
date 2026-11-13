@@ -20,23 +20,21 @@ public sealed class OnboardingMockPresentationTests
     [InlineData("SetupNativeConnectionPage")]
     [InlineData("WizardPage")]
     [InlineData("AiSetupPage")]
-    public void NormalHeaders_KeepFullSizeArtworkAboveWrappedCenteredText(string name)
+    public void NormalHeaders_UseTheSharedHeroAndLeaveArtworkToTheCompanion(string name)
     {
         var document = Page(name);
-        var mascot = Named(document, "MascotHero");
-        Assert.Null(mascot.Attribute("Width"));
-        Assert.Null(mascot.Attribute("Height"));
-        Assert.Equal("Center", (string?)mascot.Attribute("HorizontalAlignment"));
-        var header = mascot.Parent!;
+        // The setup window's companion pane owns the only mascot; pages carry no artwork.
+        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "OnboardingMascot");
+        var title = document.Descendants().First(element =>
+            (string?)element.Attribute("Style") == "{StaticResource SetupHeroTitleTextStyle}");
+        var header = title.Parent!;
         Assert.Equal("StackPanel", header.Name.LocalName);
+        Assert.Equal("{StaticResource SetupHeroPanelStyle}", (string?)header.Attribute("Style"));
         Assert.Null(header.Attribute("Height"));
         Assert.Null(header.Attribute("MaxHeight"));
-        var title = Assert.Single(header.Elements(), element =>
-            (string?)element.Attribute("Style") == "{StaticResource TitleTextBlockStyle}");
-        Assert.Contains(mascot, header.Elements().TakeWhile(element => element != title));
-        Assert.Equal("Center", (string?)title.Attribute("TextAlignment"));
-        Assert.Equal("Wrap", (string?)title.Attribute("TextWrapping"));
+        Assert.Same(title, header.Elements().First());
         Assert.Null(title.Attribute("Height"));
+        Assert.Null(title.Attribute("TextAlignment"));
     }
 
     [Fact]
@@ -71,17 +69,16 @@ public sealed class OnboardingMockPresentationTests
 
         var document = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.SetupEngine.UI", "Controls", "RecommendedBadge.xaml"));
+        // The design shows the recommendation as inline accent text beside the choice title.
         var border = Named(document, "BadgeBorder");
-        Assert.Equal("8,4", (string?)border.Attribute("Padding"));
-        Assert.Equal("4", (string?)border.Attribute("CornerRadius"));
-        Assert.Equal("1", (string?)border.Attribute("BorderThickness"));
+        Assert.Null(border.Attribute("Padding"));
+        Assert.Null(border.Attribute("BorderThickness"));
         var label = Named(document, "Label");
         Assert.Equal("Onboarding_Copy_Recommended", (string?)label.Attribute(X + "Uid"));
         Assert.Equal("Wrap", (string?)label.Attribute("TextWrapping"));
-        Assert.Equal("{StaticResource CaptionTextBlockStyle}", (string?)label.Attribute("Style"));
-        Assert.Equal("{ThemeResource AccentTextFillColorPrimaryBrush}", (string?)label.Attribute("Foreground"));
+        Assert.Equal("{StaticResource SetupInlineRecommendedTextStyle}", (string?)label.Attribute("Style"));
         var disabled = Named(document, "Disabled");
-        Assert.Equal(new[] { "BadgeBorder.BorderBrush", "Label.Foreground" },
+        Assert.Equal(new[] { "Label.Foreground" },
             disabled.Descendants().Where(element => element.Name.LocalName == "Setter")
                 .Select(element => (string?)element.Attribute("Target")));
         Assert.All(disabled.Descendants().Where(element => element.Name.LocalName == "Setter"),
@@ -116,32 +113,30 @@ public sealed class OnboardingMockPresentationTests
     {
         var page = Page("ProgressPage");
         var details = Named(page, "DetailedActivity");
-        Assert.Equal("False", (string?)details.Attribute("IsExpanded"));
+        var panel = Named(page, "DetailsPanel");
+        Assert.Equal("Collapsed", (string?)panel.Attribute("Visibility"));
+        Assert.Contains(panel.Ancestors(), element => element == details);
+        Assert.Equal("HyperlinkButton", Named(page, "DetailsToggle").Name.LocalName);
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "StepsPanel");
-        Assert.Equal("48", (string?)details.Attribute("MinHeight"));
-        Assert.Contains(details.Descendants(), element => element == Named(page, "OpenLogButton"));
-        Assert.Contains(details.Descendants(), element => element == Named(page, "LogText"));
+        Assert.Contains(panel.Descendants(), element => element == Named(page, "OpenLogButton"));
+        Assert.Contains(panel.Descendants(), element => element == Named(page, "LogText"));
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "CurrentActivity");
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "StepCount");
-        foreach (var prefix in new[] { "Prepare", "Install", "Connect" })
-        {
-            var phase = Named(page, prefix + "Phase");
-            var activity = Named(page, prefix + "Activity");
-            Assert.Equal("SettingsCard.Description", activity.Parent!.Name.LocalName);
-            Assert.Same(phase, activity.Parent.Parent);
-            Assert.Equal("Wrap", (string?)activity.Attribute("TextWrapping"));
-            Assert.Equal("Polite", (string?)activity.Attribute("AutomationProperties.LiveSetting"));
-        }
-        foreach (var name in new[] { "PreparePhase", "InstallPhase", "ConnectPhase",
-                     "PrepareActivity", "InstallActivity", "ConnectActivity",
+        foreach (var name in new[] { "PrepareStatus", "InstallStatus", "ConnectStatus",
                      "DownloadActivity", "DownloadProgress", "TailscaleAuthorizationPanel" })
             Assert.DoesNotContain(Named(page, name).Ancestors(), element => element == details);
         Assert.DoesNotContain(page.Descendants(), element => (string?)element.Attribute(X + "Name") == "ActivityProgress");
         foreach (var name in new[] { "PrepareStatus", "InstallStatus", "ConnectStatus" })
             Assert.Equal("SetupPhaseStatus", Named(page, name).Name.LocalName);
+        var row = XDocument.Load(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
+            "src", "OpenClaw.SetupEngine.UI", "Controls", "SetupPhaseStatus.xaml"));
+        var activity = Named(row, "ActivityText");
+        Assert.Equal("Polite", (string?)activity.Attribute("AutomationProperties.LiveSetting"));
+        Assert.Equal("Polite", (string?)Named(row, "StatusText").Attribute("AutomationProperties.LiveSetting"));
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.SetupEngine.UI", "Pages", "ProgressPage.xaml.cs"));
         Assert.Contains("_installationProgress?.Apply(e)", source);
+        Assert.Contains("row.Activity = phase.CurrentActivity", source);
         Assert.Contains("Onboarding_V4_RecoveryInstall", source);
         Assert.DoesNotContain("Onboarding_V4_StepCount", source);
     }
@@ -156,15 +151,15 @@ public sealed class OnboardingMockPresentationTests
         var review = Page("GatewaySetupPage");
         Assert.Equal("TailscaleSetupControl", Named(review, "TailscaleOptions").Name.LocalName);
         Assert.DoesNotContain(Named(review, "TailscaleOptions").Ancestors(), element => element.Name.LocalName == "SettingsExpander");
-        Assert.Equal("InfoBar", Named(review, "ReplacementWarning").Name.LocalName);
+        Assert.Equal("Grid", Named(review, "ReplacementWarning").Name.LocalName);
         Assert.Same(Named(review, "ReplacementWarning").Parent, Named(review, "ReplacementConsent").Parent);
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.SetupEngine.UI", "Pages", "GatewaySetupPage.xaml.cs"));
         Assert.Contains("requirement != SetupInstallRequirement.Replacement", source);
         Assert.Contains("_primaryRequirement = requirements.Count == 0 ? null : requirements[0]", source);
         Assert.Contains("if (_draft.CanInstall(_window.IsLocalAiRecovery))", source);
-        Assert.Contains("ReplacementWarning.Message = _draft.ReplacementSummary", source);
-        Assert.Contains("CliCard.HeaderIcon = cliIcon", source);
+        Assert.Contains("ReplacementWarningText.Text = _draft.ReplacementSummary", source);
+        Assert.Contains("CliDetail.Text = summary.InstallerBadge", source);
         Assert.DoesNotContain("NavigateToTailscaleSetup", source);
         Assert.Equal(1, source.Split("TailscaleOptions.StateChanged +=").Length - 1);
         Assert.Contains("TailscaleOptions.StateChanged -= Tailscale_StateChanged", source);

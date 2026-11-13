@@ -22,6 +22,37 @@ internal static class ChatVisuals
         element.Set(text => TextShimmer(text, active))
             .OnUnmount(control => TextShimmer((TextBlock)control, false));
 
+    /// <summary>
+    /// A small, slower indeterminate ring. ProgressRing's default style has a 16px minimum, which
+    /// would crop smaller rings, and its Lottie player runs at a fixed rate unless slowed here.
+    /// </summary>
+    internal static Element SubagentSpinner(double size) =>
+        Factories.ProgressRing().IsActive(true).Size(size, size).MinWidth(0).MinHeight(0)
+            .OnMount(control =>
+            {
+                var ring = (ProgressRing)control;
+                ring.Loaded -= SlowSpinner;
+                ring.Loaded += SlowSpinner;
+                SlowSpinner(ring, null!);
+            });
+
+    private static void SlowSpinner(object sender, RoutedEventArgs args)
+    {
+        if (sender is ProgressRing ring && FindDescendant<AnimatedVisualPlayer>(ring) is { } player)
+            player.PlaybackRate = SubagentSpinnerPlaybackRate;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match) return match;
+            if (FindDescendant<T>(child) is { } nested) return nested;
+        }
+        return null;
+    }
+
     internal static void StopToolRowShimmers(FrameworkElement control)
     {
         // Reactor preview.16 tears down Expander.Content but does not visit its Header slot.
@@ -182,8 +213,44 @@ internal static class ChatVisuals
     internal const double ProseInset = 16;
     internal const double ComposerRadius = 20;
     internal const double ComposerMinHeight = 96;
+    // Desktop reference composer: 14px editor text, a 14px "+", and a compact 24px Send/Stop
+    // disc inside a 32px hit target with a 12px arrow or a filled 10px Stop square.
+    internal const double ComposerInputSize = 14;
+    internal const double ComposerAttachGlyphSize = 14;
+    internal const double ComposerSendTargetSize = 32;
+    internal const double ComposerSendSize = 24;
+    internal const double ComposerSendGlyphSize = 12;
+    internal const double ComposerStopGlyphSize = 10;
+    internal const double ComposerToolbarInset = 8;
+    // Pending attachments are compact pills: a 14px document glyph, 12px SemiBold name and a
+    // 24px remove target revealed on hover, focus or touch, sized to the name up to the max width.
+    internal const double AttachmentChipHeight = 28;
+    internal const double AttachmentChipMaxWidth = 216;
+    internal const double AttachmentChipGap = 6;
+    internal const double AttachmentGlyphSize = 14;
+    internal const double AttachmentRemoveSize = 24;
+    // Image attachments are square tiles on their own row above the file pills, sized like the web
+    // composer's 56px thumbnails. The remove badge overlaps the tile's top-right corner by this inset.
+    internal const double AttachmentThumbnailSize = 56;
+    internal const double AttachmentThumbnailBadgeInset = 6;
+    internal const double AttachmentThumbnailCell = AttachmentThumbnailSize + AttachmentThumbnailBadgeInset;
+    // Physical-pixel decode bound: sharp at 300% scale without holding full-size images.
+    internal const uint AttachmentThumbnailDecodeSize = 192;
+    internal const double AttachmentRailRowGap = 8;
+    // Pills wrap onto new rows; past this height (four rows at default text size) the rail scrolls
+    // instead of growing further. Scaled text makes rows taller, so fewer rows fit before scrolling.
+    internal const int AttachmentRailMaxRows = 4;
+    // Includes the rail's 3px top and bottom focus padding.
+    internal const double AttachmentRailMaxHeight =
+        AttachmentRailMaxRows * AttachmentChipHeight + (AttachmentRailMaxRows - 1) * AttachmentChipGap + 6;
+    // WinUI's expanded ScrollBar (ScrollBarSize) overlays content instead of reserving space.
+    internal const double AttachmentRailScrollBarInset = 12;
+    // Space between the writing surface and the window's bottom edge. Matches the workspace pane
+    // footer's bottom margin so the composer and account row share a baseline.
+    internal const double ComposerBottomInset = 12;
     internal const double SurfaceRadius = 12;
     internal const double BodySize = 14;
+    internal const string BodyFontFamily = "Segoe UI Variable Text";
     internal const double BodyLineHeight = 21;
     internal const string CodeFontFamily = "Consolas";
     internal const double CodeSize = 13;
@@ -213,12 +280,16 @@ internal static class ChatVisuals
     internal const double TurnGap = 4;
     internal const double DetailHorizontalInset = 12;
     internal const double DetailVerticalInset = 8;
+    internal const double ActionIconSize = 14;
     internal const double ToolRowMinHeight = 32;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
     internal const double ActivityDetailsMaxHeight = 160;
     internal const double TranscriptTopInset = 8;
-    internal const double TranscriptBottomInset = 24;
+    // The transcript's bottom edge fades into the composer over this height. Like the web
+    // thread padding, the last row's inset adds the fade so a settled tail stays fully opaque.
+    internal const double TranscriptFadeHeight = 32;
+    internal const double TranscriptBottomInset = TranscriptFadeHeight + 6;
     internal const double JumpLatestSize = 32;
     internal const double QueueAvatarSize = 20;
     internal const double QueueCompactAvatarSize = 18;
@@ -230,6 +301,26 @@ internal static class ChatVisuals
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
+    // Subagents pill above the composer and rows in the Subagents tab.
+    internal const double SubagentPillHeight = 28;
+    internal const double SubagentPillIconSize = 14;
+    internal const double SubagentAvatarSize = 32;
+    internal const double SubagentAvatarGlyphSize = 16;
+    internal const double SubagentBadgeSize = 16;
+    internal const double SubagentBadgeSpinnerSize = 10;
+    internal const double SubagentBadgeOverhang = 4;
+    // Subagent spinners sit beside text for minutes; the default Lottie rate reads as busy.
+    private const double SubagentSpinnerPlaybackRate = 0.6;
+    internal const double SubagentRowMinHeight = 56;
+    internal const double SubagentFinishedRowMinHeight = 40;
+    // Web .chat-composer-neighbor-card: 18px icon column, 10px gaps, 10/12 insets, 16px radius, 52px minimum.
+    internal const double ReviewIconColumn = 18;
+    internal const double ReviewIconSize = 16;
+    internal const double ReviewGap = 10;
+    internal const double ReviewVerticalInset = 10;
+    internal const double ReviewRadius = 16;
+    internal const double ReviewMinHeight = 52;
+    internal const double ReviewDialogMaxHeight = 420;
 
     internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;
@@ -245,6 +336,19 @@ internal static class ChatVisuals
             .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
             .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
             .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush"));
+
+    // Send/Stop paints its own compact disc, so the 32px button chrome stays transparent at
+    // rest and while disabled, with only a subtle circular hover/pressed halo around the disc.
+    internal static void SendButtonResources(ResourceBuilder resources) =>
+        resources
+            .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBackgroundPointerOver", Theme.SubtleFill)
+            .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
+            .Set("ButtonBackgroundDisabled", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushDisabled", Theme.Ref("SubtleFillColorTransparentBrush"));
 
     /// <summary>
     /// Transparent, borderless (in every header state) tool-row Expander header whose built-in
@@ -298,18 +402,31 @@ internal static class ChatVisuals
     // Native setters reapply presentation after Reactor's defaults on every update.
     internal static void StylePicker(Flyout flyout)
     {
+        // WinUI connects SystemBackdrop only for windowed popups.
+        flyout.ShouldConstrainToRootBounds = false;
+        flyout.SystemBackdrop ??= new DesktopAcrylicBackdrop();
         flyout.FlyoutPresenterStyle = (Style)Application.Current.Resources["ChatPickerFlyoutStyle"];
         flyout.Placement = FlyoutPlacementMode.TopEdgeAlignedRight;
     }
 
     internal static void StylePicker(MenuFlyout menu)
     {
+        menu.SystemBackdrop ??= new DesktopAcrylicBackdrop();
         menu.MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["ChatPickerMenuStyle"];
         menu.Placement = FlyoutPlacementMode.TopEdgeAlignedRight;
     }
 
+    internal static void StyleLeadingPicker(Flyout flyout)
+    {
+        StylePicker(flyout);
+        flyout.Placement = FlyoutPlacementMode.TopEdgeAlignedLeft;
+    }
+
     internal static void StylePickerAccent(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["ChatPickerAccentTextStyle"];
+
+    internal static void StylePickerValue(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatPickerValueTextStyle"];
 
     internal static void StyleSecondaryText(TextBlock text)
     {
@@ -341,6 +458,58 @@ internal static class ChatVisuals
         button.ClearValue(Control.BorderThicknessProperty);
     }
 
+    internal static void AttachComposerPlaceholder(TextBox input)
+    {
+        DetachComposerPlaceholder(input);
+        input.Loaded += OnComposerLoaded;
+        input.Unloaded += OnComposerUnloaded;
+        if (input.IsLoaded)
+            ActivateComposerPlaceholder(input);
+    }
+
+    internal static void DetachComposerPlaceholder(TextBox input)
+    {
+        input.Loaded -= OnComposerLoaded;
+        input.Unloaded -= OnComposerUnloaded;
+        DeactivateComposerPlaceholder(input);
+    }
+
+    private static void DeactivateComposerPlaceholder(TextBox input)
+    {
+        input.ActualThemeChanged -= OnComposerThemeChanged;
+        ChatThemeChanges.Unwatch(input);
+        input.ClearValue(TextBox.PlaceholderForegroundProperty);
+    }
+
+    private static void OnComposerLoaded(object sender, RoutedEventArgs args) =>
+        ActivateComposerPlaceholder((TextBox)sender);
+
+    private static void OnComposerUnloaded(object sender, RoutedEventArgs args) =>
+        DeactivateComposerPlaceholder((TextBox)sender);
+
+    private static void ActivateComposerPlaceholder(TextBox input)
+    {
+        input.ActualThemeChanged -= OnComposerThemeChanged;
+        input.ActualThemeChanged += OnComposerThemeChanged;
+        ChatThemeChanges.Watch(input, () => ApplyComposerPlaceholder(input));
+        ApplyComposerPlaceholder(input);
+    }
+
+    // Reactor owns the control Style. Keep this explicit brush in sync with both
+    // element theme and contrast-only changes, and clear it before control pooling.
+    private static void ApplyComposerPlaceholder(TextBox input)
+    {
+        if (ChatThemeChanges.IsHighContrast())
+            input.ClearValue(TextBox.PlaceholderForegroundProperty);
+        else
+            input.PlaceholderForeground =
+                ThemeRef.Resolve("ChatMutedTextBrush", input.ActualTheme == ElementTheme.Dark) as Brush
+                ?? throw new InvalidOperationException("ChatMutedTextBrush is missing.");
+    }
+
+    private static void OnComposerThemeChanged(FrameworkElement sender, object args) =>
+        ApplyComposerPlaceholder((TextBox)sender);
+
     internal static void StyleQuestionInput(TextBox input, bool inline)
     {
         if (!inline) return;
@@ -361,8 +530,18 @@ internal static class ChatVisuals
     internal static void StyleFlyoutHeading(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"];
 
+    internal static void StyleFlyoutBody(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["BodyTextBlockStyle"];
+
     internal static void StyleFlyoutCaption(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+
+    // A ThemeRef foreground replaces the element Style, so secondary flyout text carries its brush in its style.
+    internal static void StyleFlyoutSecondaryBody(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatFlyoutSecondaryBodyTextStyle"];
+
+    internal static void StyleFlyoutSecondaryCaption(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatFlyoutSecondaryCaptionTextStyle"];
 
     private static readonly ConditionalWeakTable<FrameworkElement, SizeChangedEventHandler> Observers = new();
 

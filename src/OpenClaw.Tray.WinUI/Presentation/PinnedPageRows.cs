@@ -9,11 +9,15 @@ internal sealed record PinnedRowsChange(IReadOnlyList<object> Removed, bool Focu
 /// <summary>
 /// Keeps one sidebar row per visible pinned page, keyed by tag. Rows for unchanged pins are reused
 /// in place so keyboard/Narrator focus and any focus captured on them survive unrelated refreshes.
+/// Rows for removed pins are never released (see <see cref="KeyedMenuRows"/>); re-pinning a page
+/// shows its original row again.
 /// </summary>
 internal sealed class PinnedPageRows
 {
+    private readonly KeyedMenuRows _cache = new();
     private readonly Dictionary<string, object> _rows = new(System.StringComparer.Ordinal);
 
+    /// <summary>Rows for the currently pinned pages.</summary>
     public IReadOnlyCollection<object> Rows => _rows.Values;
 
     /// <summary>
@@ -29,23 +33,14 @@ internal sealed class PinnedPageRows
         var focused = focusedElement?.Invoke();
         owns ??= static (row, element) => ReferenceEquals(row, element);
 
-        var removed = new List<object>();
-        foreach (var tag in _rows.Keys.Where(tag => !desiredTags.Contains(tag, System.StringComparer.Ordinal)).ToArray())
-        {
-            removed.Add(_rows[tag]);
-            _rows.Remove(tag);
-        }
+        var removed = _rows.Where(entry => !desiredTags.Contains(entry.Key, System.StringComparer.Ordinal))
+            .Select(entry => entry.Value).ToList();
         var focusedRowRemoved = focused is not null && removed.Any(row => owns(row, focused));
-        foreach (var row in removed) items.Remove(row);
 
-        var desired = new List<object>(desiredTags.Count);
-        foreach (var tag in desiredTags)
-        {
-            if (!_rows.TryGetValue(tag, out var row))
-                _rows[tag] = row = create(tag);
-            desired.Add(row);
-        }
-        WorkspaceItemsSync.Arrange(items, start, desired);
+        var shown = _cache.Sync(items, start, desiredTags, create);
+        _rows.Clear();
+        foreach (var (tag, row) in desiredTags.Distinct(System.StringComparer.Ordinal).Zip(shown))
+            _rows[tag] = row;
         return new PinnedRowsChange(removed, focusedRowRemoved);
     }
 }

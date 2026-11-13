@@ -27,8 +27,7 @@ public sealed partial class GatewayFixtureUiTests
             await OpenCorrelationChatAsync(run);
             await SendCorrelationPromptAsync(run, "Fixture first question.");
             await PublishLifecycleAsync(run, "fixture-chat-1", "start");
-            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
-                "assistant", new { delta = "Fixture partial answer." });
+            await PublishChatDeltaAsync(run, "fixture-chat-1", "Fixture partial answer.");
             await WaitPrimaryActionAsync(run, "Stop");
             await PublishLifecycleAsync(run, "fixture-chat-1", "end");
             await WaitPrimaryActionAsync(run, "Send");
@@ -73,8 +72,7 @@ public sealed partial class GatewayFixtureUiTests
             await OpenCorrelationChatAsync(run);
             await SendCorrelationPromptAsync(run, "Fixture question A.");
             await PublishLifecycleAsync(run, "fixture-chat-1", "start");
-            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
-                "assistant", new { delta = "Fixture A partial." });
+            await PublishChatDeltaAsync(run, "fixture-chat-1", "Fixture A partial.");
             await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture A partial."), "first stream");
             await WaitPrimaryActionAsync(run, "Stop");
             Invoke(FindById(run, "ChatComposerPrimaryAction")!);
@@ -85,16 +83,14 @@ public sealed partial class GatewayFixtureUiTests
 
             await SendCorrelationPromptAsync(run, "Fixture question B.");
             await PublishLifecycleAsync(run, "fixture-chat-2", "start");
-            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
-                "assistant", new { delta = "Fixture B is streaming" });
+            await PublishChatDeltaAsync(run, "fixture-chat-2", "Fixture B is streaming");
             await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture B is streaming"), "newer stream");
             if (!terminalBeforeNewRun)
                 await PublishLifecycleAsync(run, "fixture-chat-1", "end");
             await run.Gateway.PublishChatFinalAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
                 "STALE CANCELLED FINAL MUST NOT APPEAR");
             // The subsequent visible delta also acknowledges processing the preceding stale wire frames.
-            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
-                "assistant", new { delta = " after stale A." });
+            await PublishChatDeltaAsync(run, "fixture-chat-2", "Fixture B is streaming after stale A.");
             await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture B is streaming after stale A."),
                 "continued newer stream after cancelled final");
             await AssertStreamingAsync(run, "Fixture B is streaming after stale A.");
@@ -135,8 +131,7 @@ public sealed partial class GatewayFixtureUiTests
             {
                 await SendCorrelationPromptAsync(run, "Fixture newer question.");
                 await PublishLifecycleAsync(run, "fixture-chat-2", "start");
-                await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
-                    "assistant", new { delta = "Fixture newer stream" });
+                await PublishChatDeltaAsync(run, "fixture-chat-2", "Fixture newer stream");
                 await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture newer stream"), "newer stream");
             }
 
@@ -163,11 +158,9 @@ public sealed partial class GatewayFixtureUiTests
                     await AssertStreamingAsync(run, "Fixture newer stream");
                     await CaptureIfRequestedAsync(run, "restored-final-newer-still-streaming.png");
                     await PublishLifecycleAsync(run, "fixture-chat-1", "start");
-                    await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-1",
-                        "assistant", new { delta = "STALE RESUMED OUTPUT MUST NOT APPEAR" });
+                    await PublishChatDeltaAsync(run, "fixture-chat-1", "STALE RESUMED OUTPUT MUST NOT APPEAR");
                 }
-                await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
-                    "assistant", new { delta = " after abort failure." });
+                await PublishChatDeltaAsync(run, "fixture-chat-2", "Fixture newer stream after abort failure.");
                 await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture newer stream after abort failure."),
                     "newer stream survives failed abort");
                 await AssertStreamingAsync(run, "Fixture newer stream after abort failure.");
@@ -224,8 +217,9 @@ public sealed partial class GatewayFixtureUiTests
                     [new { type = "text", text = "Fixture restored final." },
                      new { type = "audio", artifactId = "fixture-a", fileName = "fixture-a.wav" }], isFinal: true);
             }
-            await run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
-                "assistant", new { delta = " continues." });
+            await run.Gateway.PublishChatContentAsync(GatewayScenario.MainSessionKey, "fixture-chat-2",
+                [new { type = "text", text = "Fixture newer stream continues." },
+                 new { type = "audio", artifactId = "fixture-b", fileName = "fixture-b.wav" }], isFinal: false);
             await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture newer stream continues.")
                 && IsVisibleInTimeline(run, "Fixture restored final.")
                 && IsVisibleInTimeline(run, "fixture-a.wav")
@@ -257,6 +251,10 @@ public sealed partial class GatewayFixtureUiTests
 
     private static Task<JsonElement> SendCorrelationPromptAsync(GatewayFixtureRun run, string message) =>
         run.InvokeAsync("app.chat.send", new { threadId = GatewayScenario.MainSessionKey, message });
+
+    // Live reply text arrives as cumulative chat frames; agent assistant text is not rendered.
+    private static Task PublishChatDeltaAsync(GatewayFixtureRun run, string runId, string text) =>
+        run.Gateway.PublishChatContentAsync(GatewayScenario.MainSessionKey, runId, [new { type = "text", text }], isFinal: false);
 
     private static Task PublishLifecycleAsync(GatewayFixtureRun run, string runId, string phase) =>
         run.Gateway.PublishChatRunEventAsync(GatewayScenario.MainSessionKey, runId, "lifecycle", new { phase });

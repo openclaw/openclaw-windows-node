@@ -71,14 +71,15 @@ export async function collectScreenshots(root) {
     || a.capture.localeCompare(b.capture));
 }
 
-export async function publishScreenshots({ root, artifactClient, runUrl, summary }) {
+// archive names the job's complete diagnostic upload; each fixture shard has its own.
+export async function publishScreenshots({ root, artifactClient, runUrl, summary, archive = "test-results-gateway-fixture" }) {
   const lines = [
     "## Mock Gateway screenshots",
     "",
-    "Only failed-test captures are previewed. Successful captures remain in **test-results-gateway-fixture**.",
+    `Only failed-test captures are previewed. Successful captures remain in **${archive}**.`,
     "Click a capture to view the PNG in your browser (GitHub sign-in required).",
     "These show the real Companion app connected to the synthetic mock Gateway, not a production Gateway.",
-    "The complete TRX, logs and receipts remain in **test-results-gateway-fixture** under Artifacts.",
+    `The complete TRX, logs and receipts remain in **${archive}** under Artifacts.`,
     "",
   ];
   // A failed build may leave no fixture directory. Other filesystem errors remain failures.
@@ -127,12 +128,13 @@ export async function publishScreenshots({ root, artifactClient, runUrl, summary
   }
 }
 
-export async function run({ core, context }) {
+export async function run({ core, context, archive }) {
   const { DefaultArtifactClient } = await import("@actions/artifact");
   await publishScreenshots({
     root: path.join(process.env.GITHUB_WORKSPACE, "TestResults", "GatewayFixture"),
     artifactClient: new DefaultArtifactClient(),
     runUrl: `${process.env.GITHUB_SERVER_URL}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
     summary: core.summary,
+    archive,
   });
 }

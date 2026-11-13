@@ -12,7 +12,8 @@ public sealed class CiNugetCacheWorkflowTests
         Assert.Contains(@"OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming", job);
         Assert.Contains(@"OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local", job);
         Assert.Contains("OPENCLAW_REPO_ROOT: ${{ github.workspace }}", job);
-        Assert.Contains("-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled\"", job);
+        // The ordinary suite is split across ui-tests and tray-ui-shard; both keep the lane exclusions.
+        Assert.Equal(2, CountOccurrences(job, "-Filter \"Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&"));
         Assert.Contains("-Filter \"Category=AnimationPreferenceEnabled\"", job);
         Assert.Contains("-Filter \"FullyQualifiedName~PageHeroAnimationsDisabledTests\"", job);
         Assert.DoesNotContain("FullyQualifiedName!~Onboarding", job);
@@ -67,8 +68,8 @@ public sealed class CiNugetCacheWorkflowTests
 
         Assert.DoesNotContain("NUGET_PACKAGES:", otherJobs, StringComparison.Ordinal);
         Assert.DoesNotContain("nuget-core-", otherJobs, StringComparison.Ordinal);
-        // The independent Gateway fixture job also restores the shared cache.
-        const int sharedCacheLaneCount = 9;
+        // The two Gateway fixture jobs and the Tray UI shard also restore the shared cache.
+        const int sharedCacheLaneCount = 11;
         Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
         Assert.Equal(
             sharedCacheLaneCount,

@@ -226,7 +226,13 @@ internal static class OnboardingNativeProof
         return directory!;
     }
 
-    internal static async Task NextCompositionAsync(TimeSpan? cadence = null)
+    // Two frames normally arrive within tens of milliseconds; report slower waits so a UI-thread stall
+    // that the shared budget tolerates still leaves evidence in the test log.
+    private static readonly TimeSpan SlowCompositionReportThreshold = TimeSpan.FromSeconds(1);
+
+    internal static async Task NextCompositionAsync(TimeSpan? cadence = null,
+        [System.Runtime.CompilerServices.CallerFilePath] string callerFile = "",
+        [System.Runtime.CompilerServices.CallerLineNumber] int callerLine = 0)
     {
         var started = Stopwatch.GetTimestamp();
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -236,9 +242,22 @@ internal static class OnboardingNativeProof
             if (++frames >= 2 && Stopwatch.GetElapsedTime(started) >= (cadence ?? TimeSpan.Zero))
                 ready.TrySetResult();
         }
+        var caller = $"{Path.GetFileName(callerFile)}:{callerLine}";
         CompositionTarget.Rendering += OnRendering;
-        try { await ready.Task.WaitAsync(TimeSpan.FromSeconds(2)); }
+        // Frames are an observable event, not a delay: wait for them within the suite's named render-wait
+        // budget instead of an unnamed 2 s literal. Why frames were late in CI (stall or throttling) is unproven.
+        try { await ready.Task.WaitAsync(TestSupport.RenderedConditionTimeout); }
+        catch (TimeoutException timeout)
+        {
+            throw new TimeoutException(
+                $"Only {frames} composed frame(s) arrived within {TestSupport.RenderedConditionTimeout.TotalSeconds:0} s at {caller}.",
+                timeout);
+        }
         finally { CompositionTarget.Rendering -= OnRendering; }
+        var elapsed = Stopwatch.GetElapsedTime(started);
+        var expected = cadence ?? TimeSpan.Zero;
+        if (elapsed - expected > SlowCompositionReportThreshold)
+            Console.Error.WriteLine($"slow-composition: {frames} frame(s) took {elapsed.TotalMilliseconds:0} ms (cadence {expected.TotalMilliseconds:0} ms) at {caller}");
     }
 
     /// <summary>Verify a valid same-process HWND without changing activation or foreground state.</summary>
@@ -346,17 +365,37 @@ internal static class OnboardingNativeProof
         root.ClearValue(Panel.BackgroundProperty);
         root.Style = style;
         root.RequestedTheme = theme;
+        var highContrast = new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
+        bool ThemedBackground() => root.Background is SolidColorBrush brush && (highContrast ||
+            (brush.Color.R + brush.Color.G + brush.Color.B > 3 * 128) == (theme == ElementTheme.Light));
+        // Theme and the resolved brush are element state and need no composed frame. A fixed two-frame
+        // CompositionTarget.Rendering window timed out in CI, so wait only for the asserted state.
         await TestSupport.WaitForRenderedConditionAsync(
-            () => root.IsLoaded && root.ActualTheme == theme, "native surface Loaded and requested theme");
+            () => root.IsLoaded && root.ActualTheme == theme && ThemedBackground(),
+            "native surface Loaded with requested theme background",
+            () => $"IsLoaded={root.IsLoaded}, ActualTheme={root.ActualTheme}, " +
+                $"Background={(root.Background as SolidColorBrush)?.Color.ToString() ?? "none"}");
         root.UpdateLayout();
-        await NextCompositionAsync();
         Assert.Equal(theme, root.ActualTheme);
         var background = Assert.IsType<SolidColorBrush>(root.Background).Color;
-        if (!new Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+        if (!highContrast)
         {
             var light = background.R + background.G + background.B > 3 * 128;
             Assert.Equal(theme == ElementTheme.Light, light);
         }
+    }
+
+    /// <summary>
+    /// Waits until <paramref name="page"/> is parented beside a setup companion and returns that capture.
+    /// The companion lookup walks the live visual tree, so it is null until the page is mounted.
+    /// </summary>
+    internal static async Task<OpenClaw.SetupEngine.UI.Controls.SetupCompanion> CompanionAsync(FrameworkElement page)
+    {
+        OpenClaw.SetupEngine.UI.Controls.SetupCompanion? companion = null;
+        await TestSupport.WaitForRenderedConditionAsync(
+            () => (companion = OpenClaw.SetupEngine.UI.Controls.SetupCompanion.Find(page)) is not null,
+            $"setup companion beside {page.GetType().Name}");
+        return companion!;
     }
 
     internal static void AssertFullyVisible(FrameworkElement element, FrameworkElement viewport)
@@ -486,21 +525,35 @@ internal static class OnboardingNativeProof
         var retained = false;
         try
         {
-            using (var dpiContext = new DpiContext())
+            // Observed once in CI: the whole HWND, title bar included, captured near-uniform about 80 ms after the
+            // fixture window moved on-screen from 1x1, after XAML frames and DwmFlush. The cause is unconfirmed.
+            // Wait for the owned window's own composed pixels, in the frame and its content region, before the
+            // asserted capture below.
+            var contentRegion = new Rectangle(contentBounds.X - bounds.X, contentBounds.Y - bounds.Y,
+                contentBounds.Width, contentBounds.Height);
+            int probes = 0, frameColors = 0, contentColors = 0, firstFrameColors = -1;
+            var probeStarted = Stopwatch.GetTimestamp();
+            using (var probe = new Bitmap(bounds.Width, bounds.Height))
             {
-                Assert.Equal(bounds, AssertCaptureTarget(window));
-                Assert.Equal(contentTopInset, GetContentTopInset(window));
-                using var graphics = Graphics.FromImage(bitmap);
-                var dc = graphics.GetHdc();
-                try { Assert.True(PrintWindow(handle, dc, 2), "Owned-HWND PrintWindow failed. No screen or other-window fallback is allowed."); }
-                finally { graphics.ReleaseHdc(dc); }
-                Assert.Equal(bounds, AssertCaptureTarget(window));
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    {
+                        probes++;
+                        PrintOwnedWindow(window, handle, bounds, contentTopInset, probe);
+                        frameColors = SampledColorCount(probe, new Rectangle(0, 0, probe.Width, probe.Height));
+                        contentColors = SampledColorCount(probe, contentRegion);
+                        if (firstFrameColors < 0) firstFrameColors = frameColors;
+                        return frameColors >= MinimumCapturedColors && contentColors > 1;
+                    }, "owned proof window composed with rendered content",
+                    () => $"probes={probes}; frameColors={frameColors}; contentColors={contentColors}; " +
+                        $"required={MinimumCapturedColors}; bounds={bounds}; content={contentRegion}");
             }
-            var colors = new HashSet<int>();
-            for (var y = 0; y < bitmap.Height; y += Math.Max(1, bitmap.Height / 40))
-                for (var x = 0; x < bitmap.Width; x += Math.Max(1, bitmap.Width / 40))
-                    colors.Add(bitmap.GetPixel(x, y).ToArgb());
-            Assert.True(colors.Count >= 8, "The complete native frame is blank or near-uniform.");
+            var composedWaitMilliseconds = Stopwatch.GetElapsedTime(probeStarted).TotalMilliseconds;
+            if (probes > 1)
+                output.WriteLine($"blank-probe: probes={probes}; waitedMs={composedWaitMilliseconds:0}; firstFrameColors={firstFrameColors}");
+            var printedUtc = DateTimeOffset.UtcNow;
+            PrintOwnedWindow(window, handle, bounds, contentTopInset, bitmap);
+            Assert.True(SampledColorCount(bitmap, new Rectangle(0, 0, bitmap.Width, bitmap.Height)) >= MinimumCapturedColors,
+                "The complete native frame is blank or near-uniform.");
             Directory.CreateDirectory(directory);
             var path = Path.Combine(directory, $"{name}.png");
             bitmap.Save(path, System.Drawing.Imaging.ImageFormat.Png);
@@ -513,6 +566,7 @@ internal static class OnboardingNativeProof
                 runId = RunId, timestamp, captureEndedUtc = DateTimeOffset.UtcNow,
                 captureTicks = started, stopwatchFrequency = Stopwatch.Frequency,
                 captureMilliseconds = Stopwatch.GetElapsedTime(started).TotalMilliseconds,
+                printedUtc, composedProbeCount = probes, composedWaitMilliseconds,
                 hwnd = $"0x{handle:X}", processId = Environment.ProcessId, source.Head, source.ManifestSha256,
                 sourceManifest = Path.Combine(directory, $"source-{RunId}.json"),
                 dpi, rasterizationScale = scale, xamlRootSize = contentSize,
@@ -536,6 +590,29 @@ internal static class OnboardingNativeProof
         {
             if (!retained) bitmap.Dispose();
         }
+    }
+
+    private const int MinimumCapturedColors = 8;
+
+    private static void PrintOwnedWindow(Window window, IntPtr handle, Rectangle bounds, int contentTopInset, Bitmap bitmap)
+    {
+        using var dpiContext = new DpiContext();
+        Assert.Equal(bounds, AssertCaptureTarget(window));
+        Assert.Equal(contentTopInset, GetContentTopInset(window));
+        using var graphics = Graphics.FromImage(bitmap);
+        var dc = graphics.GetHdc();
+        try { Assert.True(PrintWindow(handle, dc, 2), "Owned-HWND PrintWindow failed. No screen or other-window fallback is allowed."); }
+        finally { graphics.ReleaseHdc(dc); }
+        Assert.Equal(bounds, AssertCaptureTarget(window));
+    }
+
+    private static int SampledColorCount(Bitmap bitmap, Rectangle region)
+    {
+        var colors = new HashSet<int>();
+        for (var y = region.Top; y < region.Bottom; y += Math.Max(1, region.Height / 40))
+            for (var x = region.Left; x < region.Right; x += Math.Max(1, region.Width / 40))
+                colors.Add(bitmap.GetPixel(x, y).ToArgb());
+        return colors.Count;
     }
 
     internal static void AssertHeroLayout(FrameworkElement hero, ITestOutputHelper? output = null)
@@ -911,11 +988,11 @@ internal static class OnboardingNativeProof
     internal static void AssertManualLabelExceptions(string[] missingLabels, string originalText, string scaledText)
     {
         static bool HasWelcomeTitleAmbiguity(string text) =>
-            $" {text} ".Contains(" Set up OpenCIaw ", StringComparison.Ordinal);
+            $" {text} ".Contains(" Where should OpenCIaw live? ", StringComparison.Ordinal);
 
         foreach (var label in missingLabels)
             Assert.True(label is "Set up your AI" or "Set up a local model" ||
-                label == "Set up OpenClaw" &&
+                label == "Where should OpenClaw live?" &&
                 HasWelcomeTitleAmbiguity(originalText) && HasWelcomeTitleAmbiguity(scaledText),
                 $"OCR did not verify expected label: {label}");
     }

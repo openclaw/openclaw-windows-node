@@ -87,10 +87,11 @@ public sealed record ChatAgentIdentity(
 ///         (called automatically once per thread on first selection).</item>
 ///   <item><c>ChatMessageReceived</c> (role=assistant, final) →
 ///         <see cref="ChatMessageEvent"/> + <see cref="ChatTurnEndEvent"/>.</item>
+///   <item><c>ChatMessageReceived</c> (role=assistant, delta) → streaming
+///         cumulative <see cref="ChatMessageEvent"/>. This is the only live
+///         assistant text source; agent stream=assistant text is ignored.</item>
 ///   <item><c>ChatMessageReceived</c> (role=user) → ignored (the local
 ///         <see cref="SendMessageAsync"/> already added the user entry).</item>
-///   <item><c>AgentEventReceived</c> stream=assistant → streaming deltas
-///         (<see cref="ChatMessageDeltaEvent"/>).</item>
 ///   <item><c>AgentEventReceived</c> stream=reasoning → reasoning entry
 ///         (<see cref="ChatReasoningEvent"/>/<see cref="ChatReasoningDeltaEvent"/>).</item>
 ///   <item><c>AgentEventReceived</c> stream=lifecycle phase=start/end/error →
@@ -146,6 +147,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     /// <summary>Last-known chat state from a previous session, used for pre-connection UI.</summary>
     internal LastChatState? CachedLastChatState => _state.CachedLastChatState;
     internal long ModelCatalogRevision => Interlocked.Read(ref _modelCatalogRevision);
+    internal long ToolDetailsGeneration => _state.HistoryGeneration;
 
     public event EventHandler<ChatDataChangedEventArgs>? Changed;
     public event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
@@ -622,6 +624,17 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                     ? ChatTelemetryOutcome.Canceled
                     : ChatTelemetryOutcome.Failure,
                 ex);
+            if (ex is OperationCanceledException && sendOperation is not null)
+            {
+                // The client cancels a dispatched chat.send when its connection ends and only
+                // then reports the non-connected status. Whether the gateway accepted the message
+                // is unknown, so this is not a send failure: the status transition ends the turn,
+                // and on reconnect still-queued messages are marked failed instead of being sent
+                // into the dropped connection. Handling it here first would depend on which of the
+                // two notifications arrived first.
+                Logger.Info($"[Queue] chat.send canceled by connection loss threadId='{threadId}' queuedMessageId='{request.Id}'; outcome unknown");
+                return false;
+            }
             var failure = _state.FailSend(
                 dispatch,
                 ex.Message,
@@ -1527,6 +1540,24 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             return;
         }
 
+        if (role == "assistant" &&
+            message.ReplacesStreamText &&
+            string.IsNullOrEmpty(message.Text) &&
+            !message.IsTranscriptSnapshot &&
+            string.Equals(message.State, "delta", StringComparison.OrdinalIgnoreCase) &&
+            (message.RunId ?? message.Presentation.RunId) is { Length: > 0 } retiringRunId)
+        {
+            message.SuppressNotification();
+            var snapshot = _state.RetireAssistantStream(
+                threadId,
+                retiringRunId,
+                ProjectionContext(),
+                gate.RuntimeGeneration);
+            if (snapshot is not null)
+                Publish(snapshot);
+            return;
+        }
+
         if (role == "system" &&
             string.Equals(message.OpenClawKind, "compaction", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrEmpty(message.Text))
@@ -1666,7 +1697,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         if (transition.TurnComplete)
             _throughput.CompleteAssistant(threadId, message.OutputTokens);
         else if (transition.Snapshot!.Timelines[threadId].TurnActive && !message.IsTranscriptSnapshot)
-            _throughput.ObserveText(threadId, 0); // cumulative snapshot text: opens the window only
+            _throughput.ObserveCumulativeText(threadId, message.RunId ?? message.Presentation.RunId, message.Text?.Length ?? 0);
 
         _telemetry.ObserveInboundOutput(
             threadId,
@@ -1885,7 +1916,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             case ChatResponseOutputKind.Assistant or ChatResponseOutputKind.Reasoning:
                 _throughput.ObserveText(threadId, mapped switch
                 {
-                    ChatMessageDeltaEvent delta => delta.Text?.Length ?? 0,
                     ChatReasoningDeltaEvent reasoning => reasoning.Text?.Length ?? 0,
                     _ => 0,
                 });

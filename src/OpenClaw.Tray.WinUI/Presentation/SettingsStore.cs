@@ -127,6 +127,8 @@ internal sealed class SettingsStore : ISettingsStore
         public bool GlobalHotkeyEnabled { set => _settings.GlobalHotkeyEnabled = value; }
         public bool UseLegacyWebChat { set => _settings.UseLegacyWebChat = value; }
         public bool ShowNotifications { set => _settings.ShowNotifications = value; }
+        public bool ShowDesktopCompanion { set => _settings.ShowDesktopCompanion = value; }
+        public int DesktopCompanionScalePercent { set => _settings.DesktopCompanionScalePercent = value; }
         public string NotificationSound { set => _settings.NotificationSound = value; }
         public string AppTheme { set => _settings.AppTheme = value; }
         public bool? ShowDiagnosticsOverride { set => _settings.ShowDiagnosticsOverride = value; }

@@ -441,7 +441,9 @@ internal sealed record ChatAssistantImageLoadState(
 
 internal static class ChatAttachmentBitmapDecoder
 {
-    internal static BitmapImage? TryDecode(byte[] bytes)
+    internal static BitmapImage? TryDecode(
+        byte[] bytes,
+        uint maximumDecodeDimension = ChatAssistantImageDecodePolicy.MaximumDecodeDimension)
     {
         try
         {
@@ -459,7 +461,8 @@ internal static class ChatAttachmentBitmapDecoder
                     decoder.PixelWidth,
                     decoder.PixelHeight,
                     out var decodeWidth,
-                    out var decodeHeight))
+                    out var decodeHeight,
+                    maximumDecodeDimension))
             {
                 return null;
             }

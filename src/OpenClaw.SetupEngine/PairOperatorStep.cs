@@ -186,7 +186,8 @@ public sealed class PairOperatorStep : SetupStep
         SetupContext ctx,
         CancellationToken cancellationToken,
         int noListenerRetryCount = 0,
-        TimeSpan? noListenerRetryDelay = null)
+        TimeSpan? noListenerRetryDelay = null,
+        bool beforeConnectionAfterRestart = false)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(noListenerRetryCount);
         var retryDelay = noListenerRetryDelay ?? TimeSpan.FromSeconds(1);
@@ -207,7 +208,8 @@ public sealed class PairOperatorStep : SetupStep
                 cancellationToken => probe(record, cancellationToken),
                 noListenerRetryCount,
                 retryDelay,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                retryRelayWithoutGuestOwner: beforeConnectionAfterRestart).ConfigureAwait(false);
 
         return provenance.Kind switch
         {

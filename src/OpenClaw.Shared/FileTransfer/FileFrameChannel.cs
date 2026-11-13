@@ -218,9 +218,13 @@ public sealed class FileFrameChannel : IFileInvocationChannel, IAsyncDisposable
     public void Abort()
     {
         if (Interlocked.Exchange(ref _aborted, 1) != 0) return;
-        _lifetime.Cancel();
-        _messages.Writer.TryComplete();
-        _ready.TrySetCanceled(Token);
+        // A throwing cancellation callback must not leave readers or Ready waiting forever.
+        try { _lifetime.Cancel(); }
+        finally
+        {
+            _messages.Writer.TryComplete();
+            _ready.TrySetCanceled(Token);
+        }
     }
 
     public ValueTask DisposeAsync()

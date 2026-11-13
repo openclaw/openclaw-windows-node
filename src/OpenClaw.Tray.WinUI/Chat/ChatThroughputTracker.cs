@@ -47,6 +47,12 @@ internal sealed class ChatThroughputTracker(TimeProvider timeProvider)
             state.RunOutputTokens = 0;
             state.RunBaselineKnown = true;
             state.RunReportsUsage = false;
+            // A late start must not recount frames already seen; a fresh run counts from empty.
+            if (state.CumulativeTextLength is null)
+            {
+                state.CumulativeTextLength = 0;
+                state.CumulativeRunId = null;
+            }
         }
         Changed?.Invoke(threadId);
     }
@@ -64,6 +70,7 @@ internal sealed class ChatThroughputTracker(TimeProvider timeProvider)
             if (!_threads.TryGetValue(threadId, out var state))
                 return;
             state.RunBaselineKnown = false;
+            state.CumulativeTextLength = null;
             if (state.RunReportsUsage)
                 state.ClearSegment();
         }
@@ -86,6 +93,7 @@ internal sealed class ChatThroughputTracker(TimeProvider timeProvider)
             {
                 state.ClearSegment();
                 state.RunBaselineKnown = false;
+                state.CumulativeTextLength = null;
             }
         }
         foreach (var threadId in threadIds)
@@ -96,20 +104,48 @@ internal sealed class ChatThroughputTracker(TimeProvider timeProvider)
     public void ObserveText(string threadId, int characters)
     {
         lock (_gate)
+            ObserveTextLocked(GetOrCreateLocked(threadId), characters);
+        if (characters > 0)
+            Changed?.Invoke(threadId);
+    }
+
+    /// <summary>
+    /// Records a live chat frame, which carries the run's assistant text so far. Only growth since
+    /// the previous frame of the same run counts. A new run, or shorter text after the Gateway
+    /// retires saved text from its live buffer, starts again from empty. After a missed run start
+    /// the first frame is only a baseline.
+    /// </summary>
+    public void ObserveCumulativeText(string threadId, string? runId, int length)
+    {
+        int characters;
+        length = Math.Max(0, length);
+        lock (_gate)
         {
             var state = GetOrCreateLocked(threadId);
-
-            var now = timeProvider.GetTimestamp();
-            if (state.SegmentStart is null)
+            characters = state.CumulativeTextLength switch
             {
-                state.SegmentStart = now;
-                state.Characters = 0;
-            }
-            state.LastTextAt = now;
-            state.Characters += Math.Max(0, characters);
+                null => 0,
+                { } previous when state.CumulativeRunId != runId || length < previous => length,
+                { } previous => length - previous,
+            };
+            state.CumulativeRunId = runId;
+            state.CumulativeTextLength = length;
+            ObserveTextLocked(state, characters);
         }
         if (characters > 0)
             Changed?.Invoke(threadId);
+    }
+
+    private void ObserveTextLocked(ThreadState state, int characters)
+    {
+        var now = timeProvider.GetTimestamp();
+        if (state.SegmentStart is null)
+        {
+            state.SegmentStart = now;
+            state.Characters = 0;
+        }
+        state.LastTextAt = now;
+        state.Characters += Math.Max(0, characters);
     }
 
     /// <summary>Closes the current segment without a sample (tool activity).</summary>
@@ -233,6 +269,8 @@ internal sealed class ChatThroughputTracker(TimeProvider timeProvider)
         public long LastTextAt;
         public long Characters;
         public long RunOutputTokens;
+        public int? CumulativeTextLength;
+        public string? CumulativeRunId;
         public bool RunReportsUsage;
         public bool RunBaselineKnown;
         public readonly Queue<double> Samples = new();

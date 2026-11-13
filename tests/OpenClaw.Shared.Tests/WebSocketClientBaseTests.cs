@@ -31,6 +31,8 @@ public class TestWebSocketClient : WebSocketClientBase
     public ConcurrentQueue<(long Generation, GatewayHandshakePhase Phase)> TransportObservations { get; } = new();
     public bool AutoReconnectEnabled { get; set; } = true;
     public TimeSpan? TestConnectAttemptTimeout { get; set; }
+    public Exception? MessageError { get; set; }
+    public Exception? LossNotificationError { get; set; }
 
     protected override int ReceiveBufferSize => 8192;
     protected override string ClientRole => "test";
@@ -46,6 +48,8 @@ public class TestWebSocketClient : WebSocketClientBase
 
     protected override Task ProcessMessageAsync(string json)
     {
+        if (MessageError is { } error)
+            throw error;
         ProcessedMessages.Add(json);
         return Task.CompletedTask;
     }
@@ -60,6 +64,9 @@ public class TestWebSocketClient : WebSocketClientBase
     {
         OnDisconnectedCallCount++;
     }
+
+    protected override Action? CaptureTransportLossNotification() =>
+        LossNotificationError is { } error ? () => throw error : null;
 
     protected override void OnTransportObservation(
         long connectionGeneration, GatewayHandshakePhase phase,
@@ -77,7 +84,15 @@ public class TestWebSocketClient : WebSocketClientBase
         OnDisposingCallCount++;
     }
 
-    protected override bool ShouldAutoReconnect() => AutoReconnectEnabled;
+    protected override bool ShouldAutoReconnect()
+    {
+        // The listen loop asks this only after it has finished reporting the loss.
+        _reconnectDecision.TrySetResult();
+        return AutoReconnectEnabled;
+    }
+
+    private readonly TaskCompletionSource _reconnectDecision = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public Task ReconnectDecisionMade => _reconnectDecision.Task;
 
     // Expose protected members for testing
     public void TestRaiseStatusChanged(ConnectionStatus status)
@@ -88,7 +103,11 @@ public class TestWebSocketClient : WebSocketClientBase
     public string TestGatewayUrlForDisplay => GatewayUrlForDisplay;
     public string TestToken => _token;
     public IOpenClawLogger TestLogger => _logger;
-    public Task TestReconnectWithBackoffAsync() => ReconnectWithBackoffAsync();
+    public Task TestReconnectWithBackoffAsync()
+    {
+        var owner = CaptureConnection();
+        return ReconnectWithBackoffAsync(owner.Socket, owner.Generation);
+    }
     public void TestAbortCurrentWebSocket() => AbortCurrentWebSocket(CurrentConnectionGeneration);
 }
 
@@ -97,6 +116,10 @@ public class WebSocketClientBaseTests(ITestOutputHelper output)
 {
     private readonly TestLogger _logger = new();
     private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
+    // Hang guard for one event-driven step; only absorbs CI scheduling delay.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
     private const string BackoffCleanupExceptionTypeKey = "BackoffProbeCleanupExceptionType";
     private const string BackoffDiagnosticExceptionTypeKey = "BackoffProbeDiagnosticExceptionType";
 
@@ -278,10 +301,12 @@ public class WebSocketClientBaseTests(ITestOutputHelper output)
         {
             AutoReconnectEnabled = false,
         };
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
         await client.ConnectAsync();
         await WaitForConditionAsync(
             () => server.AcceptedCount == 1,
             TimeSpan.FromSeconds(2));
+        client.StatusChanged += (_, status) => statuses.Enqueue(status);
 
         client.TestAbortCurrentWebSocket();
         try
@@ -292,10 +317,151 @@ public class WebSocketClientBaseTests(ITestOutputHelper output)
         {
             // The remote endpoint may observe the abort before attempting its send.
         }
-        await Task.Delay(100);
 
+        await client.ReconnectDecisionMade.WaitAsync(CloseHandshakeTimeout);
+        Assert.Equal(1, client.OnDisconnectedCallCount);
         Assert.DoesNotContain("stale-socket-message", client.ProcessedMessages);
-        Assert.Equal(0, client.OnDisconnectedCallCount);
+        Assert.Equal(0, client.OnErrorCallCount);
+        // The abort's caller owns status: it raises Error or retries quietly, so cleanup adds no Disconnected.
+        Assert.DoesNotContain(ConnectionStatus.Disconnected, statuses);
+        Assert.DoesNotContain(client.TransportObservations, item => item.Phase == GatewayHandshakePhase.Disconnected);
+    }
+
+    [Fact]
+    public async Task OversizedMessage_ReportsDisconnectBeforePeerCompletesClose()
+    {
+        using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            AutoReconnectEnabled = false,
+        };
+        var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Disconnected)
+                disconnected.TrySetResult();
+        };
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, CloseHandshakeTimeout);
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var frame = Encoding.UTF8.GetBytes(new string('x', 8192));
+        var frames = Enumerable.Repeat(frame, 32 * 1024 * 1024 / frame.Length + 1).ToArray();
+        await server.SendTextFramesAsync(frames, deadline.Token);
+
+        await disconnected.Task.WaitAsync(CloseHandshakeTimeout);
+        Assert.Equal(1, client.OnDisconnectedCallCount);
+        Assert.Empty(client.ProcessedMessages);
+        Assert.Equal(0, client.OnErrorCallCount);
+        Assert.Single(client.TransportObservations, item => item.Phase == GatewayHandshakePhase.Disconnected);
+        await server.CompleteClientCloseAsync(0, deadline.Token);
+    }
+
+    [Fact]
+    public async Task MessageProcessingError_ReportsLossExactlyOnce()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            AutoReconnectEnabled = false,
+            MessageError = new InvalidOperationException("synthetic processing failure"),
+        };
+        var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Error)
+                failed.TrySetResult();
+        };
+        await client.ConnectAsync();
+        await server.SendTextAsync("trigger failure");
+        await failed.Task.WaitAsync(CloseHandshakeTimeout);
+
+        Assert.Equal(1, client.OnDisconnectedCallCount);
+        Assert.Equal(1, client.OnErrorCallCount);
+        Assert.Same(client.MessageError, client.LastError);
+        Assert.Single(client.TransportObservations, item => item.Phase == GatewayHandshakePhase.Disconnected);
+    }
+
+    [Fact]
+    public async Task DisconnectSubscriber_CanWaitForConcurrentDispose()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            AutoReconnectEnabled = false,
+        };
+        var disposalCompleted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Disconnected)
+            {
+                var disposing = Task.Run(client.Dispose);
+                disposalCompleted.TrySetResult(disposing.Wait(CloseHandshakeTimeout));
+            }
+        };
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, CloseHandshakeTimeout);
+        await server.CloseSocketAsync(0);
+
+        Assert.True(await disposalCompleted.Task.WaitAsync(StepTimeout),
+            "A disconnect subscriber must not hold the transport lock while another thread disposes the client.");
+    }
+
+    [Fact]
+    public async Task DisconnectSubscriberFailure_DoesNotSkipOtherSubscribersOrReconnect()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger);
+        var laterSubscriberNotified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, CloseHandshakeTimeout);
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Disconnected)
+                throw new InvalidOperationException("synthetic subscriber failure");
+        };
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Disconnected)
+                laterSubscriberNotified.TrySetResult();
+        };
+
+        await server.CloseSocketAsync(0);
+
+        await laterSubscriberNotified.Task.WaitAsync(CloseHandshakeTimeout);
+        await server.WaitForAcceptedCountAsync(2, TimeSpan.FromSeconds(10));
+        Assert.Equal(1, client.OnDisconnectedCallCount);
+        Assert.Equal(0, client.OnErrorCallCount);
+    }
+
+    [Fact]
+    public async Task LossNotificationFailure_StillReportsListenErrorAndReconnects()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            MessageError = new InvalidOperationException("synthetic processing failure"),
+            LossNotificationError = new InvalidOperationException("synthetic cleanup failure"),
+        };
+        var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.StatusChanged += (_, status) =>
+        {
+            if (status == ConnectionStatus.Error)
+                failed.TrySetResult();
+        };
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, CloseHandshakeTimeout);
+
+        await server.SendTextAsync("trigger failure");
+
+        await failed.Task.WaitAsync(CloseHandshakeTimeout);
+        await server.WaitForAcceptedCountAsync(2, TimeSpan.FromSeconds(10));
+        Assert.Equal(1, client.OnErrorCallCount);
+        Assert.Same(client.MessageError, client.LastError);
     }
 
     [Fact]

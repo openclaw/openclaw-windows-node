@@ -24,6 +24,12 @@ internal readonly record struct InitialTailNavigationRequest(int Version)
 
 internal static class TailNavigationPolicy
 {
+    private const double TailVisibilityTolerance = 1;
+
+    // Unlike follow intent, landing must reject overshoot after the extent shrinks.
+    public static bool IsAtBottom(double verticalOffset, double scrollableHeight) =>
+        Math.Abs(scrollableHeight - verticalOffset) <= TailVisibilityTolerance;
+
     public static bool TryCapture(
         int tailIndex,
         string? displayedTailKey,
@@ -320,8 +326,30 @@ internal sealed class InitialTailConfirmation
 internal sealed class TailReflowCorrection
 {
     private bool _available;
+    private object? _contentRevision;
+    private bool _growthAvailable;
 
     public void Arm() => _available = true;
+
+    public void ContentChanged(object revision)
+    {
+        if (ReferenceEquals(_contentRevision, revision))
+            return;
+
+        _contentRevision = revision;
+        _growthAvailable = true;
+    }
+
+    public void ArmForExtentGrowth(bool following, bool atBottom, bool initialPending, bool readerOwnsAnchor)
+    {
+        if (!_growthAvailable || !following || atBottom || initialPending || readerOwnsAnchor)
+            return;
+
+        // A correction can itself remeasure virtual rows. Only another content
+        // revision, not another native extent event, grants a new growth budget.
+        _growthAvailable = false;
+        Arm();
+    }
 
     // A pending initial request already targets the tail. Starting a correction
     // then would merge with it and impose the correction's follow gate on it.
@@ -334,5 +362,9 @@ internal sealed class TailReflowCorrection
         return true;
     }
 
-    public void Clear() => _available = false;
+    public void Clear()
+    {
+        _available = false;
+        _growthAvailable = false;
+    }
 }

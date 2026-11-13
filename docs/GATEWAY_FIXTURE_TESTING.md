@@ -139,9 +139,9 @@ CI builds the UI and integration test projects before running the fixture and
 passes `-NoBuild` to reuse their matching configuration and RID outputs. Local
 runs build the test projects by default. Neither path adds a separate MSBuild
 `Platform` output tree. Each test-project invocation retains a 900-second default
-deadline; `-TestTimeoutSeconds` accepts 1 through 1800 seconds. The ordinary hosted
-mock-Gateway scenarios step explicitly uses 1500 seconds inside its unchanged
-30-minute outer bound. Timeouts still terminate only the owned test process tree;
+deadline; `-TestTimeoutSeconds` accepts 1 through 1800 seconds. Each hosted
+mock-Gateway scenarios step (one per fixture shard) explicitly uses 1500 seconds inside
+its 30-minute outer bound, which also covers a full unsharded run. Timeouts still terminate only the owned test process tree;
 missing reports, zero tests, failures and skipped selected tests still fail proof.
 
 The same hosted job also builds the unsigned non-Dev Release app and runs both
@@ -332,15 +332,24 @@ retain the two executable identities and actual result in `test-results-gateway-
 No private keys or raw profile files are published. A missing baseline, digest
 mismatch, failed case, or zero/skipped selection is not compatibility proof.
 
-The dedicated `windows-latest` Gateway fixture job runs this script against its explicitly
+The dedicated `windows-latest` Gateway fixture jobs run this script against their explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
-`Directory.Build.props`. Its dedicated step passes `-NativeInputProof` to the
-wrapper on that owned interactive runner. The wrapper enables native input only
+`Directory.Build.props`. Each job's dedicated step passes `-NativeInputProof` to the
+wrapper on its owned interactive runner. The wrapper enables native input only
 in the ordinary fixture UI child and selects `Category=GatewayFixture` without
 keyboard-only cases, including the
-context-usage and chat-run correlation scenarios. The general UI test step
-excludes that category so each scenario runs once. TRX, synthetic request logs,
-run receipts and owned-window screenshots are uploaded in `test-results-gateway-fixture`
+context-usage and chat-run correlation scenarios. `gateway-fixture` runs shard
+`A` and `gateway-fixture-shard` runs shard `B` in parallel, selected through
+`OPENCLAW_GATEWAY_FIXTURE_UI_SHARD`; together they
+run each scenario once (see [CI impact fast paths](TEST_COVERAGE.md#ci-impact-fast-paths)).
+Both jobs build the UI and integration test projects. Only shard `A` runs the
+profile and application checks and the Release correlation steps. Promoting a
+candidate from before the split runs that candidate's runner, which ignores the
+shard variable, so both jobs run the full suite within the same 30-minute
+step budget.
+The general UI test step excludes that category so each scenario runs once. TRX,
+synthetic request logs, run receipts and owned-window screenshots are uploaded in
+`test-results-gateway-fixture` and `test-results-gateway-fixture-shard`
 under `GatewayFixture`, including on failure. Other keyboard/compositor proof
 opt-ins, production-shaped Release proof, real Gateway, WSL and MXC validation
 remain separate; this hosted smoke does not replace them.
@@ -351,15 +360,15 @@ screen/work-area receipt is retained at `Desktop\geometry.json` in `test-results
 The original two-width and visible-content assertions remain unchanged. The local
 fixture runner does not change your desktop resolution.
 
-The fixture job starts after change classification, independently of the native
-UI job, whenever `ui_tests` is selected. CI Gate requires both jobs to succeed;
+The fixture jobs start after change classification, independently of the native
+UI job, whenever `ui_tests` is selected. CI Gate requires every one of these jobs to succeed;
 a failed, cancelled or unexpectedly skipped fixture job cannot pass the gate.
 Fixture scenarios require successful build, runtime installation and desktop
 preflight. Stable-profile compatibility still runs after a scenario failure when
 those prerequisites succeeded, preserving separate results and screenshots.
 
 For failed fixture tests, browse screenshots without downloading a ZIP: open the workflow run's
-**Summary** and find **Mock Gateway screenshots** in the Gateway fixture job summary.
+**Summary** and find **Mock Gateway screenshots** in the failing Gateway fixture job's summary.
 The index contains only failed tests and interrupted runs with a failure capture,
 grouped by test with failure captures first. Click a capture filename to open its PNG
 in the browser. GitHub sign-in is required. Each PNG also appears individually
@@ -367,8 +376,9 @@ under **Artifacts**, with a test/capture name and unique fixture run ID.
 These previews use unarchived GitHub artifacts, retain the repository's normal
 artifact retention, and are published only when the fixture step fails.
 Successful tests do not create screenshot summary entries or individual PNG
-artifacts; their captures stay inside `test-results-gateway-fixture\GatewayFixture`.
-The `test-results-gateway-fixture` ZIP remains the complete diagnostic download, including
+artifacts; their captures stay inside the job's `GatewayFixture` directory.
+The `test-results-gateway-fixture` and `test-results-gateway-fixture-shard` ZIPs remain
+the complete diagnostic downloads, including
 TRX, request logs, run receipts and original screenshot paths. If no capture was
 produced, the summary says so; inspect the fixture step for a build/startup failure.
 
@@ -1276,8 +1286,8 @@ the message or idempotency key.
 
 | Interaction | Behavior |
 | --- | --- |
-| `streaming` | Lifecycle start, reasoning, paced assistant deltas, Markdown/code/table, final message and lifecycle end |
-| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message), rather than `agent` assistant deltas |
+| `streaming` | Lifecycle start, reasoning, paced assistant text on both `chat` deltas and `agent` assistant deltas, Markdown/code/table, final message and lifecycle end. Like the Gateway, the fixture omits agent assistant text for clients that advertise `chat-only-assistant-text` |
+| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message) without `agent` assistant deltas |
 | `tools`, `tool-error` | Correlated tool start/result, success or failure, with tool-call/result transcript entries |
 | `tool-powershell` | A synthetic PowerShell command with variables, keywords and strings for input syntax-color proof, followed by literal output. Nothing executes |
 | `agent-activity` | Job activity, then `exec` and `apply_patch` activity items, each paired with correlated tool start/result events and transcript entries. All operations are inert |

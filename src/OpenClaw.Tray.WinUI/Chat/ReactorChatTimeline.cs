@@ -259,21 +259,26 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         };
         return Grid(
             [GridSize.Star()],
-            [GridSize.Auto, GridSize.Star(), GridSize.Auto],
-            itemsView
-                .BindVerticalScrollController(
-                    annotatedScrollBarRef,
-                    rows.Count - 1,
-                    rows.Count,
-                    jumpRevision,
-                    initialTailRequestKey,
-                    displayedTailKey,
-                    setAtTail)
+            [GridSize.Auto, GridSize.Star()],
+            Border(Border(itemsView
+                    .BindVerticalScrollController(
+                        annotatedScrollBarRef,
+                        rows.Count - 1,
+                        rows.Count,
+                        jumpRevision,
+                        initialTailRequestKey,
+                        displayedTailKey,
+                        contentRevision,
+                        setAtTail)
+                    .AutomationName("Chat messages")
+                    .HAlign(HorizontalAlignment.Stretch)
+                    .VAlign(VerticalAlignment.Stretch)))
                 .Grid(row: 1, column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
-                .AutomationName("Chat messages")
                 .HAlign(HorizontalAlignment.Stretch)
-                .VAlign(VerticalAlignment.Stretch),
+                .VAlign(VerticalAlignment.Stretch)
+                .OnMount(control => ChatTranscriptFade.Attach((Microsoft.UI.Xaml.Controls.Border)control))
+                .OnUnmount(control => ChatTranscriptFade.Detach((Microsoft.UI.Xaml.Controls.Border)control)),
             AnnotatedScrollBar()
                 .Ref(annotatedScrollBarRef)
                 .Width(ChatVisuals.RailWidth(viewportWidth))
@@ -314,22 +319,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .AccessibilityView(atTail ? AccessibilityView.Raw : AccessibilityView.Content)
                     .Set(button => button.IsHitTestVisible = !atTail)
                     .VAlign(VerticalAlignment.Bottom).Margin(0, 0, 0, ChatVisuals.BlockGap)
-                    .Grid(row: 1, column: 0),
-            ScrollViewer(VStack(4,
-                props.Timeline.ProviderReview is { } providerReview
-                    ? Expander(LocalizedOrDefault("Chat_Review_Required", "Provider review required"),
-                        TextBlock(string.Join("\n\n",
-                            new[] { providerReview.Explanation, providerReview.ContinuationMessage,
-                                LocalizedOrDefault("Chat_Review_Web", "Review this request in web chat before continuing.") }
-                                .Where(value => !string.IsNullOrEmpty(value))))
-                            .TextWrapping(TextWrapping.Wrap).IsTextSelectionEnabled(true))
-                        .HAlign(HorizontalAlignment.Stretch).AutomationId("ChatProviderReview")
-                        .AutomationName(LocalizedOrDefault("Chat_Review_Required", "Provider review required"))
-                    : Empty(),
-                Component<ReactorChildActivity, ReactorChildActivityProps>(new(props.Timeline.ChildThreads ?? []))))
-                .MaxHeight(ChatVisuals.ActivityDetailsMaxHeight)
-                .AutomationId("ChatActivityDetails")
-                .Margin(ChatVisuals.Gutter(viewportWidth), 0).Grid(row: 2, column: 0))
+                    .Grid(row: 1, column: 0))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
             .OnPointerEntered((_, _) => setNavigationVisible(true))
@@ -670,21 +660,22 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         {
             content.Add(Text(
                     messageText,
-                    14,
+                    ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatUserTextBrush")
+                .FontFamily(ChatVisuals.BodyFontFamily)
                 .IsTextSelectionEnabled(true));
         }
 
         var bubble = Border(VStack(8, content.ToArray()))
             .Background(Theme.Ref("ChatUserBrush"))
             .CornerRadius(ChatVisuals.SurfaceRadius)
-            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
+            .Padding(16, 12)
             .MaxWidth(720)
             .HAlign(HorizontalAlignment.Right);
 
         return VStack(
-                0,
+                8,
                 bubble,
                 HStack(
                         8,
@@ -695,7 +686,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Opacity(showFooter ? 1 : 0)
                     .Set(panel => panel.IsHitTestVisible = showFooter)
                     .AutomationId($"ChatMessageFooter_{entry.Id}")
-                    .Margin(16, ChatVisuals.CompactGap, 4, 0)
+                    .Margin(16, 2, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
             .Margin(32, ChatVisuals.CompactGap, 0, ChatVisuals.CompactGap)
             .HAlign(HorizontalAlignment.Stretch)
@@ -834,15 +825,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 MarkdownParserFlags.PermissiveUrlAutolinks | MarkdownParserFlags.PermissiveWwwAutolinks,
             Image = (alt, _) => Text(
                     string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : 14,
+                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatProseTextBrush")
+                .FontFamily(ChatVisuals.BodyFontFamily)
                 .IsTextSelectionEnabled(true),
             HtmlBlock = raw => Text(
                     ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw),
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : 14,
+                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatProseTextBrush")
+                .FontFamily(ChatVisuals.BodyFontFamily)
                 .IsTextSelectionEnabled(true),
         };
 

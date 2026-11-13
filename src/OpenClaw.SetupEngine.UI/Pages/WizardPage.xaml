@@ -4,36 +4,35 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
+    xmlns:themes="using:OpenClaw.SetupEngine.UI.Themes"
     NavigationCacheMode="Disabled">
     <Page.Resources>
-        <DataTemplate x:Key="WrappedFooterAction">
-            <TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"
-                       Style="{StaticResource BodyTextBlockStyle}" />
-        </DataTemplate>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <themes:SetupResources />
+            </ResourceDictionary.MergedDictionaries>
+            <DataTemplate x:Key="WrappedFooterAction">
+                <TextBlock Text="{Binding}" TextWrapping="Wrap" TextAlignment="Center"
+                           Style="{StaticResource BodyTextBlockStyle}" />
+            </DataTemplate>
+        </ResourceDictionary>
     </Page.Resources>
-    <Grid RowDefinitions="Auto,*,Auto" Padding="40,4,40,24">
-        <StackPanel Grid.Row="0" Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Thinking"
-                                      HorizontalAlignment="Center" />
-            <TextBlock Text="OpenClaw onboard"
-                       Style="{StaticResource TitleTextBlockStyle}" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
-            <TextBlock x:Name="StatusText" Text="Connecting to gateway..."
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                       HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+    <Grid RowDefinitions="Auto,*,Auto" Padding="{StaticResource SetupPagePadding}">
+        <StackPanel Grid.Row="0" Style="{StaticResource SetupHeroPanelStyle}">
+            <TextBlock Text="OpenClaw onboard" Style="{StaticResource SetupHeroTitleTextStyle}" />
+            <TextBlock x:Name="StatusText" Text="Connecting to gateway..." Style="{StaticResource SetupHeroSubtitleTextStyle}" />
         </StackPanel>
 
-        <ScrollViewer x:Name="MainScroller" Grid.Row="1" Margin="0,24,0,20" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
+        <ScrollViewer x:Name="MainScroller" Grid.Row="1" Margin="{StaticResource SetupBodyMargin}" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12" Margin="{StaticResource SetupGutterMargin}">
             <StackPanel x:Name="TranscriptPanel" Spacing="6" />
             <Border x:Name="StepCard"
                     CornerRadius="8"
                     Padding="24"
                     MinHeight="180"
-                    BorderThickness="1"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
-                <StackPanel Spacing="16">
+                    BorderThickness="0,1"
+                    BorderBrush="{ThemeResource SetupHairlineBrush}">
+                <StackPanel x:Name="StepInputsPanel" Spacing="16">
                     <TextBlock x:Name="TitleText" Style="{StaticResource SubtitleTextBlockStyle}" TextWrapping="Wrap" />
                     <RichTextBlock x:Name="MessageBlock" Visibility="Collapsed"
                                    IsTextSelectionEnabled="True" TextWrapping="Wrap"
@@ -87,17 +86,15 @@
                                 MinWidth="100"
                                 Click="RestartGateway_Click" />
                     </StackPanel>
-                    <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" Foreground="{ThemeResource SetupIndicatorAccentBrush}" />
+                    <ProgressRing x:Name="BusyRing" Width="32" Height="32" IsActive="True" HorizontalAlignment="Center" Foreground="{ThemeResource SetupAccentBrush}" />
                 </StackPanel>
             </Border>
             </StackPanel>
         </ScrollViewer>
 
-        <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto,Auto"
-              ColumnDefinitions="*,*,*" ColumnSpacing="8" RowSpacing="12">
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.ColumnSpan="3"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <DropDownButton x:Name="MoreOptionsButton" Grid.Row="1"
+        <Grid x:Name="NavigationFooter" Grid.Row="2" RowDefinitions="Auto"
+              ColumnDefinitions="*,*,*" ColumnSpacing="8" Margin="{StaticResource SetupGutterMargin}">
+            <DropDownButton x:Name="MoreOptionsButton" Grid.Row="0"
                             Content="More options"
                             MinWidth="0" HorizontalAlignment="Stretch"
                             ContentTemplate="{StaticResource WrappedFooterAction}"
@@ -120,11 +117,11 @@
                     </MenuFlyout>
                 </DropDownButton.Flyout>
             </DropDownButton>
-            <Button x:Name="SecondaryButton" Grid.Row="1" Grid.Column="1" Content="Skip"
+            <Button x:Name="SecondaryButton" Grid.Row="0" Grid.Column="1" Content="Skip" MinHeight="40"
                     MinWidth="0" HorizontalAlignment="Stretch"
                     ContentTemplate="{StaticResource WrappedFooterAction}"
                     Click="Secondary_Click" IsEnabled="False" />
-            <Button x:Name="PrimaryButton" Grid.Row="1" Grid.Column="2" Content="Continue"
+            <Button x:Name="PrimaryButton" Grid.Row="0" Grid.Column="2" Content="Continue" MinHeight="40"
                     MinWidth="0" HorizontalAlignment="Stretch"
                     ContentTemplate="{StaticResource WrappedFooterAction}"
                     Style="{StaticResource AccentButtonStyle}"

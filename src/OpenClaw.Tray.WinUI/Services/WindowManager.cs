@@ -368,7 +368,8 @@ internal sealed class WindowManager : IWindowManager
             {
                 _readyWindow?.Close();
                 ShowHub("connection");
-            });
+            },
+            gatewayId => _callbacks.GetGatewayRegistry()?.GetById(gatewayId));
         _readyWindow = ready;
         ready.Closed += (_, _) =>
         {
