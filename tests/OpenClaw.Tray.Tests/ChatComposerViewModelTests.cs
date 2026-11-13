@@ -20,6 +20,13 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public sealed class ChatComposerViewModelTests
 {
+    private const string ReentrancyTimeoutVariable = "OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS";
+    // Hang guard for one event-driven step. A deadlocked drain never completes, so a
+    // generous bound does not weaken these checks; it only absorbs scheduling latency.
+    private static readonly TimeSpan ReentrancyTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ReentrancyTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
+
     [Fact]
     public void SandboxSettings_IgnoreOlderSnapshotsAndUnrelatedChanges()
     {
@@ -601,7 +608,7 @@ public sealed class ChatComposerViewModelTests
                 return;
 
             applyStarted.Set();
-            Assert.True(releaseApply.Wait(TimeSpan.FromSeconds(5)), "Test did not release the blocked apply in time.");
+            Assert.True(releaseApply.Wait(ReentrancyTimeout), "Test did not release the blocked apply in time.");
         };
 
         // HasThreadAccess defaults to true, so Mutate() would drain synchronously
@@ -609,7 +616,7 @@ public sealed class ChatComposerViewModelTests
         // thread stays free to drive Dispose() concurrently.
         var applyThread = new Thread(() => vm.SetDraft("in-flight"));
         applyThread.Start();
-        Assert.True(applyStarted.Wait(TimeSpan.FromSeconds(5)), "Apply did not start in time.");
+        Assert.True(applyStarted.Wait(ReentrancyTimeout), "Apply did not start in time.");
 
         var disposeThreadStarted = new ManualResetEventSlim(false);
         var disposeReturned = new ManualResetEventSlim(false);
@@ -625,7 +632,7 @@ public sealed class ChatComposerViewModelTests
         // scheduled) before asserting it hasn't returned yet — otherwise a
         // starved/not-yet-scheduled thread could make the negative assertion below
         // pass for the wrong reason even against the old, unsynchronized Dispose().
-        Assert.True(disposeThreadStarted.Wait(TimeSpan.FromSeconds(5)), "Dispose thread did not start in time.");
+        Assert.True(disposeThreadStarted.Wait(ReentrancyTimeout), "Dispose thread did not start in time.");
 
         // Dispose must NOT be able to return while the apply is still blocked mid-
         // notification: give it a short window to (incorrectly) race ahead, then
@@ -636,9 +643,9 @@ public sealed class ChatComposerViewModelTests
 
         releaseApply.Set();
 
-        Assert.True(disposeReturned.Wait(TimeSpan.FromSeconds(5)), "Dispose() did not complete after the apply finished.");
-        Assert.True(applyThread.Join(TimeSpan.FromSeconds(5)));
-        Assert.True(disposeThread.Join(TimeSpan.FromSeconds(5)));
+        Assert.True(disposeReturned.Wait(ReentrancyTimeout), "Dispose() did not complete after the apply finished.");
+        Assert.True(applyThread.Join(ReentrancyTimeout));
+        Assert.True(disposeThread.Join(ReentrancyTimeout));
 
         // The in-flight mutation's state change was applied — it had already
         // started before Dispose() was called, so it completed rather than being
@@ -732,13 +739,13 @@ public sealed class ChatComposerViewModelTests
             // hook were ever invoked again for a later item.
             vm.TestOnlyAfterDequeueBeforeApplyLock = null;
             dequeueReached.Set();
-            Assert.True(disposeCompleted.Wait(TimeSpan.FromSeconds(5)), "Dispose did not complete in time.");
+            Assert.True(disposeCompleted.Wait(ReentrancyTimeout), "Dispose did not complete in time.");
         };
 
         var drainThread = new Thread(() => vm.SetDraft("second"));
         drainThread.Start();
 
-        Assert.True(dequeueReached.Wait(TimeSpan.FromSeconds(5)), "Drain did not reach the dequeue point in time.");
+        Assert.True(dequeueReached.Wait(ReentrancyTimeout), "Drain did not reach the dequeue point in time.");
 
         // The mutation is now dequeued but paused before the apply lock. Dispose
         // concurrently from a second thread — it must be free to acquire the
@@ -747,7 +754,7 @@ public sealed class ChatComposerViewModelTests
         vm.Dispose();
         disposeCompleted.Set();
 
-        Assert.True(drainThread.Join(TimeSpan.FromSeconds(5)));
+        Assert.True(drainThread.Join(ReentrancyTimeout));
 
         Assert.Equal(initialDraft, vm.Draft);
         Assert.Equal(initialRevision, vm.RenderRevision);
@@ -776,8 +783,14 @@ public sealed class ChatComposerViewModelTests
             }
         };
 
-        var driverTask = Task.Run(() => vm.SetDraft("first"));
-        var completed = await Task.WhenAny(driverTask, Task.Delay(TimeSpan.FromSeconds(5))) == driverTask;
+        // A dedicated driver starts without waiting for a shared thread-pool worker, so
+        // the bound measures the reentrant drain rather than pool scheduling latency.
+        var driverTask = Task.Factory.StartNew(
+            () => vm.SetDraft("first"),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        var completed = await Task.WhenAny(driverTask, Task.Delay(ReentrancyTimeout)) == driverTask;
 
         Assert.True(completed, "Reentrant PropertyChanged subscriber caused a deadlock.");
         Assert.True(reentered);
@@ -840,7 +853,7 @@ public sealed class ChatComposerViewModelTests
             Volatile.Write(ref disposeReturned, 1);
 
             Assert.True(
-                mutatorThread.Join(TimeSpan.FromSeconds(5)),
+                mutatorThread.Join(ReentrancyTimeout),
                 $"Mutator thread did not finish (iteration {iteration}).");
             Assert.False(
                 violationObserved,
