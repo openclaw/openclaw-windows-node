@@ -185,7 +185,7 @@
     "tests/OpenClaw.Shared.Tests/McpToolBridgeTests.cs": 12,
     "tests/OpenClaw.Shared.Tests/Mxc/CommandOutputCaptureTests.cs": 4,
     "tests/OpenClaw.Shared.Tests/Mxc/MxcCommandRunnerIntegrationTests.cs": 1,
-    "tests/OpenClaw.Shared.Tests/Mxc/MxcCommandRunnerTests.cs": 42,
+    "tests/OpenClaw.Shared.Tests/Mxc/MxcCommandRunnerTests.cs": 39,
     "tests/OpenClaw.Shared.Tests/Mxc/MxcFolderAdmissionTests.cs": 1,
     "tests/OpenClaw.Shared.Tests/Mxc/MxcNamespaceProofCaptureTests.cs": 1,
     "tests/OpenClaw.Shared.Tests/Mxc/NodeSandboxExecutorTests.cs": 18,
