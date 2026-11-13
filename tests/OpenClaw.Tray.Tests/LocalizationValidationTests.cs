@@ -561,6 +561,25 @@ public class LocalizationValidationTests
         value.Contains("~/", StringComparison.Ordinal);
 
     [Fact]
+    public void ConnectionTopologyExplanation_UsesTheDisplayedLabelsInEveryLocale()
+    {
+        foreach (var localeDir in Directory.GetDirectories(GetStringsDirectory()))
+        {
+            var resources = LoadResw(Path.Combine(localeDir, "Resources.resw"));
+            var labels = new[]
+            {
+                resources["ConnectionPage_TopologyLocal"],
+                resources["ConnectionPage_TopologyLAN"],
+                resources["ConnectionPage_TopologyRemote"],
+            };
+            var tooltip = string.Format(CultureInfo.InvariantCulture,
+                resources["ConnectionPage_TopologyTooltip"], labels[0], labels[1], labels[2]);
+
+            Assert.All(labels, label => Assert.Contains(label, tooltip, StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
     public void MojibakeDetector_FindsWindows1252Substrings()
     {
         Assert.True(TryDecodeKnownMojibake("连接状态 è¿ž 👍", out var decoded));

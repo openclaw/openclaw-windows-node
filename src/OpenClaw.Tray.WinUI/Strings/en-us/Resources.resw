@@ -4841,7 +4841,25 @@ Make sure the gateway is running.</value>
     <value>Shared token</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>Tap to copy shared token</value>
+    <value>Shared Gateway credential. Click to copy it. Keep it private.</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>How this PC reaches the Gateway. {0} means this PC; {1} means the local network; Tailscale and SSH use those connections; {2} means another host.</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} is the Windows PC running Companion and its Windows node capabilities, not necessarily the Gateway host.</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>Connected clients reported by the Gateway. Open Systems in the web dashboard.</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>Ready channels: {0}/{1}.
+{2}
+
+Open Channels in the web dashboard.</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>Estimated Gateway usage cost for today (UTC), in US dollars. Open Usage in the web dashboard.</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>via SSH tunnel</value>

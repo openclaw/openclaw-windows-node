@@ -4836,7 +4836,25 @@
     <value>共用權杖</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>點擊以複製共用權杖</value>
+    <value>共用閘道認證。點擊以複製。請勿洩漏。</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>此電腦存取閘道的方式。{0}表示此電腦；{1}表示區域網路；Tailscale 和 SSH 表示使用相應連線；{2}表示其他主機。</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} 是執行 Companion 及其 Windows 節點功能的 Windows 電腦，不一定是閘道主機。</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>閘道回報的已連線用戶端。在網頁儀表板中開啟「系統」。</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>就緒頻道：{0}/{1}。
+{2}
+
+在網頁儀表板中開啟「頻道」。</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>今日（UTC）的閘道預估使用費用，以美元計價。在網頁儀表板中開啟「用量」。</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>透過 SSH 通道</value>

@@ -4836,7 +4836,25 @@
     <value>共享令牌</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>点击以复制共享令牌</value>
+    <value>共享网关凭据。点击以复制。请勿泄露。</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>此电脑访问网关的方式。{0}表示此电脑；{1}表示局域网；Tailscale 和 SSH 表示使用相应连接；{2}表示其他主机。</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} 是运行 Companion 及其 Windows 节点功能的 Windows 电脑，不一定是网关主机。</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>网关报告的已连接客户端。在网页控制台中打开“系统”。</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>就绪频道：{0}/{1}。
+{2}
+
+在网页控制台中打开“频道”。</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>今日（UTC）的网关预估使用费用，以美元计价。在网页控制台中打开“用量”。</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>通过 SSH 隧道</value>
