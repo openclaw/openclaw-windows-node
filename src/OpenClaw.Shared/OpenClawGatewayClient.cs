@@ -4542,7 +4542,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var text = ExtractMessageText(message, role);
             var toolContent = ExtractToolContent(message, role, text);
             var contentParts = ExtractOrderedMessageContent(message, role, toolContent);
+            var replacesStreamText = payload.TryGetProperty("replace", out var replace) &&
+                replace.ValueKind == JsonValueKind.True;
             if (string.IsNullOrEmpty(text)
+                && !(replacesStreamText && role == "assistant")
                 && contentParts.All(static part => part.Kind is not (ChatMessageContentPartKind.Media or ChatMessageContentPartKind.Tool or ChatMessageContentPartKind.Reasoning)))
             {
                 return;
@@ -4569,8 +4572,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 contentParts,
                 runId,
                 ReadChatPresentation(message, payload),
-                replacesStreamText: payload.TryGetProperty("replace", out var replace) &&
-                    replace.ValueKind == JsonValueKind.True,
+                replacesStreamText: replacesStreamText,
                 outputTruncated: ReadChatTruncation(message).Truncated ?? false,
                 truncationReason: ReadChatTruncation(message).Reason,
                 isTranscriptSnapshot: isTranscriptSnapshot);
