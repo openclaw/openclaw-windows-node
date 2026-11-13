@@ -10,6 +10,38 @@ public sealed class GatewayFixtureRunTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
     [Fact]
+    public void AppLaunchError_ReportsTheFirstOnLaunchedFailureRatherThanEarlierErrors()
+    {
+        var log = Path.Combine(Path.GetTempPath(), $"openclaw-fixture-log-{Guid.NewGuid():N}.log");
+        try
+        {
+            File.WriteAllLines(log,
+            [
+                "[2026-11-13 05:46:20.001] [ERROR] Previous session did not exit cleanly (started 2026-11-13T05:46:18Z)",
+                "[2026-11-13 05:46:23.762] [ERROR] OnLaunched failed: System.ArgumentException: Failed to load icon from status.ico (Parameter 'iconPath')",
+                "   at WinUIEx.TrayIcon..ctor(UInt32 trayiconId, String iconPath, String tooltip)",
+                "[2026-11-13 05:46:24.000] [ERROR] OnLaunched failed: later failure",
+            ]);
+
+            Assert.Equal(
+                "OnLaunched failed: System.ArgumentException: Failed to load icon from status.ico (Parameter 'iconPath')",
+                GatewayFixtureRun.FindAppLaunchError(log));
+            Assert.Null(GatewayFixtureRun.FindAppLaunchError(log + ".missing"));
+
+            // A restarted app appends to the same log; an earlier launch's failure is not reported.
+            var relaunchOffset = new FileInfo(log).Length;
+            File.AppendAllLines(log, ["[2026-11-13 05:47:00.000] [INFO] Started"]);
+            Assert.Null(GatewayFixtureRun.FindAppLaunchError(log, relaunchOffset));
+            File.AppendAllLines(log, ["[2026-11-13 05:47:01.000] [ERROR] OnLaunched failed: relaunch failure"]);
+            Assert.Equal("OnLaunched failed: relaunch failure", GatewayFixtureRun.FindAppLaunchError(log, relaunchOffset));
+        }
+        finally
+        {
+            File.Delete(log);
+        }
+    }
+
+    [Fact]
     public void BrowserCleanup_RetainsNestedOwnedChildrenButRejectsForeignAndStaleParents()
     {
         var started = DateTime.UnixEpoch.AddDays(1);
