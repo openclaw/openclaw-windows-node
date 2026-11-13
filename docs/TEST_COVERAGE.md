@@ -394,7 +394,7 @@ required closeout lane for code changes.
 | Agent skills | `.\scripts\validate-agent-skills.ps1` and `.\scripts\test-agent-skills-validator.ps1` | Changes under `.agents\skills`; validates skill metadata, agent-facing prose, and local links |
 | Result and evidence contracts | `.\scripts\test-proof-evidence.ps1` | Changes to report admission, generic proof, CI test wrappers, evidence summaries, or their source/artifact correspondence |
 | Agent readiness | `.\scripts\test-agent-readiness.ps1` | Changes to read-only host and optional agent-tool readiness reporting |
-| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
+| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request, merge queue group and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
 | Accessibility scan | `.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64` | UI changes and CI quality gate; runs real-process Axe.Windows scans; see `docs\ACCESSIBILITY.md` |
 | Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |
 | Local MXC E2E | `.\scripts\validate-mxc-e2e.ps1` | MXC sandboxing, `system.run`, exec approvals, Windows node command execution, gateway setup/connect changes that affect MXC |
@@ -523,6 +523,14 @@ CI Gate still requires `fast-validation` to succeed, so this removes it from
 the critical path without relaxing acceptance. A `fast-validation` failure no
 longer skips selected test lanes; their runner time is the accepted cost.
 Release asset preparation still waits for `fast-validation`.
+
+CI also runs for merge queue groups (`merge_group`). A group is classified from
+its own diff, from the queue's base to the group's head, with the pull request
+rules, so it runs the same lanes its pull requests would (x64 release smoke
+only, no coverage collection). The new-test soak is skipped, because it already
+ran on each pull request. CI Gate reports for every event, so it can be the
+merge queue's required check. The workflow contract rejects new
+pull-request-only conditions that would skip work in a merge group.
 
 The setup/connect, revocation recovery and network recovery E2E jobs each run once
 against npm Latest, matching normal WSL setup.
