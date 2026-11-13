@@ -177,6 +177,11 @@ jobs:
       shell: pwsh
       run: ./scripts/test-agent-skills-validator.ps1
 
+    # Always-on so pull requests that change only UI or Shared tests cannot skip the ratchet.
+    - name: Validate timing-sensitive test patterns
+      shell: pwsh
+      run: ./scripts/validate-test-timing-patterns.ps1
+
     - name: Test proof results and local evidence
       shell: pwsh
       run: ./scripts/test-proof-evidence.ps1
@@ -549,6 +554,7 @@ jobs:
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Shared.Tests
         -ResultsDirectory TestResults\Shared
         -TrxFileName OpenClaw.Shared.Tests.trx
@@ -796,6 +802,7 @@ jobs:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 25
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
@@ -817,6 +824,7 @@ jobs:
         OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AutomationsSteadyResources
         -TrxFileName AutomationsSteadyResources.trx
@@ -845,6 +853,7 @@ jobs:
       timeout-minutes: 5
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AnimationsEnabled
         -TrxFileName AnimationsEnabled.trx
@@ -859,6 +868,7 @@ jobs:
       timeout-minutes: 5
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\AnimationsDisabled
         -TrxFileName AnimationsDisabled.trx
@@ -1021,6 +1031,7 @@ jobs:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 25
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUIShard
         -TrxFileName OpenClaw.Tray.UITests.Shard.trx
@@ -1134,6 +1145,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/test-gateway-fixture.ps1
+        -StepTimeoutMinutes 30
         -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
         -ArtifactsDirectory .\TestResults\GatewayFixture
         -TestTimeoutSeconds 1500
@@ -1161,6 +1173,7 @@ jobs:
         OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 15
         -Project tests/OpenClaw.Tray.UITests
         -Configuration Release
         -ResultsDirectory TestResults\GatewayFixtureRelease
@@ -1181,6 +1194,7 @@ jobs:
         OPENCLAW_VISUAL_TEST_DIR: ${{ github.workspace }}\TestResults\ReaderRelease\observations
       run: >
         ./scripts/Invoke-CiTest.ps1
+        -StepTimeoutMinutes 5
         -Project tests/OpenClaw.Tray.UITests
         -Configuration Release
         -ResultsDirectory TestResults\ReaderRelease
@@ -1324,6 +1338,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
+        -StepTimeoutMinutes 20
         -Name setup-connect
         -Filter "FullyQualifiedName~OpenClaw.E2ETests.Setup.SetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MxcSetupAndConnectTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.MirroredWslPortLeaseTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.SshOwnershipAdversarialProofTests|FullyQualifiedName~OpenClaw.E2ETests.Setup.TrayExecutableResolutionTests"
 
@@ -1402,6 +1417,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
+        -StepTimeoutMinutes 20
         -Name revocation-recovery
         -Filter FullyQualifiedName~OpenClaw.E2ETests.Setup.RevocationAndRecoveryTests
 
@@ -1480,6 +1496,7 @@ jobs:
       shell: pwsh
       run: >
         ./scripts/Invoke-CiE2e.ps1
+        -StepTimeoutMinutes 20
         -Name network-recovery
         -Filter FullyQualifiedName~OpenClaw.E2ETests.Setup.NetworkRecoveryTests
 
