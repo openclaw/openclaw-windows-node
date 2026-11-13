@@ -12,6 +12,11 @@ namespace OpenClaw.Connection.Tests;
 
 public class GatewayConnectionManagerTests : IDisposable
 {
+    // Hang guard for one event-driven step; only absorbs CI scheduling delay.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -38,7 +43,7 @@ public class GatewayConnectionManagerTests : IDisposable
 
         await manager.DisconnectByUserAsync("native");
         await InvokeScheduledOperatorReconnect(manager, attempt, postBootstrap: false)
-            .WaitAsync(TimeSpan.FromSeconds(5));
+            .WaitAsync(StepTimeout);
 
         Assert.False(manager.IsAutomaticReconnectAllowed("native"));
         Assert.False(runtime.Running);
@@ -100,7 +105,7 @@ public class GatewayConnectionManagerTests : IDisposable
             semaphore.Release();
         }
 
-        await Task.WhenAll(switchGateway, disconnect).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(switchGateway, disconnect).WaitAsync(StepTimeout);
 
         Assert.Equal("replacement", _registry.ActiveGatewayId);
         Assert.NotNull(_manager.OperatorClient);
@@ -150,7 +155,7 @@ public class GatewayConnectionManagerTests : IDisposable
             semaphore.Release();
         }
 
-        await Task.WhenAll(disconnect, reconnect).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(disconnect, reconnect).WaitAsync(StepTimeout);
 
         Assert.Single(_factory.CreatedClients);
         Assert.Null(manager.OperatorClient);
@@ -173,7 +178,7 @@ public class GatewayConnectionManagerTests : IDisposable
         await InvokeScheduledOperatorReconnect(
             manager,
             ((INodeLifecycleSource)manager).CaptureGatewayAttempt(),
-            postBootstrap).WaitAsync(TimeSpan.FromSeconds(5));
+            postBootstrap).WaitAsync(StepTimeout);
 
         Assert.Equal(2, _factory.CreatedClients.Count);
         Assert.NotNull(manager.OperatorClient);
