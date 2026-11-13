@@ -1344,13 +1344,15 @@ public sealed partial class GatewayFixtureUiTests
                     {
                         page = "dashboards?session=" + Uri.EscapeDataString(FixtureBoards.EmptySessionKey) + "&agent=main",
                     });
-                    await WaitUiAsync(run, () => FindById(run, "DashboardEmptyOpenChat") is { Current.IsOffscreen: false },
-                        "empty dashboard action");
-                    // Re-pinning re-adds the sidebar row; wait for its UIA peer instead of reading it once.
+                    // CI once saw the detail missing right after the action appeared, while the sidebar row was
+                    // being re-added. Check the whole empty state in the last wait before asserting and capturing.
+                    string? emptyDetail = null;
                     await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:dashboards") is { } pin &&
-                        ((SelectionItemPattern)pin.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
-                        "re-pinned Dashboards row selected for the empty dashboard");
-                    Assert.Equal("No content was supplied for this section. Ask your agent in chat.", FindById(run, "DashboardEmptyDetail")!.Current.Name);
+                        ((SelectionItemPattern)pin.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected &&
+                        FindById(run, "DashboardEmptyOpenChat") is { Current.IsOffscreen: false } &&
+                        (emptyDetail = FindById(run, "DashboardEmptyDetail")?.Current.Name) is not null,
+                        "re-pinned Dashboards row selected with the empty dashboard action and detail");
+                    Assert.Equal("No content was supplied for this section. Ask your agent in chat.", emptyDetail);
                     OwnedWindowCapture.Save(run, hub, $"dashboards-{theme}-empty.png");
 
                     await run.InvokeAsync("app.navigate", new { page = "dashboards" });
