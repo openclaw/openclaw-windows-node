@@ -79,7 +79,7 @@
     "tests/OpenClaw.Tray.Tests/Usage/UsagePageControllerTests.cs": 2,
     "tests/OpenClaw.Tray.Tests/WinAppSdkGhostWindowCleanup.cs": 1,
     "tests/OpenClaw.Tray.Tests/WorkspaceIdentitySourceTests.cs": 2,
-    "tests/OpenClaw.Tray.UITests/A2UISvgTests.cs": 2,
+    "tests/OpenClaw.Tray.UITests/A2UISvgTests.cs": 1,
     "tests/OpenClaw.Tray.UITests/AccessibilityAppFixture.cs": 11,
     "tests/OpenClaw.Tray.UITests/AccessibilityScanTests.cs": 1,
     "tests/OpenClaw.Tray.UITests/AudioPipelineFirstAudioTimeoutTests.cs": 9,
