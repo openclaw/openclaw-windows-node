@@ -939,11 +939,28 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             await CaptureStateAsync(run, manifest, "toast", async () =>
             {
                 await ExpandStoppedSessionRowAsync(run, "stopped session row for toast");
-                await WaitUiAsync(run, () => FindById(run, "SessionsHubCommandArchive") is not null,
-                    "archive command for toast");
-                var archive = FindById(run, "SessionsHubCommandArchive")!;
-                AssertVisibleInHub(run, archive, "archive command for toast");
-                Invoke(archive);
+                // Expansion reveals the commands below the collapsed row, possibly beyond the window
+                // edge. Let the expanded content settle, then bring the revealed command into view.
+                double[]? previousBounds = null;
+                await WaitUiAsync(run, () =>
+                {
+                    if (FindById(run, "SessionsHubCommandArchive") is not { } command)
+                    {
+                        previousBounds = null;
+                        return false;
+                    }
+                    var rect = command.Current.BoundingRectangle;
+                    double[] bounds = [rect.Left, rect.Top, rect.Right, rect.Bottom];
+                    var settled = previousBounds is not null && bounds.SequenceEqual(previousBounds);
+                    previousBounds = bounds;
+                    return settled;
+                }, "archive command for toast settled after expansion", onProbeError: _ => previousBounds = null);
+                ScrollIntoView(run, "SessionsHubCommandArchive");
+                AutomationElement? archive = null;
+                await WaitUiAsync(run, () => (archive = FindById(run, "SessionsHubCommandArchive")) is { } revealed
+                    && IsVisibleInHub(run, revealed), "visible archive command for toast");
+                AssertVisibleInHub(run, archive!, "archive command for toast");
+                Invoke(archive!);
                 await WaitUiAsync(run, () => FindById(run, "SessionsHubNoticeDismiss") is not null, "archive toast");
                 CaptureSessionsWindow(run, "sessions-toast.png");
             });
@@ -1571,8 +1588,10 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             Assert.Contains("Connection", commands.GetRawText(), StringComparison.OrdinalIgnoreCase);
             var draft = "Keep this draft while creating an agent";
             ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
-            var selector = FindById(run, "WorkspaceAssistantSelector")!;
-            ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            AutomationElement? selector = null;
+            await WaitUiAsync(run, () => (selector = FindById(run, "WorkspaceAssistantSelector")) is { Current.IsEnabled: true },
+                "enabled assistant selector");
+            ((ExpandCollapsePattern)selector!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
             await WaitUiAsync(run, () => FindById(run, "WorkspaceNewAgent") is not null, "new agent action");
             Invoke(FindById(run, "WorkspaceNewAgent")!);
             await WaitUiAsync(run, () => FindById(run, "AgentCreationName") is not null, "native creation dialog");
@@ -2237,8 +2256,19 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
     }
 
     private static AutomationElement FindHub(GatewayFixtureRun run) =>
-        AppWindows(run).First(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerInput")) is not null);
+        AppWindows(run).First(IsHubWindow);
+
+    // The composer is hidden from the UIA control view until its layout is usable, so a hub
+    // lookup right after other workspace content appears must wait for the composer.
+    private static async Task<AutomationElement> WaitForHubAsync(GatewayFixtureRun run, string description)
+    {
+        AutomationElement? hub = null;
+        await WaitUiAsync(run, () => (hub = AppWindows(run).FirstOrDefault(IsHubWindow)) is not null, description);
+        return hub!;
+    }
+
+    private static bool IsHubWindow(AutomationElement window) => window.FindFirst(TreeScope.Descendants,
+        new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerInput")) is not null;
 
     private static AutomationElement? FindTimeline(GatewayFixtureRun run) =>
         FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Chat messages"));

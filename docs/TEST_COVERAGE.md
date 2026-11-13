@@ -91,13 +91,21 @@ stable, prerelease, and main invocations can upload in the same caller run.
 The CI Shared-test step uses the existing five-minute hang watchdog and a
 15-minute outer step limit. A hang fails the run and preserves the interrupted
 test sequence without collecting a memory dump; it is not retried or skipped.
+The MCP bearer-rotation regression keeps its deliberately blocking rotation on a
+dedicated thread and bounds each loopback step with
+`OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS` (default 30 s), because the server
+pipeline itself runs on the shared thread pool.
 
 ### OpenClaw.Tray.Tests
 
 The composer lifetime- and voice-disposal reentrancy regressions use dedicated
 workers so their bounded reentrancy assertions (`OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS`,
 default 10 s) measure controller lock ownership rather than shared thread-pool
-scheduling latency.
+scheduling latency. The settings-coordinator and native-restart handoff
+regressions follow the same rule (`OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS`,
+default 15 s). Each Windows PowerShell 5.1 uninstall-helper run is bounded by
+`OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS` (default 120 s) because a
+cold 5.1 start on a loaded runner can exceed 30 s.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
