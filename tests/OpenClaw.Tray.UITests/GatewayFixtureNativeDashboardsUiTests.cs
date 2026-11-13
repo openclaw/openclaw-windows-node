@@ -1340,7 +1340,7 @@ public sealed partial class GatewayFixtureUiTests
                     });
                     await WaitUiAsync(run, () => FindById(run, "DashboardEmptyOpenChat") is { Current.IsOffscreen: false },
                         "empty dashboard action");
-                    // Re-pinning created a new sidebar row; wait for its UIA peer instead of reading it once.
+                    // Re-pinning re-adds the sidebar row; wait for its UIA peer instead of reading it once.
                     await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:dashboards") is { } pin &&
                         ((SelectionItemPattern)pin.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
                         "re-pinned Dashboards row selected for the empty dashboard");
