@@ -224,6 +224,11 @@ with symbolic-link privileges (Developer Mode or an elevated test process);
 without those privileges they fail during fixture creation. Do not replace
 their alias-rejection assertions with skips or change machine policy
 automatically.
+Resolver fixtures use a unique root under `RUNNER_TEMP` (CI) or the user temp
+directory, outside the checkout unless one of those points into it. A failed run
+can leave its fixture behind, and in the checkout those paths exceed `MAX_PATH`
+and break GitVersion. Delete older `.file-resolver-test-data` remnants with a
+`\\?\` path, for example `cmd /c rd /s /q "\\?\<checkout>\.file-resolver-test-data"`.
 Source and cached-file pins, full digests/inventories, atomic publication,
 tamper/alias rejection, bounded inventory and failure/cancellation ownership
 are covered at the shared owner boundary. The legacy per-operation-copy
