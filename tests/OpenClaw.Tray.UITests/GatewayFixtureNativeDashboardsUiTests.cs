@@ -1340,8 +1340,10 @@ public sealed partial class GatewayFixtureUiTests
                     });
                     await WaitUiAsync(run, () => FindById(run, "DashboardEmptyOpenChat") is { Current.IsOffscreen: false },
                         "empty dashboard action");
-                    Assert.True(((SelectionItemPattern)FindById(run, "WorkspacePinnedPage:dashboards")!
-                        .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+                    // Re-pinning created a new sidebar row; wait for its UIA peer instead of reading it once.
+                    await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:dashboards") is { } pin &&
+                        ((SelectionItemPattern)pin.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
+                        "re-pinned Dashboards row selected for the empty dashboard");
                     Assert.Equal("No content was supplied for this section. Ask your agent in chat.", FindById(run, "DashboardEmptyDetail")!.Current.Name);
                     OwnedWindowCapture.Save(run, hub, $"dashboards-{theme}-empty.png");
 
