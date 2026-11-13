@@ -337,6 +337,10 @@ Mica shows through. The real transcript remains opaque and scrolls normally;
 an inner host clips the copied band from its normal rendering. Child replacement,
 resize and detach update or release the surface, clip and brushes. High contrast
 omits the mask, including when switched on while the window stays open.
+While the mask is active, bring-into-view requests inside the transcript, such as
+a keyboard selection caret, extend their target by the band so they land fully
+readable above it. Pointer drag auto-scroll still starts only once the pointer
+leaves the transcript's layout bounds, below the band.
 The composer itself keeps a 12-pixel bottom margin, the same distance from the window edge as the Workspace owner footer buttons.
 Existing chronological messages, reasoning,
 partial-output updates, collapsed-by-default disclosures and explicit group
@@ -577,8 +581,8 @@ the actual final message to be visible without invoking **Jump to latest**.
 Streaming follow retains its exact-bottom assertions and the bounded correction
 above, not an extent-follow loop. The existing follow threshold is unchanged.
 Anchoring differs during the bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
-transcript then anchors to the top, so the header stays put and its details
-grow downward, as on the web. Any other reader input or programmatic tail scroll
+transcript then anchors to the top, with the toggled header itself as the anchor, so the header stays put and its details
+grow downward, as on the web, even inside a tall message with later messages below it. Any other reader input or programmatic tail scroll
 restores bottom anchoring.
 Actual tail visibility is tracked separately from follow eligibility. The
 landing predicate uses absolute distance to the current bottom, so an offset
@@ -1004,6 +1008,34 @@ same resources and bounded layouts. Markdown sanitization, disabled HTML,
 inert images, list measurement, timeline keys and scroll-follow remain with
 their existing owners.
 
+Assistant Markdown opts into one Reactor text-selection scope per message,
+spanning paragraphs, headings, list content, tables, code and expanded
+disclosures. Reactor owns pointer and keyboard selection, geometry, scrolling
+and the UI Automation text provider. Neighboring message rows, code toolbar
+labels and buttons, and collapsed disclosure bodies are outside the selected
+document. OpenClaw registers the summary once and supplies disclosure visibility;
+it does not infer selectable text from Reactor's layout tree.
+
+Selection copy has one clipboard writer in Reactor. Its `OnCopyResult` callback
+only updates native localized Copied or Copy failed feedback outside the
+selection scope. Feedback resets after two seconds; content replacement and
+unmount fence stale callbacks and timers. The separate whole-message and code
+Copy buttons retain their existing clipboard and feedback paths. Native
+acceptance for cross-block selection and recycling is required in addition to
+the mounted typography and layout checks.
+
+Assistant Markdown accepts balanced, block-level `<details>` wrappers with a
+nonempty `<summary>` as an OpenClaw extension. The summary may follow the
+opening tag on the same line or the next nonblank line; `<details open>` starts
+expanded. The app recognizes these wrappers only outside Markdown code, quotes,
+lists and table cells. Unsupported attributes, empty or incomplete summaries,
+and unbalanced wrappers remain inert Markdown text. The extension supports
+nested disclosures to a maximum depth of 16 and summary text up to 4096
+characters. A native `Expander` renders each accepted disclosure, and its body
+uses the existing Markdown typography, list, table, quote, code and copy
+presentation. HTML in summary text is not executed; body links and images keep
+the existing sanitization policy.
+
 Assistant links follow the web chat's anchor policy: Markdown links, bare
 `http(s)://` and `www.` URLs become native WinUI hyperlinks in the Windows
 accent color without an underline, and open in the default browser. Inline
@@ -1093,7 +1125,5 @@ These rules follow the pinned web
 [running-label gradient](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/base.css#L1276-L1310)
 and [message-footer disclosure](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/chat/grouped.css).
 
-The web's GitHub mark
-and issue/pull-request chips need a custom link renderer, which the consumed
-Reactor `0.1.0-preview.16` declares but does not call (`LinkBuilder` is honored
-from `0.1.0-preview.17`); they remain a follow-up for that upgrade.
+The web's GitHub mark and issue/pull-request chips need a custom link renderer
+and remain a follow-up.

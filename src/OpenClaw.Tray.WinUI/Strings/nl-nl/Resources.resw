@@ -6302,6 +6302,7 @@ Open Kanalen in het webdashboard.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Kopiëren mislukt</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Berichttekst</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Denkinspanning</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>

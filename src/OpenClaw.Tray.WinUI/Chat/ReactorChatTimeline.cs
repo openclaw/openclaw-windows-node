@@ -855,6 +855,23 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     // scheme renders as plain label text. Images and raw HTML stay inert.
     internal static Element BuildSafeMarkdown(
         string? text, Func<string, bool>? tryCopy = null, bool compactSecondaryReading = false)
+        => Component<ChatMarkdownMessageView, ChatMarkdownMessageProps>(
+            new(text ?? string.Empty, tryCopy, compactSecondaryReading));
+
+    internal static Element BuildMessageMarkdown(
+        string text, Func<string, bool>? tryCopy,
+        MarkdownTextSelectionOptions selectionOptions, bool compactSecondaryReading)
+    {
+        var sanitized = ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true);
+        var parts = ChatMarkdownDisclosures.Parse(sanitized);
+        return ChatMarkdownPresentation.Disclosures(
+            parts,
+            markdown => BuildInertMarkdown(markdown, tryCopy, selectionOptions, compactSecondaryReading),
+            selectionOptions);
+    }
+
+    private static Element BuildInertMarkdown(string text, Func<string, bool>? tryCopy,
+        MarkdownTextSelectionOptions selectionOptions, bool compactSecondaryReading)
     {
         var options = new MarkdownOptions
         {
@@ -864,29 +881,39 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             OrderedList = (_, items) => ChatMarkdownPresentation.List(items, compactSecondaryReading),
             ListItem = row => ChatMarkdownPresentation.ListItem(row, compactSecondaryReading),
             ThematicBreak = ChatMarkdownPresentation.ThematicBreak,
-            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
+            TextSelection = selectionOptions,
+            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(
+                code, language, tryCopy: tryCopy, selectionOptions: selectionOptions),
             CodeFontFamily = ChatVisuals.CodeFontFamily,
             ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml |
                 MarkdownParserFlags.PermissiveUrlAutolinks | MarkdownParserFlags.PermissiveWwwAutolinks,
-            Image = (alt, _) => Text(
-                    string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
+            Image = (alt, _) =>
+            {
+                var label = string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]";
+                return MarkdownTextSelection.Surface(label, Text(
+                    label,
                     compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatProseTextBrush")
-                .FontFamily(ChatVisuals.BodyFontFamily)
-                .IsTextSelectionEnabled(true),
-            HtmlBlock = raw => Text(
-                    ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw),
+                    .FontFamily(ChatVisuals.BodyFontFamily)
+                    .IsTextSelectionEnabled(false));
+            },
+            HtmlBlock = raw =>
+            {
+                var label = ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw);
+                return MarkdownTextSelection.Surface(label, Text(
+                    label,
                     compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatProseTextBrush")
-                .FontFamily(ChatVisuals.BodyFontFamily)
-                .IsTextSelectionEnabled(true),
+                    .FontFamily(ChatVisuals.BodyFontFamily)
+                    .IsTextSelectionEnabled(false));
+            },
         };
 
-        return ChatMarkdownPresentation.WithInlineStyling(ChatMarkdownPresentation.MessageBlocks(
-            Microsoft.UI.Reactor.Advanced.Factories.Markdown(
-                ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true), options), compactSecondaryReading),
+        return ChatMarkdownPresentation.WithInlineStyling(
+            ChatMarkdownPresentation.MessageBlocks(
+                Microsoft.UI.Reactor.Advanced.Factories.Markdown(text, options), compactSecondaryReading),
             compactSecondaryReading);
     }
 

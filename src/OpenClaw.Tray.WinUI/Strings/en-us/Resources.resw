@@ -6373,6 +6373,7 @@ Open Channels in the web dashboard.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Copy failed</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Message text</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>

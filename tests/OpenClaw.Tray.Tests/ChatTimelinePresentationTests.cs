@@ -1356,10 +1356,17 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("global::Windows.System.VirtualKey.Enter or global::Windows.System.VirtualKey.Space", binding);
 
         // Disclosure growth keeps its header in place, independently of native reader navigation.
-        var input = Slice("private void OnReaderInput", "private bool IsDisclosureHeader");
+        var input = Slice("private void OnReaderInput", "private FrameworkElement? DisclosureHeader");
         Assert.True(input.IndexOf("CancelPendingNavigation();", StringComparison.Ordinal)
             < input.IndexOf("scrollView.VerticalAnchorRatio = 0;", StringComparison.Ordinal));
-        Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private bool IsDisclosureHeader", "private void RestoreTailAnchor"));
+        // Top anchoring alone can pin the next row below a tall message; the toggled header is the anchor.
+        Assert.Contains("args.AnchorElement = header;", input);
+        // A recycled header that now shows another message must not be pinned.
+        Assert.Contains("ReferenceEquals(row.DataContext, rowItem)", input);
+        Assert.Contains("ReferenceEquals(RepeaterRow(repeater, header), row)", input);
+        Assert.Contains("ToggleButton { Name: \"ExpanderHeader\" }", Slice("private FrameworkElement? DisclosureHeader", "private void RestoreTailAnchor"));
+        Assert.Contains("_scrollView.AnchorRequested -= _disclosureAnchorRequested;", Slice("private void RestoreTailAnchor", "private void OnReaderFocus"));
+        Assert.Contains("_scrollView.AnchorRequested -= _disclosureAnchorRequested;", Slice("private void DetachScrollView", "public void Dispose"));
         var growth = Slice("private void OnExtentChanged", "private void ObserveGeometry");
         Assert.Contains("_reflowCorrection.ArmForExtentGrowth(", growth);
         Assert.Contains("_disclosureAnchored || _readerAnchored || _readerBringCorrelationId is not null", growth);

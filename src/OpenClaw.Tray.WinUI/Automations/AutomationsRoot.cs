@@ -790,7 +790,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             var header = Props.Header.AutomationId($"AutomationRowHeader:{Props.JobId}")
                 .OnSizeChanged((sender, _) => HeaderArranged(sender));
             return Grid([GridSize.Star(), GridSize.Px(ChatButtonSize + PageResponsiveLayout.GapInner)], [GridSize.Auto],
-                    (Props.Expander with { HeaderTemplate = header }).Grid(column: 0),
+                    (Props.Expander with { HeaderContent = header }).Grid(column: 0),
                     Props.Chat is null ? Empty().Grid(column: 1)
                         : Props.Chat.Size(ChatButtonSize, ChatButtonSize)
                             .Margin(PageResponsiveLayout.GapInner, Math.Max(0, headerCenter - ChatButtonSize / 2), 0, 0)

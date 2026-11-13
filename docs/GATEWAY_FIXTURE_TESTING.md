@@ -288,6 +288,32 @@ as well. That option enables only its own child and still rejects failed,
 skipped, and zero-test runs. The ordinary UI filter continues to exclude those
 keyboard-only cases; `-NativeInputProof` does not select them.
 
+`MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent`
+uses synthetic history in the shipped app to select and copy across paragraphs,
+lists, code, a table and a native collapsed details block. It checks exact
+normalized clipboard text, excludes adjacent messages and collapsed body text,
+switches to a second conversation and back to verify that copying from the
+focused message cannot leak another conversation's text, and exercises edge
+scrolling in the production chat ItemsView. Returning to the same message may
+retain its own selection. The disclosure is scrolled into view before its
+expanded body is checked. This case uses native pointer, keyboard and clipboard
+input, so run it only on an authorized, exclusive interactive desktop:
+
+```powershell
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:TEMP 'openclaw-markdown-selection'
+$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
+  -p:Platform=ARM64 -r win-arm64 `
+  --filter 'FullyQualifiedName~MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent' `
+  --logger 'console;verbosity=normal'
+```
+
+The test captures only its owned app window. The fixture Gateway and profile are
+synthetic and disposable; this is not live Gateway, provider, or installed-app
+proof.
+
 ### Saved Gateway ownership and released profiles
 
 `GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
@@ -657,7 +683,7 @@ Before capture, verify that `project.assets.json` resolves the pinned
 `Microsoft.UI.Reactor` and `Microsoft.UI.Reactor.Advanced` versions, and record
 package provenance with the evidence. NU1603 is not successful integration, and
 exact version resolution alone does not establish app API compatibility. For a
-direct restore, first bootstrap preview.17 as described in
+direct restore, first bootstrap preview.18 as described in
 [Reactor compatibility proof](WINDOWS_NODE_TESTING.md#reactor-compatibility-proof).
 
 The same filter includes editor lifetime regressions: an unsaved draft survives
@@ -1012,7 +1038,7 @@ bitmap does not establish visible shell acceptance.
 Reactor preview.17 includes the dialog theme and pooled-background fixes that
 previously required a task-local preview.12 backport. Validate the released
 package identities and loaded DLL hashes, not the historical local override.
-Usage retains the aligned Core/Advanced preview.17 pair when integrating the
+Usage retains the aligned Core/Advanced preview.18 pair when integrating the
 shared page foundation and Windows App SDK 2.6.5. Its declarative export
 `ContentDialog` needs inherited theme and host-disposal handling, and its pooled
 count-pill `Border` needs resource-backed background precedence. The mounted
@@ -1023,7 +1049,7 @@ evidence that the newly merged package combination has passed native proof.
 `NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
 Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
 build or run commands; `build.ps1` and building through `run-app-local.ps1`
-already do this. The initializer verifies the official preview.17 release
+already do this. The initializer verifies the official preview.18 release
 digests without changing global NuGet configuration or clearing its cache.
 A successful build alone is not dark-dialog proof.
 The count-pill contrast regression also checks the actual native brush after

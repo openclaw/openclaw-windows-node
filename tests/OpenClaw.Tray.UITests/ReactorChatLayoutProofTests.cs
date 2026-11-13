@@ -1700,11 +1700,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
                 var assistantText = FindDescendants<RichTextBlock>(host)
                     .First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                Assert.True(assistantText.IsTextSelectionEnabled);
+                Assert.False(assistantText.IsTextSelectionEnabled);
                 Assert.Equal(14, assistantText.FontSize);
                 Assert.Equal("Segoe UI Variable Text", assistantText.FontFamily.Source);
                 Assert.Equal(TextWrapping.Wrap, assistantText.TextWrapping);
-                var assistantSurface = Ancestors(assistantText).OfType<Border>().First();
+                var assistantSurface = AssistantMessageSurface(assistantText);
                 Assert.Null(assistantSurface.Background);
                 Assert.Equal(new Thickness(0), assistantSurface.BorderThickness);
                 Assert.Equal(new Thickness(0), assistantSurface.Padding);
@@ -1733,7 +1733,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
+                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
             });
 
             // Resize and rerender the same mounted tree. Do not recreate the footer
@@ -1751,7 +1751,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 AssertComposerBounds(surface);
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
+                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
                 Assert.Same(originalInput, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Contains("A second line.", originalInput.Text, StringComparison.Ordinal);
             });
@@ -1933,7 +1933,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
+                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
             });
             await CaptureAsync(surface, $"ReleasedParity-{width}-viewport");
         }, "parity");
@@ -3201,11 +3201,24 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 host.Mount(_ => ReactorChatTimeline.BuildSafeMarkdown(
                     "First paragraph.\n\n## A heading\n\nAnother paragraph.\n\n```text\nLiteral\n```"));
             });
-            await SettleAsync();
+            StackPanel? stack = null;
+            string? previousLayout = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                // Selection wrappers add a layout layer; measure gaps only once block bounds stop moving.
+                var matches = FindDescendants<StackPanel>(host).Where(panel =>
+                    panel.Children.Count == 4 && panel.Spacing == ChatVisuals.MessageBlockGap).Take(2).ToArray();
+                stack = matches.Length == 1 ? matches[0] : null;
+                if (stack is null || stack.Children.OfType<FrameworkElement>().Any(block => block.ActualHeight <= 0))
+                    return false;
+                var layout = string.Join("|", stack.Children.OfType<FrameworkElement>().Select(block => Bounds(block, surface)));
+                var stable = layout == previousLayout;
+                previousLayout = layout;
+                return stable;
+            }, "message blocks laid out with stable bounds", () => $"layout={previousLayout ?? "<none>"}"));
             await ui.RunOnUIAsync(() =>
             {
-                var stack = Assert.IsType<StackPanel>(Assert.IsType<Border>(host.Content).Child);
-                var blocks = stack.Children.OfType<FrameworkElement>().ToArray();
+                var blocks = stack!.Children.OfType<FrameworkElement>().ToArray();
                 Assert.Equal(4, blocks.Length);
                 Assert.All(blocks, block =>
                 {
@@ -3810,6 +3823,17 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
         var input = FindControl<TextBox>(surface, "ChatComposerInput");
         Assert.True(Bounds(input, surface).Bottom <= controls.Min(control => Bounds(control, surface).Top));
+    }
+
+    private static Border AssistantMessageSurface(RichTextBlock paragraph)
+    {
+        // The unpadded styling Border around Reactor's blocks is the message's prose surface;
+        // it sits inside the message's Markdown selection host.
+        var surface = Ancestors(paragraph).OfType<Border>().First();
+        Assert.Contains(Ancestors(surface).OfType<Control>(), control =>
+            FrameworkElementAutomationPeer.CreatePeerForElement(control)
+                ?.GetPattern(PatternInterface.Text) is ITextProvider);
+        return surface;
     }
 
     private static IEnumerable<DependencyObject> Ancestors(DependencyObject element)

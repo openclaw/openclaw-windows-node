@@ -381,6 +381,68 @@ public sealed partial class ReactorChatLayoutProofTests
     }
 
     [Fact]
+    public async Task TranscriptFade_BringIntoViewLandsTargetsAboveTheBand()
+    {
+        await ui.ResetContainerAsync();
+        Border? host = null;
+        ScrollViewer? scroll = null;
+        Border? target = null;
+        var oldProbe = ChatThemeChanges.IsHighContrast;
+        try
+        {
+            ChatThemeChanges.IsHighContrast = static () => false;
+            await ui.RunOnUIAsync(() =>
+            {
+                var panels = new StackPanel();
+                panels.Children.Add(new Border { Height = 600 });
+                panels.Children.Add(target = new Border { Height = 20, Background = new SolidColorBrush(Colors.Red) });
+                panels.Children.Add(new Border { Height = 600 });
+                scroll = new ScrollViewer
+                {
+                    Content = panels, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                };
+                host = new Border
+                {
+                    Child = new Border { Child = scroll }, Width = 400, Height = 400,
+                    HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                };
+                ui.Container.Children.Add(host);
+                ChatTranscriptFade.Attach(host);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => scroll!.ScrollableHeight > 0, "fade probe scroller laid out"));
+            await ui.RunOnUIAsync(() => target!.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }));
+            // Minimal downward bring would align the target's bottom (620) with the viewport
+            // bottom (offset 220), inside the 32-pixel fade; it must clear the band instead.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(scroll!.VerticalOffset - 252) <= 1, "bring clears the fade band",
+                () => $"offset={scroll!.VerticalOffset}"));
+
+            await ui.RunOnUIAsync(() =>
+            {
+                ChatTranscriptFade.Detach(host!);
+                Assert.True(scroll!.ChangeView(null, 0, null, disableAnimation: true));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => scroll!.VerticalOffset <= 1, "probe returns to the top", () => $"offset={scroll!.VerticalOffset}"));
+            await ui.RunOnUIAsync(() => target!.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(scroll!.VerticalOffset - 220) <= 1, "detached bring is minimal",
+                () => $"offset={scroll!.VerticalOffset}"));
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (host is not null) ChatTranscriptFade.Detach(host);
+                ui.Container.Children.Clear();
+            });
+            ChatThemeChanges.IsHighContrast = oldProbe;
+        }
+    }
+
+    [Fact]
     public async Task TranscriptFade_ScrollingRefreshesComposedEdge()
     {
         await ui.ResetContainerAsync();
