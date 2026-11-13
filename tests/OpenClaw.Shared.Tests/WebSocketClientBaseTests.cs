@@ -116,6 +116,10 @@ public class WebSocketClientBaseTests(ITestOutputHelper output)
 {
     private readonly TestLogger _logger = new();
     private static readonly TimeSpan CloseHandshakeTimeout = TimeSpan.FromSeconds(3);
+    // Hang guard for one event-driven step; only absorbs CI scheduling delay.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
     private const string BackoffCleanupExceptionTypeKey = "BackoffProbeCleanupExceptionType";
     private const string BackoffDiagnosticExceptionTypeKey = "BackoffProbeDiagnosticExceptionType";
 
@@ -401,7 +405,7 @@ public class WebSocketClientBaseTests(ITestOutputHelper output)
         await server.WaitForAcceptedCountAsync(1, CloseHandshakeTimeout);
         await server.CloseSocketAsync(0);
 
-        Assert.True(await disposalCompleted.Task.WaitAsync(TimeSpan.FromSeconds(5)),
+        Assert.True(await disposalCompleted.Task.WaitAsync(StepTimeout),
             "A disconnect subscriber must not hold the transport lock while another thread disposes the client.");
     }
 

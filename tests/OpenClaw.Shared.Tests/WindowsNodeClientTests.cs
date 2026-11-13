@@ -18,6 +18,11 @@ namespace OpenClaw.Shared.Tests;
 [Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
+    // Hang guard for one event-driven step; only absorbs CI scheduling delay.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
+
     private sealed class CapturingWindowsNodeClient(
         string gatewayUrl,
         string token,
@@ -1694,7 +1699,7 @@ public class WindowsNodeClientTests
                 await server.SendTextAsync("trigger processing failure");
             else
                 await server.CloseSocketAsync(0);
-            await lost.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await lost.Task.WaitAsync(StepTimeout);
 
             Assert.False(client.IsPendingApproval);
             Assert.False(client.IsPaired);

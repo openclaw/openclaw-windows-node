@@ -2121,7 +2121,7 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady("agent:new:main");
         var generation = client.ServerHandshakeGeneration;
         client.ReleaseHealthSend.TrySetResult();
-        await health.WaitAsync(TimeSpan.FromSeconds(5));
+        await health.WaitAsync(StepTimeout);
 
         Assert.True(client.IsConnectedToGateway);
         Assert.Equal("agent:new:main", client.MainSessionKey);
