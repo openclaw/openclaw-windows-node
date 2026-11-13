@@ -7827,6 +7827,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>New messages. Jump to latest</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Jump to latest</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>Chat message navigation</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>Use Up and Down to jump between messages, or Home and End for the first and latest message.</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagents, {1} working, {2} need attention</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Waiting for subagents</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparing input</value></data>

@@ -20,6 +20,39 @@ pixels. Transcript prose is inset 16 pixels from the aligned composer edge.
 Outer gutters are 12 pixels below 640 pixels and 40 pixels above it. The native
 annotated rail overlays only the unused right gutter, leaving transcript and
 composer centered on the viewport, including while the rail is focused.
+The rail represents displayed user and assistant messages, excluding tool,
+reasoning and loading rows. Ticks are visible without hover or focus.
+Their normal, visible-message and hover/pressed treatments follow the web
+position rail at `10285cd35ca7d696957430bbc6c8556f55af79fe`
+(`ui/src/styles/chat/message-layout.css`): 8-by-2-pixel rounded ticks use muted
+gray at 40% opacity, increasing to full muted gray for messages in the viewport.
+Hover and press use the primary text tone, never an accent-colored thumb.
+The hovered tick expands to 32 pixels; its three neighbors expand to 24, 16 and
+12 pixels. Native semantic brushes preserve light, dark and High Contrast;
+High Contrast does not reduce tick opacity. Expansion stays within the unused
+gutter, including on narrow windows. Ticks have
+10-pixel pitch before the rail reaches the transcript viewport height. The
+rail has 8-pixel vertical and 4-pixel horizontal insets. At the viewport cap,
+ticks remain equidistant regardless of message height. Long histories sample
+messages evenly, retaining the first and last, so rendered ticks have at least
+4 logical pixels of clear vertical space after layout rounding. The tick budget
+adapts to the rail height and display scale on resize. Hover and pointer
+navigation resolve the same sampled message; keyboard navigation still reaches
+every message. The rail uses a fixed ordinal range independent of virtualized
+transcript height estimates, keeping its native ticks mounted during navigation.
+Streaming sender/preview updates retain existing labels when their sampled
+identities and row positions are unchanged. Visual updates are coalesced per
+rendered frame; unrelated window layout does not rescan the transcript.
+Hover previews show sender identity and up to 240 characters in
+three lines within 280 pixels, inside a native 12-pixel rounded tooltip.
+Click or drag resolves an ordinal position to the current keyed message, not
+its approximate pixel offset. Keyboard Up/Down, Home/End and Enter/Space provide
+the same destinations. After reading with the wheel or touch, Up/Down starts
+from the first visible message rather than an old rail selection. Consecutive
+rail keys retain their selection while navigation is pending. Touch previews
+use the actual pointer position; native tooltip placement must not shift which
+message is previewed. Native message realization retains bounded layout waits,
+identity checks and cancellation; it does not force synchronous ItemsView layout.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
 leave prose centered. Accessible sender and footer identity remain. Like the web
 transcript, one block of agent rows (assistant text, tool rows, tool groups and

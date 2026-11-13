@@ -7757,6 +7757,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Naar nieuwste gaan</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>Navigatie door chatberichten</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>Gebruik Omhoog en Omlaag om tussen berichten te springen, of Home en End voor het eerste en nieuwste bericht.</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagenten, {1} bezig, {2} vereisen aandacht</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Wachten op subagenten</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Invoer voorbereiden</value></data>
