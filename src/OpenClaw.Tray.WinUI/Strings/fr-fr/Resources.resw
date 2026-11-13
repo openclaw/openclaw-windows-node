@@ -6283,6 +6283,7 @@ Ouvrir Canaux dans le tableau de bord web.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 message en attente</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copié</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Échec de la copie</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Texte du message</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Niveau d'effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Plus rapide</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Plus approfondi</value></data>

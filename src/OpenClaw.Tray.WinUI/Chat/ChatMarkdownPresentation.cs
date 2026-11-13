@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Markdown;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -41,6 +42,22 @@ internal static class ChatMarkdownPresentation
                 UnwatchContrast(control);
                 s_inlineStyling.Remove((Border)control);
             });
+
+    internal static Element Disclosures(
+        IReadOnlyList<ChatMarkdownPart> parts, Func<string, Element> renderMarkdown,
+        MarkdownTextSelectionOptions selectionOptions)
+    {
+        if (parts is [ChatMarkdownText markdown])
+            return renderMarkdown(markdown.Text);
+        return VStack(ChatVisuals.BlockGap, parts.Select((part, index) => part switch
+        {
+            ChatMarkdownText text => renderMarkdown(text.Text),
+            ChatMarkdownDisclosure disclosure =>
+                Component<ChatMarkdownDisclosureView, ChatMarkdownDisclosureProps>(
+                    new(disclosure, renderMarkdown, selectionOptions)).WithKey($"disclosure:{index}"),
+            _ => throw new InvalidOperationException("Unknown chat Markdown part."),
+        }).ToArray());
+    }
 
     private sealed record InlineStylingState(bool Compact);
 
@@ -226,9 +243,15 @@ internal static class ChatMarkdownPresentation
     private static Element ResetBlockEdges(Element element, bool dropTop)
     {
         var margin = element.Modifiers?.Margin ?? new Thickness(0);
-        var top = !dropTop && s_headings.TryGetValue(element, out _) ? margin.Top : 0;
+        var top = !dropTop && IsHeading(element) ? margin.Top : 0;
         return element.Margin(margin.Left, top, margin.Right, 0);
     }
+
+    // Text selection wraps each block after its hook and keeps only layout values on the wrapper,
+    // so headings also carry a neutral layout marker: MaxHeight at its native default.
+    private static bool IsHeading(Element element) =>
+        s_headings.TryGetValue(element, out _) ||
+        element.Modifiers?.Layout?.MaxHeight is double.PositiveInfinity;
 
     private static readonly ConditionalWeakTable<Element, object> s_headings = new();
 
@@ -236,7 +259,8 @@ internal static class ChatMarkdownPresentation
 
     internal static Element Heading(int level, Element element)
     {
-        var heading = Format(element, level switch { 1 => 24, 2 => 20, _ => 16 }, true);
+        var heading = Format(element, level switch { 1 => 24, 2 => 20, _ => 16 }, true)
+            .MaxHeight(double.PositiveInfinity);
         s_headings.AddOrUpdate(heading, s_headings);
         return heading;
     }
@@ -251,24 +275,99 @@ internal static class ChatMarkdownPresentation
     /// </summary>
     internal static Element ListItem(Element row, bool compactSecondaryReading = false)
     {
-        if (row is not GridElement { Children: [TextBlockElement marker, var content] } grid)
+        if (row is not GridElement { Children: [var markerElement, var content] } grid)
             return row;
-        var style = compactSecondaryReading || !marker.Content.StartsWith('\u2022')
-            ? "ChatSecondaryTextStyle"
-            : "ChatMutedTextStyle";
+        if (markerElement is not TextBlockElement marker)
+        {
+            // Text selection wraps the marker and content before this hook. Size the wrapper's
+            // column here and style the mounted marker before it first renders. In-place updates
+            // (streamed item text, a changed marker) do not reload the row, so every render also
+            // queues a restyle after its children reconcile.
+            return (grid with { Children = [markerElement.MinWidth(ChatVisuals.ListMarkerColumn), content] })
+                .Set(control => QueueListRowStyling(control, compactSecondaryReading))
+                .OnMountAdd(control => ((FrameworkElement)control).Loaded +=
+                    compactSecondaryReading ? OnCompactListRowLoaded : OnListRowLoaded)
+                .OnUnmountAdd(control =>
+                {
+                    ((FrameworkElement)control).Loaded -= OnCompactListRowLoaded;
+                    ((FrameworkElement)control).Loaded -= OnListRowLoaded;
+                    s_listRowStyling.Remove((Microsoft.UI.Xaml.Controls.Grid)control);
+                });
+        }
         var column = (marker with { TextAlignment = TextAlignment.Right })
             .MinWidth(ChatVisuals.ListMarkerColumn)
-            .Set(text =>
-            {
-                text.Style = (Style)Application.Current.Resources[style];
-                text.ClearValue(Microsoft.UI.Xaml.Controls.TextBlock.ForegroundProperty);
-            });
-        if (!compactSecondaryReading && content is RichTextBlockElement rich && !s_headings.TryGetValue(content, out _))
+            .Set(text => StyleListMarker(text, compactSecondaryReading));
+        if (!compactSecondaryReading && content is RichTextBlockElement rich && !IsHeading(content))
         {
             var prose = (Style)Application.Current.Resources["ChatProseRichTextStyle"];
             content = rich.Set(text => text.Style = prose);
         }
         return grid with { Children = [column, content] };
+    }
+
+    private static void OnListRowLoaded(object sender, RoutedEventArgs args) =>
+        StyleListRow((Microsoft.UI.Xaml.Controls.Grid)sender, false);
+
+    private static void OnCompactListRowLoaded(object sender, RoutedEventArgs args) =>
+        StyleListRow((Microsoft.UI.Xaml.Controls.Grid)sender, true);
+
+    // A fresh token per render; a queued pass from an older render, or for a row Reactor has
+    // since unmounted and pooled, no-ops.
+    private static readonly ConditionalWeakTable<Microsoft.UI.Xaml.Controls.Grid, object> s_listRowStyling = new();
+
+    private static void QueueListRowStyling(Microsoft.UI.Xaml.Controls.Grid row, bool compactSecondaryReading)
+    {
+        var token = new object();
+        s_listRowStyling.AddOrUpdate(row, token);
+        row.DispatcherQueue?.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Normal, () =>
+        {
+            if (s_listRowStyling.TryGetValue(row, out var current) && ReferenceEquals(current, token))
+                StyleListRow(row, compactSecondaryReading);
+        });
+    }
+
+    private static void StyleListRow(Microsoft.UI.Xaml.Controls.Grid row, bool compactSecondaryReading)
+    {
+        foreach (var child in row.Children.OfType<FrameworkElement>())
+        {
+            if (Microsoft.UI.Xaml.Controls.Grid.GetColumn(child) == 0)
+            {
+                if (FirstDescendant<TextBlock>(child) is { } marker)
+                {
+                    marker.TextAlignment = TextAlignment.Right;
+                    marker.MinWidth = ChatVisuals.ListMarkerColumn;
+                    StyleListMarker(marker, compactSecondaryReading);
+                }
+            }
+            else if (!compactSecondaryReading && FirstDescendant<RichTextBlock>(child) is { Style: null } text && !IsCodeText(text))
+            {
+                // Tight-list text bypasses the Paragraph hook; give it the prose tone before first render.
+                text.Style = (Style)Application.Current.Resources["ChatProseRichTextStyle"];
+                text.ClearValue(Microsoft.UI.Xaml.Controls.RichTextBlock.ForegroundProperty);
+            }
+        }
+    }
+
+    private static void StyleListMarker(TextBlock text, bool compactSecondaryReading)
+    {
+        var style = compactSecondaryReading || !(text.Text ?? string.Empty).StartsWith('\u2022')
+            ? "ChatSecondaryTextStyle"
+            : "ChatMutedTextStyle";
+        text.Style = (Style)Application.Current.Resources[style];
+        text.ClearValue(Microsoft.UI.Xaml.Controls.TextBlock.ForegroundProperty);
+    }
+
+    private static T? FirstDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match)
+                return match;
+            if (FirstDescendant<T>(child) is { } nested)
+                return nested;
+        }
+        return null;
     }
 
     internal static Element ThematicBreak() =>
@@ -295,12 +394,40 @@ internal static class ChatMarkdownPresentation
         return element.Margin(0, 0, 0, 0);
     }
 
-    internal static Element CodeBlock(string code, string? language, Func<string, bool>? tryCopy = null)
+    internal static Element CodeBlock(string code, string? language, Func<string, bool>? tryCopy = null,
+        MarkdownTextSelectionOptions? selectionOptions = null)
     {
         var copyLabel = Localized("Chat_Code_Copy", "Copy code");
         var label = string.IsNullOrWhiteSpace(language)
             ? Localized("Chat_Code_LanguageFallback", "code")
             : language.ToLowerInvariant();
+        Element codeBody = (RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize })
+            .Set(text =>
+            {
+                text.Style = (Style)Application.Current.Resources["ChatCodeTextStyle"];
+                text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
+                text.LineHeight = ChatVisuals.CodeLineHeight;
+                text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
+                text.IsTextSelectionEnabled = selectionOptions is null;
+                text.TextWrapping = TextWrapping.NoWrap;
+                ApplyCodeSyntax(text, code, language);
+            })
+            .OnMountAdd(control =>
+            {
+                control.Loaded += OnCodeLoaded;
+                control.ActualThemeChanged += OnCodeThemeChanged;
+                WatchContrast(control);
+            })
+            .OnUnmountAdd(control =>
+            {
+                control.Loaded -= OnCodeLoaded;
+                control.ActualThemeChanged -= OnCodeThemeChanged;
+                UnwatchContrast(control);
+                ClearCodeSyntax((RichTextBlock)control);
+            })
+            .Margin(ChatVisuals.CodeInset - 6, 0, ChatVisuals.CodeInset - 6, ChatVisuals.CodeInset - 6);
+        if (selectionOptions is not null)
+            codeBody = MarkdownTextSelection.Surface(code, codeBody);
         return Border(VStack(
                 0,
                 Grid(
@@ -319,31 +446,7 @@ internal static class ChatMarkdownPresentation
                         .Grid(column: 1))
                     .Margin(ChatVisuals.CodeInset, ChatVisuals.CodeHeaderTopInset,
                         ChatVisuals.CodeHeaderTrailingInset, ChatVisuals.CodeHeaderBottomInset),
-                ScrollViewer((RichTextBlock(code) with { FontSize = ChatVisuals.CodeSize })
-                        .Set(text =>
-                        {
-                            text.Style = (Style)Application.Current.Resources["ChatCodeTextStyle"];
-                            text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
-                            text.LineHeight = ChatVisuals.CodeLineHeight;
-                            text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
-                            text.IsTextSelectionEnabled = true;
-                            text.TextWrapping = TextWrapping.NoWrap;
-                            ApplyCodeSyntax(text, code, language);
-                        })
-                        .OnMountAdd(control =>
-                        {
-                            control.Loaded += OnCodeLoaded;
-                            control.ActualThemeChanged += OnCodeThemeChanged;
-                            WatchContrast(control);
-                        })
-                        .OnUnmountAdd(control =>
-                        {
-                            control.Loaded -= OnCodeLoaded;
-                            control.ActualThemeChanged -= OnCodeThemeChanged;
-                            UnwatchContrast(control);
-                            ClearCodeSyntax((RichTextBlock)control);
-                        })
-                        .Margin(ChatVisuals.CodeInset - 6, 0, ChatVisuals.CodeInset - 6, ChatVisuals.CodeInset - 6))
+                ScrollViewer(codeBody)
                     .MaxHeight(320)
                     .Margin(6, 0, 6, 6)
                     .Set(scroll =>
@@ -461,5 +564,32 @@ internal static class ChatMarkdownPresentation
     {
         var value = LocalizationHelper.GetString(key);
         return string.IsNullOrWhiteSpace(value) || value == key ? fallback : value;
+    }
+}
+
+internal sealed record ChatMarkdownDisclosureProps(
+    ChatMarkdownDisclosure Disclosure, Func<string, Element> RenderMarkdown,
+    MarkdownTextSelectionOptions SelectionOptions);
+
+internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclosureProps>
+{
+    public override Element Render()
+    {
+        var disclosure = Props.Disclosure;
+        var (expanded, setExpanded) = UseState(disclosure.InitiallyExpanded);
+        return (Expander(
+                disclosure.Summary,
+                MarkdownTextSelection.Visibility(expanded,
+                    ChatMarkdownPresentation.Disclosures(
+                        disclosure.Body, Props.RenderMarkdown, Props.SelectionOptions)),
+                expanded,
+                setExpanded) with
+            {
+                HeaderContent = MarkdownTextSelection.Surface(disclosure.Summary,
+                    TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)),
+            })
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .HAlign(HorizontalAlignment.Stretch)
+            .AutomationName(disclosure.Summary);
     }
 }

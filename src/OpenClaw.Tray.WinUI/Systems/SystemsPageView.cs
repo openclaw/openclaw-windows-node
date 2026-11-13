@@ -632,7 +632,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 Expander("", Details(row, state, actions, open, now, layout),
                         expandedRows.Contains(row.Id), expanded => toggleExpanded(row.Id, expanded))
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                    .HeaderTemplate(InventoryItem(row, state, actions, layout))
+                    .HeaderContent(InventoryItem(row, state, actions, layout))
                     .AutomationName(Join(DisplayName(row), StatusLabel(row, state),
                         string.Join(", ", RowIssues(row, state, actions, now).Select(issue => issue.Label))) ?? DisplayName(row))
                     .Set(control => trackRow(row.Id, control))

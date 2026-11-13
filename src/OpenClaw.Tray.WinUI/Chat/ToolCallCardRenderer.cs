@@ -106,7 +106,7 @@ internal static class ToolCallCardRenderer
                     if (!expanded) onCollapse();
                     onExpansionChanged?.Invoke();
                 })
-            .HeaderTemplate(header)
+            .HeaderContent(header)
             .OnUnmount(ChatVisuals.StopToolRowShimmers)
             .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
@@ -184,7 +184,7 @@ internal static class ToolCallCardRenderer
                         props.ToolExpansionState?.SetExplicit(inputKey, expanded, props.ToolCallsCollapseVersion);
                         onExpansionChanged?.Invoke();
                     })
-                .HeaderTemplate(BuildRowHeader(
+                .HeaderContent(BuildRowHeader(
                     FluentIconCatalog.ChevronR,
                     showChevron: true,
                     inputExpanded,
@@ -544,7 +544,7 @@ internal static class ToolCallCardRenderer
         var expander = Expander(
                 summaryText,
                 details)
-            .HeaderTemplate(header)
+            .HeaderContent(header)
             .OnUnmount(ChatVisuals.StopToolRowShimmers)
             .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)

@@ -267,7 +267,10 @@ public sealed partial class ReactorChatLayoutProofTests
             await UntilAsync(() => FindOptional<Grid>(surface, "ChatSubagent_child") is { } row &&
                     AutomationProperties.GetName(row).Contains(", Done, ", StringComparison.Ordinal) &&
                     FindOptional<Border>(surface, "ChatConversation") is { } conversation &&
-                    conversation.Visibility == (width < 652 ? Visibility.Visible : Visibility.Collapsed),
+                    conversation.Visibility == (width < 652 ? Visibility.Visible : Visibility.Collapsed) &&
+                    // Button element content is presented on the next layout pass after a remount.
+                    FindOptional<Button>(surface, "ChatSubagentsPill") is { } pill &&
+                    FindOptional<TextBlock>(pill, "ChatSubagentsPillCount") is not null,
                 "settled subagent at the new width");
             await ui.RunOnUIAsync(() =>
             {

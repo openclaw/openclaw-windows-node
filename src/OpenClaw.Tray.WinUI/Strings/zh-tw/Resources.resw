@@ -6283,6 +6283,7 @@
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 則佇列訊息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已複製</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>複製失敗</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>訊息文字</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理強度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
