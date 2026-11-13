@@ -660,21 +660,22 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         {
             content.Add(Text(
                     messageText,
-                    14,
+                    ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatUserTextBrush")
+                .FontFamily(ChatVisuals.BodyFontFamily)
                 .IsTextSelectionEnabled(true));
         }
 
         var bubble = Border(VStack(8, content.ToArray()))
             .Background(Theme.Ref("ChatUserBrush"))
             .CornerRadius(ChatVisuals.SurfaceRadius)
-            .Padding(ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
+            .Padding(16, 12)
             .MaxWidth(720)
             .HAlign(HorizontalAlignment.Right);
 
         return VStack(
-                0,
+                8,
                 bubble,
                 HStack(
                         8,
@@ -685,7 +686,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Opacity(showFooter ? 1 : 0)
                     .Set(panel => panel.IsHitTestVisible = showFooter)
                     .AutomationId($"ChatMessageFooter_{entry.Id}")
-                    .Margin(16, ChatVisuals.CompactGap, 4, 0)
+                    .Margin(16, 2, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
             .Margin(32, ChatVisuals.CompactGap, 0, ChatVisuals.CompactGap)
             .HAlign(HorizontalAlignment.Stretch)
@@ -824,15 +825,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 MarkdownParserFlags.PermissiveUrlAutolinks | MarkdownParserFlags.PermissiveWwwAutolinks,
             Image = (alt, _) => Text(
                     string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]",
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : 14,
+                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatProseTextBrush")
+                .FontFamily(ChatVisuals.BodyFontFamily)
                 .IsTextSelectionEnabled(true),
             HtmlBlock = raw => Text(
                     ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw),
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : 14,
+                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
                     FontWeights.Normal,
                     "ChatProseTextBrush")
+                .FontFamily(ChatVisuals.BodyFontFamily)
                 .IsTextSelectionEnabled(true),
         };
 

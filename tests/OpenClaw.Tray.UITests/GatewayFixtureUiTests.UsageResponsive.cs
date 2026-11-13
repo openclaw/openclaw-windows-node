@@ -359,9 +359,9 @@ public sealed partial class GatewayFixtureUiTests
                     var titleBottom = FindById(run, "WorkspaceTitleBar")!.Current.BoundingRectangle.Bottom;
                     // Grids have no UIA peer. The mounted ContentInset test measures the actual
                     // surface against its host; this real-shell test measures the scrolling control
-                    // against native title chrome and keeps the 0/56-DIP integration contract.
-                    Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale
-                        - (collapsed ? 56 : 0)), 0, 2);
+                    // against native title chrome. The 56 DIP title band is the page inset in every
+                    // pane state, so the viewport starts exactly at its bottom edge.
+                    Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
                     var button = FindById(run, buttonId)!;
                     var feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
                     Assert.False(feedback.Current.IsOffscreen);
@@ -484,7 +484,7 @@ public sealed partial class GatewayFixtureUiTests
                             "collapsed error recapture");
                         await StableGeometry(true, "collapsed-retriggered");
                         Assert.Equal(contentIdentity, FindById(run, "UsagePageRoot")!.GetRuntimeId());
-                        Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale - 56), 0, 2);
+                        Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
                         feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
                         Assert.False(feedback.Current.IsOffscreen);
                         Assert.True(button.Current.BoundingRectangle.Bottom <= feedback.Current.BoundingRectangle.Top);
@@ -495,7 +495,7 @@ public sealed partial class GatewayFixtureUiTests
                     await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, name + "-layout.json"),
                         JsonSerializer.Serialize(new
                         {
-                            theme, collapsed, scale, expectedInsetDip = collapsed ? 56 : 0,
+                            theme, collapsed, scale, expectedInsetDip = 56,
                             titleBarBottom = titleBottom,
                             viewport = content.Current.BoundingRectangle,
                             button = button.Current.BoundingRectangle,

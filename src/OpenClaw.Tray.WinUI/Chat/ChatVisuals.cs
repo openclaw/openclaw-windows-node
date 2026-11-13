@@ -245,10 +245,12 @@ internal static class ChatVisuals
         AttachmentRailMaxRows * AttachmentChipHeight + (AttachmentRailMaxRows - 1) * AttachmentChipGap + 6;
     // WinUI's expanded ScrollBar (ScrollBarSize) overlays content instead of reserving space.
     internal const double AttachmentRailScrollBarInset = 12;
-    // Space between the writing surface and the window's bottom edge.
-    internal const double ComposerBottomInset = 16;
+    // Space between the writing surface and the window's bottom edge. Matches the workspace pane
+    // footer's bottom margin so the composer and account row share a baseline.
+    internal const double ComposerBottomInset = 12;
     internal const double SurfaceRadius = 12;
     internal const double BodySize = 14;
+    internal const string BodyFontFamily = "Segoe UI Variable Text";
     internal const double BodyLineHeight = 21;
     internal const string CodeFontFamily = "Consolas";
     internal const double CodeSize = 13;
@@ -400,12 +402,16 @@ internal static class ChatVisuals
     // Native setters reapply presentation after Reactor's defaults on every update.
     internal static void StylePicker(Flyout flyout)
     {
+        // WinUI connects SystemBackdrop only for windowed popups.
+        flyout.ShouldConstrainToRootBounds = false;
+        flyout.SystemBackdrop ??= new DesktopAcrylicBackdrop();
         flyout.FlyoutPresenterStyle = (Style)Application.Current.Resources["ChatPickerFlyoutStyle"];
         flyout.Placement = FlyoutPlacementMode.TopEdgeAlignedRight;
     }
 
     internal static void StylePicker(MenuFlyout menu)
     {
+        menu.SystemBackdrop ??= new DesktopAcrylicBackdrop();
         menu.MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["ChatPickerMenuStyle"];
         menu.Placement = FlyoutPlacementMode.TopEdgeAlignedRight;
     }
@@ -418,6 +424,9 @@ internal static class ChatVisuals
 
     internal static void StylePickerAccent(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["ChatPickerAccentTextStyle"];
+
+    internal static void StylePickerValue(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatPickerValueTextStyle"];
 
     internal static void StyleSecondaryText(TextBlock text)
     {
@@ -521,8 +530,18 @@ internal static class ChatVisuals
     internal static void StyleFlyoutHeading(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"];
 
+    internal static void StyleFlyoutBody(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["BodyTextBlockStyle"];
+
     internal static void StyleFlyoutCaption(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+
+    // A ThemeRef foreground replaces the element Style, so secondary flyout text carries its brush in its style.
+    internal static void StyleFlyoutSecondaryBody(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatFlyoutSecondaryBodyTextStyle"];
+
+    internal static void StyleFlyoutSecondaryCaption(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatFlyoutSecondaryCaptionTextStyle"];
 
     private static readonly ConditionalWeakTable<FrameworkElement, SizeChangedEventHandler> Observers = new();
 

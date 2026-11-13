@@ -1,17 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Page x:Class="OpenClawTray.Pages.DefaultModelPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:presentation="using:OpenClawTray.Presentation"
+      xmlns:toolkit="using:CommunityToolkit.WinUI.Controls">
+    <Page.Resources>
+        <!-- Reserved width for a field hosted in a SettingsCard; the card wraps it below its header when narrow. -->
+        <x:Double x:Key="SettingsFieldMinWidth">240</x:Double>
+        <Thickness x:Key="SectionHeaderMargin">4,18,4,4</Thickness>
+    </Page.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <Grid HorizontalAlignment="Stretch">
-            <StackPanel Padding="24" Spacing="12" HorizontalAlignment="Stretch" MaxWidth="900">
-            <TextBlock x:Uid="DefaultModelPage_Title" Text="Models"
-                       Style="{StaticResource TitleTextBlockStyle}"
-                       AutomationProperties.AutomationId="DefaultModelPageMarker"/>
-            <TextBlock x:Uid="DefaultModelPage_Intro"
-                       Text="The Gateway uses this model for new conversations. Each chat can still pick its own model."
-                       Style="{StaticResource CaptionTextBlockStyle}"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+            <StackPanel presentation:PageContentLayout.IsEnabled="True" Spacing="4">
+            <Grid ColumnSpacing="16" Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Spacing="4">
+                    <TextBlock x:Uid="DefaultModelPage_Title" Text="Models"
+                               Style="{StaticResource TitleTextBlockStyle}"
+                               AutomationProperties.AutomationId="DefaultModelPageMarker"/>
+                    <TextBlock x:Uid="DefaultModelPage_Intro"
+                               Text="The Gateway uses this model for new conversations. Each chat can still pick its own model."
+                               Style="{StaticResource CaptionTextBlockStyle}"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                </StackPanel>
+                <Button Grid.Column="1" x:Uid="PageAction_Refresh"
+                        Click="OnRefresh"
+                        Style="{StaticResource SubtleButtonStyle}"
+                        Width="32" Height="32" Padding="0"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="DefaultModelRefresh">
+                    <FontIcon Glyph="&#xE72C;" FontSize="16"/>
+                </Button>
+            </Grid>
 
             <InfoBar x:Name="DisconnectedInfoBar" x:Uid="DefaultModelPage_Disconnected"
                      Title="Connect to a Gateway to choose its model"
@@ -28,94 +51,123 @@
                      Severity="Warning" IsOpen="False" IsClosable="False"
                      AutomationProperties.AutomationId="DefaultModelReadOnly"/>
 
-            <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                    CornerRadius="8" Padding="16">
-                <StackPanel Spacing="10">
-                    <ComboBox x:Name="DefaultModelSelector" x:Uid="DefaultModelPage_ModelSelector"
-                              Header="Default model" MaxWidth="360" HorizontalAlignment="Left"
-                              SelectionChanged="OnSelectionChanged"
-                              AutomationProperties.AutomationId="DefaultModelSelector"/>
+            <toolkit:SettingsCard x:Name="DefaultModelCard" x:Uid="DefaultModelPage_ModelSelector"
+                                  Header="Default model">
+                <toolkit:SettingsCard.Description>
                     <TextBlock x:Name="DefaultModelStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                               Style="{StaticResource CaptionTextBlockStyle}"
                                AutomationProperties.AutomationId="DefaultModelStatus"
                                AutomationProperties.LiveSetting="Polite"/>
-                    <StackPanel x:Name="ModelActions" Orientation="Horizontal" Spacing="8">
-                        <Button x:Name="ApplyDefaultModelButton" x:Uid="DefaultModelPage_ApplyButton"
-                                Content="Use this model" Style="{StaticResource AccentButtonStyle}"
-                                Click="OnApply"
-                                AutomationProperties.AutomationId="DefaultModelApply"/>
-                        <ProgressRing x:Name="DefaultModelBusyIndicator" Width="20" Height="20"
-                                      IsActive="False" Visibility="Collapsed"
-                                      AutomationProperties.AccessibilityView="Raw"/>
-                        <Button x:Uid="DefaultModelPage_RefreshButton" Content="Refresh"
-                                Click="OnRefresh"
-                                AutomationProperties.AutomationId="DefaultModelRefresh"/>
-                        <HyperlinkButton x:Uid="DefaultModelPage_ManageLocalAiButton" Content="Manage Local AI"
-                                         Click="OnManageLocalAi"
-                                         AutomationProperties.AutomationId="DefaultModelManageLocalAi"/>
-                    </StackPanel>
+                </toolkit:SettingsCard.Description>
+                <StackPanel x:Name="ModelActions" Orientation="Horizontal" Spacing="8">
+                    <ComboBox x:Name="DefaultModelSelector"
+                              MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
+                              SelectionChanged="OnSelectionChanged"
+                              AutomationProperties.Name="{Binding Header, ElementName=DefaultModelCard}"
+                              AutomationProperties.AutomationId="DefaultModelSelector"/>
+                    <ProgressRing x:Name="DefaultModelBusyIndicator" Width="20" Height="20"
+                                  IsActive="False" Visibility="Collapsed"
+                                  AutomationProperties.AccessibilityView="Raw"/>
+                    <Button x:Name="ApplyDefaultModelButton" x:Uid="DefaultModelPage_ApplyButton"
+                            Content="Use this model" Style="{StaticResource AccentButtonStyle}"
+                            Click="OnApply"
+                            AutomationProperties.AutomationId="DefaultModelApply"/>
                 </StackPanel>
-            </Border>
+            </toolkit:SettingsCard>
 
-            <Border x:Name="AddProviderCard" Visibility="Collapsed"
-                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
-                    CornerRadius="8" Padding="16">
-                <StackPanel Spacing="10">
-                    <TextBlock x:Uid="DefaultModelPage_AddProviderTitle" Text="Add a model provider"
-                               Style="{StaticResource SubtitleTextBlockStyle}"/>
-                    <TextBlock x:Uid="DefaultModelPage_AddProviderIntro"
-                               Text="Connect one of the Gateway's providers, or add your own OpenAI- or Anthropic-compatible endpoint. New models appear in the list above."
-                               Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                    <RadioButtons x:Name="ProviderKindSelector" SelectedIndex="0"
-                                  SelectionChanged="OnProviderKindChanged"
-                                  AutomationProperties.AutomationId="DefaultModelProviderKind">
-                        <RadioButton x:Name="GatewayProviderKindRadio" x:Uid="DefaultModelPage_ProviderKindGateway"
-                                     Content="Gateway provider"
-                                     AutomationProperties.AutomationId="DefaultModelProviderKindGateway"/>
-                        <RadioButton x:Name="CustomProviderKindRadio" x:Uid="DefaultModelPage_ProviderKindCustom"
-                                     Content="Custom endpoint"
-                                     AutomationProperties.AutomationId="DefaultModelProviderKindCustom"/>
-                    </RadioButtons>
-                    <TextBlock x:Name="ProviderCatalogStatusText" TextWrapping="Wrap" Visibility="Collapsed"
-                               AutomationProperties.AutomationId="DefaultModelProviderCatalogStatus"/>
+            <!-- ItemNavigationCard family (see DESIGN.md "SettingsNavigationRow"): the whole card opens Local AI. -->
+            <toolkit:SettingsCard x:Uid="DefaultModelPage_ManageLocalAiButton"
+                                  Header="Manage Local AI"
+                                  IsClickEnabled="True"
+                                  Click="OnManageLocalAi"
+                                  AutomationProperties.AutomationId="DefaultModelManageLocalAi"/>
 
-                    <StackPanel x:Name="GatewayProviderPanel" Spacing="8">
-                        <ComboBox x:Name="ProviderCatalogSelector" x:Uid="DefaultModelPage_ProviderSelector"
-                                  Header="Provider" MaxWidth="360" HorizontalAlignment="Left"
+            <StackPanel x:Name="AddProviderCard" Visibility="Collapsed" Spacing="4">
+                <TextBlock x:Uid="DefaultModelPage_AddProviderTitle" Text="Add a model provider"
+                           Style="{StaticResource BodyStrongTextBlockStyle}"
+                           Margin="{StaticResource SectionHeaderMargin}"/>
+                <TextBlock x:Uid="DefaultModelPage_AddProviderIntro"
+                           Text="Connect one of the Gateway's providers, or add your own OpenAI- or Anthropic-compatible endpoint. New models appear in the list above."
+                           Style="{StaticResource CaptionTextBlockStyle}"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                           Margin="4,0,4,4"/>
+                <toolkit:SettingsCard>
+                    <toolkit:SettingsCard.Header>
+                        <RadioButtons x:Name="ProviderKindSelector" SelectedIndex="0" MaxColumns="2"
+                                      SelectionChanged="OnProviderKindChanged"
+                                      AutomationProperties.AutomationId="DefaultModelProviderKind">
+                            <RadioButton x:Name="GatewayProviderKindRadio" x:Uid="DefaultModelPage_ProviderKindGateway"
+                                         Content="Gateway provider"
+                                         AutomationProperties.AutomationId="DefaultModelProviderKindGateway"/>
+                            <RadioButton x:Name="CustomProviderKindRadio" x:Uid="DefaultModelPage_ProviderKindCustom"
+                                         Content="Custom endpoint"
+                                         AutomationProperties.AutomationId="DefaultModelProviderKindCustom"/>
+                        </RadioButtons>
+                    </toolkit:SettingsCard.Header>
+                </toolkit:SettingsCard>
+                <TextBlock x:Name="ProviderCatalogStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                           Margin="4,4,4,0"
+                           AutomationProperties.AutomationId="DefaultModelProviderCatalogStatus"/>
+
+                <StackPanel x:Name="GatewayProviderPanel" Spacing="4">
+                    <toolkit:SettingsCard x:Name="ProviderCatalogCard" x:Uid="DefaultModelPage_ProviderSelector"
+                                          Header="Provider">
+                        <ComboBox x:Name="ProviderCatalogSelector"
+                                  MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
                                   SelectionChanged="OnProviderCatalogSelectionChanged"
+                                  AutomationProperties.Name="{Binding Header, ElementName=ProviderCatalogCard}"
                                   AutomationProperties.AutomationId="DefaultModelProviderSelector"/>
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Name="ProviderApiKeyRow" x:Uid="DefaultModelPage_ProviderApiKey"
+                                          Header="API key">
                         <StackPanel x:Name="ProviderApiKeyPanel" Orientation="Horizontal" Spacing="8">
-                            <PasswordBox x:Name="ProviderApiKeyBox" x:Uid="DefaultModelPage_ProviderApiKey"
-                                         Header="API key" MaxWidth="280" HorizontalAlignment="Left"
+                            <PasswordBox x:Name="ProviderApiKeyBox"
+                                         MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="280" HorizontalAlignment="Left"
+                                         AutomationProperties.Name="{Binding Header, ElementName=ProviderApiKeyRow}"
                                          AutomationProperties.AutomationId="DefaultModelProviderApiKey"/>
                             <Button x:Name="SaveProviderApiKeyButton" x:Uid="DefaultModelPage_SaveApiKeyButton"
-                                    Content="Save API key" VerticalAlignment="Bottom"
+                                    Content="Save API key"
                                     Click="OnSaveProviderApiKey"
                                     AutomationProperties.AutomationId="DefaultModelSaveApiKey"/>
                         </StackPanel>
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Name="ProviderSignInRow" x:Uid="DefaultModelPage_ProviderSignInMethod"
+                                          Header="Sign-in method">
                         <StackPanel x:Name="ProviderSignInPanel" Orientation="Horizontal" Spacing="8">
-                            <ComboBox x:Name="ProviderLoginSelector" x:Uid="DefaultModelPage_ProviderSignInMethod"
-                                      Header="Sign-in method" MaxWidth="280" HorizontalAlignment="Left"
+                            <ComboBox x:Name="ProviderLoginSelector"
+                                      MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="280" HorizontalAlignment="Left"
                                       SelectionChanged="OnProviderLoginSelectionChanged"
+                                      AutomationProperties.Name="{Binding Header, ElementName=ProviderSignInRow}"
                                       AutomationProperties.AutomationId="DefaultModelProviderSignInMethod"/>
                             <Button x:Name="StartProviderSignInButton" x:Uid="DefaultModelPage_SignInButton"
-                                    Content="Sign in" VerticalAlignment="Bottom"
+                                    Content="Sign in"
                                     Click="OnStartProviderSignIn"
                                     AutomationProperties.AutomationId="DefaultModelProviderSignIn"/>
                         </StackPanel>
-                    </StackPanel>
+                    </toolkit:SettingsCard>
+                </StackPanel>
 
-                    <StackPanel x:Name="CustomProviderPanel" Spacing="8" Visibility="Collapsed">
-                        <TextBox x:Name="CustomProviderIdBox" x:Uid="DefaultModelPage_CustomProviderId"
-                                 Header="Provider ID" PlaceholderText="my-endpoint" MaxWidth="360" HorizontalAlignment="Left"
+                <StackPanel x:Name="CustomProviderPanel" Spacing="4" Visibility="Collapsed">
+                    <toolkit:SettingsCard x:Name="CustomProviderIdCard" x:Uid="DefaultModelPage_CustomProviderId"
+                                          Header="Provider ID">
+                        <TextBox x:Name="CustomProviderIdBox" x:Uid="DefaultModelPage_CustomProviderIdField"
+                                 PlaceholderText="my-endpoint"
+                                 MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
+                                 AutomationProperties.Name="{Binding Header, ElementName=CustomProviderIdCard}"
                                  AutomationProperties.AutomationId="DefaultModelCustomProviderId"/>
-                        <TextBox x:Name="CustomProviderBaseUrlBox" x:Uid="DefaultModelPage_CustomProviderBaseUrl"
-                                 Header="Base URL" PlaceholderText="http://localhost:8000/v1" MaxWidth="360" HorizontalAlignment="Left"
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Name="CustomProviderBaseUrlCard" x:Uid="DefaultModelPage_CustomProviderBaseUrl"
+                                          Header="Base URL">
+                        <TextBox x:Name="CustomProviderBaseUrlBox" PlaceholderText="http://localhost:8000/v1"
+                                 MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
+                                 AutomationProperties.Name="{Binding Header, ElementName=CustomProviderBaseUrlCard}"
                                  AutomationProperties.AutomationId="DefaultModelCustomProviderBaseUrl"/>
-                        <ComboBox x:Name="CustomProviderApiSelector" x:Uid="DefaultModelPage_CustomProviderApi"
-                                  Header="API type" SelectedIndex="0" MaxWidth="360" HorizontalAlignment="Left"
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Name="CustomProviderApiCard" x:Uid="DefaultModelPage_CustomProviderApi"
+                                          Header="API type">
+                        <ComboBox x:Name="CustomProviderApiSelector" SelectedIndex="0"
+                                  MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
+                                  AutomationProperties.Name="{Binding Header, ElementName=CustomProviderApiCard}"
                                   AutomationProperties.AutomationId="DefaultModelCustomProviderApi">
                             <ComboBoxItem x:Uid="DefaultModelPage_CustomApiOpenAiCompletions" Tag="openai-completions"
                                           Content="OpenAI-compatible (Chat Completions)"/>
@@ -124,23 +176,34 @@
                             <ComboBoxItem x:Uid="DefaultModelPage_CustomApiAnthropic" Tag="anthropic-messages"
                                           Content="Anthropic Messages"/>
                         </ComboBox>
-                        <PasswordBox x:Name="CustomProviderApiKeyBox" x:Uid="DefaultModelPage_CustomProviderApiKey"
-                                     Header="API key (optional for OpenAI-compatible)" MaxWidth="360" HorizontalAlignment="Left"
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Name="CustomProviderApiKeyCard" x:Uid="DefaultModelPage_CustomProviderApiKey"
+                                          Header="API key (optional for OpenAI-compatible)">
+                        <PasswordBox x:Name="CustomProviderApiKeyBox"
+                                     MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
+                                     AutomationProperties.Name="{Binding Header, ElementName=CustomProviderApiKeyCard}"
                                      AutomationProperties.AutomationId="DefaultModelCustomProviderApiKey"/>
-                        <TextBox x:Name="CustomProviderModelsBox" x:Uid="DefaultModelPage_CustomProviderModels"
-                                 Header="Model IDs" PlaceholderText="model-a, model-b" MaxWidth="360" HorizontalAlignment="Left"
+                    </toolkit:SettingsCard>
+                    <toolkit:SettingsCard x:Name="CustomProviderModelsCard" x:Uid="DefaultModelPage_CustomProviderModels"
+                                          Header="Model IDs">
+                        <TextBox x:Name="CustomProviderModelsBox" x:Uid="DefaultModelPage_CustomProviderModelsField"
+                                 PlaceholderText="model-a, model-b"
+                                 MinWidth="{StaticResource SettingsFieldMinWidth}" MaxWidth="360" HorizontalAlignment="Left"
+                                 AutomationProperties.Name="{Binding Header, ElementName=CustomProviderModelsCard}"
                                  AutomationProperties.AutomationId="DefaultModelCustomProviderModels"/>
-                        <Button x:Name="AddCustomProviderButton" x:Uid="DefaultModelPage_AddCustomProviderButton"
-                                Content="Add provider" Style="{StaticResource AccentButtonStyle}"
-                                Click="OnAddCustomProvider"
-                                AutomationProperties.AutomationId="DefaultModelAddCustomProvider"/>
-                    </StackPanel>
-
-                    <TextBlock x:Name="ProviderStatusText" TextWrapping="Wrap" Visibility="Collapsed"
-                               AutomationProperties.AutomationId="DefaultModelProviderStatus"
-                               AutomationProperties.LiveSetting="Polite"/>
+                    </toolkit:SettingsCard>
+                    <Button x:Name="AddCustomProviderButton" x:Uid="DefaultModelPage_AddCustomProviderButton"
+                            Content="Add provider" Style="{StaticResource AccentButtonStyle}"
+                            Margin="0,4,0,0"
+                            Click="OnAddCustomProvider"
+                            AutomationProperties.AutomationId="DefaultModelAddCustomProvider"/>
                 </StackPanel>
-            </Border>
+
+                <TextBlock x:Name="ProviderStatusText" TextWrapping="Wrap" Visibility="Collapsed"
+                           Margin="4,4,4,0"
+                           AutomationProperties.AutomationId="DefaultModelProviderStatus"
+                           AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
             </StackPanel>
         </Grid>
     </ScrollViewer>

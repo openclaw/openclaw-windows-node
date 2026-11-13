@@ -4,12 +4,13 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
+    xmlns:presentation="using:OpenClawTray.Presentation"
     xmlns:helpers="using:OpenClawTray.Helpers">
 
     <Grid>
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <Grid HorizontalAlignment="Stretch">
-                <StackPanel Padding="24" Spacing="8" HorizontalAlignment="Stretch" MaxWidth="900">
+                <StackPanel presentation:PageContentLayout.IsEnabled="True" Spacing="8">
                     <TextBlock x:Uid="SettingsPage_About" Text="About"
                                AutomationProperties.AutomationId="AboutPageMarker"
                                Style="{StaticResource TitleTextBlockStyle}"
@@ -91,8 +92,10 @@
                                     Click="OnCheckUpdates"
                                     AutomationProperties.AutomationId="SettingsPageCheckUpdates"/>
                         </toolkit:SettingsExpander.Content>
-                        <toolkit:SettingsExpander.ItemsHeader>
-                            <StackPanel Padding="16" Spacing="12">
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard Padding="16" HorizontalContentAlignment="Stretch">
+                            <toolkit:SettingsCard.Header>
+                            <StackPanel Spacing="12">
                                 <Grid ColumnSpacing="24" RowSpacing="6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="180"/>
@@ -173,7 +176,9 @@
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
-                        </toolkit:SettingsExpander.ItemsHeader>
+                            </toolkit:SettingsCard.Header>
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>
 
                     <toolkit:SettingsExpander x:Uid="SettingsPage_GatewayInfoExpander"
@@ -183,8 +188,10 @@
                             <FontIcon Glyph="{x:Bind helpers:FluentIconCatalog.ServerEnvironment, Mode=OneTime}"
                                       FontFamily="{ThemeResource SymbolThemeFontFamily}"/>
                         </toolkit:SettingsExpander.HeaderIcon>
-                        <toolkit:SettingsExpander.ItemsHeader>
-                            <Grid Padding="16" ColumnSpacing="24" RowSpacing="6">
+                        <toolkit:SettingsExpander.Items>
+                            <toolkit:SettingsCard Padding="16" HorizontalContentAlignment="Stretch">
+                            <toolkit:SettingsCard.Header>
+                            <Grid ColumnSpacing="24" RowSpacing="6">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="180"/>
                                     <ColumnDefinition Width="*"/>
@@ -220,7 +227,9 @@
                                            Style="{StaticResource BodyTextBlockStyle}" IsTextSelectionEnabled="True"
                                            TextWrapping="Wrap"/>
                             </Grid>
-                        </toolkit:SettingsExpander.ItemsHeader>
+                            </toolkit:SettingsCard.Header>
+                            </toolkit:SettingsCard>
+                        </toolkit:SettingsExpander.Items>
                     </toolkit:SettingsExpander>
                 </StackPanel>
             </Grid>

@@ -120,16 +120,43 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void DashboardAction_LivesInConnectionCard()
+    public void DashboardAction_LivesInConnectionStatusCard()
     {
         var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
         var dashboard = Assert.Single(document.Descendants(),
-            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardButton");
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StripDashboardAction");
         Assert.Equal("OnOpenDashboard", (string?)dashboard.Attribute("Click"));
         Assert.Contains(dashboard.Ancestors(),
-            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StatusStrip");
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard()",
             Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs"));
+    }
+
+    [Fact]
+    public void ConnectionLayout_SeparatesThePageTitleStatusAndFlatGatewayInventory()
+    {
+        var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
+        var title = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionPageMarker");
+        Assert.Equal("Connection", (string?)title.Attribute("Text"));
+        Assert.Equal("Level1", (string?)title.Attribute("AutomationProperties.HeadingLevel"));
+        Assert.DoesNotContain(title.Ancestors(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StatusStrip");
+        var status = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StatusStrip");
+        Assert.Equal("{ThemeResource CardBackgroundFillColorDefaultBrush}", (string?)status.Attribute("Background"));
+        var gateways = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "SavedGatewaysCard");
+        Assert.Null(gateways.Attribute("Background"));
+        Assert.Null(gateways.Attribute("BorderThickness"));
+        Assert.Null(gateways.Attribute("Padding"));
+        var permissions = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "NodePermissionsRow");
+        Assert.Equal("SettingsCard", permissions.Name.LocalName);
+        Assert.Equal("True", (string?)permissions.Attribute("IsClickEnabled"));
+        Assert.Equal("OnOpenPermissions", (string?)permissions.Attribute("Click"));
+        Assert.DoesNotContain(permissions.Ancestors(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "NodeCard");
     }
 
     [Fact]

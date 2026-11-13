@@ -7,13 +7,13 @@ internal static class WorkspaceSettingsLayout
     public const double NavigationChromeHeight = 56;
 
     public static double PageTopInset(bool contentOnly, bool paneOpen) =>
-        !contentOnly && !paneOpen ? NavigationChromeHeight : 0;
+        !contentOnly ? NavigationChromeHeight : 0;
 
-    /// <summary>Opted-in pages retain full-frame backdrops; ordinary pages keep the existing outer margin.</summary>
+    /// <summary>Every embedded page clears the native chrome band, regardless of pane visibility.</summary>
     public static (double HostMarginTop, double PageTopInset) EmbeddedPageTopAllocation(
         bool embedded, bool workspacePaneOpen, bool supportsInset)
     {
-        if (!embedded || workspacePaneOpen) return (0, 0);
-        return supportsInset ? (0, NavigationChromeHeight) : (NavigationChromeHeight, 0);
+        if (!embedded) return (0, 0);
+        return (0, NavigationChromeHeight);
     }
 }

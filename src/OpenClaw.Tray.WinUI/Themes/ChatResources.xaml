@@ -353,23 +353,65 @@
     <ControlTemplate x:Key="ChatModelPickerControlTemplate" TargetType="Control">
         <ContentPresenter x:Name="PickerRoot" />
     </ControlTemplate>
+    <ResourceDictionary x:Key="ChatModelListResources">
+        <x:Boolean x:Key="ListViewItemSelectionCheckMarkVisualEnabled">False</x:Boolean>
+        <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>
+        <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="SubtleFillColorTransparentBrush" />
+        <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="SubtleFillColorSecondaryBrush" />
+        <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="SubtleFillColorTertiaryBrush" />
+    </ResourceDictionary>
+    <!-- ListViewItem draws its hover/pressed pill 4px (horizontal) and 2px (vertical) inside the item bounds, which
+         is exactly the stock MenuFlyoutItem margin (4,2). The item therefore has no margin of its own, and its
+         padding adds that inset to the stock narrow padding (11,4,11,5): 15,6,15,7. The result is the account
+         menu's row: a 29px pill 4px from the flyout edge with text 11px inside it. -->
+    <Style x:Key="ChatModelItemStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+        <Setter Property="MinHeight" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Padding" Value="15,6,15,7" />
+        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+    <!-- The 12px check plus 16px margin mirrors the stock ToggleMenuFlyoutItem's 28px check placeholder. -->
     <DataTemplate x:Key="ChatModelItemTemplate">
-        <Grid ColumnSpacing="12" MinHeight="32">
+        <Grid>
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Text="{Binding Title}" Style="{ThemeResource BodyTextBlockStyle}"
+            <Border Width="28" HorizontalAlignment="Left">
+                <FontIcon x:Name="ModelSelectedCheck" Glyph="&#xE73E;" FontSize="12"
+                          FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                          Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                          HorizontalAlignment="Left" VerticalAlignment="Center"
+                          Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw" />
+            </Border>
+            <TextBlock Grid.Column="1" Text="{Binding Title}" Style="{ThemeResource BodyTextBlockStyle}"
                        TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Text="{Binding Description}"
-                       Style="{ThemeResource CaptionTextBlockStyle}" MaxWidth="112"
+            <TextBlock Grid.Column="2" Text="{Binding Description}"
+                       Style="{ThemeResource CaptionTextBlockStyle}" MaxWidth="112" Margin="24,0,0,0"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                        TextWrapping="Wrap" VerticalAlignment="Center" />
         </Grid>
     </DataTemplate>
+    <Style x:Key="ChatModelGroupHeaderStyle" TargetType="ListViewHeaderItem">
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ListViewHeaderItem">
+                    <ContentPresenter Content="{TemplateBinding Content}"
+                                      ContentTemplate="{TemplateBinding ContentTemplate}" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <DataTemplate x:Key="ChatModelGroupHeaderTemplate">
-        <TextBlock Text="{Binding Label}" Style="{ThemeResource CaptionTextBlockStyle}"
+        <!-- 15 = stock item margin (4) + stock item padding (11), so headings share the rows' left edge. -->
+        <TextBlock Text="{Binding Label}" Style="{ThemeResource CaptionTextBlockStyle}" FontWeight="SemiBold"
                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                   Margin="12,8,12,4" AutomationProperties.HeadingLevel="Level2" />
+                   Margin="15,4,15,4" AutomationProperties.HeadingLevel="Level2" />
     </DataTemplate>
     <ControlTemplate x:Key="ChatWelcomeAvatarTemplate" TargetType="Control">
         <ContentPresenter x:Name="AvatarRoot"/>
@@ -396,6 +438,15 @@
     <Style x:Key="ChatPickerAccentTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
     </Style>
+    <Style x:Key="ChatPickerValueTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+    </Style>
+    <Style x:Key="ChatFlyoutSecondaryBodyTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BodyTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+    </Style>
+    <Style x:Key="ChatFlyoutSecondaryCaptionTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+    </Style>
     <Style x:Key="ChatSecondaryTextStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
     </Style>
@@ -409,13 +460,14 @@
         <Setter Property="Background" Value="{ThemeResource ChatCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource ChatQuestionCardStrokeBrush}" />
     </Style>
-    <Style x:Key="ChatPickerFlyoutStyle" TargetType="FlyoutPresenter">
+    <Style x:Key="ChatPickerFlyoutStyle" TargetType="FlyoutPresenter" BasedOn="{StaticResource DefaultFlyoutPresenterStyle}">
+        <Setter Property="Background" Value="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinWidth" Value="0" />
-        <Setter Property="CornerRadius" Value="12" />
+        <Setter Property="CornerRadius" Value="8" />
     </Style>
-    <Style x:Key="ChatPickerMenuStyle" TargetType="MenuFlyoutPresenter">
-        <Setter Property="Padding" Value="4" />
-        <Setter Property="CornerRadius" Value="12" />
+    <!-- Only the fill matches the model flyout; padding, width, corners and items stay stock. -->
+    <Style x:Key="ChatPickerMenuStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
+        <Setter Property="Background" Value="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}" />
     </Style>
 </ResourceDictionary>

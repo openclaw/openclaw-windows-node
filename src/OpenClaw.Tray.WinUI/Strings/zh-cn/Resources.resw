@@ -2297,8 +2297,11 @@
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>语音模型</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>语音转文本已禁用。请先在此配置模型，准备好后再在“权限”中启用此功能。</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>语音转文本已禁用</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>请在“权限”中启用后再更改这些设置。</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>打开权限</value>
@@ -2369,8 +2372,11 @@
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>选择朗读响应时使用的语音。</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>文本转语音已禁用。请先在此配置提供程序和语音，准备好后再在“权限”中启用此功能。</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>文本转语音已禁用</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>请在“权限”中启用后再更改本地语音设置。</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>提供商</value>
@@ -2495,13 +2501,13 @@
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
     <value>语音 ID</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>例如 male-qn-qingse</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
     <value>模型</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve">
     <value>speech-2.8-hd</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
@@ -3637,7 +3643,7 @@
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>使用网关的 Web 聊天界面</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>显示通知</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3880,10 +3886,10 @@
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>允许代理通过 location.* 命令读取设备位置。</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3907,11 +3913,11 @@
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>未激活</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>查看会话 ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>查看会话</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>查看实例 ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>查看实例</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>节点模式</value>
@@ -3928,8 +3934,11 @@
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>连接</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>管理权限 ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>管理权限</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>帮助我们修复此连接:</value>
@@ -4177,7 +4186,7 @@
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>代理在此电脑上运行的程序受到隔离。</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>哪些内容受隔离</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4268,7 +4277,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Windows 运行时文件夹和私有工作区仍可用。出现在 PATH 中不会授予访问权限。重新应用预设可重置文件夹选项。</value>
+    <value>受保护的文件夹仍被阻止。Windows 运行时文件夹仍可用；出现在 PATH 中不会授予访问权限。</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>附加文件夹</value>
@@ -4291,11 +4300,17 @@
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>添加文件夹</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>添加新文件夹</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 剪贴板</value>
+    <value>剪贴板</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>剪贴板访问</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>剪贴板通常包含密码、令牌和私人文本。读取权限可能将这些泄露给代理(若启用,也会泄露到互联网)。</value>
+    <value>剪贴板通常包含密码和私人文本。读取权限会将其暴露给代理。</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>无(默认)</value>
@@ -4310,7 +4325,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 网络</value>
+    <value>网络</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>允许互联网</value>
@@ -4322,7 +4337,7 @@
     <value>本地网络设备和共享尚未包含在内。</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ 限制</value>
+    <value>限制</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>命令超时:30 秒</value>
@@ -4547,8 +4562,11 @@
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>删除 WSL 发行版 (OpenClawGateway)、其磁盘映像、自动启动项,并清除网关凭据。您的 MCP 令牌将被保留。引导将重置。</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>删除本地网关</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>移除</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>已保存</value>
@@ -5769,7 +5787,7 @@
     <value>移除失败</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>移除本地网关</value>
+    <value>移除</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>正在移除发行版…</value>
@@ -6161,7 +6179,7 @@
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>选择网关使用的模型</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>自定义 Hugging Face 模型（可选）</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 链接</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 链接</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>仅支持公开的单文件 GGUF 模型。填写后将替代上方的选择。</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>此模型可能无法装入</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>它需要约 {0:F1} GB GPU 内存，而 {1} 只有 {2:F1} GB。它可能无法启动或运行缓慢。</value></data>
@@ -6190,7 +6208,7 @@
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>默认模型</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>使用此模型</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>刷新</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>管理本地 AI</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>管理本地 AI</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>本地 AI：{0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0}（请先登录提供商）</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>默认模型已更新。</value></data>
@@ -6204,7 +6222,7 @@
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>登录方式</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>登录</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>提供商 ID</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>基础 URL</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API 类型</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI 兼容（Chat Completions）</value></data>
@@ -6212,7 +6230,7 @@
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API 密钥（OpenAI 兼容端点可选）</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>模型 ID</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>添加提供商</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0}（已连接）</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>正在加载提供商...</value></data>
@@ -7185,7 +7203,7 @@
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>{0} 的访问权限</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>移除 {0} 的权限</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>文件夹</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作。“禁止访问”会阻止该文件夹，但明确列出的子文件夹保留各自的访问权限。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作；明确列出的子文件夹保留各自的访问权限。</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>禁止访问</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>用户配置文件目录</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7787,7 +7805,7 @@
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>连接到 Gateway 后才能使用此操作。</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>已连接的应用</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>设备和 Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>设备和 Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>设备和 Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>问题</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>上次已知状态：离线</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>上次已知状态：在线</value></data>
@@ -10029,5 +10047,7 @@
   <data name="Chat_Panel_Back" xml:space="preserve"><value>返回对话</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>显示面板</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>对话面板</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>刷新</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>刷新</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>仪表板</value></data>
 </root>
