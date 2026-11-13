@@ -8007,6 +8007,13 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>Concluído</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Interrompido</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Falhou</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>Arquivos</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>Arquivos da sessão: {0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>Ainda não há arquivos nesta sessão.</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>Carregando arquivos...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>Este Gateway não fornece arquivos de sessão.</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>Não foi possível carregar os arquivos. Atualize para tentar novamente.</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>Atualizar arquivos</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agente: {0}</value>
   </data>

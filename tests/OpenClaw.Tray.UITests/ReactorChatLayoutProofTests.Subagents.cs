@@ -14,6 +14,9 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class ReactorChatLayoutProofTests
 {
+    // Covers the TabView item entrance fade before a proof capture; RenderTargetBitmap would otherwise record an empty header.
+    private static readonly TimeSpan TabEntranceCaptureDelay = TimeSpan.FromMilliseconds(600);
+
     [Theory]
     [InlineData(480, SubagentsOnly)]
     [InlineData(1100, SubagentsOnly)]
@@ -404,6 +407,87 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             Assert.DoesNotContain(childKey, bridge.HistoryRequests);
             await CaptureAsync(surface, "Subagents-provider-list");
+        }, initialThreadId: "proof", renderProvider: source);
+    }
+
+    [Fact]
+    public async Task Files_PillOpensTheSessionFileListBesideSubagents()
+    {
+        var parent = new ChatHistoryInfo
+        {
+            SessionKey = "proof", SessionId = "parent-instance",
+            Messages = [new ChatMessageInfo { Role = "assistant", Text = "Updated the parser and added tests.", SessionKey = "proof" }],
+        };
+        using var directory = new TempDirectory();
+        using var bridge = new ConversationParityBridge(parent,
+            new SessionInfo { Key = "proof", IsMain = true, Label = "Parent" })
+        {
+            Children = [new SessionInfo
+            {
+                Key = "agent:main:subagent:proof", ParentSessionKey = "proof", Label = "Research",
+                HasActiveRun = true, Status = "running", CurrentActivity = "Searching the docs",
+            }],
+            Files = new SessionFileList
+            {
+                Key = "proof", Root = @"C:\repo\openclaw",
+                Files =
+                [
+                    new SessionFileEntry { Path = "src/Parser.cs", Kind = "modified", Size = 18_432 },
+                    new SessionFileEntry { Path = "tests/ParserTests.cs", Kind = "modified", Size = 6_120 },
+                    new SessionFileEntry { Path = "README.md", Kind = "read", Size = 2_048 },
+                    new SessionFileEntry { Path = "docs/old-notes.md", Kind = "read", Missing = true },
+                ],
+                // The Gateway also lists the workspace root; untouched entries are not session files.
+                Browser = new SessionFileBrowser
+                {
+                    Path = "",
+                    Entries =
+                    [
+                        new SessionFileBrowserEntry { Path = "package.json", Name = "package.json", Kind = "file" },
+                        new SessionFileBrowserEntry { Path = "src", Name = "src", Kind = "directory" },
+                    ],
+                },
+            },
+        };
+        await using var source = new OpenClawChatDataProvider(bridge, null,
+            directory.Combine("tools.json"), directory.Combine("attachments.json"), directory.Combine("last-state.json"));
+        await source.LoadHistoryAsync("proof");
+        await WithChatAsync(1100, async (surface, _, _, _) =>
+        {
+            await UntilAsync(() => FindOptional<Button>(surface, "ChatFilesPill") is { IsLoaded: true } &&
+                    FindOptional<Button>(surface, "ChatSubagentsPill") is { IsLoaded: true },
+                "Files and Subagents pills");
+            await ui.RunOnUIAsync(() =>
+            {
+                var files = FindControl<Button>(surface, "ChatFilesPill");
+                var subagents = FindControl<Button>(surface, "ChatSubagentsPill");
+                Assert.Equal("Session files: 4", AutomationProperties.GetName(files));
+                Assert.Equal("4", FindControl<TextBlock>(files, "ChatFilesPillCount").Text);
+                Assert.Equal(Bounds(subagents, surface).Top, Bounds(files, surface).Top, 0.5);
+                Assert.True(Bounds(subagents, surface).Right <= Bounds(files, surface).Left);
+            });
+            await CaptureAsync(surface, "Files-pills");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatFilesPill")));
+            await UntilAsync(() => FindOptional<Grid>(surface, "ConversationPanel") is { Visibility: Visibility.Visible } &&
+                    FindOptional<Border>(surface, "ChatFilesPane") is { IsLoaded: true } pane &&
+                    FindOptional<TextBlock>(pane, "ChatFilesRoot") is { IsLoaded: true } &&
+                    FindDescendants<Grid>(pane).Count(row => AutomationProperties.GetName(row).Contains(", ")) == 4 &&
+                    PanelTabs(surface) is { TabItems: [TabViewItem { IsLoaded: true, Header: "Files" }] },
+                "Files tab with its rows");
+            await ui.RunOnUIAsync(() =>
+            {
+                var pane = FindControl<Border>(surface, "ChatFilesPane");
+                Assert.Equal(@"C:\repo\openclaw", FindControl<TextBlock>(pane, "ChatFilesRoot").Text);
+                Assert.StartsWith("Parser.cs, Edited, src", AutomationProperties.GetName(
+                    FindDescendants<Grid>(pane).First(row => AutomationProperties.GetName(row).StartsWith("Parser.cs"))));
+                Assert.Contains(FindDescendants<Grid>(pane),
+                    row => AutomationProperties.GetName(row).StartsWith("old-notes.md, Missing"));
+                Assert.DoesNotContain(FindDescendants<Grid>(pane),
+                    row => AutomationProperties.GetName(row).StartsWith("package.json"));
+            });
+            if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") == "1")
+                await Task.Delay(TabEntranceCaptureDelay); // test-timing-exception: capture-only; the TabView item fade is a composition animation with no observable completion
+            await CaptureAsync(surface, "Files-tab");
         }, initialThreadId: "proof", renderProvider: source);
     }
 

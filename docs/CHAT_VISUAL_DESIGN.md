@@ -235,6 +235,23 @@ This version intentionally has no child transcript, separate child
 discovery/pagination, descendant tree, Stop, persisted layout, or docking
 controls. Its session-list scope is not a claim that every historical child has
 been discovered.
+
+The **Files** pill sits beside the Subagents pill in the same row. It appears
+once the selected chat's Gateway session file list has files, after a failed
+read, or while the
+Files tab is open, and shows "Files" with the file count in secondary text,
+using the same pill look (`ChatPanelPill`). Selecting it opens or reselects the
+Files tab. The tab lists the files the session edited or read, with the
+workspace root, the folder and size of each file, and an Edited, Read or
+Missing badge; untouched files from the workspace root are not shown or
+counted. Rows are not interactive. The list comes from the existing
+`sessions.files.list` read when the chat is selected or its history is
+replaced (for example by a checkpoint restore), after each run ends, and from
+the tab's refresh button. An unsupported Gateway or a failed read shows a
+status line instead of inventing files, and a failed refresh keeps the last
+list. An unsupported Gateway is asked again only by refresh or after
+reconnecting. Disconnect or another chat closes the tab, like Subagents.
+
 `ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
 resizing, 440-DIP initial width and compact layout below 652 DIPs. There is no
 second subagent split/focus owner. Compact presentation retains the hidden main
