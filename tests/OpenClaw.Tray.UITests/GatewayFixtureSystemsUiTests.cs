@@ -9,6 +9,18 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    // Gateway and worker rows are Toolkit SettingsExpanders: the row id is on a group peer and the
+    // disclosure (ExpandCollapse) peer is its descendant. Node rows expose the pattern directly.
+    private static AutomationElement DisclosureOf(AutomationElement row) =>
+        row.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out _)
+            ? row
+            : row.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+              ?? throw new ElementNotAvailableException();
+
+    private static ExpandCollapsePattern ExpansionOf(AutomationElement row) =>
+        (ExpandCollapsePattern)DisclosureOf(row).GetCurrentPattern(ExpandCollapsePattern.Pattern);
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task SystemsHero_EmptyFixtureHasHonestCountsInLightAndDark()
@@ -90,10 +102,13 @@ public sealed partial class GatewayFixtureUiTests
             TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, id));
         // Section panels have no UIA peer. Observe the shipped accessible heading and real row state.
         await WaitUiAsync(run, () => FindById(run, "SystemsRow_gateway") is { } gateway &&
-            gateway.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var expansion) &&
-            ((ExpandCollapsePattern)expansion).Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
-            GatewayDetail("SystemsSessionsHeading") is not null && GatewayDetail("SystemsDiagnostics") is not null,
-            "deep-linked Gateway is expanded with accessible sessions and diagnostics");
+            ExpansionOf(gateway).Current.ExpandCollapseState == ExpandCollapseState.Expanded &&
+            GatewayDetail("SystemsSessionsHeading") is not null && GatewayDetail("SystemsMachineDetailsHeading") is not null,
+            "deep-linked Gateway is expanded with accessible sessions and machine details");
+        var gatewayRow = FindById(run, "SystemsRow_gateway")!;
+        Assert.Equal(gatewayRow.Current.Name, DisclosureOf(gatewayRow).Current.Name);
+        Assert.False(string.IsNullOrWhiteSpace(gatewayRow.Current.Name),
+            "The Gateway disclosure button must expose the row's accessible name.");
         scroll = FindById(run, "SystemsPageScroll")!;
         pattern = (ScrollPattern)scroll.GetCurrentPattern(ScrollPattern.Pattern);
         viewport = scroll.Current.BoundingRectangle;
@@ -103,10 +118,10 @@ public sealed partial class GatewayFixtureUiTests
         var targetOffset = currentOffset + GatewayDetail("SystemsSessionsHeading")!.Current.BoundingRectangle.Top - viewport.Top - 16;
         pattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(targetOffset / range * 100, 0, 100));
         await WaitUiAsync(run, () => GatewayDetail("SystemsSessionsHeading") is { Current.IsOffscreen: false } &&
-            GatewayDetail("SystemsDiagnostics") is { Current.IsOffscreen: false },
-            "Gateway sessions and diagnostics scrolled into the current Settings viewport");
+            GatewayDetail("SystemsMachineDetailsHeading") is { Current.IsOffscreen: false },
+            "Gateway sessions and machine details scrolled into the current Settings viewport");
         OwnedWindowCapture.Save(run, window, "Light-systems-gateway-details.png",
-            GatewayDetail("SystemsSessionsHeading")!, GatewayDetail("SystemsDiagnostics")!);
+            GatewayDetail("SystemsSessionsHeading")!, GatewayDetail("SystemsMachineDetailsHeading")!);
         await run.WriteReportAsync("passed");
         output.WriteLine($"Existing card separation: {run.ArtifactsDirectory}\\Light-systems-separated-cards.png");
     }
@@ -589,13 +604,14 @@ public sealed partial class GatewayFixtureUiTests
                 var stable = Math.Abs(viewport.Width - previousExpandedWidth) < .1;
                 previousExpandedWidth = viewport.Width;
                 if (!(stable && viewport.Width < collapsedWidth - 100 * scale &&
-                    Find("SettingsSearch") is { Current.IsOffscreen: false } && viewport.Top < collapsedTop))
+                    Find("SettingsSearch") is { Current.IsOffscreen: false } &&
+                    Math.Abs(viewport.Top - collapsedTop) <= 1))
                     return false;
                 currentViewport = frame;
                 pageMarker = marker;
                 return true;
             },
-                "expanding navigation removes the Systems scroll-only inset");
+                "expanding navigation narrows Systems while keeping the constant 56 DIP title bar inset");
             Assert.NotNull(currentViewport);
             Assert.NotNull(pageMarker);
             await Capture("expanded-1000-top", () => Find("SystemsPageMarker"));
@@ -673,8 +689,8 @@ public sealed partial class GatewayFixtureUiTests
                         var studio = Find("SystemsRow_node:fixture-studio");
                         if (gateway is null || studio is null)
                             return Task.FromResult(false);
-                        var gatewayPattern = (ExpandCollapsePattern)gateway.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-                        var studioPattern = (ExpandCollapsePattern)studio.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                        var gatewayPattern = ExpansionOf(gateway);
+                        var studioPattern = ExpansionOf(studio);
                         gatewayRow = gateway;
                         studioRow = studio;
                         gatewayDisclosure = gatewayPattern;
@@ -743,8 +759,8 @@ public sealed partial class GatewayFixtureUiTests
                         return false;
                     if (!OwnedNow(gatewayRow, "Gateway machine row") || !OwnedNow(studioRow, "Studio machine row"))
                         return false;
-                    var gatewayPattern = (ExpandCollapsePattern)gatewayRow.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-                    var studioPattern = (ExpandCollapsePattern)studioRow.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                    var gatewayPattern = ExpansionOf(gatewayRow);
+                    var studioPattern = ExpansionOf(studioRow);
                     cpuTile = cpu;
                     memoryTile = memory;
                     diskTile = disk;
@@ -787,17 +803,46 @@ public sealed partial class GatewayFixtureUiTests
                 "independent native Gateway and Studio disclosures both remain expanded");
             Assert.Equal(ExpandCollapseState.Expanded, gatewayDisclosure.Current.ExpandCollapseState);
             Assert.Equal(ExpandCollapseState.Expanded, studioDisclosure.Current.ExpandCollapseState);
-            var twoRowRange = viewportBounds.Height * (100 / statsPattern.Current.VerticalViewSize - 1);
-            var twoRowOffset = statsPattern.Current.VerticalScrollPercent / 100 * twoRowRange;
-            var twoRowTarget = twoRowOffset + studioRow.Current.BoundingRectangle.Top -
-                viewportBounds.Top - viewportBounds.Height / 3;
             statsFrame.AssertUnchanged();
-            statsPattern.SetScrollPercent(ScrollPattern.NoScroll, Math.Clamp(twoRowTarget / twoRowRange * 100, 0, 100));
+            double TwoRowScrollPercent()
+            {
+                var twoRowRange = viewportBounds.Height * (100 / statsPattern.Current.VerticalViewSize - 1);
+                var twoRowOffset = statsPattern.Current.VerticalScrollPercent / 100 * twoRowRange;
+                var twoRowTarget = twoRowOffset + studioRow.Current.BoundingRectangle.Top -
+                    viewportBounds.Top - viewportBounds.Height / 3;
+                return Math.Clamp(twoRowTarget / twoRowRange * 100, 0, 100);
+            }
+            statsPattern.SetScrollPercent(ScrollPattern.NoScroll, TwoRowScrollPercent());
+            // The expand animations can still move the Studio row after both states report Expanded, so the
+            // target is recomputed from live bounds on every poll until both rows are in view.
             AutomationElement? selectedName = null;
-            await WaitUiAsync(run, () =>
-                (selectedName = Find("SystemsSelectedName")) is { Current.IsOffscreen: false } &&
-                !gatewayRow.Current.IsOffscreen,
-                "both expanded machine rows occupy the viewport");
+            try
+            {
+                await WaitUiAsync(run, () =>
+                {
+                    if ((selectedName = Find("SystemsSelectedName")) is { Current.IsOffscreen: false } &&
+                        !gatewayRow.Current.IsOffscreen)
+                        return true;
+                    statsPattern.SetScrollPercent(ScrollPattern.NoScroll, TwoRowScrollPercent());
+                    return false;
+                }, "both expanded machine rows occupy the viewport");
+            }
+            catch (TimeoutException)
+            {
+                await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "two-row-failure.json"),
+                    JsonSerializer.Serialize(new
+                    {
+                        viewport = viewportBounds.ToString(),
+                        scrollPercent = statsPattern.Current.VerticalScrollPercent,
+                        viewSize = statsPattern.Current.VerticalViewSize,
+                        gateway = new { bounds = gatewayRow.Current.BoundingRectangle.ToString(), offscreen = gatewayRow.Current.IsOffscreen },
+                        studio = new { bounds = studioRow.Current.BoundingRectangle.ToString(), offscreen = studioRow.Current.IsOffscreen },
+                        selectedName = Find("SystemsSelectedName") is { } name
+                            ? new { bounds = name.Current.BoundingRectangle.ToString(), offscreen = name.Current.IsOffscreen }
+                            : null,
+                    }, new JsonSerializerOptions { WriteIndented = true }));
+                throw;
+            }
             Assert.NotNull(selectedName);
             await Capture("two-open-rows", () => Find("SystemsSelectedName"));
             statsPattern.SetScrollPercent(ScrollPattern.NoScroll, 0);
@@ -861,8 +906,8 @@ public sealed partial class GatewayFixtureUiTests
                 var frame = OwnedWindowCapture.TryReadViewport(window, run.AppProcessId, "SystemsPageScroll");
                 if (banner is null || connection is null || gateway is null || studio is null || frame is null)
                     return false;
-                var gatewayPattern = (ExpandCollapsePattern)gateway.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-                var studioPattern = (ExpandCollapsePattern)studio.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                var gatewayPattern = ExpansionOf(gateway);
+                var studioPattern = ExpansionOf(studio);
                 var scrollPattern = (ScrollPattern)frame.Element.GetCurrentPattern(ScrollPattern.Pattern);
                 disconnectedGatewayDisclosure = gatewayPattern;
                 disconnectedStudioDisclosure = studioPattern;
@@ -886,14 +931,14 @@ public sealed partial class GatewayFixtureUiTests
                 foreach (var id in inventoryIds)
                 {
                     if (Find(id) is not { Current.IsOffscreen: false } row ||
-                        ((ExpandCollapsePattern)row.GetCurrentPattern(ExpandCollapsePattern.Pattern))
+                        ExpansionOf(row)
                             .Current.ExpandCollapseState != ExpandCollapseState.Collapsed ||
                         row.Current.BoundingRectangle.Height / scale is not (> 20 and < 120) ||
                         !row.Current.Name.Contains("Last known", StringComparison.Ordinal))
                         return false;
                     rows.Add(row);
                 }
-                var gatewayPattern = (ExpandCollapsePattern)rows[0].GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                var gatewayPattern = ExpansionOf(rows[0]);
                 disconnectedConnection = connection;
                 disconnectedGatewayDisclosure = gatewayPattern;
                 return true;
@@ -912,7 +957,7 @@ public sealed partial class GatewayFixtureUiTests
                 var row = Find("SystemsRow_gateway");
                 if (row is null || !OwnedNow(row, "Last-known Gateway row"))
                     return false;
-                if (((ExpandCollapsePattern)row.GetCurrentPattern(ExpandCollapsePattern.Pattern))
+                if (ExpansionOf(row)
                     .Current.ExpandCollapseState != ExpandCollapseState.Expanded)
                     return false;
                 AutomationElement? Content(string id) => FindUnder(row, id);
@@ -1017,10 +1062,13 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindText(run, "1. Install a supported OpenClaw node app") is null, "Add dialog dismissed");
             }
 
+            // The Gateway row has its own compact command bar, so scope the bar to the Studio machine.
+            AutomationElement? StudioCommandBar() => FindById(run, "SystemsRow_node:fixture-studio")?.FindFirst(
+                TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "SystemsCommandBar"));
             await run.InvokeAsync("app.navigate", new { page = "systems:node:fixture-studio" });
-            await WaitUiAsync(run, () => FindById(run, "SystemsCommandBar") is { Current.IsOffscreen: false }, "expanded machine command bar");
+            await WaitUiAsync(run, () => StudioCommandBar() is { Current.IsOffscreen: false }, "expanded machine command bar");
             await Capture("expanded");
-            var bar = FindById(run, "SystemsCommandBar")!;
+            var bar = StudioCommandBar()!;
             var more = bar.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "MoreButton"));
             Assert.NotNull(more);
             Invoke(more);

@@ -55,7 +55,7 @@
     "tests/OpenClaw.Shared.Tests/PiperVoiceExtractionTests.cs": 3,
     "tests/OpenClaw.Shared.Tests/SingleFlightDownloadTests.cs": 1,
     "tests/OpenClaw.Shared.Tests/SpeechToTextServiceLifetimeTests.cs": 2,
-    "tests/OpenClaw.Shared.Tests/WebSocketClientBaseTests.cs": 11,
+    "tests/OpenClaw.Shared.Tests/WebSocketClientBaseTests.cs": 10,
     "tests/OpenClaw.Shared.Tests/WebSocketCloseSerializationTests.cs": 2,
     "tests/OpenClaw.Shared.Tests/WindowsNodeClientTests.cs": 3,
     "tests/OpenClaw.TestSupport/Gateway/FixturePlayback.cs": 1,
@@ -100,7 +100,7 @@
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Conversation.cs": 33,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Panels.cs": 17,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.WorkAlignment.cs": 14,
-    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.cs": 139,
+    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.cs": 135,
     "tests/OpenClaw.Tray.UITests/ReactorMarkdownReadingRampProofTests.cs": 1,
     "tests/OpenClaw.Tray.UITests/ReactorMarkdownWebParityProofTests.cs": 2,
     "tests/OpenClaw.Tray.UITests/ReactorQuestionProofTests.cs": 26,
@@ -130,10 +130,10 @@
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.InboxClock.cs": 6,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.InboxFeedProof.cs": 1,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.UsageResponsive.cs": 38,
-    "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.cs": 141,
+    "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.cs": 133,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureWarningUiTests.cs": 8,
     "tests/OpenClaw.Tray.UITests/SshForwardPortUiTests.cs": 4,
-    "tests/OpenClaw.Tray.UITests/WorkspaceWindowProofTests.cs": 186
+    "tests/OpenClaw.Tray.UITests/WorkspaceWindowProofTests.cs": 185
   },
   "short-literal-hang-guard": {
     "tests/OpenClaw.Connection.Tests/DevicePairApprovalCoordinatorTests.cs": 2,

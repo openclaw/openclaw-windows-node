@@ -78,6 +78,11 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
             var shell = new SettingsShellView();
             var frame = Assert.IsType<Frame>(shell.FindName("ContentFrame"));
             var navigation = Assert.IsType<NavigationView>(shell.FindName("NavView"));
+            var notifications = Assert.IsType<Grid>(shell.FindName("AppNotificationOverlay"));
+            var banner = Assert.IsType<InfoBar>(shell.FindName("AppNotificationInfoBar"));
+            banner.IsOpen = true;
+            banner.Visibility = Visibility.Visible;
+            banner.Title = "Session action failed";
             var page = new InsetPage();
             // Frame.Content avoids app service activation; shell allocation remains production code.
             frame.Content = page;
@@ -85,16 +90,23 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
             navigation.IsPaneOpen = true;
             shell.SetHostContentTopInset(0);
             ui.Container.UpdateLayout();
-            Assert.Equal(0, page.Viewport.Margin.Top);
+            Assert.Equal(56, page.Viewport.Margin.Top);
+            Assert.Equal(56, notifications.Margin.Top);
+            Assert.Equal(64, banner.TransformToVisual(shell).TransformPoint(new()).Y);
+            Assert.Equal(new Thickness(12, 8, 12, 0), banner.Margin);
             navigation.IsPaneOpen = false;
             Assert.Equal(56, page.Viewport.Margin.Top);
+            Assert.Equal(56, notifications.Margin.Top);
             navigation.IsPaneOpen = true;
-            Assert.Equal(0, page.Viewport.Margin.Top);
+            Assert.Equal(56, page.Viewport.Margin.Top);
+            Assert.Equal(56, notifications.Margin.Top);
             shell.ContentOnly = true;
             shell.SetHostContentTopInset(56);
             Assert.Equal(56, page.Viewport.Margin.Top);
+            Assert.Equal(56, notifications.Margin.Top);
             shell.SetHostContentTopInset(0);
             Assert.Equal(0, page.Viewport.Margin.Top);
+            Assert.Equal(0, notifications.Margin.Top);
             Assert.Same(page, frame.Content);
             Assert.Equal(new Thickness(0), page.Margin);
             Assert.Equal(new Thickness(0), frame.Margin);
@@ -102,6 +114,7 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
             var ordinary = new Border { Margin = new Thickness(12, 24, 12, 24) };
             frame.Content = ordinary;
             shell.SetHostContentTopInset(56);
+            Assert.Equal(56, notifications.Margin.Top);
             Assert.Equal(new Thickness(12, 24, 12, 24), ordinary.Margin);
             Assert.Equal(new Thickness(0), frame.Margin);
             ui.Container.Children.Remove(shell);

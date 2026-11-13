@@ -69,9 +69,9 @@ public sealed class WorkspaceWindowProofTests
         foreach (var id in new[] { "WorkspacePagesCustomize", "WorkspaceSessionsAdd", "WorkspaceNotifications" })
             Assert.True(Find(root, id).Current.BoundingRectangle.Right <= splitter.Current.BoundingRectangle.Left + 1,
                 $"The resize handle must not cover {id}.");
-        Assert.True(Find(root, "OwnerDetail").Current.BoundingRectangle.Height
-            <= Find(root, "OwnerName").Current.BoundingRectangle.Height + scale,
-            "The narrow sidebar must truncate its status rather than wrapping it onto multiple lines.");
+        // The owner badge shows only the name, so a narrow sidebar must truncate it rather than wrap it.
+        Assert.True(Find(root, "OwnerName").Current.BoundingRectangle.Height <= 20 * scale + 1,
+            "The narrow sidebar must truncate the owner name rather than wrapping it onto multiple lines.");
         Capture(app, theme, "sidebar-smaller");
         await ResizeToAsync(maximumWidth);
         System.Windows.Forms.SendKeys.SendWait("{RIGHT}");
@@ -161,6 +161,8 @@ public sealed class WorkspaceWindowProofTests
         var scale = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
         var home = Find(root, "WorkspaceNavHome").Current.BoundingRectangle;
         var assistant = Find(root, "WorkspaceAssistantSelector").Current.BoundingRectangle;
+        var titleBar = Find(root, "WorkspaceTitleBar").Current.BoundingRectangle;
+        Assert.InRange(titleBar.Left - assistant.Right, -1, 1);
         // Native ComboBox automation bounds extend 4 DIP outside its Background.
         // NavigationViewItem automation bounds already match its inset LayoutRoot.
         Assert.InRange(assistant.Left + 4 * scale - home.Left, -1, 1);
@@ -334,7 +336,7 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
-    public async Task SettingsChrome_SearchAndBidirectionalHistory_StayBelowNativeTitle(string theme)
+    public async Task SettingsChrome_SearchAndBidirectionalHistory_ShareTheNativeTitleBarBand(string theme)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
         var root = AutomationElement.FromHandle(app.HubWindowHandle);
@@ -384,7 +386,8 @@ public sealed class WorkspaceWindowProofTests
         var search = Find(root, "SettingsSearch").Current.BoundingRectangle;
         var back = Find(root, "SettingsBack").Current.BoundingRectangle;
         var forward = Find(root, "SettingsForward").Current.BoundingRectangle;
-        Assert.True(toggle.Top >= title.Bottom);
+        Assert.True(toggle.Top >= title.Top && toggle.Top < title.Bottom);
+        Assert.True(search.Right <= title.Left + 1, $"Search {search} overlaps native title-bar dragging {title}.");
         Assert.Equal(toggle.Top, search.Top);
         Assert.Equal(toggle.Top, back.Top);
         Assert.Equal(toggle.Top, forward.Top);
@@ -611,9 +614,10 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         var settings = AutomationElement.FromHandle(app.HubWindowHandle);
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
-        Assert.NotNull(Find(settings, "ConnectionDashboardButton"));
+        Assert.Null(settings.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionDashboardButton")));
         Assert.NotNull(Find(settings, "SettingsTitle"));
-        Capture(app, "System", "connection-dashboard-card");
+        Capture(app, "System", "connection-page");
         // The compact rail keeps Back to app as an arrow; the title and key hint return with the pane.
         await InvokeWhenEnabledAsync(settings, "SettingsTogglePane");
         await WaitUntilAsync(() => !IsVisible(settings, "SettingsTitle"));
@@ -1022,7 +1026,10 @@ public sealed class WorkspaceWindowProofTests
         var forwardBounds = Find(workspaceElement, "WorkspaceForward").Current.BoundingRectangle;
         Assert.Equal(backBounds.Top, forwardBounds.Top);
         var toggleBounds = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle;
-        var toggleOffsetY = toggleBounds.Top - Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom;
+        var titleBounds = Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle;
+        var toggleOffsetY = toggleBounds.Top - titleBounds.Top;
+        Assert.True(toggleBounds.Top < titleBounds.Bottom);
+        Assert.True(forwardBounds.Right <= titleBounds.Left + 1);
         Assert.Equal(toggleBounds.Top, backBounds.Top);
         var assistantBounds = Find(workspaceElement, "WorkspaceAssistantSelector").Current.BoundingRectangle;
         Assert.True(assistantBounds.Top >= toggleBounds.Bottom);
@@ -1162,10 +1169,12 @@ public sealed class WorkspaceWindowProofTests
             () => "WorkspaceForward did not stay disabled after selecting Home.");
 
         var collapseTime = Stopwatch.StartNew();
-        // TitleBar keeps its compact height whether or not its RightHeader actions are shown.
+        // TitleBar keeps its 56 DIP height (the 40 DIP pane controls plus 8 DIP insets) whether or not its RightHeader actions are shown.
         var expandedTitleHeight = Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Height;
-        Assert.True(expandedTitleHeight < Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Height,
-            $"Title bar {expandedTitleHeight}px must stay compact (32 DIP), shorter than the 40 DIP pane toggle.");
+        var titleScale = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
+        Assert.InRange(Math.Abs(expandedTitleHeight - 56 * titleScale), 0, 1.5);
+        Assert.True(expandedTitleHeight > Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Height,
+            $"Title bar {expandedTitleHeight}px must leave the 8 DIP inset around the 40 DIP pane toggle.");
         Invoke(Find(workspaceElement, "WorkspaceTogglePane"));
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "WorkspaceOwner") &&
             !IsVisible(workspaceElement, "WorkspaceNotifications") &&
@@ -1203,12 +1212,13 @@ public sealed class WorkspaceWindowProofTests
         Assert.InRange(Math.Abs(reopenBounds.Width - toggleBounds.Width), 0, 1);
         Assert.InRange(Math.Abs(reopenBounds.Height - toggleBounds.Height), 0, 1);
         Assert.InRange(Math.Abs(reopenBounds.Top -
-            Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom - toggleOffsetY), 0, 1);
+            Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Top - toggleOffsetY), 0, 1);
         foreach (var id in new[] { "WorkspaceNavHome", "WorkspaceOwner", "WorkspaceNotifications",
             "WorkspaceSessionsAdd", "WorkspaceAssistantSelector", "WorkspaceTogglePane", "WorkspaceBack", "WorkspaceForward" })
             Assert.False(IsVisible(workspaceElement, id), $"Hidden sidebar control '{id}' is still visible.");
         Assert.False(IsVisible(workspaceElement, "WorkspaceCompactNotifications"));
-        Assert.True(reopenBounds.Top >= Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom);
+        Assert.True(reopenBounds.Top >= titleBounds.Top && reopenBounds.Top < titleBounds.Bottom);
+        Assert.True(reopenBounds.Right <= titleBounds.Left);
         Assert.InRange(reopenBounds.Left - nativeNavigation.Current.BoundingRectangle.Left, 0, 12);
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "WorkspaceReopenPane");
         Assert.Equal(workspace, app.HubWindowHandle);

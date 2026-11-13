@@ -55,7 +55,7 @@ internal sealed class ChatEffortGauge : Component<ChatEffortGaugeProps>
                         ellipse.ClearValue(Microsoft.UI.Xaml.Shapes.Shape.FillProperty);
                     }))
                 .Width(24).Height(24))
-            .Stretch(Stretch.Uniform).Width(20).Height(20)
+            .Stretch(Stretch.Uniform).Width(16).Height(16)
             .VAlign(VerticalAlignment.Center)
             .Opacity(Props.IsOff ? 0.5 : 1)
             .AutomationId("ChatEffortGauge").AccessibilityView(AccessibilityView.Raw)

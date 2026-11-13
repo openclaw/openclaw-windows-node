@@ -152,7 +152,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var column = Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto], children.ToArray()))
             .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
             .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
-            .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
+            .Padding(HorizontalPadding(TierFor(width)), PaddingTop, HorizontalPadding(TierFor(width)), PaddingBottom)
             .HAlign(HorizontalAlignment.Center)
             .AutomationName(LocalizationHelper.GetString("Dashboards_BoardLabel"))
             .AutomationId("DashboardView");

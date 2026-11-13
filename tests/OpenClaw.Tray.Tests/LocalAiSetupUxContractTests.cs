@@ -552,7 +552,7 @@ public sealed class LocalAiSetupUxContractTests
             xaml,
             "<ScrollViewer VerticalScrollBarVisibility=\"Auto\">",
             "<Grid HorizontalAlignment=\"Stretch\">",
-            "<StackPanel Padding=\"24\" Spacing=\"12\" HorizontalAlignment=\"Stretch\" MaxWidth=\"900\">",
+            "<StackPanel presentation:PageContentLayout.IsEnabled=\"True\" Spacing=\"4\">",
             "x:Uid=\"LocalAiPage_Intro\"",
             "x:Name=\"LocalAiUnavailableInfoBar\"",
             "x:Name=\"LocalAiEngineOption\"");

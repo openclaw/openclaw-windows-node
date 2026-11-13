@@ -110,13 +110,10 @@ public sealed partial class WorkspaceWindow : WindowEx
             () => OpenCompanion(CompanionPageId.Connection),
             () => ((IAppCommands)CurrentApp).Reconnect());
         Title = Text("Title");
+        // The bar shows no caption text, but its automation peer keeps the localized window name.
+        AutomationProperties.SetName(WorkspaceTitleBar, Title);
         this.SetWindowSize(1280, 860);
         ExtendsContentIntoTitleBar = true;
-        WorkspaceTitleBar.IconSource = new BitmapIconSource
-        {
-            UriSource = new Uri(BrandAssets.RedBotMarkUri),
-            ShowAsMonochrome = false
-        };
         this.SetIcon("Assets\\openclaw.ico");
         SetTitleBar(WorkspaceTitleBar);
         NewAgentLabel.Text = LocalizationHelper.GetString("AgentCreation_Title");
@@ -509,7 +506,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         _settings?.ContentOnly = false;
         _settings?.SetHostContentTopInset(0);
         SettingsSection.Margin = new Thickness(0);
-        EmbeddedPageBackground.Visibility = Visibility.Collapsed;
         ContentHost.Visibility = Visibility.Visible;
         SettingsSection.Visibility = Visibility.Collapsed;
         SettingsHistoryBar.Visibility = Visibility.Collapsed;
@@ -656,6 +652,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNavigationSelection()
     {
+        UpdateWorkspaceContentTopAllocation();
         var wasUpdating = _updating;
         _updating = true;
         try
@@ -1330,9 +1327,18 @@ public sealed partial class WorkspaceWindow : WindowEx
                 (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
         });
     }
+    private void UpdateWorkspaceContentTopAllocation()
+    {
+        var top = Destination.Page == WorkspacePageId.Notifications
+            ? (NavView.IsPaneOpen ? WorkspaceSettingsLayout.NavigationChromeHeight : 0)
+            : 32;
+        WorkspaceContentLayout.Margin = new Thickness(0, top, 0, 0);
+    }
+
     private void UpdatePanePresentation()
     {
         SidebarSplitter.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        UpdateWorkspaceContentTopAllocation();
         ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
         ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
@@ -1376,6 +1382,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnSidebarSizeChanged(object sender, SizeChangedEventArgs e)
     {
         NavView.OpenPaneLength = e.NewSize.Width;
+        // The full-bleed title bar starts where the pane ends, so it follows the resized sidebar.
+        ShellLeadColumn.Width = new GridLength(e.NewSize.Width);
         if (_settings is { } settings && IsSettingsVisible)
             UpdateEmbeddedPageTopAllocation(settings);
     }
@@ -1393,7 +1401,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
         var paneOpen = NavView.IsPaneOpen;
         UpdateEmbeddedPageTopAllocation(view);
-        EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;

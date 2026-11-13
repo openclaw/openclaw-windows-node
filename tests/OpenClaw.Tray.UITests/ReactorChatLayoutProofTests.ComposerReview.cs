@@ -119,8 +119,8 @@ public sealed partial class ReactorChatLayoutProofTests
                         : percent >= 85 ? "ChatContextRingWarningStyle" : "ChatContextRingStyle";
                     Assert.Same(Application.Current.Resources[expectedStyle], fill.Style);
                     latestGeometry = fill.Data;
-                    Assert.True(Bounds(ring, surface).Right <= Bounds(
-                        FindControl<Button>(surface, "ChatComposerModelPicker"), surface).Left);
+                    Assert.True(Bounds(FindControl<Button>(surface, "ChatComposerModelPicker"), surface).Right
+                        <= Bounds(ring, surface).Left + 1);
                     Assert.DoesNotContain(FindDescendants<FrameworkElement>(surface),
                         item => AutomationProperties.GetAutomationId(item) == "ChatThroughputStrip");
                     AssertComposerBounds(surface);

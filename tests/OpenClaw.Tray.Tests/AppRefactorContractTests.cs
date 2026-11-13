@@ -2159,7 +2159,7 @@ public sealed class AppRefactorContractTests
     }
 
     [Fact]
-    public void SettingsView_DoesNotOwnWindowIcon_WorkspaceKeepsSingleBrandIcon()
+    public void SettingsView_DoesNotOwnWindowIcon_WorkspaceKeepsTaskSwitcherIconWithoutTitleBarBranding()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var view = File.ReadAllText(Path.Combine(
@@ -2173,8 +2173,8 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("StatusBadgeIconFactory", view);
         Assert.DoesNotContain("AppWindow.SetIcon", view);
         Assert.DoesNotContain("UpdateTitleBarStatus", view);
-        Assert.Contains("WorkspaceTitleBar.IconSource = new BitmapIconSource", workspace);
-        Assert.Contains("new Uri(BrandAssets.RedBotMarkUri)", workspace);
+        Assert.DoesNotContain("WorkspaceTitleBar.IconSource", workspace);
+        Assert.Contains("this.SetIcon(\"Assets\\\\openclaw.ico\");", workspace);
     }
 
     [Fact]

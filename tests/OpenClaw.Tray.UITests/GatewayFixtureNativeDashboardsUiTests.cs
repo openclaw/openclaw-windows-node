@@ -55,6 +55,8 @@ public sealed partial class GatewayFixtureUiTests
                         ?? throw new InvalidOperationException("The native Workspace title bar is missing.");
                     Assert.Equal(run.AppProcessId, titleBar.Current.ProcessId);
                     Assert.Equal(ControlType.TitleBar, titleBar.Current.ControlType);
+                    Assert.False(string.IsNullOrWhiteSpace(titleBar.Current.Name),
+                        "The Workspace title bar must expose an accessible name.");
                     var chromeRoot = TreeWalker.RawViewWalker.GetParent(titleBar)
                         ?? throw new InvalidOperationException("The native Workspace chrome owner is missing.");
                     Assert.Equal(run.AppProcessId, chromeRoot.Current.ProcessId);
@@ -241,7 +243,8 @@ public sealed partial class GatewayFixtureUiTests
                                 openHostTop = host.Top;
                             var measuredInset = (viewport.Top - host.Top) / scale;
                             var measuredHostMargin = (host.Top - openHostTop!.Value) / scale;
-                            Assert.InRange(Math.Abs(measuredInset - (collapsed ? 56 : 0)), 0, 1);
+                            // Every pinned page clears the 56 DIP title band in both pane states.
+                            Assert.InRange(Math.Abs(measuredInset - 56), 0, 1);
                             Assert.InRange(Math.Abs(measuredHostMargin), 0, 1);
                             var toggleId = collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane";
                             var oppositeId = collapsed ? "WorkspaceTogglePane" : "WorkspaceReopenPane";
@@ -252,7 +255,7 @@ public sealed partial class GatewayFixtureUiTests
                                 var currentHost = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
                                 var currentViewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!
                                     .Current.BoundingRectangle;
-                                return Math.Abs((currentViewport.Top - currentHost.Top) / scale - (collapsed ? 56 : 0)) <= 1 &&
+                                return Math.Abs((currentViewport.Top - currentHost.Top) / scale - 56) <= 1 &&
                                     Math.Abs((currentHost.Top - openHostTop.Value) / scale) <= 1;
                             }, "pinned geometry retained after the physical pane roundtrip");
                             if (collapsed)
