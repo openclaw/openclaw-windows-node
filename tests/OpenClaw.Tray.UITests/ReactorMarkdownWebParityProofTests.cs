@@ -249,7 +249,6 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 host.Content = root;
                 ui.Container.Children.Add(host);
             });
-            await ui.YieldToRenderAsync();
             Assert.True(await PollAsync(() => Marker() is { } bullet && bullet.Text.StartsWith('\u2022')
                 && ReferenceEquals(bullet.Style, Application.Current.Resources["ChatMutedTextStyle"])),
                 "bullet marker takes the muted marker style");
@@ -284,16 +283,19 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
         }
     }
 
-    // Styling passes run at Low dispatcher priority, so poll from off the UI thread.
+    // Styling passes run at Low dispatcher priority, so poll from off the UI thread. The budget is
+    // the shared render-wait timeout so a loaded runner can extend it.
     private async Task<bool> PollAsync(Func<bool> condition)
     {
-        for (var attempt = 0; attempt < 100; attempt++)
+        var deadline = System.Diagnostics.Stopwatch.StartNew();
+        while (true)
         {
             if (await ui.RunOnUIAsync(() => Task.FromResult(condition())))
                 return true;
+            if (deadline.Elapsed >= TestSupport.RenderedConditionTimeout)
+                return false;
             await Task.Delay(50);
         }
-        return false;
     }
 
     // ARGB of the syntax highlighter that colors exactly this token's first occurrence.

@@ -228,8 +228,11 @@ public sealed partial class GatewayFixtureUiTests
             Assert.NotNull(keyboardAnchor);
             Assert.NotNull(keyboardTableEnd);
             Assert.NotNull(keyboardEnd);
-            var initialKeyboardScroll = keyboardScroll.Current.VerticalScrollPercent;
             await NativeKeyboardProof.ActivateAsync(hwnd);
+            keyboardAnchor = await WaitForStableSelectionTextAsync(run, MarkdownSelectionOpening,
+                "keyboard anchor bounds stable before the caret click");
+            // Sample the start offset only after the scroll reset has settled.
+            var initialKeyboardScroll = keyboardScroll.Current.VerticalScrollPercent;
             using (var click = new NativeSelectionDrag(run, window, FirstGlyphLeftHalf(keyboardAnchor,
                        MarkdownSelectionOpening)))
             {
@@ -286,37 +289,17 @@ public sealed partial class GatewayFixtureUiTests
         var hwnd = new IntPtr(window.Current.NativeWindowHandle);
         await NativeKeyboardProof.ActivateAsync(hwnd);
 
-        var admissionAnchor = FindSelectionText(run, MarkdownSelectionBeforeMessage)
-            ?? throw new InvalidOperationException("The independent selection-admission message was not present.");
-        await WaitUiAsync(run, () => !admissionAnchor.Current.IsOffscreen,
-            "independent selection-admission message is visible");
+        var admissionAnchor = await WaitForStableSelectionTextAsync(run, MarkdownSelectionBeforeMessage,
+            "independent selection-admission message is visible with stable bounds");
         await AssertInitialSelectionAdmissionAsync(run, window, hwnd, admissionAnchor,
             admissionText, writeLine);
 
         scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
-        AutomationElement? anchor = null;
-        System.Windows.Rect? previousAnchorBounds = null;
-        await WaitUiAsync(run, () =>
-        {
-            anchor = FindSelectionText(run, startText);
-            if (anchor is null || anchor.Current.IsOffscreen)
-            {
-                previousAnchorBounds = null;
-                return false;
-            }
-
-            var currentBounds = anchor.Current.BoundingRectangle;
-            if (previousAnchorBounds is { } previous && NearlyEqual(previous, currentBounds))
-                return true;
-            previousAnchorBounds = currentBounds;
-            return false;
-        }, "selection anchor bounds stable after admission probe and scroll reset");
-
         AutomationElement? end = null;
         await WaitUiAsync(run, () => (end = FindSelectionText(run, endText)) is not null,
             $"selection endpoint {endText} rendered");
-        anchor = FindSelectionText(run, startText)
-            ?? throw new InvalidOperationException("The Markdown selection anchor disappeared after the admission probe.");
+        var anchor = await WaitForStableSelectionTextAsync(run, startText,
+            "selection anchor bounds stable after admission probe and scroll reset");
         var selectionHost = FindMarkdownSelectionHost(anchor);
         var start = FirstGlyphLeftHalf(anchor, startText);
         var admissionPoint = LastGlyphRightHalf(anchor, admissionText);
@@ -420,12 +403,10 @@ public sealed partial class GatewayFixtureUiTests
         string startText,
         string endText)
     {
-        var start = FindSelectionText(run, startText)
-            ?? throw new InvalidOperationException($"Could not find selection start text '{startText}'.");
-        var end = FindSelectionText(run, endText)
-            ?? throw new InvalidOperationException($"Could not find selection end text '{endText}'.");
-        Assert.False(start.Current.IsOffscreen);
-        Assert.False(end.Current.IsOffscreen);
+        var start = await WaitForStableSelectionTextAsync(run, startText,
+            $"selection start {startText} visible with stable bounds");
+        var end = await WaitForStableSelectionTextAsync(run, endText,
+            $"selection end {endText} visible with stable bounds");
         await NativeKeyboardProof.ActivateAsync(new IntPtr(window.Current.NativeWindowHandle));
         using (var drag = new NativeSelectionDrag(run, window, FirstGlyphLeftHalf(start, startText)))
             drag.MoveTo(LastGlyphTrailingEdge(end, endText));
@@ -587,6 +568,30 @@ public sealed partial class GatewayFixtureUiTests
         && Math.Abs(left.Top - right.Top) <= 0.5
         && Math.Abs(left.Width - right.Width) <= 0.5
         && Math.Abs(left.Height - right.Height) <= 0.5;
+
+    // Native input targets glyph geometry, so acquire the text inside the wait and return it only
+    // once two consecutive samples agree; scrolling or a re-render resets the sample.
+    private static async Task<AutomationElement> WaitForStableSelectionTextAsync(
+        GatewayFixtureRun run, string text, string description)
+    {
+        AutomationElement? element = null;
+        System.Windows.Rect? previousBounds = null;
+        await WaitUiAsync(run, () =>
+        {
+            element = FindSelectionText(run, text);
+            if (element is null || element.Current.IsOffscreen)
+            {
+                previousBounds = null;
+                return false;
+            }
+
+            var bounds = element.Current.BoundingRectangle;
+            var stable = previousBounds is { } previous && NearlyEqual(previous, bounds);
+            previousBounds = bounds;
+            return stable;
+        }, description, onProbeError: _ => previousBounds = null);
+        return element!;
+    }
 
     private static string EscapeForLog(string text) =>
         text.Replace("\r", "\\r", StringComparison.Ordinal)
@@ -795,7 +800,7 @@ public sealed partial class GatewayFixtureUiTests
                 if (!TryReadClipboardText(out text, out lastClipboardError))
                     return Task.FromResult(false);
                 return Task.FromResult(!string.IsNullOrEmpty(text));
-            }, "copied Markdown selection", TimeSpan.FromSeconds(5));
+            }, "copied Markdown selection");
         }
         catch (TimeoutException ex)
         {

@@ -267,10 +267,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await UntilAsync(() => FindOptional<Grid>(surface, "ChatSubagent_child") is { } row &&
                     AutomationProperties.GetName(row).Contains(", Done, ", StringComparison.Ordinal) &&
                     FindOptional<Border>(surface, "ChatConversation") is { } conversation &&
-                    conversation.Visibility == (width < 652 ? Visibility.Visible : Visibility.Collapsed) &&
-                    // Button element content is presented on the next layout pass after a remount.
-                    FindOptional<Button>(surface, "ChatSubagentsPill") is { } pill &&
-                    FindOptional<TextBlock>(pill, "ChatSubagentsPillCount") is not null,
+                    conversation.Visibility == (width < 652 ? Visibility.Visible : Visibility.Collapsed),
                 "settled subagent at the new width");
             await ui.RunOnUIAsync(() =>
             {
@@ -281,10 +278,14 @@ public sealed partial class ReactorChatLayoutProofTests
                     AutomationProperties.GetName(FindControl<Grid>(pane, "ChatSubagent_child")));
                 Assert.Same(composer, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Equal(Draft, composer!.Text);
-                // While its tab stays open, the pill remains and shows the settled state.
+                // While its tab stays open, the pill remains and shows the settled state. A narrow
+                // panel collapses the conversation, and WinUI does not lay out a collapsed pill's
+                // ContentPresenter, so read the pill's declared content rather than its visuals.
                 var settledPill = FindControl<Button>(surface, "ChatSubagentsPill");
-                Assert.Equal("2", FindControl<TextBlock>(settledPill, "ChatSubagentsPillCount").Text);
-                Assert.Empty(FindDescendants<ProgressRing>(settledPill));
+                var pillContent = DeclaredContent(settledPill).ToArray();
+                Assert.Equal("2", Assert.Single(pillContent.OfType<TextBlock>(), text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatSubagentsPillCount").Text);
+                Assert.Empty(pillContent.OfType<ProgressRing>());
                 Assert.Equal("Subagents: 0 running, 2 finished", AutomationProperties.GetName(settledPill));
                 CloseSubagentsTab(surface);
             });
@@ -498,6 +499,24 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private static T? FindOptional<T>(DependencyObject root, string id) where T : FrameworkElement =>
         FindDescendants<T>(root).SingleOrDefault(control => AutomationProperties.GetAutomationId(control) == id);
+
+    // A control's declared content tree, independent of whether WinUI has laid it out.
+    private static IEnumerable<DependencyObject> DeclaredContent(DependencyObject node)
+    {
+        IEnumerable<object?> children = node switch
+        {
+            ContentControl control => [control.Content],
+            Panel panel => panel.Children,
+            Border border => [border.Child],
+            _ => [],
+        };
+        foreach (var child in children.OfType<DependencyObject>())
+        {
+            yield return child;
+            foreach (var descendant in DeclaredContent(child))
+                yield return descendant;
+        }
+    }
 
     private static TabView? PanelTabs(DependencyObject root) => FindOptional<TabView>(root, "ConversationPanelTabs");
 

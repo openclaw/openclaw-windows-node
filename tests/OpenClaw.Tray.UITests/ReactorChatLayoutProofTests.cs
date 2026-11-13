@@ -3156,12 +3156,24 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 host.Mount(_ => ReactorChatTimeline.BuildSafeMarkdown(
                     "First paragraph.\n\n## A heading\n\nAnother paragraph.\n\n```text\nLiteral\n```"));
             });
-            await SettleAsync();
+            StackPanel? stack = null;
+            string? previousLayout = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                // Selection wrappers add a layout layer; measure gaps only once block bounds stop moving.
+                var matches = FindDescendants<StackPanel>(host).Where(panel =>
+                    panel.Children.Count == 4 && panel.Spacing == ChatVisuals.MessageBlockGap).Take(2).ToArray();
+                stack = matches.Length == 1 ? matches[0] : null;
+                if (stack is null || stack.Children.OfType<FrameworkElement>().Any(block => block.ActualHeight <= 0))
+                    return false;
+                var layout = string.Join("|", stack.Children.OfType<FrameworkElement>().Select(block => Bounds(block, surface)));
+                var stable = layout == previousLayout;
+                previousLayout = layout;
+                return stable;
+            }, "message blocks laid out with stable bounds", () => $"layout={previousLayout ?? "<none>"}"));
             await ui.RunOnUIAsync(() =>
             {
-                var stack = Assert.Single(FindDescendants<StackPanel>(host), panel =>
-                    panel.Children.Count == 4 && panel.Spacing == ChatVisuals.MessageBlockGap);
-                var blocks = stack.Children.OfType<FrameworkElement>().ToArray();
+                var blocks = stack!.Children.OfType<FrameworkElement>().ToArray();
                 Assert.Equal(4, blocks.Length);
                 Assert.All(blocks, block =>
                 {
