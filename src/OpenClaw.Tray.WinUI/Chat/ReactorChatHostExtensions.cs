@@ -27,6 +27,22 @@ public static class ReactorChatHostExtensions
                 System.Diagnostics.Debug.WriteLine("Dropped chat UI update because DispatcherQueue rejected the work item.");
         };
 
+    /// <summary>Runs <paramref name="action"/> once after <paramref name="delay"/>; dispose to cancel.</summary>
+    internal static IDisposable Schedule(this DispatcherQueue dispatcher, TimeSpan delay, Action action)
+    {
+        var timer = dispatcher.CreateTimer();
+        timer.Interval = delay;
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) => action();
+        timer.Start();
+        return new TimerLease(timer);
+    }
+
+    private sealed class TimerLease(DispatcherQueueTimer timer) : IDisposable
+    {
+        public void Dispose() => timer.Stop();
+    }
+
     /// <summary>Builds the reset-confirmation dialog closure and creates one
     /// <see cref="ChatComposerSession"/> from the
     /// resolved <paramref name="composerFactory"/>. Callers pass the returned session
@@ -91,7 +107,7 @@ public static class ReactorChatHostExtensions
     }
 
     /// <summary>Transfers ownership of the session, including disposal if mounting fails.</summary>
-    public static MountedReactorChat MountReactorChat(
+    internal static MountedReactorChat MountReactorChat(
         this Window window,
         Border target,
         IChatDataProvider provider,
@@ -103,7 +119,8 @@ public static class ReactorChatHostExtensions
         bool initialThreadIsExplicitSelection = true,
         IChatAgentRosterSource? agentRosterSource = null,
         string userDisplayName = "",
-        ImageSource? userProfilePicture = null)
+        ImageSource? userProfilePicture = null,
+        ChatDashboardBinding? dashboards = null)
     {
         ArgumentNullException.ThrowIfNull(composerSession);
         MountedReactorChat? mounted = null;
@@ -133,7 +150,10 @@ public static class ReactorChatHostExtensions
                 InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
                 AgentRosterSource: agentRosterSource,
                 UserDisplayName: userDisplayName,
-                UserProfilePicture: userProfilePicture);
+                UserProfilePicture: userProfilePicture)
+            {
+                Dashboards = dashboards,
+            };
             var host = new ReactorHostControl();
             mounted = new MountedReactorChat(target, host, callbacks, props);
             host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));

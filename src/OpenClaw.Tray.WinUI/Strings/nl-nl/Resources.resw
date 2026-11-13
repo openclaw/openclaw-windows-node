@@ -10016,4 +10016,5 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Paneel weergeven</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Gesprekspanelen</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
 </root>

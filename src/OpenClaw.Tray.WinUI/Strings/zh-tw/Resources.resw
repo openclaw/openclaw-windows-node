@@ -10015,4 +10015,5 @@
   <data name="Chat_Panel_Back" xml:space="preserve"><value>返回對話</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>顯示面板</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>對話面板</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>儀表板</value></data>
 </root>
