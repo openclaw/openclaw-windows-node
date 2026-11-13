@@ -867,6 +867,21 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Fact]
+    public void ExpansionState_RemembersARowWasOpenedAfterItClosesUntilCollapseAll()
+    {
+        var state = new ChatToolActivityExpansionState();
+        Assert.False(state.HasChoice("row", 0));
+
+        state.SetExplicit("row", true, 0);
+        state.SetExplicit("row", false, 0);
+
+        // A closed row the user opened keeps its built details for reopening.
+        Assert.False(state.IsExpanded("row", 0));
+        Assert.True(state.HasChoice("row", 0));
+        Assert.False(state.HasChoice("row", 1));
+    }
+
+    [Fact]
     public void ExpansionState_DefaultsCollapsedAndExplicitChoiceSurvivesUntilReset()
     {
         var state = new ChatToolActivityExpansionState();

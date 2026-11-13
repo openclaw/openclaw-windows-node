@@ -651,6 +651,16 @@ public sealed class ChatToolActivityExpansionState
         _overrides[key] = isExpanded;
     }
 
+    /// <summary>
+    /// True once the user has opened or closed this row since the last collapse-all, so content
+    /// built on first open is kept (and reused) when the row is closed and reopened.
+    /// </summary>
+    public bool HasChoice(string key, int collapseVersion)
+    {
+        ResetIfNeeded(collapseVersion);
+        return _overrides.ContainsKey(key);
+    }
+
     private void ResetIfNeeded(int collapseVersion)
     {
         if (_collapseVersion == collapseVersion)

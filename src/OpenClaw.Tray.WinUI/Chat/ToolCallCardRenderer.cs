@@ -90,9 +90,11 @@ internal static class ToolCallCardRenderer
                 ? LocalizedOrDefault("Chat_Tool_FailedInline", "failed") : statusLabel;
         var accessibleTitle = rowText is null ? toolName
             : string.IsNullOrWhiteSpace(detail) ? rowText : $"{rowText} {detail}";
-        // Like a wrapper's nested rows, a row's details exist only while it is open, so long
-        // histories of single calls do not build every hidden output.
-        Element body = hasDetails && (isExpanded || props.ToolExpansionState is null)
+        // Like a wrapper's nested rows, a row's details are built only once it opens, so long
+        // histories of single calls do not build every hidden output. After the first open they
+        // stay built, so closing and reopening keeps the same output and any recovered text.
+        Element body = hasDetails && (isExpanded || props.ToolExpansionState is not { } detailsState ||
+                detailsState.HasChoice(expansionKey, props.ToolCallsCollapseVersion))
             ? Component<ToolDetailsBody, ToolDetailsBodyProps>(new(props, entry, details, recovery))
                 .Margin(0, 2, 0, 6)
             : Empty();
