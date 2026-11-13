@@ -1439,30 +1439,95 @@ public sealed partial class GatewayFixtureUiTests
         await ResetAutomationScrollAsync(run, page, (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern));
     }
 
+    /// <summary>Requests the maximized state once if needed, then waits until the window reports it.</summary>
+    private static async Task WaitForMaximizedAutomationsWindowAsync(GatewayFixtureRun run)
+    {
+        var pattern = (WindowPattern)AutomationsWindow(run).GetCurrentPattern(WindowPattern.Pattern);
+        if (pattern.Current.WindowVisualState != WindowVisualState.Maximized)
+            pattern.SetWindowVisualState(WindowVisualState.Maximized);
+        await WaitUiAsync(run, () => pattern.Current.WindowVisualState == WindowVisualState.Maximized,
+            "maximized Automations window");
+    }
+
+    /// <summary>
+    /// Returns the scroll-zero frame with the headline and hero bounds from two identical consecutive samples.
+    /// A missing peer or an empty aperture means the page is not ready yet.
+    /// </summary>
+    private static async Task<(AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)>
+        WaitForSettledAutomationsHeroAsync(GatewayFixtureRun run, AutomationElement page, ScrollPattern scroll)
+    {
+        (AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)? previous = null;
+        (AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)? settled = null;
+        await WaitUiAsync(run, () =>
+        {
+            (AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)? current;
+            try
+            {
+                if (scroll.Current.VerticallyScrollable && scroll.Current.VerticalScrollPercent != 0)
+                {
+                    previous = null;
+                    return false;
+                }
+                current = OwnedWindowCapture.WithPhysicalCoordinates(() =>
+                {
+                    var window = AutomationsWindow(run);
+                    if (FindById(run, "AutomationsHeadline") is not { Current.IsOffscreen: false } headline ||
+                        FindById(run, "AutomationsMast") is not { Current.IsOffscreen: false } hero)
+                        return ((AutomationScrollFrame, global::System.Windows.Rect, global::System.Windows.Rect)?)null;
+                    var headlineBounds = headline.Current.BoundingRectangle;
+                    var heroBounds = hero.Current.BoundingRectangle;
+                    var aperture = global::System.Windows.Rect.Intersect(page.Current.BoundingRectangle,
+                        OwnedWindowCapture.ReadOwnedClientBounds(run, window));
+                    if (!IsMeasured(aperture) || !IsMeasured(headlineBounds) || !IsMeasured(heroBounds)) return null;
+                    return (new AutomationScrollFrame(OwnedWindowCapture.ReadOwnedBounds(run, window), aperture),
+                        headlineBounds, heroBounds);
+                });
+            }
+            catch (ElementNotAvailableException)
+            {
+                current = null;
+            }
+            var stable = current is not null && previous is not null && previous.Value.Equals(current.Value);
+            previous = current;
+            if (stable) settled = current;
+            return stable;
+        }, "settled scroll-zero aperture with the Automations headline and hero (scroll must stay at zero after the reset)");
+        return settled!.Value;
+
+        static bool IsMeasured(global::System.Windows.Rect bounds) => !bounds.IsEmpty &&
+            double.IsFinite(bounds.Left) && double.IsFinite(bounds.Top) && bounds.Width > 0 && bounds.Height > 0;
+    }
+
     /// <summary>
     /// Samples the decorative wash inside the hero's padding, not the plain page margin.
     /// The hero scrolls away while the surrounding native backplate remains unchanged.
     /// </summary>
     private static async Task AssertAutomationsHeroWashAsync(GatewayFixtureRun run, string theme)
     {
+        // SaveAutomationsWindow maximizes a window that is not maximized yet, which moves the page. Finish that
+        // first: the aperture, the hero and the top capture must all describe the same layout.
+        await WaitForMaximizedAutomationsWindowAsync(run);
         var page = await WaitForPageScrollPeerAsync(run);
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
-        var scrollFrame = await ResetAutomationScrollAsync(run, page, scroll);
+        await ResetAutomationScrollAsync(run, page, scroll);
+        var (scrollFrame, headline, hero) = await WaitForSettledAutomationsHeroAsync(run, page, scroll);
         SaveAutomationsWindow(run, "automations-hero-top.png", "AutomationsHeadline", "AutomationsMast");
+        // The pixel checks read the top capture at these coordinates, so the layout must not move across it.
+        Assert.Equal((scrollFrame, headline, hero), await WaitForSettledAutomationsHeroAsync(run, page, scroll));
         Assert.True(scroll.Current.VerticallyScrollable, "The populated page must scroll to prove the hero placement.");
         var window = AutomationsWindow(run);
-        var (frame, viewport, headline, hero) = OwnedWindowCapture.WithPhysicalCoordinates(() => (
-            scrollFrame.Window, scrollFrame.Aperture,
-            FindById(run, "AutomationsHeadline")!.Current.BoundingRectangle,
-            FindById(run, "AutomationsMast")!.Current.BoundingRectangle));
+        var (frame, viewport) = (scrollFrame.Window, scrollFrame.Aperture);
         var scale = OwnedWindowCapture.OwnedDpiScale(run, window);
         var highContrast = new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
         var range = viewport.Height * (100 / scroll.Current.VerticalViewSize - 1);
         Assert.True(range > hero.Bottom - viewport.Top,
             "The fixture must provide enough scroll range to move the complete hero out of view.");
         var shift = Math.Min(hero.Top - viewport.Top - scale, hero.Height / 4);
-        Assert.True(range > 0 && shift >= 8 * scale, "A visible partial-scroll interval is required for wash tracking.");
+        Assert.True(range > 0 && shift >= 8 * scale,
+            $"A visible partial-scroll interval is required for wash tracking: aperture={viewport}, hero={hero}, scale={scale}, range={range}.");
         await MoveAutomationScrollAsync(run, scroll, scrollFrame, shift * 100 / range);
+        Assert.Equal(viewport, OwnedWindowCapture.WithPhysicalCoordinates(() => global::System.Windows.Rect.Intersect(
+            page.Current.BoundingRectangle, OwnedWindowCapture.ReadOwnedClientBounds(run, window))));
         var translatedHero = OwnedWindowCapture.WithPhysicalCoordinates(() =>
             FindById(run, "AutomationsMast")!.Current.BoundingRectangle);
         Assert.True(translatedHero.Top < hero.Top - scale);
