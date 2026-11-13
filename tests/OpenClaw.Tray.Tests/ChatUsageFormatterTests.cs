@@ -153,21 +153,40 @@ public class ChatUsageFormatterTests
         Assert.Null(ChatUsageFormatter.ResolveContext(null, null, new ChatThread { Id = "main", Title = "Main", TotalTokens = 500 }));
     }
 
-    [Fact]
-    public void FormatThroughput_ShowsDashesBeforeFirstSample()
-        => Assert.Equal("— tps · μ — · p95 —", ChatUsageFormatter.FormatThroughput(ChatThroughputStats.Empty, turnActive: false));
-
-    [Fact]
-    public void FormatThroughput_PrefersLiveEstimateOnlyWhileTurnActive()
+    [Theory]
+    [InlineData(800, 0)]
+    [InlineData(null, 80)]
+    public void ResolveContext_KeepsLatestRunCountersWithTheirContextMeasurement(int? input, int output)
     {
-        var stats = new ChatThroughputStats(42.26, 61.04, 38.5, 51.0, 3);
+        var thread = new ChatThread
+        {
+            Id = "main", Title = "Main", TotalTokens = 500, ContextTokens = 5_000,
+            InputTokens = 400, OutputTokens = 100,
+        };
+        var entries = new[] { new ChatTimelineItem("latest", ChatTimelineItemKind.Assistant, "reply") };
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            ["latest"] = new(Timestamp: null, Model: null,
+                InputTokens: input, OutputTokens: output, ResponseTokens: 1_000, ContextTokens: 5_000),
+        };
 
-        Assert.Equal("~61.0 tps · μ 38.5 · p95 51.0", ChatUsageFormatter.FormatThroughput(stats, turnActive: true));
-        Assert.Equal("42.3 tps · μ 38.5 · p95 51.0", ChatUsageFormatter.FormatThroughput(stats, turnActive: false));
+        var context = Assert.IsType<ChatContextUsage>(ChatUsageFormatter.ResolveContext(entries, metadata, thread));
+        Assert.Equal(1_000, context.UsedTokens);
+        Assert.Equal((long?)input, context.InputTokens);
+        Assert.Equal(output, context.OutputTokens);
     }
 
     [Fact]
-    public void FormatThroughput_DropsDecimalAtOneHundredAndAbove()
-        => Assert.Equal("150 tps · μ 150 · p95 150",
-            ChatUsageFormatter.FormatThroughput(new ChatThroughputStats(150.4, null, 150.4, 150.4, 1), turnActive: false));
+    public void ResolveContext_FallsBackToWholeThreadMeasurementWithoutMessageUsage()
+    {
+        var thread = new ChatThread
+        {
+            Id = "main", Title = "Main", TotalTokens = 900, ContextTokens = 5_000,
+            InputTokens = 200, OutputTokens = 0,
+        };
+        var context = Assert.IsType<ChatContextUsage>(ChatUsageFormatter.ResolveContext(null, null, thread));
+        Assert.Equal(900, context.UsedTokens);
+        Assert.Equal(200, context.InputTokens);
+        Assert.Equal(0, context.OutputTokens);
+    }
 }

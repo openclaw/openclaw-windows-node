@@ -369,9 +369,33 @@ public sealed class ManagedLocalGatewayRepairCoordinator
 
             bool CanContinueRestart() => GetRestartAbortResult() is null;
 
+            // A forced restart terminates the whole distro, which also kills its keepalive
+            // (`wsl.exe -- sleep infinity`) even when the cold restart then fails. After any attempted
+            // restart, try to re-arm it so the distro does not idle back out, unless the repair was
+            // cancelled or the user already stopped or switched away from this gateway. That check runs
+            // once, before the re-arm starts: a manual Stop or Switch waits on the lifecycle lease held
+            // here, and a keepalive that is up after a Stop or Disconnect is the normal steady state.
+            // Best-effort, so it cannot mask the repair outcome.
+            async Task ReArmKeepAliveBestEffortAsync()
+            {
+                try
+                {
+                    if (cancellationToken.IsCancellationRequested ||
+                        GetRestartAbortResult(requireTransportFailure: false) is not null)
+                        return;
+
+                    await _reArmKeepAliveAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warn($"[GatewayRepair] Keepalive re-arm threw: {ex.Message}");
+                }
+            }
+
             if (GetRestartAbortResult() is { } beforeRestartAbort)
                 return beforeRestartAbort;
 
+            var restartAttempted = false;
             ManagedLocalGatewayRestartResult restart;
             try
             {
@@ -390,6 +414,7 @@ public sealed class ManagedLocalGatewayRepairCoordinator
 
                 _diagnostics.Record("setup", "Local gateway unreachable; restarting managed WSL distro", $"distro={distro}");
 
+                restartAttempted = true;
                 try
                 {
                     restart = await _restarter
@@ -415,15 +440,13 @@ public sealed class ManagedLocalGatewayRepairCoordinator
                     _diagnostics.Record("setup", "Local gateway restart failed", restart.Detail);
                     return new ManagedLocalGatewayRepairResult(ManagedLocalGatewayRepairOutcome.RestartFailed, distro, restart.Detail);
                 }
-
-                // Re-arm the WSL keepalive so an externally-terminated distro does not idle back out
-                // immediately after we bring it back.
-                try { await _reArmKeepAliveAsync(cancellationToken).ConfigureAwait(false); }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch (Exception ex) { _logger.Warn($"[GatewayRepair] Keepalive re-arm threw: {ex.Message}"); }
             }
             finally
             {
+                // Re-arm while still holding the lease so it cannot race a manual start/stop.
+                if (restartAttempted)
+                    await ReArmKeepAliveBestEffortAsync().ConfigureAwait(false);
+
                 // Release the lease before the (non-destructive) reconnect + verify so a manual op does
                 // not wait out the verify window.
                 lifecycleLease?.Dispose();

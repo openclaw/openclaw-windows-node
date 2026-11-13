@@ -11,6 +11,13 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 internal static class UninstallScriptHost
 {
+    private const string ProcessTimeoutVariable = "OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS";
+    // Bounds one Windows PowerShell 5.1 run. On a loaded hosted runner, cold 5.1 starts took 13 s and,
+    // in one case, more than 30 s, while warm runs take about 1 s. This is a hang guard, not a behavior gate.
+    private static readonly TimeSpan ProcessTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ProcessTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(120);
+
     public static async Task<string> RunAsync(
         TempDirectory temp,
         IReadOnlyList<string> functions,
@@ -74,7 +81,7 @@ internal static class UninstallScriptHost
         var stderr = process.StandardError.ReadToEndAsync();
         try
         {
-            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+            await process.WaitForExitAsync().WaitAsync(ProcessTimeout);
         }
         finally
         {

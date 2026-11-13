@@ -119,6 +119,11 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
         ChatThemeProofScope? scope = null;
         ChatComposerSession? session = null;
         TextBox? input = null;
+        // Bounded diagnostics only: a recurrence must show whether the edit reached the view model and whether
+        // the native editor was unloaded or rewritten afterwards.
+        var composerEvents = new System.Collections.Concurrent.ConcurrentQueue<string>();
+        void Record(string entry) { if (composerEvents.Count < 64) composerEvents.Enqueue(entry); }
+        string ComposerEvents() => string.Join("; ", composerEvents);
         try
         {
             await ui.RunOnUIAsync(() =>
@@ -141,20 +146,33 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
             await ui.RunOnUIAsync(() =>
             {
                 input = Control<TextBox>(surface!, "ChatComposerInput");
+                var editor = input;
+                editor.Loaded += (_, _) => Record($"Loaded text='{editor.Text}'");
+                editor.Unloaded += (_, _) => Record($"Unloaded text='{editor.Text}'");
+                editor.TextChanged += (_, _) => Record($"TextChanged text='{editor.Text}' draft='{session!.ViewModel.Draft}'");
+                session!.ViewModel.PropertyChanged += (_, _) => Record(
+                    $"ViewModel draft='{session.ViewModel.Draft}' thread={session.ViewModel.Inputs?.CurrentThread.Id}");
                 input.Text = draft;
             });
-            await SettleAsync();
+            // TextBox.TextChanged is deferred; the composer owns the draft only after it reaches the view model.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => session!.ViewModel.Draft == draft,
+                "composer view model accepts the native draft",
+                () => $"text='{input!.Text}'; events: {ComposerEvents()}"));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(input, Control<TextBox>(surface!, "ChatComposerInput"));
-                Assert.Equal(draft, input!.Text);
+                Assert.True(input!.Text == draft, $"Composer text changed after the draft was accepted. Events: {ComposerEvents()}");
                 Assert.Equal(draft, session!.ViewModel.Draft);
             });
             await provider.SendMessageAsync(key, "Synthetic native retention proof.");
+            // The question panel and the root's composer visibility observe the coordinator separately,
+            // so the option can render one pass before the composer area collapses.
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => FindDescendants<RadioButton>(surface!).Any(radio =>
-                    AutomationProperties.GetAutomationId(radio) == "ChatQuestionOption_fixture_choice_0"),
-                "native pending question"));
+                    AutomationProperties.GetAutomationId(radio) == "ChatQuestionOption_fixture_choice_0") &&
+                    Control<ScrollViewer>(surface!, "ChatComposerArea").Visibility == Visibility.Collapsed,
+                "native pending question replaces the composer"));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(input, Control<TextBox>(surface!, "ChatComposerInput"));
@@ -163,11 +181,13 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
                 Invoke(FindDescendants<Button>(surface!).Single(button =>
                     AutomationProperties.GetName(button) == "Collapse question"));
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Control<ScrollViewer>(surface!, "ChatComposerArea").Visibility == Visibility.Visible,
+                "collapsed question restores the composer"));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Same(input, Control<TextBox>(surface!, "ChatComposerInput"));
-                Assert.Equal(draft, input!.Text);
+                Assert.True(input!.Text == draft, $"Composer text changed while the question was shown. Events: {ComposerEvents()}");
                 Assert.Equal(draft, session!.ViewModel.Draft);
                 Assert.Equal(Visibility.Visible, Control<ScrollViewer>(surface!, "ChatComposerArea").Visibility);
             });
@@ -352,10 +372,15 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
                 Assert.Equal(2, paths.Length);
                 var expectedColor = new global::Windows.UI.ViewManagement.UISettings()
                     .GetColorValue(global::Windows.UI.ViewManagement.UIColorType.AccentDark1);
+                Assert.Equal(1, claw!.Opacity);
                 foreach (var path in paths)
                 {
                     Assert.Equal(0, path.StrokeThickness);
-                    Assert.Equal(expectedColor, Assert.IsType<SolidColorBrush>(path.Fill).Color);
+                    Assert.Equal(1, path.Opacity);
+                    var fill = Assert.IsType<SolidColorBrush>(path.Fill);
+                    Assert.Equal(1, fill.Opacity);
+                    Assert.Equal(255, fill.Color.A);
+                    Assert.Equal(expectedColor, fill.Color);
                 }
                 jaw = paths.Single(path => path.RenderTransform is RotateTransform);
                 var transform = Assert.IsType<RotateTransform>(jaw.RenderTransform);

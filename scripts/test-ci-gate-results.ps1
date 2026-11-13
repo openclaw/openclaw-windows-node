@@ -30,6 +30,8 @@ function New-GateArguments {
         TrayResult = "skipped"
         UiRequired = "false"
         UiResult = "skipped"
+        TrayUiShardResult = "skipped"
+        GatewayFixtureResult = "skipped"
         SetupE2eRequired = "false"
         SetupE2eResult = "skipped"
         RevocationE2eRequired = "false"
@@ -112,7 +114,7 @@ foreach ($classification in @("docs_only", "fast_only")) {
             -Scenario "$classification invalid full selection '$value'"
     }
     foreach ($prefix in @("Core", "Tray", "Ui", "SetupE2e", "RevocationE2e", "NetworkE2e",
-            "X64Release", "Arm64Release", "Metadata", "Msix", "MsixBundle")) {
+            "X64Release", "Arm64Release", "TrayUiShard", "GatewayFixture", "Metadata", "Msix", "MsixBundle")) {
         foreach ($result in @("success", "failure", "cancelled", "", "unknown")) {
             Assert-GateFails -BaseArguments $arguments -Overrides @{ "${prefix}Result" = $result } `
                 -Scenario "$classification unselected $prefix returned '$result'"
@@ -136,9 +138,28 @@ $uiArguments.TrayRequired = "true"
 $uiArguments.TrayResult = "success"
 $uiArguments.UiRequired = "true"
 $uiArguments.UiResult = "success"
+$uiArguments.TrayUiShardResult = "success"
+$uiArguments.GatewayFixtureResult = "success"
 $uiTargeted = Invoke-Gate $uiArguments
 if ($uiTargeted -ne "targeted") {
     throw "Expected the UI-targeted gate to pass."
+}
+
+foreach ($result in @("failure", "cancelled", "skipped", "", "unknown")) {
+    Assert-GateFails -BaseArguments $uiArguments -Overrides @{ GatewayFixtureResult = $result } `
+        -Scenario "UI selected but Gateway fixture returned '$result'"
+}
+foreach ($result in @("success", "failure", "cancelled", "", "unknown")) {
+    Assert-GateFails -Overrides @{ GatewayFixtureResult = $result } `
+        -Scenario "UI unselected but Gateway fixture returned '$result'"
+}
+foreach ($result in @("failure", "cancelled", "skipped", "", "unknown")) {
+    Assert-GateFails -BaseArguments $uiArguments -Overrides @{ TrayUiShardResult = $result } `
+        -Scenario "UI selected but Tray UI shard returned '$result'"
+}
+foreach ($result in @("success", "failure", "cancelled", "", "unknown")) {
+    Assert-GateFails -Overrides @{ TrayUiShardResult = $result } `
+        -Scenario "UI unselected but Tray UI shard returned '$result'"
 }
 
 $fullArguments = New-GateArguments
@@ -156,6 +177,8 @@ foreach ($prefix in @(
     $fullArguments["${prefix}Required"] = "true"
     $fullArguments["${prefix}Result"] = "success"
 }
+$fullArguments.GatewayFixtureResult = "success"
+$fullArguments.TrayUiShardResult = "success"
 $fullArguments.MetadataResult = "success"
 $fullArguments.MsixResult = "success"
 $fullArguments.MsixBundleResult = "success"
@@ -178,6 +201,8 @@ foreach ($prefix in @(
     $fullPrArguments["${prefix}Required"] = "true"
     $fullPrArguments["${prefix}Result"] = "success"
 }
+$fullPrArguments.GatewayFixtureResult = "success"
+$fullPrArguments.TrayUiShardResult = "success"
 $fullPrArguments.MetadataResult = "success"
 $fullPrArguments.MsixResult = "success"
 $fullPrArguments.MsixBundleResult = "success"

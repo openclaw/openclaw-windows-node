@@ -240,15 +240,18 @@ public sealed class MxcCompanionPackagePathsTests
         var root = TestRepositoryPaths.GetRepositoryRoot();
         var node = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs"));
         var factoryStart = node.IndexOf("private ICommandRunner BuildSystemRunRunner()", StringComparison.Ordinal);
-        var factoryEnd = node.IndexOf("private SettingsData SnapshotSettings()", factoryStart, StringComparison.Ordinal);
+        var factoryEnd = node.IndexOf("private NodeSandboxExecutor? _sandboxExecutor", factoryStart, StringComparison.Ordinal);
         Assert.Contains("contextProvider: () => MxcWindowsRequestContext.Capture(settingsDirectory)",
             node[factoryStart..factoryEnd]);
+        Assert.Contains("_settings?.SandboxPolicies", node[factoryStart..factoryEnd]);
+        Assert.Contains("_sandboxExecutor ??= new NodeSandboxExecutor(", node[factoryStart..factoryEnd]);
+        Assert.Contains("return new MxcCommandRunner(_sandboxExecutor)", node[factoryStart..factoryEnd]);
         var adapter = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Services", "MxcWindowsRequestContext.cs"));
         Assert.Contains("new PackageManager().FindPackagesForUser(string.Empty)", adapter);
         Assert.Contains("MxcRequestContext.Capture(settingsDirectory), EnumeratePackages, UnredirectedLocalAppData", adapter);
         Assert.Contains("KF_FLAG_NO_PACKAGE_REDIRECTION = 0x00010000", adapter);
         Assert.DoesNotContain("Package.Current", adapter);
-        var runner = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Shared", "Mxc", "MxcCommandRunner.cs"));
+        var runner = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Shared", "Mxc", "NodeSandboxExecutor.cs"));
         Assert.DoesNotContain("Windows.Management.Deployment", runner);
         Assert.DoesNotContain("PackageManager", runner);
     }

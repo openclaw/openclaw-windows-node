@@ -41,6 +41,16 @@ public class WindowsNodeClientTests
         }
     }
 
+    private sealed class ResetProbeWindowsNodeClient(
+        string gatewayUrl,
+        string token,
+        string dataPath) : WindowsNodeClient(gatewayUrl, token, dataPath)
+    {
+        protected override bool ShouldAutoReconnect() => false;
+        protected override Task ProcessMessageForConnectionAsync(string json, long sourceConnectionGeneration) =>
+            Task.FromException(new InvalidOperationException("synthetic processing failure"));
+    }
+
     private sealed class ThrowingWindowsNodeClient(
         string gatewayUrl,
         string token,
@@ -1644,16 +1654,18 @@ public class WindowsNodeClientTests
     }
 
     [Theory]
-    [InlineData("OnDisconnected")]
-    [InlineData("OnError")]
-    public async Task EventOnlyPairedState_IsClearedByConnectionResetHooks(string hookName)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EventOnlyPairedState_IsClearedByTransportLoss(bool listenError)
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
 
         try
         {
-            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            using var server = new LoopbackWebSocketServer();
+            await server.StartAsync();
+            using var client = new ResetProbeWindowsNodeClient(server.WebSocketUrl, "test-token", dataPath);
 
             await InvokeHandleEventAsync(client, $$"""
                 {
@@ -1668,19 +1680,21 @@ public class WindowsNodeClientTests
 
             Assert.True(client.IsPaired);
 
-            var method = typeof(WindowsNodeClient).GetMethod(
-                hookName,
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.NotNull(method);
+            var lost = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.StatusChanged += (_, status) =>
+            {
+                if (status == (listenError ? ConnectionStatus.Error : ConnectionStatus.Disconnected))
+                    lost.TrySetResult();
+            };
+            await client.ConnectAsync();
+            await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(5));
+            Assert.True(client.IsPaired);
 
-            if (hookName == "OnError")
-            {
-                method!.Invoke(client, [new InvalidOperationException("test")]);
-            }
+            if (listenError)
+                await server.SendTextAsync("trigger processing failure");
             else
-            {
-                method!.Invoke(client, null);
-            }
+                await server.CloseSocketAsync(0);
+            await lost.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.False(client.IsPendingApproval);
             Assert.False(client.IsPaired);
