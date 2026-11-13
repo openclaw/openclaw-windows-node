@@ -801,7 +801,8 @@ layout and in keyboard and UI Automation order, and is visible on hover, keyboar
 focus or touch-capable devices; pointer focus alone does not reveal it.
 Pills are keyed to their attachment; removing one moves focus to the next file's
 removal target, else the previous file's, else the editor when no files remain.
-Raster image attachments render instead as 96-pixel square tiles (12-pixel corners,
+Raster image attachments render instead as 56-pixel square tiles, the web composer's
+thumbnail size (12-pixel corners,
 `ChatStrokeBrush` outline, cropped to fill) on their own wrapping row above the
 file pills, like the GitHub Copilot app. Their removal target is the same named
 24-pixel button drawn as an opaque `ChatAttachmentBadgeBrush` disc over the
