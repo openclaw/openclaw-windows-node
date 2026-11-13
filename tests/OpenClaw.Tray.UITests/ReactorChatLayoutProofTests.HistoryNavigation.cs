@@ -22,6 +22,94 @@ public sealed partial class ReactorChatLayoutProofTests
                 : $"History message {index}.")).ToImmutableList();
 
     [Fact]
+    public void HistoryRail_KeyboardStartsAtReadingPositionAndRetainsPendingSelection()
+    {
+        ChatHistoryAnchor[] anchors =
+        [
+            new(0, "first", "User", "First"),
+            new(3, "middle", "Assistant", "Middle"),
+            new(7, "last", "User", "Last"),
+        ];
+        HashSet<int> visible = [3];
+        Assert.Equal(0, ChatHistoryNavigation.KeyboardIndex(VirtualKey.Up, anchors, null, visible));
+        Assert.Equal(2, ChatHistoryNavigation.KeyboardIndex(VirtualKey.Down, anchors, null, visible));
+        Assert.Equal(1, ChatHistoryNavigation.KeyboardIndex(VirtualKey.Enter, anchors, null, visible));
+        Assert.Equal(1, ChatHistoryNavigation.KeyboardIndex(VirtualKey.Up, anchors, "last", visible));
+        Assert.Equal(0, ChatHistoryNavigation.KeyboardIndex(VirtualKey.Home, anchors, "last", visible));
+        Assert.Equal(2, ChatHistoryNavigation.KeyboardIndex(VirtualKey.End, anchors, "first", visible));
+        visible = [0];
+        Assert.Equal(1, ChatHistoryNavigation.KeyboardIndex(VirtualKey.Down, anchors, null, visible));
+        Assert.Equal(-1, ChatHistoryNavigation.KeyboardIndex(VirtualKey.Down, [], null, visible));
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task HistoryRail_ActualPointerPositionOverridesShiftedPreviewAndKeepsLiveContent(string theme)
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var themeScope = new ChatThemeProofScope(theme);
+            var surface = new Grid { Width = 100, Height = 180, RequestedTheme = themeScope.ElementTheme };
+            var rail = new AnnotatedScrollBar
+            {
+                Width = 40,
+                Height = 180,
+                Style = (Style)Application.Current.Resources["ChatHistoryScrollBarStyle"],
+            };
+            surface.Children.Add(rail);
+            using var navigation = new ChatHistoryNavigation(new ItemsView(), _ => { });
+            var anchors = Enumerable.Range(0, 40)
+                .Select(index => new ChatHistoryAnchor(index, $"pointer-{index}", "Assistant", $"Preview {index}"))
+                .ToArray();
+            navigation.Update(anchors);
+            navigation.SetScrollBar(rail);
+            ui.Container.Children.Add(surface);
+            try
+            {
+                await WaitForRenderedConditionAsync(() => rail.Labels.Count > 3
+                    && FindDescendants<ContentPresenter>(rail).Count(presenter =>
+                        presenter.Content is AnnotatedScrollBarLabel) == rail.Labels.Count,
+                    "the native pointer rail is mounted");
+                var root = Assert.IsAssignableFrom<FrameworkElement>(VisualTreeHelper.GetChild(rail, 0));
+                var labels = Assert.IsType<Grid>(root.FindName("PART_LabelsGrid"));
+                var thumb = Assert.IsAssignableFrom<FrameworkElement>(root.FindName("PART_VerticalThumb"));
+                var preview = Assert.IsType<ContentPresenter>(root.FindName("PART_TooltipContentPresenter"));
+                var label = rail.Labels[rail.Labels.Count / 2];
+                var expected = Assert.IsType<ChatHistoryAnchor>(label.Content);
+                var position = label.ScrollOffset * (labels.ActualHeight - thumb.ActualHeight);
+                preview.Content = anchors[0];
+                navigation.UpdatePointerPreview(position);
+                Assert.Equal(expected.Key, Assert.IsType<ChatHistoryAnchor>(preview.Content).Key);
+                await WaitForRenderedConditionAsync(() =>
+                    FindDescendants<ContentPresenter>(rail).Any(presenter =>
+                        ReferenceEquals(presenter.Content, label)
+                        && FindDescendants<Border>(presenter).Any(border => border.ActualWidth >= 31)),
+                    "actual pointer selection expands the intended tick");
+                var tick = Assert.Single(FindDescendants<Border>(FindDescendants<ContentPresenter>(rail)
+                    .Single(presenter => ReferenceEquals(presenter.Content, label))));
+                AssertHistoryTickInk(tick, Assert.IsType<Grid>(root));
+
+                var originalLabels = rail.Labels.ToArray();
+                anchors = anchors.Select(anchor => anchor.Key == expected.Key
+                    ? anchor with { Sender = "Updated sender", Preview = "Updated preview" } : anchor).ToArray();
+                navigation.Update(anchors);
+                Assert.True(originalLabels.SequenceEqual(rail.Labels));
+                var updated = Assert.IsType<ChatHistoryAnchor>(preview.Content);
+                Assert.Equal("Updated sender", updated.Sender);
+                Assert.Equal("Updated preview", updated.Preview);
+                Assert.Equal(updated, navigation.AnchorAt(label.ScrollOffset));
+                Assert.Null(navigation.AnchorAtPointer(double.NaN));
+            }
+            finally
+            {
+                ui.Container.Children.Remove(surface);
+            }
+        });
+    }
+
+    [Fact]
     public async Task HistoryRail_GrowsWithMessagesAndCapsAtTheResizedTranscriptViewport()
     {
         var provider = new ProofProvider();
@@ -162,6 +250,26 @@ public sealed partial class ReactorChatLayoutProofTests
         }, renderProvider: provider);
     }
 
+    private static void AssertHistoryTickInk(Border tick, Grid themeRoot)
+    {
+        var reference = (TextBlock)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+            "<TextBlock xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" " +
+            "Foreground=\"{ThemeResource ChatTextBrush}\" />");
+        themeRoot.Children.Add(reference);
+        try
+        {
+            var actual = Assert.IsType<SolidColorBrush>(tick.Background);
+            var expected = Assert.IsType<SolidColorBrush>(reference.Foreground);
+            Assert.Equal(themeRoot.ActualTheme, tick.ActualTheme);
+            Assert.Equal(expected.Color, actual.Color);
+            Assert.Equal(expected.Opacity, actual.Opacity);
+        }
+        finally
+        {
+            themeRoot.Children.Remove(reference);
+        }
+    }
+
     private static void AssertHistoryTickGaps(AnnotatedScrollBar rail)
     {
         var ticks = FindDescendants<ContentPresenter>(rail)
@@ -173,6 +281,57 @@ public sealed partial class ReactorChatLayoutProofTests
         for (var index = 1; index < ticks.Length; index++)
             Assert.True(ticks[index].Top - ticks[index - 1].Bottom >= 4 - 0.0001,
                 $"Ticks {index - 1} and {index} need at least 4 DIPs of clear space.");
+    }
+
+    [Fact]
+    public async Task HistoryRail_StreamingPreviewKeepsExistingTickPresenters()
+    {
+        var provider = new ProofProvider();
+        var snapshot = await provider.LoadAsync();
+        var entries = HistoryRailEntries(240);
+        entries = entries.SetItem(239, entries[239] with { Text = "Starting", IsStreaming = true });
+        provider.Publish(WorkSnapshot(snapshot, "proof", entries, active: true));
+        await WithChatAsync(800, async (_, host, _, _) =>
+        {
+            await ui.RunOnUIAsync(async () =>
+            {
+                var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
+                await WaitForRenderedConditionAsync(() =>
+                    rail.Labels.Count > 1 && FindDescendants<ContentPresenter>(rail).Count(presenter =>
+                        presenter.Content is AnnotatedScrollBarLabel) == rail.Labels.Count,
+                    "streaming history ticks are mounted");
+                var labels = rail.Labels.ToArray();
+                var presenters = FindDescendants<ContentPresenter>(rail)
+                    .Where(presenter => presenter.Content is AnnotatedScrollBarLabel).ToArray();
+                var interrupted = false;
+                void Observe(object? sender, object args) =>
+                    interrupted |= !presenters.SequenceEqual(FindDescendants<ContentPresenter>(rail)
+                        .Where(presenter => presenter.Content is AnnotatedScrollBarLabel));
+                CompositionTarget.Rendering += Observe;
+                try
+                {
+                    foreach (var text in new[] { "A streaming answer", "A streaming answer with more detail",
+                        new string('x', 260) })
+                    {
+                        entries = entries.SetItem(239, entries[239] with { Text = text });
+                        provider.Publish(WorkSnapshot(snapshot, "proof", entries, active: true));
+                        await WaitForRenderedConditionAsync(() =>
+                            FindDescendants<TextBlock>(host).Any(block => block.Text == text)
+                            || FindDescendants<RichTextBlock>(host).Any(block => CollectText(block) == text),
+                            "the streamed response is rendered");
+                        Assert.True(labels.SequenceEqual(rail.Labels),
+                            "Preview text must not replace the native labels.");
+                        Assert.True(presenters.SequenceEqual(FindDescendants<ContentPresenter>(rail)
+                            .Where(presenter => presenter.Content is AnnotatedScrollBarLabel)));
+                    }
+                    Assert.False(interrupted, "Streaming must not remove ticks between rendered frames.");
+                }
+                finally
+                {
+                    CompositionTarget.Rendering -= Observe;
+                }
+            });
+        }, renderProvider: provider);
     }
 
     [Fact]
@@ -300,7 +459,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.Equal(NativeProofLayout.RoundedViewSize(expected, surface.XamlRoot.RasterizationScale),
                         ticks[index].ActualWidth, 5);
                 }
-                Assert.Same(Application.Current.Resources["ChatTextBrush"], ticks[tickIndex].Background);
+                AssertHistoryTickInk(ticks[tickIndex], Assert.IsType<Grid>(VisualTreeHelper.GetChild(rail, 0)));
                 AssertHistoryTickGaps(rail);
             });
             await CaptureAsync(surface, $"HistoryRail-{theme}-{count}-hover");

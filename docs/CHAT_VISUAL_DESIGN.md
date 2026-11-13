@@ -40,11 +40,18 @@ adapts to the rail height and display scale on resize. Hover and pointer
 navigation resolve the same sampled message; keyboard navigation still reaches
 every message. The rail uses a fixed ordinal range independent of virtualized
 transcript height estimates, keeping its native ticks mounted during navigation.
+Streaming sender/preview updates retain existing labels when their sampled
+identities and row positions are unchanged. Visual updates are coalesced per
+rendered frame; unrelated window layout does not rescan the transcript.
 Hover previews show sender identity and up to 240 characters in
 three lines within 280 pixels, inside a native 12-pixel rounded tooltip.
 Click or drag resolves an ordinal position to the current keyed message, not
 its approximate pixel offset. Keyboard Up/Down, Home/End and Enter/Space provide
-the same destinations. Native message realization retains bounded layout waits,
+the same destinations. After reading with the wheel or touch, Up/Down starts
+from the first visible message rather than an old rail selection. Consecutive
+rail keys retain their selection while navigation is pending. Touch previews
+use the actual pointer position; native tooltip placement must not shift which
+message is previewed. Native message realization retains bounded layout waits,
 identity checks and cancellation; it does not force synchronous ItemsView layout.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
 leave prose centered. Accessible sender and footer identity remain.

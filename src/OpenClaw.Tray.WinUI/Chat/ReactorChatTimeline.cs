@@ -61,7 +61,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var hoverTarget = UseRef<string?>(null);
         var (focusedEntryKey, setFocusedEntryKey) = UseState<string?>(null);
         var (viewportWidth, setViewportWidth) = UseState(800d);
-        var (navigationVisible, setNavigationVisible) = UseState(false);
         var (atTail, setAtTail) = UseState(true);
         var (jumpRevision, setJumpRevision) = UseState(0);
         var (loadingOlder, setLoadingOlder) = UseState(false, threadSafe: true);
@@ -288,8 +287,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .IsTabStop(historyAnchors.Count > 0)
                 .IsHitTestVisible(historyAnchors.Count > 0)
                 .Opacity(historyAnchors.Count > 0 ? 1 : 0)
-                .OnGotFocus((_, _) => setNavigationVisible(true))
-                .OnLostFocus((_, _) => setNavigationVisible(false))
                 .Grid(row: 1, column: 0)
                 .HAlign(HorizontalAlignment.Right)
                 .AutomationId("ChatHistoryNavigation")
@@ -344,8 +341,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 .Margin(ChatVisuals.Gutter(viewportWidth), 0).Grid(row: 2, column: 0))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
-            .OnPointerEntered((_, _) => setNavigationVisible(true))
-            .OnPointerExited((_, _) => setNavigationVisible(false))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
     }

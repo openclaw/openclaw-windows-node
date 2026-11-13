@@ -165,7 +165,7 @@ file sealed class InitialTailPositioner : IDisposable
     {
         this.itemsView = itemsView;
         HistoryNavigation = new ChatHistoryNavigation(itemsView, NavigateHistory);
-        _cancelPointerNavigation = (_, _) => CancelPendingNavigation();
+        _cancelPointerNavigation = (_, _) => OnReaderInput(null, mayToggleDisclosure: false);
         _readerPointerPressed = (_, args) => OnReaderInput(args.OriginalSource, mayToggleDisclosure: true);
         _readerGettingFocus = OnReaderFocus;
         itemsView.AddHandler(UIElement.PointerPressedEvent, _readerPointerPressed, true);
@@ -187,6 +187,7 @@ file sealed class InitialTailPositioner : IDisposable
         if (_disposed || string.Equals(_requestKey, requestKey, StringComparison.Ordinal))
             return;
 
+        HistoryNavigation.ResetSelection();
         RestoreTailAnchor();
         _historyRequest = null;
         _requestKey = requestKey;
@@ -690,7 +691,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnScrollStateChanged(WinUIScrollView sender, object args)
     {
         if (sender.State == ScrollingInteractionState.Interaction)
-            CancelPendingNavigation();
+            OnReaderInput(null, mayToggleDisclosure: false);
         else if (_awaitingIdle && sender.State == ScrollingInteractionState.Idle)
         {
             _awaitingIdle = false;
@@ -708,6 +709,7 @@ file sealed class InitialTailPositioner : IDisposable
     // transcript, the toggled header stays put and its details grow downward.
     private void OnReaderInput(object? source, bool mayToggleDisclosure)
     {
+        HistoryNavigation.ResetSelection();
         CancelPendingNavigation();
         if (mayToggleDisclosure && _scrollView is { } scrollView && IsDisclosureHeader(source))
         {
