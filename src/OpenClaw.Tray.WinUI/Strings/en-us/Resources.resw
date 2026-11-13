@@ -10120,4 +10120,5 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Conversation panels</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Refresh</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
 </root>

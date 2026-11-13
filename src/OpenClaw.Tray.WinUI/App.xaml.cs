@@ -148,6 +148,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// </summary>
     public string? PendingChatSessionKey { get; set; }
 
+    /// <summary>
+    /// Session whose dashboard should open beside chat when ChatPage consumes the
+    /// matching <see cref="PendingChatSessionKey"/>. Set by the Dashboards page.
+    /// </summary>
+    internal string? PendingChatDashboardSessionKey { get; set; }
+
     /// <summary>Exposes the active chat data and speech coordinators to the hosted chat surface.</summary>
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
     public OpenClawTray.Chat.OpenClawChatCoordinator? ChatSpeech => _chatCoordinator;

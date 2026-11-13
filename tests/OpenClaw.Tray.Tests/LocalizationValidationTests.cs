@@ -1257,7 +1257,7 @@ public class LocalizationValidationTests
                     "Systems_Number_0" => ["pt-br"],
                     "Systems_Number_6" => ["fr-fr"],
                     "Search_Dashboard" or "Search_Group_Dashboard" or "Search_Dashboard_Apps" or
-                        "Search_Dashboard_Dashboards" or "Search_Group_Chats" => ["nl-nl"],
+                        "Search_Dashboard_Dashboards" or "Search_Group_Chats" or "Chat_Panel_Dashboard" => ["nl-nl"],
                     "Search_Dashboard_Plugins" => ["pt-br"],
                     "Search_Dashboard_Secrets" => ["fr-fr"],
                     "Search_Group_Agents" => ["fr-fr", "nl-nl"],

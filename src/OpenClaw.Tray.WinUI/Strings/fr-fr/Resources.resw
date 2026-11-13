@@ -10049,4 +10049,5 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Panneaux de conversation</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Actualiser</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Actualiser</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Tableau de bord</value></data>
 </root>
