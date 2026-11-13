@@ -9,6 +9,12 @@ namespace OpenClaw.Tray.Tests;
 public class ChatReadinessClientTests(ITestOutputHelper output)
 {
     private const string TokenQuery = "token" + "=" + "test-auth-token";
+    private const string StepTimeoutVariable = "OPENCLAW_TRAY_TEST_CHAT_READINESS_TIMEOUT_SECONDS";
+    // Hang guard for one loopback exchange. The fake server and the client complete on the shared
+    // thread pool, which a loaded runner can starve for seconds; this never gates behavior.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(StepTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
 
     [Theory]
     [InlineData("http://127.0.0.1:18789/")]
@@ -47,11 +53,11 @@ public class ChatReadinessClientTests(ITestOutputHelper output)
     {
         using var origin = StartListener();
         using var proxy = StartListener();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = new CancellationTokenSource(StepTimeout);
         var url = $"{ListenerUrl(origin)}chat?{TokenQuery}";
         using var handler = ChatReadinessClient.CreateHandler(new Uri(url));
         handler.Proxy = new WebProxy(ListenerUrl(proxy), false);
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+        using var http = new HttpClient(handler) { Timeout = StepTimeout };
         var received = RespondAsync(origin, "200 OK", null, deadline.Token);
 
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
@@ -73,11 +79,13 @@ public class ChatReadinessClientTests(ITestOutputHelper output)
     {
         using var origin = StartListener();
         using var destination = StartListener();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = new CancellationTokenSource(StepTimeout);
         var url = $"{ListenerUrl(origin)}chat?{TokenQuery}";
         var location = $"http://localhost:{((IPEndPoint)destination.LocalEndpoint).Port}/chat?{TokenQuery}";
         var received = RespondAsync(origin, $"{statusCode} Redirect", location, deadline.Token);
         using var http = ChatReadinessClient.Create(url);
+        // The product client's 3 s per-probe timeout is ChatPage's retry policy, not this test's subject.
+        http.Timeout = StepTimeout;
 
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, deadline.Token);
 
@@ -92,11 +100,11 @@ public class ChatReadinessClientTests(ITestOutputHelper output)
     public async Task Remote_https_probe_uses_proxy_connect_without_disclosing_the_token()
     {
         using var proxy = StartListener();
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var deadline = new CancellationTokenSource(StepTimeout);
         const string url = "https://gateway.example/chat?" + TokenQuery;
         using var handler = ChatReadinessClient.CreateHandler(new Uri(url));
         handler.Proxy = new WebProxy(ListenerUrl(proxy), false);
-        using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
+        using var http = new HttpClient(handler) { Timeout = StepTimeout };
         var received = RespondAsync(proxy, "502 Bad Gateway", null, deadline.Token);
 
         await Assert.ThrowsAsync<HttpRequestException>(() =>

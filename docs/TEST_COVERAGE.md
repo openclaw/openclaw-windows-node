@@ -116,7 +116,10 @@ default 15 s). Each Windows PowerShell 5.1 uninstall-helper run is bounded by
 cold 5.1 start on a loaded runner can exceed 30 s. The isolated wizard
 console-tail regressions wait through the tail's real poll interval and retry
 backoff, so each step is bounded by `OPENCLAW_TRAY_TEST_WIZARD_TAIL_TIMEOUT_SECONDS`
-(default 30 s).
+(default 30 s). The chat-readiness loopback regressions bound each exchange with
+`OPENCLAW_TRAY_TEST_CHAT_READINESS_TIMEOUT_SECONDS` (default 30 s) rather than the
+product's 3 s per-probe client timeout, because their fake server runs on the
+shared thread pool.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
