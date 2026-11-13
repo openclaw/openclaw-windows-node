@@ -408,6 +408,31 @@ public sealed class GatewayFixtureRunTests
         Assert.Contains("dispose:withheld-live-worker-or-app", receipt);
     }
 
+    [Fact]
+    public async Task AppExitedBeforeCapture_RethrowsOriginalWithItsThrownStackAndRecordsCaptureError()
+    {
+        static async Task FailingBody()
+        {
+            await Task.Yield();
+            throw new NullReferenceException("Original UI assertion");
+        }
+        var body = FailingBody();
+        var original = await Assert.ThrowsAsync<NullReferenceException>(() => body);
+        var thrownStack = original.StackTrace;
+        IReadOnlyList<string> receipt = [];
+
+        var observed = await Assert.ThrowsAsync<NullReferenceException>(() => Finish(original, body: body,
+            capture: _ => throw new InvalidOperationException("No process is associated with this object."),
+            record: stages => receipt = stages).WaitAsync(FailureDeadline));
+
+        Assert.Same(original, observed);
+        // Containment re-observes the faulted body; that must not append its frames as if it had thrown.
+        Assert.DoesNotContain("ObserveAsync", observed.StackTrace!, StringComparison.Ordinal);
+        Assert.StartsWith(thrownStack!, observed.StackTrace!, StringComparison.Ordinal);
+        Assert.Contains("capture:error:InvalidOperationException", receipt);
+        Assert.Contains("dispose:completed", receipt);
+    }
+
     private static Task Finish(Exception original, Task? body = null,
         Func<CancellationToken, Task>? capture = null, Action? release = null,
         Func<Task>? stop = null, Func<Task>? dispose = null,
