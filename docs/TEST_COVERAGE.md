@@ -94,7 +94,12 @@ test sequence without collecting a memory dump; it is not retried or skipped.
 The MCP bearer-rotation regression keeps its deliberately blocking rotation on a
 dedicated thread and bounds each loopback step with
 `OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS` (default 30 s), because the server
-pipeline itself runs on the shared thread pool.
+pipeline itself runs on the shared thread pool. The standalone clean-uninstall
+regression runs about 50 interpreted Windows PowerShell 5.1 cases in one process.
+It takes 16-37 s on hosted runners, but its run time grows with host load, so it is bounded by
+`OPENCLAW_CLEAN_UNINSTALL_TEST_TIMEOUT_SECONDS` (default 240 s). With a short
+cleanup bound it stays below the five-minute watchdog, and on timeout it stops
+the process tree and reports the script's last output and errors.
 
 ### OpenClaw.Tray.Tests
 
