@@ -63,8 +63,8 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             // The keyboard-focused row becomes ItemsView's current item, which it may later re-reveal.
             // Its focus scroll must also finish before the reader moves elsewhere.
-            await UntilAsync(Steady(() => timeline!.CurrentItemIndex >= 0 && InViewport(reader!, scroll!), scroll!),
-                "reader row focused, current and scrolled into view");
+            await UntilAsync(Steady(() => timeline!.CurrentItemIndex >= 0 && reader!.FocusState == FocusState.Keyboard, scroll!),
+                "reader row focused, current and its focus scroll settled");
             if (tabs == DetailsThenSubagents)
             {
                 // Two open tabs: closing the selected Subagents tab must not drop focus into the transcript.
@@ -518,14 +518,6 @@ public sealed partial class ReactorChatLayoutProofTests
             previous = offset;
             return samples >= RequiredSamples;
         };
-    }
-
-    private static bool InViewport(FrameworkElement element, ScrollView scroll)
-    {
-        if (!element.IsLoaded) return false;
-        var bounds = element.TransformToVisual(scroll).TransformBounds(
-            new global::Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
-        return bounds.Top >= -0.5 && bounds.Bottom <= scroll.ViewportHeight + 0.5;
     }
 
     private static bool PillReady(FrameworkElement surface) =>
