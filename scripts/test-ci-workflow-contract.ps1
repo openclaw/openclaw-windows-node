@@ -1412,6 +1412,33 @@ foreach ($token in @(' new-test-soak, ', "NEW_TEST_SOAK_REQUIRED: `${{ github.ev
 Assert-Contains -Text (Get-JobBlock "fast-validation") -Expected 'run: ./scripts/test-ci-changed-tests.ps1' `
     -Message 'Fast validation must test the changed-test selection.'
 
+# Main failure watch: only failed pushes to main of this workflow, least privilege, untrusted run data
+# kept out of expressions in scripts, and no reruns, reverts or pushes.
+$watchWorkflow = Get-Content -LiteralPath (Join-Path $repoRootPath '.github\workflows\main-failure-watch.yml') -Raw
+if ($workflow -notmatch '\A\s*name: Build and Test\r?\n') { throw 'The main failure watch listens for the workflow named "Build and Test"; keep the names in sync.' }
+foreach ($token in @('workflows: [Build and Test]', 'types: [completed]', 'branches: [main]',
+        "github.event.workflow_run.conclusion == 'failure'", "github.event.workflow_run.event == 'push'",
+        "github.event.workflow_run.head_branch == 'main'", 'github.event.workflow_run.head_repository.full_name == github.repository',
+        'ref: ${{ github.event.workflow_run.head_sha }}', 'fetch-depth: 0', 'persist-credentials: false',
+        'run: ./scripts/Watch-CiMainFailures.ps1 -Repository $env:REPOSITORY -RunId $env:RUN_ID -RunAttempt $env:RUN_ATTEMPT -HeadSha $env:HEAD_SHA')) {
+    Assert-Contains -Text $watchWorkflow -Expected $token -Message "The main failure watch is missing '$token'."
+}
+if ($watchWorkflow -notmatch '(?m)^permissions: \{\}\r?$') { throw 'The main failure watch must grant no workflow-level permissions.' }
+$watchPermissions = [regex]::Matches($watchWorkflow, '(?m)^    permissions:\r?\n((?:      [a-z-]+: [a-z]+\r?\n)+)')
+$watchGrants = if ($watchPermissions.Count -eq 1) { (@($watchPermissions[0].Groups[1].Value -split '\r?\n' | Where-Object { $_ } | ForEach-Object Trim | Sort-Object) -join ',') } else { '' }
+if ($watchGrants -cne 'actions: read,contents: read,issues: write,pull-requests: read') {
+    throw 'The main failure watch job may only read actions, contents and pull requests and write issues.'
+}
+if ($watchWorkflow -match '(?m)^concurrency:') { throw 'The main failure watch must not use a concurrency group: GitHub cancels pending runs in a group, which drops reports.' }
+foreach ($source in @($watchWorkflow, (Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Watch-CiMainFailures.ps1') -Raw),
+        (Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\CiMainFailureWatch.ps1') -Raw))) {
+    if ($source -match '(?i)pull_request_target|\brun\s+rerun\b|/rerun|\brun\s+cancel\b|\bgit\s+(?:revert|push)\b') {
+        throw "The main failure watch must not rerun, cancel, revert or push: '$($Matches[0])'."
+    }
+}
+Assert-Contains -Text (Get-JobBlock "fast-validation") -Expected 'run: ./scripts/test-ci-main-failure-watch.ps1' `
+    -Message 'Fast validation must test the main failure watch.'
+
 # Step budget visibility: each timed single-runner step declares its own timeout-minutes in
 # OPENCLAW_CI_STEP_TIMEOUT_MINUTES so the runner can warn before a passing suite outgrows it.
 # Drift between the two values is rejected. It must never be a runner argument: alpha promotion
