@@ -106,6 +106,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.True(attach.Focus(FocusState.Programmatic));
                 session.RequestInputFocus();
                 session.SetHostVisible(true);
+                await ui.YieldToRenderAsync().WaitAsync(TestSupport.RenderedConditionTimeout);
+                Assert.Same(attach, FocusManager.GetFocusedElement(attach.XamlRoot));
+                session.RequestInputFocus();
+                session.SetHostVisible(false);
+                session.SetHostVisible(true);
+                await ui.YieldToRenderAsync().WaitAsync(TestSupport.RenderedConditionTimeout);
                 Assert.Same(attach, FocusManager.GetFocusedElement(attach.XamlRoot));
                 session.RequestInputFocus();
                 await WaitForRenderedConditionAsync(
