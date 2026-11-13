@@ -3132,7 +3132,24 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             var pointerAway = false;
             Button[] removals = [];
             await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments(attachments));
-            await SettleAsync();
+            string? lastRailLayout = null;
+            // Wait for six laid-out pills whose wrapped geometry is unchanged across two checks.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                if (FindDescendants<ScrollViewer>(surface).FirstOrDefault(scroll =>
+                        AutomationProperties.GetAutomationId(scroll) == "ChatAttachmentRail") is not { } rail)
+                    return false;
+                var laidOut = FindDescendants<Border>(rail).Where(chip =>
+                    AutomationProperties.GetAutomationId(chip) == "ChatAttachmentChip"
+                    && chip.IsLoaded && chip.ActualWidth > 0).ToArray();
+                if (laidOut.Length != 6)
+                    return false;
+                var layout = string.Join(";", laidOut.Select(chip => Bounds(chip, surface).ToString()))
+                    + $"|{rail.ActualHeight}|{rail.ScrollableHeight}";
+                var stable = layout == lastRailLayout;
+                lastRailLayout = layout;
+                return stable;
+            }, "six stable attachment pills"));
             await ui.RunOnUIAsync(() =>
             {
                 var rail = FindControl<ScrollViewer>(surface, "ChatAttachmentRail");
@@ -3183,6 +3200,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 // Pointer focus (as after a mouse removal) is not a reveal reason on its own.
                 Assert.True(removals[2].Focus(FocusState.Pointer));
             });
+            // test-timing-exception: this proves pointer focus does not reveal the button; no positive signal exists.
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
@@ -3191,33 +3209,38 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                     Assert.Equal(0, removals[2].Opacity);
                 Assert.True(removals[^1].Focus(FocusState.Keyboard));
             });
-            await SettleAsync();
-            await ui.RunOnUIAsync(() =>
+            Rect lastTarget = default, lastViewport = default;
+            // Keyboard focus scrolls a pill that starts below the capped rail into view.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
-                // Keyboard focus scrolls a pill that starts below the capped rail into view.
                 var rail = FindControl<ScrollViewer>(surface, "ChatAttachmentRail");
-                var target = Bounds(removals[^1], surface);
-                var viewport = Bounds(rail, surface);
-                Assert.True(target.Top >= viewport.Top - 0.5 && target.Bottom <= viewport.Bottom + 0.5,
-                    $"Focused removal {target} is outside the rail viewport {viewport}.");
-                Assert.True(removals[1].Focus(FocusState.Keyboard));
-            });
-            await SettleAsync();
+                lastTarget = Bounds(removals[^1], surface);
+                lastViewport = Bounds(rail, surface);
+                return removals[^1].FocusState == FocusState.Keyboard
+                    && lastTarget.Top >= lastViewport.Top - 0.5 && lastTarget.Bottom <= lastViewport.Bottom + 0.5;
+            }, "the focused last removal scrolled into the rail viewport",
+                () => $"Focused removal {lastTarget} is outside the rail viewport {lastViewport}."));
+            await ui.RunOnUIAsync(() => Assert.True(removals[1].Focus(FocusState.Keyboard)));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => removals[1].Opacity == 1, "keyboard focus reveals the remove button"));
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Equal(1, removals[1].Opacity);
                 if (!touch)
                     Assert.True(removals.Where((_, index) => index != 1).Count(button => button.Opacity != 0) <= 1);
                 Invoke(removals[1]);
             });
-            await SettleAsync();
+            string FocusedRemovalName() => FocusManager.GetFocusedElement(surface.XamlRoot) is Button button
+                ? AutomationProperties.GetName(button) ?? "" : "";
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    session.ViewModel.PendingAttachments.Count == 5
+                    && FocusedRemovalName() == $"Remove attachment {attachments[2].FileName}"
+                    && FocusManager.GetFocusedElement(surface.XamlRoot) is Button { Opacity: 1 },
+                "focus moves to the next file's revealed remove button",
+                () => $"pending {session.ViewModel.PendingAttachments.Count}, focused '{FocusedRemovalName()}'"));
             await ui.RunOnUIAsync(() =>
             {
                 // Removal targets the activated file, and keyboard focus moves to the next file's remove button.
                 Assert.Equal(attachments.Where((_, index) => index != 1), session.ViewModel.PendingAttachments);
-                var focused = Assert.IsType<Button>(FocusManager.GetFocusedElement(surface.XamlRoot));
-                Assert.Equal($"Remove attachment {attachments[2].FileName}", AutomationProperties.GetName(focused));
-                Assert.Equal(1, focused.Opacity);
 
                 // Two removals before the next render must pick the successor from the live list.
                 Button Removal(int attachment) => Assert.Single(FindDescendants<Button>(surface), button =>
@@ -3229,13 +3252,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.True(last.Focus(FocusState.Keyboard));
                 Invoke(last);
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    session.ViewModel.PendingAttachments.Count == 3
+                    && FocusedRemovalName() == $"Remove attachment {attachments[3].FileName}",
+                "focus moves to the surviving file after two removals",
+                () => $"pending {session.ViewModel.PendingAttachments.Count}, focused '{FocusedRemovalName()}'"));
             await ui.RunOnUIAsync(() =>
-            {
-                Assert.Equal(new[] { attachments[0], attachments[2], attachments[3] }, session.ViewModel.PendingAttachments);
-                var focused = Assert.IsType<Button>(FocusManager.GetFocusedElement(surface.XamlRoot));
-                Assert.Equal($"Remove attachment {attachments[3].FileName}", AutomationProperties.GetName(focused));
-            });
+                Assert.Equal(new[] { attachments[0], attachments[2], attachments[3] }, session.ViewModel.PendingAttachments));
             if (width == 480)
                 await CaptureAsync(surface, "Attachment-rail-480");
         });
