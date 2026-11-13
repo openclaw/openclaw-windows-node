@@ -10082,4 +10082,5 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Voltar à conversa</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Mostrar painel</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Painéis da conversa</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Painel</value></data>
 </root>

@@ -10029,4 +10029,5 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Revenir à la conversation</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher le panneau</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Panneaux de conversation</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Tableau de bord</value></data>
 </root>

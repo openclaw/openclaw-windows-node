@@ -10100,4 +10100,5 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Back to conversation</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Show panel</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Conversation panels</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
 </root>

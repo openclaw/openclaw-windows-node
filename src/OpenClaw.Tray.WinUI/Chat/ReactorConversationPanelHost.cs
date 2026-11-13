@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using OpenClaw.Shared.Dashboards;
+using OpenClawTray.Dashboards;
 using OpenClawTray.Helpers;
 using Windows.Foundation;
 using Windows.System;
@@ -15,7 +17,8 @@ namespace OpenClawTray.Chat;
 
 internal sealed record ReactorConversationPanelHostProps(
     Element Conversation, ChatConversationPanelState State, Action<bool>? ConversationVisibilityChanged = null,
-    ChatTimelinePresentationContext? Timeline = null, Element? Subagents = null);
+    ChatTimelinePresentationContext? Timeline = null, Element? Subagents = null,
+    DashboardsPageState? Dashboards = null);
 
 /// <summary>Applies native tab selection, split sizing, compact presentation and focus.</summary>
 internal sealed class ReactorConversationPanelHost : Component<ReactorConversationPanelHostProps>
@@ -43,7 +46,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         var open = selected is not null;
         var narrow = width < ChatConversationPanelState.MinimumConversationWidth +
             ChatConversationPanelState.MinimumPanelWidth + ChatConversationPanelState.DividerWidth;
-        var presented = open && (!narrow || showCompact);
+        var presented = open && (!narrow || showCompact && !state.Passive);
         var conversationVisible = !narrow || !presented;
         var updateVisibility = Props.ConversationVisibilityChanged;
         UseEffect((Func<Action>)(() =>
@@ -56,13 +59,22 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             setShowCompact(true);
             return static () => { };
         }), state.OpenVersion);
+        void TogglePresented()
+        {
+            if (presented)
+            {
+                setShowCompact(false);
+                focus.Current?.Restore();
+                return;
+            }
+            state.Engage();
+            setShowCompact(true);
+        }
 
         var tabStrip = TabView((int?)Array.IndexOf(tabs, selected), index =>
             {
                 if (index >= 0 && index < tabs.Length) state.Select(tabs[index]);
-            }, tabs.Select(tab => Tab(tab == ChatConversationPanelState.SubagentsSlot
-                ? LocalizationHelper.GetString("Chat_Subagents_Title") : Text("Details"), Empty())
-                with { IsClosable = true }).ToArray())
+            }, tabs.Select(tab => Tab(TabTitle(tab), Empty()) with { IsClosable = true }).ToArray())
             .IsAddTabButtonVisible(false)
             .CanDragTabs(false).CanReorderTabs(false)
             .TabWidthMode(TabViewWidthMode.SizeToContent)
@@ -80,13 +92,21 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             .OnUnmount(_ => tabView.Current = null);
 
         var bodies = tabs.Select(slot =>
-            Border(slot == ChatConversationPanelState.SubagentsSlot
-                ? Props.Subagents ?? Empty()
-                : state.Details is { } request && state.Resolve(request) is { } entry
-                    ? ToolCallCardRenderer.BuildPanelDetails(
-                        Props.Timeline ?? new(request.SessionKey, [], false, null), entry)
-                    : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16))
-                .WithKey(slot == ChatConversationPanelState.DetailsSlot ? state.Details?.ToString() ?? slot : slot)
+            Border(slot switch
+                {
+                    ChatConversationPanelState.SubagentsSlot => Props.Subagents ?? Empty(),
+                    ChatConversationPanelState.DashboardSlot => DashboardBody(state.Dashboard, Props.Dashboards),
+                    _ => state.Details is { } request && state.Resolve(request) is { } entry
+                        ? ToolCallCardRenderer.BuildPanelDetails(
+                            Props.Timeline ?? new(request.SessionKey, [], false, null), entry)
+                        : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16),
+                })
+                .WithKey(slot switch
+                {
+                    ChatConversationPanelState.DetailsSlot => state.Details?.ToString() ?? slot,
+                    ChatConversationPanelState.DashboardSlot => slot + ":" + state.Dashboard?.SessionKey,
+                    _ => slot,
+                })
                 .IsVisible(slot == selected))
             .Cast<Element>().ToArray();
         var panel = Grid([GridSize.Star()], [GridSize.Auto, GridSize.Star()],
@@ -99,7 +119,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             {
                 control.Style = (Style)Application.Current.Resources["ChatCanvasStyle"];
                 control.ClearValue(Microsoft.UI.Xaml.Controls.Panel.BackgroundProperty);
-                focus.Current?.Update(control, narrow, presented, () => setShowCompact(!showCompact));
+                focus.Current?.Update(control, narrow, presented, TogglePresented);
             })
             .WithKey("conversation-panel");
         var panelWidth = open && !narrow ? state.EffectiveWidth(width) : 0;
@@ -115,15 +135,12 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             .OnMount(control => PanelResize.Attach((Button)control, state, () => viewportWidth.Current))
             .OnUnmount(control => PanelResize.Detach((Button)control));
 
+        var toggleText = presented ? "Back" : "Show";
         return Grid([GridSize.Star(), GridSize.Px(open && !narrow ? ChatConversationPanelState.DividerWidth : 0), GridSize.Px(panelWidth)],
                 [GridSize.Auto, GridSize.Star()],
-                Button(TextBlock(Text(presented ? "Back" : "Show")), () =>
-                    {
-                        setShowCompact(!showCompact);
-                        if (presented) focus.Current?.Restore();
-                    })
+                Button(TextBlock(Text(toggleText)), TogglePresented)
                     .AutomationId("ConversationPanelToggle")
-                    .AutomationName(Text(presented ? "Back" : "Show"))
+                    .AutomationName(Text(toggleText))
                     .IsVisible(open && narrow)
                     .HAlign(HorizontalAlignment.Left).Margin(8)
                     .Grid(row: 0),
@@ -159,6 +176,21 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
     }
 
     private static string Text(string name) => LocalizationHelper.GetString("Chat_Panel_" + name);
+
+    private static string TabTitle(string slot) => slot switch
+    {
+        ChatConversationPanelState.SubagentsSlot => LocalizationHelper.GetString("Chat_Subagents_Title"),
+        ChatConversationPanelState.DashboardSlot => Text("Dashboard"),
+        _ => Text("Details"),
+    };
+
+    // The board view owns loading, access and disconnected states once a client exists.
+    private static Element DashboardBody(BoardSessionTarget? target, DashboardsPageState? dashboards) =>
+        target is null || dashboards is null ? Empty()
+        : dashboards.Client is { } client
+            ? Component<ReactorBoardView, BoardViewProps>(
+                new(dashboards, client, target, dashboards.ConnectionRevision, Embedded: true))
+            : DashboardsStates.Disconnected(dashboards);
 
     private sealed class PanelInteraction : IDisposable
     {
@@ -211,7 +243,8 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             _panel = panel;
             _narrow = narrow;
             _toggle = toggle;
-            if (presented && (!_presented || _selected != _state.Selected || _openVersion != _state.OpenVersion))
+            if (presented && !_state.Passive &&
+                (!_presented || _selected != _state.Selected || _openVersion != _state.OpenVersion))
             {
                 QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(panel) as Control);
             }

@@ -902,7 +902,9 @@ public sealed partial class GatewayFixtureUiTests
                         delivery = "UIA ScrollPattern.LargeIncrement and foreground-gated SendInput MOUSEEVENTF_WHEEL(-120) at the owned gallery. Cursor restored; no keyboard input.",
                         appProcessId = run.AppProcessId }));
                 Assert.All(inputResults, result => Assert.True(result.Error is null, JsonSerializer.Serialize(result)));
-                Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "board.get");
+                // Startup chat may probe its own session. No gallery board may load while browsing.
+                Assert.DoesNotContain(run.Gateway.Requests, request =>
+                    request.Method == "board.get" && request.SessionKey != GatewayScenario.MainSessionKey);
             }, scenario: GatewayScenario.CreateDashboards(), appTheme: "Light");
         }
         finally
@@ -1257,8 +1259,9 @@ public sealed partial class GatewayFixtureUiTests
                     AxeHelper.AssertNoAccessibilityErrors(new IntPtr(hub.Current.NativeWindowHandle),
                         context: $"Dashboards gallery ({theme})", targetProcessId: run.AppProcessId);
                     OwnedWindowCapture.Save(run, hub, $"dashboards-{theme}-gallery.png");
-                    // Gallery cards are static row metadata: no board, ticket, or widget load until one opens.
-                    Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "board.get");
+                    // Gallery cards are static metadata. Only startup chat's main-session probe is allowed.
+                    Assert.DoesNotContain(run.Gateway.Requests, request =>
+                        request.Method == "board.get" && request.SessionKey != GatewayScenario.MainSessionKey);
 
                     AutomationElement? opsCard = null;
                     await WaitUiAsync(run, () => (opsCard = FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey))
