@@ -38,7 +38,9 @@ messages evenly, retaining the first and last, so rendered ticks have at least
 4 logical pixels of clear vertical space after layout rounding. The tick budget
 adapts to the rail height and display scale on resize. Hover and pointer
 navigation resolve the same sampled message; keyboard navigation still reaches
-every message. Hover previews show sender identity and up to 240 characters in
+every message. The rail uses a fixed ordinal range independent of virtualized
+transcript height estimates, keeping its native ticks mounted during navigation.
+Hover previews show sender identity and up to 240 characters in
 three lines within 280 pixels, inside a native 12-pixel rounded tooltip.
 Click or drag resolves an ordinal position to the current keyed message, not
 its approximate pixel offset. Keyboard Up/Down, Home/End and Enter/Space provide

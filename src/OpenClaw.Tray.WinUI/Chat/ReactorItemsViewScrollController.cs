@@ -57,10 +57,7 @@ file sealed class ItemsViewVerticalScrollControllerHandler
         binding.Reference(
             get: static value => value.ScrollBarRef,
             set: static (value, scrollBar) =>
-            {
-                ((WinUIItemsView)value).VerticalScrollController = scrollBar?.ScrollController;
-                (value.GetValue(PositionerProperty) as InitialTailPositioner)?.HistoryNavigation.SetScrollBar(scrollBar);
-            });
+                (value.GetValue(PositionerProperty) as InitialTailPositioner)?.HistoryNavigation.SetScrollBar(scrollBar));
         positioner.TailVisibilityChanged = element.TailVisibilityChanged;
         positioner.HistoryNavigation.Update(element.HistoryAnchors);
         positioner.Request(
@@ -563,6 +560,7 @@ file sealed class InitialTailPositioner : IDisposable
         _scrollView = nextScrollView;
         if (_scrollView is not null)
         {
+            _scrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
             _scrollView.VerticalAnchorRatio = 1.0;
             _scrollView.ViewChanged += OnViewChanged;
             _scrollView.StateChanged += OnScrollStateChanged;

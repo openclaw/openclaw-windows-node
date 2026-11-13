@@ -18,7 +18,6 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
     private AnnotatedScrollBar? _bar;
     private IReadOnlyList<ChatHistoryAnchor> _anchors = [];
     private IReadOnlyList<ChatHistoryAnchor> _ticks = [];
-    private double _extent;
     private int _navigationVersion;
     private string? _selectedKey;
     private string? _hoveredKey;
@@ -60,6 +59,10 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
         _bar = bar;
         if (_bar is not null)
         {
+            // This is an ordinal navigator, not a pixel scrollbar. Virtualization changes
+            // the transcript's estimated extent, which must not recreate native labels.
+            _bar.ScrollController.SetValues(0, 1, 0, 0);
+            _bar.ScrollController.SetIsScrollable(true);
             _bar.Scrolling += OnScrolling;
             _bar.DetailLabelRequested += OnDetailLabelRequested;
             _bar.KeyDown += OnKeyDown;
@@ -87,10 +90,6 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
 
     public void Refresh(bool force = false)
     {
-        // WinUI maps labels over Maximum + ViewportSize, not just ScrollableHeight.
-        // Its zero-range calculation substitutes one DIP for Maximum - Minimum.
-        var extent = itemsView.ScrollView is { ViewportHeight: > 0 } scroll
-            ? Math.Max(1, scroll.ScrollableHeight) + scroll.ViewportHeight : 1;
         var scale = _bar?.XamlRoot?.RasterizationScale ?? 1;
         var height = GetLabelsGrid()?.ActualHeight ?? 0;
         // Budget physical pixels so independent native label rounding cannot shrink the clear gap.
@@ -99,12 +98,11 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
         var capacity = height * scale < tickPixels ? 0
             : 1 + (int)Math.Floor((Math.Floor(height * scale) - tickPixels) / pitchPixels);
         var count = Math.Min(_anchors.Count, capacity);
-        if (!force && _extent == extent && _ticks.Count == count)
+        if (!force && _ticks.Count == count)
         {
             UpdateVisuals();
             return;
         }
-        _extent = extent;
         if (_bar is null)
             return;
         var ticks = new ChatHistoryAnchor[count];
@@ -115,7 +113,7 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
                 : (int)Math.Round((double)index * (_anchors.Count - 1) / (count - 1));
             ticks[index] = _anchors[ordinal];
             _bar.Labels.Add(new AnnotatedScrollBarLabel(ticks[index],
-                count == 1 ? extent / 2 : extent * index / (count - 1)));
+                count == 1 ? 0.5 : (double)index / (count - 1)));
         }
         _ticks = ticks;
     }
@@ -124,7 +122,7 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
     {
         if (_ticks.Count == 0 || !double.IsFinite(offset))
             return null;
-        var index = (int)Math.Round(Math.Clamp(offset / _extent, 0, 1) * (_ticks.Count - 1));
+        var index = (int)Math.Round(Math.Clamp(offset, 0, 1) * (_ticks.Count - 1));
         return _ticks[index];
     }
 

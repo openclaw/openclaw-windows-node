@@ -175,6 +175,61 @@ public sealed partial class ReactorChatLayoutProofTests
                 $"Ticks {index - 1} and {index} need at least 4 DIPs of clear space.");
     }
 
+    [Fact]
+    public async Task HistoryRail_KeepsTicksMountedWhileVirtualizedHistoryScrolls()
+    {
+        var provider = new ProofProvider();
+        provider.Publish(WorkSnapshot(await provider.LoadAsync(), "proof", HistoryRailEntries(240), active: false));
+        await WithChatAsync(800, async (surface, host, _, _) =>
+        {
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
+                return rail.Labels.Count > 1 && FindDescendants<ContentPresenter>(rail).Count(presenter =>
+                    presenter.Content is AnnotatedScrollBarLabel && presenter.Visibility == Visibility.Visible)
+                    == rail.Labels.Count;
+            }, "all history ticks are rendered before scrolling"));
+            await ui.RunOnUIAsync(async () =>
+            {
+                var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
+                var scroll = Assert.Single(FindDescendants<ItemsView>(host)).ScrollView;
+                Assert.Equal(ScrollingScrollBarVisibility.Hidden, scroll.VerticalScrollBarVisibility);
+                var ticks = FindDescendants<ContentPresenter>(rail)
+                    .Where(presenter => presenter.Content is AnnotatedScrollBarLabel).ToArray();
+                var interruptedFrames = 0;
+                var extentChanges = 0;
+                var initialOffset = scroll.VerticalOffset;
+                var movedBeyondViewport = false;
+                void ObserveTicks(object? sender, object args)
+                {
+                    movedBeyondViewport |= Math.Abs(scroll.VerticalOffset - initialOffset) > scroll.ViewportHeight;
+                    var rendered = FindDescendants<ContentPresenter>(rail)
+                        .Where(presenter => presenter.Content is AnnotatedScrollBarLabel
+                            && presenter.Visibility == Visibility.Visible).ToArray();
+                    if (!ticks.SequenceEqual(rendered))
+                        interruptedFrames++;
+                }
+                void ObserveExtent(ScrollView sender, object args) => extentChanges++;
+                CompositionTarget.Rendering += ObserveTicks;
+                scroll.ExtentChanged += ObserveExtent;
+                try
+                {
+                    scroll.ScrollTo(0, 0,
+                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                    await WaitForRenderedConditionAsync(() => movedBeyondViewport && extentChanges > 0,
+                        "scrolling changes the realized history region and its estimated extent");
+                    Assert.Equal(0, interruptedFrames);
+                    AssertHistoryTickGaps(rail);
+                }
+                finally
+                {
+                    CompositionTarget.Rendering -= ObserveTicks;
+                    scroll.ExtentChanged -= ObserveExtent;
+                }
+            });
+        }, renderProvider: provider);
+    }
+
     [NativeKeyboardTheory]
     [InlineData("Light", 7)]
     [InlineData("Dark", 7)]
