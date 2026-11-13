@@ -7760,6 +7760,30 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Wachten op subagenten</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Invoer voorbereiden</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>mislukt</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} subagent</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} subagents</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} mislukt</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>actief</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>gestopt</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} bestanden</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>Gelezen</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>Bewerken</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>Bezig met bewerken</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>Bewerkt</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>Maken</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>Bezig met maken</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>Gemaakt</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>Verwijderen</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>Bezig met verwijderen</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>Verwijderd</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>Wijzigen</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>Bezig met wijzigen</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>Gewijzigd</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>Schrijven</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>Bezig met schrijven</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>Geschreven</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>Gezocht</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>Opgehaald</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>Voltooid</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>Beoordeling door provider vereist</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>Waarschuwing van providerbeoordeling</value></data>

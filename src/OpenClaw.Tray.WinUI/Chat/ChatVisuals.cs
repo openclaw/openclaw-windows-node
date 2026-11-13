@@ -284,6 +284,8 @@ internal static class ChatVisuals
     internal const double ToolRowMinHeight = 32;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
+    // A tool row's dimmed directory or search scope never takes more than this; it trims with "…".
+    internal const double ToolRowDetailMaxWidth = 240;
     internal const double ActivityDetailsMaxHeight = 160;
     internal const double TranscriptTopInset = 8;
     // The transcript's bottom edge fades into the composer over this height. Like the web

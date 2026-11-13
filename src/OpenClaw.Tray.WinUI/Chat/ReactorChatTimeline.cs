@@ -336,8 +336,12 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 entry.Id)
             : $"thread:{props.SessionId ?? "none"}|generation:{props.TimelineGeneration}|kind:{entry.Kind}|id:{entry.Id}";
 
+    // Assistant messages always reserve the avatar column; a tool row or group reserves it only
+    // when it opens an agent run, because it then carries that run's avatar.
     private static double AvatarGutter(ReactorTimelineRow row) =>
-        row.Entry?.Kind == ChatTimelineItemKind.Assistant && row.Props.ViewportWidth >= ChatVisuals.AvatarBreakpoint
+        (row.Entry?.Kind == ChatTimelineItemKind.Assistant ||
+            row.IsAssistantRunStart && row.Kind is ReactorTimelineRowKind.Entry or ReactorTimelineRowKind.Activity) &&
+        row.Props.ViewportWidth >= ChatVisuals.AvatarBreakpoint
             ? ChatVisuals.AvatarSlot : 0;
 
     public static string SyntheticRowKey(ChatTimelinePresentationContext props, string id, ChatTimelineItemKind kind) =>
@@ -361,12 +365,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var chronologicalEntries = ChatReasoningPresentation.Project(
             props.Timeline.Entries, props.Timeline.ReasoningStream,
             props.Timeline.ShowReasoning, props.Timeline.ShowReasoningPreview, props.Timeline.EntryMetadata);
-        var assistantRunPositions = ChatTimelineAssistantRuns.Describe(chronologicalEntries);
-        var assistantRunsByEntryId = new Dictionary<string, ChatAssistantRunPosition>(
-            chronologicalEntries.Count,
-            StringComparer.Ordinal);
-        for (var index = 0; index < chronologicalEntries.Count; index++)
-            assistantRunsByEntryId[chronologicalEntries[index].Id] = assistantRunPositions[index];
         var latestAssistantEntryId = chronologicalEntries
             .LastOrDefault(static entry => entry.Kind == ChatTimelineItemKind.Assistant)
             ?.Id;
@@ -379,11 +377,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             runWorking: props.Timeline.ShowThinkingIndicator || props.Timeline.RunProgress is not null,
             session: props.Timeline.Session,
             showToolCalls: props.Timeline.ShowToolCalls);
-        foreach (var projectedRow in projectedRows)
+        var assistantRunPositions = ChatTimelineAssistantRuns.Describe(
+            projectedRows,
+            entry => entry.Presentation ?? props.Timeline.EntryMetadata?.GetValueOrDefault(entry.Id)?.Presentation,
+            // Only a generating turn hides its footer; waiting for subagents or an answer does not.
+            lastRunWorking: props.Timeline.ShowThinkingIndicator || props.Timeline.RunProgress is { Active: true });
+        for (var index = 0; index < projectedRows.Count; index++)
         {
+            var projectedRow = projectedRows[index];
             if (projectedRow.IsActivityGroup)
             {
-                rows.Add(ReactorTimelineRow.FromActivity(props, projectedRow));
+                rows.Add(ReactorTimelineRow.FromActivity(props, projectedRow, assistantRunPositions[index]));
                 continue;
             }
 
@@ -392,7 +396,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 props,
                 entry,
                 string.Equals(entry.Id, latestAssistantEntryId, StringComparison.Ordinal),
-                assistantRunsByEntryId.TryGetValue(entry.Id, out var position) ? position : default));
+                assistantRunPositions[index]));
         }
 
         if (props.Timeline.ShowThinkingIndicator || props.Timeline.RunProgress is not null)
@@ -402,6 +406,41 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     }
 
     private static Element BuildRow(
+        ReactorTimelineRow row,
+        string? speakingEntryId,
+        string? hoveredEntryKey,
+        string? focusedEntryKey,
+        Func<ChatTimelineItem, Task> toggleSpeechAsync,
+        Action<string, bool> setEntryHovered,
+        Action<string?> setFocusedEntryKey,
+        ChatToolActivityExpansionState toolActivityExpansionState,
+        bool animateWorkEntrance,
+        Action<FrameworkElement> mountLoadingPulse)
+    {
+        var content = BuildRowContent(row, speakingEntryId, hoveredEntryKey, focusedEntryKey, toggleSpeechAsync,
+            setEntryHovered, setFocusedEntryKey, toolActivityExpansionState, animateWorkEntrance, mountLoadingPulse);
+        // Assistant messages place their own avatar. Tool rows, groups and reasoning keep one grid
+        // shape, so gaining or losing the run's avatar never remounts the row and its state.
+        if (row.Entry?.Kind == ChatTimelineItemKind.Assistant ||
+            row.Kind is not (ReactorTimelineRowKind.Entry or ReactorTimelineRowKind.Activity) ||
+            row.Kind == ReactorTimelineRowKind.Entry &&
+            row.Entry?.Kind is not (ChatTimelineItemKind.ToolCall or ChatTimelineItemKind.Reasoning))
+            return content;
+        var gutter = AvatarGutter(row);
+        return Grid(
+            [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+            [GridSize.Auto],
+            (gutter > 0 ? BuildAssistantAvatarSlot(row) : Empty()).Grid(column: 0).VAlign(VerticalAlignment.Top),
+            content.Grid(column: 1),
+            Border(Empty()).Width(gutter)
+                .Set(border => border.IsHitTestVisible = false)
+                .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
+                .Grid(column: 2))
+            .Margin(0, row.IsAssistantRunStart ? ChatVisuals.TurnGap : 0, 0, 0)
+            .HAlign(HorizontalAlignment.Stretch);
+    }
+
+    private static Element BuildRowContent(
         ReactorTimelineRow row,
         string? speakingEntryId,
         string? hoveredEntryKey,
@@ -423,7 +462,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 activity,
                 toolActivityExpansionState,
                 entry => BuildEntry(
-                    ReactorTimelineRow.FromEntry(row.Props, entry, false, default),
+                    ReactorTimelineRow.FromEntry(row.Props, entry, false, default) with { IsWorkEntry = true },
                     entry, speakingEntryId, hoveredEntryKey, focusedEntryKey, toggleSpeechAsync,
                     setEntryHovered, setFocusedEntryKey,
                     includeAvatar: false),
@@ -744,7 +783,13 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 VStack(
                         4,
                         bubble,
-                        (entry.Presentation ?? metadata?.Presentation)?.Phase == "commentary" ? Empty() : BuildAssistantFooter(
+                        // Like the web run frame, only the run's final answer owns the actions footer,
+                        // so interleaved paragraphs keep no hidden footer gap. A message being read
+                        // aloud keeps its Stop control until playback ends.
+                        (entry.Presentation ?? metadata?.Presentation)?.Phase == "commentary" ||
+                            !row.IsAssistantRunEnd && !row.IsWorkEntry && !isSpeaking
+                            ? Empty()
+                            : BuildAssistantFooter(
                             row,
                             entry,
                             isSpeaking,
@@ -1377,6 +1422,9 @@ internal sealed record ReactorTimelineRow(
     bool IsAssistantRunStart = false,
     bool IsAssistantRunEnd = false)
 {
+    /// <summary>A message inside an expanded Worked group, which keeps its own hover footer.</summary>
+    public bool IsWorkEntry { get; init; }
+
     public static ReactorTimelineRow FromEntry(
         ReactorChatTimelineProps props,
         ChatTimelineItem entry,
@@ -1394,13 +1442,16 @@ internal sealed record ReactorTimelineRow(
 
     public static ReactorTimelineRow FromActivity(
         ReactorChatTimelineProps props,
-        ChatToolActivityRow activity) =>
+        ChatToolActivityRow activity,
+        ChatAssistantRunPosition assistantRunPosition = default) =>
         new(
             activity.Key,
             ReactorTimelineRowKind.Activity,
             props,
             null,
-            activity);
+            activity,
+            IsAssistantRunStart: assistantRunPosition.IsStart,
+            IsAssistantRunEnd: assistantRunPosition.IsEnd);
 
     public static ReactorTimelineRow Thinking(ReactorChatTimelineProps props) =>
         new(
@@ -1438,26 +1489,4 @@ internal enum ReactorTimelineRowKind
     LoadEarlier,
     Loading,
     HistoryUnavailable,
-}
-
-internal readonly record struct ChatAssistantRunPosition(bool IsStart, bool IsEnd);
-
-internal static class ChatTimelineAssistantRuns
-{
-    public static IReadOnlyList<ChatAssistantRunPosition> Describe(
-        IReadOnlyList<ChatTimelineItem> entries)
-    {
-        var positions = new ChatAssistantRunPosition[entries.Count];
-        for (var index = 0; index < entries.Count; index++)
-        {
-            if (entries[index].Kind != ChatTimelineItemKind.Assistant)
-                continue;
-
-            var isStart = index == 0 || entries[index - 1].Kind != ChatTimelineItemKind.Assistant;
-            var isEnd = index == entries.Count - 1 || entries[index + 1].Kind != ChatTimelineItemKind.Assistant;
-            positions[index] = new ChatAssistantRunPosition(isStart, isEnd);
-        }
-
-        return positions;
-    }
 }

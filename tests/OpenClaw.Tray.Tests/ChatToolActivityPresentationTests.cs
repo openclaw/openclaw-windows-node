@@ -235,7 +235,7 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Fact]
-    public void Project_GroupsEveryConsecutiveToolSpanIncludingSingleTools()
+    public void Project_GroupsMultiToolSpansAndKeepsSingleToolsStandalone()
     {
         var entries = new[]
         {
@@ -257,10 +257,10 @@ public sealed class ChatToolActivityPresentationTests
         Assert.Equal(
             ["user", "one", "assistant", "two", "reasoning", "four", "status", "five", "permission"],
             rows.Select(RowId));
-        Assert.Equal(["one"], rows[1].Tools.Select(static tool => tool.Id));
-        Assert.Null(rows[1].Entry);
+        Assert.Equal("one", rows[1].Entry!.Id);
+        Assert.False(rows[1].IsActivityGroup);
         Assert.Equal(["two", "three"], rows[3].Tools.Select(static tool => tool.Id));
-        Assert.Equal(["four"], rows[5].Tools.Select(static tool => tool.Id));
+        Assert.Equal("four", rows[5].Entry!.Id);
         Assert.Equal(["five", "six"], rows[7].Tools.Select(static tool => tool.Id));
     }
 
@@ -301,7 +301,7 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Fact]
-    public void Project_KeepsRowKeyStableWhenSingleToolGroupGrows()
+    public void Project_KeepsRowKeyStableWhenSingleToolGrowsIntoGroup()
     {
         var single = ChatToolActivityPresentation.Project(
             [Tool("first", "powershell")],
@@ -312,15 +312,16 @@ public sealed class ChatToolActivityPresentationTests
             "session",
             9).Single();
 
-        Assert.True(single.IsActivityGroup);
+        Assert.False(single.IsActivityGroup);
         Assert.True(grouped.IsActivityGroup);
         Assert.Equal(single.Key, grouped.Key);
     }
 
     [Theory]
-    [InlineData(ChatToolCallStatus.Error)]
-    [InlineData(ChatToolCallStatus.Interrupted)]
-    public void Project_UnsuccessfulToolsStayVisibleInsideTheirGroup(ChatToolCallStatus result)
+    [InlineData(ChatToolCallStatus.Error, " · 1 failed")]
+    // Like the web, a stopped call is not a failure; its row says Interrupted.
+    [InlineData(ChatToolCallStatus.Interrupted, "")]
+    public void Project_UnsuccessfulToolsStayVisibleInsideTheirGroup(ChatToolCallStatus result, string failedSuffix)
     {
         var rows = ChatToolActivityPresentation.Project(
             [
@@ -335,7 +336,7 @@ public sealed class ChatToolActivityPresentationTests
         var group = Assert.Single(rows);
         Assert.Equal(["success-1", "success-2", "failed", "success-3"], group.Tools.Select(tool => tool.Id));
         Assert.Equal(result, group.Tools[2].ToolResult);
-        Assert.Equal("1 command · 1 read · 1 write · 1 fetch", Format(group.Summary!));
+        Assert.Equal($"1 command · 1 read · 1 write · 1 fetch{failedSuffix}", Format(group.Summary!));
     }
 
     [Fact]
@@ -351,7 +352,8 @@ public sealed class ChatToolActivityPresentationTests
         };
 
         var rows = ChatToolActivityPresentation.Project(
-            [Tool("before", "read_file"), reviewed, preparing, Tool("after", "read_file")],
+            [Tool("before", "read_file"), Tool("before-2", "read_file"), reviewed, preparing,
+             Tool("after", "read_file"), Tool("after-2", "read_file")],
             "session",
             9);
 
@@ -361,24 +363,55 @@ public sealed class ChatToolActivityPresentationTests
 
     [Theory]
     [InlineData("run-a", "run-b", 0, 0)]
-    [InlineData("run-a", "RUN-A", 0, 0)]
     [InlineData("run-a", null, 0, 0)]
     [InlineData(null, null, 1, 2)]
-    public void Project_DoesNotCombineDifferentExecutionScopes(
+    public void Project_JoinsAdjacentToolRowsAcrossRunsButNestsOnlyWithinOne(
         string? firstRun, string? secondRun, long firstTurn, long secondTurn)
     {
         var rows = ChatToolActivityPresentation.Project(
             [
-                Tool("a", "read") with { ToolRunId = firstRun, ToolLegacyTurn = firstTurn },
+                Tool("a", "read") with { ToolRunId = firstRun, ToolLegacyTurn = firstTurn, ToolCallId = "x" },
                 Tool("b", "read") with { ToolRunId = firstRun, ToolLegacyTurn = firstTurn },
-                Tool("c", "read") with { ToolRunId = secondRun, ToolLegacyTurn = secondTurn },
+                Tool("c", "read") with
+                {
+                    ToolRunId = secondRun, ToolLegacyTurn = secondTurn, ToolParentCallId = "x",
+                },
                 Tool("d", "read") with { ToolRunId = secondRun, ToolLegacyTurn = secondTurn },
             ], "session", 1);
 
-        Assert.Equal(2, rows.Count);
-        Assert.Equal(["a", "b"], rows[0].Tools.Select(tool => tool.Id));
-        Assert.Equal(["c", "d"], rows[1].Tools.Select(tool => tool.Id));
+        // Like the web coalesceActivityRuns, nothing visible separates them, so they read as one log.
+        var group = Assert.Single(rows);
+        Assert.Equal(["a", "b", "c", "d"], group.Tools.Select(tool => tool.Id));
+        Assert.Equal(ChatToolActivityPresentation.ActivityKey("session", 1, "a"), group.Key);
+        // Recorded nesting still never crosses a run.
+        Assert.Equal(4, ChatToolActivityPresentation.GroupNested(group.Tools).Count);
     }
+
+    [Fact]
+    public void Project_HeartbeatBurstAcrossRunsIsOneGroupWithItsFailures()
+    {
+        var rows = ChatToolActivityPresentation.Project(
+            [
+                Item("answer", ChatTimelineItemKind.Assistant),
+                .. Enumerable.Range(0, 14).Select(index =>
+                    Tool($"beat-{index}", "heartbeat_respond", result: ChatToolCallStatus.Error) with
+                    {
+                        ToolRunId = $"heartbeat-{index}",
+                    }),
+            ], "session", 1);
+
+        Assert.Equal("answer", rows[0].Entry!.Id);
+        Assert.Equal("14 other operations · 14 failed", Format(Assert.Single(rows.Skip(1)).Summary!));
+    }
+
+    [Theory]
+    [InlineData("heartbeat_respond", "Heartbeat Respond")]
+    [InlineData("exec", "Exec")]
+    [InlineData("Apply Patch", "Apply Patch")]
+    [InlineData("system.run", "system.run")]
+    [InlineData("PowerShell", "PowerShell")]
+    public void DisplayName_TitleCasesRawSnakeCaseNamesLikeTheWeb(string name, string expected) =>
+        Assert.Equal(expected, ChatToolRowPresentation.DisplayName(name));
 
     [Fact]
     public void Project_StreamingAndTerminalUpdatesPreserveGroupIdentityAndExplicitExpansion()
@@ -530,6 +563,325 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Fact]
+    public void Summarize_CountsStartedSubagentsLastAndLeavesOutRoutineBookkeeping()
+    {
+        var launch = Tool("spawn", "sessions_spawn") with
+        {
+            ToolInputDetails = new("""{"label":"Telegram check","task":"Diagnose"}"""),
+        };
+        var failedLaunch = Tool("failed", "sessions_spawn", result: ChatToolCallStatus.Error);
+        var ownSession = Tool("own", "sessions_spawn") with { ToolInputDetails = new("""{"visible":true}""") };
+        var poll = Tool("poll", "process") with { ToolInputDetails = new("""{"action":"poll"}""") };
+
+        var summary = ChatToolActivityPresentation.Summarize(
+            [launch, Tool("read", "read_file"), failedLaunch, ownSession, Tool("yield", "sessions_yield"), poll]);
+
+        Assert.Equal("1 read · 2 other operations · 1 subagent · 1 failed", Format(summary));
+        Assert.Equal(4, summary.ToolCount);
+        Assert.Equal("1 other operation",
+            Format(ChatToolActivityPresentation.Summarize([Tool("yield", "sessions_yield")])));
+    }
+
+    [Theory]
+    [InlineData("read_file", "path", "skills/telegram/SKILL.md", ChatToolCallStatus.Success,
+        ChatToolRowVerb.Read, "SKILL.md", "skills/telegram")]
+    [InlineData("edit_file", "file_path", "C:\\repo\\src\\main.cs", ChatToolCallStatus.Success,
+        ChatToolRowVerb.Edited, "main.cs", "C:\\repo\\src")]
+    [InlineData("edit_file", "path", "main.cs", ChatToolCallStatus.Error, ChatToolRowVerb.Edit, "main.cs", null)]
+    [InlineData("write_file", "path", "out/notes.md", ChatToolCallStatus.InProgress,
+        ChatToolRowVerb.Writing, "notes.md", "out")]
+    [InlineData("web_fetch", "url", "https://example.test/a", ChatToolCallStatus.Success,
+        ChatToolRowVerb.Fetched, "https://example.test/a", null)]
+    public void RowView_NamesVerbTargetAndDirectory(
+        string tool, string key, string value, ChatToolCallStatus status,
+        ChatToolRowVerb verb, string target, string? detail)
+    {
+        var view = ChatToolRowPresentation.Resolve(Tool("t", tool, Args((key, value)), status));
+
+        Assert.Equal((verb, target, detail), (view.Verb!.Value, view.Target!, view.TargetDetail));
+    }
+
+    [Fact]
+    public void RowView_ReadsFieldsKeptOnlyInInputDetails()
+    {
+        var search = Tool("s", "grep") with
+        {
+            ToolInputDetails = new("""{"pattern":"TODO","path":"src"}"""),
+        };
+        var titled = Tool("c", "exec", Args(("command", "dotnet test"))) with
+        {
+            ToolInputDetails = new("""{"title":"Run the tests"}""", "dotnet test"),
+        };
+        var wrapped = Tool("w", "bash", Args(("command", "bash -lc 'git   status'")));
+
+        Assert.Equal((ChatToolRowVerb.Searched, "TODO", "src"),
+            (ChatToolRowPresentation.Resolve(search).Verb!.Value, ChatToolRowPresentation.Resolve(search).Target,
+                ChatToolRowPresentation.Resolve(search).TargetDetail));
+        Assert.Equal("Run the tests", ChatToolRowPresentation.Resolve(titled).Title);
+        Assert.Equal("git status", ChatToolRowPresentation.Resolve(wrapped).Command);
+        Assert.True(ChatToolRowPresentation.Resolve(Tool("x", "custom.calendar")).IsEmpty);
+        var longPath = string.Join('/', Enumerable.Repeat("very-long-directory", 20)) + "/SKILL.md";
+        Assert.Equal("SKILL.md", ChatToolRowPresentation.Resolve(Tool("l", "read_file", Args(("path", longPath)))).Target);
+    }
+
+    [Theory]
+    [InlineData("*** Begin Patch\n*** Add File: docs/new.md\n+hello\n*** End Patch", ChatToolRowVerb.Created, "new.md", 0)]
+    [InlineData("*** Begin Patch\n*** Update File: a/x.cs\n*** Move to: a/y.cs\n*** End Patch", ChatToolRowVerb.Edited,
+        "x.cs \u2192 y.cs", 0)]
+    [InlineData("*** Begin Patch\n*** Add File: a.md\n*** Delete File: b.md\n*** End Patch", ChatToolRowVerb.Changed, null, 2)]
+    [InlineData("diff --git a/src/z.cs b/src/z.cs\n--- a/src/z.cs\n+++ b/src/z.cs\n@@ -1 +1 @@\n-a\n+b",
+        ChatToolRowVerb.Edited, "z.cs", 0)]
+    [InlineData("--- a/m.cs\n+++ b/m.cs\n@@ -1,2 +1,2 @@\n--- old\n+++ new\n", ChatToolRowVerb.Edited, "m.cs", 0)]
+    public void RowView_DescribesPatchOperationsFromFreeFormInput(
+        string patch, ChatToolRowVerb verb, string? target, int files)
+    {
+        var view = ChatToolRowPresentation.Resolve(Tool("p", "apply_patch") with { ToolInputDetails = new(patch) });
+
+        Assert.Equal((verb, target, files), (view.Verb!.Value, view.Target, view.FileCount));
+    }
+
+    [Theory]
+    [InlineData("running", ChatActivity.Working, false, null, "Working", null)]
+    [InlineData("done", ChatActivity.Idle, true, 65000d, "AwaitingSubagents", null)]
+    [InlineData("done", ChatActivity.Idle, false, 65000d, "Done", 65000d)]
+    [InlineData("done", ChatActivity.Idle, false, null, "Done", 65000d)]
+    [InlineData("running", ChatActivity.Idle, false, 65000d, "Ended", 65000d)]
+    [InlineData("timeout", ChatActivity.Idle, false, 65000d, "Failed", 65000d)]
+    [InlineData("killed", ChatActivity.Idle, false, 65000d, "Stopped", 65000d)]
+    public void RowView_ShowsLabeledSubagentWithItsSessionState(
+        string runStatus, ChatActivity activity, bool waitingForSubagents, double? runtimeMs,
+        string status, double? elapsedMs)
+    {
+        var launch = Tool("spawn", "sessions_spawn") with
+        {
+            ToolInputDetails = new("""{"label":"Telegram check","task":"Diagnose the integration"}"""),
+            ToolOutput = """{"status":"accepted","childSessionKey":"agent:main:subagent:abc"}""",
+        };
+        // Without a runtime sample, elapsed time falls back to the recorded start and end.
+        var started = new DateTimeOffset(2026, 11, 12, 10, 0, 0, TimeSpan.Zero);
+        var child = new ChatThread
+        {
+            Id = "agent:main:subagent:abc", Title = "Telegram check", Activity = activity,
+            RunStatus = runStatus, RuntimeMs = runtimeMs, WaitingForSubagents = waitingForSubagents,
+            CreatedAt = started, EndedAt = started.AddSeconds(65).ToUnixTimeMilliseconds(),
+        };
+
+        Assert.Equal(
+            new ChatSpawnedSubagent("Telegram check", Enum.Parse<ChatSubagentStatus>(status),
+                elapsedMs is { } ms ? TimeSpan.FromMilliseconds(ms) : null),
+            ChatToolRowPresentation.Resolve(launch, [child]).Subagent);
+        Assert.Equal(new ChatSpawnedSubagent("Telegram check"), ChatToolRowPresentation.Resolve(launch).Subagent);
+        Assert.True(ChatToolRowPresentation.Resolve(launch with
+        {
+            ToolInputDetails = new("""{"task":"Diagnose the integration"}"""),
+        }).IsEmpty);
+        Assert.True(ChatToolRowPresentation.Resolve(launch with
+        {
+            ToolOutput = """{"childSessionKey":"agent:main:dashboard:abc"}""",
+        }).IsEmpty);
+    }
+
+    [Fact]
+    public void AssistantRuns_ToolRowsStayInsideOneRunWithOneAvatarAndOneFooter()
+    {
+        var rows = ChatToolActivityPresentation.Project(
+        [
+            Item("user", ChatTimelineItemKind.User),
+            Tool("first-tool", "exec"),
+            Item("narration", ChatTimelineItemKind.Assistant),
+            Tool("second-tool", "exec"),
+            Tool("third-tool", "read_file"),
+            Item("reasoning", ChatTimelineItemKind.Reasoning),
+            Item("answer", ChatTimelineItemKind.Assistant),
+            Item("next-user", ChatTimelineItemKind.User),
+            Item("reply", ChatTimelineItemKind.Assistant),
+            Item("status", ChatTimelineItemKind.Status),
+            Item("after-status", ChatTimelineItemKind.Assistant),
+        ], "session", 1);
+
+        var positions = ChatTimelineAssistantRuns.Describe(rows);
+
+        Assert.Equal(
+            ["user", "first-tool", "narration", "second-tool", "reasoning", "answer", "next-user", "reply", "status", "after-status"],
+            rows.Select(RowId));
+        // The run's first row carries the avatar even when it is a tool row.
+        Assert.Equal(
+            ["first-tool", "reply", "after-status"],
+            rows.Where((_, index) => positions[index].IsStart).Select(RowId));
+        // Only each run's last assistant message owns the actions footer.
+        Assert.Equal(
+            ["answer", "reply", "after-status"],
+            rows.Where((_, index) => positions[index].IsEnd).Select(RowId));
+    }
+
+    [Fact]
+    public void AssistantRuns_SplitOnRunIdentityAndTurnStartsAndSkipCommentaryAndLiveRuns()
+    {
+        ChatTimelineItem Reply(string id, string? run, string? phase = null) =>
+            new(id, ChatTimelineItemKind.Assistant, id, Presentation: new(Phase: phase, RunId: run));
+        var rows = ChatToolActivityPresentation.Project(
+        [
+            Item("user", ChatTimelineItemKind.User),
+            Reply("answer-a", "a"),
+            Tool("tool-b", "exec") with { ToolRunId = "b" },
+            Reply("answer-b", "b"),
+            Reply("note-b", "b", "commentary"),
+            Reply("cron", null) with
+            {
+                Presentation = new(RunId: "cron-run", AutomationKind: "cron", AutomationJobId: "j", AutomationRunId: "r"),
+            },
+            Reply("live", "c"),
+        ], "session", 1);
+        ChatMessagePresentation? Facts(ChatTimelineItem entry) => entry.Presentation;
+
+        var settled = ChatTimelineAssistantRuns.Describe(rows, Facts);
+        var live = ChatTimelineAssistantRuns.Describe(rows, Facts, lastRunWorking: true);
+
+        // Back-to-back runs share one avatar, like the web transcript.
+        Assert.Equal(
+            ["answer-a"],
+            rows.Where((_, index) => settled[index].IsStart).Select(RowId));
+        // Commentary never owns the footer; the run's final answer keeps it.
+        Assert.Equal(
+            ["answer-a", "answer-b", "cron", "live"],
+            rows.Where((_, index) => settled[index].IsEnd).Select(RowId));
+        // A run still working has no footer yet, so text arriving below never moves it.
+        Assert.Equal(
+            ["answer-a", "answer-b", "cron"],
+            rows.Where((_, index) => live[index].IsEnd).Select(RowId));
+    }
+
+    [Fact]
+    public void AssistantRuns_FooterFollowsEveryRunInsideMergedGroupsAndOnlyTheLiveRunWaits()
+    {
+        ChatTimelineItem Reply(string id, string run) =>
+            new(id, ChatTimelineItemKind.Assistant, id, Presentation: new(RunId: run));
+        ChatMessagePresentation? Facts(ChatTimelineItem entry) => entry.Presentation;
+        string[] Footers(IReadOnlyList<ChatToolActivityRow> rows) =>
+            [.. rows.Where((_, index) => ChatTimelineAssistantRuns.Describe(rows, Facts, lastRunWorking: true)[index].IsEnd)
+                .Select(RowId)];
+
+        // A later run's tool merged into the earlier run's group still ends that earlier run.
+        var merged = ChatToolActivityPresentation.Project(
+        [
+            Item("user", ChatTimelineItemKind.User),
+            Reply("answer-a", "a"),
+            Tool("tool-a", "exec") with { ToolRunId = "a" },
+            Tool("tool-b", "exec", result: ChatToolCallStatus.InProgress) with { ToolRunId = "b" },
+        ], "session", 1);
+        Assert.Equal(["user", "answer-a", "tool-a"], merged.Select(RowId));
+        Assert.Equal(["answer-a"], Footers(merged));
+
+        // The run with the running tool waits; a settled background reply below it keeps its footer.
+        Assert.Equal(["background"], Footers(ChatToolActivityPresentation.Project(
+        [
+            Item("user", ChatTimelineItemKind.User),
+            Tool("running", "exec", result: ChatToolCallStatus.InProgress) with { ToolRunId = "a" },
+            Reply("background", "b") with { IsBackgroundFinal = true },
+        ], "session", 1)));
+
+        // A streaming answer above a permission prompt is still working, so it has no footer yet.
+        Assert.Empty(Footers(ChatToolActivityPresentation.Project(
+        [
+            Item("user", ChatTimelineItemKind.User),
+            Reply("streaming", "a") with { IsStreaming = true },
+            Item("permission", ChatTimelineItemKind.PermissionRequest),
+        ], "session", 1)));
+    }
+
+    [Theory]
+    [InlineData("""{"childSessionKey":"agent:main:subagent:a","childSessionKey":"agent:main:subagent:b"}""")]
+    [InlineData("""{"childSessionKey":"\ud800"}""")]
+    [InlineData("""{"childSessionKey":""")]
+    public void RowView_MalformedSpawnOutputNeverBreaksRenderingOrCounting(string output)
+    {
+        var launch = Tool("spawn", "sessions_spawn") with
+        {
+            ToolInputDetails = new("""{"label":"Telegram check"}"""),
+            ToolOutput = output,
+        };
+
+        var view = ChatToolRowPresentation.Resolve(launch, []);
+        var summary = ChatToolActivityPresentation.Summarize([launch, Tool("read", "read_file")]);
+
+        Assert.Equal("Telegram check", view.Subagent!.Label);
+        Assert.Equal("1 read · 1 subagent", Format(summary));
+    }
+
+    [Fact]
+    public void Summarize_KeepsAWrapperWhoseNestedCallsAreAllRoutine()
+    {
+        var poll = Linked("poll", "process", "r", "p", parent: "w") with
+        {
+            ToolInputDetails = new("""{"action":"poll"}"""),
+        };
+
+        var summary = ChatToolActivityPresentation.Summarize(
+            [Linked("wrapper", "exec", "r", "w"), poll, Tool("read", "read_file")]);
+
+        Assert.Equal("1 command · 1 read", Format(summary));
+    }
+
+    [Fact]
+    public void RowView_CutPatchFallsBackInsteadOfAPartialFileSummary()
+    {
+        var cut = "*** Begin Patch\n*** Add File: a.md\n+hello\n*** Add File: b.md\n+wo\u2026[truncated]";
+
+        Assert.True(ChatToolRowPresentation.Resolve(Tool("p", "apply_patch") with { ToolInputDetails = new(cut) }).IsEmpty);
+    }
+
+    [Theory]
+    [InlineData("exec", """{"title":"Run the tests"}""", "Run the tests", null)]
+    [InlineData("browser", """{"title":"Click save"}""", null, "click")]
+    [InlineData("exec", """{}""", null, "npm test")]
+    public void RowView_TitlesOnlyShellToolsAndStripsShellPreambles(
+        string tool, string details, string? title, string? command)
+    {
+        var raw = tool == "exec" ? "cd /repo && export CI=1; npm test" : "click";
+        var entry = Tool("c", tool, Args(("command", raw))) with { ToolInputDetails = new(details, raw) };
+
+        var view = ChatToolRowPresentation.Resolve(entry);
+
+        Assert.Equal((title, title is null ? command : null), (view.Title, view.Command));
+    }
+
+    [Theory]
+    [InlineData("cd /repo && npm test", "npm test")]
+    [InlineData("set -e; export A=1; unset B; pnpm lint", "pnpm lint")]
+    [InlineData("echo 'a && b'", "echo 'a && b'")]
+    [InlineData("cd /repo || exit 1", "cd /repo || exit 1")]
+    [InlineData("cd /repo", "cd /repo")]
+    public void StripShellPreamble_MatchesTheWebRules(string command, string expected) =>
+        Assert.Equal(expected, ChatToolRowPresentation.StripShellPreamble(command));
+
+    [Fact]
+    public void ExpansionState_GroupInheritsTheChoiceMadeOnTheRowItGrewFrom()
+    {
+        var state = new ChatToolActivityExpansionState();
+        state.SetExplicit("tool-row", true, 0);
+
+        Assert.True(state.IsExpanded("group", 0, "tool-row"));
+        state.SetExplicit("group", false, 0);
+        Assert.False(state.IsExpanded("group", 0, "tool-row"));
+        Assert.False(state.IsExpanded("other-group", 0, null));
+    }
+
+    [Fact]
+    public void ExpansionState_RemembersARowWasOpenedAfterItClosesUntilCollapseAll()
+    {
+        var state = new ChatToolActivityExpansionState();
+        Assert.False(state.HasChoice("row", 0));
+
+        state.SetExplicit("row", true, 0);
+        state.SetExplicit("row", false, 0);
+
+        // A closed row the user opened keeps its built details for reopening.
+        Assert.False(state.IsExpanded("row", 0));
+        Assert.True(state.HasChoice("row", 0));
+        Assert.False(state.HasChoice("row", 1));
+    }
+
+    [Fact]
     public void ExpansionState_DefaultsCollapsedAndExplicitChoiceSurvivesUntilReset()
     {
         var state = new ChatToolActivityExpansionState();
@@ -593,7 +945,7 @@ public sealed class ChatToolActivityPresentationTests
         ]);
 
         Assert.Equal(2, summary.ToolCount);
-        Assert.Equal("1 command · 1 read", Format(summary));
+        Assert.Equal("1 command · 1 read · 1 failed", Format(summary));
     }
 
     [Fact]

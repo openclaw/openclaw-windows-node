@@ -613,11 +613,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 });
                 await SettleAsync();
                 await AwaitInitialTailAsync(surface, key, initial.Timelines[key].Entries.Last().Id);
-                await ui.RunOnUIAsync(() =>
-                    FindControl<Expander>(surface, $"ChatToolActivity_{entry.Id}").IsExpanded = true);
-                await SettleAsync();
+                // The lone recovered call is its own row, so it opens directly.
                 var expander = await ui.RunOnUIAsync(() =>
                 {
+                    Assert.DoesNotContain(FindDescendants<Expander>(surface), control =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control) ==
+                            $"ChatToolActivity_{entry.Id}");
                     var control = FindControl<Expander>(surface, $"ChatToolCall_{entry.Id}");
                     control.IsExpanded = true;
                     return Task.FromResult(control);

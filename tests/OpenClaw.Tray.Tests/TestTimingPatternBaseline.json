@@ -206,7 +206,7 @@
     "tests/OpenClaw.Tray.Tests/AutoStartSettingsApplierTests.cs": 4,
     "tests/OpenClaw.Tray.Tests/ChatComposerControllerTests.cs": 10,
     "tests/OpenClaw.Tray.Tests/ChatComposerSessionTests.cs": 3,
-    "tests/OpenClaw.Tray.Tests/ChatComposerViewModelTests.cs": 7,
+    "tests/OpenClaw.Tray.Tests/ChatComposerViewModelTests.cs": 1,
     "tests/OpenClaw.Tray.Tests/ChatQuestionCoordinatorTests.cs": 1,
     "tests/OpenClaw.Tray.Tests/ChatTelemetryTrackerTests.cs": 3,
     "tests/OpenClaw.Tray.Tests/GatewayDirectConnectServiceTests.cs": 1,

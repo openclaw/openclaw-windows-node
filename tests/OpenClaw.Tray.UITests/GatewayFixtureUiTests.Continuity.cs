@@ -99,10 +99,20 @@ public sealed partial class GatewayFixtureUiTests
             // Prove the composer shows the draft. Every probe looks the control up again, so a control
             // replaced by a reconnect re-render is not reported as a lost draft, and a draft the UI no
             // longer shows fails here instead of surfacing as the same opaque wait on the Send action.
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { } input &&
-                input.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) &&
-                ((ValuePattern)pattern).Current.Value == afterReconnect,
-                "composer keeps the draft after reconnect", ReconnectSendTimeout);
+            // The receipt is written here too: a draft lost after SetValue is the known CI flake, and
+            // this wait now reports it first.
+            try
+            {
+                await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { } input &&
+                    input.TryGetCurrentPattern(ValuePattern.Pattern, out var pattern) &&
+                    ((ValuePattern)pattern).Current.Value == afterReconnect,
+                    "composer keeps the draft after reconnect", ReconnectSendTimeout);
+            }
+            catch (TimeoutException timeout)
+            {
+                WriteComposerReceipt(run, "continuity-draft-timeout.json", composerIdentity, lengthAfterSet, timeout);
+                throw;
+            }
             AutomationElement? sendAction = null;
             try
             {

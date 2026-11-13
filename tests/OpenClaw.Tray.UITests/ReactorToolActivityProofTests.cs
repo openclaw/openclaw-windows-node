@@ -342,7 +342,11 @@ public sealed class ReactorToolActivityProofTests
                 new("answer", ChatTimelineItemKind.Assistant, "Preserved answer",
                     Presentation: new(Phase: "final_answer", RunId: "r")),
             };
-            var timeline = BuildTimeline(entries, 1) with { SessionId = "agent:a:dashboard:d" };
+            var timeline = BuildTimeline(entries, 1) with
+            {
+                SessionId = "agent:a:dashboard:d",
+                ToolExpansionState = new ChatToolActivityExpansionState(),
+            };
             var rows = ChatToolActivityPresentation.Project(entries, timeline.SessionId, 1);
             Assert.Equal("Preserved answer", rows[1].Entry!.Text);
             var work = rows[0];
@@ -370,10 +374,11 @@ public sealed class ReactorToolActivityProofTests
                 Assert.Contains(FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)),
                     text => text.Text == "Worked · 1 tool call");
                 Assert.Contains(FindLogical<TextBlock>(root!), text => text.Text == "Checking");
-                // The tool sits in its own collapsed group layer, exactly like the web Worked body.
-                var group = Assert.Single(FindLogical<Expander>(root!), expander => !ReferenceEquals(expander, disclosure));
-                Assert.False(group.IsExpanded);
-                Assert.Contains("1 read", AutomationProperties.GetName(group));
+                // A lone tool keeps its own step row, as the web Worked body renders single-call groups.
+                // Its output is built only once the row opens.
+                var row = Assert.Single(FindLogical<Expander>(root!), expander => !ReferenceEquals(expander, disclosure));
+                Assert.False(row.IsExpanded);
+                Assert.Equal("ChatToolCall_read", AutomationProperties.GetAutomationId(row));
                 Assert.Empty(FindLogical<RichTextBlock>(root!));
                 Assert.DoesNotContain(FindLogical<TextBlock>(root!), text => text.Text == "Preserved answer");
             }
@@ -559,7 +564,8 @@ public sealed class ReactorToolActivityProofTests
                 Assert.Contains("Done", AutomationProperties.GetName(expander), StringComparison.Ordinal);
                 Assert.DoesNotContain(FindLogical<TextBlock>(root), text => text.Text == "Done");
                 var header = Assert.IsAssignableFrom<DependencyObject>(expander.Header);
-                Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "src\\main.cs");
+                Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "Read main.cs");
+                Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "src");
                 Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == DocumentGlyph);
                 Assert.Null(ToolTipService.GetToolTip(expander));
                 Assert.Contains(output, FindLogical<RichTextBlock>(root));
