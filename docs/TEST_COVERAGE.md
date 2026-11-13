@@ -91,12 +91,21 @@ stable, prerelease, and main invocations can upload in the same caller run.
 The CI Shared-test step uses the existing five-minute hang watchdog and a
 15-minute outer step limit. A hang fails the run and preserves the interrupted
 test sequence without collecting a memory dump; it is not retried or skipped.
+The MCP bearer-rotation regression keeps its deliberately blocking rotation on a
+dedicated thread and bounds each loopback step with
+`OPENCLAW_TEST_MCP_STEP_TIMEOUT_SECONDS` (default 30 s), because the server
+pipeline itself runs on the shared thread pool.
 
 ### OpenClaw.Tray.Tests
 
-The composer lifetime-disposal lock regression uses dedicated workers so its
-two-second reentrancy assertion measures controller lock ownership rather than
-shared thread-pool scheduling latency.
+The composer lifetime- and voice-disposal reentrancy regressions use dedicated
+workers so their bounded reentrancy assertions (`OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS`,
+default 10 s) measure controller lock ownership rather than shared thread-pool
+scheduling latency. The settings-coordinator and native-restart handoff
+regressions follow the same rule (`OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS`,
+default 15 s). Each Windows PowerShell 5.1 uninstall-helper run is bounded by
+`OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS` (default 120 s) because a
+cold 5.1 start on a loaded runner can exceed 30 s.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
@@ -202,11 +211,28 @@ routes and capture screenshots. Credentials are sent through local CDP, not
 browser command-line arguments; only the test's synthetic session is deleted.
 Browser profile storage is excluded from collected artifacts; only its
 screenshots and bounded proof outcomes are retained.
+The browser helper discovers the initial `about:blank` page through the owned
+loopback debugger's `/json/list` endpoint and connects directly to that page.
+It does not create another target through the browser-level WebSocket. Startup
+through the first page command is bounded by a 60-second hang guard because the
+job's first, cold Edge launch can take far longer than later launches. Set
+`OPENCLAW_E2E_EDGE_STARTUP_TIMEOUT_SECONDS` (1-3600) to override it. Each
+startup reports cumulative per-stage milliseconds and the stderr character
+count. Failures also report the stage, elapsed time, limit, process state and
+exception type, never raw Edge output or debugger URLs.
 The existing fixture owns Gateway and profile teardown. This is a real released
 WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
 The run's `gateway-release.json`, result report and screenshots identify actual
 execution; compilation or a locally gated skip is not successful runtime proof.
 Local execution still requires the existing WSL E2E runtime authority.
+
+For browser-only startup proof, set `OPENCLAW_RUN_E2E=1` and run
+`dotnet test .\tests\OpenClaw.E2ETests\OpenClaw.E2ETests.csproj --filter FullyQualifiedName~SetupAndConnectTestsBrowserStartup`.
+This class does not use the setup fixture or provision a Gateway. Its native
+smoke owns one temporary Edge process/profile and verifies page evaluation and
+PNG capture; discovery tests cover readiness, cancellation and endpoint
+isolation. The hosted setup/connect filter includes this class. This is not
+authenticated Dashboard route proof.
 
 Capacity-dependent Windows validation is named in
 [`PROOF_POOLS.md`](./PROOF_POOLS.md). Pull requests declare the exact pool IDs
@@ -283,6 +309,13 @@ owns the evidence checklist.
 
 ### CI impact fast paths
 
+Core, Tray, UI, and the three E2E jobs start as soon as classification selects
+them, in parallel with `fast-validation`, and keep their cancellation guards.
+CI Gate still requires `fast-validation` to succeed, so this removes it from
+the critical path without relaxing acceptance. A `fast-validation` failure no
+longer skips selected test lanes; their runner time is the accepted cost.
+Release asset preparation still waits for `fast-validation`.
+
 The setup/connect, revocation recovery and network recovery E2E jobs each run once
 against npm Latest, matching normal WSL setup.
 `scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
@@ -351,7 +384,7 @@ input, or classifier/contract change selects `full` fail-closed. A full pull
 request runs all test and E2E lanes plus the x64 publish smoke. Pushes to `main`
 and tags also run ARM64 publish.
 
-The former serialized Windows `test` job is split into three clean-runner lanes.
+The former serialized Windows `test` job is split into clean-runner lanes.
 Each lane restores and builds its own minimal project graph and publishes a
 separate TRX artifact:
 
@@ -359,7 +392,15 @@ separate TRX artifact:
 |---|---|
 | `core-tests` | Shared, Connection, WinNode CLI |
 | `tray-tests` | Tray, SetupEngine, Tray Integration |
-| `ui-tests` | FunctionalUI, Tray UI, Axe.Windows accessibility |
+| `ui-tests` | FunctionalUI, Tray UI (first shard), Axe.Windows accessibility |
+| `tray-ui-shard` | Tray UI (second shard: workspace window, chat layout and setup classes) |
+
+The ordinary Tray UI suite is split by test class across `ui-tests` and
+`tray-ui-shard`, which run in parallel on separate runners. Both use the same
+category exclusions; `ui-tests` excludes exactly the classes `tray-ui-shard`
+selects, so every test runs once. `scripts/test-ci-workflow-contract.ps1`
+enforces that partition, and CI Gate requires both jobs whenever UI tests are
+selected. To rebalance, move whole classes between the two filters.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported
@@ -487,6 +528,196 @@ release publish.
 
 ## Writing a regression test
 
+### Fixed file-worker owner checks
+
+`OpenClaw.FileWorker.Tests` exercises the production native filesystem owner
+in-process on isolated repository-local test directories. It does not launch
+Companion, the worker executable, MXC, a Gateway, or an installer. Run it on
+Windows:
+
+```powershell
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+dotnet test .\tests\OpenClaw.FileWorker.Tests\OpenClaw.FileWorker.Tests.csproj
+dotnet test .\tests\OpenClaw.Shared.Tests\OpenClaw.Shared.Tests.csproj --filter 'FullyQualifiedName~FileTransfer'
+```
+
+The core CI lane restores, builds and runs the worker suite alongside Shared,
+Connection and winnode tests. It collects a separate FileWorker TRX report.
+The fixed worker has no native speech dependency and uses the SDK's
+self-contained .NET runtime. Its manifest generator validates both direct and
+delayed PE imports and fails if a payload acquires an external VC runtime
+dependency. Companion's native speech runtime requirements remain unchanged.
+Before inventory generation, it removes PDB debug symbols from the worker
+publish directory, including stale symbols from earlier publishes. Build-output
+symbols remain available separately. This keeps the copied payload and its
+exact manifest consistent across MSIX (which strips PDBs), Inno and portable
+distributions for both configurations and worker RIDs. `FileWorkerManifestTests`
+checks symbol removal, repeat generation and preservation of every runtime
+file and digest at this build boundary. Actual MSIX archive inventory and
+embedded-manifest checks remain a separate packaging acceptance boundary.
+Release worker EXE/DLL signatures are verified before manifest hashing.
+`FileWorkerManifestTests.ReleaseManifestRejectsUnsignedWorkerBeforeWritingDigests`
+checks rejection for both RIDs; workflow contracts verify the signed input reaches
+portable/Inno and MSIX builds without republishing the worker. These checks do
+not prove Azure signing or installed-package acceptance.
+Companion packages each worker payload in a manifest-addressed RID slot, and its
+embedded manifest selects that exact slot. Obsolete dependencies in a prior
+slot are neither loaded nor silently adopted. Resolver tests retain full
+digest/inventory checks inside the selected slot. Installer-shaped protected
+LocalAppData sources exercise contained preparation into the executor-private
+persistent code cache without relaxing source denies or expanding data rights.
+Native metadata admission and hardlink fixtures use extended-length Windows
+paths, so long worktrees do not depend on the machine's `LongPathsEnabled`
+policy. The metadata regression also denies file-data reads to verify that
+long-path support preserves attributes-only admission.
+
+The resolver and MXC reparse tests create real symbolic links. Run these tests
+with symbolic-link privileges (Developer Mode or an elevated test process);
+without those privileges they fail during fixture creation. Do not replace
+their alias-rejection assertions with skips or change machine policy
+automatically.
+Source and cached-file pins, full digests/inventories, atomic publication,
+tamper/alias rejection, bounded inventory and failure/cancellation ownership
+are covered at the shared owner boundary. The legacy per-operation-copy
+negative control fails the repeated-success regression on distinct executable
+directories; the cache keeps the same published native file identity across
+calls. Ordinary test-owned subprocess fixtures exercise concurrent builders,
+abrupt parent death after publication, real preparation interruption, restart
+backpressure and distinct manifest versions. Their fixed 64 MiB dependency
+fixture gives interruption a real copy boundary without launching any code
+from the payload. They use the existing resolver filesystem constructor, not
+a fake trust or permission implementation. These tests do not prove power-loss
+durability, MXC containment or installed-worker runtime loading.
+Active-failure regressions observe nonempty output during that real 64 MiB
+copy, then cancel or place a native byte-range read lock on the pinned source.
+They prove same-version retry after identity-backed unpublished rollback and
+that a real copy I/O error survives the executor as a cache-specific command
+failure. Separate failure-first fixtures inject added, replaced, hardlinked or
+reparse children, and a create obstacle containing an independently identified
+foreign marker. They do not also request cancellation: verification may observe
+tampering before a later cancellation, and that failure must remain a typed
+cache cleanup failure. Cancellation-first cases hold a real apphost verification
+open pending on a native file oplock. They add a foreign child, retain a
+non-delete-sharing read handle, or independently change the native EA, then
+request cancellation before acknowledging the pending open. These cases prove
+both the original cancellation token and the distinct cleanup refusal, without
+depending on mutation-versus-cancellation scheduling or supplying a fake owner
+result. Cleanup must retain the exact foreign, replacement, alias and locked
+file identities and bytes, and reject execution on retry. A changed native EA
+blocks rollback of otherwise owned children, rather than deleting an entry
+whose publication is no longer disproven. A matching no-obstacle control
+requires ordinary cancellation, successful rollback and same-version retry;
+the oplock fixture itself must not manufacture a cleanup failure.
+Post-publication cancellation uses a read adapter over real pinned streams.
+The fixture independently observes the published native EA and matches the
+stream's full identity before holding read completion. A handshake requests
+cancellation before verification resumes, without replacing publication or the
+digest. Assertions require the original token, no inner exception, unchanged
+entry and child identities, and verified reuse by the default reader. A separate
+no-cancellation control proves that the held read can complete successfully.
+
+A read-only child handle held across completion
+must not block publication or weaken the lease's write/delete veto. The
+corresponding pre-fix owner case failed with the directory-rename publisher.
+Other owner cases inspect the non-executable initial EA in an unowned legacy
+root, reject complete but unpublished code, and reject added, tampered or
+identically replaced children without cancellation. Abrupt process death at
+directory creation must leave that initial veto, never a recordless legacy
+fallback. These ordinary in-process failure cases are
+distinct from abrupt parent death, whose persisted preparation remains blocked.
+Upgrade regressions advance through thirteen independently versioned manifests,
+retain eight real resolver leases, and run simultaneous new-version builders
+against an old pinned lease. Native identity checks cover added, replaced,
+hardlinked, reparse, sparse and missing children, caller JSON ownership claims,
+corrupt/transplanted native records, replaced entry directories and a copied root
+record with the wrong native identity. Unknown legacy roots are never adopted.
+Real Windows readonly-deletion failures exercise both first-apphost rejection
+(unchanged inventory and metadata) and partial deletion with a persisted
+`deleting` record across subprocess exit. A same-version resolver must finish an
+owned interrupted deletion before publishing a fresh complete entry, without
+requiring another upgrade. Readonly or actively held remaining children block
+that recovery without recreating the apphost or changing the remaining inventory.
+Both same-version recovery and later-version admission reject a substituted
+remaining child. These are native disposition failure/restart tests, not manufactured SDK
+termination receipts, forced mid-instruction process death or power-loss proof.
+
+`WorkerCacheProcessTests` launches the actual built FileWorker apphost with
+`--stdio`, reaches the binary fetch listener, and retains no resolver lease.
+It independently demonstrates that a nonshared read/delete open can succeed
+while the worker is live, yet non-POSIX image disposition returns Windows error
+5. Capacity admission must preserve the complete live entry, permit verified
+reuse, and reclaim it only after the actual worker exits. The ordinary fixture
+uses the framework-dependent apphost; current self-contained archive execution,
+installed activation and native MXC policy remain separate proof boundaries.
+The worker test project's aliased Shared reference exercises the real resolver
+without conflating its types with the worker's linked wire contracts.
+Its cache is isolated under the system temp directory rather than the worktree
+because apphost launch has a separate Windows process-path limit. Process
+evidence uses `RUNNER_TEMP` in CI and the owned fixture directory when that
+variable is absent locally.
+Concurrent file/system.run requests, private-data exclusion under broad write
+grants, caller override rejection and logical/physical private denies are
+covered separately from immutable sensitive-root protection.
+
+The worker suite covers native bindings, retained handles, no-clobber creation,
+in-place overwrite identity, preflight non-mutation, duplex start/ACK/EOF
+semantics, gzip-tar interoperability, data-only policy and retained-upload
+cleanup. Native regressions cover no-follow junction listing with whole-archive
+rejection, final-parent ACL inheritance with a synthetic SID, private staging
+and uploads, atomic EA creation, interrupted create/delete phases, cancellation,
+replacement/unknown-content preservation and complete legacy-record migration.
+These interruption fixtures close real native handles in adverse parent/child
+order; they do not kill a worker process or prove power-loss recovery. Native EA
+support through the installed MXC worker remains a separate runtime boundary.
+Shared transport fixtures cover generic Gateway casing/depth and large results,
+explicit file serialization failures on both invoke envelopes, unchanged generic
+MCP response sizes, bounded deep file requests, and remembered-only retention
+scheduling. Shared tests use independent upstream contract literals for base64,
+bindings and metadata, plus the private process codec and typed semantic
+outcome. Shared executor tests hold a real Windows directory handle to prove
+that transient scratch sharing violations settle before completion; a
+persistently locked directory produces a bounded deferred-cleanup warning instead of
+holding an execution slot indefinitely. Later admission retries only the
+ended operation whose native identity/ancestry it still owns. Cleanup
+regressions preserve live/unrelated/replaced/reparse targets, and enforce
+the 16-lease backpressure bound. An uncertain launch/finalization retains
+its payload pins until owner shutdown, without authorizing deletion.
+Scratch parent-process crash recovery remains unimplemented; a later process
+never adopts old operation directories. Published code persists by design and
+is reverified, never automatically replaced or pruned. Uncertain preparation
+is non-executable and consumes cache capacity; it is not guessed safe to delete.
+See [the cache and cleanup contract](WINDOWS_NODE_TESTING.md) for admission
+bounds and safe repair requirements. Neither ordinary owner suite establishes SDK
+interception, real installed-distribution loading, native ARM64 execution, Gateway/MCP
+framing, or visible Sandbox status.
+Those remain distinct build, transport and runtime proof boundaries.
+The opt-in `MxcRuntimeNamespaceNativeTests` adds actual SDK deny/child-grant
+and overlapping-policy proof, with owned process identities and fixture ACL
+checks. It is not whole-app or installed-worker proof.
+The two original cases use PowerShell `-File`. A separately named
+`NativeSdk_InlinePayloadControlExercisesTheSameNamespaceAssertions` diagnostic
+case sends the same synthetic script and literal arguments through
+`-EncodedCommand`, retaining the same direct-SDK policy, readiness handshake,
+deny/scratch assertions and ACL checks. It does not set execution policy,
+replace a failed file-based case, or establish script-file authorization.
+Run and report it alongside the original cases when investigating startup
+`AuthorizationManager` failures. Inline success with file-based failure narrows
+the failing boundary; it is not overall namespace or FileWorker acceptance.
+The artifacts identify `LaunchMode` and use a distinct inline-control prefix.
+Ordinary `MxcNamespaceLaunchTests` protect the unchanged file argv and literal
+inline payload construction without launching PowerShell or MXC.
+
+CLI `FileWorkerProcessTests` add the concrete process boundary: the production
+MCP listener, file capability, shared executor, private binary protocol and
+actual compiled worker are called through `winnode` in isolated test folders.
+All eight commands, streaming create/fetch, create-exists and semantic failures
+are exercised. The test deliberately selects the positive-unsupported host
+adapter; it does not assert that the current machine lacks MXC support and
+does not launch Companion, MXC, a Gateway or an installer. Payload trust is
+covered separately by resolver/packaging checks, not by the test resolver.
+
+### Regression authoring
+
 Use the [test-audit skill](../.agents/skills/test-audit/SKILL.md) when adding or
 reviewing tests. Start with the observable contract, its production owner, a
 credible regression, and the risk not covered by existing tests.
@@ -532,6 +763,40 @@ See [local execution evidence](PROOF_POOLS.md#validate-local-execution-evidence)
 for inventory-bound summaries and their assurance limits.
 
 ## Running tests
+
+Native reveal tests require Windows client-area animations to be enabled.
+The required `AnimationPreferenceEnabled` CI selection establishes that
+preference in `Invoke-CiTest.ps1 -AnimationPreference Enabled -RequireAllTestsPassed`,
+not in production code or the testhost. Ordinary UI tests keep their original
+Windows preference. The parent records and verifies the
+original value, holds a per-user/session cross-process lock, starts the test
+subprocess with the verified preference, and restores/read-checks the original
+even when the testhost fails. It never writes the persistent profile setting.
+Restoration or prerequisite failures fail the command. Ordinary Tray UI wrapper
+invocations hold the same lock without mutating the preference; unrelated managed
+suites are not serialized. This coordinates cooperating wrappers, not direct
+`dotnet test` commands or unrelated Windows processes.
+Do not terminate the parent wrapper while it owns the preference. A force-killed
+parent cannot restore it, so recover the recorded original or a known-good
+setting before proceeding. Detectable mutex abandonment fails closed, but if the
+last handle disappeared the next owner can create a fresh mutex; this is not
+durable crash recovery.
+
+The separate required `PageHeroAnimationsDisabledTests` step runs with
+`-AnimationPreference Disabled -RequireAllTestsPassed`; its environment opt-in
+keeps it out of ordinary runs, while missing, skipped or failed selected proof
+cannot pass that step. The six animation-enabled regressions retain their
+native assertions and are not skipped. Local or self-hosted use additionally
+requires explicit `-AllowUserAnimationPreferenceChange`; app-data isolation
+does not isolate this Windows logon-session preference. After building, an
+authorized local focused run can use:
+
+```powershell
+.\scripts\Invoke-CiTest.ps1 -Project tests\OpenClaw.Tray.UITests `
+  -Runtime win-arm64 -ResultsDirectory TestResults\PageHero `
+  -TrxFileName PageHero.trx -Filter 'FullyQualifiedName~PageHeroTests' `
+  -AnimationPreference Enabled -AllowUserAnimationPreferenceChange -RequireAllTestsPassed
+```
 
 ```powershell
 # Required validation after code changes

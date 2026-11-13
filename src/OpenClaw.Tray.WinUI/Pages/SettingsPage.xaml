@@ -259,6 +259,30 @@
                     </Grid>
                 </Border>
 
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="ShowThinkingLabel" x:Uid="SettingsRow_ShowThinking_Header"
+                                       Text="Show thinking" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_ShowThinking_Description"
+                                       Text="Show the assistant's supplied reasoning in the conversation."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="ShowThinkingToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ShowChatThinking, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="SettingsPageShowThinking"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=ShowThinkingLabel}"/>
+                    </Grid>
+                </Border>
+
                 <!-- ═════════ Local Gateway ═════════ -->
                 <TextBlock x:Uid="SettingsPage_LocalGateway" x:Name="LocalGatewaySectionHeader" Text="Local Gateway"
                            Style="{StaticResource BodyStrongTextBlockStyle}"

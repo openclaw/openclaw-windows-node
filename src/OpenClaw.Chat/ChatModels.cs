@@ -113,6 +113,10 @@ public record ChatThread
     public required string Id { get; init; }
     public required string Title { get; init; }
     public string? AgentId { get; init; }
+    public string? ParentSessionKey { get; init; }
+    public string? CurrentActivity { get; init; }
+    public bool WaitingForSubagents { get; init; }
+    public OpenClaw.Shared.SessionProviderReviewInfo? ProviderReview { get; init; }
     public bool IsBackground { get; init; }
     public bool IsArchived { get; init; }
     public bool IsChannelSession { get; init; }
@@ -128,6 +132,8 @@ public record ChatThread
     public string? Model { get; init; }
     public string? ModelProvider { get; init; }
     public string? ThinkingLevel { get; init; }
+    public string? ReasoningLevel { get; init; }
+    public string? ReasoningDefault { get; init; }
     public ThinkingContext? ThinkingContext { get; init; }
     public ThinkingContext? ThinkingDefaults { get; init; }
     public long InputTokens { get; init; }
@@ -139,6 +145,10 @@ public record ChatThread
     public DateTimeOffset? UpdatedAt { get; init; }
 
     public string DisplayTitle => Title;
+    public string? LastRunId { get; init; }
+    public string? RunStatus { get; init; }
+    public double? RuntimeMs { get; init; }
+    public long? EndedAt { get; init; }
 }
 
 public record ChatTimelineItem(
@@ -163,7 +173,40 @@ public record ChatTimelineItem(
     long ToolLegacyTurn = 0,
     ChatToolErrorTextQuality ToolErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
     int ToolProgressSequence = 0,
-    bool IsBackgroundFinal = false);
+    bool IsBackgroundFinal = false,
+    OpenClaw.Shared.ChatMessagePresentation? Presentation = null,
+    ChatToolHandoffInput? HandoffInput = null,
+    ChatToolHandoffReceipt? HandoffReceipt = null,
+    ChatToolInputDetails? ToolInputDetails = null,
+    ChatToolResultReference? ToolResultReference = null,
+    ChatToolDiffStat? ToolLiveDiff = null,
+    bool ToolInputPreparing = false,
+    int ToolFeedbackSequence = 0,
+    System.Collections.Immutable.ImmutableList<ChatToolReview>? ToolReviews = null,
+    string? ToolParentCallId = null)
+{
+    public ChatToolHandoffReceipt? ConfirmedHandoff =>
+        ToolResult == ChatToolCallStatus.Success && !string.IsNullOrWhiteSpace(ToolCallId) &&
+        HandoffInput?.ToolName == ToolName && HandoffReceipt?.ToolName == ToolName
+            ? HandoffReceipt : null;
+}
+
+/// <summary>Bounded, redacted tool input for disclosure, separate from persisted row summaries.</summary>
+public sealed record ChatToolInputDetails(string Text, string? Command = null, string? Preview = null, bool Unavailable = false);
+
+/// <summary>Supplied live edit counts, not a reconstruction of incomplete arguments.</summary>
+public sealed record ChatToolDiffStat(long Added, long Removed);
+
+/// <summary>Public provider review metadata. It grants no local execution permission.</summary>
+public sealed record ChatToolReview(string Id, string Label, string Status,
+    string? RiskLevel = null, string? UserAuthorization = null, string? Rationale = null);
+
+public sealed record ChatToolFeedback(int Sequence, bool PreparingInput = false,
+    ChatToolDiffStat? Diff = null, ChatToolReview? Review = null);
+
+/// <summary>Durable result locator and preview facts, separate from the invocation's identity/input.</summary>
+public sealed record ChatToolResultReference(
+    string? MessageId, bool IsTruncated, string? Reason = null, string? SessionId = null, string? CallId = null);
 
 public readonly record struct ChatToolCorrelationKey(
     string? RunId,
@@ -193,7 +236,9 @@ public record ChatTimelineState(
     DateTimeOffset? TurnStartedAt = null,
     DateTimeOffset? TurnEndedAt = null,
     string? ProgressText = null,
-    ChatRunUsage? RunUsage = null)
+    ChatRunUsage? RunUsage = null,
+    ChatReasoningStream? ReasoningStream = null,
+    long? ProgressRetryAtMs = null)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
@@ -207,18 +252,27 @@ public record ChatTimelineState(
 
 public sealed record ChatRunUsage(string RunId, long? OutputTokens = null, int Sequence = 0);
 
+public sealed record ChatReasoningReceipt(string RunId, string MessageId, bool Persisted = false);
+public sealed record ChatReasoningStreamItem(
+    string ItemId, string Text, double StartedAtMs, string? AfterEntryId = null, ChatReasoningReceipt? Receipt = null);
+public sealed record ChatReasoningStream(
+    string RunId, System.Collections.Immutable.ImmutableList<ChatReasoningStreamItem> Items);
+
 public record ChatPendingToolPresentation(
     string ToolName,
     ChatToolIdentityStrength IdentityStrength,
     JsonObject? ToolArgs,
     System.Collections.Immutable.ImmutableHashSet<string> CorrelationIds,
-    long Sequence = 0);
+    long Sequence = 0,
+    ChatToolInputDetails? InputDetails = null);
 
 public record ChatPendingToolOutcome(
     string Text,
     ChatToolCallStatus Status,
     long Sequence,
-    ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified);
+    ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
+    ChatToolHandoffReceipt? HandoffReceipt = null,
+    ChatToolResultReference? ResultReference = null);
 
 public enum ChatQueuedMessageSendState
 {
@@ -240,10 +294,14 @@ public record ChatHistoryPage(ChatEvent[] Events, int NextSince, int PrevBefore,
 public abstract record ChatEvent;
 public record ChatUserMessageEvent(string Text, string? Nonce = null) : ChatEvent;
 public record ChatThinkingEvent(string Text, string? RunId = null) : ChatEvent;
-public record ChatProgressEvent(string Text) : ChatEvent;
+// RetryAtMs is the Gateway-supplied retry deadline (epoch ms); it is never estimated locally.
+public record ChatProgressEvent(string Text, long? RetryAtMs = null) : ChatEvent;
 public record ChatRunUsageEvent(string RunId, long OutputTokens, int Sequence) : ChatEvent;
-public record ChatReasoningEvent(string Text) : ChatEvent;
-public record ChatReasoningDeltaEvent(string Text) : ChatEvent;
+public record ChatReasoningEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null,
+    bool IsStreaming = false, bool AttachToAssistant = false, bool ActivatesTurn = true) : ChatEvent;
+public record ChatReasoningDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
+public record ChatReasoningStreamEvent(string RunId, string ItemId, string Text, double StartedAtMs) : ChatEvent;
+public record ChatReasoningReceiptEvent(string RunId, string ItemId, string MessageRunId, string MessageId) : ChatEvent;
 /// <summary>
 /// Closes the current reasoning section so the next reasoning chunk starts a
 /// fresh bubble instead of appending/replacing the previous one. Emitted from
@@ -251,8 +309,10 @@ public record ChatReasoningDeltaEvent(string Text) : ChatEvent;
 /// marker that delimits each distinct thinking pass within a single turn.
 /// </summary>
 public record ChatReasoningEndEvent() : ChatEvent;
-public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false, bool IsStreaming = false) : ChatEvent;
-public record ChatMessageDeltaEvent(string Text) : ChatEvent;
+public record ChatMessageEvent(string Text, string? ReasoningText = null, bool ReconcilePrevious = false, bool IsStreaming = false,
+    OpenClaw.Shared.ChatMessagePresentation? Presentation = null, bool IsContentPart = false,
+    bool ReplacesStreamText = false, bool ActivatesTurn = true) : ChatEvent;
+public record ChatMessageDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
 public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
@@ -262,7 +322,13 @@ public record ChatToolStartEvent(
     JsonObject? ToolArgs = null,
     string? ToolCallId = null,
     ChatToolIdentityStrength IdentityStrength = ChatToolIdentityStrength.Explicit,
-    string? RunId = null) : ChatEvent;
+    string? RunId = null,
+    ChatToolHandoffInput? HandoffInput = null,
+    ChatToolInputDetails? InputDetails = null,
+    ChatToolFeedback? Feedback = null,
+    // Recorded wrapping call (Gateway parentToolCallId), distinct from ChatToolPresentationEvent.ParentToolCallId.
+    string? ParentCallId = null,
+    bool ActivatesTurn = true) : ChatEvent;
 public record ChatToolPresentationEvent(
     string ParentToolCallId,
     string ToolName,
@@ -270,11 +336,14 @@ public record ChatToolPresentationEvent(
     JsonObject? ToolArgs = null,
     string? ChildToolCallId = null,
     bool ActivatesTurn = true,
-    string? RunId = null) : ChatEvent;
+    string? RunId = null,
+    ChatToolInputDetails? InputDetails = null) : ChatEvent;
 public record ChatToolOutputEvent(
     string Text,
     string? ToolCallId = null,
-    string? RunId = null) : ChatEvent;
+    string? RunId = null,
+    ChatToolHandoffReceipt? HandoffReceipt = null,
+    ChatToolResultReference? ResultReference = null) : ChatEvent;
 public record ChatToolProgressEvent(
     string Text,
     string? ToolCallId,
@@ -285,7 +354,8 @@ public record ChatToolErrorEvent(
     string Text,
     string? ToolCallId = null,
     string? RunId = null,
-    ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified) : ChatEvent;
+    ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
+    ChatToolResultReference? ResultReference = null) : ChatEvent;
 public record ChatToolReplayResetEvent : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
 public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
@@ -298,6 +368,7 @@ public record ChatRawEvent(string EventType, string? Text = null) : ChatEvent;
 /// <remarks>
 /// <see cref="CurrentHistoryThreads"/> contains session keys whose history is authoritative for the current connection.
 /// Null means freshness is unknown, even when a cached timeline has HistoryLoaded.
+/// <see cref="FailedHistoryThreads"/> contains session keys whose history load exhausted its retries on this connection.
 /// </remarks>
 public record ChatDataSnapshot(
     ChatThread[] Threads,
@@ -312,7 +383,9 @@ public record ChatDataSnapshot(
     IReadOnlyDictionary<string, long>? TimelineGenerations = null,
     IReadOnlyDictionary<string, long>? HistoryRevisions = null,
     IReadOnlyDictionary<string, IReadOnlyList<ChatQueuedMessage>>? QueuedMessagesByThread = null,
-    IReadOnlySet<string>? CurrentHistoryThreads = null);
+    IReadOnlySet<string>? CurrentHistoryThreads = null,
+    IReadOnlySet<string>? FailedHistoryThreads = null,
+    IReadOnlySet<string>? OlderHistoryThreads = null);
 
 /// <summary>
 /// Describes where the UI may send the next chat message. Distinct from
