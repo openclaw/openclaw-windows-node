@@ -524,6 +524,74 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(Find(root, "SettingsDashboard").Current.IsEnabled);
     }
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MouseHistoryButtons_ReturnFromSettingsAndRestoreItWithoutReplacingChat(bool holdLeftButton)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, initialRoute: null);
+        await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        var composer = Find(root, "ChatComposerInput");
+        var identity = composer.GetRuntimeId();
+        const string draft = "Keep this draft through mouse Back and Forward";
+        ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+
+        await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
+        await PressHistoryButtonAsync(holdLeftButton ? "ConnectionPageMarker" : "SettingsBackToApp", xButton: 1);
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        Assert.False(IsVisible(root, "ConnectionPageMarker"));
+        AssertRetainedChat();
+        Capture(app, "System", $"mouse-back-from-settings-left-held-{holdLeftButton}");
+
+        await PressHistoryButtonAsync("ChatComposerInput", xButton: 2);
+        await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
+        Assert.True(IsVisible(root, "SettingsBackToApp"));
+        Capture(app, "System", $"mouse-forward-to-settings-left-held-{holdLeftButton}");
+
+        // Exercise the same history while pointing at page content instead of shell chrome.
+        await PressHistoryButtonAsync("ConnectionPageMarker", xButton: 1);
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        AssertRetainedChat();
+
+        void AssertRetainedChat()
+        {
+            var retained = Find(root, "ChatComposerInput");
+            Assert.Equal(identity, retained.GetRuntimeId());
+            Assert.Equal(draft, ((ValuePattern)retained.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        }
+
+        async Task PressHistoryButtonAsync(string targetId, uint xButton)
+        {
+            await app.EnsureHubForegroundAsync();
+            var target = Find(root, targetId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(root, target, root.Current.ProcessId));
+            Assert.False(target.Current.IsOffscreen);
+            var bounds = target.Current.BoundingRectangle;
+            Assert.False(bounds.IsEmpty);
+            System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
+                (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+            Assert.Equal(app.HubWindowHandle, GetForegroundWindow());
+            const uint xDown = 0x0080;
+            const uint xUp = 0x0100;
+            const uint leftDown = 0x0002;
+            const uint leftUp = 0x0004;
+            if (holdLeftButton)
+                MouseEvent(leftDown, 0, 0, 0, UIntPtr.Zero);
+            try
+            {
+                MouseEvent(xDown, 0, 0, xButton, UIntPtr.Zero);
+            }
+            finally
+            {
+                MouseEvent(xUp, 0, 0, xButton, UIntPtr.Zero);
+                if (holdLeftButton)
+                    MouseEvent(leftUp, 0, 0, 0, UIntPtr.Zero);
+            }
+        }
+    }
+
+    [Theory]
     [InlineData("mouse")]
     [InlineData("enter")]
     [InlineData("escape")]
