@@ -2254,12 +2254,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     {
         await WithChatAsync(480, async (surface, _, _, provider) =>
         {
-            await ui.RunOnUIAsync(() =>
-            {
-                var button = FindControl<Button>(surface, "ChatComposerModelPicker");
-                button.Flyout.ShowAt(button);
-            });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: true);
             await ui.RunOnUIAsync(() =>
             {
                 var popup = ModelPopup(surface);
@@ -2270,7 +2265,17 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.True(FindControl<ListViewItem>(popup, "ChatModelChoice_github-copilot/claude-opus-4.7").IsSelected);
                 FindControl<AutoSuggestBox>(popup, "ChatModelSearch").Text = query;
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                if (TryModelPopup(surface) is not { } popup) return false;
+                return FindDescendants<ListView>(popup).Any(list =>
+                    AutomationProperties.GetAutomationId(list) == "ChatModelList" && list.Items.Count == count) &&
+                    FindDescendants<ListViewItem>(popup).Count(row =>
+                        row is { IsLoaded: true, ActualHeight: > 0 } &&
+                        AutomationProperties.GetAutomationId(row).StartsWith("ChatModelChoice_", StringComparison.Ordinal)) == count &&
+                    FindDescendants<TextBlock>(popup).Any(text =>
+                        text is { IsLoaded: true, ActualHeight: > 0 } && text.Text == heading);
+            }, $"filtered model rows and provider heading for {query}"));
             Assert.Null(provider.SelectedModel);
             Assert.Equal(0, provider.ClearModelCalls);
             await ui.RunOnUIAsync(() =>
@@ -2280,9 +2285,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(count, FindControl<ListView>(popup, "ChatModelList").Items.Count);
                 Assert.Equal(count, FindDescendants<ListViewItem>(popup).Count(button =>
                     AutomationProperties.GetAutomationId(button).StartsWith("ChatModelChoice_", StringComparison.Ordinal)));
-                Invoke(FindControl<ListViewItem>(popup, "ChatModelChoice_" + selectionId));
             });
-            await SettleAsync();
+            await ChangeModelFlyoutAsync(surface, open: false, () =>
+                Invoke(FindControl<ListViewItem>(ModelPopup(surface), "ChatModelChoice_" + selectionId)));
             Assert.Equal(selectionId, provider.SelectedModel);
             Assert.Equal(0, provider.ClearModelCalls);
         }, "provider-names");

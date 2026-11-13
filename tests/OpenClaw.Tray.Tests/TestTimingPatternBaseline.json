@@ -100,7 +100,7 @@
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Conversation.cs": 33,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Panels.cs": 17,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.WorkAlignment.cs": 14,
-    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.cs": 122,
+    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.cs": 119,
     "tests/OpenClaw.Tray.UITests/ReactorMarkdownReadingRampProofTests.cs": 1,
     "tests/OpenClaw.Tray.UITests/ReactorMarkdownWebParityProofTests.cs": 2,
     "tests/OpenClaw.Tray.UITests/ReactorQuestionProofTests.cs": 26,
