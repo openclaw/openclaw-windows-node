@@ -3409,6 +3409,46 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                        message.SendState == ChatQueuedMessageSendState.Failed);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectionLostDuringActiveSend_KeepsQueuedMessageUnsentWhicheverNotificationArrivesFirst(
+        bool statusBeforeCancellation)
+    {
+        // The client cancels a dispatched chat.send when its connection drops and then reports the
+        // disconnect, but the provider can observe the two in either order. The active message may
+        // have reached the gateway, so its cancellation is not a send failure, and the queued
+        // message must not be dispatched into the dropped connection.
+        var sendGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, notifications) = CreateProvider(new[] { MainSession() });
+        bridge.SendBehavior = (_, _, _) => sendGate.Task;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var activeSend = provider.SendMessageAsync("main", "active across drop");
+        await provider.SendMessageAsync("main", "queued across drop");
+        if (statusBeforeCancellation)
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        sendGate.SetException(new OperationCanceledException("Request canceled"));
+        await activeSend;
+        if (!statusBeforeCancellation)
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.DoesNotContain(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Text.Contains("Request canceled", StringComparison.Ordinal));
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal("queued across drop", queued.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Failed, queued.SendState);
+        Assert.Equal(
+            "The connection dropped before the gateway accepted this message.",
+            queued.ErrorText);
+        Assert.Equal(["active across drop"], bridge.SentMessages);
+        Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.Error);
+    }
+
     [Fact]
     public async Task Status_ReconnectAfterActiveRun_DoesNotStrandFutureSendBehindStaleRunId()
     {

@@ -173,4 +173,33 @@ public class OnboardingFlowPolicyTests
         Assert.Contains(steps, step => step is RunGatewayWizardStep);
         Assert.Contains(steps, step => step is WindowsNodeBootstrapContextStep);
     }
+
+    [Fact]
+    public void StepPlan_GroupsEveryChoicePageUnderChooseTools()
+    {
+        var stages = OnboardingFlowPolicy.GetStages(SetupGatewayRoute.ManagedWsl, new SetupConfig());
+        foreach (var stage in new[] { OnboardingStage.Welcome, OnboardingStage.Gateway, OnboardingStage.Capabilities, OnboardingStage.GatewayReview })
+        {
+            Assert.Equal(
+                [OnboardingDesignStepState.Current, OnboardingDesignStepState.Upcoming,
+                    OnboardingDesignStepState.Upcoming, OnboardingDesignStepState.Upcoming],
+                OnboardingStepPlan.Build(stages, stage));
+        }
+        Assert.Equal(
+            [OnboardingDesignStepState.Done, OnboardingDesignStepState.Done,
+                OnboardingDesignStepState.Done, OnboardingDesignStepState.Current],
+            OnboardingStepPlan.Build(stages, OnboardingStage.Ready));
+    }
+
+    [Fact]
+    public void StepPlan_MarksSetUpSkippedOnlyAfterAnExistingGatewayPassesIt()
+    {
+        var stages = OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Existing, new SetupConfig());
+        Assert.Equal(OnboardingDesignStepState.Upcoming,
+            OnboardingStepPlan.Build(stages, OnboardingStage.Capabilities)[(int)OnboardingDesignStep.SetUp]);
+        Assert.Equal(
+            [OnboardingDesignStepState.Done, OnboardingDesignStepState.Skipped,
+                OnboardingDesignStepState.Current, OnboardingDesignStepState.Upcoming],
+            OnboardingStepPlan.Build(stages, OnboardingStage.AiSetup));
+    }
 }

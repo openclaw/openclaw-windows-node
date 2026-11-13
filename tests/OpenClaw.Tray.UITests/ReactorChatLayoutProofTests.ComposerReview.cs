@@ -197,6 +197,73 @@ public sealed partial class ReactorChatLayoutProofTests
         });
     }
 
+    [Fact]
+    public async Task ComposerDraft_NativeEditReachesViewModelBeforeAnyComposerRender()
+    {
+        // TextBox raises TextChanged after the edit (after Normal-priority dispatcher work),
+        // while Reactor rewrites a TextBox whose text differs from the rendered draft. A
+        // composer render in that gap used to erase the edit. The synchronous assertions
+        // after the edit are the regression check: the draft must reach the view model when
+        // the edit happens, even while a background update is waiting to apply.
+        const string draft = "Keep this native draft.";
+        await WithChatAsync(800, async (surface, _, session, _) =>
+        {
+            TextBox? input = null;
+            var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await ui.RunOnUIAsync(() =>
+            {
+                input = FindControl<TextBox>(surface, "ChatComposerInput");
+                var muted = session.ViewModel.IsSpeakerMuted;
+                // Spin rather than block in a pumping wait so the queued update cannot apply first.
+                var background = Task.Run(() => session.ViewModel.SetSpeakerMuted(!muted));
+                Assert.True(SpinWait.SpinUntil(() => background.IsCompleted, TimeSpan.FromSeconds(10)));
+                Assert.Equal(muted, session.ViewModel.IsSpeakerMuted);
+                input.TextChanged += (_, _) => changed.TrySetResult();
+
+                input.Text = draft;
+
+                Assert.Equal(draft, session.ViewModel.Draft);
+                Assert.Equal(!muted, session.ViewModel.IsSpeakerMuted);
+                // Request a composer render before the deferred TextChanged arrives.
+                session.ViewModel.SetSpeakerMuted(muted);
+            });
+            await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal(draft, input!.Text);
+                Assert.Equal(draft, session.ViewModel.Draft);
+            });
+        });
+    }
+
+    [Fact]
+    public async Task ComposerDraft_LateTextChangedDoesNotRestoreReplacedText()
+    {
+        // A programmatic draft change (slash commit, clear after send) can land before the
+        // deferred TextChanged of an earlier edit. When that event runs before the composer
+        // renders the new draft (the usual order), it reads the old TextBox text and must
+        // not write it back. If the render happens to run first, this test cannot detect it.
+        const string replaced = "Replaced by the composer.";
+        await WithChatAsync(800, async (surface, _, session, _) =>
+        {
+            TextBox? input = null;
+            var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await ui.RunOnUIAsync(() =>
+            {
+                input = FindControl<TextBox>(surface, "ChatComposerInput");
+                input.TextChanged += (_, _) => changed.TrySetResult();
+                input.Text = "Typed before the replacement.";
+                session.ViewModel.SetDraft(replaced);
+            });
+            await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => input!.Text == replaced && session.ViewModel.Draft == replaced,
+                "composer renders the replacement draft",
+                () => $"text='{input!.Text}', draft='{session.ViewModel.Draft}'"));
+        });
+    }
+
     [Theory]
     [InlineData("fr-fr")]
     [InlineData("pt-br")]

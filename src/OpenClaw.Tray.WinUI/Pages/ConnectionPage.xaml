@@ -55,6 +55,18 @@
         <Style x:Key="ConnectionCapabilityPillOffTextStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
         </Style>
+        <Style x:Key="ConnectionGlanceNeutralButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}"/>
+            <Setter Property="BackgroundSizing" Value="OuterBorderEdge"/>
+            <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </Style>
+        <Style x:Key="ConnectionGlanceAttentionButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource SubtleButtonStyle}">
+            <Setter Property="Background" Value="{ThemeResource ConnectionCapabilityPillCautionBrush}"/>
+            <Setter Property="BackgroundSizing" Value="OuterBorderEdge"/>
+            <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCautionBrush}"/>
+        </Style>
     </Page.Resources>
 
     <!--

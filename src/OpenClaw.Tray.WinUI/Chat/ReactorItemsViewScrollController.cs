@@ -147,6 +147,7 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _disclosureAnchored;
     private bool _readerAnchored;
     private int? _readerBringCorrelationId;
+    private FrameworkElement? _tailBringTarget;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
@@ -610,6 +611,18 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
     {
+        var requested = args.RequestEventArgs?.TargetElement;
+        if (requested is not null && ReferenceEquals(requested, _tailBringTarget))
+            _tailBringTarget = null;
+        else if (ReferenceEquals(sender, _scrollView) && !args.Cancel && IsStaleCurrentItemReveal(sender, requested))
+        {
+            // ItemsView re-reveals its last keyboard-current row without focus when it is resized or
+            // shown again (for example when a side panel closes). With focus elsewhere, that would
+            // pull the reader away from their place.
+            args.Cancel = true;
+            return;
+        }
+
         if (ReferenceEquals(sender, _scrollView) && !_initialPending && !args.Cancel
             && args.RequestEventArgs?.TargetElement is Control { FocusState: FocusState.Keyboard }
             && sender.ScrollableHeight - args.TargetVerticalOffset > FollowThreshold)
@@ -891,6 +904,7 @@ file sealed class InitialTailPositioner : IDisposable
                     || repeater.GetElementIndex(target) != request.Index
                     || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
                     return;
+                _tailBringTarget = target;
                 target.StartBringIntoView(new BringIntoViewOptions
                 {
                     AnimationDesired = false,
@@ -923,6 +937,22 @@ file sealed class InitialTailPositioner : IDisposable
             ? items[request.Index]
             : null;
 
+    private bool IsStaleCurrentItemReveal(WinUIScrollView scrollView, UIElement? target) =>
+        target is ItemContainer container
+        && itemsView is { CurrentItemIndex: >= 0 and var currentIndex }
+        && scrollView.Content is ItemsRepeater repeater
+        && repeater.GetElementIndex(container) == currentIndex
+        && !ContainsFocus(itemsView);
+
+    private static bool ContainsFocus(UIElement container)
+    {
+        if (container.XamlRoot is not { } root) return false;
+        for (var element = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as DependencyObject; element is not null;
+             element = VisualTreeHelper.GetParent(element))
+            if (ReferenceEquals(element, container)) return true;
+        return false;
+    }
+
     private static bool IsNearBottom(WinUIScrollView scrollView) =>
         scrollView.ScrollableHeight - scrollView.VerticalOffset <= FollowThreshold;
 
@@ -935,6 +965,7 @@ file sealed class InitialTailPositioner : IDisposable
         _initialPending = false;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
+        _tailBringTarget = null;
         DetachLayout();
         DetachScrollView();
     }
@@ -1012,6 +1043,7 @@ file sealed class InitialTailPositioner : IDisposable
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         _explicitJumpPending = false;
+        _tailBringTarget = null;
         DetachLayout();
         DetachScrollView();
         itemsView.Loaded -= OnLoaded;

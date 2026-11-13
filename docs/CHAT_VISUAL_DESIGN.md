@@ -96,8 +96,8 @@ chrome keeps the native WinUI ramp.
 | Footer, hover metadata, status, error | 12/18 | 12; error 13 | Error stays on the status ramp |
 | Permission card | 14 title, 12/18 body and decisions, 11 caption | not compared | Native card chrome |
 
-The pinned provider-review and child-activity panels keep stock WinUI body and
-caption sizes as native chrome.
+The provider-review card and the subagent pill and list keep stock WinUI
+body and caption sizes as native chrome.
 
 Additional shared glyph aliases live in `FluentIconCatalog`: `ChevronDown`
 (E70D) and `Stop` (E71A).
@@ -175,9 +175,60 @@ output have separate stable identities so late input does not replace an
 already-open output control.
 
 Native disclosure headers and action targets keep their existing sizing; compact
-spacing does not clip header content or shrink hit targets. Provider review and
-child-agent details share a scrolling region capped at 160 pixels, leaving more
-room for the conversation while keeping all supplied details accessible.
+spacing does not clip header content or shrink hit targets.
+
+When the provider pauses or stops the selected session, a warning card sits
+above the composer in the reading column, matching the web's
+`chat-provider-review` notice: an 18-DIP caution-icon column, 10-DIP gaps,
+12/10 insets, 16-DIP corners and a 52-DIP minimum height on the composer fill
+and chat stroke. Its semibold title is "Session paused as a precaution" or
+"Session stopped as a precaution", followed by the matching secondary-text
+explanation. Whether the session can continue comes only from the review's
+`CanContinue`; missing findings or continuation text never turn a paused review
+into a stopped one. When findings or a continuation message exist, **Review
+findings** opens a read-only dialog with the continuation message, web-chat
+guidance (when continuation is allowed) and the provider's findings. Clearing the
+review, for example on disconnect, also forgets an open dialog so a returning
+review never reopens it. The native card never acknowledges or resumes the run;
+continuation remains a web-chat action.
+
+Child-agent status instead opens through the **Subagents** pill above the
+composer. The pill appears while any of the selected chat's non-archived direct
+subagents in the Gateway's current session snapshot is running, waiting, or
+queued, and stays while the Subagents tab is open. Once every subagent has
+finished and the tab is closed, it hides; the parent agent reports the results
+in the transcript. Like GitHub's status pills,
+it shows "Subagents" followed by the total count in secondary text. A spinner
+replaces the robot glyph while any subagent is running; the accessible name and
+tooltip state the running and finished counts. Its label inherits the button's
+state foreground, and the count drops its secondary tint in High Contrast, so
+hover and pressed states stay legible. Its border stays neutral while its tab is
+selected. Selecting it opens or reselects the
+Subagents tab in the shared conversation panel. Subagent spinners run at a
+slower rate than the default ring and opt out of its 16-DIP minimum size.
+
+The tab is a status list only. **Running** (working, waiting, or queued) and
+**Finished** (done, stopped, failed, or an unknown outcome) sections show counts.
+Only a recorded successful run shows the success check; aborted runs show
+Stopped, and an unknown or stale status shows a neutral "Finished". Each row has a
+robot avatar with a spinner, check, or error badge; the title; status with the
+current activity; and elapsed time. Running rows count from the run start and
+refresh each second while the tab is selected; settled rows use the recorded
+runtime. A new run clears the previous run's start time. Rows are not
+interactive and do not load child history. `ChatSubagentPresentation` is the
+single status and count owner for the pill and list. Other parent-linked
+sessions are not classified as subagents. Disconnect or parent selection closes
+the tab.
+
+This version intentionally has no child transcript, separate child
+discovery/pagination, descendant tree, Stop, persisted layout, or docking
+controls. Its session-list scope is not a claim that every historical child has
+been discovered.
+`ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
+resizing, 440-DIP initial width and compact layout below 652 DIPs. There is no
+second subagent split/focus owner. Compact presentation retains the hidden main
+conversation and uses the existing composer-visibility guard. The composer and question dock
+measure the remaining conversation column, not the full shell.
 
 Gateway-truncated tool results keep their typed truncation flag and canonical
 saved result-message/session/call identity, separately from invocation input.
@@ -394,7 +445,7 @@ closes. Pointer handlers
 observe events handled by the native Button, and drag/key deltas begin at the
 displayed, viewport-clamped width. Arrow keys resize the focused divider; Home
 and End select the current viewport's width limits. In a narrow window,
-**Back to conversation** and **Show details** switch the visible surface without
+**Back to conversation** and **Show panel** switch the visible surface without
 remounting the composer. Hiding the conversation cancels voice capture through
 the existing composer session; later visible projections cannot restart hidden
 capture or append its late result. Returning to chat never starts recording

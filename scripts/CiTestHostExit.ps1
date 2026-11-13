@@ -7,6 +7,50 @@
 $script:CiExitMaxFiles = 24
 $script:CiExitMaxTraceBytes = 32MB
 $script:CiExitMaxRecords = 32
+# vstest can return while testhost is still tearing down and holding its own trace open. Reading
+# or deleting a held file fails, so wait for the writers to close it. A writer that never closes
+# still fails the capture; only the release wait is bounded here.
+$script:CiExitTraceReleaseVariable = 'OPENCLAW_CI_HOST_EXIT_TRACE_RELEASE_SECONDS'
+$script:CiExitTraceReleaseDefaultSeconds = 60
+$script:CiExitTraceReleasePollMilliseconds = 250
+
+function Get-CiExitTraceReleaseTimeout {
+    $seconds = 0
+    $configured = [Environment]::GetEnvironmentVariable($script:CiExitTraceReleaseVariable)
+    if ([int]::TryParse($configured, [ref]$seconds) -and $seconds -ge 1 -and $seconds -le 600) { return [TimeSpan]::FromSeconds($seconds) }
+    [TimeSpan]::FromSeconds($script:CiExitTraceReleaseDefaultSeconds)
+}
+
+# Content-free name for a trace file: the vstest runner, testhost, data collector, or other.
+function Get-CiExitTraceKind([string]$Name) {
+    if ($Name -ceq 'testplatform.log') { return 'runner' }
+    if ($Name -clike 'testplatform.host.*') { return 'host' }
+    if ($Name -clike 'testplatform.datacollector.*') { return 'datacollector' }
+    'other'
+}
+
+# True when another handle still has the file open (Windows ERROR_SHARING_VIOLATION or ERROR_LOCK_VIOLATION).
+function Test-CiExitTraceHeld([string]$Path) {
+    try { [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None).Dispose(); return $false }
+    catch [IO.IOException] {
+        if ($_.Exception.HResult -in @([int]0x80070020, [int]0x80070021)) { return $true }
+        throw
+    }
+}
+
+# OnHeld, if given, receives each poll's held trace kinds; it observes and must not release files.
+function Wait-CiExitTraceRelease {
+    param([IO.FileInfo[]]$Files, [TimeSpan]$Timeout, [Collections.Generic.HashSet[string]]$HeldKinds, [scriptblock]$OnHeld)
+    $clock = [Diagnostics.Stopwatch]::StartNew()
+    while ($true) {
+        $held = @($Files | Where-Object { Test-CiExitTraceHeld $_.FullName })
+        foreach ($file in $held) { [void]$HeldKinds.Add((Get-CiExitTraceKind $file.Name)) }
+        if ($held.Count -eq 0) { return [long]$clock.ElapsedMilliseconds }
+        if ($clock.Elapsed -ge $Timeout) { throw [TimeoutException]::new('A diagnostic trace stayed open past the release deadline.') }
+        if ($OnHeld) { & $OnHeld @($held | ForEach-Object { Get-CiExitTraceKind $_.Name }) }
+        Start-Sleep -Milliseconds $script:CiExitTraceReleasePollMilliseconds
+    }
+}
 
 function Invoke-CiNativeWithExit {
     param([scriptblock]$Command, [ref]$ExitCode)
@@ -55,10 +99,11 @@ function ConvertTo-CiHostExit {
 }
 
 function Complete-CiHostExitTrace {
-    param([string]$Root, $NativeExitCode, [string]$NativeErrorType)
+    param([string]$Root, $NativeExitCode, [string]$NativeErrorType, [scriptblock]$OnTraceHeld)
     $counts = New-CiExitCounters
     $records = [Collections.Generic.List[object]]::new()
     $errorType = $null; $removed = $false; $fileCount = 0
+    $heldKinds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal); $releaseWaitMs = $null
     try {
         $files = @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction Stop)
         $fileCount = $files.Count
@@ -66,6 +111,15 @@ function Complete-CiHostExitTrace {
         foreach ($file in $files) {
             if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -or
                 $file.Name -cnotlike 'testplatform*' -or $file.Length -gt $script:CiExitMaxTraceBytes) { throw 'Unexpected diagnostic inventory.' }
+        }
+        $releaseWaitMs = Wait-CiExitTraceRelease -Files $files -Timeout (Get-CiExitTraceReleaseTimeout) -HeldKinds $heldKinds -OnHeld $OnTraceHeld
+        # Read exactly the inventory that was admitted and released.
+        $released = @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction Stop | ForEach-Object Name | Sort-Object)
+        if ((@($files | ForEach-Object Name | Sort-Object) -join '|') -cne ($released -join '|')) { throw 'Unexpected diagnostic inventory.' }
+        foreach ($file in $files) {
+            # Recheck: a held writer can grow the file after inventory.
+            $file.Refresh()
+            if ($file.Length -gt $script:CiExitMaxTraceBytes) { throw 'Unexpected diagnostic inventory.' }
             $reader = [IO.File]::OpenText($file.FullName)
             try {
                 while ($null -ne ($line = $reader.ReadLine())) {
@@ -85,11 +139,15 @@ function Complete-CiHostExitTrace {
             Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction Stop
             $removed = -not (Test-Path -LiteralPath $Root)
         }
-        catch { $errorType = $_.Exception.GetType().FullName }
+        catch {
+            # Keep the first failure; rawTraceRemoved separately reports that cleanup failed.
+            if (-not $errorType) { $errorType = $_.Exception.GetType().FullName }
+        }
     }
     [pscustomobject][ordered]@{
         source = 'vstest-exit-callback-reported'; nativeExitCode = $NativeExitCode; nativeErrorType = $NativeErrorType
         traceFiles = $fileCount; counters = $counts; records = @($records.ToArray())
+        traceReleaseWaitMs = $releaseWaitMs; heldTraceKinds = @($heldKinds | Sort-Object)
         diagnosticErrorType = $errorType; rawTraceRemoved = $removed
     }
 }

@@ -1,20 +1,63 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace OpenClaw.SetupEngine.UI.Controls;
 
-/// <summary>Native status decoration. The localized text remains the accessible meaning.</summary>
+/// <summary>
+/// One installation phase row on the progress page. The localized status text remains the
+/// accessible meaning; the leading glyph and colors are decoration.
+/// </summary>
+/// <example>
+/// <code>
+/// &lt;controls:SetupPhaseStatus x:Name="PrepareStatus" x:Uid="Onboarding_V4_PhasePrepare" /&gt;
+/// PrepareStatus.Apply(SetupInstallationStatus.Running);
+/// PrepareStatus.Activity = "Clean up stale WSL distro";
+/// </code>
+/// </example>
 public sealed partial class SetupPhaseStatus : UserControl
 {
+    public static readonly DependencyProperty HeaderProperty = DependencyProperty.Register(
+        nameof(Header), typeof(string), typeof(SetupPhaseStatus),
+        new PropertyMetadata(string.Empty, (sender, args) => ((SetupPhaseStatus)sender).ApplyHeader()));
+
     public SetupPhaseStatus() => InitializeComponent();
+
+    public string Header
+    {
+        get => (string)GetValue(HeaderProperty);
+        set => SetValue(HeaderProperty, value);
+    }
+
+    /// <summary>The phase's current step, or empty when the phase is idle.</summary>
+    public string? Activity
+    {
+        get => ActivityText.Text;
+        set
+        {
+            ActivityText.Text = value ?? "";
+            ActivityText.Visibility = string.IsNullOrWhiteSpace(value) ? Visibility.Collapsed : Visibility.Visible;
+        }
+    }
 
     public void Apply(SetupInstallationStatus status)
     {
         StatusText.Text = SetupLocalization.GetString("Onboarding_V4_Status" + status);
         RunningIcon.IsActive = status == SetupInstallationStatus.Running;
-        RunningIcon.Visibility = RunningIcon.IsActive ? Visibility.Visible : Visibility.Collapsed;
-        CompleteIcon.Visibility = status == SetupInstallationStatus.Complete ? Visibility.Visible : Visibility.Collapsed;
-        FailedIcon.Visibility = status == SetupInstallationStatus.Failed ? Visibility.Visible : Visibility.Collapsed;
-        CancelledIcon.Visibility = status == SetupInstallationStatus.Cancelled ? Visibility.Visible : Visibility.Collapsed;
+        VisualStateManager.GoToState(this, status switch
+        {
+            SetupInstallationStatus.Running => "Running",
+            SetupInstallationStatus.Complete => "Complete",
+            SetupInstallationStatus.Failed => "Failed",
+            SetupInstallationStatus.Cancelled => "Cancelled",
+            _ => "Pending",
+        }, false);
+        ApplyHeader();
+    }
+
+    private void ApplyHeader()
+    {
+        TitleText.Text = Header;
+        AutomationProperties.SetName(this, string.IsNullOrEmpty(StatusText.Text) ? Header : $"{Header}, {StatusText.Text}");
     }
 }

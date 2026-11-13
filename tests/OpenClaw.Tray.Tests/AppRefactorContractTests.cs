@@ -6,6 +6,22 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AppRefactorContractTests
 {
     [Fact]
+    public void ActiveSavedGatewayRemoval_RecordsPinnedUserIntentAfterSavingRemoval()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var source = File.ReadAllText(Path.Combine(
+            root, "src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs"));
+        var removal = ExtractMethod(source, "OnSavedRowRemoveAsync");
+
+        // Retire when saved-row removal has a behavioral seam independent of the native dialog.
+        AssertInOrder(removal,
+            "_gatewayRegistry?.RemoveAndSave(gwId)",
+            "if (wasActive && _connectionManager != null)",
+            "await _connectionManager.DisconnectByUserAsync(gwId)");
+        Assert.DoesNotContain("_connectionManager.DisconnectAsync()", removal);
+    }
+
+    [Fact]
     public void AutomationsOverview_HasOneLazyHostOwnerBoundToTheLiveClientAndDisposedBeforeGateway()
     {
         var source = ReadAppSources();
@@ -142,8 +158,20 @@ public sealed class AppRefactorContractTests
             "await ShowOnboardingAsync();",
             "EnsureNodeService(_settings);",
             "InitializeGatewayClient();",
-            "CheckOrdinaryStartupUpdateAsync(",
-            "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);");
+            "await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);",
+            "CheckOrdinaryStartupUpdateAsync(");
+    }
+
+    [Fact]
+    public void Startup_GlobalHotkey_UsesTheSettingsOwner()
+    {
+        var source = ReadAppSources();
+        var startup = ExtractMethod(source, "OnLaunchedAsync");
+
+        // Retire when mounted App lifecycle tests cover startup and settings changes together.
+        AssertInOrder(startup, "ApplyGlobalHotkey(_settings.ToSettingsData());", "CheckOrdinaryStartupUpdateAsync(");
+        Assert.DoesNotContain("new GlobalHotkeyService(", startup);
+        Assert.Single(Regex.Matches(source, @"\bnew\s+GlobalHotkeyService\s*\("));
     }
 
     [Fact]
@@ -764,7 +792,7 @@ public sealed class AppRefactorContractTests
         var enable = ExtractMethod(source, "SetMcpEnabled");
         var refresh = ExtractMethod(source, "RefreshMcpOnlyCapabilities");
         var register = ExtractMethod(source, "RegisterCapabilities");
-        var start = ExtractMethod(source, "StartMcpServer");
+        var start = ExtractMethod(source, "StartMcpServerLocked");
 
         AssertInOrder(
             enable,
@@ -1535,7 +1563,8 @@ public sealed class AppRefactorContractTests
         AssertInOrder(
             remove,
             "_gatewayRegistry?.RemoveAndSave(gwId)",
-            "await _connectionManager.DisconnectAsync()");
+            "return;",
+            "await _connectionManager.DisconnectByUserAsync(gwId)");
     }
 
     [Fact]
@@ -1596,7 +1625,7 @@ public sealed class AppRefactorContractTests
 
         Assert.Contains("restartRequired: result.RequiresRestart", progress);
         Assert.Contains("if (args.RequiresRestart)", complete);
-        Assert.Contains("OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?", complete);
+        Assert.Contains("SetupLocalization.GetString(\"Onboarding_Complete_RestartPrompt\")", complete);
         Assert.Contains("Content=\"Yes, restart now\"", xaml);
         Assert.Contains("Content=\"No, I'm not ready yet\"", xaml);
         Assert.Contains("Path.Combine(Environment.SystemDirectory, \"shutdown.exe\")", restartLauncher);
@@ -2030,7 +2059,9 @@ public sealed class AppRefactorContractTests
         var viewport = choices.Ancestors(xaml + "ScrollViewer").Single();
 
         Assert.Equal(xaml + "ScrollViewer", viewport.Name);
-        Assert.Equal("560", (string?)viewport.Attribute("MaxWidth"));
+        // The shell's page column caps the viewport at the 600-DIP design width plus its gutter.
+        Assert.Null(viewport.Attribute("MaxWidth"));
+        Assert.Equal("{StaticResource SetupGutterMargin}", (string?)choices.Parent!.Attribute("Margin"));
         Assert.Equal("Stretch", (string?)viewport.Attribute("HorizontalAlignment"));
         Assert.Equal("Stretch", (string?)viewport.Attribute("HorizontalContentAlignment"));
         Assert.Null(choices.Attribute("MaxWidth"));
@@ -2061,7 +2092,7 @@ public sealed class AppRefactorContractTests
         Assert.DoesNotContain("x:Name=\"InstallCard\"", xaml);
         Assert.DoesNotContain("x:Name=\"ConnectCard\"", xaml);
         Assert.DoesNotContain("UpdateCardSelection", welcomePage);
-        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<Grid Grid.Row=\"2\"");
+        AssertInOrder(xaml, "<ScrollViewer Grid.Row=\"1\"", "</ScrollViewer>", "<controls:SetupFooterPanel Grid.Row=\"2\"");
         Assert.DoesNotContain("GatewayChoiceSelector.SelectedIndex = 0;", welcomePage);
         Assert.Contains("_suppressSelectionWrite = true", welcomePage);
         Assert.Contains("SetupWindow.Active?.WelcomeGatewayChoice", welcomePage);

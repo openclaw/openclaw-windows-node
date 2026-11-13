@@ -680,10 +680,12 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Equal($"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone.",
                     removeText.DocumentRange.GetText(-1).TrimEnd('\r', '\n'));
                 var removeDialog = FindById(run, "AutomationsConfirmDialog")!;
-                var cancel = removeDialog.FindFirst(TreeScope.Descendants, new AndCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                    new PropertyCondition(AutomationElement.NameProperty, "Cancel")));
-                await WaitUiAsync(run, () => cancel.Current.HasKeyboardFocus, "Cancel receives destructive initial focus");
+                // Re-acquire Cancel on every poll: a dialog re-render can replace the button's peer.
+                await WaitUiAsync(run, () => FindById(run, "AutomationsConfirmDialog")?.FindFirst(TreeScope.Descendants,
+                    new AndCondition(
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                        new PropertyCondition(AutomationElement.NameProperty, "Cancel"))) is { Current.HasKeyboardFocus: true },
+                    "Cancel receives destructive initial focus");
                 Assert.Equal(ControlType.Window, removeDialog.Current.ControlType);
                 Assert.True(((WindowPattern)removeDialog.GetCurrentPattern(WindowPattern.Pattern)).Current.IsModal);
                 await ScanStateAsync("remove confirmation");
@@ -794,14 +796,7 @@ public sealed partial class GatewayFixtureUiTests
     {
         await WithAppAsync(async run =>
         {
-            await run.InvokeAsync("app.navigate", new { page = "settings" });
-            await WaitUiAsync(run, () => FindById(run, "SettingsPageAppTheme") is not null, "theme setting");
-            ((ExpandCollapsePattern)FindById(run, "SettingsPageAppTheme")!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-            await WaitUiAsync(run, () => FindText(run, "Light") is not null, "Light theme");
-            var light = AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.NameProperty, "Light")).Cast<AutomationElement>())
-                .First(element => element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
-            ((SelectionItemPattern)light.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            await SelectAppThemeAsync(run, "Light");
             await OpenMainAutomationsAsync(run, maximize: false);
             try
             {
@@ -1198,13 +1193,25 @@ public sealed partial class GatewayFixtureUiTests
     private static async Task SelectAppThemeAsync(GatewayFixtureRun run, string theme)
     {
         await run.InvokeAsync("app.navigate", new { page = "settings" });
-        await WaitUiAsync(run, () => FindById(run, "SettingsPageAppTheme") is not null, "theme setting");
-        ((ExpandCollapsePattern)FindById(run, "SettingsPageAppTheme")!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUiAsync(run, () => FindText(run, theme) is not null, "theme choice");
-        var option = AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.NameProperty, theme)).Cast<AutomationElement>())
-            .First(element => element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
-        ((SelectionItemPattern)option.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        // The selector is in the UIA tree before the arriving page can open it; an early Expand is ignored.
+        AutomationElement? selector = null;
+        await WaitUiAsync(run, () => (selector = FindById(run, "SettingsPageAppTheme")) is
+            { Current.IsOffscreen: false, Current.IsEnabled: true }, "theme selector ready");
+        var expander = (ExpandCollapsePattern)selector!.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+        expander.Expand();
+        await WaitUiAsync(run, () => expander.Current.ExpandCollapseState == ExpandCollapseState.Expanded,
+            "theme dropdown expanded");
+        // Wait for the dropdown's own list item: the closed selector already shows the current theme's name.
+        var themeOption = new AndCondition(
+            new PropertyCondition(AutomationElement.NameProperty, theme),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+        AutomationElement? option = null;
+        await WaitUiAsync(run, () => (option = FindInApp(run, themeOption)) is not null &&
+            option.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _), "theme choice");
+        ((SelectionItemPattern)option!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        expander.Collapse();
+        await WaitUiAsync(run, () => expander.Current.ExpandCollapseState == ExpandCollapseState.Collapsed,
+            "theme dropdown closed");
     }
 
     private static async Task OpenMainAutomationsAsync(GatewayFixtureRun run, bool maximize = true)
@@ -1564,8 +1571,11 @@ public sealed partial class GatewayFixtureUiTests
         var marker = window.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "CronPageMarker"));
         if (marker is null) return null;
-        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, marker, run.AppProcessId),
+        // Polled while Automations re-renders: a marker peer that is detached or replaced proves nothing yet.
+        var markerEvidence = NativeUiOwnership.Classify(window, marker, run.AppProcessId);
+        Assert.True(markerEvidence != NativeUiOwnership.Evidence.Foreign,
             "Automations page marker must belong to the retained native window.");
+        if (markerEvidence != NativeUiOwnership.Evidence.Owned) return null;
         var markerIdentity = marker.GetRuntimeId();
         bool IsMarker(AutomationElement? element) => element is not null
             && NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId)

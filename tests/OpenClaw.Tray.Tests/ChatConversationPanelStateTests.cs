@@ -41,6 +41,51 @@ public sealed class ChatConversationPanelStateTests
     }
 
     [Fact]
+    public void SubagentsSharesTheTabStripWithoutReplacingToolDetails()
+    {
+        var state = new ChatConversationPanelState();
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true,
+            subagentsCurrent: () => true);
+        Assert.True(state.Open(Request("first"), state.Revision));
+        Assert.True(state.OpenSubagents(state.Revision));
+        Assert.True(state.OpenSubagents(state.Revision));
+        Assert.Equal(["details", "subagents"], state.Tabs);
+        Assert.Equal("subagents", state.Selected);
+        Assert.Equal(Request("first"), state.Details);
+        state.Select("details");
+        Assert.Equal("details", state.Selected);
+        state.Close("details");
+        Assert.Equal(["subagents"], state.Tabs);
+        Assert.Equal("subagents", state.Selected);
+        Assert.Null(state.Details);
+        state.Close("subagents");
+        Assert.Empty(state.Tabs);
+    }
+
+    [Fact]
+    public void SubagentsUsesCurrentConnectionAdmissionWithoutWeakeningToolProfileAdmission()
+    {
+        var state = new ChatConversationPanelState();
+        var connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        var revision = state.Revision;
+        Assert.True(state.OpenSubagents(revision));
+        Assert.False(state.Open(Request("first"), revision));
+        connected = false;
+        Assert.False(state.OpenSubagents(revision));
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Selected);
+        state.Invalidate();
+        connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true,
+            subagentsCurrent: () => connected);
+        Assert.False(state.OpenSubagents(revision));
+    }
+
+    [Fact]
     public void StreamingUpdate_ResolvesLatestOutputWithoutChangingSelection()
     {
         var state = new ChatConversationPanelState();
