@@ -11,6 +11,13 @@ namespace OpenClaw.Tray.Tests;
 /// </summary>
 public class WizardConsoleTailTests
 {
+    private const string StepTimeoutVariable = "OPENCLAW_TRAY_TEST_WIZARD_TAIL_TIMEOUT_SECONDS";
+    // Hang guard for one owner-completed step. A step can span the tail's real retry backoff
+    // (up to 1.5 s) and 500 ms poll, whose timer continuations wait for the shared thread pool.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(StepTimeoutVariable), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(30);
+
     private static JsonElement Payload(long cursor, long size, params string[] lines)
         => PayloadFromFile("agent-wizard.log", cursor, size, lines);
 
@@ -79,7 +86,7 @@ public class WizardConsoleTailTests
 
         await tail.StartGatewayAsync(message => delivered.TrySetResult(message),
             _ => { }, CancellationToken.None);
-        string received = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        string received = await delivered.Task.WaitAsync(StepTimeout);
         tail.Stop();
 
         Assert.Contains("https://auth.example/authorize", received, StringComparison.Ordinal);
@@ -151,7 +158,7 @@ public class WizardConsoleTailTests
             },
             issue => issues.Add(issue),
             CancellationToken.None);
-        await receivedBoth.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await receivedBoth.Task.WaitAsync(StepTimeout);
         tail.Stop();
 
         Assert.Equal([GatewayLogTailIssue.Skipped], issues);
@@ -173,7 +180,7 @@ public class WizardConsoleTailTests
             _ => throw new InvalidOperationException("A replaced log must not be projected."),
             value => issue.TrySetResult(value),
             CancellationToken.None);
-        GatewayLogTailIssue result = await issue.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        GatewayLogTailIssue result = await issue.Task.WaitAsync(StepTimeout);
         tail.Stop();
 
         Assert.Equal(GatewayLogTailIssue.Skipped, result);
@@ -203,7 +210,7 @@ public class WizardConsoleTailTests
             _ => throw new InvalidOperationException("A failed RPC must not invent a console message."),
             value => issue.TrySetResult(value),
             CancellationToken.None);
-        GatewayLogTailIssue result = await issue.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        GatewayLogTailIssue result = await issue.Task.WaitAsync(StepTimeout);
         tail.Stop();
 
         Assert.Equal(GatewayLogTailIssue.Unavailable, result);
@@ -247,7 +254,7 @@ public class WizardConsoleTailTests
         // Snapshot cursors inside onMessage: it runs in the same sequential flow as the
         // gatewayLogTail delegate, so a late test continuation cannot observe the next poll.
         await tail.StartGatewayAsync(message => delivered.TrySetResult((message, cursors.ToArray())), issues.Add, default);
-        var (message, observed) = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var (message, observed) = await delivered.Task.WaitAsync(StepTimeout);
         tail.Stop();
         Assert.Equal("new OAuth instructions", message);
         Assert.Equal(new long?[] { null, 100, 100 }, observed);
@@ -274,7 +281,7 @@ public class WizardConsoleTailTests
         });
 
         await tail.StartGatewayAsync(message => delivered.TrySetResult((message, cursors.ToArray())), issues.Add, default);
-        var (message, observed) = await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var (message, observed) = await delivered.Task.WaitAsync(StepTimeout);
         tail.Stop();
         Assert.Equal("new instructions", message);
         Assert.Equal(new long?[] { null, null, 100 }, observed);
@@ -321,7 +328,7 @@ public class WizardConsoleTailTests
     [Fact]
     public async Task IsolatedTailBoundsRetriesAndKeepsFailureVisible()
     {
-        var exhausted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var exhausted = new TaskCompletionSource<GatewayLogTailIssue>(TaskCreationOptions.RunContinuationsAsynchronously);
         int calls = 0;
         using var tail = new WizardConsoleTail(gatewayLogTail: (cursor, _) =>
         {
@@ -329,12 +336,9 @@ public class WizardConsoleTailTests
             return cursor is null ? Task.FromResult(Payload(100, 100))
                 : Task.FromException<JsonElement>(new IOException("unavailable"));
         });
-        await tail.StartGatewayAsync(_ => Assert.Fail("No synthetic console output."), issue =>
-        {
-            Assert.Equal(GatewayLogTailIssue.Unavailable, issue);
-            exhausted.TrySetResult();
-        }, default);
-        await exhausted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await tail.StartGatewayAsync(_ => Assert.Fail("No synthetic console output."),
+            issue => exhausted.TrySetResult(issue), default);
+        Assert.Equal(GatewayLogTailIssue.Unavailable, await exhausted.Task.WaitAsync(StepTimeout));
         Assert.Equal(4, Volatile.Read(ref calls));
     }
 
