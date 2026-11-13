@@ -75,7 +75,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     {
                         OnboardingDesignStepState.Done, setUp,
                         OnboardingDesignStepState.Done, OnboardingDesignStepState.Current,
-                    }, SetupCompanion.Find(ready)!.Steps.States!);
+                    }, (await OnboardingNativeProof.CompanionAsync(ready)).Steps.States!);
                     await SaveViewportsAsync(readyWindow, ready, $"ready-gateway-{kind}-{theme}");
                 }, findGateway: Describe);
         });
@@ -99,7 +99,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             Assert.Equal(Visibility.Collapsed, Find<Expander>(page, "NativeRecovery").Visibility);
             Assert.Empty(Find<TextBlock>(page, "NativeOutput").Text);
             Assert.Equal(Visibility.Collapsed, Find<Button>(page, "LegacyButton").Visibility);
-            var steps = SetupCompanion.Find(page)!.Steps;
+            var steps = (await OnboardingNativeProof.CompanionAsync(page)).Steps;
             Assert.Equal(new[]
             {
                 OnboardingDesignStepState.Done, OnboardingDesignStepState.Done,
@@ -402,7 +402,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(400));
                     var readyRoot = Assert.IsAssignableFrom<FrameworkElement>(readyWindow.Content);
                     Assert.Single(Find<SetupFooterPanel>(ready, "ChatActionPanel").Children);
-                    OnboardingNativeProof.AssertFullyVisible(SetupCompanion.Find(ready)!.Steps, readyRoot);
+                    OnboardingNativeProof.AssertFullyVisible((await OnboardingNativeProof.CompanionAsync(ready)).Steps, readyRoot);
                     await SetupWindowMinimumSizeTests.SaveViewportsAsync(
                         readyWindow, ready, ui, output, $"setup-minimum-ready-{theme}");
                     Assert.Empty(navigated);
