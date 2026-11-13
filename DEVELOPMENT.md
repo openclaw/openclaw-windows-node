@@ -1307,6 +1307,7 @@ Direct `dotnet build` without the script will fail with "WindowsAppSDKSelfContai
 | `OPENCLAW_NATIVE_GATEWAY_INSPECT_TIMEOUT=30` | Native Gateway ownership-inspection deadline in whole seconds (5-120, default 15) |
 | `OPENCLAW_VISUAL_TEST=1` | Enable automatic screenshot capture on page transitions |
 | `OPENCLAW_VISUAL_TEST_DIR=path` | Output directory for visual test screenshots |
+| `OPENCLAW_LOCAL_AI_DEV_LOW_MEMORY_MODELS=0` | Opt out of the low-memory Local AI recipes, Qwen3.5 9B and DeepSeek-R1-Distill-Qwen-14B (Q3_K_M). They are offered, recommended and launched with their full context/KV profile sets by default so Local AI works on 12 and 16 GB GPUs; set "0" at user level (`setx`) so the tray, setup UI and setup engine all see the opt-out. A low-memory install with a reduced profile fails launch validation in any process that has opted out. Tests force the opt-out at startup. |
 
 ### Testing the Wizard Locally
 

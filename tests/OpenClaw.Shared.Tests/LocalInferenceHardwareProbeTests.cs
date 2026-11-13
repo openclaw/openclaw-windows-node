@@ -26,8 +26,10 @@ public sealed class LocalInferenceHardwareProbeTests(ITestOutputHelper output)
             Assert.Equal(reading.Value.TotalBytes, gpu.GpuVisibleMemoryBytes);
             Assert.Equal(reading.Value.FreeBytes, gpu.FreeGpuVisibleMemoryBytes);
             Assert.Null(gpu.SharedGpuMemoryBytes);
+            Assert.NotNull(gpu.ComputeCapability);
             output.WriteLine(
-                $"{gpu.Name}: CUDA total={gpu.GpuVisibleMemoryBytes} free={gpu.FreeGpuVisibleMemoryBytes}");
+                $"{gpu.Name}: CUDA total={gpu.GpuVisibleMemoryBytes} free={gpu.FreeGpuVisibleMemoryBytes} " +
+                $"cc={gpu.ComputeCapability} driverCuda={gpu.CudaMajorVersion}");
         }
 
         LocalInferenceEligibilityResult result = LocalInferenceEligibility.Evaluate(hardware);
@@ -48,6 +50,7 @@ public sealed class LocalInferenceHardwareProbeTests(ITestOutputHelper output)
         public int? TryReadDeviceHandle(int ordinal) => _reader.TryReadDeviceHandle(ordinal);
         public string? TryReadDeviceName(int device) => _reader.TryReadDeviceName(device);
         public string? TryReadDeviceUuid(int device) => _reader.TryReadDeviceUuid(device);
+        public Version? TryReadComputeCapability(int device) => _reader.TryReadComputeCapability(device);
 
         public (long FreeBytes, long TotalBytes)? TryReadMemoryInfo(int device)
         {

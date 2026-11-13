@@ -45,5 +45,6 @@ public class LocalInferenceCommitBudgetTests
         public string? TryReadDeviceName(int device) => "NVIDIA RTX Spark N1X";
         public string? TryReadDeviceUuid(int device) => "GPU-commit-budget";
         public (long FreeBytes, long TotalBytes)? TryReadMemoryInfo(int device) => (48, 64);
+        public Version? TryReadComputeCapability(int device) => new(12, 0);
     }
 }

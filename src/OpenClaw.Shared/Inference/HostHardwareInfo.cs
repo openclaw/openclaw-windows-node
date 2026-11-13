@@ -43,6 +43,10 @@ public enum GpuVendor
 /// Major version of the CUDA driver API the display driver supports, when known.
 /// </param>
 /// <param name="StableId">A CUDA driver-provided stable adapter identifier.</param>
+/// <param name="ComputeCapability">
+/// CUDA device compute capability (major.minor) from <c>cuDeviceGetAttribute</c>, when known.
+/// Selects which CUDA runtime build can execute on the device.
+/// </param>
 public sealed record GpuInfo(
     GpuVendor Vendor,
     string Name,
@@ -52,7 +56,8 @@ public sealed record GpuInfo(
     long? FreeSharedGpuMemoryBytes = null,
     string? DriverVersion = null,
     int? CudaMajorVersion = null,
-    string? StableId = null)
+    string? StableId = null,
+    Version? ComputeCapability = null)
 {
     /// <summary>
     /// True for an RTX Spark unified-memory adapter (e.g. "NVIDIA RTX Spark
