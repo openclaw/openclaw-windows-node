@@ -749,7 +749,8 @@ internal sealed partial class SettingsShellView : UserControl
 
         // Each agents.list response rebuilds this menu. Replacing its rows lets WinUI call into collected
         // items when the pane later changes (see KeyedMenuRows), so rows are reused in place.
-        var rows = _agentNavRows.Sync(AgentsNavItem.MenuItems, ids,
+        _agentNavRows.Adopt("main", DefaultAgentNavItem);
+        var rows = _agentNavRows.Sync(AgentsNavItem.MenuItems, 0, ids,
             id => new NavigationViewItem { Tag = $"agent:{id}", Icon = BuildAgentItemIcon() });
         for (var i = 0; i < ids.Count; i++)
         {
