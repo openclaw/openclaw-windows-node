@@ -139,7 +139,7 @@ the measurement, not proof that an arbitrarily short transient is impossible.
 
 Native Markdown disclosure proofs run in their own WinUI test process. Attached
 native `Expander` templates can crash the shared testhost when a later fixture
-replaces application theme resources, so the ordinary UI lane excludes
+replaces application theme resources, so both ordinary Tray UI shards exclude
 `Category=NativeMarkdownProof` and CI runs the Light accessibility/state proof
 and the link/content-policy proof together through the existing proof runner. The
 disclosure is a stock `Expander` with no theme-dependent value, so Dark and
@@ -243,8 +243,12 @@ screenshots and bounded proof outcomes are retained.
 The browser helper discovers the initial `about:blank` page through the owned
 loopback debugger's `/json/list` endpoint and connects directly to that page.
 It does not create another target through the browser-level WebSocket. Startup
-failures report the stage, elapsed time, process state, stderr character count
-and exception type, never raw Edge output or debugger URLs.
+through the first page command is bounded by a 60-second hang guard because the
+job's first, cold Edge launch can take far longer than later launches. Set
+`OPENCLAW_E2E_EDGE_STARTUP_TIMEOUT_SECONDS` (1-3600) to override it. Each
+startup reports cumulative per-stage milliseconds and the stderr character
+count. Failures also report the stage, elapsed time, limit, process state and
+exception type, never raw Edge output or debugger URLs.
 The existing fixture owns Gateway and profile teardown. This is a real released
 WSL Gateway/browser boundary, not native packaged-Gateway or Store upgrade proof.
 The run's `gateway-release.json`, result report and screenshots identify actual
@@ -409,7 +413,7 @@ input, or classifier/contract change selects `full` fail-closed. A full pull
 request runs all test and E2E lanes plus the x64 publish smoke. Pushes to `main`
 and tags also run ARM64 publish.
 
-The former serialized Windows `test` job is split into three clean-runner lanes.
+The former serialized Windows `test` job is split into clean-runner lanes.
 Each lane restores and builds its own minimal project graph and publishes a
 separate TRX artifact:
 
@@ -417,7 +421,15 @@ separate TRX artifact:
 |---|---|
 | `core-tests` | Shared, Connection, WinNode CLI |
 | `tray-tests` | Tray, SetupEngine, Tray Integration |
-| `ui-tests` | FunctionalUI, Tray UI, Axe.Windows accessibility |
+| `ui-tests` | FunctionalUI, Tray UI (first shard), Axe.Windows accessibility |
+| `tray-ui-shard` | Tray UI (second shard: workspace window, chat layout and setup classes) |
+
+The ordinary Tray UI suite is split by test class across `ui-tests` and
+`tray-ui-shard`, which run in parallel on separate runners. Both use the same
+category exclusions; `ui-tests` excludes exactly the classes `tray-ui-shard`
+selects, so every test runs once. `scripts/test-ci-workflow-contract.ps1`
+enforces that partition, and CI Gate requires both jobs whenever UI tests are
+selected. To rebalance, move whole classes between the two filters.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported

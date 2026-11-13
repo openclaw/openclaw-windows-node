@@ -135,11 +135,14 @@ public sealed class NativeUiOwnershipTests(UIThreadFixture ui)
             Assert.NotNull(decoy.FindFirst(TreeScope.Descendants, condition));
             Assert.Null(owner.FindFirst(TreeScope.Descendants, condition));
             OwnedWindowCapture.ViewportSnapshot? observed = null;
+            // Both windows are settled and only the decoy hosts the viewport, so a short bounded
+            // observation proves the read never admits the other window without the 20 s default.
             await Assert.ThrowsAsync<TimeoutException>(() => GatewayFixtureRun.WaitForConditionAsync(() =>
             {
                 observed = OwnedWindowCapture.TryReadViewport(owner, Environment.ProcessId, "CaptureViewport");
                 return Task.FromResult(observed is not null);
-            }, "never-mounted viewport in target window", System.IO.Path.GetTempPath(), () => { }));
+            }, "never-mounted viewport in target window", System.IO.Path.GetTempPath(), () => { },
+                TestSupport.NegativeObservationTimeout));
             Assert.Null(observed);
             await ui.RunOnUIAsync(() => Assert.IsType<Grid>(target.Content));
         });

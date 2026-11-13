@@ -69,11 +69,20 @@ try {
     Remove-Item -LiteralPath $scratch -Recurse -Force
 }
 
-# The UI job runs this exporter from the pipeline revision, so a promoted alpha that predates it
+# The UI jobs run this exporter from the pipeline revision, so a promoted alpha that predates it
 # (or carries a different copy) still gets the pipeline's isolated roots bound to its own checkout.
 $workflow = [IO.File]::ReadAllText((Join-Path $RepoRoot ".github\workflows\ci.yml"))
-$step = [regex]::Match($workflow,
-    '(?ms)^    - name: Configure isolated UI product roots\r?\n(?<body>.*?)(?=^    - |^  [a-z]|\z)').Groups["body"].Value
+$steps = [regex]::Matches($workflow,
+    '(?ms)^    - name: Configure isolated UI product roots\r?\n(?<body>.*?)(?=^    - |^  [a-z]|\z)')
+if ($steps.Count -lt 1) { throw "Missing UI product-root workflow step." }
+# Every job that binds UI roots (ui-tests and its tray-ui-shard) must run this exact, executed step.
+foreach ($other in $steps) {
+    if ($other.Groups["body"].Value -cne $steps[0].Groups["body"].Value) {
+        throw "Every UI job must bind its isolated roots through the same pipeline step."
+    }
+}
+Write-Output "PASS every UI job binds its roots through the same pipeline step ($($steps.Count))"
+$step = $steps[0].Groups["body"].Value
 $run = [regex]::Match($step, '(?ms)^      run: (?<value>.*)').Groups["value"].Value.TrimEnd()
 if ($run.StartsWith("|")) { $run = $run.Substring(1).TrimStart("`r", "`n") -replace '(?m)^        ', '' }
 if ([string]::IsNullOrWhiteSpace($run)) { throw "Missing UI product-root workflow script." }
@@ -145,7 +154,7 @@ try {
     }
     if (Test-Path -LiteralPath $env:GITHUB_ENV) { throw "A failed exporter extraction still wrote UI roots." }
     Write-Output "PASS workflow step fails closed when the pipeline exporter is missing"
-    Write-Output "UI profile isolation: 8 checks passed."
+    Write-Output "UI profile isolation: 9 checks passed."
 } finally {
     Pop-Location
     foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
