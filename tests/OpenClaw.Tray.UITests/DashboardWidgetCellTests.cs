@@ -766,7 +766,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             },
             ready: host => FindDescendants<Grid>(host).Any(grid =>
                 AutomationProperties.GetAutomationId(grid) == "DashboardsCards" && grid.ColumnDefinitions.Count == columns) &&
-                HeroMatchesColumn(host, "DashboardsHero", "DashboardsGallery"),
+                HeroMatchesColumn(host, "DashboardsHero", "DashboardsGallery", width),
             width: width, onViewportChanged: state.SetViewportWidth);
 
         state.Open(new BoardSessionTarget(target.Key, "main"), target.Session.DisplayName, target);
@@ -784,7 +784,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             },
             ready: host => FindDescendants<Grid>(host).Any(grid =>
                 AutomationProperties.GetAutomationId(grid) == "DashboardTabGrid_tab-0") &&
-                HeroMatchesColumn(host, "DashboardHero", "DashboardView"),
+                HeroMatchesColumn(host, "DashboardHero", "DashboardView", width),
             width: width, onViewportChanged: state.SetViewportWidth);
     }
 
@@ -814,7 +814,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         var scrollId = board ? "DashboardPageScroll" : "DashboardsGalleryScroll";
         await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             _ => { },
-            ready: host => HeroMatchesColumn(host, heroId, columnId),
+            ready: host => HeroMatchesColumn(host, heroId, columnId, 900),
             width: 900, onViewportChanged: state.SetViewportWidth,
             afterMounted: async host =>
             {
@@ -906,8 +906,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         var columnBounds = Bounds(column, host);
         Assert.DoesNotContain(FindDescendants<FrameworkElement>(host), element =>
             AutomationProperties.GetAutomationId(element) is "DashboardBackdrop" or "DashboardsBackdrop");
-        var expectedPadding = width < 720 ? 20 : 32;
-        var expectedContent = Math.Min(1200, width - 2 * expectedPadding);
+        var (expectedPadding, expectedContent) = ExpectedColumn(width);
         Assert.InRange(Math.Abs(column.ActualWidth - column.Padding.Left - column.Padding.Right - expectedContent), 0, 0.5);
         Assert.InRange(Math.Abs((columnBounds.Left + columnBounds.Right) / 2 - host.ActualWidth / 2), 0, 0.5);
         Assert.True(hero.ActualHeight > 0);
@@ -916,12 +915,23 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         Assert.Equal(new Thickness(1), hero.BorderThickness);
     }
 
-    private static bool HeroMatchesColumn(ReactorHostControl host, string heroId, string columnId)
+    private static (double Padding, double Content) ExpectedColumn(double width)
+    {
+        var padding = width < 720 ? 20 : 32;
+        return (padding, Math.Min(1200, width - 2 * padding));
+    }
+
+    // Width changes reach the column through a posted re-render, so a layout that still reflects the
+    // previous (or initial minimum-width) render can already align hero and column. Require the column
+    // to be rendered for the target width before layout is measured.
+    private static bool HeroMatchesColumn(ReactorHostControl host, string heroId, string columnId, double width)
     {
         var hero = FindDescendants<Border>(host).FirstOrDefault(element =>
             AutomationProperties.GetAutomationId(element) == heroId);
         var column = FindDescendants<Border>(host).FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == columnId);
+        var (padding, content) = ExpectedColumn(width);
         return hero is not null && column is not null && hero.ActualHeight > 0 &&
+            column.Padding.Left == padding && Math.Abs(column.Width - content - 2 * padding) <= 0.5 &&
             Math.Abs(hero.ActualWidth - column.ActualWidth + column.Padding.Left + column.Padding.Right) <= 0.5;
     }
 
@@ -962,7 +972,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                 Assert.True(scroll.ScrollableHeight > 120);
             },
             ready: host => HeroMatchesColumn(host, board ? "DashboardHero" : "DashboardsHero",
-                board ? "DashboardView" : "DashboardsGallery"),
+                board ? "DashboardView" : "DashboardsGallery", 900),
             width: 900, onViewportChanged: state.SetViewportWidth,
             afterMounted: async host =>
             {
@@ -1021,7 +1031,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                     board ? "DashboardView" : "DashboardsGallery", 1400);
             },
             ready: host => HeroMatchesColumn(host, board ? "DashboardHero" : "DashboardsHero",
-                board ? "DashboardView" : "DashboardsGallery"),
+                board ? "DashboardView" : "DashboardsGallery", 1400),
             theme: theme, width: 1400, onViewportChanged: state.SetViewportWidth);
     }
 
@@ -1185,7 +1195,8 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                 await ui.RunOnUIAsync(() => host.Width = width);
                 await WaitForMountedStateAsync(host, mounted =>
                     Math.Abs(mounted.ActualWidth - width) < 0.5 &&
-                    ById<Grid>(mounted, "DashboardsScopeLine").ColumnDefinitions.Count == (width < 1000 ? 1 : 2));
+                    ById<Grid>(mounted, "DashboardsScopeLine").ColumnDefinitions.Count == (width < 1000 ? 1 : 2) &&
+                    HeroMatchesColumn(mounted, "DashboardsHero", "DashboardsGallery", width));
                 await ui.RunOnUIAsync(() =>
                 {
                     host.UpdateLayout();
@@ -1893,8 +1904,10 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                     else
                         Invoke(ById<Button>(host, "DashboardsRefresh"));
                 });
+                // An agent switch replaces the gallery body, including its search box, through the
+                // loading skeleton. Wait for the replacement to be laid out, not merely created.
                 await WaitForMountedStateAsync(host, root => FindDescendants<FrameworkElement>(root).Any(element =>
-                    AutomationProperties.GetAutomationId(element) == "DashboardsNoResults"));
+                    AutomationProperties.GetAutomationId(element) == "DashboardsNoResults" && element.ActualHeight > 0));
                 await ui.RunOnUIAsync(() =>
                 {
                     Assert.Equal(switchAgent ? "research" : "main", state.AgentId);

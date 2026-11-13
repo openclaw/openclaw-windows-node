@@ -307,12 +307,16 @@ public sealed partial class DashboardWidgetCellTests
     {
         var snapshot = DashboardProtocol.ParseBoardSnapshot(JsonSerializer.SerializeToElement(
             boards.GetBoard(JsonSerializer.SerializeToElement(new { sessionKey = FixtureBoards.OpsSessionKey }))));
+        var chart = snapshot.Widgets.Single(widget => widget.Name == "deploy-chart");
         return snapshot with
         {
             Tabs = [new("overview", "Overview", 0, "right"), new("metrics", "Metrics", 1, "right")],
             Widgets = [
                 snapshot.Widgets.Single(widget => widget.Name == "status-card"),
-                snapshot.Widgets.Single(widget => widget.Name == "deploy-chart") with { TabId = "metrics" }],
+                // WebView2 widgets share one profile. Chromium serializes concurrent loads of one URL
+                // behind its HTTP cache lock (up to 20 s), so a held sandbox response would otherwise
+                // keep the second widget's request from reaching the fixture.
+                chart with { TabId = "metrics", SandboxUrl = chart.SandboxUrl + "&widget=" + chart.Name }],
         };
     }
 

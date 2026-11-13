@@ -487,8 +487,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdateNavigationSelection();
         UpdateHistoryButtons();
         var tag = Destination.CompanionTag ?? "settings";
+        // SettingsShellView publishes the accessibility readiness signal once the page has settled.
         view.ShowSection(tag);
-        AccessibilityNavigationSignal.WritePageReady(view.CurrentPage?.GetType().Name ?? nameof(SettingsShellView));
     }
 
     /// <summary>
