@@ -150,7 +150,7 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         var read = client.RequestChatMessageAsync("agent:example:chat", "physical-session", "requested-result",
             256 * 1024, client.SessionMutationConnectionEpoch!.Value);
-        var frame = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         using (var json = JsonDocument.Parse(frame))
         {
             Assert.Equal("chat.message.get", json.RootElement.GetProperty("method").GetString());
@@ -172,7 +172,7 @@ public class OpenClawGatewayClientTests
                 __openclaw = new { id = returnedId, truncated = true, reason = "display-cap" },
             } },
         }));
-        var result = await read.WaitAsync(TimeSpan.FromSeconds(2));
+        var result = await read.WaitAsync(StepTimeout);
         Assert.Equal(ChatMessageReadStatus.Available, result.Status);
         Assert.NotNull(result.Message);
         Assert.Equal(returnedId, result.Message.OpenClawId);
@@ -200,7 +200,7 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         var read = client.RequestChatMessageAsync("main", "physical", "requested", 262144,
             client.SessionMutationConnectionEpoch!.Value);
-        var frame = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         await server.SendTextAsync($$$$"""
             {"type":"res","id":"{{{{ReadRequestId(frame)}}}}","ok":true,"payload":{"ok":true,"message":{
               "role":"assistant","sessionKey":"source-session","phase":"commentary",
@@ -209,7 +209,7 @@ public class OpenClawGatewayClientTests
                 {"type":"toolCall","id":"yield-call","name":"sessions_yield","arguments":{"context":"private","waitFor":"message"}},
                 {"type":"toolCall","id":"read-call","name":"read","arguments":{"path":"original.txt"}}]}}}
             """);
-        var result = await read.WaitAsync(TimeSpan.FromSeconds(2));
+        var result = await read.WaitAsync(StepTimeout);
         var message = result.Message!;
         Assert.Equal("source-session", message.SessionKey);
         Assert.Equal("source-id", message.Presentation.MessageId);
@@ -238,13 +238,13 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         var read = client.RequestChatMessageAsync("main", "physical", "result", 262144,
             client.SessionMutationConnectionEpoch!.Value);
-        var frame = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         await server.SendTextAsync(JsonSerializer.Serialize(new
         {
             type = "res", id = ReadRequestId(frame), ok = true,
             payload = new { ok = false, unavailableReason = reason },
         }));
-        Assert.Equal(new ChatMessageReadResult(expected), await read.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Equal(new ChatMessageReadResult(expected), await read.WaitAsync(StepTimeout));
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
@@ -263,7 +263,7 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         var read = client.RequestChatMessageAsync("main", "physical", "result", 262144,
             client.SessionMutationConnectionEpoch!.Value);
-        var frame = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         await server.SendTextAsync(JsonSerializer.Serialize(new
         {
             type = "res", id = ReadRequestId(frame), ok = false,
@@ -271,7 +271,7 @@ public class OpenClawGatewayClientTests
         }));
         if (unsupported)
             Assert.Equal(new ChatMessageReadResult(ChatMessageReadStatus.Unsupported),
-                await read.WaitAsync(TimeSpan.FromSeconds(2)));
+                await read.WaitAsync(StepTimeout));
         else
             Assert.Contains(error, (await Assert.ThrowsAsync<InvalidOperationException>(() => read)).Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
@@ -299,9 +299,9 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         var read = client.RequestChatMessageAsync("main", "physical", "result", 262144,
             client.SessionMutationConnectionEpoch!.Value);
-        var frame = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         await server.SendTextAsync($$"""{"type":"res","id":"{{ReadRequestId(frame)}}","ok":true,"payload":{{payload}}}""");
-        await Assert.ThrowsAsync<InvalidDataException>(() => read.WaitAsync(TimeSpan.FromSeconds(2)));
+        await Assert.ThrowsAsync<InvalidDataException>(() => read.WaitAsync(StepTimeout));
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
@@ -348,7 +348,7 @@ public class OpenClawGatewayClientTests
             client.SessionMutationConnectionEpoch!.Value, cancellation.Token);
         if (afterSend)
         {
-            await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            await server.ReceiveTextAsync().WaitAsync(StepTimeout);
             cancellation.Cancel();
         }
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
@@ -373,14 +373,14 @@ public class OpenClawGatewayClientTests
         var read = client.RequestChatMessageAsync("main", "physical", "result", 262144, afterSend ? epoch : epoch - 1);
         if (afterSend)
         {
-            var frame = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
             // Invalidate authority without draining the pending reply: the completion fence must reject it.
             helper.InvalidateHandshake();
             await server.SendTextAsync(unsupported
                 ? $$$$"""{"type":"res","id":"{{{{ReadRequestId(frame)}}}}","ok":false,"error":{"message":"unknown method: chat.message.get"}}"""
                 : $$$$"""{"type":"res","id":"{{{{ReadRequestId(frame)}}}}","ok":true,"payload":{"ok":true,"message":{"role":"assistant","content":"stale"}}}""");
         }
-        await Assert.ThrowsAsync<InvalidOperationException>(() => read.WaitAsync(TimeSpan.FromSeconds(2)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => read.WaitAsync(StepTimeout));
         Assert.Equal(0, helper.GetPendingRequestCount());
         helper.MarkHandshakeReady();
         await AssertChatMessageReadConnectionUsable(client, server);
@@ -389,11 +389,11 @@ public class OpenClawGatewayClientTests
     private static async Task AssertChatMessageReadConnectionUsable(OpenClawGatewayClient client, LoopbackWebSocketServer server)
     {
         var probe = client.SendWizardRequestAsync("health");
-        var frame = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         using var json = JsonDocument.Parse(frame);
         Assert.Equal("health", json.RootElement.GetProperty("method").GetString());
         await server.SendTextAsync($$$$"""{"type":"res","id":"{{{{ReadRequestId(frame)}}}}","ok":true,"payload":{}}""");
-        await probe.WaitAsync(TimeSpan.FromSeconds(2));
+        await probe.WaitAsync(StepTimeout);
     }
 
     [Fact]
@@ -565,16 +565,16 @@ public class OpenClawGatewayClientTests
         await client.ConnectAsync();
         helper.MarkHandshakeReady();
         var getting = client.GetQuestionAsync("old-question");
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         await server.SendTextAsync(JsonSerializer.Serialize(new
         {
             type = "res", id = ReadRequestId(request), ok = false,
             error = new { message = "QUESTION_NOT_FOUND", details = new { reason } },
         }));
         if (unavailable)
-            await Assert.ThrowsAsync<GatewayQuestionUnavailableException>(() => getting.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAsync<GatewayQuestionUnavailableException>(() => getting.WaitAsync(StepTimeout));
         else
-            await Assert.ThrowsAsync<InvalidOperationException>(() => getting.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => getting.WaitAsync(StepTimeout));
     }
 
     [Theory]
@@ -594,7 +594,7 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         var sending = client.ResolveQuestionAsync("question-1",
             new Dictionary<string, string[]> { ["choice"] = ["win"] });
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         await server.SendTextAsync(JsonSerializer.Serialize(new
         {
             type = "res", id = ReadRequestId(request), ok = false,
@@ -605,7 +605,7 @@ public class OpenClawGatewayClientTests
                 details = new { reason },
             },
         }));
-        var error = await Record.ExceptionAsync(() => sending.WaitAsync(TimeSpan.FromSeconds(5)));
+        var error = await Record.ExceptionAsync(() => sending.WaitAsync(StepTimeout));
         Assert.IsType(expectedType, error);
         if (expectedType != typeof(InvalidOperationException))
             Assert.DoesNotContain("private answer", error.Message);
@@ -627,7 +627,7 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         var sending = client.ResolveQuestionAsync("question-1",
             cancel ? null : new Dictionary<string, string[]> { ["platform"] = ["win", " win ", "win"] });
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         using var frame = JsonDocument.Parse(request);
         Assert.Equal("question.resolve", frame.RootElement.GetProperty("method").GetString());
         var parameters = frame.RootElement.GetProperty("params");
@@ -648,9 +648,9 @@ public class OpenClawGatewayClientTests
             payload = new { status = badAck ? "pending" : cancel ? "cancelled" : "answered" },
         }));
         if (badAck)
-            await Assert.ThrowsAsync<JsonException>(() => sending.WaitAsync(TimeSpan.FromSeconds(5)));
+            await Assert.ThrowsAsync<JsonException>(() => sending.WaitAsync(StepTimeout));
         else
-            Assert.Equal(cancel ? "cancelled" : "answered", await sending.WaitAsync(TimeSpan.FromSeconds(5)));
+            Assert.Equal(cancel ? "cancelled" : "answered", await sending.WaitAsync(StepTimeout));
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
@@ -1323,9 +1323,9 @@ public class OpenClawGatewayClientTests
 
         // The explicit, agent-filtered refresh is never delayed by event batching.
         await client.RequestSessionsAsync("research");
-        using var explicitFrame = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var explicitFrame = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("research", explicitFrame.RootElement.GetProperty("params").GetProperty("agentId").GetString());
-        using var automaticFrame = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var automaticFrame = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("sessions.list", automaticFrame.RootElement.GetProperty("method").GetString());
         Assert.True(automaticFrame.RootElement.GetProperty("params").GetProperty("includeDerivedTitles").GetBoolean());
         Assert.False(automaticFrame.RootElement.GetProperty("params").TryGetProperty("agentId", out _));
@@ -1333,11 +1333,11 @@ public class OpenClawGatewayClientTests
         // Allow a wrongly retained trailing timer to expire before the wire ordering barrier.
         await Task.Delay(SessionRefreshQuietInterval);
         await client.RequestSessionsAsync("barrier");
-        using var barrier = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var barrier = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("barrier", barrier.RootElement.GetProperty("params").GetProperty("agentId").GetString());
 
         helper.ProcessRawMessage("""{"type":"event","event":"sessions.changed","payload":{}}""");
-        using var later = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var later = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.False(later.RootElement.GetProperty("params").TryGetProperty("agentId", out _));
     }
 
@@ -1361,10 +1361,10 @@ public class OpenClawGatewayClientTests
         // This exceeds the default 250 ms batching window and admits no new event until it expires.
         await Task.Delay(SessionRefreshQuietInterval);
         await client.RequestSessionsAsync("after-disconnect");
-        using var explicitFrame = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var explicitFrame = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("after-disconnect", explicitFrame.RootElement.GetProperty("params").GetProperty("agentId").GetString());
         helper.ProcessRawMessage("""{"type":"event","event":"session","payload":{}}""");
-        using var fresh = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var fresh = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("sessions.list", fresh.RootElement.GetProperty("method").GetString());
         Assert.False(fresh.RootElement.GetProperty("params").TryGetProperty("agentId", out _));
     }
@@ -1404,7 +1404,7 @@ public class OpenClawGatewayClientTests
         await client.ConnectAsync();
         helper.MarkHandshakeReady();
         helper.ProcessRawMessage("""{"type":"event","event":"sessions.changed","payload":{}}""");
-        await client.FirstSendStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await client.FirstSendStarted.Task.WaitAsync(StepTimeout);
         for (var i = 0; i < 50; i++)
             helper.ProcessRawMessage("""{"type":"event","event":"session","payload":{}}""");
 
@@ -1412,14 +1412,14 @@ public class OpenClawGatewayClientTests
         await Task.Delay(SessionRefreshQuietInterval);
         Assert.Equal(1, Volatile.Read(ref client.AutomaticSends));
         client.ReleaseFirstSend.TrySetResult();
-        using var trailing = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var trailing = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("sessions.list", trailing.RootElement.GetProperty("method").GetString());
         Assert.Equal(2, Volatile.Read(ref client.AutomaticSends));
         Assert.Contains(logger.Logs, message => message.Contains("Session event refresh failed: IOException"));
         await Task.Delay(SessionRefreshQuietInterval);
         Assert.Equal(2, Volatile.Read(ref client.AutomaticSends));
         await client.RequestSessionsAsync("barrier");
-        using var barrier = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(5)));
+        using var barrier = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("barrier", barrier.RootElement.GetProperty("params").GetProperty("agentId").GetString());
     }
 
@@ -1581,7 +1581,7 @@ public class OpenClawGatewayClientTests
         helper.MarkHandshakeReady();
         using var cancellation = new CancellationTokenSource();
         var search = client.SearchSessionsAsync("private-query", messages, cancellation.Token);
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         using (var json = JsonDocument.Parse(request))
         {
             Assert.Equal(messages ? "sessions.search" : "sessions.list", json.RootElement.GetProperty("method").GetString());
@@ -1606,7 +1606,7 @@ public class OpenClawGatewayClientTests
             payload = new { sessions = new[] { new { key = "agent:main:stale-search", label = "Stale result" } } }
         }));
         var probe = client.SendWizardRequestAsync("health");
-        var next = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var next = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         await server.SendTextAsync(JsonSerializer.Serialize(new
         {
             type = "res", id = ReadRequestId(next), ok = true, payload = new { ok = true }
@@ -2681,7 +2681,7 @@ public class OpenClawGatewayClientTests
             ["type"] = "res", ["id"] = connect.RootElement.GetProperty("id").GetString(),
             ["ok"] = true, ["payload"] = payload,
         }.ToJsonString());
-        await handshake.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await handshake.Task.WaitAsync(StepTimeout);
         Assert.True(client.IsConnectedToGateway);
         Assert.Equal("agent:main:main", client.MainSessionKey);
         Assert.Equal(signedId, client.AuthenticatedSigningDeviceId);

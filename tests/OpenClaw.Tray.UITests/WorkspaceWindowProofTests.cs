@@ -1053,7 +1053,18 @@ public sealed class WorkspaceWindowProofTests
         var nativeNavigation = observedNavigation!;
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
-        var clear = FindPopup(workspaceElement, "WorkspaceNotificationsClear");
+        // The footer link can surface before UIA exposes the header action. Classify the flyout only
+        // once it shows either its dismiss action or its empty state.
+        AutomationElement? clear = null;
+        await WaitUntilAsync(() =>
+        {
+            try
+            {
+                return (clear = FindPopup(workspaceElement, "WorkspaceNotificationsClear")) is not null ||
+                    FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null;
+            }
+            catch (ElementNotAvailableException) { return false; }
+        }, () => "Inbox flyout showed neither its dismiss action nor its empty state.");
         if (clear is not null)
         {
             Invoke(clear);
@@ -1070,13 +1081,17 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
         Invoke(Find(workspaceElement, "WorkspaceBack"));
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Assert.True(Find(workspaceElement, "WorkspaceForward").Current.IsEnabled);
+        // A page marker does not establish sibling history-button readiness.
+        await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == true,
+            () => "WorkspaceForward did not become enabled after Back.");
         Invoke(Find(workspaceElement, "WorkspaceForward"));
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Assert.False(Find(workspaceElement, "WorkspaceForward").Current.IsEnabled);
+        await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == false,
+            () => "WorkspaceForward did not become disabled after Forward.");
         ((SelectionItemPattern)Find(nativeNavigation, "WorkspaceNavHome").GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Assert.False(Find(workspaceElement, "WorkspaceForward").Current.IsEnabled);
+        await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == false,
+            () => "WorkspaceForward did not stay disabled after selecting Home.");
 
         var collapseTime = Stopwatch.StartNew();
         // TitleBar keeps its compact height whether or not its RightHeader actions are shown.
@@ -1182,6 +1197,13 @@ public sealed class WorkspaceWindowProofTests
 
     private static bool IsVisible(AutomationElement root, string id) =>
         FindOrNull(root, id) is { } element && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
+
+    /// <summary>Returns null while the control is missing or stale, so callers can wait for its settled state.</summary>
+    private static bool? IsEnabled(AutomationElement root, string id)
+    {
+        try { return FindOrNull(root, id)?.Current.IsEnabled; }
+        catch (ElementNotAvailableException) { return null; }
+    }
 
     private static bool HasVisibleNotificationsFocus(AutomationElement workspace)
     {

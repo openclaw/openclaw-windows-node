@@ -87,10 +87,11 @@ public sealed record ChatAgentIdentity(
 ///         (called automatically once per thread on first selection).</item>
 ///   <item><c>ChatMessageReceived</c> (role=assistant, final) →
 ///         <see cref="ChatMessageEvent"/> + <see cref="ChatTurnEndEvent"/>.</item>
+///   <item><c>ChatMessageReceived</c> (role=assistant, delta) → streaming
+///         cumulative <see cref="ChatMessageEvent"/>. This is the only live
+///         assistant text source; agent stream=assistant text is ignored.</item>
 ///   <item><c>ChatMessageReceived</c> (role=user) → ignored (the local
 ///         <see cref="SendMessageAsync"/> already added the user entry).</item>
-///   <item><c>AgentEventReceived</c> stream=assistant → streaming deltas
-///         (<see cref="ChatMessageDeltaEvent"/>).</item>
 ///   <item><c>AgentEventReceived</c> stream=reasoning → reasoning entry
 ///         (<see cref="ChatReasoningEvent"/>/<see cref="ChatReasoningDeltaEvent"/>).</item>
 ///   <item><c>AgentEventReceived</c> stream=lifecycle phase=start/end/error →
@@ -1667,7 +1668,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         if (transition.TurnComplete)
             _throughput.CompleteAssistant(threadId, message.OutputTokens);
         else if (transition.Snapshot!.Timelines[threadId].TurnActive && !message.IsTranscriptSnapshot)
-            _throughput.ObserveText(threadId, 0); // cumulative snapshot text: opens the window only
+            _throughput.ObserveCumulativeText(threadId, message.RunId ?? message.Presentation.RunId, message.Text?.Length ?? 0);
 
         _telemetry.ObserveInboundOutput(
             threadId,
@@ -1886,7 +1887,6 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             case ChatResponseOutputKind.Assistant or ChatResponseOutputKind.Reasoning:
                 _throughput.ObserveText(threadId, mapped switch
                 {
-                    ChatMessageDeltaEvent delta => delta.Text?.Length ?? 0,
                     ChatReasoningDeltaEvent reasoning => reasoning.Text?.Length ?? 0,
                     _ => 0,
                 });

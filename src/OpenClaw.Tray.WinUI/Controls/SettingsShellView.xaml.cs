@@ -543,7 +543,11 @@ internal sealed partial class SettingsShellView : UserControl
             tag = "settings";
 
         var pageType = HubPageRegistry.ResolvePageType(tag);
-        if (pageType == null) return;
+        if (pageType == null)
+        {
+            PublishAccessibilityReadyWhenSettled(_contentReady, CurrentPage?.GetType().Name ?? nameof(SettingsShellView));
+            return;
+        }
 
         // Identity dedupe: navigation identity = (PageType, normalized tag).
         // Page-type-only dedupe would collapse distinct logical destinations
@@ -555,7 +559,7 @@ internal sealed partial class SettingsShellView : UserControl
             if (ContentFrame.Content is DashboardsPage dashboards)
                 dashboards.Initialize(this, tag);
             _contentReady = CreateCompletedContentReady();
-            AccessibilityNavigationSignal.WritePageReady(pageType.Name);
+            PublishAccessibilityReadyWhenSettled(_contentReady, pageType.Name);
             return;
         }
 
@@ -864,9 +868,85 @@ internal sealed partial class SettingsShellView : UserControl
                 if (ReferenceEquals(_contentReady, ready) &&
                     ready.TrySetResult(true))
                 {
-                    AccessibilityNavigationSignal.WritePageReady(pageName);
+                    PublishAccessibilityReadyWhenSettled(ready, pageName);
                 }
             });
+    }
+
+    // The accessibility acknowledgement promises a page that is safe to scan. An initially expanded
+    // Expander (About's App info) still runs its ExpandDown storyboard after Loaded, sliding clipped
+    // content into place, so publish only once every expand/collapse storyboard has stopped.
+    private static readonly TimeSpan AccessibilityReadyPollInterval = TimeSpan.FromMilliseconds(50);
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _accessibilityReadyTimer;
+    private static readonly TimeSpan AccessibilityReadySettleTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_READY_SETTLE_MS"), out var ms) && ms > 0
+            ? TimeSpan.FromMilliseconds(ms)
+            : TimeSpan.FromSeconds(5);
+
+    private void PublishAccessibilityReadyWhenSettled(TaskCompletionSource<bool> ready, string? pageName)
+    {
+        _accessibilityReadyTimer?.Stop();
+        _accessibilityReadyTimer = null;
+        if (!AccessibilityNavigationSignal.IsEnabled)
+            return;
+
+        var content = ContentFrame.Content;
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var deferredPolls = 0;
+        bool TryPublish()
+        {
+            // A newer navigation, deactivation or disposal owns readiness now; never report a page that left.
+            if (_disposed || !_active || !ReferenceEquals(_contentReady, ready) ||
+                !ReferenceEquals(ContentFrame.Content, content))
+                return true;
+            // Templates (and their expand storyboards) exist only after Loaded.
+            if (content is not FrameworkElement { IsLoaded: false } && ExpandTransitionsIdle(content as DependencyObject))
+            {
+                if (deferredPolls > 0)
+                    Logger.Info($"[SettingsShellView] {pageName} accessibility readiness waited {deferredPolls} poll(s) for expand transitions.");
+                AccessibilityNavigationSignal.WritePageReady(pageName);
+                return true;
+            }
+            deferredPolls++;
+            if (started.Elapsed < AccessibilityReadySettleTimeout)
+                return false;
+            // Fail closed: the test reports its own readiness timeout instead of scanning a moving page.
+            Logger.Warn($"[SettingsShellView] {pageName} expand transitions did not settle; accessibility readiness not published.");
+            return true;
+        }
+
+        if (TryPublish())
+            return;
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = AccessibilityReadyPollInterval;
+        timer.Tick += (sender, _) =>
+        {
+            if (!TryPublish())
+                return;
+            sender.Stop();
+            if (ReferenceEquals(_accessibilityReadyTimer, sender))
+                _accessibilityReadyTimer = null;
+        };
+        _accessibilityReadyTimer = timer;
+        timer.Start();
+    }
+
+    private static bool ExpandTransitionsIdle(DependencyObject? element)
+    {
+        if (element is null)
+            return true;
+        if (element is Expander expander && VisualTreeHelper.GetChildrenCount(expander) > 0 &&
+            VisualTreeHelper.GetChild(expander, 0) is FrameworkElement chrome &&
+            VisualStateManager.GetVisualStateGroups(chrome)
+                .FirstOrDefault(states => states.Name == "ExpandStates")?.CurrentState?.Storyboard?.GetCurrentState()
+                == Microsoft.UI.Xaml.Media.Animation.ClockState.Active)
+            return false;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+        {
+            if (!ExpandTransitionsIdle(VisualTreeHelper.GetChild(element, index)))
+                return false;
+        }
+        return true;
     }
 
     private void InitializeCurrentPage()

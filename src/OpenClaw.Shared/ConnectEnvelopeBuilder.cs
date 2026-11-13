@@ -359,8 +359,12 @@ internal static class ConnectEnvelopeBuilder
     private const string InteractiveClientMode = "ui";
     private const string OperatorDisplayName = "OpenClaw Windows Tray";
     private const string ModelSelectionPolicyCapability = "model-selection-policy";
+    // The Gateway sends live assistant text on both agent and chat streams unless
+    // this is advertised. The native timeline renders the chat stream only.
+    private const string ChatOnlyAssistantTextCapability = "chat-only-assistant-text";
     // Advertising this cap keeps approvals routable, so headless clients must omit it.
-    private static readonly string[] OperatorCaps = ["exec-approvals", ModelSelectionPolicyCapability];
+    private static readonly string[] OperatorCaps =
+        ["exec-approvals", ModelSelectionPolicyCapability, ChatOnlyAssistantTextCapability];
     private const string NodeClientId = "node-host";
     private const string NodeClientMode = "node";
     private const string NodeRole = "node";
