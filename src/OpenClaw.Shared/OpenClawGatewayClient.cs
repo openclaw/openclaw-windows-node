@@ -3867,7 +3867,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     root,
                     sourceConnectionGeneration);
                 break;
+            // Session subscribers receive tool lifecycle, including parent links,
+            // through the Gateway's agent-payload mirror.
             case "agent":
+            case "session.tool":
                 HandleAgentEvent(root, rawMessageLength);
                 break;
             case "question.requested":
