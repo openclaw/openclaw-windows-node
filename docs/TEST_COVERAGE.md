@@ -217,7 +217,10 @@ file and digest at this build boundary. Actual MSIX archive inventory and
 embedded-manifest checks remain a separate packaging acceptance boundary.
 Release worker EXE/DLL signatures are verified before manifest hashing.
 `FileWorkerManifestTests.ReleaseManifestRejectsUnsignedWorkerBeforeWritingDigests`
-checks rejection for both RIDs; workflow contracts verify the signed input reaches
+checks rejection for both RIDs through the production MSBuild target launched
+from PowerShell 7, retaining its inherited module environment. It must reach
+the unsigned-worker rejection rather than fail loading the Authenticode module.
+Workflow contracts verify the signed input reaches
 portable/Inno and MSIX builds without republishing the worker. These checks do
 not prove Azure signing or installed-package acceptance.
 Companion packages each worker payload in a manifest-addressed RID slot, and its
