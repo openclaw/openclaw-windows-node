@@ -423,10 +423,12 @@ public sealed class ChatComposerViewModelTests
     {
         // Serialization contract: a mutation that arrives while on the UI thread
         // must not jump ahead of an already-queued, not-yet-drained background
-        // mutation. Both are enqueued onto one internal FIFO and applied by the
-        // same drain pass, in enqueue order.
+        // mutation. It applies the queued work first and then itself, immediately,
+        // so the UI thread never renders a draft older than its own edit.
         var dispatcher = new RecordingUiDispatcher { HasThreadAccess = false, RunEnqueuedImmediately = false };
         var vm = new ChatComposerViewModel(dispatcher, initialSpeakerMuted: false);
+        var applied = new List<string>();
+        vm.PropertyChanged += (_, _) => applied.Add(vm.Draft);
 
         // Background completion enqueues first; the drain is scheduled but held
         // back (RunEnqueuedImmediately is false) until FlushPending() runs it.
@@ -437,16 +439,43 @@ public sealed class ChatComposerViewModelTests
         dispatcher.HasThreadAccess = true;
         vm.SetDraft("from-ui-thread-while-pending");
 
-        // It must have deferred to the already-scheduled drain rather than racing
-        // ahead: nothing has applied yet, and no second drain was scheduled.
-        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Equal(["from-background", "from-ui-thread-while-pending"], applied);
         Assert.Equal(1, dispatcher.EnqueuedCount);
 
+        // The already-scheduled drain finds nothing left to apply.
         dispatcher.FlushPending();
 
-        // The single drain applies both mutations in enqueue order; the later one
-        // is the final value, exactly as if applied back-to-back in arrival order.
         Assert.Equal("from-ui-thread-while-pending", vm.Draft);
+        Assert.Equal(2, applied.Count);
+    }
+
+    [Fact]
+    public void ScheduledDrainDispatchedDuringNotification_DoesNotNestOrReorder()
+    {
+        // A UI-thread mutation drains inline while an earlier background drain is still
+        // posted. If that stale drain is dispatched from inside a notification (for
+        // example, a subscriber that pumps messages), it must leave the work to the
+        // running drain instead of applying the next mutation in a nested call.
+        var dispatcher = new RecordingUiDispatcher { HasThreadAccess = false, RunEnqueuedImmediately = false };
+        var vm = new ChatComposerViewModel(dispatcher, initialSpeakerMuted: false);
+        var applied = new List<string>();
+        var depth = 0;
+        var maxDepth = 0;
+        vm.PropertyChanged += (_, _) =>
+        {
+            maxDepth = Math.Max(maxDepth, ++depth);
+            applied.Add(vm.Draft);
+            if (vm.Draft == "from-background")
+                dispatcher.FlushPending();
+            depth--;
+        };
+
+        vm.SetDraft("from-background");
+        dispatcher.HasThreadAccess = true;
+        vm.SetDraft("from-ui-thread");
+
+        Assert.Equal(["from-background", "from-ui-thread"], applied);
+        Assert.Equal(1, maxDepth);
     }
 
     [Fact]
@@ -854,6 +883,24 @@ public sealed class ChatComposerViewModelTests
         vm.ClearDraftIfUnchanged(submittedRevision);
 
         Assert.Equal(string.Empty, vm.Draft);
+    }
+
+    [Fact]
+    public void ClearDraftIfUnchanged_ClearsWhenTheSubmittedTextIsReportedAgain()
+    {
+        // Reactor writes a programmatic draft into the TextBox and TextChanging
+        // reports it back; that repeat must not count as an edit made after the send.
+        var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);
+        var notifications = 0;
+        vm.SetDraft("hello");
+        var submittedRevision = vm.DraftRevision;
+        vm.PropertyChanged += (_, _) => notifications++;
+
+        vm.SetDraft("hello");
+        vm.ClearDraftIfUnchanged(submittedRevision);
+
+        Assert.Equal(string.Empty, vm.Draft);
+        Assert.Equal(1, notifications);
     }
 
     [Fact]
