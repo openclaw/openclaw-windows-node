@@ -32,7 +32,8 @@ public sealed record OpenClawReactorChatRootProps(
     bool InitialThreadIsExplicitSelection = true,
     IChatAgentRosterSource? AgentRosterSource = null,
     string UserDisplayName = "",
-    ImageSource? UserProfilePicture = null);
+    ImageSource? UserProfilePicture = null,
+    bool Compact = false);
 
 /// <summary>
 /// Production Reactor root for the native chat surface. It owns the provider
@@ -183,6 +184,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ? null
             : snapshot.Threads.FirstOrDefault(thread => string.Equals(thread.Id, selectedId, StringComparison.Ordinal));
         if (selectedMaterializedThread is null
+            && !props.Compact
             && selectedId is not null
             && snapshot.DefaultThreadId is { } fallbackId
             && ChatLifecycleSelectionPolicy.ShouldFallback(
@@ -196,7 +198,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 string.Equals(thread.Id, fallbackId, StringComparison.Ordinal));
         }
 
-        var effectiveThread = selectedMaterializedThread ?? CreateComposeOnlyThread(props.Provider, snapshot);
+        var effectiveThread = selectedMaterializedThread
+            ?? CreateComposeOnlyThread(props.Provider, snapshot, props.Compact ? selectedId : null);
         if (selectedMaterializedThread is { } selected && string.Equals(_pendingSelectedThreadId, selected.Id, StringComparison.Ordinal))
             _pendingSelectedThreadId = null;
 
@@ -443,7 +446,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             _pendingSelectedThreadId = threadId;
             selectedIdRef.Current = threadId;
             setSelectedId(threadId);
-            if (props.Provider is OpenClawChatDataProvider native)
+            if (!props.Compact && props.Provider is OpenClawChatDataProvider native)
                 native.RememberSelectedThread(threadId);
         }
 
@@ -521,7 +524,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ModelCatalogRevision: nativeProvider?.ModelCatalogRevision ?? 0)
             {
                 IsVisible = composerVisible,
-                ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
+                ShowPlacementPickers = !props.Compact && placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
                 PlacementTargetIsEmpty = isEmptyConversation,
                 PlacementHistoryReady = placementHistoryReady,
                 PlacementTargetIsNew = isComposeOnly,
@@ -533,7 +536,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 props.ComposerSession,
                 composerInputs,
                 snapshot,
-                () => setScrollToBottomToken(scrollToBottomToken + 1)));
+                () => setScrollToBottomToken(scrollToBottomToken + 1),
+                Compact: props.Compact));
         }
 
         var questions = props.Provider is OpenClawChatDataProvider { Questions: { } questionCoordinator }
@@ -542,7 +546,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     new(questionCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight,
                         collapsed => setCollapsedQuestionId(collapsed ? pendingQuestion?.Request.Id : null), questionCollapsed))
                 : Empty();
-        var showWelcome = mode == ReactorChatTimelineMode.Empty;
+        var showWelcome = !props.Compact && mode == ReactorChatTimelineMode.Empty;
         // Keep the composer at the same tree position across the first send. Moving
         // the control into a different parent would lose focus, caret and flyouts.
         var composerArea = ScrollViewer(
@@ -564,6 +568,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 scroll.HorizontalContentAlignment = HorizontalAlignment.Stretch;
                 scroll.VerticalContentAlignment = showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top;
             })
+            .MaxHeight(props.Compact ? 260 : double.PositiveInfinity)
             .IsVisible(composerVisible)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
@@ -573,9 +578,13 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             : [];
         var conversation = Grid(
             [GridSize.Star()],
-            [showWelcome ? GridSize.Auto : GridSize.Star(), GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto,
-                showWelcome ? GridSize.Star() : GridSize.Auto],
-            showWelcome ? Empty().Grid(row: 0) : timelineElement.Grid(row: 0),
+            [showWelcome ? GridSize.Auto : props.Compact ? (isEmptyConversation ? GridSize.Auto : GridSize.Star()) : GridSize.Star(),
+                GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto, showWelcome ? GridSize.Star() : GridSize.Auto],
+            showWelcome || (props.Compact && isEmptyConversation)
+                ? Empty().Grid(row: 0)
+                : props.Compact
+                    ? Border(timelineElement).Grid(row: 0)
+                    : timelineElement.Grid(row: 0),
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
             ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
                 .WithKey("chat-pending-messages").Grid(row: 2),
@@ -608,9 +617,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
     private ChatThread? CreateComposeOnlyThread(
         IChatDataProvider provider,
-        ChatDataSnapshot snapshot)
+        ChatDataSnapshot snapshot,
+        string? explicitThreadId = null)
     {
-        var composeKey = _pendingSelectedThreadId
+        var composeKey = explicitThreadId ?? _pendingSelectedThreadId
             ?? (snapshot.ComposeTarget.IsReady ? snapshot.ComposeTarget.SessionKey : null);
         if (composeKey is null)
             return null;

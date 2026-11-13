@@ -17,6 +17,16 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>桌面龙虾</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>在桌面上显示一只动画龙虾。即使 OpenClaw 在后台运行，通知文字也会显示在对话气泡中。拖动可移动位置，右键单击可查看选项。</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw 桌面龙虾</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>关闭气泡</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>打开通知</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>打开 OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>龙虾大小</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>调整龙虾大小，不改变聊天或通知文字的大小。</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龙虾设置</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>无法显示桌面龙虾。请在设置中关闭再打开“桌面龙虾”以重试。你仍然可以在 OpenClaw 中查看通知。</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>连接</value>
   </data>
@@ -7890,6 +7900,9 @@
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>设置</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>快速聊天</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>快速回复</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>无法打开聊天。请重试。</value></data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>子代理</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>当前会话列表中没有子代理。</value></data>
   <data name="Chat_Subagents_PillName" xml:space="preserve"><value>子代理：{0} 个运行中，{1} 个已完成</value></data>

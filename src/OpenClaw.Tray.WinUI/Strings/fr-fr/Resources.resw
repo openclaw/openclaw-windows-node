@@ -17,6 +17,16 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>Homard de bureau</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>Gardez un homard animé sur votre bureau. Les notifications apparaissent dans des bulles, même quand OpenClaw est en arrière-plan. Faites-le glisser pour le déplacer ; faites un clic droit pour les options.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>Homard de bureau OpenClaw</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Fermer la bulle</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Ouvrir les notifications</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>Ouvrir OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Taille du homard</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Redimensionnez le homard sans modifier le texte du chat ni des notifications.</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Paramètres du homard de bureau</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Le homard de bureau n'a pas pu être affiché. Désactivez puis réactivez Homard de bureau dans les paramètres pour réessayer. Vos notifications restent disponibles dans OpenClaw.</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>CONNEXION</value>
   </data>
@@ -7890,6 +7900,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>Paramètres</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>Discussion rapide</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>Réponse rapide</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>Impossible d'ouvrir la discussion. Réessayez.</value></data>
   <data name="Chat_Subagents_Title" xml:space="preserve"><value>Sous-agents</value></data>
   <data name="Chat_Subagents_Empty" xml:space="preserve"><value>Aucun sous-agent dans la liste actuelle des sessions.</value></data>
   <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Sous-agents : {0} en cours, {1} terminés</value></data>

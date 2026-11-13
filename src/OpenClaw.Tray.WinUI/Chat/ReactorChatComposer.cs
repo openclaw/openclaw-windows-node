@@ -32,7 +32,8 @@ internal sealed record ReactorChatComposerViewProps(
     ChatComposerSession Session,
     ChatComposerInputs Inputs,
     ChatDataSnapshot InputSnapshot,
-    Action OnSendRequested);
+    Action OnSendRequested,
+    bool Compact = false);
 
 /// <summary>
 /// Declarative Reactor view for the composer. It owns control construction, popup/
@@ -590,9 +591,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 Send();
             })
             .TextWrapping(TextWrapping.Wrap)
-            .MinHeight(44)
+            .MinHeight(props.Compact ? 32 : 44)
             .MaxHeight(200)
-            .Padding(0)
+            .Padding(props.Compact ? new Thickness(0, 4, 0, 0) : new Thickness(0))
             .IsEnabled(inputs.ConnectionState == "connected")
             .BorderThickness(0)
             .BorderBrush(transparentInputBrush)
@@ -636,7 +637,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         UseEffect((Func<Action>)(() =>
         {
             if (inputControl.Current is { } anchor)
-                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible);
+                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible, windowed: props.Compact);
             else
                 CloseSlashPopup(slashPopup);
             return static () => { };
@@ -897,21 +898,33 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 }));
         }
         // Status and attachment rows can be inserted before this stable editor/toolbar tail.
-        composerChildren.Add(input.WithKey("chat-composer-input"));
-        composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        if (props.Compact)
+            composerChildren.Add(Grid(
+                [GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto],
+                attachButton.VAlign(VerticalAlignment.Bottom).Grid(column: 0),
+                input.WithKey("chat-composer-input").Margin(8, 0).Grid(column: 1),
+                voiceButton.VAlign(VerticalAlignment.Bottom).Grid(column: 2),
+                primaryAction.VAlign(VerticalAlignment.Bottom).Margin(4, 0, 0, 0).Grid(column: 3)));
+        else
+        {
+            composerChildren.Add(input.WithKey("chat-composer-input"));
+            composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        }
 
         var writingSurface = Border(
             VStack(ChatVisuals.CompactGap, composerChildren.ToArray())
-            .Padding(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset))
+            .Padding(props.Compact ? new Thickness(8) : new Thickness(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset, ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset)))
             .BorderThickness(1)
             .CornerRadius(ChatVisuals.ComposerRadius)
-            .MinHeight(ChatVisuals.ComposerMinHeight)
+            .MinHeight(props.Compact ? 50 : ChatVisuals.ComposerMinHeight)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId("ChatWritingSurface");
         var surfaces = new List<Element>();
-        surfaces.Add(inputs.ShowPlacementPickers
+        if (!props.Compact)
+            surfaces.Add(inputs.ShowPlacementPickers
             ? ReactorChatWelcome.Header(agent, viewportWidth)
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)
@@ -939,15 +952,17 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .MaxWidth(480).HAlign(HorizontalAlignment.Left)
                 .AutomationId("ChatPlacementPickers"));
         }
-        else
+        else if (!props.Compact)
         {
             surfaces.Add(Empty());
         }
         surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
         return Border(VStack(8, surfaces.ToArray())
                 .MaxWidth(ChatVisuals.ReadingWidth)
-                .Margin(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap,
-                    ChatVisuals.Gutter(viewportWidth), ChatVisuals.ComposerBottomInset)
+                .Margin(props.Compact
+                    ? new Thickness(0)
+                    : new Thickness(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap,
+                        ChatVisuals.Gutter(viewportWidth), ChatVisuals.ComposerBottomInset))
                 .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
@@ -976,15 +991,18 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Ref<Microsoft.UI.Xaml.Controls.Primitives.Popup?> popupRef,
         TextBox anchor,
         FrameworkElement? content,
-        bool visible)
+        bool visible,
+        bool windowed)
     {
         var popup = popupRef.Current;
         if (popup is null)
         {
+            // The desktop lobster's host window is click-through and clipped to the mascot,
+            // so its quick chat needs a windowed popup that can leave those bounds.
             popup = new Microsoft.UI.Xaml.Controls.Primitives.Popup
             {
                 IsLightDismissEnabled = false,
-                ShouldConstrainToRootBounds = true,
+                ShouldConstrainToRootBounds = !windowed,
             };
             popupRef.Current = popup;
         }

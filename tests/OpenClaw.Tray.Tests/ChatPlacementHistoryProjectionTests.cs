@@ -160,7 +160,7 @@ public sealed class ChatPlacementHistoryProjectionTests
         Assert.Contains("string.Equals(snapshot.ComposeTarget.SessionKey, effectiveThread?.Id, StringComparison.Ordinal)", readiness);
         Assert.Contains("snapshot.CurrentHistoryThreads?.Contains(effectiveThread.Id) == true", readiness);
         Assert.DoesNotContain("HistoryLoaded", readiness);
-        Assert.Contains("ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty", root);
+        Assert.Contains("ShowPlacementPickers = !props.Compact && placementHistoryReady && mode == ReactorChatTimelineMode.Empty", root);
         Assert.Contains("PlacementHistoryReady = placementHistoryReady", root);
         Assert.Contains("PlacementTargetIsEmpty = isEmptyConversation", root);
         Assert.Contains("PlacementTargetIsNew = isComposeOnly", root);
