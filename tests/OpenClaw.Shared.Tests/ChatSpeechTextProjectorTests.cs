@@ -76,18 +76,65 @@ public class ChatSpeechTextProjectorTests
     }
 
     [Fact]
-    public void BareUrl_IsSilentAndTheSentenceSurvives()
-    {
-        var spoken = Project("Read https://example.com/changelog for details.");
-
-        Assert.Equal("Read for details.", spoken);
-        Assert.DoesNotContain("http", spoken);
-    }
-
-    [Fact]
     public void UrlOnlyParagraph_AddsNothingToSpeech()
     {
         Assert.Equal("The changelog.", Project("The changelog.\n\nhttps://example.com/changelog"));
+    }
+
+    [Theory]
+    // md4c does not autolink any of these, so the builder cannot be the guard.
+    [InlineData("Connect to http://localhost:18789/?token=FAKE123 now.", "Connect to now.")]
+    [InlineData("Open https://127.0.0.1:18789/#token=FAKE123 please.", "Open please.")]
+    [InlineData("Visit www.example.com/x?token=FAKE123 now.", "Visit now.")]
+    [InlineData("Mail dev@example.com today.", "Mail today.")]
+    [InlineData("Socket ws://example.com/socket here.", "Socket here.")]
+    [InlineData("Reset via https://example.com:8443/reset?key=FAKEKEY done.", "Reset via done.")]
+    [InlineData("Path https://example.com/a%20b here.", "Path here.")]
+    [InlineData("Query https://example.com/x?a=1&amp;b=2 here.", "Query here.")]
+    [InlineData("Read https://example.com/changelog for details.", "Read for details.")]
+    public void UrlShapes_AreNeverSpoken(string markdown, string expected)
+    {
+        var spoken = Project(markdown);
+
+        Assert.Equal(expected, spoken);
+        Assert.DoesNotContain("http", spoken);
+        Assert.DoesNotContain("www.", spoken);
+        Assert.DoesNotContain("FAKE", spoken);
+        Assert.DoesNotContain("@", spoken);
+    }
+
+    [Fact]
+    public void InlineCodeUrl_IsNotSpelledOut()
+    {
+        var spoken = Project("Inline `https://api.example.com/v1?key=FAKE` code.");
+
+        Assert.Equal("Inline code.", spoken);
+        Assert.DoesNotContain("FAKE", spoken);
+    }
+
+    [Theory]
+    [InlineData("Secret `api_key=FAKE-SECRET-1234` here.", "Secret here.")]
+    [InlineData("Header `Authorization: Bearer FAKE-TOKEN` here.", "Header here.")]
+    [InlineData("Value `password: hunter2` here.", "Value here.")]
+    public void InlineCodeCredentialAssignment_IsDroppedWhole(string markdown, string expected)
+    {
+        var spoken = Project(markdown);
+
+        Assert.Equal(expected, spoken);
+        Assert.DoesNotContain("FAKE", spoken);
+        Assert.DoesNotContain("hunter2", spoken);
+    }
+
+    [Theory]
+    [InlineData("Install the .NET SDK.", "Install the .NET SDK.")]
+    [InlineData("The app targets .NET 10.", "The app targets .NET 10.")]
+    [InlineData("Use C#, .NET, or F# here.", "Use C#, .NET, or F# here.")]
+    [InlineData(".NET is installed.", ".NET is installed.")]
+    [InlineData("Run ./build now.", "Run ./build now.")]
+    [InlineData("It costs .50 today.", "It costs .50 today.")]
+    public void DotsThatStartOrJoinAWord_SurviveCleanup(string markdown, string expected)
+    {
+        Assert.Equal(expected, Project(markdown));
     }
 
     [Fact]
@@ -108,7 +155,11 @@ public class ChatSpeechTextProjectorTests
     [InlineData("Done!", "Done!")]
     [InlineData("Hecho.", "Hecho.")]
     [InlineData("¿Listo?", "¿Listo?")]
-    [InlineData("Why?", "Why?")]
+    [InlineData("هل انتهيت؟", "هل انتهيت؟")]
+    [InlineData("यह पूरा हुआ।", "यह पूरा हुआ।")]
+    [InlineData("He said \"stop.\"", "He said \"stop.\"")]
+    [InlineData("That is (probably) fine.", "That is (probably) fine.")]
+    [InlineData("「終わり。」", "「終わり。」")]
     public void ExistingTerminator_IsNotDoubled(string markdown, string expected)
     {
         Assert.Equal(expected, Project(markdown));
@@ -120,10 +171,24 @@ public class ChatSpeechTextProjectorTests
         Assert.Equal("标题。内容。", Project("## 标题\n\n内容"));
     }
 
-    [Fact]
-    public void Emoji_IsDroppedWithoutMergingNeighbouringWords()
+    [Theory]
+    [InlineData("Great!🎉Next step.", "Great! Next step.")]
+    [InlineData("Status ✅ done.", "Status done.")]
+    [InlineData("Failed ❌ again.", "Failed again.")]
+    [InlineData("Careful ⚠️ now.", "Careful now.")]
+    public void Emoji_AreDroppedWithoutMergingNeighbouringWords(string markdown, string expected)
     {
-        Assert.Equal("Great! Next step.", Project("Great!🎉Next step."));
+        Assert.Equal(expected, Project(markdown));
+    }
+
+    [Fact]
+    public void ZwjSequence_LeavesNoStrayWords()
+    {
+        // ZWJ must not become a space: it is a word joiner in Indic scripts and
+        // only separates emoji inside a sequence.
+        var spoken = Project("Family 👨‍👩‍👧‍👦 done.");
+
+        Assert.Equal("Family done.", spoken);
     }
 
     [Fact]
@@ -153,5 +218,42 @@ public class ChatSpeechTextProjectorTests
     public void MessageWithOnlyCodeAndUrl_ProducesNoSpeech()
     {
         Assert.Equal(string.Empty, Project("```\nvar x = 1;\n```\n\nhttps://example.com"));
+    }
+
+    [Fact]
+    public void LoneSurrogate_DoesNotThrowAndKeepsTheRestOfTheSentence()
+    {
+        // A truncated or malformed reply must not silence the whole message.
+        var spoken = Project("Valid words \uD83D then more.");
+
+        Assert.Contains("Valid words", spoken);
+        Assert.Contains("then more.", spoken);
+    }
+
+    [Fact]
+    public void DocumentTheParserRejects_ProducesNoSpeech()
+    {
+        // 101 nested containers exceed the vendored parser's nesting limit, so
+        // the builder returns the verbatim source instead of an AST.
+        var markdown = string.Concat(Enumerable.Repeat("> ", 102)) + "`api_key=FAKE`";
+
+        var spoken = Project(markdown);
+
+        Assert.Equal(string.Empty, spoken);
+        Assert.DoesNotContain("FAKE", spoken);
+    }
+
+    [Fact]
+    public void OversizedInput_IsTruncatedForSpeechButNotReplacedByTheFallback()
+    {
+        // Over the builder cap: the projector must parse its own truncated copy
+        // instead of speaking the builder's verbatim fallback paragraph.
+        var markdown = new string('a', ChatMarkdownAstBuilder.MaxInputBytes) + " tail.";
+
+        var spoken = Project(markdown);
+
+        Assert.StartsWith("aaa", spoken);
+        Assert.DoesNotContain("[truncated", spoken);
+        Assert.True(spoken.Length <= ChatMarkdownAstBuilder.MaxInputBytes + 1);
     }
 }
