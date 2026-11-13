@@ -414,6 +414,7 @@ foreach ($token in @(
         "./scripts/validate-docs.ps1",
         "./scripts/validate-agent-skills.ps1",
         "./scripts/test-agent-skills-validator.ps1",
+        "./scripts/validate-test-timing-patterns.ps1",
         "./scripts/test-proof-evidence.ps1",
         "./scripts/test-agent-readiness.ps1",
         "./scripts/test-ci-change-classifier.ps1",
@@ -1187,6 +1188,61 @@ foreach ($requiredRunnerToken in @(
         -Message "CI test runner is missing required token '$requiredRunnerToken'."
 }
 
+# Step budget visibility: each timed single-runner step passes its own timeout-minutes so the
+# runner can warn before a passing suite outgrows it. Drift between the two values is rejected.
+$budgetedRunnerPattern = '(?m)^      run: >\r?\n\s+\./scripts/(?:Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1\r?$'
+# A multi-command step would understate its budget from inside the runner, so it must be named here.
+$unbudgetedRunnerSteps = @('Run latest stable profile compatibility')
+$budgetedSteps = 0
+foreach ($stepText in [regex]::Split($workflow, '(?m)^(?=    - (?:name:|uses:))')) {
+    $stepName = [regex]::Match($stepText, '(?m)^    - name: (.+?)\r?$').Groups[1].Value
+    $declared = @([regex]::Matches($stepText, '(?m)^\s+-StepTimeoutMinutes (\d+)\r?$') | ForEach-Object { [int]$_.Groups[1].Value })
+    $stepTimeout = [regex]::Match($stepText, '(?m)^      timeout-minutes: (\d+)\r?$')
+    if ($stepText -match $budgetedRunnerPattern -and $stepTimeout.Success) {
+        if ($declared.Count -ne 1 -or $declared[0] -ne [int]$stepTimeout.Groups[1].Value) {
+            throw "CI step '$stepName' must pass -StepTimeoutMinutes $($stepTimeout.Groups[1].Value) to match its timeout-minutes."
+        }
+        $budgetedSteps++
+    } elseif ($declared.Count -gt 0 -or $stepText.Contains('-StepTimeoutMinutes')) {
+        throw "CI step '$stepName' passes -StepTimeoutMinutes without being a timed single-runner step."
+    } elseif ($stepTimeout.Success -and $stepText -match '\./scripts/(?:Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1' -and
+        $stepName -notin $unbudgetedRunnerSteps) {
+        throw "CI step '$stepName' runs a test runner with other commands. Make it a single-runner step with -StepTimeoutMinutes, or list it in `$unbudgetedRunnerSteps."
+    }
+}
+if ($budgetedSteps -lt 12) { throw "Expected at least 12 budgeted runner steps, found $budgetedSteps." }
+. (Join-Path $repoRootPath 'scripts\CiStepBudget.ps1')
+foreach ($case in @(
+        @{ Minutes = 0.5; Budget = 25; Warn = $false; Text = 'CI step budget: probe.trx used 0.5 of 25 minutes (2%) of its step timeout.' },
+        @{ Minutes = 19.9; Budget = 25; Warn = $false; Text = 'CI step budget: probe.trx used 19.9 of 25 minutes (79%) of its step timeout.' },
+        @{ Minutes = 20; Budget = 25; Warn = $true; Text = '::warning title=CI step budget::probe.trx used 20.0 of 25 minutes (80%25) of its step timeout.' },
+        @{ Minutes = 15; Budget = 15; Warn = $true; Text = '::warning title=CI step budget::probe.trx used 15.0 of 15 minutes (100%25) of its step timeout.' }
+    )) {
+    $report = Get-CiStepBudgetReport -Elapsed ([TimeSpan]::FromMinutes($case.Minutes)) -StepTimeoutMinutes $case.Budget -Label 'probe.trx'
+    if (-not $report.StartsWith($case.Text, [StringComparison]::Ordinal) -or
+        $report.StartsWith('::warning', [StringComparison]::Ordinal) -ne $case.Warn) {
+        throw "Step budget report for $($case.Minutes) of $($case.Budget) minutes was '$report'."
+    }
+}
+if ((Get-CiStepBudgetReport -Elapsed ([TimeSpan]::FromMinutes(30)) -StepTimeoutMinutes 25 -Label "a`nb") -match "`n") {
+    throw 'Step budget warnings must escape workflow command data.'
+}
+foreach ($runnerScript in @($runner, $e2eRunner, (Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\test-gateway-fixture.ps1') -Raw))) {
+    $budgetAst = [Management.Automation.Language.Parser]::ParseInput($runnerScript, [ref]$null, [ref]$null)
+    $budgetProbe = [scriptblock]::Create(($budgetAst.ParamBlock.Extent.Text -replace '\[Parameter\(Mandatory\)\]', '') + "`n`$StepTimeoutMinutes")
+    if ((& $budgetProbe) -ne 0 -or (& $budgetProbe -StepTimeoutMinutes 360) -ne 360) {
+        throw 'CI runners must default to no step budget and accept the GitHub maximum.'
+    }
+    foreach ($invalid in @(-1, 361)) {
+        $rejected = $false
+        try { & $budgetProbe -StepTimeoutMinutes $invalid | Out-Null }
+        catch [Management.Automation.ParameterBindingException] { $rejected = $true }
+        if (-not $rejected) { throw "A CI runner accepted step budget $invalid." }
+    }
+    Assert-Contains -Text $runnerScript -Expected 'Write-CiStepBudget -Elapsed $stepBudget.Elapsed -StepTimeoutMinutes $StepTimeoutMinutes' `
+        -Message 'Each CI runner must report its step budget.'
+}
+
 $e2eLanes = [ordered]@{
     "setup-e2e" = @{
         Output = "setup_e2e"
@@ -1769,7 +1825,7 @@ try {
 
     $e2eHarness = Join-Path $tempRoot 'e2e-runner-harness.ps1'
     Set-Content -LiteralPath $e2eHarness -Value @'
-param([string]$Runner, [string]$Root, [int]$Timeout, [int]$TestExit, [string]$Name, [switch]$Override)
+param([string]$Runner, [string]$Root, [int]$Timeout, [int]$TestExit, [string]$Name, [switch]$Override, [int]$Budget)
 $ErrorActionPreference = 'Stop'
 Set-Location $Root
 function Invoke-FakeCiProcess {
@@ -1797,9 +1853,11 @@ function Invoke-FakeCiProcess {
     $global:LASTEXITCODE = $TestExit
 }
 Copy-Item -LiteralPath $Runner -Destination (Join-Path $Root 'Invoke-CiE2e.ps1')
+Copy-Item -LiteralPath (Join-Path (Split-Path -Parent $Runner) 'CiStepBudget.ps1') -Destination $Root
 [IO.File]::WriteAllText((Join-Path $Root 'Invoke-CiProcess.ps1'), ${function:Invoke-FakeCiProcess}.ToString())
 $parameters = @{ Name = $Name; Filter = 'Sentinel.Filter' }
 if ($Override) { $parameters.HangTimeoutSeconds = $Timeout }
+if ($Budget) { $parameters.StepTimeoutMinutes = $Budget }
 & (Join-Path $Root 'Invoke-CiE2e.ps1') @parameters
 exit $LASTEXITCODE
 '@
@@ -1809,6 +1867,8 @@ exit $LASTEXITCODE
         @{ Id = 'override'; Timeout = 2; TestExit = 0; ExpectedExit = 0; Override = $true },
         @{ Id = 'invalid'; Timeout = 0; TestExit = 0; ExpectedExit = 1; Override = $true },
         @{ Id = 'failed'; Timeout = 600; TestExit = 9; ExpectedExit = 9 },
+        @{ Id = 'budget'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 20 },
+        @{ Id = 'budget-failed'; Timeout = 600; TestExit = 9; ExpectedExit = 9; Budget = 20 },
         @{ Id = 'missing-proof'; Timeout = 600; TestExit = 0; ExpectedExit = 1; Name = 'setup-connect' }
     )
     foreach ($case in $e2eRunnerCases) {
@@ -1817,6 +1877,7 @@ exit $LASTEXITCODE
         $caseArguments = @('-Runner', $e2eRunnerPath, '-Root', $caseRoot, '-Timeout', $case.Timeout,
             '-TestExit', $case.TestExit, '-Name', $(if ($case.ContainsKey('Name')) { $case.Name } else { 'network-recovery' }))
         if ($case.ContainsKey('Override')) { $caseArguments += '-Override' }
+        if ($case.ContainsKey('Budget')) { $caseArguments += @('-Budget', $case.Budget) }
         $previousPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
@@ -1831,6 +1892,10 @@ exit $LASTEXITCODE
         }
         if ($case.Id -eq 'missing-proof' -and ($output -join "`n") -notmatch 'did not report the MXC proof') {
             throw "E2E hang protection must preserve required proof assertions: $output"
+        }
+        $budgetReported = ($output -join "`n") -match "CI step budget: E2E shard 'network-recovery' used \d+\.\d of 20 minutes \(\d+%\)"
+        if ($budgetReported -ne $case.ContainsKey('Budget')) {
+            throw "E2E runner case '$($case.Id)' must report its step budget only when one is passed, including on failure: $output"
         }
     }
     Write-Host "E2E runner hang-guard contracts passed: $($e2eRunnerCases.Count) cases."

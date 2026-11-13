@@ -17,9 +17,12 @@ param(
     [switch]$AllowUserAnimationPreferenceChange,
     [switch]$RequireAllTestsPassed,
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
-    [ValidateRange(1, 2147483647)][int]$ExpectedTestCount
+    [ValidateRange(1, 2147483647)][int]$ExpectedTestCount,
+    # The calling workflow step's timeout-minutes; 0 skips the budget report.
+    [ValidateRange(0, 360)][int]$StepTimeoutMinutes = 0
 )
 
+$stepBudget = [Diagnostics.Stopwatch]::StartNew()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 if ($AnimationPreference -ne 'Unchanged' -and
@@ -133,16 +136,23 @@ $runTests = {
 $projectPath = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Project))
 $projectName = [IO.Path]::GetFileName($projectPath.TrimEnd([char[]]'\/'))
 $isNativeUiProject = $projectName -in @('OpenClaw.Tray.UITests', 'OpenClaw.Tray.UITests.csproj')
-if ($AnimationPreference -ne 'Unchanged' -or $isNativeUiProject) {
-    . (Join-Path $PSScriptRoot 'NativeAnimationPreference.ps1')
-    # The parent survives a failed/crashed testhost and restores the preference before result admission.
-    if ($AnimationPreference -eq 'Unchanged') {
-        Invoke-WithNativeAnimationPreference -PreservePreference -Action $runTests
+try {
+    if ($AnimationPreference -ne 'Unchanged' -or $isNativeUiProject) {
+        . (Join-Path $PSScriptRoot 'NativeAnimationPreference.ps1')
+        # The parent survives a failed/crashed testhost and restores the preference before result admission.
+        if ($AnimationPreference -eq 'Unchanged') {
+            Invoke-WithNativeAnimationPreference -PreservePreference -Action $runTests
+        } else {
+            Invoke-WithNativeAnimationPreference -Enabled ($AnimationPreference -eq 'Enabled') -Action $runTests
+        }
     } else {
-        Invoke-WithNativeAnimationPreference -Enabled ($AnimationPreference -eq 'Enabled') -Action $runTests
+        & $runTests
     }
-} else {
-    & $runTests
+} finally {
+    if ($StepTimeoutMinutes -gt 0) {
+        . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+        Write-CiStepBudget -Elapsed $stepBudget.Elapsed -StepTimeoutMinutes $StepTimeoutMinutes -Label $TrxFileName
+    }
 }
 
 if ($null -eq $script:testExitCode) { throw 'The test command did not return an exit code.' }
