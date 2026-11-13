@@ -11,10 +11,13 @@ namespace OpenClaw.Shared.Markdown;
 ///
 /// <para>This builder applies the OpenClaw chat security posture in-line:</para>
 /// <list type="bullet">
-///   <item>Links: the navigation <c>href</c> is dropped and the link's
-///         display text is flattened via
-///         <c>"display (href)"</c> so the URL stays visible/inspectable but
-///         can never become a clickable <c>Hyperlink</c>.</item>
+///   <item>Links: the navigation <c>href</c> is dropped from the AST and the
+///         link's display text is flattened to inert text. The default
+///         <see cref="MdLinkFlattening.DisplayWithHref"/> keeps the URL
+///         visible/inspectable (<c>"display (href)"</c>) but it can never
+///         become a clickable <c>Hyperlink</c>; speech projection selects
+///         <see cref="MdLinkFlattening.DisplayOnly"/> so a URL is never read
+///         aloud.</item>
 ///   <item>Images: replaced with the inert literal <c>[Image: alt]</c>
 ///         (or <c>[Image]</c> when no alt is present). No URL is ever passed
 ///         downstream — guarantees no <c>BitmapImage</c> remote fetch.</item>
@@ -54,6 +57,7 @@ public sealed class ChatMarkdownAstBuilder
         | MarkdownParserFlags.CollapseWhitespace;
 
     private readonly MarkdownParserFlags _flags;
+    private readonly MdLinkFlattening _linkFlattening;
 
     // Block-frame stack — every EnterBlock pushes, every LeaveBlock pops and
     // either adds the resulting block to its parent frame, or (for inline
@@ -105,9 +109,12 @@ public sealed class ChatMarkdownAstBuilder
     private bool _tableInHead;
     private int _tableCellIndex;
 
-    public ChatMarkdownAstBuilder(MarkdownParserFlags? flags = null)
+    public ChatMarkdownAstBuilder(
+        MarkdownParserFlags? flags = null,
+        MdLinkFlattening linkFlattening = MdLinkFlattening.DisplayWithHref)
     {
         _flags = flags ?? DefaultFlags;
+        _linkFlattening = linkFlattening;
     }
 
     /// <summary>
@@ -521,6 +528,19 @@ public sealed class ChatMarkdownAstBuilder
 
     private void EmitFlattenedLinkText(string display, string? href)
     {
+        if (_linkFlattening == MdLinkFlattening.DisplayOnly)
+        {
+            // Speech projection: the URL must never be spoken, so an anchor
+            // whose display text is itself the href (an autolink or a
+            // URL-labelled anchor) and a text-less anchor emit nothing.
+            if (!string.IsNullOrEmpty(display)
+                && !string.Equals(display, href, StringComparison.Ordinal))
+            {
+                EmitInlineText(display);
+            }
+            return;
+        }
+
         var text = string.IsNullOrEmpty(display)
             ? (href ?? string.Empty)
             : string.Equals(display, href, StringComparison.Ordinal)

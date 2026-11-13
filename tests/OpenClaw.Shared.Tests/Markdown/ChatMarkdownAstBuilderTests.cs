@@ -443,6 +443,26 @@ public class ChatMarkdownAstBuilderTests
     }
 
     [Fact]
+    public void Link_DisplayOnly_OmitsHref()
+    {
+        var doc = new ChatMarkdownAstBuilder(linkFlattening: MdLinkFlattening.DisplayOnly)
+            .Build("read [the docs](https://example.com/docs) first");
+        var para = Assert.IsType<MdParagraph>(Assert.Single(doc.Blocks));
+        var joined = string.Join("", para.Inlines.OfType<MdInlineText>().Select(r => r.Text));
+        Assert.Contains("the docs", joined);
+        Assert.DoesNotContain("https://", joined);
+    }
+
+    [Fact]
+    public void Link_DisplayOnly_AutolinkWithNoDisplay_EmitsNothing()
+    {
+        var doc = new ChatMarkdownAstBuilder(linkFlattening: MdLinkFlattening.DisplayOnly)
+            .Build("<https://example.com>");
+        var para = Assert.IsType<MdParagraph>(Assert.Single(doc.Blocks));
+        Assert.DoesNotContain("https://", string.Join("", para.Inlines.OfType<MdInlineText>().Select(r => r.Text)));
+    }
+
+    [Fact]
     public void Image_FlattenedToInertAltText()
     {
         var doc = Build("![puppy](https://example.com/p.png)");
