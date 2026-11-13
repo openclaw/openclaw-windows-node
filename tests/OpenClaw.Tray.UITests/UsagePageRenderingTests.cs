@@ -1208,16 +1208,25 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                         $"metricRowPresent={Find<Grid>(host, "UsageDailyMetricRow") is not null}; " +
                         $"renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}"));
             }
-            await ui.YieldToRenderAsync();
+            var metricLabel = LocalizationHelper.GetString("Usage_Summary_EstimatedCost");
+            var viewLabel = LocalizationHelper.GetString("Usage_Chart");
+            // The compact and wide headers host different metric SelectorBars, so the replacement's item labels
+            // exist only after the layout pass that applies its template, which can follow Reactor's commit.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    SelectorLabels(host, "UsageMetric", metricLabel).SingleOrDefault() is { ActualHeight: > 0 } &&
+                    SelectorLabels(host, "UsageChartView", viewLabel).SingleOrDefault() is { ActualHeight: > 0 },
+                "daily header selector labels laid out", () =>
+                    $"metricLabels={SelectorLabels(host, "UsageMetric", metricLabel).Count()}; " +
+                    $"viewLabels={SelectorLabels(host, "UsageChartView", viewLabel).Count()}; " +
+                    $"metricHeight={Find<SelectorBar>(host, "UsageMetric")?.ActualHeight:R}; " +
+                    $"renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}"));
             await ui.RunOnUIAsync(() =>
             {
                 var header = Get<Grid>(host, "UsageDailyControls");
                 var metric = Get<SelectorBar>(host, "UsageMetric");
                 var view = Get<SelectorBar>(host, "UsageChartView");
-                var metricText = Assert.Single(FindDescendants<TextBlock>(metric),
-                    text => text.Text == LocalizationHelper.GetString("Usage_Summary_EstimatedCost"));
-                var viewText = Assert.Single(FindDescendants<TextBlock>(view),
-                    text => text.Text == LocalizationHelper.GetString("Usage_Chart"));
+                var metricText = Assert.Single(FindDescendants<TextBlock>(metric), text => text.Text == metricLabel);
+                var viewText = Assert.Single(FindDescendants<TextBlock>(view), text => text.Text == viewLabel);
                 var title = Get<TextBlock>(host, "UsagePerDayTitle");
                 double Centre(FrameworkElement element) =>
                     element.TransformToVisual(header).TransformPoint(new()).Y + element.ActualHeight / 2;
@@ -2251,6 +2260,11 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
 
     private static T Get<T>(DependencyObject root, string automationId) where T : DependencyObject =>
         Assert.IsType<T>(Find<T>(root, automationId), exactMatch: false);
+
+    private static IEnumerable<TextBlock> SelectorLabels(DependencyObject root, string automationId, string text) =>
+        Find<SelectorBar>(root, automationId) is { } selector
+            ? FindDescendants<TextBlock>(selector).Where(label => label.Text == text)
+            : [];
 
     private static void Invoke(Button button) =>
         ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();

@@ -4,6 +4,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -41,6 +42,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
     public ProgressPage()
     {
         InitializeComponent();
+        SetDetailsOpen(false);
         Unloaded += (_, _) =>
         {
             CancelPipeline();
@@ -66,7 +68,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             : _localAiRecoveryOnly ? "Onboarding_V4_RecoveryTitle" : "Onboarding_V4_InstallationTitle");
         SubtitleText.Text = SetupLocalization.GetString("Onboarding_V4_InstallationSubtitle");
         if (_localAiRecoveryOnly)
-            InstallPhase.Header = SetupLocalization.GetString("Onboarding_V4_RecoveryInstall");
+            InstallStatus.Header = SetupLocalization.GetString("Onboarding_V4_RecoveryInstall");
 
         RenderInstallationOverview();
         if (args?.ShowMilestoneOnly == true)
@@ -173,7 +175,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
                 return;
 
             var success = result.Outcome == PipelineOutcome.Success;
-            ProgressMascot.Mood = success ? OnboardingMascotMood.Happy : OnboardingMascotMood.Sad;
+            _window?.SetCompanionMood(success ? OnboardingMascotMood.Happy : OnboardingMascotMood.Sad);
             if (success)
             {
                 var gatewayId = config.LocalAiRecoveryGatewayId ?? ctx.GatewayRecordId;
@@ -229,7 +231,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             sw.Stop();
             _pipelineFinished = true;
             _logger?.Error($"Setup pipeline and settlement outcomes: {ex}");
-            ProgressMascot.Mood = OnboardingMascotMood.Sad;
+            _window?.SetCompanionMood(OnboardingMascotMood.Sad);
             if (!_closed && _window?.IsClosed == false)
                 _window.NavigateToComplete(false, sw.Elapsed, config.LogPath, SetupLogger.Sanitize(ex.Message),
                     ex.OriginalResult?.CompatibilityFailure, ex.OriginalResult?.Detail,
@@ -251,7 +253,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             sw.Stop();
             _pipelineFinished = true;
             _logger?.Error($"Setup UI pipeline failed: {ex.Message}");
-            ProgressMascot.Mood = OnboardingMascotMood.Sad;
+            _window?.SetCompanionMood(OnboardingMascotMood.Sad);
             if (!_closed && _window?.IsClosed == false)
                 _window.NavigateToComplete(false, sw.Elapsed, config.LogPath, $"Setup crashed: {ex.Message}");
         }
@@ -300,8 +302,8 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             _installationProgress?.Apply(e);
             RenderInstallationOverview();
             DownloadActivity.Visibility = DownloadProgress.Visibility = Visibility.Collapsed;
-            ProgressMascot.Mood = e.Outcome is StepOutcome.Failed or StepOutcome.FailedTerminal
-                ? OnboardingMascotMood.Sad : OnboardingMascotMood.Working;
+            _window?.SetCompanionMood(e.Outcome is StepOutcome.Failed or StepOutcome.FailedTerminal
+                ? OnboardingMascotMood.Sad : OnboardingMascotMood.Working);
         });
     }
 
@@ -310,16 +312,14 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
         if (_installationProgress is not { } progress) return;
         foreach (var phase in progress.Phases)
         {
-            var (status, activity) = phase.Phase switch
+            var row = phase.Phase switch
             {
-                SetupInstallationPhase.Prepare => (PrepareStatus, PrepareActivity),
-                SetupInstallationPhase.Install => (InstallStatus, InstallActivity),
-                _ => (ConnectStatus, ConnectActivity),
+                SetupInstallationPhase.Prepare => PrepareStatus,
+                SetupInstallationPhase.Install => InstallStatus,
+                _ => ConnectStatus,
             };
-            status.Apply(phase.Status);
-            activity.Text = phase.CurrentActivity ?? "";
-            activity.Visibility = string.IsNullOrWhiteSpace(phase.CurrentActivity)
-                ? Visibility.Collapsed : Visibility.Visible;
+            row.Apply(phase.Status);
+            row.Activity = phase.CurrentActivity;
         }
     }
 
@@ -417,6 +417,18 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
         InstallContent.Visibility = Visibility.Collapsed;
         MilestonePanel.Visibility = Visibility.Visible;
         OnboardButton.Visibility = Visibility.Visible;
+        _window?.PresentCompanion("Onboarding_Bubble_Installed", OnboardingMascotMood.Happy, SetupCompanionBadge.Success);
+    }
+
+    private void DetailsToggle_Click(object sender, RoutedEventArgs e) =>
+        SetDetailsOpen(DetailsPanel.Visibility != Visibility.Visible);
+
+    private void SetDetailsOpen(bool open)
+    {
+        DetailsPanel.Visibility = open ? Visibility.Visible : Visibility.Collapsed;
+        DetailsToggle.Content = SetupLocalization.GetString(open ? "Onboarding_Progress_HideDetails" : "Onboarding_Progress_ShowDetails");
+        if (open)
+            LogScroller.ChangeView(null, LogScroller.ScrollableHeight, null, disableAnimation: true);
     }
 
     private void Onboard_Click(object sender, RoutedEventArgs e)

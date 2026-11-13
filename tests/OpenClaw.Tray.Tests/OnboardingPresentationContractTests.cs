@@ -103,13 +103,20 @@ public sealed class OnboardingPresentationContractTests
     [InlineData("WizardPage")]
     [InlineData("AiSetupPage")]
     [InlineData("AiReadyPage")]
-    public void SetupPages_UseVectorMascotAndRouteDrivenProgress(string page)
+    public void SetupPages_LeaveMascotAndRouteProgressToTheSetupShell(string page)
     {
         var xaml = Read($@"src\OpenClaw.SetupEngine.UI\Pages\{page}.xaml");
-        Assert.Contains("controls:OnboardingMascot", xaml);
-        Assert.Contains("controls:SetupProgressIndicator", xaml);
+        Assert.DoesNotContain("controls:OnboardingMascot", xaml);
+        Assert.DoesNotContain("SetupProgressIndicator", xaml);
         Assert.DoesNotContain("of 6", xaml);
         Assert.DoesNotContain("OpenClawMascot.png", xaml);
+        Assert.Contains("<themes:SetupResources />", xaml);
+        // One companion per window owns the vector mascot and the route-driven step timeline.
+        Assert.Contains("<controls:SetupCompanion x:Name=\"Companion\"", Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml"));
+        var companion = Read(@"src\OpenClaw.SetupEngine.UI\Controls\SetupCompanion.xaml");
+        Assert.Contains("<local:OnboardingMascot", companion);
+        Assert.Contains("<local:SetupStepTimeline", companion);
+        Assert.Contains("Companion.UpdateSteps(", Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs"));
     }
 
     [Fact]
@@ -318,21 +325,19 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void ChangedOnboardingPages_PreserveCenteredLargeMascotsAndFixedFooters()
+    public void ChangedOnboardingPages_KeepSharedHeroAndFixedFooters()
     {
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        foreach (var page in new[] { "CapabilitiesPage", "GatewaySetupPage" })
+        foreach (var (page, primary) in new[] { ("CapabilitiesPage", "ContinueButton"), ("GatewaySetupPage", "PrimaryButton") })
         {
             var xaml = XDocument.Parse(Read($@"src\OpenClaw.SetupEngine.UI\Pages\{page}.xaml"));
-            var mascot = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "MascotHero");
-            Assert.Null(mascot.Attribute("Width"));
-            Assert.Null(mascot.Attribute("Height"));
-            Assert.Equal("Center", (string?)mascot.Attribute("HorizontalAlignment"));
-            Assert.Equal("StackPanel", mascot.Parent!.Name.LocalName);
-            Assert.Null(mascot.Parent.Attribute("Height"));
-            var progress = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "FlowProgress");
-            Assert.Equal("2", (string?)progress.Parent!.Attribute("Grid.Row"));
-            Assert.DoesNotContain(progress.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
+            Assert.DoesNotContain(xaml.Descendants(), element => element.Name.LocalName == "OnboardingMascot");
+            Assert.Contains(xaml.Descendants(), element =>
+                (string?)element.Attribute("Style") == "{StaticResource SetupHeroPanelStyle}");
+            var button = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == primary);
+            Assert.Equal("2", (string?)button.Parent!.Attribute("Grid.Row"));
+            Assert.Equal("{StaticResource SetupNavPanelStyle}", (string?)button.Parent.Attribute("Style"));
+            Assert.DoesNotContain(button.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
         }
     }
 

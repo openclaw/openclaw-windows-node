@@ -10,7 +10,14 @@ namespace OpenClaw.E2ETests.Setup;
 internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
 {
     internal const string ProfileDirectoryPrefix = "search-browser-";
-    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(30);
+    /// <summary>Overrides <see cref="DefaultStartupTimeout"/> in whole seconds up to
+    /// <see cref="MaxStartupTimeoutSeconds"/>; other values keep the default.</summary>
+    internal const string StartupTimeoutEnvironmentVariable = "OPENCLAW_E2E_EDGE_STARTUP_TIMEOUT_SECONDS";
+    internal const int MaxStartupTimeoutSeconds = 3600;
+    // Hang guard for the job's first, cold Edge launch through its first page command.
+    // Hosted cold starts measured 1.8-16.1 s across 75 passing runs, and one exceeded 31 s.
+    internal static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
     private const int SharingViolation = unchecked((int)0x80070020);
     private readonly Process _process;
@@ -50,29 +57,39 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             ?? throw new InvalidOperationException("The owned browser process did not start."));
         var elapsed = Stopwatch.StartNew();
         var stage = "endpoint publication";
+        var stageTimings = new List<string>(4);
+        void Completed(string name) => stageTimings.Add($"{name}:{elapsed.ElapsedMilliseconds}");
+        var startupTimeout = ResolveStartupTimeout(Environment.GetEnvironmentVariable(StartupTimeoutEnvironmentVariable));
         try
         {
-            using var timeout = new CancellationTokenSource(Timeout);
+            using var timeout = new CancellationTokenSource(startupTimeout);
             var portFile = Path.Combine(profile, "DevToolsActivePort");
             var endpoint = await WaitForEndpointAsync(portFile, () => browser._process.HasExited, timeout.Token);
+            Completed("endpoint");
             stage = "initial page discovery";
             using var handler = new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false };
             using var http = new HttpClient(handler);
             var debuggerOrigin = new Uri($"http://127.0.0.1:{endpoint.Port}");
             var pageEndpoint = await WaitForPageEndpointAsync(http, debuggerOrigin, timeout.Token);
+            Completed("page");
             // The command-line about:blank page belongs to this unique process/profile.
             // Its page endpoint avoids a second target and browser-level startup commands.
             stage = "page WebSocket connection";
             await browser._socket.ConnectAsync(pageEndpoint, timeout.Token);
+            Completed("socket");
             stage = "page Network.enable";
             await browser.CallAsync("Network.enable", new { }, timeout.Token);
-            Console.WriteLine($"[Search proof] Edge page CDP ready in {elapsed.ElapsedMilliseconds}ms.");
+            Completed("network");
+            Console.WriteLine($"[Search proof] Edge page CDP ready in {elapsed.ElapsedMilliseconds}ms " +
+                $"(stageMs={string.Join(',', stageTimings)}; " +
+                $"stderrCharacters={Interlocked.Read(ref browser._errorCharacters)}).");
             return browser;
         }
         catch (Exception ex)
         {
             var processState = browser._process.HasExited ? $"exited ({browser._process.ExitCode})" : "running";
             var diagnostics = $"Edge startup failed at {stage}; elapsedMs={elapsed.ElapsedMilliseconds}; " +
+                $"limitMs={(long)startupTimeout.TotalMilliseconds}; stageMs={string.Join(',', stageTimings)}; " +
                 $"process={processState}; stderrCharacters={Interlocked.Read(ref browser._errorCharacters)}; " +
                 $"failure={ex.GetType().Name}.";
             await browser.DisposeAsync();
@@ -80,6 +97,13 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             throw new InvalidOperationException(diagnostics);
         }
     }
+
+    internal static TimeSpan ResolveStartupTimeout(string? configuredSeconds) =>
+        int.TryParse(configuredSeconds, System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var seconds) &&
+        seconds is > 0 and <= MaxStartupTimeoutSeconds
+            ? TimeSpan.FromSeconds(seconds)
+            : DefaultStartupTimeout;
 
     internal static async Task<Uri> WaitForPageEndpointAsync(
         HttpClient http, Uri debuggerOrigin, CancellationToken cancellationToken)
@@ -150,7 +174,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
         _gatewaySockets.Clear();
         _authenticatedSocket = null;
         PairingRequestId = null;
-        using var timeout = new CancellationTokenSource(Timeout);
+        using var timeout = new CancellationTokenSource(CommandTimeout);
         var result = await CallAsync("Page.navigate", new { url = uri.AbsoluteUri }, timeout.Token);
         if (result.TryGetProperty("errorText", out _))
             throw new InvalidOperationException("The owned browser could not navigate to the Gateway.");
@@ -166,7 +190,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
 
     internal async Task CaptureAsync(string path)
     {
-        using var timeout = new CancellationTokenSource(Timeout);
+        using var timeout = new CancellationTokenSource(CommandTimeout);
         await EvaluateAsync("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))",
             timeout.Token);
         var result = await CallAsync("Page.captureScreenshot", new { format = "png" }, timeout.Token);
@@ -247,7 +271,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
         if (!_process.HasExited)
         {
             _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync().WaitAsync(Timeout);
+            await _process.WaitForExitAsync().WaitAsync(CommandTimeout);
         }
         await _errors;
         _process.Dispose();

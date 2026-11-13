@@ -175,10 +175,18 @@ public sealed partial class SetupWindow : Window
         InitializeComponent();
         _windowSizing = new(this, RootFrame);
         LoadingOverlay.Bind(_loadingProgress);
+        LoadingOverlay.IsEmbedded = true;
+        // The embedded overlay is transparent; hide the page under it without unloading the page.
+        LoadingOverlay.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) =>
+        {
+            var loading = LoadingOverlay.Visibility == Visibility.Visible;
+            RootFrame.Opacity = loading ? 0 : 1;
+            RootFrame.IsHitTestVisible = !loading;
+        });
         ApplyWindowIcon();
         Active = this;
         RootFrame.Navigated += (_, _) => RefreshFlowProgress();
-        RootFrame.PointerMoved += (_, args) =>
+        ShellRoot.PointerMoved += (_, args) =>
         {
             if (ActiveMascot is not { ActualWidth: > 0, ActualHeight: > 0 } mascot)
                 return;
@@ -187,7 +195,9 @@ public sealed partial class SetupWindow : Window
                 (position.X - mascot.ActualWidth / 2) / mascot.ActualWidth,
                 (position.Y - mascot.ActualHeight / 2) / mascot.ActualHeight);
         };
-        RootFrame.PointerExited += (_, _) => ActiveMascot?.SetPointerGaze(null, null);
+        ShellRoot.PointerExited += (_, _) => ActiveMascot?.SetPointerGaze(null, null);
+        ShellRoot.SizeChanged += (_, args) =>
+            CompanionColumn.Width = new GridLength(SetupWindowSizing.CompanionPaneWidth(args.NewSize.Width));
 
         Closed += async (_, _) =>
         {
@@ -947,31 +957,51 @@ public sealed partial class SetupWindow : Window
 
     internal void RefreshFlowProgress()
     {
-        if (RootFrame.Content is not FrameworkElement page ||
-            page.FindName("FlowProgress") is not SetupProgressIndicator progress)
+        if (RootFrame.Content is not FrameworkElement page || AccessDraft is null)
             return;
 
-        var stage = page switch
+        OnboardingStage? stage = page switch
         {
+            // Local AI opened from Connect your AI stays on that step through its review and install.
+            GatewaySetupDetailPage or ProgressPage when IsAiLocalReview => OnboardingStage.AiSetup,
             SecurityNoticePage => OnboardingStage.Welcome,
             WelcomePage or AdvancedSetupPage or SetupNativeConnectionPage => OnboardingStage.Gateway,
             CapabilitiesPage => OnboardingStage.Capabilities,
             GatewaySetupPage or GatewaySetupDetailPage => OnboardingStage.GatewayReview,
             ProgressPage or NativeGatewaySetupPage => OnboardingStage.Install,
-            AiReadyPage => OnboardingStage.Ready,
-            _ => OnboardingStage.AiSetup,
+            AiReadyPage or CompletePage { Succeeded: true } => OnboardingStage.Ready,
+            WizardPage or AiSetupPage or AiCompletionPage => OnboardingStage.AiSetup,
+            // Failed or restart-required completion and configuration errors keep the step the user reached.
+            _ => null,
         };
-        progress.Update(
+        if (stage is not { } current)
+            return;
+        Companion.UpdateSteps(
             OnboardingFlowPolicy.GetStages(AccessDraft.Route, _config, _startAtLocalAiRecoveryReview,
                 includeReadyChoice: page is not WizardPage),
-            stage);
+            current);
     }
 
-    private OnboardingMascot? ActiveMascot =>
-        RootFrame.Content is FrameworkElement page
-            ? page.FindName("MascotHero") as OnboardingMascot ??
-              page.FindName("ProgressMascot") as OnboardingMascot
-            : null;
+    /// <summary>The left-pane companion; pages adjust its line, mood and badge through these helpers.</summary>
+    internal SetupCompanion CompanionPane => Companion;
+
+    internal void SetCompanionLine(string resourceKey) =>
+        Companion.SetLine(SetupLocalization.GetString(resourceKey));
+
+    internal void SetCompanionMood(OnboardingMascotMood mood) => Companion.Mascot.Mood = mood;
+
+    internal void PresentCompanion(string resourceKey, OnboardingMascotMood mood,
+        SetupCompanionBadge badge = SetupCompanionBadge.None) =>
+        Companion.Present(SetupLocalization.GetString(resourceKey), mood, badge);
+
+    private void RootFrame_Navigating(object sender, Microsoft.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
+    {
+        // Defaults land before the page's OnNavigatedTo, so pages can refine them for their state.
+        if (SetupCompanionPresentation.For(e.SourcePageType) is { } presentation)
+            PresentCompanion(presentation.LineResourceKey, presentation.Mood);
+    }
+
+    private OnboardingMascot? ActiveMascot => Companion.Mascot;
 
     internal async Task<StepResult> ApplyWindowsNodeContextAsync()
     {
@@ -1118,6 +1148,7 @@ public sealed partial class SetupWindow : Window
             "wizard-error" => typeof(WizardPage),
             "complete" => typeof(CompletePage),
             "complete-error" => typeof(CompletePage),
+            "complete-restart" => typeof(CompletePage),
             _ => typeof(SecurityNoticePage),
         },
         page switch
@@ -1128,6 +1159,7 @@ public sealed partial class SetupWindow : Window
                 null,
                 ReviewSummary: SetupReviewSummaryBuilder.Build(_config, _dataDir, _localDataDir)),
             "complete-error" => new CompletePageArgs(false, TimeSpan.FromMinutes(3), null, "Setup could not finish. Review the details, then retry setup when you are ready."),
+            "complete-restart" => new CompletePageArgs(false, TimeSpan.FromMinutes(3), null) { RequiresRestart = true },
             "progress" => CreateProgressPageArgs(showMilestoneOnly: false),
             "progress-local-ai" => CreateProgressPageArgs(showMilestoneOnly: false),
             "milestone" => CreateProgressPageArgs(showMilestoneOnly: true),
