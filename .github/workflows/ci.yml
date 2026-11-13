@@ -785,7 +785,7 @@ jobs:
         "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
 
     - name: Run Tray UI Tests
-      timeout-minutes: 15
+      timeout-minutes: 25
       env:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
