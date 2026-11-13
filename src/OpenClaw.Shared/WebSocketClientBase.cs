@@ -478,13 +478,16 @@ public abstract class WebSocketClientBase : IDisposable
 
     protected void AbortCurrentWebSocket(long expectedGeneration)
     {
-        var ws = _webSocket;
-        if (ws is null ||
-            !IsCurrentConnectionGeneration(expectedGeneration) ||
-            !ReferenceEquals(_webSocket, ws))
-            return;
+        ClientWebSocket? ws;
+        // Mark under the publication lock so a stale caller cannot mark a newer generation.
+        lock (_connectionStateLock)
+        {
+            ws = _webSocket;
+            if (ws is null || !IsCurrentConnection(ws, expectedGeneration))
+                return;
 
-        Interlocked.Exchange(ref _clientAbortedGeneration, expectedGeneration);
+            Interlocked.Exchange(ref _clientAbortedGeneration, expectedGeneration);
+        }
         try { ws.Abort(); }
         catch (Exception ex) { _logger.Debug($"{ClientRole} WebSocket abort threw: {ex.Message}"); }
     }
@@ -563,7 +566,8 @@ public abstract class WebSocketClientBase : IDisposable
                             textDecoder.Reset();
                             fragmented = false;
                             _logger.Warn($"[{ClientRole}] inbound message exceeded {MaxInboundMessageChars} chars; closing connection (memory-exhaustion guard)");
-                            ReportConnectionLoss(ws, connectionGeneration);
+                            RunTransportLossCallback(
+                                () => ReportConnectionLoss(ws, connectionGeneration), "loss reporting");
                             try { await ws.CloseAsync(WebSocketCloseStatus.MessageTooBig, "message too large", CancellationToken.None); }
                             catch { /* best-effort close */ }
                             break;
@@ -620,7 +624,9 @@ public abstract class WebSocketClientBase : IDisposable
         finally
         {
             ArrayPool<byte>.Shared.Return(buffer);
-            ReportConnectionLoss(ws, connectionGeneration, listenError);
+            // A failing callback must not skip the reconnect below.
+            RunTransportLossCallback(
+                () => ReportConnectionLoss(ws, connectionGeneration, listenError), "loss reporting");
         }
 
         // Auto-reconnect if not intentionally disposed
@@ -640,7 +646,10 @@ public abstract class WebSocketClientBase : IDisposable
 
     private void ReportConnectionLoss(ClientWebSocket ws, long generation, Exception? error = null)
     {
-        Action? notification;
+        Action? notification = null;
+        Exception? disconnectError = null;
+        Exception? captureError = null;
+        bool clientAborted;
         // Serialize invalidation with socket publication so an old listener cannot clear a new handshake.
         lock (_connectionStateLock)
         {
@@ -650,24 +659,68 @@ public abstract class WebSocketClientBase : IDisposable
                 return;
 
             _lossReportedGeneration = generation;
-            OnDisconnected();
-            notification = CaptureTransportLossNotification();
+            clientAborted = Interlocked.Read(ref _clientAbortedGeneration) == generation;
+            try { OnDisconnected(); }
+            catch (Exception ex) { disconnectError = ex; }
+            try { notification = CaptureTransportLossNotification(); }
+            catch (Exception ex) { captureError = ex; }
         }
-        notification?.Invoke();
+        // Logging and external callbacks stay outside the publication lock.
+        if (disconnectError is not null)
+            LogTransportLossFailure("state invalidation", disconnectError);
+        if (captureError is not null)
+            LogTransportLossFailure("cleanup capture", captureError);
+        if (notification is not null)
+            RunTransportLossCallback(notification, "loss notification");
         if (!IsCurrentConnection(ws, generation))
             return;
-        if (error is not null && IsCurrentConnection(ws, generation))
+        if (error is not null)
         {
-            OnTransportObservation(generation, GatewayHandshakePhase.Failed, error);
+            RunTransportLossCallback(
+                () => OnTransportObservation(generation, GatewayHandshakePhase.Failed, error),
+                "failure observation");
             if (!IsCurrentConnection(ws, generation))
                 return;
-            OnError(error);
+            RunTransportLossCallback(() => OnError(error), "listen error hook");
+            if (!IsCurrentConnection(ws, generation))
+                return;
         }
-        if (!IsCurrentConnection(ws, generation))
+        // A client abort's caller owns its Error or quiet-retry status; cleanup above still ran.
+        if (clientAborted && error is null)
             return;
-        OnTransportObservation(generation, GatewayHandshakePhase.Disconnected);
-        if (IsCurrentConnection(ws, generation))
-            RaiseStatusChanged(error is null ? ConnectionStatus.Disconnected : ConnectionStatus.Error);
+        if (!clientAborted)
+        {
+            RunTransportLossCallback(
+                () => OnTransportObservation(generation, GatewayHandshakePhase.Disconnected),
+                "disconnect observation");
+        }
+
+        var status = error is null ? ConnectionStatus.Disconnected : ConnectionStatus.Error;
+        if (StatusChanged is not { } subscribers)
+            return;
+        // Notify each subscriber separately so one failing handler cannot hide the loss from the rest.
+        foreach (EventHandler<ConnectionStatus> subscriber in subscribers.GetInvocationList())
+        {
+            if (!IsCurrentConnection(ws, generation))
+                return;
+            RunTransportLossCallback(() => subscriber(this, status), "status notification");
+        }
+    }
+
+    /// <summary>Runs one loss callback without letting it skip the remaining cleanup or recovery.</summary>
+    protected void RunTransportLossCallback(Action callback, string operation)
+    {
+        try { callback(); }
+        catch (Exception ex) { LogTransportLossFailure(operation, ex); }
+    }
+
+    private void LogTransportLossFailure(string operation, Exception error)
+    {
+        // Type names only: callback messages can contain request or credential data.
+        var types = error is AggregateException aggregate
+            ? $"{error.GetType().Name}: {string.Join(", ", aggregate.Flatten().InnerExceptions.Select(inner => inner.GetType().Name))}"
+            : error.GetType().Name;
+        _logger.Warn($"{ClientRole} transport loss {operation} failed ({types}).");
     }
 
     /// <summary>Captures the socket and generation that own a health check or recovery attempt.</summary>

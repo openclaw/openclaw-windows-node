@@ -2163,17 +2163,20 @@ public class WindowsNodeClient : WebSocketClientBase
         }
     }
 
-    protected override Action CaptureTransportLossNotification()
+    protected override Action CaptureTransportLossNotification() => CaptureTransportCleanup();
+
+    private Action CaptureTransportCleanup()
     {
         var cancelInvocations = _activeInvocations.CaptureTransportCancellation();
         var fileInvocations = _fileInvocations.Values.ToArray();
         var drainProgressRequests = _progressRequests.CaptureDrain();
+        // Each step runs even when an earlier one throws, so file channels and progress waiters are always released.
         return () =>
         {
-            cancelInvocations();
+            RunTransportLossCallback(cancelInvocations, "invocation cancellation");
             foreach (var invocation in fileInvocations)
-                invocation.Channel.Abort();
-            drainProgressRequests();
+                RunTransportLossCallback(invocation.Channel.Abort, "file channel abort");
+            RunTransportLossCallback(drainProgressRequests, "progress drain");
         };
     }
 
@@ -2183,10 +2186,5 @@ public class WindowsNodeClient : WebSocketClientBase
         CancelTransportInvocations();
     }
 
-    private void CancelTransportInvocations()
-    {
-        _activeInvocations.CancelAll();
-        foreach (var invocation in _fileInvocations.Values) invocation.Channel.Abort();
-        _progressRequests.Drain();
-    }
+    private void CancelTransportInvocations() => CaptureTransportCleanup()();
 }

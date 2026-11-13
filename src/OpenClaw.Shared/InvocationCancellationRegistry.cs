@@ -188,8 +188,15 @@ internal sealed class InvocationCancellationRegistry
 
         return () =>
         {
+            // One throwing cancellation callback must not leave the other captured invocations running.
+            List<Exception>? errors = null;
             foreach (var invocation in active)
-                invocation.CancelFromTransport();
+            {
+                try { invocation.CancelFromTransport(); }
+                catch (Exception ex) { (errors ??= []).Add(ex); }
+            }
+            if (errors is not null)
+                throw new AggregateException(errors);
         };
     }
 

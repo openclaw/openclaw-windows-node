@@ -950,7 +950,13 @@ fails wizard requests with `GatewayConnectionLostException`; other pending
 waiters are canceled. Listen errors use that same cleanup before publishing
 Error. Invalidation is serialized with socket publication; transport events and
 node invocation cancellation run outside that lock. Superseded listeners and
-disposal do not invalidate a replacement connection.
+disposal do not invalidate a replacement connection. Client-initiated aborts
+still run that cleanup but do not add a Disconnected status or observation;
+their callers keep their existing Error or quiet-retry policy. Each loss
+callback runs separately, so a failing step is logged without skipping the
+remaining cleanup, status notifications or the client-owned reconnect. Status
+delivery stops once the client is disposed or the connection is replaced, so a
+stale Disconnected cannot follow a newer connection's Connecting.
 
 Health checks capture their socket and generation before sending or starting
 recovery. Backoff and reconnect authorization recheck that ownership, so delayed
