@@ -7812,6 +7812,30 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Aguardando subagentes</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparando entrada</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>falhou</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} subagente</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} subagentes</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} com falha</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>em execução</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>interrompido</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} arquivos</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>Lido</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>Editar</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>Editando</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>Editado</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>Criar</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>Criando</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>Criado</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>Excluir</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>Excluindo</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>Excluído</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>Alterar</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>Alterando</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>Alterado</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>Gravar</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>Gravando</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>Gravado</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>Pesquisado</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>Obtido</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>Concluído</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>Revisão do provedor necessária</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>Aviso de revisão do provedor</value></data>

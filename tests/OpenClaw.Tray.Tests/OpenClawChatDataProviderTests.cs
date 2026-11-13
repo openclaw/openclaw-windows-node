@@ -12362,7 +12362,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         var rows = ChatToolActivityPresentation.Project(snapshots[^1].Timelines["main"].Entries, "main", 1);
         var row = Assert.Single(rows);
-        Assert.Same(entry, Assert.Single(row.Tools));
+        Assert.Same(entry, row.Entry);
     }
 
     [Fact]
@@ -12388,7 +12388,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             snapshots[^1].Timelines["main"].Entries,
             "main",
             1));
-        Assert.Same(entry, Assert.Single(row.Tools));
+        Assert.Same(entry, row.Entry);
     }
 
     [Fact]

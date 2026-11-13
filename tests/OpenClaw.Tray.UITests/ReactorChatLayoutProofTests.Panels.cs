@@ -179,9 +179,13 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private async Task ExpandPanelToolAsync(Border surface, string entryId)
     {
-        await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatToolActivity_" + entryId).IsExpanded = true);
-        await SettleAsync();
-        await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatToolCall_" + entryId).IsExpanded = true);
+        // A lone call is its own row, as on the web, so there is no group to open first.
+        await ui.RunOnUIAsync(() =>
+        {
+            Assert.DoesNotContain(FindDescendants<Expander>(surface), expander =>
+                AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_" + entryId);
+            FindControl<Expander>(surface, "ChatToolCall_" + entryId).IsExpanded = true;
+        });
         await SettleAsync();
     }
 
