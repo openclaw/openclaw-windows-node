@@ -780,8 +780,8 @@ Assert-Contains -Text $markdownProofStep -Expected "-Filter 'Category=NativeMark
     -Message "Native Markdown disclosure proofs must run as one isolated run-proof-tests.ps1 invocation."
 Assert-NotContains -Text $markdownProofStep -Unexpected "foreach" `
     -Message "Native Markdown disclosure proofs must not fan out per theme; Dark and HighContrast are screenshot-only."
-Assert-Contains -Text $markdownProofStep -Expected "      if: `${{ inputs.promotion_alpha == '' || hashFiles('tests/OpenClaw.Tray.UITests/ReactorMarkdownDisclosureProofTests.cs') != '' }}" `
-    -Message "Native Markdown disclosure proofs must always run outside release promotion; a promotion may skip them only when the candidate has none."
+Assert-Contains -Text $markdownProofStep -Expected "      if: `${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' && (inputs.promotion_alpha == '' || hashFiles('tests/OpenClaw.Tray.UITests/ReactorMarkdownDisclosureProofTests.cs') != '') }}" `
+    -Message "Native Markdown disclosure proofs must run after earlier UI test failures and always outside release promotion; a promotion may skip them only when the candidate has none."
 foreach ($shard in @(
         @{ Name = 'ui-tests'; Job = $uiJob; Step = $trayUiStep; Trx = 'OpenClaw.Tray.UITests.trx' },
         @{ Name = 'tray-ui-shard'; Job = $trayUiShardJob; Step = $trayUiShardStep; Trx = 'OpenClaw.Tray.UITests.Shard.trx' })) {

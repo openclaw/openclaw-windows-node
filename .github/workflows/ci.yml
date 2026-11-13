@@ -893,10 +893,10 @@ jobs:
     # Native Expander templates cannot safely outlive theme resource replacement in the
     # shared WinUI testhost, so the disclosure proofs (Light + link/content policy) run in their
     # own process. Dark and HighContrast are screenshot-only (OPENCLAW_VISUAL_TEST=1).
-    # A promoted alpha that predates these proofs has none to run; ordinary CI always runs them
-    # and the proof runner fails on zero tests.
+    # A promoted alpha that predates these proofs has none to run; ordinary CI always runs them,
+    # including after earlier UI test failures, and the proof runner fails on zero tests.
     - name: Run native Markdown disclosure proofs
-      if: ${{ inputs.promotion_alpha == '' || hashFiles('tests/OpenClaw.Tray.UITests/ReactorMarkdownDisclosureProofTests.cs') != '' }}
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' && (inputs.promotion_alpha == '' || hashFiles('tests/OpenClaw.Tray.UITests/ReactorMarkdownDisclosureProofTests.cs') != '') }}
       timeout-minutes: 10
       shell: pwsh
       run: |

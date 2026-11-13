@@ -153,6 +153,7 @@ public sealed class ReactorMarkdownDisclosureProofTests(UIThreadFixture ui)
             {
                 // Screenshots only: let the Expander content and chevron transitions finish
                 // so the capture is not taken mid-animation. Assertions never rely on this.
+                // test-timing-exception: screenshot-only chevron settle; readiness is WaitForExpansionAsync above.
                 await Task.Delay(1000);
                 await ui.YieldToRenderAsync();
             }

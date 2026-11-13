@@ -149,7 +149,8 @@ Native Markdown disclosure proofs run in their own WinUI test process. Attached
 native `Expander` templates can crash the shared testhost when a later fixture
 replaces application theme resources, so both ordinary Tray UI shards exclude
 `Category=NativeMarkdownProof` and CI runs the Light accessibility/state proof
-and the link/content-policy proof together through the existing proof runner. The
+and the link/content-policy proof together through the existing proof runner,
+also after earlier UI test failures. The
 disclosure is a stock `Expander` with no theme-dependent value, so Dark and
 HighContrast are screenshot-only captures, not separate gates. These are
 mandatory rendering proofs, not optional or skipped tests:
@@ -168,7 +169,8 @@ disclosures and a following heading's lead-in, and expansion state across rerend
 resizing. Inside a disclosure, http/https links and bare URLs are live with chat
 link and inline-code styling; other link schemes, images, raw HTML and summary links
 stay inert text. They wait for native animation state and
-assert nonzero rendered text geometry instead of using sleeps. Set
+assert nonzero rendered text geometry; their only fixed delay is a marked
+screenshot-only chevron settle when captures are enabled. Set
 `OPENCLAW_VISUAL_TEST=1` and `OPENCLAW_VISUAL_TEST_DIR` to a dedicated artifact
 directory for collapsed and expanded captures; that also adds the Dark and
 HighContrast cases. HighContrast is a resource simulation, not a claim that
