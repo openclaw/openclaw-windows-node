@@ -5,6 +5,7 @@ using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClawTray.Helpers;
 using Windows.Devices.Input;
@@ -20,30 +21,37 @@ internal sealed record ChatAttachmentFocusRequest(string Key, long Token, FocusS
 
 /// <param name="OnRemove">Receives the remove button's focus state at activation time.</param>
 /// <param name="FocusRequest">Set only for the chip that should take focus.</param>
+/// <param name="Thumbnail">Image preview; when set the attachment renders as a square tile.</param>
 internal sealed record ChatAttachmentChipProps(
     string FileName,
     string RemoveLabel,
     Action<FocusState> OnRemove,
     double MaxWidth,
-    ChatAttachmentFocusRequest? FocusRequest = null);
+    ChatAttachmentFocusRequest? FocusRequest = null,
+    ImageBrush? Thumbnail = null);
 
 /// <summary>
-/// Compact pending-attachment pill rendered in the composer's attachment rail.
-/// The pill sizes to its file name up to <see cref="ChatAttachmentChipProps.MaxWidth"/> and
-/// grows taller with Windows text scaling. Its remove button keeps layout and keyboard/UIA
-/// access at all times and becomes visible on pointer hover, keyboard focus, or when touch
-/// input is present. Callers key each chip with <see cref="KeyFor"/> so per-chip state never
-/// moves to another attachment.
+/// Pending attachment rendered in the composer's attachment rail. Files are compact pills that
+/// size to their name up to <see cref="ChatAttachmentChipProps.MaxWidth"/> and grow taller with
+/// Windows text scaling. Images with a decodable preview (<see cref="ThumbnailFor"/>) are square
+/// tiles with the remove button as a badge on the top-right corner. In both forms the remove
+/// button keeps layout and keyboard/UIA access at all times and becomes visible on pointer hover,
+/// keyboard focus, or when touch input is present. Callers key each chip with
+/// <see cref="KeyFor"/> so per-chip state never moves to another attachment.
 /// Usage:
 /// <code>
-/// Component&lt;ChatAttachmentChip, ChatAttachmentChipProps&gt;(new(name, label, onRemove, maxWidth))
+/// Component&lt;ChatAttachmentChip, ChatAttachmentChipProps&gt;(
+///         new(name, label, onRemove, maxWidth, Thumbnail: ChatAttachmentChip.ThumbnailFor(attachment)))
 ///     .WithKey(ChatAttachmentChip.KeyFor(attachment));
 /// </code>
 /// </summary>
 internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
 {
     private static readonly ConditionalWeakTable<ChatAttachment, string> s_keys = new();
+    private static readonly ConditionalWeakTable<ChatAttachment, ThumbnailSlot> s_thumbnails = new();
     private static long s_nextKey;
+
+    private sealed record ThumbnailSlot(ImageBrush? Brush);
 
     // Queried once per process: pills re-render on every composer render, including each keystroke.
     private static readonly Lazy<bool> TouchPresent = new(() => new TouchCapabilities().TouchPresent != 0);
@@ -57,6 +65,28 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
         s_keys.GetValue(attachment, static _ =>
             $"chat-attachment-{Interlocked.Increment(ref s_nextKey)}");
 
+    /// <summary>
+    /// Cached tile preview for an image attachment, or null when it is not a raster image or does
+    /// not decode (those render as file pills). Decodes once per attachment, at thumbnail size.
+    /// </summary>
+    internal static ImageBrush? ThumbnailFor(ChatAttachment attachment) =>
+        s_thumbnails.GetValue(attachment, static candidate => new ThumbnailSlot(DecodeThumbnail(candidate))).Brush;
+
+    private static ImageBrush? DecodeThumbnail(ChatAttachment attachment)
+    {
+        if (!attachment.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)
+            || attachment.MimeType.StartsWith("image/svg", StringComparison.OrdinalIgnoreCase)
+            || !ChatImagePreviewCache.TryDecodeBoundedBase64(
+                attachment.Content, ChatImagePreviewCache.MaximumPreviewBytes, out var bytes))
+        {
+            return null;
+        }
+
+        return ChatAttachmentBitmapDecoder.TryDecode(bytes, ChatVisuals.AttachmentThumbnailDecodeSize) is { } bitmap
+            ? new ImageBrush { ImageSource = bitmap, Stretch = Stretch.UniformToFill }
+            : null;
+    }
+
     public override Element Render()
     {
         var (hovered, setHovered) = UseState(false);
@@ -64,6 +94,7 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
         var removeButton = UseRef<Button?>(null);
         var handledFocusToken = UseRef(Props.FocusRequest?.Token ?? 0L);
         var touch = TouchPresent.Value;
+        var thumbnail = Props.Thumbnail;
 
         var glyph = TextBlock(FluentIconCatalog.Document)
             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
@@ -87,15 +118,25 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
                     .AccessibilityView(AccessibilityView.Raw)
                     .Set(text => text.IsTextScaleFactorEnabled = false),
                 () => Props.OnRemove(removeButton.Current?.FocusState ?? FocusState.Unfocused))
-            .Resources(ChatVisuals.ToolbarButtonResources)
+            .Resources(resources =>
+            {
+                ChatVisuals.ToolbarButtonResources(resources);
+                // Over an image the badge needs an opaque disc; subtle fills would let the picture show through.
+                if (thumbnail is not null)
+                    resources.Set("ButtonBackground", Theme.Ref("ChatAttachmentBadgeBrush"))
+                        .Set("ButtonBackgroundPointerOver", Theme.Ref("ChatAttachmentBadgeHoverBrush"))
+                        .Set("ButtonBackgroundPressed", Theme.Ref("ChatAttachmentBadgeHoverBrush"))
+                        .Set("ButtonBorderBrush", Theme.Ref("ChatStrokeBrush"))
+                        .Set("ButtonBorderBrushPointerOver", Theme.Ref("ChatStrokeBrush"))
+                        .Set("ButtonBorderBrushPressed", Theme.Ref("ChatStrokeBrush"));
+            })
             .Width(ChatVisuals.AttachmentRemoveSize).Height(ChatVisuals.AttachmentRemoveSize)
             .MinWidth(ChatVisuals.AttachmentRemoveSize).MinHeight(ChatVisuals.AttachmentRemoveSize)
-            .Padding(0).BorderThickness(0)
+            .Padding(0).BorderThickness(thumbnail is null ? 0 : 1)
             .CornerRadius(ChatVisuals.AttachmentRemoveSize / 2)
-            .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+            .Foreground(Theme.Ref(thumbnail is null ? "ChatSecondaryTextBrush" : "ChatTextBrush"))
             .AutomationName(Props.RemoveLabel)
             .ToolTip(Props.RemoveLabel)
-            .VAlign(VerticalAlignment.Center)
             // Opacity keeps the target in layout and in the keyboard/UIA tree while hidden.
             .Opacity(hovered || focused || touch ? 1 : 0)
             .Set(button =>
@@ -112,6 +153,32 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
             })
             .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
 
+        if (thumbnail is not null)
+        {
+            // The badge sits on the tile's top-right corner inside the cell, so no negative margin is
+            // clipped by the rail's scroller.
+            var inset = ChatVisuals.AttachmentThumbnailBadgeInset;
+            return Grid([GridSize.Auto], [GridSize.Auto],
+                    Border(Empty())
+                        .Size(ChatVisuals.AttachmentThumbnailSize, ChatVisuals.AttachmentThumbnailSize)
+                        .Margin(0, inset, inset, 0)
+                        .CornerRadius(ChatVisuals.SurfaceRadius)
+                        .BorderThickness(1)
+                        .BorderBrush(Theme.Ref("ChatStrokeBrush"))
+                        .Background(thumbnail)
+                        .AccessibilityView(AccessibilityView.Raw),
+                    remove.HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Top))
+                .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+                .HAlign(HorizontalAlignment.Left)
+                .ToolTip(Props.FileName)
+                .AutomationId("ChatAttachmentImage")
+                .OnPointerEntered((_, _) => setHovered(true))
+                .OnPointerExited((_, _) => setHovered(false))
+                .OnGotFocus((_, args) => setFocused(
+                    args.OriginalSource is not Control { FocusState: FocusState.Pointer }))
+                .OnLostFocus((_, _) => setFocused(false));
+        }
+
         return Border(Grid(
                 // Auto columns keep the pill's measured width equal to its content. A star name column
                 // let flex measurement squeeze short names into an ellipsis; the name's MaxWidth trims instead.
@@ -120,7 +187,7 @@ internal sealed class ChatAttachmentChip : Component<ChatAttachmentChipProps>
                 glyph.Grid(column: 0),
                 name.MaxWidth(Math.Max(0, Props.MaxWidth - ChatAttachmentChipChrome))
                     .Margin(ChatVisuals.AttachmentChipGap, 0, 0, 0).Grid(column: 1),
-                remove.Margin(2, 0, 0, 0).Grid(column: 2)))
+                remove.VAlign(VerticalAlignment.Center).Margin(2, 0, 0, 0).Grid(column: 2)))
             // A minimum, not a fixed height, so scaled file names grow the pill instead of clipping.
             .MinHeight(ChatVisuals.AttachmentChipHeight)
             .MaxWidth(Props.MaxWidth)

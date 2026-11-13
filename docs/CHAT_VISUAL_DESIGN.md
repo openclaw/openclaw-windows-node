@@ -801,8 +801,15 @@ layout and in keyboard and UI Automation order, and is visible on hover, keyboar
 focus or touch-capable devices; pointer focus alone does not reveal it.
 Pills are keyed to their attachment; removing one moves focus to the next file's
 removal target, else the previous file's, else the editor when no files remain.
+Raster image attachments render instead as 96-pixel square tiles (12-pixel corners,
+`ChatStrokeBrush` outline, cropped to fill) on their own wrapping row above the
+file pills, like the GitHub Copilot app. Their removal target is the same named
+24-pixel button drawn as an opaque `ChatAttachmentBadgeBrush` disc over the
+tile's top-right corner. Images that do not decode, and SVG, stay file pills.
+Focus order follows the visual order: tiles first, then pills.
 Pills wrap onto new rows and grow the composer; past 136 pixels (four rows at
-default text size; fewer when text is scaled) the rail scrolls vertically,
+default text size; fewer when text is scaled), plus one tile row when images are
+attached, the rail scrolls vertically,
 keeping a trailing gutter for the overlaid scroll bar, so many files cannot push
 the transcript off screen. The rail also leaves room for focus visuals.
 Video-specific previews are not invented by the native file rail.

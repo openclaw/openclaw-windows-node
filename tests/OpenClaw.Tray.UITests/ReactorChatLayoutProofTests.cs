@@ -3264,6 +3264,64 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         });
     }
 
+    [Theory]
+    [InlineData(260)]
+    [InlineData(480)]
+    public async Task AttachmentRail_ShowsImagesAsTilesAboveFilePills(int width)
+    {
+        // An 8x8 two-band PNG; the SVG is not a raster preview and stays a file pill.
+        const string Png = "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAAeSURBVChTY4iuv/YfH2ZAF0DHVFDwaaX1f3yYDgoArv+wgQZn710AAAAASUVORK5CYII=";
+        await WithChatAsync(width, async (surface, _, session, _) =>
+        {
+            var notes = new OpenClaw.Shared.ChatAttachment { FileName = "notes.txt", MimeType = "text/plain", Content = "dGVzdA==" };
+            var chart = new OpenClaw.Shared.ChatAttachment { Type = "image", FileName = "chart.png", MimeType = "image/png", Content = Png };
+            var logo = new OpenClaw.Shared.ChatAttachment { Type = "image", FileName = "logo.svg", MimeType = "image/svg+xml", Content = "PHN2Zy8+" };
+            await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments([notes, chart, logo]));
+            FrameworkElement[] Tagged(string id) => FindDescendants<FrameworkElement>(surface)
+                .Where(element => AutomationProperties.GetAutomationId(element) == id && element.ActualWidth > 0).ToArray();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Tagged("ChatAttachmentImage").Length == 1 && Tagged("ChatAttachmentChip").Length == 2,
+                "one image tile and two file pills"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var tile = Assert.Single(Tagged("ChatAttachmentImage"));
+                var pills = Tagged("ChatAttachmentChip");
+                var image = Assert.Single(FindDescendants<Border>(tile), border =>
+                    border.Background is ImageBrush);
+                Assert.Equal(ChatVisuals.AttachmentThumbnailSize, image.ActualWidth, 0.5);
+                Assert.Equal(ChatVisuals.AttachmentThumbnailSize, image.ActualHeight, 0.5);
+                // Tiles sit on their own row above the file pills.
+                Assert.True(Bounds(tile, surface).Bottom <= pills.Min(pill => Bounds(pill, surface).Top) + 0.5);
+                Assert.Equal(
+                    new[] { "Remove attachment notes.txt", "Remove attachment logo.svg" },
+                    pills.Select(pill => AutomationProperties.GetName(
+                        Assert.Single(FindDescendants<Button>(pill)))));
+                // The remove badge overlaps the tile's top-right corner.
+                var badge = Assert.Single(FindDescendants<Button>(tile));
+                Assert.Equal("Remove attachment chart.png", AutomationProperties.GetName(badge));
+                var badgeBounds = Bounds(badge, surface);
+                var imageBounds = Bounds(image, surface);
+                Assert.True(badgeBounds.Right > imageBounds.Right && badgeBounds.Left < imageBounds.Right);
+                Assert.True(badgeBounds.Top < imageBounds.Top && badgeBounds.Bottom > imageBounds.Top);
+                Assert.True(badge.Focus(FocusState.Keyboard));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Assert.Single(FindDescendants<Button>(Assert.Single(Tagged("ChatAttachmentImage")))).Opacity == 1,
+                "keyboard focus reveals the image remove badge"));
+            if (width == 480)
+                await CaptureAsync(surface, "Attachment-images-480");
+            await ui.RunOnUIAsync(() => Invoke(Assert.Single(FindDescendants<Button>(Assert.Single(Tagged("ChatAttachmentImage"))))));
+            // Visual order is images, then files, so removing the only image focuses the first file.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => session.ViewModel.PendingAttachments.Count == 2
+                    && FocusManager.GetFocusedElement(surface.XamlRoot) is Button focused
+                    && AutomationProperties.GetName(focused) == "Remove attachment notes.txt"
+                    && Tagged("ChatAttachmentImage").Length == 0,
+                "removing the image moves focus to the first file pill"));
+            await ui.RunOnUIAsync(() => Assert.Equal(new[] { notes, logo }, session.ViewModel.PendingAttachments));
+        });
+    }
+
     private async Task WithChatAsync(
         int width,
         Func<Border, ReactorHostControl, ChatComposerSession, ProofProvider, Task> proof,

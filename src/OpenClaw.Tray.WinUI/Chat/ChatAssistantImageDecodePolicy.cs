@@ -10,7 +10,8 @@ internal static class ChatAssistantImageDecodePolicy
         uint sourceWidth,
         uint sourceHeight,
         out int decodeWidth,
-        out int decodeHeight)
+        out int decodeHeight,
+        uint maximumDecodeDimension = MaximumDecodeDimension)
     {
         decodeWidth = 0;
         decodeHeight = 0;
@@ -25,7 +26,7 @@ internal static class ChatAssistantImageDecodePolicy
 
         var scale = Math.Min(
             1d,
-            MaximumDecodeDimension / (double)Math.Max(sourceWidth, sourceHeight));
+            Math.Min(MaximumDecodeDimension, maximumDecodeDimension) / (double)Math.Max(sourceWidth, sourceHeight));
         decodeWidth = Math.Max(1, (int)Math.Round(sourceWidth * scale));
         decodeHeight = Math.Max(1, (int)Math.Round(sourceHeight * scale));
         return true;

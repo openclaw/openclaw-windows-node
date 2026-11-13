@@ -343,12 +343,18 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var attachmentChipMaxWidth = Math.Min(ChatVisuals.AttachmentChipMaxWidth,
             Math.Max(0, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 2 * ChatVisuals.ProseInset
                 - 2 - ChatVisuals.AttachmentRailScrollBarInset));
+        // Images render as tiles on their own row above the file pills, so visual and focus order is
+        // images first, then files, each in attach order.
+        static IReadOnlyList<ChatAttachment> RailOrder(IReadOnlyList<ChatAttachment> attachments) =>
+            attachments.Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is not null)
+                .Concat(attachments.Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is null))
+                .ToArray();
         void RemoveAttachment(ChatAttachment attachment, FocusState focusState)
         {
             // Read the live list: the view model replaces it on every removal, so a list captured
             // at render time is stale when two removals happen before the next render. Keyed chips
             // unmount the focused button, so keyboard and pointer focus move on deliberately.
-            var current = vm.PendingAttachments;
+            var current = RailOrder(vm.PendingAttachments);
             var index = -1;
             for (var candidate = 0; candidate < current.Count; candidate++)
             {
@@ -370,25 +376,34 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             else
                 inputControl.Current?.Focus(focusState);
         }
-        var attachmentRows = vm.PendingAttachments
-            .Select(attachment =>
-            {
-                var key = ChatAttachmentChip.KeyFor(attachment);
-                var removeLabel = string.IsNullOrWhiteSpace(attachment.FileName)
-                    ? Localized("Chat_Attachment_Remove", "Remove attachment")
-                    : string.Format(CultureInfo.CurrentCulture,
-                        Localized("Chat_Attachment_RemoveNamedFormat", "Remove attachment {0}"),
-                        attachment.FileName);
-                return (Element)Component<ChatAttachmentChip, ChatAttachmentChipProps>(new(
-                        attachment.FileName,
-                        removeLabel,
-                        focusState => RemoveAttachment(attachment, focusState),
-                        attachmentChipMaxWidth,
-                        attachmentFocus?.Key == key ? attachmentFocus : null))
-                    // Flex rows shrink children by default, which trims names inside a too-narrow pill.
-                    .Flex(grow: 0, shrink: 0)
-                    .WithKey(key);
-            })
+        Element AttachmentChip(ChatAttachment attachment, ImageBrush? thumbnail)
+        {
+            var key = ChatAttachmentChip.KeyFor(attachment);
+            var removeLabel = string.IsNullOrWhiteSpace(attachment.FileName)
+                ? Localized("Chat_Attachment_Remove", "Remove attachment")
+                : string.Format(CultureInfo.CurrentCulture,
+                    Localized("Chat_Attachment_RemoveNamedFormat", "Remove attachment {0}"),
+                    attachment.FileName);
+            return Component<ChatAttachmentChip, ChatAttachmentChipProps>(new(
+                    attachment.FileName,
+                    removeLabel,
+                    focusState => RemoveAttachment(attachment, focusState),
+                    attachmentChipMaxWidth,
+                    attachmentFocus?.Key == key ? attachmentFocus : null,
+                    thumbnail))
+                // Flex rows shrink children by default, which trims names inside a too-narrow pill.
+                .Flex(grow: 0, shrink: 0)
+                .WithKey(key);
+        }
+        var pendingAttachments = vm.PendingAttachments;
+        var imageTiles = pendingAttachments
+            .Select(attachment => (attachment, thumbnail: ChatAttachmentChip.ThumbnailFor(attachment)))
+            .Where(item => item.thumbnail is not null)
+            .Select(item => AttachmentChip(item.attachment, item.thumbnail))
+            .ToArray();
+        var filePills = pendingAttachments
+            .Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is null)
+            .Select(attachment => AttachmentChip(attachment, null))
             .ToArray();
         var audioLevel = Math.Clamp(vm.VoiceAudioLevel, 0f, 1f);
         var voiceFeedbackText = string.IsNullOrWhiteSpace(vm.VoiceTranscript)
@@ -851,25 +866,36 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .AutomationId("ChatPlacementProgress")
                 .LiveRegion(AutomationLiveSetting.Polite));
-        if (attachmentRows.Length > 0)
-            // Pills wrap onto new rows and grow the composer. Past AttachmentRailMaxRows the rail
-            // scrolls vertically so many files cannot push the transcript off screen.
-            composerChildren.Add(ScrollViewer(Border(FlexRow(attachmentRows) with
-                    {
-                        Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
-                        ColumnGap = ChatVisuals.AttachmentChipGap,
-                        RowGap = ChatVisuals.AttachmentChipGap,
-                    })
+        if (imageTiles.Length + filePills.Length > 0)
+        {
+            Element WrapRow(Element[] children, string key) => children.Length == 0
+                ? Empty().WithKey(key)
+                : (FlexRow(children) with
+                {
+                    Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
+                    ColumnGap = ChatVisuals.AttachmentChipGap,
+                    RowGap = ChatVisuals.AttachmentChipGap,
+                }).WithKey(key);
+            // Image tiles wrap on their own row above the file pills, and both grow the composer. The
+            // cap allows one row of tiles plus four pill rows before the rail scrolls vertically.
+            var railMaxHeight = ChatVisuals.AttachmentRailMaxHeight + (imageTiles.Length > 0
+                ? ChatVisuals.AttachmentThumbnailCell + (filePills.Length > 0 ? ChatVisuals.AttachmentRailRowGap : 0)
+                : 0);
+            composerChildren.Add(ScrollViewer(Border(VStack(
+                        imageTiles.Length > 0 && filePills.Length > 0 ? ChatVisuals.AttachmentRailRowGap : 0,
+                        WrapRow(imageTiles, "attachment-images"),
+                        WrapRow(filePills, "attachment-files")))
                     // Vertical room keeps focus visuals inside the clipped scroller. The trailing gutter is
                     // always reserved: toggling it with overflow could keep its own overflow alive.
                     .Padding(0, 3, ChatVisuals.AttachmentRailScrollBarInset, 3))
-                .MaxHeight(ChatVisuals.AttachmentRailMaxHeight)
+                .MaxHeight(railMaxHeight)
                 .AutomationId("ChatAttachmentRail")
                 .Set(scroll =>
                 {
                     scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
                     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
                 }));
+        }
         // Status and attachment rows can be inserted before this stable editor/toolbar tail.
         composerChildren.Add(input.WithKey("chat-composer-input"));
         composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
