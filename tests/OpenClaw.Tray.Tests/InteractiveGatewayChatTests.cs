@@ -138,6 +138,48 @@ public sealed class InteractiveGatewayChatTests
         await client.DisconnectAsync();
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveReplyRendersOneBubbleWithOrWithoutAgentAssistantText(bool chatOnlyAssistantText)
+    {
+        // The Tray's approval-capable profile advertises chat-only-assistant-text, so the fixture
+        // omits agent assistant text; the other profile receives both streams like an older Gateway.
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token,
+            eventDelay: TimeSpan.FromMilliseconds(30));
+        server.Interactive!.Playback.Select("streaming");
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false)
+        {
+            SupportsExecApprovals = chatOnlyAssistantText,
+        };
+        var agentAssistantText = 0;
+        client.AgentEventReceived += (_, evt) => { if (evt.Stream == "assistant") Interlocked.Increment(ref agentAssistantText); };
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Enqueue(args.Snapshot);
+        await provider.LoadAsync();
+        var key = GatewayScenario.EmptySessionKey;
+        await provider.SendMessageAsync(key, "Synthetic provider proof.");
+
+        await WaitAsync(() => Latest(snapshots, key)?.Entries.Any(e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text.Contains("FIXTURE INTERACTIVE COMPLETE") && !e.IsStreaming) == true);
+        Assert.Equal(chatOnlyAssistantText, agentAssistantText == 0);
+        Assert.All(snapshots, snapshot => Assert.True(
+            snapshot.Timelines.GetValueOrDefault(key)?.Entries.Count(e => e.Kind == ChatTimelineItemKind.Assistant) is null or <= 1));
+        var reply = Assert.Single(Latest(snapshots, key)!.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.StartsWith("This is a **synthetic streaming answer**.", reply.Text);
+        await client.DisconnectAsync();
+    }
+
     private static ChatTimelineState? Latest(ConcurrentQueue<ChatDataSnapshot> snapshots, string key) =>
         snapshots.LastOrDefault()?.Timelines.GetValueOrDefault(key);
 
