@@ -9,11 +9,17 @@ param(
     [string]$Name,
     [Parameter(Mandatory)][string]$Filter,
     [ValidateRange(1, 3600)][int]$HangTimeoutSeconds = 600,
-    # The calling workflow step's timeout-minutes; 0 skips the budget report.
+    # The calling workflow step's timeout-minutes. Defaults to OPENCLAW_CI_STEP_TIMEOUT_MINUTES; 0 skips the report.
     [ValidateRange(0, 360)][int]$StepTimeoutMinutes = 0
 )
 
 $stepBudget = [Diagnostics.Stopwatch]::StartNew()
+if (-not $PSBoundParameters.ContainsKey('StepTimeoutMinutes')) {
+    # CI passes the budget in the step environment so an older candidate's runner, run by alpha
+    # promotion, never receives a parameter it does not declare.
+    . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+    $StepTimeoutMinutes = Get-CiStepTimeoutMinutes
+}
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
