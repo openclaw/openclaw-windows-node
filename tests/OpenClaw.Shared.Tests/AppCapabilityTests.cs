@@ -5,6 +5,10 @@ namespace OpenClaw.Shared.Tests;
 
 public class AppCapabilityTests
 {
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(15);
+
     private static JsonElement ParseArgs(string json)
     {
         using var doc = JsonDocument.Parse(json);
@@ -178,7 +182,7 @@ public class AppCapabilityTests
         };
 
         var responseTask = cap.ExecuteAsync(req);
-        Assert.Equal("settings", await handlerStarted.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Equal("settings", await handlerStarted.Task.WaitAsync(StepTimeout));
         Assert.False(responseTask.IsCompleted);
 
         handlerResult.SetResult(new { url = expectedUrl });

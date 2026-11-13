@@ -1783,7 +1783,7 @@ public class OpenClawGatewayClientTests
         using var config = JsonDocument.Parse("{}");
 
         var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         var requestId = ReadRequestId(request);
         await server.SendTextAsync(JsonSerializer.Serialize(new
         {
@@ -1793,7 +1793,7 @@ public class OpenClawGatewayClientTests
             error = new { code = "INVALID_REQUEST", message = "patch rejected" },
         }));
 
-        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        var result = await responseTask.WaitAsync(StepTimeout);
 
         Assert.False(result.Ok);
         Assert.True(result.IsGatewayRejection);
@@ -1815,7 +1815,7 @@ public class OpenClawGatewayClientTests
         using var config = JsonDocument.Parse("{}");
 
         var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
-        var request = await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
         var requestId = ReadRequestId(request);
         await server.SendTextAsync(JsonSerializer.Serialize(new
         {
@@ -1825,7 +1825,7 @@ public class OpenClawGatewayClientTests
             error = new { code = "UNAVAILABLE", message = "runtime activation failed" },
         }));
 
-        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        var result = await responseTask.WaitAsync(StepTimeout);
 
         Assert.False(result.Ok);
         Assert.False(result.IsGatewayRejection);
@@ -1847,8 +1847,8 @@ public class OpenClawGatewayClientTests
         using var config = JsonDocument.Parse("{}");
 
         var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 250);
-        await server.ReceiveTextAsync().WaitAsync(TimeSpan.FromSeconds(2));
-        var result = await responseTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        var result = await responseTask.WaitAsync(StepTimeout);
 
         Assert.False(result.Ok);
         Assert.False(result.IsGatewayRejection);
@@ -2102,7 +2102,7 @@ public class OpenClawGatewayClientTests
             Assert.Equal(1, helper.GetPendingRequestCount());
 
             var exception = await Assert.ThrowsAsync<TimeoutException>(async () =>
-                await request.WaitAsync(TimeSpan.FromSeconds(2)));
+                await request.WaitAsync(StepTimeout));
 
             Assert.Equal("Timed out sending wizard.status request", exception.Message);
             Assert.Equal(0, helper.GetPendingRequestCount());

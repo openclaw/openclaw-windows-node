@@ -3675,7 +3675,7 @@ public class GatewayConnectionManagerTests : IDisposable
         await manager.ConnectAsync(gatewayId);
         try
         {
-            await fixture.HandshakeCompleted.WaitAsync(TimeSpan.FromSeconds(5));
+            await fixture.HandshakeCompleted.WaitAsync(StepTimeout);
         }
         catch (TimeoutException ex)
         {

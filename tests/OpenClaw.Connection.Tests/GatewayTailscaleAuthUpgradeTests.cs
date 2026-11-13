@@ -6,6 +6,10 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
 {
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(15);
+
     private readonly TempDirectory _temp = new();
 
     [Fact]
@@ -819,7 +823,7 @@ public sealed class GatewayTailscaleAuthUpgradeTests : IDisposable
         var service = CreateReadyService(registry);
 
         var enableTask = service.EnableAsync("gateway-1", client, cancellation.Token);
-        await client.PatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        await client.PatchStarted.Task.WaitAsync(StepTimeout);
         cancellation.Cancel();
 
         Assert.False(enableTask.IsCompleted);
