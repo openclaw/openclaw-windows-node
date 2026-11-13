@@ -794,12 +794,28 @@ Two checks enforce the riskiest patterns:
   `CancellationTokenSource` or `Task.WaitAll`), so review still applies the
   rules above.
 - Each timed single-command CI step that runs `Invoke-CiTest.ps1`,
-  `Invoke-CiE2e.ps1`, or `test-gateway-fixture.ps1` passes its `timeout-minutes` as
-  `-StepTimeoutMinutes`. The runner prints the share of the budget it used and
-  emits a GitHub warning annotation at 80% or more.
+  `Invoke-CiE2e.ps1`, or `test-gateway-fixture.ps1` repeats its `timeout-minutes`
+  in the step's `OPENCLAW_CI_STEP_TIMEOUT_MINUTES` environment variable. The
+  runner prints the share of the budget it used and emits a GitHub warning
+  annotation at 80% or more. Local runs can pass `-StepTimeoutMinutes` instead.
   `scripts\test-ci-workflow-contract.ps1` rejects a value that differs from the
   step's `timeout-minutes`, and requires a multi-command runner step to be listed
   as an explicit exception. A step stopped by its timeout cannot report.
+- Alpha promotion runs the current workflow against an older candidate's
+  checkout and its own scripts, which reject parameters they do not declare.
+  This applies to every repository script that a candidate-checkout job calls
+  with named parameters, not only the test runners. The workflow contract
+  checks every test-runner invocation's parameter names against the runners of
+  a pinned alpha (currently v2026.11.3-alpha.11, the oldest that still binds)
+  and the current runners. It checks names only, so a value an older runner
+  rejects (a new `ValidateSet` value or a wider range) still needs review.
+  An option that is safe to ignore may use a step environment variable that
+  older runners ignore: a report-only diagnostic such as the step budget, or a
+  selection whose absence only runs more tests, when the step's timeout still
+  covers the full run. An option that changes what
+  a step runs or proves must stay a runner parameter: an older runner would
+  otherwise ignore it and pass while proving something else. Adding one means
+  advancing the pin once older alphas no longer need promotion.
 
 ### Accepting result reports
 
