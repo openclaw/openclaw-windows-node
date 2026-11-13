@@ -34,13 +34,20 @@ public sealed partial class DashboardWidgetCellTests
             Assert.True(boards.RevokeViewTicket(valid.ViewTicket!));
         var request = new BoardWidgetWebHostRequest(invalid, origin);
         var states = new List<BoardWidgetWebHostStatus>();
+        var history = new List<BoardWidgetWebHostState>();
+        string Observed() => $"States=[{string.Join(", ", history.Select(state => state.Detail is null
+            ? state.Status.ToString() : $"{state.Status}: {state.Detail}"))}]; DocumentRequests={boards.DocumentRequests}";
         await WithMountedAsync(() => BoardWidgetWebHostElement.BoardWidgetWebHost().Set(control =>
             {
-                control.StateChanged = next => states.Add(next.Status);
+                control.StateChanged = next =>
+                {
+                    states.Add(next.Status);
+                    history.Add(next);
+                };
                 control.Update(request);
             }), _ => { }, afterMounted: async root =>
             {
-                await WaitForWebHostAsync(root, () => states.Contains(BoardWidgetWebHostStatus.Unauthorized));
+                await WaitForWebHostAsync(root, () => states.Contains(BoardWidgetWebHostStatus.Unauthorized), Observed);
                 await ui.RunOnUIAsync(() =>
                 {
                     Assert.DoesNotContain(BoardWidgetWebHostStatus.Ready, states);
@@ -50,7 +57,7 @@ public sealed partial class DashboardWidgetCellTests
                     request = new BoardWidgetWebHostRequest(ReadHtmlBoard(boards).Widgets[0], origin, Attempt: 1);
                     host.Update(request);
                 });
-                await WaitForWebHostAsync(root, () => states.Contains(BoardWidgetWebHostStatus.Ready));
+                await WaitForWebHostAsync(root, () => states.Contains(BoardWidgetWebHostStatus.Ready), Observed);
                 Assert.Equal(2, boards.DocumentRequests);
                 Assert.Empty(server.Requests);
             });
@@ -307,12 +314,16 @@ public sealed partial class DashboardWidgetCellTests
     {
         var snapshot = DashboardProtocol.ParseBoardSnapshot(JsonSerializer.SerializeToElement(
             boards.GetBoard(JsonSerializer.SerializeToElement(new { sessionKey = FixtureBoards.OpsSessionKey }))));
+        var chart = snapshot.Widgets.Single(widget => widget.Name == "deploy-chart");
         return snapshot with
         {
             Tabs = [new("overview", "Overview", 0, "right"), new("metrics", "Metrics", 1, "right")],
             Widgets = [
                 snapshot.Widgets.Single(widget => widget.Name == "status-card"),
-                snapshot.Widgets.Single(widget => widget.Name == "deploy-chart") with { TabId = "metrics" }],
+                // WebView2 widgets share one profile. Chromium serializes concurrent loads of one URL
+                // behind its HTTP cache lock (up to 20 s), so a held sandbox response would otherwise
+                // keep the second widget's request from reaching the fixture.
+                chart with { TabId = "metrics", SandboxUrl = chart.SandboxUrl + "&widget=" + chart.Name }],
         };
     }
 
@@ -320,13 +331,37 @@ public sealed partial class DashboardWidgetCellTests
     private static T? HostField<T>(BoardWidgetWebHost host, string name) where T : class =>
         (T?)typeof(BoardWidgetWebHost).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host);
 
-    private async Task WaitForWebHostAsync(ReactorHostControl root, Func<bool> ready)
+    // A timeout names what each mounted host reached (for example a WebView2 failure versus an HTTP stall),
+    // because the widget log is not part of the CI artifacts.
+    private async Task WaitForWebHostAsync(ReactorHostControl root, Func<bool> ready, Func<string>? observed = null)
     {
         var deadline = DateTime.UtcNow + BoardWidgetDocumentLoader.DefaultTimeout;
         while (!await ui.RunOnUIAsync(() => Task.FromResult(ready())))
         {
-            Assert.True(DateTime.UtcNow < deadline, "Native widget HTTP/relay boundary did not settle.");
+            if (DateTime.UtcNow >= deadline)
+            {
+                var hosts = await ui.RunOnUIAsync(() => Task.FromResult(string.Join(" | ",
+                    FindDescendants<BoardWidgetWebHost>(root).Select(host =>
+                        HostField<BoardWidgetWebHostState>(host, "_state") is { } state
+                            ? $"{state.Status}: {state.Detail ?? "-"}" : "no state"))));
+                var extra = observed is null ? "" : "; " + await ui.RunOnUIAsync(() => Task.FromResult(observed()));
+                Assert.Fail($"Native widget HTTP/relay boundary did not settle within {BoardWidgetDocumentLoader.DefaultTimeout}. " +
+                    $"Hosts=[{hosts}]{extra}; RecentLog=[{RecentDashboardLog()}]");
+            }
             await ui.YieldToRenderAsync();
         }
+    }
+
+    private static string RecentDashboardLog()
+    {
+        try
+        {
+            using var stream = new FileStream(OpenClawTray.Services.Logger.LogFilePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            var lines = reader.ReadToEnd().Split('\n').Where(line => line.Contains("[Dashboards]", StringComparison.Ordinal));
+            return string.Join(" | ", lines.TakeLast(5).Select(line => line.Trim()));
+        }
+        catch (IOException ex) { return "log unavailable: " + ex.Message; }
+        catch (UnauthorizedAccessException ex) { return "log unavailable: " + ex.Message; }
     }
 }

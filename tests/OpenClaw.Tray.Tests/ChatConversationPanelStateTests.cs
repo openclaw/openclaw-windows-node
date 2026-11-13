@@ -1,4 +1,6 @@
 using OpenClaw.Chat;
+using OpenClaw.Shared;
+using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Chat;
 
 namespace OpenClaw.Tray.Tests;
@@ -38,6 +40,220 @@ public sealed class ChatConversationPanelStateTests
         Assert.Null(state.Details);
         Assert.True(state.Open(Request("first"), state.Revision));
         Assert.Single(state.Tabs);
+    }
+
+    [Fact]
+    public void SubagentsSharesTheTabStripWithoutReplacingToolDetails()
+    {
+        var state = new ChatConversationPanelState();
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true,
+            subagentsCurrent: () => true);
+        Assert.True(state.Open(Request("first"), state.Revision));
+        Assert.True(state.OpenSubagents(state.Revision));
+        Assert.True(state.OpenSubagents(state.Revision));
+        Assert.Equal(["details", "subagents"], state.Tabs);
+        Assert.Equal("subagents", state.Selected);
+        Assert.Equal(Request("first"), state.Details);
+        state.Select("details");
+        Assert.Equal("details", state.Selected);
+        state.Close("details");
+        Assert.Equal(["subagents"], state.Tabs);
+        Assert.Equal("subagents", state.Selected);
+        Assert.Null(state.Details);
+        state.Close("subagents");
+        Assert.Empty(state.Tabs);
+    }
+
+    [Fact]
+    public void SubagentsUsesCurrentConnectionAdmissionWithoutWeakeningToolProfileAdmission()
+    {
+        var state = new ChatConversationPanelState();
+        var connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        var revision = state.Revision;
+        Assert.True(state.OpenSubagents(revision));
+        Assert.False(state.Open(Request("first"), revision));
+        connected = false;
+        Assert.False(state.OpenSubagents(revision));
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Selected);
+        state.Invalidate();
+        connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true,
+            subagentsCurrent: () => connected);
+        Assert.False(state.OpenSubagents(revision));
+    }
+
+    [Fact]
+    public void FilesSharesTheConnectionAdmissionAndRetiresWithIt()
+    {
+        var state = new ChatConversationPanelState();
+        var connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        var revision = state.Revision;
+        Assert.True(state.OpenSubagents(revision));
+        Assert.True(state.OpenFiles(revision));
+        Assert.Equal(["subagents", "files"], state.Tabs);
+        Assert.Equal("files", state.Selected);
+        connected = false;
+        Assert.False(state.OpenFiles(revision));
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Selected);
+    }
+
+    private static SessionFileList FileList(params string[] paths) => new()
+    {
+        Key = "session",
+        Root = @"C:\repo",
+        Files = paths.Select(path => new SessionFileEntry { Path = path, Kind = "modified" }).ToArray(),
+    };
+
+    private static Func<string, Task<SessionFileList>> Reads(List<(string Session, TaskCompletionSource<SessionFileList> Result)> reads) =>
+        session =>
+        {
+            var result = new TaskCompletionSource<SessionFileList>();
+            reads.Add((session, result));
+            return result.Task;
+        };
+
+    [Fact]
+    public Task SessionFiles_DiscardsTheResultOfAReplacedSession() => Task.Run(() =>
+    {
+        var files = new ChatSessionFilesState();
+        var reads = new List<(string Session, TaskCompletionSource<SessionFileList> Result)>();
+        var load = Reads(reads);
+        files.Bind("a", 1, 1, 1, false, load);
+        files.Bind("b", 1, 1, 1, false, load);
+        Assert.Equal(["a", "b"], reads.Select(read => read.Session));
+        reads[0].Result.SetResult(FileList("old.cs"));
+        Assert.Equal(ChatSessionFilesStatus.Loading, files.Status);
+        Assert.Equal(0, files.FileCount);
+        reads[1].Result.SetResult(FileList("src/new.cs"));
+        Assert.Equal(ChatSessionFilesStatus.Loaded, files.Status);
+        Assert.Equal("src/new.cs", Assert.Single(files.Rows).RelativePath);
+        // A reset keeps the key but starts a new timeline, so its pre-reset read is stale.
+        files.Bind("b", 1, 2, 1, false, load);
+        Assert.Equal(0, files.FileCount);
+        files.Bind("b", 1, 3, 1, false, load);
+        reads[2].Result.SetResult(FileList("pre-reset.cs"));
+        Assert.Equal(0, files.FileCount);
+        reads[3].Result.SetResult(FileList("kept.cs"));
+        Assert.Equal(1, files.FileCount);
+        // A checkpoint restore replaces history under the same key, connection and timeline.
+        files.Bind("b", 1, 3, 2, false, load);
+        Assert.Equal(0, files.FileCount);
+        Assert.Equal(5, reads.Count);
+        reads[4].Result.SetResult(FileList("restored.cs"));
+        Assert.Equal("restored.cs", Assert.Single(files.Rows).RelativePath);
+        files.Bind(null, 1, 1, 1, false, null);
+        Assert.Equal(0, files.FileCount);
+    });
+
+    [Fact]
+    public Task SessionFiles_ReloadsOnceWhenARunEndsAndKeepsTheListOnFailure() => Task.Run(() =>
+    {
+        var files = new ChatSessionFilesState();
+        var reads = new List<(string Session, TaskCompletionSource<SessionFileList> Result)>();
+        var load = Reads(reads);
+        files.Bind("session", 1, 1, 1, true, load);
+        reads[0].Result.SetResult(FileList("a.cs"));
+        files.Bind("session", 1, 1, 1, true, load);
+        Assert.Single(reads);
+        files.Bind("session", 1, 1, 1, false, load);
+        Assert.Equal(2, reads.Count);
+        files.Refresh();
+        files.Refresh();
+        Assert.Equal(2, reads.Count);
+        reads[1].Result.SetException(new InvalidOperationException("closed"));
+        Assert.Equal(3, reads.Count);
+        Assert.Equal(1, files.FileCount);
+        reads[2].Result.SetResult(FileList("a.cs", "b.cs"));
+        Assert.Equal(ChatSessionFilesStatus.Loaded, files.Status);
+        Assert.Equal(2, files.FileCount);
+    });
+
+    [Fact]
+    public void SessionFiles_CountsOnlySessionFilesNotTheWorkspaceRootListing()
+    {
+        var files = new ChatSessionFilesState();
+        var list = FileList("src/Parser.cs");
+        // sessions.files.list also lists the workspace root when no path is requested.
+        list.Browser = new SessionFileBrowser
+        {
+            Path = "",
+            Entries =
+            [
+                new SessionFileBrowserEntry { Path = "README.md", Name = "README.md", SessionKind = "read" },
+                new SessionFileBrowserEntry { Path = "package.json", Name = "package.json" },
+                new SessionFileBrowserEntry { Path = "src", Name = "src", Kind = "directory" },
+            ],
+        };
+        files.Bind("session", 1, 1, 1, false, _ => Task.FromResult(list));
+        Assert.Equal(["README.md", "src/Parser.cs"], files.Rows.Select(row => row.RelativePath).Order(StringComparer.Ordinal));
+        Assert.Equal(2, files.FileCount);
+    }
+
+    [Fact]
+    public void SessionFiles_SynchronousResultUpdatesDuringBindWithoutRaisingChanged()
+    {
+        var files = new ChatSessionFilesState();
+        var changes = 0;
+        files.Changed += () => changes++;
+        var before = files.Version;
+        files.Bind("session", 1, 1, 1, false, _ => Task.FromResult(FileList("a.cs")));
+        Assert.Equal(ChatSessionFilesStatus.Loaded, files.Status);
+        Assert.Equal(1, files.FileCount);
+        Assert.Equal(0, changes);
+        // The version is the render-time signal that redraws the pill and tab.
+        Assert.True(files.Version > before);
+        files.Refresh();
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
+    public Task SessionFiles_QueuedAutomaticReadStopsAfterUnsupportedButQueuedRefreshRuns() => Task.Run(() =>
+    {
+        var files = new ChatSessionFilesState();
+        var reads = new List<(string Session, TaskCompletionSource<SessionFileList> Result)>();
+        var load = Reads(reads);
+        files.Bind("session", 1, 1, 1, true, load);
+        files.Bind("session", 1, 1, 1, false, load);
+        Assert.Single(reads);
+        reads[0].Result.SetResult(new SessionFileList { Key = "session", IsSupported = false });
+        Assert.Single(reads);
+        Assert.Equal(ChatSessionFilesStatus.Unsupported, files.Status);
+        files.Refresh();
+        files.Refresh();
+        Assert.Equal(2, reads.Count);
+        reads[1].Result.SetResult(new SessionFileList { Key = "session", IsSupported = false });
+        Assert.Equal(3, reads.Count);
+    });
+
+    [Fact]
+    public void SessionFiles_UnsupportedGatewayIsNotAskedAgainOnTheSameConnection()
+    {
+        var files = new ChatSessionFilesState();
+        var reads = 0;
+        Func<string, Task<SessionFileList>> load = session =>
+        {
+            reads++;
+            return Task.FromResult(new SessionFileList { Key = session, IsSupported = false });
+        };
+        files.Bind("a", 1, 1, 1, true, load);
+        files.Bind("a", 1, 1, 1, false, load);
+        files.Bind("b", 1, 1, 1, false, load);
+        Assert.Equal(1, reads);
+        Assert.Equal(ChatSessionFilesStatus.Unsupported, files.Status);
+        files.Refresh();
+        Assert.Equal(2, reads);
+        files.Bind("b", 2, 1, 1, false, load);
+        Assert.Equal(3, reads);
     }
 
     [Fact]
@@ -124,6 +340,117 @@ public sealed class ChatConversationPanelStateTests
         state.Invalidate();
         Bind(state, Tool("first"));
         Assert.False(state.Open(Request("first"), revision));
+    }
+
+    private static readonly BoardSessionTarget Board = new("session", "main");
+
+    [Theory]
+    [InlineData("connection")]
+    [InlineData("timeline")]
+    [InlineData("history")]
+    public void HistoryRebind_KeepsTheSessionDashboardButDropsToolDetails(string boundary)
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state, Tool("first"));
+        state.Open(Request("first"), state.Revision);
+        Assert.True(state.OpenDashboard(Board));
+        state.Select("details");
+        state.Bind(_provider, "session",
+            boundary == "connection" ? 9 : 1,
+            boundary == "timeline" ? 9 : 2,
+            boundary == "history" ? 9 : 3, [Tool("first")], () => true);
+        Assert.Equal(["dashboard"], state.Tabs);
+        Assert.Equal("dashboard", state.Selected);
+        Assert.True(state.Passive);
+        Assert.Equal(Board, state.Dashboard);
+        Assert.Null(state.Details);
+        state.Bind(_provider, "other", 1, 2, 3, [], () => true);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Dashboard);
+    }
+
+    [Fact]
+    public void AutomaticReveal_IsPassiveAndNeverReplacesTheCurrentSelection()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state);
+        var openVersion = state.OpenVersion;
+        Assert.False(state.RevealDashboard(Board with { SessionKey = "other" }));
+        Assert.True(state.RevealDashboard(Board));
+        Assert.Equal("dashboard", state.Selected);
+        Assert.True(state.Passive);
+        Assert.Equal(openVersion, state.OpenVersion);
+        Assert.False(state.RevealDashboard(Board));
+        state.Engage();
+        Assert.False(state.Passive);
+
+        var busy = new ChatConversationPanelState();
+        Bind(busy, Tool("first"));
+        busy.Open(Request("first"), busy.Revision);
+        Assert.True(busy.RevealDashboard(Board));
+        Assert.Equal(["details", "dashboard"], busy.Tabs);
+        Assert.Equal("details", busy.Selected);
+        Assert.False(busy.Passive);
+    }
+
+    [Fact]
+    public void ClosingTheDashboard_SuppressesRevealUntilExplicitlyOpened()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state);
+        state.RevealDashboard(Board);
+        state.Close("dashboard");
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Dashboard);
+        Assert.False(state.Passive);
+        Assert.False(state.CanRevealDashboard(Board.SessionKey));
+        Assert.False(state.RevealDashboard(Board));
+        state.Invalidate();
+        Bind(state);
+        Assert.False(state.RevealDashboard(Board));
+
+        var openVersion = state.OpenVersion;
+        Assert.True(state.OpenDashboard(Board));
+        Assert.Equal("dashboard", state.Selected);
+        Assert.False(state.Passive);
+        Assert.True(state.OpenVersion > openVersion);
+        Assert.False(state.OpenDashboard(Board with { SessionKey = "other" }));
+    }
+
+    [Fact]
+    public void ClosingAnotherTab_FallsBackPassivelyOnlyOntoAnUnopenedDashboard()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state, Tool("first"));
+        state.Open(Request("first"), state.Revision);
+        state.RevealDashboard(Board);
+        state.Select("dashboard");
+        state.Select("dashboard");
+        Assert.False(state.Passive);
+        state.Select("details");
+        state.Close("details");
+        Assert.Equal("dashboard", state.Selected);
+        Assert.False(state.Passive);
+
+        var unseen = new ChatConversationPanelState();
+        Bind(unseen, Tool("first"));
+        unseen.Open(Request("first"), unseen.Revision);
+        unseen.RevealDashboard(Board);
+        unseen.Close("details");
+        Assert.Equal("dashboard", unseen.Selected);
+        Assert.True(unseen.Passive);
+    }
+
+    [Fact]
+    public void ReselectingAPassiveDashboard_KeepsItPassiveUntilEngaged()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state);
+        state.RevealDashboard(Board);
+        state.Select("dashboard");
+        Assert.True(state.Passive);
+        state.Engage();
+        Assert.False(state.Passive);
     }
 
     [Theory]

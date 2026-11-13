@@ -17,6 +17,8 @@ public static class PageResponsiveLayout
     public const double ContentMaxWidth = 1200;
     public const double PaddingWide = 32;
     public const double PaddingNarrow = 20;
+    public const double PaddingTop = 4;
+    public const double PaddingBottom = 32;
     public const double GapInner = 8;
     public const double GapGroup = 12;
     public const double GapStack = 16;

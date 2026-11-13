@@ -278,16 +278,16 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                         Assert.Same(originalAdd, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface!.XamlRoot));
                         var narrow = focusWidth == 560;
                         Assert.Equal(narrow ? 1 : 0, Microsoft.UI.Xaml.Controls.Grid.GetRow(originalActionHost));
-                        Assert.Equal(narrow ? 1 : 2, Microsoft.UI.Xaml.Controls.Grid.GetColumn(originalActionHost));
+                        Assert.Equal(narrow ? 0 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumn(originalActionHost));
                         Assert.Equal(narrow ? 2 : 1, Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(originalActionHost));
-                        var glyph = Assert.IsType<Border>(Find(surface!, "AutomationsMast:Glyph"));
+                        Assert.DoesNotContain(Controls(surface!), element =>
+                            AutomationProperties.GetAutomationId(element) == "AutomationsMast:Glyph");
                         var title = Assert.IsType<TextBlock>(Find(surface!, "AutomationsHeadline"));
                         var copy = Assert.IsType<StackPanel>(VisualTreeHelper.GetParent(title));
                         Assert.Same(originalContent, VisualTreeHelper.GetParent(copy));
-                        var glyphBounds = Bounds(glyph, originalContent!);
                         var copyBounds = Bounds(copy, originalContent!);
                         var actionBounds = Bounds(originalActionHost!, originalContent!);
-                        Assert.InRange(copyBounds.Left - glyphBounds.Right, 15.5, 16.5);
+                        Assert.InRange(copyBounds.Left, -0.5, 0.5);
                         if (narrow)
                         {
                             Assert.InRange(actionBounds.Left - copyBounds.Left, -0.5, 0.5);
@@ -302,7 +302,7 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                             sameActionHost = ReferenceEquals(originalActionHost, VisualTreeHelper.GetParent(originalAddParent)),
                             sameContentGrid = ReferenceEquals(originalContent, VisualTreeHelper.GetParent(originalActionHost)),
                             sameFocusedObject = ReferenceEquals(originalAdd, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot)),
-                            glyphBounds, copyBounds, actionBounds,
+                            copyBounds, actionBounds,
                             captureLimit = "Owned window capture is not compositor acceptance."
                         }) + Environment.NewLine);
                         OwnedWindowCapture.SaveCurrentProcessWindow(proofHandle, runId, artifacts,
@@ -577,6 +577,9 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     await ui.YieldToRenderAsync();
                     await ui.RunOnUIAsync(() =>
                     {
+                        // A resized re-render can replace button content before the next layout
+                        // pass attaches it; inspect the tree only after layout has settled.
+                        surface!.UpdateLayout();
                         AssertTextAlignment(surface!);
                         AssertNewButton(surface!, artifacts, reusedWidth);
                         var more = Controls(surface!).FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == "AutomationsHeaderMore") as Button;

@@ -1,6 +1,8 @@
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -71,12 +73,15 @@ public sealed class ReactorMarkdownTableProofTests
                 // A dispatcher yield is not a layout barrier; capture is optional in CI.
                 _ui.Container.UpdateLayout();
                 var table = Assert.Single(
-                    FindLogical<Grid>(root!),
+                    FindDescendants<Grid>(root!),
                     grid => grid.ColumnDefinitions.Count == 2 && grid.RowDefinitions.Count == 6);
-                var cells = table.Children.OfType<RichTextBlock>().ToArray();
+                var cells = table.Children.SelectMany(FindDescendants<RichTextBlock>).ToArray();
 
                 Assert.Equal(12, cells.Length);
-                Assert.All(cells, cell => Assert.True(cell.IsTextSelectionEnabled));
+                Assert.Single(FindDescendants<Control>(root!), control =>
+                    FrameworkElementAutomationPeer.CreatePeerForElement(control)
+                        ?.GetPattern(PatternInterface.Text) is ITextProvider);
+                Assert.All(cells, cell => Assert.False(cell.IsTextSelectionEnabled));
                 Assert.All(cells, cell => Assert.Equal(TextWrapping.Wrap, cell.TextWrapping));
                 Assert.All(cells, cell => Assert.InRange(cell.ActualWidth, 1, 160));
                 Assert.True(GetRuns(cells[0]).All(run => run.FontWeight.Weight > 400));
@@ -101,13 +106,13 @@ public sealed class ReactorMarkdownTableProofTests
                     cells.Select(CollectText).ToArray());
 
                 var code = Assert.Single(
-                    FindLogical<RichTextBlock>(root!),
+                    FindDescendants<RichTextBlock>(root!),
                     text => CollectText(text).Contains("literal | pipe", StringComparison.Ordinal));
                 Assert.Contains("---|---", CollectText(code), StringComparison.Ordinal);
                 Assert.Equal(13, code.FontSize);
                 Assert.Equal(18, code.LineHeight);
                 Assert.Single(
-                    FindLogical<Grid>(root!),
+                    FindDescendants<Grid>(root!),
                     grid => grid.ColumnDefinitions.Count == 2 && grid.RowDefinitions.Count == 6);
                 Assert.InRange(host!.ActualWidth, 1, 320);
             });

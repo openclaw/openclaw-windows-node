@@ -103,26 +103,60 @@ public sealed class OnboardingPresentationContractTests
     [InlineData("WizardPage")]
     [InlineData("AiSetupPage")]
     [InlineData("AiReadyPage")]
-    public void SetupPages_UseVectorMascotAndRouteDrivenProgress(string page)
+    public void SetupPages_LeaveMascotAndRouteProgressToTheSetupShell(string page)
     {
         var xaml = Read($@"src\OpenClaw.SetupEngine.UI\Pages\{page}.xaml");
-        Assert.Contains("controls:OnboardingMascot", xaml);
-        Assert.Contains("controls:SetupProgressIndicator", xaml);
+        Assert.DoesNotContain("controls:OnboardingMascot", xaml);
+        Assert.DoesNotContain("SetupProgressIndicator", xaml);
         Assert.DoesNotContain("of 6", xaml);
         Assert.DoesNotContain("OpenClawMascot.png", xaml);
+        Assert.Contains("<themes:SetupResources />", xaml);
+        // One companion per window owns the vector mascot and the route-driven step timeline.
+        Assert.Contains("<controls:SetupCompanion x:Name=\"Companion\"", Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml"));
+        var companion = Read(@"src\OpenClaw.SetupEngine.UI\Controls\SetupCompanion.xaml");
+        Assert.Contains("<local:OnboardingMascot", companion);
+        Assert.Contains("<local:SetupStepTimeline", companion);
+        Assert.Contains("Companion.UpdateSteps(", Read(@"src\OpenClaw.SetupEngine.UI\SetupWindow.xaml.cs"));
     }
 
     [Fact]
-    public void DashboardAction_LivesInConnectionCard()
+    public void DashboardAction_LivesInConnectionStatusCard()
     {
         var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
         var dashboard = Assert.Single(document.Descendants(),
-            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardButton");
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StripDashboardAction");
         Assert.Equal("OnOpenDashboard", (string?)dashboard.Attribute("Click"));
         Assert.Contains(dashboard.Ancestors(),
-            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionDashboardCard");
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StatusStrip");
         Assert.Contains("((IAppCommands)CurrentApp).OpenDashboard()",
             Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml.cs"));
+    }
+
+    [Fact]
+    public void ConnectionLayout_SeparatesThePageTitleStatusAndFlatGatewayInventory()
+    {
+        var document = XDocument.Parse(Read(@"src\OpenClaw.Tray.WinUI\Pages\ConnectionPage.xaml"));
+        var title = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "ConnectionPageMarker");
+        Assert.Equal("Connection", (string?)title.Attribute("Text"));
+        Assert.Equal("Level1", (string?)title.Attribute("AutomationProperties.HeadingLevel"));
+        Assert.DoesNotContain(title.Ancestors(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StatusStrip");
+        var status = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "StatusStrip");
+        Assert.Equal("{ThemeResource CardBackgroundFillColorDefaultBrush}", (string?)status.Attribute("Background"));
+        var gateways = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "SavedGatewaysCard");
+        Assert.Null(gateways.Attribute("Background"));
+        Assert.Null(gateways.Attribute("BorderThickness"));
+        Assert.Null(gateways.Attribute("Padding"));
+        var permissions = Assert.Single(document.Descendants(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "NodePermissionsRow");
+        Assert.Equal("SettingsCard", permissions.Name.LocalName);
+        Assert.Equal("True", (string?)permissions.Attribute("IsClickEnabled"));
+        Assert.Equal("OnOpenPermissions", (string?)permissions.Attribute("Click"));
+        Assert.DoesNotContain(permissions.Ancestors(),
+            element => (string?)element.Attribute("AutomationProperties.AutomationId") == "NodeCard");
     }
 
     [Fact]
@@ -318,21 +352,19 @@ public sealed class OnboardingPresentationContractTests
     }
 
     [Fact]
-    public void ChangedOnboardingPages_PreserveCenteredLargeMascotsAndFixedFooters()
+    public void ChangedOnboardingPages_KeepSharedHeroAndFixedFooters()
     {
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        foreach (var page in new[] { "CapabilitiesPage", "GatewaySetupPage" })
+        foreach (var (page, primary) in new[] { ("CapabilitiesPage", "ContinueButton"), ("GatewaySetupPage", "PrimaryButton") })
         {
             var xaml = XDocument.Parse(Read($@"src\OpenClaw.SetupEngine.UI\Pages\{page}.xaml"));
-            var mascot = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "MascotHero");
-            Assert.Null(mascot.Attribute("Width"));
-            Assert.Null(mascot.Attribute("Height"));
-            Assert.Equal("Center", (string?)mascot.Attribute("HorizontalAlignment"));
-            Assert.Equal("StackPanel", mascot.Parent!.Name.LocalName);
-            Assert.Null(mascot.Parent.Attribute("Height"));
-            var progress = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == "FlowProgress");
-            Assert.Equal("2", (string?)progress.Parent!.Attribute("Grid.Row"));
-            Assert.DoesNotContain(progress.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
+            Assert.DoesNotContain(xaml.Descendants(), element => element.Name.LocalName == "OnboardingMascot");
+            Assert.Contains(xaml.Descendants(), element =>
+                (string?)element.Attribute("Style") == "{StaticResource SetupHeroPanelStyle}");
+            var button = Assert.Single(xaml.Descendants(), element => (string?)element.Attribute(x + "Name") == primary);
+            Assert.Equal("2", (string?)button.Parent!.Attribute("Grid.Row"));
+            Assert.Equal("{StaticResource SetupNavPanelStyle}", (string?)button.Parent.Attribute("Style"));
+            Assert.DoesNotContain(button.Ancestors(), element => element.Name.LocalName == "ScrollViewer");
         }
     }
 

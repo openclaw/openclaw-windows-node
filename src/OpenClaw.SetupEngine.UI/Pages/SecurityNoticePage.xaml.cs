@@ -2,6 +2,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClawTray.Helpers;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -14,9 +15,11 @@ public sealed partial class SecurityNoticePage : Page
     {
         InitializeComponent();
         WelcomeDescription.Text = SetupLocalization.GetString("Onboarding_Flow_WelcomeDescription.Text");
-        ChatFeature.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Chat, 20);
-        PcFeature.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.System, 20);
-        GatewayFeature.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.ServerEnvironment, 20);
+        ChatFeature.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.Chat, 18);
+        PcFeature.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.System, 18);
+        GatewayFeature.HeaderIcon = FluentIconCatalog.Build(FluentIconCatalog.ServerEnvironment, 18);
+        SetupRowPresentation.StyleHeaders(PcFeature, GatewayFeature, ChatFeature);
+        SafetyTitle.Text = SetupLocalization.GetString("Onboarding_V2_WelcomeTrust.Title");
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)

@@ -68,6 +68,78 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void StreamRetirement_RemovesUnpersistedPreviewAcrossToolButKeepsSavedRow()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageEvent("Three dem", IsStreaming: true, Presentation: new(RunId: "r")));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("yield", "sessions_yield", ToolCallId: "t", RunId: "r"));
+        // Saved rows carry the agent run id, which differs from the chat run for queued and announce runs.
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Three demos are complete.", IsStreaming: true,
+                Presentation: new(Phase: "final_answer", RunId: "agent-r", MessageId: "m")));
+        var savedId = state.ActiveAssistantId;
+
+        var retired = ChatTimelineReducer.Apply(state, new ChatAssistantStreamRetireEvent("r"));
+
+        Assert.DoesNotContain(retired.Entries, entry => entry.Text == "Three dem");
+        Assert.Contains(retired.Entries, entry => entry.Text == "Three demos are complete." &&
+            entry.Presentation?.MessageId == "m");
+        Assert.Contains(retired.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal(savedId, retired.ActiveAssistantId);
+        Assert.True(retired.TurnActive);
+    }
+
+    [Fact]
+    public void StreamRetirement_StaysInCurrentTurnAndClearsRetiredActiveId()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageEvent("old reply", IsStreaming: false, Presentation: new(RunId: "old")));
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("next turn"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("current", IsStreaming: true, Presentation: new(RunId: "current")));
+
+        Assert.Same(state, ChatTimelineReducer.Apply(state, new ChatAssistantStreamRetireEvent("old")));
+
+        var retired = ChatTimelineReducer.Apply(state, new ChatAssistantStreamRetireEvent("current"));
+
+        Assert.Equal(["old reply", "next turn"], retired.Entries.Select(entry => entry.Text));
+        Assert.Null(retired.ActiveAssistantId);
+        Assert.True(retired.TurnActive);
+    }
+
+    [Fact]
+    public void StreamRetirement_CrossesHeartbeatRunsOwnTurnBoundaryRow()
+    {
+        // The first visible row after a hidden heartbeat prompt opens the turn, even for the streaming run.
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageEvent("All systems", IsStreaming: true, Presentation: new(RunId: "r")));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("All systems normal.", IsStreaming: true,
+            Presentation: new(Phase: "final_answer", RunId: "r", MessageId: "m", TurnBoundary: true)));
+        Assert.Equal(2, state.Entries.Count);
+
+        var retired = ChatTimelineReducer.Apply(state, new ChatAssistantStreamRetireEvent("r"));
+
+        Assert.Equal("m", Assert.Single(retired.Entries).Presentation?.MessageId);
+    }
+
+    [Fact]
+    public void StreamRetirement_CrossesCronCompletionDeliveredMidRun()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
+            new ChatMessageEvent("All systems", IsStreaming: true, Presentation: new(RunId: "r")));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Backup finished.",
+            Presentation: new(RunId: "cron-run", MessageId: "c", AutomationKind: "cron",
+                AutomationJobId: "backup", AutomationRunId: "cron-run")));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("All systems normal.", IsStreaming: true,
+            Presentation: new(Phase: "final_answer", RunId: "r", MessageId: "m")));
+
+        var retired = ChatTimelineReducer.Apply(state, new ChatAssistantStreamRetireEvent("r"));
+
+        Assert.Equal(["c", "m"], retired.Entries.Select(entry => entry.Presentation?.MessageId));
+    }
+
+    [Fact]
     public void UnidentifiedCumulativePartConsumesOrderedPrefixesWithoutDuplicatingEarlierSegments()
     {
         var commentary = new OpenClaw.Shared.ChatMessagePresentation(Phase: "commentary", RunId: "r");

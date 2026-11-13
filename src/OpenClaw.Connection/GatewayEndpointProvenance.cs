@@ -29,6 +29,12 @@ public enum GatewayEndpointProvenanceFailureReason
     ListenerSnapshotChanged,
     ProcessIdentityUnavailable,
     InspectionUnavailable,
+
+    /// <summary>
+    /// Only trusted WSL relays own the Windows endpoint, but the expected distro's gateway
+    /// MainPID does not currently own the guest port, for example while the Gateway restarts.
+    /// </summary>
+    ManagedGatewayOwnerNotListening,
 }
 
 /// <summary>

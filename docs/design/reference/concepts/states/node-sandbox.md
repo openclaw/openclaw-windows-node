@@ -6,14 +6,20 @@ permissions. It does not describe Gateway tools or certify an individual command
 ## Composer presentation
 
 - Icon: `FluentIconCatalog.Sandbox`, a Shield (U+EA18). It shares the protection
-  metaphor with Permissions.
+  metaphor with Permissions. While On, Windows 11 shows `SandboxOn`, Segoe Fluent's
+  ShieldTask shield-check (U+F760), matching the web composer's shield-check.
+  Windows 10's Segoe MDL2 Assets lacks that glyph, so there a half-size CheckMark
+  (U+E73E) is layered at the shield's center instead.
 - Available: `ChatSandboxOnBrush`, the user's Windows accent color through
   `SystemAccentColorDark1` in Light and `SystemAccentColorLight2` in Dark.
-- Other states: gray secondary text brush (`ChatSecondaryTextBrush`).
+- Other states: plain shield in the gray secondary text brush (`ChatSecondaryTextBrush`).
 - High contrast: system theme colors take precedence.
 - Accessible name: localized `Node Sandbox` plus the current state.
-- Placement: right-hand action group, immediately before the microphone.
-- Flyout heading: `Node Sandbox`, with `Available`, `Compatibility`, `Unavailable`,
+- Placement: leading group, immediately after Attach, as in the web composer.
+- Flyout alignment: above the shield, aligned to its left edge so it opens into
+  the composer rather than over the sidebar.
+- Flyout heading: `Node Sandbox`, with `On` (the Available state; every command
+  runs contained, as there is no user off switch), `Compatibility`, `Unavailable`,
   `Checking`, or `Tools off`.
 - Action: `Sandbox settings`, a full-width native subtle button with a chevron.
 - Localized titles follow the existing Sandbox page terminology; the action

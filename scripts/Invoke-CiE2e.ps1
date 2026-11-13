@@ -8,9 +8,18 @@ param(
     [Parameter(Mandatory)][ValidateSet("setup-connect", "revocation-recovery", "network-recovery")]
     [string]$Name,
     [Parameter(Mandatory)][string]$Filter,
-    [ValidateRange(1, 3600)][int]$HangTimeoutSeconds = 600
+    [ValidateRange(1, 3600)][int]$HangTimeoutSeconds = 600,
+    # The calling workflow step's timeout-minutes. Defaults to OPENCLAW_CI_STEP_TIMEOUT_MINUTES; 0 skips the report.
+    [ValidateRange(0, 360)][int]$StepTimeoutMinutes = 0
 )
 
+$stepBudget = [Diagnostics.Stopwatch]::StartNew()
+if (-not $PSBoundParameters.ContainsKey('StepTimeoutMinutes')) {
+    # CI passes the budget in the step environment so an older candidate's runner, run by alpha
+    # promotion, never receives a parameter it does not declare.
+    . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+    $StepTimeoutMinutes = Get-CiStepTimeoutMinutes
+}
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -25,11 +34,20 @@ $testArguments = @(
     '--logger', "trx;LogFileName=OpenClaw.E2ETests.$Name.trx",
     '--logger', 'console;verbosity=detailed', '--blame', '--filter', $Filter
 )
-& (Join-Path $PSScriptRoot 'Invoke-CiProcess.ps1') -FilePath 'dotnet' `
-    -ArgumentList $testArguments -IdleTimeoutSeconds $HangTimeoutSeconds `
-    -OutputPath (Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.console.log")
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
+try {
+    & (Join-Path $PSScriptRoot 'Invoke-CiProcess.ps1') -FilePath 'dotnet' `
+        -ArgumentList $testArguments -IdleTimeoutSeconds $HangTimeoutSeconds `
+        -OutputPath (Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.console.log")
+    $testExitCode = $LASTEXITCODE
+} finally {
+    # Also report when the idle deadline throws.
+    if ($StepTimeoutMinutes -gt 0) {
+        . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+        Write-CiStepBudget -Elapsed $stepBudget.Elapsed -StepTimeoutMinutes $StepTimeoutMinutes -Label "E2E shard '$Name'"
+    }
+}
+if ($testExitCode -ne 0) {
+    exit $testExitCode
 }
 
 [xml]$trx = Get-Content $trxPath

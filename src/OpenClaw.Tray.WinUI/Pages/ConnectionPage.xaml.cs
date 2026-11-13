@@ -1,3 +1,4 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -12,6 +13,7 @@ using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
@@ -46,6 +48,7 @@ public sealed partial class ConnectionPage : Page
     private WslGatewayController? _wslGatewayController;
 
     // ─── UI state ───
+    private readonly HashSet<string> _expandedSavedGatewayIds = new(StringComparer.Ordinal);
     private UserIntent _userIntent = UserIntent.None;
     private GatewayConnectionSnapshot _lastSnapshot = GatewayConnectionSnapshot.Idle;
     private bool _suppressNodeModeToggle;
@@ -92,10 +95,12 @@ public sealed partial class ConnectionPage : Page
     private string? _savedGatewaysFingerprint;
     private string? _glanceChipsFingerprint;
     private string? _capabilityPillsFingerprint;
+    private readonly ObservableCollection<FrameworkElement> _glanceChips = [];
 
     public ConnectionPage()
     {
         InitializeComponent();
+        GlanceChipsHost.ItemsSource = _glanceChips;
         Loaded += (_, _) => _ = VisualTestCapture.CaptureAsync(this, "Connection");
     }
 
@@ -565,7 +570,7 @@ public sealed partial class ConnectionPage : Page
             const string emptyFp = "<empty>";
             if (_glanceChipsFingerprint == emptyFp) return;
             _glanceChipsFingerprint = emptyFp;
-            GlanceChipsHost.ItemsSource = Array.Empty<Border>();
+            _glanceChips.Clear();
             return;
         }
 
@@ -575,13 +580,13 @@ public sealed partial class ConnectionPage : Page
         var activeRec = _gatewayRegistry?.GetActive();
 
         // Compute the fingerprint from the same inputs the chips render so
-        // we can short-circuit when nothing observable changed. Cheaper than
-        // re-templating ~5 chip Borders every snapshot tick.
+        // we can short-circuit when nothing observable changed.
         var topology = ClassifyTopology(activeRec);
         var hostname = Environment.MachineName;
         int? presence = self?.PresenceCount;
         int channelTotal = channels?.Length ?? 0;
         int channelOk = ConnectionPageChannelMetrics.CountHealthyChannels(channels);
+        var channelDetails = ConnectionPageChannelMetrics.BuildDetails(channels);
         double todayAmount = 0d;
         if (cost?.Daily is { Count: > 0 })
         {
@@ -596,24 +601,30 @@ public sealed partial class ConnectionPage : Page
         int dailyCount = cost?.Daily?.Count ?? 0;
         var sharedToken = activeRec?.SharedGatewayToken;
         var hasSharedToken = !string.IsNullOrEmpty(sharedToken);
-        var fp = $"{topology}|{hostname}|{presence}|{channelOk}/{channelTotal}|{dailyCount}|${todayAmount:0.00}|st={sharedToken?.Length ?? 0}";
+        var fp = $"{topology}|{hostname}|{presence}|{channelOk}/{channelTotal}|{channelDetails}|{dailyCount}|${todayAmount:0.00}|st={sharedToken?.Length ?? 0}";
         if (_glanceChipsFingerprint == fp) return;
         _glanceChipsFingerprint = fp;
 
-        var chips = new List<Border>(5);
+        var chips = new List<FrameworkElement>(6);
 
         // 1. Topology — Local / via SSH / LAN / Tailscale / Remote.
         //    Tells the user what kind of gateway they're talking to.
         if (topology != null)
         {
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.ServerEnvironment, topology, neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.ServerEnvironment, topology, neutral: true,
+                LocalizationHelper.Format("ConnectionPage_TopologyTooltip",
+                    LocalizationHelper.GetString("ConnectionPage_TopologyLocal"),
+                    LocalizationHelper.GetString("ConnectionPage_TopologyLAN"),
+                    LocalizationHelper.GetString("ConnectionPage_TopologyRemote")),
+                "ConnectionGlanceTopology"));
         }
 
         // 2. Local hostname — "on PERSEID". Tells the user what device the
         //    tray (and therefore Operator + Node) runs on. Free signal.
         if (!string.IsNullOrWhiteSpace(hostname))
         {
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Hostname, string.Format(LocalizationHelper.GetString("ConnectionPage_OnHostname"), hostname), neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Hostname, string.Format(LocalizationHelper.GetString("ConnectionPage_OnHostname"), hostname), neutral: true,
+                LocalizationHelper.Format("ConnectionPage_HostnameTooltip", hostname), "ConnectionGlanceHostname"));
         }
 
         // 3. Presence count — "1 client" / "3 clients" if the gateway has
@@ -621,7 +632,9 @@ public sealed partial class ConnectionPage : Page
         if (presence is int n && n > 0)
         {
             var label = n == 1 ? LocalizationHelper.GetString("ConnectionPage_ClientSingular") : string.Format(LocalizationHelper.GetString("ConnectionPage_ClientsPlural"), n);
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.People, label, neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.People, label, neutral: true,
+                LocalizationHelper.GetString("ConnectionPage_ClientsTooltip"), "ConnectionGlanceClients",
+                () => ((IAppCommands)CurrentApp).OpenDashboard("systems")));
         }
 
         // 4. Channels glance — "2/2 channels ready" when at least one channel
@@ -631,7 +644,9 @@ public sealed partial class ConnectionPage : Page
             var label = channelTotal == 1
                 ? string.Format(LocalizationHelper.GetString("ConnectionPage_ChannelsSingular"), channelOk, channelTotal)
                 : string.Format(LocalizationHelper.GetString("ConnectionPage_ChannelsPlural"), channelOk, channelTotal);
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Channels, label, neutral: channelOk == channelTotal));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Channels, label, neutral: channelOk == channelTotal,
+                LocalizationHelper.Format("ConnectionPage_ChannelsTooltip", channelOk, channelTotal, channelDetails),
+                "ConnectionGlanceChannels", () => ((IAppCommands)CurrentApp).OpenDashboard("channels")));
         }
 
         // 5. Today's $ — falls back to "$0.00 today" so the chip stays in a
@@ -641,22 +656,39 @@ public sealed partial class ConnectionPage : Page
             var label = todayAmount > 0
                 ? string.Format(LocalizationHelper.GetString("ConnectionPage_CostToday"), todayAmount.ToString("0.00"))
                 : LocalizationHelper.GetString("ConnectionPage_CostTodayZero");
-            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Money, label, neutral: true));
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Money, label, neutral: true,
+                LocalizationHelper.GetString("ConnectionPage_UsageTooltip"), "ConnectionGlanceUsage",
+                () => ((IAppCommands)CurrentApp).OpenDashboard("usage")));
         }
 
         // 6. Shared token — click to copy.
         if (hasSharedToken)
         {
-            var chip = BuildGlanceChip(Helpers.FluentIconCatalog.Lock, LocalizationHelper.GetString("ConnectionPage_SharedTokenChip"), neutral: true);
-            ToolTipService.SetToolTip(chip, LocalizationHelper.GetString("ConnectionPage_TapToCopySharedToken"));
-            chip.Tapped += (_, _) =>
-            {
-                ClipboardHelper.CopyText(sharedToken!);
-            };
-            chips.Add(chip);
+            chips.Add(BuildGlanceChip(Helpers.FluentIconCatalog.Lock, LocalizationHelper.GetString("ConnectionPage_SharedTokenChip"), neutral: true,
+                LocalizationHelper.GetString("ConnectionPage_TapToCopySharedToken"), "ConnectionGlanceSharedToken",
+                () =>
+                {
+                    var token = _gatewayRegistry?.GetActive()?.SharedGatewayToken;
+                    if (string.IsNullOrEmpty(token))
+                    {
+                        Services.Logger.Warn("[ConnectionPage] The shared Gateway token is no longer available to copy.");
+                        return;
+                    }
+                    ClipboardHelper.CopyText(token);
+                }));
         }
 
-        GlanceChipsHost.ItemsSource = chips;
+        // Retain mounted buttons so data refreshes do not remove keyboard focus.
+        for (int i = _glanceChips.Count - 1; i >= 0; i--)
+        {
+            if (!chips.Contains(_glanceChips[i]))
+                _glanceChips.RemoveAt(i);
+        }
+        for (int i = 0; i < chips.Count; i++)
+        {
+            if (i >= _glanceChips.Count || _glanceChips[i] != chips[i])
+                _glanceChips.Insert(i, chips[i]);
+        }
     }
 
     /// <summary>
@@ -706,32 +738,64 @@ public sealed partial class ConnectionPage : Page
         return int.TryParse(parts[1], out var second) && second >= 16 && second <= 31;
     }
 
-    private Border BuildGlanceChip(string glyph, string label, bool neutral)
+    private FrameworkElement BuildGlanceChip(
+        string glyph, string label, bool neutral, string tooltip, string automationId, Action? onClick = null)
     {
-        var fgKey = neutral ? "TextFillColorSecondaryBrush" : "SystemFillColorCautionBrush";
-        var bgKey = neutral ? "SubtleFillColorSecondaryBrush" : "SystemFillColorCautionBackgroundBrush";
+        var stylePrefix = neutral ? "ConnectionCapabilityPillOff" : "ConnectionCapabilityPillPending";
+        var existing = _glanceChips.FirstOrDefault(
+            chip => AutomationProperties.GetAutomationId(chip) == automationId);
         var stack = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-        stack.Children.Add(new FontIcon
+        var icon = new FontIcon
         {
             Glyph = glyph,
             FontSize = 11,
-            Foreground = ResolveBrush(fgKey),
             VerticalAlignment = VerticalAlignment.Center,
-        });
-        stack.Children.Add(new TextBlock
+        };
+        AutomationProperties.SetAccessibilityView(icon, AccessibilityView.Raw);
+        stack.Children.Add(icon);
+        var text = new TextBlock
         {
             Text = label,
             FontSize = 11,
-            Foreground = ResolveBrush(fgKey),
             VerticalAlignment = VerticalAlignment.Center,
-        });
-        return new Border
-        {
-            CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 2, 6, 2),
-            Background = ResolveBrush(bgKey),
-            Child = stack,
         };
+        stack.Children.Add(text);
+        FrameworkElement chip;
+        if (onClick is not null)
+        {
+            var button = existing as Button ?? new Button
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(5, 1, 5, 1),
+                MinWidth = 0,
+                MinHeight = 0,
+            };
+            button.Content = stack;
+            button.Style = (Style)Resources[neutral ? "ConnectionGlanceNeutralButtonStyle" : "ConnectionGlanceAttentionButtonStyle"];
+            if (existing is not Button)
+                button.Click += (_, _) => onClick();
+            AutomationProperties.SetName(button, label);
+            chip = button;
+        }
+        else
+        {
+            icon.Style = (Style)Resources[stylePrefix + "IconStyle"];
+            text.Style = (Style)Resources[stylePrefix + "TextStyle"];
+            var border = existing as Border ?? new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 2, 6, 2),
+            };
+            border.Style = (Style)Resources[stylePrefix + "BorderStyle"];
+            border.Child = stack;
+            chip = border;
+            AutomationProperties.SetAutomationId(text, automationId);
+            AutomationProperties.SetHelpText(text, tooltip);
+        }
+        AutomationProperties.SetAutomationId(chip, automationId);
+        AutomationProperties.SetHelpText(chip, tooltip);
+        ToolTipService.SetToolTip(chip, tooltip);
+        return chip;
     }
 
     private void ApplyOperatorCard(ConnectionPagePlan plan)
@@ -1618,9 +1682,9 @@ public sealed partial class ConnectionPage : Page
             ? "paired via device token"
             : authMode;
 
-    private List<Border> BuildSavedGatewayRowControls(IEnumerable<SavedGatewayRow> rows)
+    private List<SettingsExpander> BuildSavedGatewayRowControls(IEnumerable<SavedGatewayRow> rows)
     {
-        var list = new List<Border>();
+        var list = new List<SettingsExpander>();
         foreach (var row in rows)
         {
             list.Add(BuildSavedGatewayRowControl(row));
@@ -1647,24 +1711,24 @@ public sealed partial class ConnectionPage : Page
     /// </summary>
     private FrameworkElement? BuildActiveRowBadge(OverallConnectionState state)
     {
-        // (glyph, brushKey, label) per state. Connected/Ready/Degraded all
+        // Connected/Ready/Degraded all
         // mean "operator is online" — the only case that warrants the
         // affirmative "Connected" badge.
-        (string glyph, string brushKey, string label)? badge = state switch
+        (string brushKey, string label)? badge = state switch
         {
             OverallConnectionState.Connected or
             OverallConnectionState.Ready or
             OverallConnectionState.Degraded =>
-                (Helpers.FluentIconCatalog.StatusOk, "SystemFillColorSuccessBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnected")),
+                ("SystemFillColorSuccessBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnected")),
 
             OverallConnectionState.Connecting =>
-                (Helpers.FluentIconCatalog.Sync, "SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnecting")),
+                ("SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeConnecting")),
 
             OverallConnectionState.PairingRequired =>
-                (Helpers.FluentIconCatalog.Lock, "SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeAwaitingApproval")),
+                ("SystemFillColorCautionBrush", LocalizationHelper.GetString("ConnectionPage_BadgeAwaitingApproval")),
 
             OverallConnectionState.Disconnecting =>
-                (Helpers.FluentIconCatalog.Sync, "TextFillColorSecondaryBrush", LocalizationHelper.GetString("ConnectionPage_BadgeDisconnecting")),
+                ("TextFillColorSecondaryBrush", LocalizationHelper.GetString("ConnectionPage_BadgeDisconnecting")),
 
             // Idle and Error → no badge; caller renders [Connect].
             // The status strip up top already carries the "broken / can't
@@ -1677,27 +1741,32 @@ public sealed partial class ConnectionPage : Page
         };
 
         if (badge is null) return null;
-        var (glyph, brushKey, label) = badge.Value;
+        var (brushKey, label) = badge.Value;
+        return BuildGatewayRowStatus(brushKey, label);
+    }
 
+    private FrameworkElement BuildGatewayRowStatus(string brushKey, string label)
+    {
         var stack = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        stack.Children.Add(new FontIcon
+        var dot = new Microsoft.UI.Xaml.Shapes.Ellipse
         {
-            Glyph = glyph,
-            FontSize = 12,
-            Foreground = ResolveBrush(brushKey),
+            Width = 10,
+            Height = 10,
+            Fill = ResolveBrush(brushKey),
             VerticalAlignment = VerticalAlignment.Center,
-        });
+        };
+        AutomationProperties.SetAccessibilityView(dot, AccessibilityView.Raw);
+        stack.Children.Add(dot);
         stack.Children.Add(new TextBlock
         {
             Text = label,
-            FontSize = 11,
-            FontWeight = Microsoft.UI.Text.FontWeights.SemiBold,
-            Foreground = ResolveBrush(brushKey),
+            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+            Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
             VerticalAlignment = VerticalAlignment.Center,
         });
         // Accessibility: the badge label is the screen-reader narration for
@@ -1710,23 +1779,25 @@ public sealed partial class ConnectionPage : Page
         return stack;
     }
 
-    private Border BuildSavedGatewayRowControl(SavedGatewayRow row)
+    private SettingsExpander BuildSavedGatewayRowControl(SavedGatewayRow row)
     {
-        // All rows use neutral card chrome. The status badge alone communicates
-        // which row is the active/live gateway; tinting the whole row was visually noisy.
-        var card = new Border
+        var card = new SettingsExpander
         {
-            Background = ResolveBrush("CardBackgroundFillColorSecondaryBrush"),
-            BorderBrush = ResolveBrush("CardStrokeColorDefaultBrush"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(12, 8, 8, 8),
-            Margin = new Thickness(0, 0, 0, 6),
+            HeaderIcon = new FontIcon { Glyph = Helpers.FluentIconCatalog.ServerEnvironment },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 0, 0, 4),
+            IsExpanded = _expandedSavedGatewayIds.Contains(row.Id),
         };
+        card.RegisterPropertyChangedCallback(SettingsExpander.IsExpandedProperty, (_, _) =>
+        {
+            if (card.IsExpanded)
+                _expandedSavedGatewayIds.Add(row.Id);
+            else
+                _expandedSavedGatewayIds.Remove(row.Id);
+        });
 
         var grid = new Grid { ColumnSpacing = 8 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
@@ -1735,15 +1806,16 @@ public sealed partial class ConnectionPage : Page
         info.Children.Add(new TextBlock
         {
             Text = row.DisplayName,
-            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
-        var sub = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        var sub = new StackPanel { Spacing = 4 };
         sub.Children.Add(new TextBlock
         {
             Text = ConnectionCardPlanSanitizer.SanitizeGatewayUrl(row.Url),
             Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
             Foreground = ResolveBrush("TextFillColorSecondaryBrush"),
+            TextWrapping = TextWrapping.Wrap,
         });
         if (!string.IsNullOrEmpty(row.AuthModeLabel))
         {
@@ -1781,11 +1853,14 @@ public sealed partial class ConnectionPage : Page
                 Foreground = ResolveBrush("TextFillColorTertiaryBrush"),
             });
         }
-        info.Children.Add(sub);
-        Grid.SetColumn(info, 0);
-        grid.Children.Add(info);
+        card.Header = info;
+        card.Items.Add(new SettingsCard
+        {
+            Header = sub,
+            Padding = new Thickness(16),
+        });
 
-        // Per-row right-hand affordance: a status badge when the row is the
+        // Per-row affordance: a status badge when the row is the
         // *active* gateway and the snapshot has something live-ish to report,
         // otherwise a [Connect] button to (re)activate the row.
         //
@@ -1796,12 +1871,10 @@ public sealed partial class ConnectionPage : Page
         // pairing request.
         var badge = row.IsActive ? BuildActiveRowBadge(_lastSnapshot.OverallState) : null;
         bool hasLiveAffordance = badge != null;
-        if (hasLiveAffordance)
-        {
-            Grid.SetColumn(badge!, 1);
-            grid.Children.Add(badge!);
-        }
-        else if (ConnectionPageRowState.ShouldShowConnect(
+        info.Children.Add(badge ?? BuildGatewayRowStatus(
+            "TextFillColorSecondaryBrush",
+            LocalizationHelper.GetString("StatusDisplay_Disconnected")));
+        if (ConnectionPageRowState.ShouldShowConnect(
             row.IsActive,
             hasLiveAffordance,
             _currentPlan?.AllowConnectionToggle ?? true))
@@ -1816,7 +1889,7 @@ public sealed partial class ConnectionPage : Page
                 connectBtn,
                 "SavedGatewayConnectAction");
             connectBtn.Click += OnConnectSavedGateway;
-            Grid.SetColumn(connectBtn, 1);
+            Grid.SetColumn(connectBtn, 0);
             grid.Children.Add(connectBtn);
         }
 
@@ -1883,11 +1956,12 @@ public sealed partial class ConnectionPage : Page
             flyout.Items.Add(remove);
         }
         overflowBtn.Flyout = flyout;
-        Grid.SetColumn(overflowBtn, 2);
+        Grid.SetColumn(overflowBtn, 1);
         grid.Children.Add(overflowBtn);
 
-        card.Child = grid;
+        card.Content = grid;
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(card, row.DisplayName);
+        Helpers.SettingsExpanderAutomation.NameDisclosure(card, row.DisplayName);
         return card;
     }
 
@@ -2694,7 +2768,7 @@ public sealed partial class ConnectionPage : Page
 
             if (wasActive && _connectionManager != null)
             {
-                try { await _connectionManager.DisconnectAsync(); }
+                try { await _connectionManager.DisconnectByUserAsync(gwId); }
                 catch (Exception ex) { Logger.Warn($"ConnectionPage: Failed to disconnect active gateway after removal: {ex.Message}"); }
             }
             LoadSavedGateways();

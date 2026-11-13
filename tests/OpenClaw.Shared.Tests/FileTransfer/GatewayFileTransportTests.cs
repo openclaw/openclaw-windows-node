@@ -229,8 +229,10 @@ public class GatewayFileTransportTests
         await gateway.HealthBarrier();
     }
 
-    [Fact]
-    public async Task HeartbeatsShareProgressSequenceAndDisposalCancelsPendingListener()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task HeartbeatsShareProgressSequenceAndTransportEndCancelsPendingListener(bool transportLoss)
     {
         await using var gateway = await SocketFixture.Start();
         var capability = new FetchCapability();
@@ -241,8 +243,11 @@ public class GatewayFileTransportTests
         Assert.Equal("node.invoke.progress", heartbeat.GetProperty("method").GetString());
         Assert.Equal("", heartbeat.GetProperty("params").GetProperty("chunk").GetString());
         Assert.Equal(1, heartbeat.GetProperty("params").GetProperty("seq").GetInt64());
-        // Leave its RPC acknowledgment pending while disposing the transport.
-        gateway.Node.Dispose();
+        // Leave its RPC acknowledgment pending while the transport ends.
+        if (transportLoss)
+            gateway.Node.AbortTransport();
+        else
+            gateway.Node.Dispose();
         await capability.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
@@ -393,6 +398,8 @@ public class GatewayFileTransportTests
 
     private sealed class GenerationNode(string url, string directory) : WindowsNodeClient(url, "fixture-token", directory)
     {
+        protected override bool ShouldAutoReconnect() => false;
+        public void AbortTransport() => AbortCurrentWebSocket(CurrentConnectionGeneration);
         public Task DeliverStaleAck(string id) => ProcessMessageForConnectionAsync(
             JsonSerializer.Serialize(new { type = "res", id, ok = true }), CurrentConnectionGeneration - 1);
     }

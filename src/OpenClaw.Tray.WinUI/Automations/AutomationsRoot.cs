@@ -13,6 +13,7 @@ using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared.Cron;
+using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClawTray.Automations.AutomationsVisuals;
@@ -314,11 +315,12 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 IsOpen = true,
                 CloseButtonText = t["Cancel"],
                 DefaultButton = ContentDialogButton.None,
-                OnOpened = () => { if (confirmDialogRef.Current is { } native) FocusConfirmationCancel(native); },
                 OnClosed = result => { confirmDialogRef.Current = null; pending.Result.TrySetResult(result == ContentDialogResult.Primary); setConfirm(null); },
             }).Set(native =>
             {
                 confirmDialogRef.Current = native;
+                // Cancel must get initial focus deterministically, not race WinUI's own initial focus.
+                DialogInitialFocus.FocusCloseButton(native);
                 ConfigureDialogWidth(native, dialogWidth);
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(native, "AutomationsConfirmDialog");
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(native, pending.Title);
@@ -384,19 +386,6 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                 .Padding(12).CornerRadius(6).Background(Theme.SubtleFill))
             .MaxWidth(420);
 
-    private static void FocusConfirmationCancel(ContentDialog sender) =>
-        sender.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,
-            () => FindCloseButton(sender, sender.CloseButtonText)?.Focus(FocusState.Programmatic));
-
-    private static Button? FindCloseButton(DependencyObject parent, string label)
-    {
-        if (parent is Button button && (button.Name == "CloseButton" || string.Equals(button.Content as string, label, StringComparison.Ordinal)))
-            return button;
-        for (var i = 0; i < Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
-            if (FindCloseButton(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(parent, i), label) is { } close)
-                return close;
-        return null;
-    }
 
     private static Element RenderHeader(AutomationsHost host, AutomationsSnapshot state, AutomationsActions actions, AutomationsLook look, PageWidthTier tier)
     {
@@ -801,7 +790,7 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
             var header = Props.Header.AutomationId($"AutomationRowHeader:{Props.JobId}")
                 .OnSizeChanged((sender, _) => HeaderArranged(sender));
             return Grid([GridSize.Star(), GridSize.Px(ChatButtonSize + PageResponsiveLayout.GapInner)], [GridSize.Auto],
-                    (Props.Expander with { HeaderTemplate = header }).Grid(column: 0),
+                    (Props.Expander with { HeaderContent = header }).Grid(column: 0),
                     Props.Chat is null ? Empty().Grid(column: 1)
                         : Props.Chat.Size(ChatButtonSize, ChatButtonSize)
                             .Margin(PageResponsiveLayout.GapInner, Math.Max(0, headerCenter - ChatButtonSize / 2), 0, 0)

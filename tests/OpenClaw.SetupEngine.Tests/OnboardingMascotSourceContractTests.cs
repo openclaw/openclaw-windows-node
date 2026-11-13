@@ -80,8 +80,10 @@ public sealed class OnboardingMascotSourceContractTests
         var frame = int.Parse(match.Groups[1].Value);
         Assert.Equal(0, frame % 4);
         Assert.InRange(frame * 120d / 168, 124, 132);
-        Assert.Contains("Accessory=\"GradCap\"", File.ReadAllText(Path.Combine(pages, "CompletePage.xaml")));
-        Assert.Contains("Mood=\"Idle\"", File.ReadAllText(Path.Combine(pages, "SecurityNoticePage.xaml")));
+        // The companion pane owns the mascot; pages request headwear and moods through it.
+        Assert.Contains("OnboardingMascotAccessory.GradCap", File.ReadAllText(Path.Combine(pages, "CompletePage.xaml.cs")));
+        Assert.Contains("nameof(SecurityNoticePage) => new(\"Onboarding_Bubble_Welcome\", OnboardingMascotMood.Idle)",
+            File.ReadAllText(RepoPath("src", "OpenClaw.SetupEngine.UI", "SetupCompanionPresentation.cs")));
         Assert.Contains("ReadinessError.IsOpen ? OnboardingMascotMood.Sad : OnboardingMascotMood.Happy",
             File.ReadAllText(Path.Combine(pages, "WelcomePage.xaml.cs")));
     }
@@ -97,7 +99,7 @@ public sealed class OnboardingMascotSourceContractTests
         Assert.Contains("CenterX = 94, CenterY = 53", source);
         Assert.Contains("Quad(35, 5, 30, 8)", source);
         Assert.Contains("Quad(85, 5, 90, 8)", source);
-        Assert.Contains("Rgb(255, 112, 121)", source);
+        Assert.Contains("Rgb(200, 40, 48)", source);
         Assert.Contains("Rgb(153, 27, 27)", source);
         Assert.Contains("UIElementType.WindowText", source);
         Assert.DoesNotContain("BitmapImage", source);

@@ -14,23 +14,23 @@
                 <controls:AgentIdentityBadge/>
             </DataTemplate>
         </Grid.Resources>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
-        <TitleBar x:Name="WorkspaceTitleBar" Title="OpenClaw" AutomationProperties.AutomationId="WorkspaceTitleBar">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="ShellLeadColumn" Width="256"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <TitleBar x:Name="WorkspaceTitleBar" Grid.Column="1" Canvas.ZIndex="2"
+                  VerticalAlignment="Top" AutomationProperties.AutomationId="WorkspaceTitleBar">
             <TitleBar.Resources>
-                <!-- TitleBar switches to its 48 DIP expanded height whenever RightHeader is set, even
-                     while that content is collapsed. Keep the compact 32 DIP chrome in every state. -->
-                <x:Double x:Key="TitleBarExpandedHeight">32</x:Double>
+                <!-- Match the pane toolbar's 40 DIP controls and 8 DIP vertical insets. -->
+                <x:Double x:Key="TitleBarExpandedHeight">56</x:Double>
             </TitleBar.Resources>
             <TitleBar.RightHeader>
                 <!-- Shown only while the Chat pane is hidden, so Dashboard and the bell stay one click away. -->
                 <controls:WorkspacePaneFooter x:Name="TitleBarFooter" AutomationIdPrefix="WorkspaceTitleBar"
-                                              Visibility="Collapsed" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                              Visibility="Collapsed" VerticalAlignment="Center"/>
             </TitleBar.RightHeader>
         </TitleBar>
-        <Grid x:Name="NavigationSection" Grid.Row="1" SizeChanged="OnNavigationSizeChanged">
+        <Grid x:Name="NavigationSection" Grid.ColumnSpan="2" SizeChanged="OnNavigationSizeChanged">
         <Grid.ColumnDefinitions>
             <ColumnDefinition x:Name="SidebarColumn" Width="256" MinWidth="192" MaxWidth="480"/>
             <ColumnDefinition Width="*"/>
@@ -40,9 +40,14 @@
                         PaneDisplayMode="Left" OpenPaneLength="256" CompactPaneLength="0"
                         IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
                         IsPaneToggleButtonVisible="False" IsPaneOpen="True"
+                        IsTitleBarAutoPaddingEnabled="False"
                         PaneClosed="OnPaneClosed"
                         SelectionChanged="OnNavigationChanged">
             <NavigationView.Resources>
+                <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
+                <CornerRadius x:Key="NavigationViewMinimalContentGridCornerRadius">0</CornerRadius>
+                <Thickness x:Key="NavigationViewContentGridBorderThickness">1,0,0,0</Thickness>
+                <Thickness x:Key="NavigationViewMinimalContentGridBorderThickness">1,0,0,0</Thickness>
                 <x:String x:Key="SplitViewPaneAnimationOpenDuration">00:00:00.16</x:String>
                 <x:String x:Key="SplitViewPaneAnimationOpenPreDuration">00:00:00.15999</x:String>
                 <x:String x:Key="SplitViewPaneAnimationCloseDuration">00:00:00.16</x:String>
@@ -174,7 +179,7 @@
             <NavigationView.PaneFooter>
                 <controls:WorkspacePaneFooter x:Name="ChatFooter" AutomationIdPrefix="Workspace"/>
             </NavigationView.PaneFooter>
-            <Grid>
+            <Grid x:Name="WorkspaceContentLayout" Margin="0,32,0,0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
@@ -196,16 +201,14 @@
                               HorizontalAlignment="Right" VerticalAlignment="Stretch"
                               Width="4" MinWidth="4" Padding="0" Background="Transparent"/>
         </Grid>
-        <Grid x:Name="SettingsSection" Grid.Row="1" Visibility="Collapsed"
+        <Grid x:Name="SettingsSection" Grid.ColumnSpan="2" Visibility="Collapsed"
               AutomationProperties.AutomationId="WorkspaceSettingsHost">
-            <Border x:Name="EmbeddedPageBackground" Canvas.ZIndex="-1" Visibility="Collapsed"
-                    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" IsHitTestVisible="False"/>
             <InfoBar x:Name="EmbeddedOperationInfo" Canvas.ZIndex="1" IsOpen="False" IsClosable="True"
                      Severity="Error" VerticalAlignment="Top" Closed="OnEmbeddedOperationClosed"
                      AutomationProperties.AutomationId="WorkspaceEmbeddedOperationFeedback"/>
         </Grid>
-        <!-- Keep only the pane buttons above full-frame embedded pages, not the Chat surface. -->
-        <Grid x:Name="PaneToggleChrome" Grid.Row="1" TabIndex="0"
+        <!-- Opted-in page backdrops extend under this chrome; the pane buttons must stay above them. -->
+        <Grid x:Name="PaneToggleChrome" Grid.ColumnSpan="2" TabIndex="0"
               Visibility="{Binding Visibility, ElementName=NavigationSection}"
               HorizontalAlignment="Left" VerticalAlignment="Top" Width="48" Height="56">
             <Button x:Name="CollapsePaneButton" x:Uid="WorkspaceShell_TogglePane" Click="OnTogglePane"
@@ -221,7 +224,7 @@
                 <FontIcon Glyph="&#xE90C;" FontSize="16"/>
             </Button>
         </Grid>
-        <StackPanel x:Name="SettingsHistoryBar" Grid.Row="1" TabIndex="1" Orientation="Horizontal" Spacing="4"
+        <StackPanel x:Name="SettingsHistoryBar" Grid.ColumnSpan="2" TabIndex="1" Orientation="Horizontal" Spacing="4"
                     Margin="48,8,0,0" HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed">
             <Button x:Name="SettingsBackButton" x:Uid="NavBackButton" Click="OnBack"
                     Width="40" Height="40" Padding="0"

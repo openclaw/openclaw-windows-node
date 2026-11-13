@@ -109,6 +109,12 @@ public class SettingsManager
 
     // Notifications
     public bool ShowNotifications { get => _data.ShowNotifications; set => _data = _data with { ShowNotifications = value }; }
+    public bool ShowDesktopCompanion { get => _data.ShowDesktopCompanion; set => _data = _data with { ShowDesktopCompanion = value }; }
+    public int DesktopCompanionScalePercent
+    {
+        get => _data.DesktopCompanionScalePercent;
+        set => _data = _data with { DesktopCompanionScalePercent = NormalizeDesktopCompanionScale(value) };
+    }
     public string NotificationSound { get => _data.NotificationSound ?? "Default"; set => _data = _data with { NotificationSound = value }; }
     
     // Notification filters
@@ -474,6 +480,7 @@ public class SettingsManager
             SshTunnelRemotePort = loaded.SshTunnelRemotePort <= 0 ? defaults.SshTunnelRemotePort : loaded.SshTunnelRemotePort,
             SshTunnelLocalPort = loaded.SshTunnelLocalPort <= 0 ? defaults.SshTunnelLocalPort : loaded.SshTunnelLocalPort,
             NotificationSound = loaded.NotificationSound ?? defaults.NotificationSound,
+            DesktopCompanionScalePercent = NormalizeDesktopCompanionScale(loaded.DesktopCompanionScalePercent),
             SttLanguage = string.IsNullOrWhiteSpace(loaded.SttLanguage) ? defaults.SttLanguage : loaded.SttLanguage,
             SttModelName = string.IsNullOrWhiteSpace(loaded.SttModelName) ? defaults.SttModelName : loaded.SttModelName,
             SttSilenceTimeout = loaded.SttSilenceTimeout > 0 ? loaded.SttSilenceTimeout : defaults.SttSilenceTimeout,
@@ -666,6 +673,14 @@ public class SettingsManager
         SandboxMaxTransferBytes = SandboxMaxTransferBytes,
         McpOnlyMode = null
     };
+
+    private static int NormalizeDesktopCompanionScale(int value)
+    {
+        var normalized = DesktopCompanionScale.Normalize(value);
+        if (value != normalized)
+            Logger.Warn($"Desktop lobster scale {value}% was adjusted to the supported size {normalized}%.");
+        return normalized;
+    }
 
     public static string NormalizeAppTheme(string? value)
     {

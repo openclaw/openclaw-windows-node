@@ -12,6 +12,194 @@ namespace OpenClaw.Connection.Tests;
 
 public class GatewayConnectionManagerTests : IDisposable
 {
+    // Hang guard for one event-driven step; only absorbs CI scheduling delay.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UserDisconnect_RemovedNativeGateway_RecordsPinnedIntentAndStopsRuntime(bool stopFailsFirst)
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            nativeGatewayRuntime: runtime, reconnectDelay: _ => Task.CompletedTask);
+        await manager.ConnectAsync();
+        var attempt = ((INodeLifecycleSource)manager).CaptureGatewayAttempt();
+        _registry.RemoveAndSave("native");
+        Assert.Null(_registry.ActiveGatewayId);
+
+        if (stopFailsFirst)
+        {
+            runtime.StopException = new IOException("Native stop failed");
+            await Assert.ThrowsAsync<IOException>(() => manager.DisconnectByUserAsync("native"));
+            Assert.Null(manager.OperatorClient);
+            Assert.True(runtime.Running);
+            runtime.StopException = null;
+        }
+
+        await manager.DisconnectByUserAsync("native");
+        await InvokeScheduledOperatorReconnect(manager, attempt, postBootstrap: false)
+            .WaitAsync(StepTimeout);
+
+        Assert.False(manager.IsAutomaticReconnectAllowed("native"));
+        Assert.False(runtime.Running);
+        Assert.Equal(stopFailsFirst ? 2 : 1, runtime.StopCount);
+        Assert.Single(_factory.CreatedClients);
+        Assert.Null(manager.OperatorClient);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+    }
+
+    [Fact]
+    public async Task UserDisconnect_RemovedNativeGatewayAfterIdentityFailure_StopsRetainedRuntime()
+    {
+        SetupNativeGateway();
+        var runtime = new FakeNativeGatewayRuntime();
+        await using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance, nativeGatewayRuntime: runtime);
+        await manager.ConnectAsync();
+        _resolver.OperatorResolution = new(null, GatewayCredentialResolutionStatus.Corrupt);
+        await manager.ReconnectAsync();
+        Assert.Null(manager.OperatorClient);
+        Assert.True(runtime.Running);
+        Assert.Equal(RoleConnectionState.Error, manager.CurrentSnapshot.OperatorState);
+        _registry.RemoveAndSave("native");
+
+        await manager.DisconnectByUserAsync("native");
+
+        Assert.False(manager.IsAutomaticReconnectAllowed("native"));
+        Assert.False(runtime.Running);
+        Assert.Equal(1, runtime.StopCount);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+    }
+
+    [Fact]
+    public async Task UserDisconnect_RemovedGatewayQueuedBehindSwitch_PreservesReplacementAndItsIntent()
+    {
+        SetupGateway("removed", "wss://removed.example");
+        _registry.AddOrUpdate(new GatewayRecord { Id = "replacement", Url = "wss://replacement.example" });
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        await _manager.ConnectAsync("removed");
+        _registry.RemoveAndSave("removed");
+        var semaphore = Assert.IsType<SemaphoreSlim>(
+            typeof(GatewayConnectionManager).GetField(
+                "_transitionSemaphore",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)!.GetValue(_manager));
+
+        await semaphore.WaitAsync();
+        Task switchGateway;
+        Task disconnect;
+        try
+        {
+            switchGateway = _manager.SwitchGatewayAsync("replacement");
+            disconnect = _manager.DisconnectByUserAsync("removed");
+            Assert.False(switchGateway.IsCompleted);
+            Assert.False(disconnect.IsCompleted);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+
+        await Task.WhenAll(switchGateway, disconnect).WaitAsync(StepTimeout);
+
+        Assert.Equal("replacement", _registry.ActiveGatewayId);
+        Assert.NotNull(_manager.OperatorClient);
+        Assert.Equal(RoleConnectionState.Connecting, _manager.CurrentSnapshot.OperatorState);
+        Assert.False(_manager.IsAutomaticReconnectAllowed("removed"));
+        Assert.True(_manager.IsAutomaticReconnectAllowed("replacement"));
+        Assert.Equal(2, _factory.CreatedClients.Count);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task ScheduledOperatorReconnect_QueuedBehindDisconnect_DoesNotReviveGateway(
+        bool postBootstrap,
+        bool snapshotDisconnect)
+    {
+        SetupGateway("gw-queued", "wss://queued.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask);
+        await manager.ConnectAsync("gw-queued");
+        var attempt = ((INodeLifecycleSource)manager).CaptureGatewayAttempt();
+        var snapshot = manager.CurrentSnapshot;
+        var semaphore = Assert.IsType<SemaphoreSlim>(
+            typeof(GatewayConnectionManager).GetField(
+                "_transitionSemaphore",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic)!.GetValue(manager));
+
+        await semaphore.WaitAsync();
+        Task disconnect;
+        Task reconnect;
+        try
+        {
+            disconnect = snapshotDisconnect
+                ? manager.DisconnectIfCurrentAsync(snapshot)
+                : manager.DisconnectAsync();
+            reconnect = InvokeScheduledOperatorReconnect(manager, attempt, postBootstrap);
+            Assert.False(disconnect.IsCompleted);
+            Assert.False(reconnect.IsCompleted);
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+
+        await Task.WhenAll(disconnect, reconnect).WaitAsync(StepTimeout);
+
+        Assert.Single(_factory.CreatedClients);
+        Assert.Null(manager.OperatorClient);
+        Assert.Equal(RoleConnectionState.Idle, manager.CurrentSnapshot.OperatorState);
+        Assert.Equal("gw-queued", _registry.ActiveGatewayId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScheduledOperatorReconnect_CurrentAttempt_ReconnectsWithoutDeadlock(bool postBootstrap)
+    {
+        SetupGateway("gw-current", "wss://current.example");
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        using var manager = new GatewayConnectionManager(
+            _resolver, _factory, _registry, NullLogger.Instance,
+            reconnectDelay: _ => Task.CompletedTask);
+        await manager.ConnectAsync("gw-current");
+
+        await InvokeScheduledOperatorReconnect(
+            manager,
+            ((INodeLifecycleSource)manager).CaptureGatewayAttempt(),
+            postBootstrap).WaitAsync(StepTimeout);
+
+        Assert.Equal(2, _factory.CreatedClients.Count);
+        Assert.NotNull(manager.OperatorClient);
+        Assert.Equal("gw-current", _registry.ActiveGatewayId);
+    }
+
+    private static Task InvokeScheduledOperatorReconnect(
+        GatewayConnectionManager manager,
+        GatewayAttemptStamp attempt,
+        bool postBootstrap)
+    {
+        var method = typeof(GatewayConnectionManager).GetMethod(
+            "ScheduleOperatorReconnectAsync",
+            System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.NonPublic)!;
+        return (Task)method.Invoke(manager,
+            [new OperatorReconnectRequest(attempt, postBootstrap
+                ? OperatorReconnectReason.PostBootstrapHandoff
+                : OperatorReconnectReason.OperatorTokenMismatch)])!;
+    }
+
     [Fact]
     public async Task RegistrySettlementCannotDisconnectANewerConnectionSnapshot()
     {

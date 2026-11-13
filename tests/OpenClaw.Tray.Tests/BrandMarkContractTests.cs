@@ -39,8 +39,8 @@ public sealed class BrandMarkContractTests
     {
         Assert.DoesNotContain("controls:BrandMark", ReadTrayFile("Controls", "SettingsShellView.xaml"));
         Assert.Contains("<TitleBar ", ReadTrayFile("Windows", "WorkspaceWindow.xaml"));
-        Assert.Contains("WorkspaceTitleBar.IconSource = new BitmapIconSource", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
-        Assert.Contains("BrandAssets.RedBotMarkUri", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.DoesNotContain("WorkspaceTitleBar.IconSource", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
+        Assert.Contains("this.SetIcon(\"Assets\\\\openclaw.ico\");", ReadTrayFile("Windows", "WorkspaceWindow.xaml.cs"));
 
         var expectedCodeFiles = new[]
         {

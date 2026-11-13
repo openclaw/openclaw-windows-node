@@ -3,6 +3,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AccessibilityThemeResourceSourceTests
 {
     [Fact]
+    public void ConnectionGlanceButtons_RetainNativeContrastBordersAndForegroundStates()
+    {
+        // Retire when mounted high-contrast interaction proof covers the pill content and border.
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+        var start = source.IndexOf("private FrameworkElement BuildGlanceChip(", StringComparison.Ordinal);
+        var end = source.IndexOf("private void ApplyOperatorCard(", start, StringComparison.Ordinal);
+        var factory = source[start..end];
+        var buttonBranch = factory[..factory.IndexOf("\n        else", StringComparison.Ordinal)];
+        Assert.DoesNotContain("BorderThickness =", buttonBranch);
+        Assert.DoesNotContain("Resources[stylePrefix + \"IconStyle\"]", buttonBranch);
+        Assert.DoesNotContain("Resources[stylePrefix + \"TextStyle\"]", buttonBranch);
+        Assert.DoesNotContain("Foreground =", buttonBranch);
+    }
+
+    [Fact]
     public void MainWindowShells_PreserveMicaAndHighContrastChatResources()
     {
         // Retirement: replace when production window shells can be mounted in native tests.
@@ -17,10 +32,17 @@ public sealed class AccessibilityThemeResourceSourceTests
         var title = workspace.Descendants().Single(element =>
             (string?)element.Attribute(x + "Name") == "WorkspaceTitleBar");
         Assert.Null(title.Attribute("Background"));
-        Assert.DoesNotContain(settings.Descendants(), element =>
-            (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}");
-        foreach (var theme in resources.Descendants().Where(element =>
-            element.Name.LocalName == "ResourceDictionary" && element.Attribute(x + "Key") is not null))
+        // The embedded Settings view paints no content layer of its own. Its only reference to the brush is the
+        // zero-size, raw-view probe that rebinds the NavigationView's layer after theme changes.
+        var contentBrushUsers = settings.Descendants().Where(element =>
+            (string?)element.Attribute("Background") == "{ThemeResource NavigationViewContentBackground}").ToList();
+        var probe = Assert.Single(contentBrushUsers);
+        Assert.Equal("ContentSurfaceSource", (string?)probe.Attribute(x + "Name"));
+        Assert.Equal("0", (string?)probe.Attribute("Width"));
+        Assert.Equal("0", (string?)probe.Attribute("Height"));
+        Assert.Equal("False", (string?)probe.Attribute("IsHitTestVisible"));
+        foreach (var theme in resources.Elements().Single(element =>
+            element.Name.LocalName == "ResourceDictionary.ThemeDictionaries").Elements())
         {
             var canvas = theme.Elements().Single(element => (string?)element.Attribute(x + "Key") == "ChatCanvasBrush");
             var highContrast = (string?)theme.Attribute(x + "Key") == "HighContrast";

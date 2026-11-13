@@ -39,7 +39,7 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.17`, including the recycled-anchor
+Both Reactor packages use `0.1.0-preview.18`, including the recycled-anchor
 workaround introduced in preview.16 from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
@@ -59,7 +59,7 @@ including previews, in the authoritative NuGet feeds for
 [Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
 and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
 and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
-The [official preview.17 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17)
+The [official preview.18 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.18)
 now supplies the hash-verified packages used here. Keep both references aligned.
 Preview.17 requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
 reference meets that floor.
@@ -557,7 +557,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   process that could use the SDK-default appdata paths.
 - Output retains bounded UTF-8 bytes per stream, including truncation markers; BOMs can be fragmented and discarded bytes continue to drain. Shared incremental capture exposes complete characters (including 1-3 byte short output) before EOF. Deadline responses preserve captured stdout/stderr without waiting for cleanup. `[truncated]` denotes either a byte-budget limit or capture cut off before EOF, including a deadline before any output arrived. Incomplete BOMs/characters at a cutoff are not invented; real EOF still uses the decoder's replacement behavior.
 - One command deadline covers launch/wait/drains. Direct root exit is independent of output EOF: at most 500 ms of post-exit drain grace fits inside the remaining deadline. Native execution observes and caches root exit through the SDK's non-finalizing `TryGetExitCode` before calling `WaitAsync`. A known root exit retains its exit code rather than becoming a timeout because a descendant holds a pipe or SDK finalization crosses the deadline. Incomplete capture uses the existing truncation marker when it fits the byte budget. Native SDK finalization still reaps descendants and completes teardown before ownership is released. Only unsupported-Windows host compatibility execution leaves intentional background descendants running after normal root exit.
-- Host pipe readers use cancellable public `ReadAsync`; native SDK readers use synchronous `Read` interrupted by `IMxcStreamCloser`. Cancellation returns promptly while a late launch, blocked kill or pending SDK finalization remains owned. Capacity (eight owners) is held until readers, native tasks and the scratch cleanup attempt finish. In host compatibility execution, a background descendant retaining scratch as its cwd can prevent directory deletion; that failure is logged, not remedied by killing the background application. Running commands retain their immutable policy; pending commands revalidate settings and approvals before spawn.
+- Host pipe readers use cancellable public `ReadAsync`; native SDK readers use synchronous `Read` on dedicated (non-thread-pool) workers, interrupted by `IMxcStreamCloser`. Cancellation returns promptly while a late launch, blocked kill or pending SDK finalization remains owned. Capacity (eight owners) is held until readers, native tasks and the scratch cleanup attempt finish. In host compatibility execution, a background descendant retaining scratch as its cwd can prevent directory deletion; that failure is logged, not remedied by killing the background application. Running commands retain their immutable policy; pending commands revalidate settings and approvals before spawn.
 - Cleanup uses the operation's atomically created directory identity and
   retained no-follow ancestry, not a GUID name or manifest. Ended owned
   operations get bounded sharing-violation retries; later admission retries

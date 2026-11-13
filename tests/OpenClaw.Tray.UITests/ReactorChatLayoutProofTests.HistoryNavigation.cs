@@ -121,26 +121,39 @@ public sealed partial class ReactorChatLayoutProofTests
             {
                 await ui.RunOnUIAsync(() => provider.Publish(
                     WorkSnapshot(snapshot, "proof", HistoryRailEntries(count), active: false)));
-                await SettleAsync();
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                 {
                     var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
                     var visibleTicks = FindDescendants<ContentPresenter>(rail).Count(presenter =>
                         presenter.Content is AnnotatedScrollBarLabel &&
                         presenter.Visibility == Visibility.Visible);
-                    var items = Assert.Single(FindDescendants<ItemsView>(host));
-                    var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(items));
-                    var viewport = parent.RowDefinitions[Grid.GetRow(items)].ActualHeight;
+                    var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(rail));
+                    var viewport = parent.ActualHeight;
                     return viewport > 0 && rail.Labels.Count > 1
+                        && (count > 7 || rail.Labels.Count == count)
+                        && rail.Labels[^1].Content is ChatHistoryAnchor { RowIndex: var last } && last == count - 1
                         && Math.Abs(rail.ActualHeight - Math.Min((count - 1) * 10 + 16, viewport)) <= 1
                         && visibleTicks == rail.Labels.Count;
                 }, $"{count} message annotations render native ticks"));
-                await ui.RunOnUIAsync(() =>
+                await ui.RunOnUIAsync(async () =>
                 {
                     var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
                     var items = Assert.Single(FindDescendants<ItemsView>(host));
-                    var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(items));
-                    var viewport = parent.RowDefinitions[Grid.GetRow(items)].ActualHeight;
+                    await WaitForRenderedConditionAsync(() =>
+                    {
+                        var scroll = items.ScrollView;
+                        if (scroll.State != ScrollingInteractionState.Idle
+                            || scroll.Content is not ItemsRepeater repeater
+                            || repeater.TryGetElement(count - 1) is not FrameworkElement { ActualHeight: > 0 } tail)
+                            return false;
+                        var bounds = Bounds(tail, scroll);
+                        return bounds.Bottom > 0 && bounds.Bottom <= scroll.ViewportHeight + 2;
+                    }, "the new conversation tail is visible before checking viewport tick tones");
+                    await WaitForStableHistoryTicksAsync(rail);
+                    var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(rail));
+                    // This fixture has no history-error banner. Its allocated height stays
+                    // authoritative while Reactor replaces RowDefinitions during reconciliation.
+                    var viewport = parent.ActualHeight;
                     var expectedHeight = Math.Min((count - 1) * 10 + 16, viewport);
                     Assert.InRange(rail.ActualHeight, expectedHeight - 1, expectedHeight + 1);
                     Assert.Equal(1, rail.Opacity);
@@ -201,25 +214,23 @@ public sealed partial class ReactorChatLayoutProofTests
                 previousCount = Assert.Single(FindDescendants<AnnotatedScrollBar>(host)).Labels.Count;
                 surface.Height = 460;
             });
-            await SettleAsync();
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
                 var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
-                var items = Assert.Single(FindDescendants<ItemsView>(host));
-                var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(items));
-                var viewport = parent.RowDefinitions[Grid.GetRow(items)].ActualHeight;
+                var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(rail));
+                var viewport = parent.ActualHeight;
                 return viewport > 0 && viewport < 460 && Math.Abs(rail.ActualHeight - viewport) <= 1
                     && rail.Labels.Count < previousCount && rail.Labels.Count > 1
                     && FindDescendants<ContentPresenter>(rail).Count(presenter =>
                         presenter.Content is AnnotatedScrollBarLabel &&
                         presenter.Visibility == Visibility.Visible) == rail.Labels.Count;
             }, "the rail fits the resized transcript cell"));
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
                 var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
-                var items = Assert.Single(FindDescendants<ItemsView>(host));
-                var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(items));
-                var viewport = parent.RowDefinitions[Grid.GetRow(items)].ActualHeight;
+                await WaitForStableHistoryTicksAsync(rail);
+                var parent = Assert.IsType<Grid>(VisualTreeHelper.GetParent(rail));
+                var viewport = parent.ActualHeight;
                 Assert.InRange(rail.ActualHeight, viewport - 1, viewport + 1);
                 Assert.True(rail.ActualHeight < 460);
                 Assert.InRange(rail.Labels.Count, 2, previousCount - 1);
@@ -232,7 +243,6 @@ public sealed partial class ReactorChatLayoutProofTests
                 previousCount = Assert.Single(FindDescendants<AnnotatedScrollBar>(host)).Labels.Count;
                 surface.Height = 800;
             });
-            await SettleAsync();
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
                 var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
@@ -241,13 +251,42 @@ public sealed partial class ReactorChatLayoutProofTests
                         presenter.Content is AnnotatedScrollBarLabel &&
                         presenter.Visibility == Visibility.Visible) == rail.Labels.Count;
             }, "growing the viewport renders the expanded tick budget"));
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
                 var rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
+                await WaitForStableHistoryTicksAsync(rail);
                 Assert.True(rail.Labels.Count > previousCount, "Growing the viewport should restore more ticks.");
                 AssertHistoryTickGaps(rail);
             });
         }, renderProvider: provider);
+    }
+
+    private static async Task WaitForStableHistoryTicksAsync(AnnotatedScrollBar rail)
+    {
+        global::Windows.Foundation.Rect[]? previous = null;
+        const double tolerance = 0.01;
+        await WaitForRenderedConditionAsync(() =>
+        {
+            var bounds = FindDescendants<ContentPresenter>(rail)
+                .Where(presenter => presenter.Content is AnnotatedScrollBarLabel
+                    && presenter.Visibility == Visibility.Visible)
+                .SelectMany(FindDescendants<Border>)
+                .Select(tick => Bounds(tick, rail)).ToArray();
+            if (bounds.Length != rail.Labels.Count || bounds.Length == 0
+                || bounds.Any(rect => rect.Width <= 0 || rect.Height <= 0))
+            {
+                previous = null;
+                return false;
+            }
+            var stable = previous is not null && previous.Length == bounds.Length
+                && previous.Zip(bounds).All(pair =>
+                    Math.Abs(pair.First.X - pair.Second.X) <= tolerance
+                    && Math.Abs(pair.First.Y - pair.Second.Y) <= tolerance
+                    && Math.Abs(pair.First.Width - pair.Second.Width) <= tolerance
+                    && Math.Abs(pair.First.Height - pair.Second.Height) <= tolerance);
+            previous = bounds;
+            return stable;
+        }, "native history tick bounds stop moving");
     }
 
     private static void AssertHistoryTickInk(Border tick, Grid themeRoot)
@@ -280,7 +319,9 @@ public sealed partial class ReactorChatLayoutProofTests
         Assert.Equal(rail.Labels.Count, ticks.Length);
         for (var index = 1; index < ticks.Length; index++)
             Assert.True(ticks[index].Top - ticks[index - 1].Bottom >= 4 - 0.0001,
-                $"Ticks {index - 1} and {index} need at least 4 DIPs of clear space.");
+                $"Ticks {index - 1} and {index} need at least 4 DIPs of clear space; "
+                + $"actual gap={ticks[index].Top - ticks[index - 1].Bottom}, "
+                + $"count={ticks.Length}, railHeight={rail.ActualHeight}.");
     }
 
     [Fact]
@@ -418,7 +459,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 rail = Assert.Single(FindDescendants<AnnotatedScrollBar>(host));
                 items = Assert.Single(FindDescendants<ItemsView>(host));
             });
-            await SettleAsync();
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                rail!.ActualHeight > 0 && rail.ActualHeight <= surface.Height && rail.Labels.Count > 1
+                && FindDescendants<ContentPresenter>(rail).Count(presenter =>
+                    presenter.Content is AnnotatedScrollBarLabel && presenter.Visibility == Visibility.Visible)
+                    == rail.Labels.Count,
+                "resized history ticks are ready for native input"));
             await NativeKeyboardProof.ActivateAsync(window);
             await ui.RunOnUIAsync(() =>
             {

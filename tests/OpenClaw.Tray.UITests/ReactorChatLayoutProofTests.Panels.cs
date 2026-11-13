@@ -179,9 +179,13 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private async Task ExpandPanelToolAsync(Border surface, string entryId)
     {
-        await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatToolActivity_" + entryId).IsExpanded = true);
-        await SettleAsync();
-        await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatToolCall_" + entryId).IsExpanded = true);
+        // A lone call is its own row, as on the web, so there is no group to open first.
+        await ui.RunOnUIAsync(() =>
+        {
+            Assert.DoesNotContain(FindDescendants<Expander>(surface), expander =>
+                AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_" + entryId);
+            FindControl<Expander>(surface, "ChatToolCall_" + entryId).IsExpanded = true;
+        });
         await SettleAsync();
     }
 
@@ -249,8 +253,9 @@ public sealed partial class ReactorChatLayoutProofTests
                 var actionBounds = Bounds(open, surface);
                 Assert.True(actionBounds.Left >= cardBounds.Left && actionBounds.Right <= cardBounds.Right);
                 Assert.True(actionBounds.Top >= cardBounds.Top && actionBounds.Bottom <= cardBounds.Bottom);
-                Assert.Equal(toolName == "powershell" || touch ? 40 : 28, open.ActualWidth);
-                Assert.Equal(open.ActualWidth, open.ActualHeight);
+                // Native layout uses float precision at fractional display scales.
+                Assert.Equal(toolName == "powershell" || touch ? 40 : 28, open.ActualWidth, precision: 4);
+                Assert.Equal(open.ActualWidth, open.ActualHeight, precision: 4);
                 var input = FindDescendants<RichTextBlock>(expander).First();
                 var inputBounds = Bounds(input, surface);
                 if (toolName == "powershell")

@@ -680,10 +680,12 @@ public sealed partial class GatewayFixtureUiTests
                 Assert.Equal($"It's removed from Fixture Gateway ({run.Profile.RunId[..8]}) along with its schedule and run history. This can't be undone.",
                     removeText.DocumentRange.GetText(-1).TrimEnd('\r', '\n'));
                 var removeDialog = FindById(run, "AutomationsConfirmDialog")!;
-                var cancel = removeDialog.FindFirst(TreeScope.Descendants, new AndCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                    new PropertyCondition(AutomationElement.NameProperty, "Cancel")));
-                await WaitUiAsync(run, () => cancel.Current.HasKeyboardFocus, "Cancel receives destructive initial focus");
+                // Re-acquire Cancel on every poll: a dialog re-render can replace the button's peer.
+                await WaitUiAsync(run, () => FindById(run, "AutomationsConfirmDialog")?.FindFirst(TreeScope.Descendants,
+                    new AndCondition(
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                        new PropertyCondition(AutomationElement.NameProperty, "Cancel"))) is { Current.HasKeyboardFocus: true },
+                    "Cancel receives destructive initial focus");
                 Assert.Equal(ControlType.Window, removeDialog.Current.ControlType);
                 Assert.True(((WindowPattern)removeDialog.GetCurrentPattern(WindowPattern.Pattern)).Current.IsModal);
                 await ScanStateAsync("remove confirmation");
@@ -770,7 +772,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief") is not null, "return from single-job agent");
                 await run.InvokeAsync("app.navigate", new { page = "agent:research:cron" });
                 await WaitUiAsync(run, () => FindText(run, "No automations yet") is not null, "empty agent");
-                Assert.Null(FindByIdPrefix(run, "AutomationExpander:"));
+                await AssertNoIdPrefixAsync(run, "AutomationExpander:", "complete empty-agent inventory read");
                 RecordHeadline(run, "empty-body-loaded");
                 await WaitUiAsync(run, () => FindById(run, "AutomationsHeroAnswer") is { } headline
                     && headline.Current.Name == "Nothing scheduled yet", "overview commits empty headline");
@@ -794,14 +796,7 @@ public sealed partial class GatewayFixtureUiTests
     {
         await WithAppAsync(async run =>
         {
-            await run.InvokeAsync("app.navigate", new { page = "settings" });
-            await WaitUiAsync(run, () => FindById(run, "SettingsPageAppTheme") is not null, "theme setting");
-            ((ExpandCollapsePattern)FindById(run, "SettingsPageAppTheme")!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-            await WaitUiAsync(run, () => FindText(run, "Light") is not null, "Light theme");
-            var light = AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.NameProperty, "Light")).Cast<AutomationElement>())
-                .First(element => element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
-            ((SelectionItemPattern)light.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            await SelectAppThemeAsync(run, "Light");
             await OpenMainAutomationsAsync(run, maximize: false);
             try
             {
@@ -1198,13 +1193,25 @@ public sealed partial class GatewayFixtureUiTests
     private static async Task SelectAppThemeAsync(GatewayFixtureRun run, string theme)
     {
         await run.InvokeAsync("app.navigate", new { page = "settings" });
-        await WaitUiAsync(run, () => FindById(run, "SettingsPageAppTheme") is not null, "theme setting");
-        ((ExpandCollapsePattern)FindById(run, "SettingsPageAppTheme")!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUiAsync(run, () => FindText(run, theme) is not null, "theme choice");
-        var option = AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.NameProperty, theme)).Cast<AutomationElement>())
-            .First(element => element.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
-        ((SelectionItemPattern)option.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        // The selector is in the UIA tree before the arriving page can open it; an early Expand is ignored.
+        AutomationElement? selector = null;
+        await WaitUiAsync(run, () => (selector = FindById(run, "SettingsPageAppTheme")) is
+            { Current.IsOffscreen: false, Current.IsEnabled: true }, "theme selector ready");
+        var expander = (ExpandCollapsePattern)selector!.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+        expander.Expand();
+        await WaitUiAsync(run, () => expander.Current.ExpandCollapseState == ExpandCollapseState.Expanded,
+            "theme dropdown expanded");
+        // Wait for the dropdown's own list item: the closed selector already shows the current theme's name.
+        var themeOption = new AndCondition(
+            new PropertyCondition(AutomationElement.NameProperty, theme),
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem));
+        AutomationElement? option = null;
+        await WaitUiAsync(run, () => (option = FindInApp(run, themeOption)) is not null &&
+            option.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _), "theme choice");
+        ((SelectionItemPattern)option!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        expander.Collapse();
+        await WaitUiAsync(run, () => expander.Current.ExpandCollapseState == ExpandCollapseState.Collapsed,
+            "theme dropdown closed");
     }
 
     private static async Task OpenMainAutomationsAsync(GatewayFixtureRun run, bool maximize = true)
@@ -1432,30 +1439,95 @@ public sealed partial class GatewayFixtureUiTests
         await ResetAutomationScrollAsync(run, page, (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern));
     }
 
+    /// <summary>Requests the maximized state once if needed, then waits until the window reports it.</summary>
+    private static async Task WaitForMaximizedAutomationsWindowAsync(GatewayFixtureRun run)
+    {
+        var pattern = (WindowPattern)AutomationsWindow(run).GetCurrentPattern(WindowPattern.Pattern);
+        if (pattern.Current.WindowVisualState != WindowVisualState.Maximized)
+            pattern.SetWindowVisualState(WindowVisualState.Maximized);
+        await WaitUiAsync(run, () => pattern.Current.WindowVisualState == WindowVisualState.Maximized,
+            "maximized Automations window");
+    }
+
+    /// <summary>
+    /// Returns the scroll-zero frame with the headline and hero bounds from two identical consecutive samples.
+    /// A missing peer or an empty aperture means the page is not ready yet.
+    /// </summary>
+    private static async Task<(AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)>
+        WaitForSettledAutomationsHeroAsync(GatewayFixtureRun run, AutomationElement page, ScrollPattern scroll)
+    {
+        (AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)? previous = null;
+        (AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)? settled = null;
+        await WaitUiAsync(run, () =>
+        {
+            (AutomationScrollFrame Frame, global::System.Windows.Rect Headline, global::System.Windows.Rect Hero)? current;
+            try
+            {
+                if (scroll.Current.VerticallyScrollable && scroll.Current.VerticalScrollPercent != 0)
+                {
+                    previous = null;
+                    return false;
+                }
+                current = OwnedWindowCapture.WithPhysicalCoordinates(() =>
+                {
+                    var window = AutomationsWindow(run);
+                    if (FindById(run, "AutomationsHeadline") is not { Current.IsOffscreen: false } headline ||
+                        FindById(run, "AutomationsMast") is not { Current.IsOffscreen: false } hero)
+                        return ((AutomationScrollFrame, global::System.Windows.Rect, global::System.Windows.Rect)?)null;
+                    var headlineBounds = headline.Current.BoundingRectangle;
+                    var heroBounds = hero.Current.BoundingRectangle;
+                    var aperture = global::System.Windows.Rect.Intersect(page.Current.BoundingRectangle,
+                        OwnedWindowCapture.ReadOwnedClientBounds(run, window));
+                    if (!IsMeasured(aperture) || !IsMeasured(headlineBounds) || !IsMeasured(heroBounds)) return null;
+                    return (new AutomationScrollFrame(OwnedWindowCapture.ReadOwnedBounds(run, window), aperture),
+                        headlineBounds, heroBounds);
+                });
+            }
+            catch (ElementNotAvailableException)
+            {
+                current = null;
+            }
+            var stable = current is not null && previous is not null && previous.Value.Equals(current.Value);
+            previous = current;
+            if (stable) settled = current;
+            return stable;
+        }, "settled scroll-zero aperture with the Automations headline and hero (scroll must stay at zero after the reset)");
+        return settled!.Value;
+
+        static bool IsMeasured(global::System.Windows.Rect bounds) => !bounds.IsEmpty &&
+            double.IsFinite(bounds.Left) && double.IsFinite(bounds.Top) && bounds.Width > 0 && bounds.Height > 0;
+    }
+
     /// <summary>
     /// Samples the decorative wash inside the hero's padding, not the plain page margin.
     /// The hero scrolls away while the surrounding native backplate remains unchanged.
     /// </summary>
     private static async Task AssertAutomationsHeroWashAsync(GatewayFixtureRun run, string theme)
     {
+        // SaveAutomationsWindow maximizes a window that is not maximized yet, which moves the page. Finish that
+        // first: the aperture, the hero and the top capture must all describe the same layout.
+        await WaitForMaximizedAutomationsWindowAsync(run);
         var page = await WaitForPageScrollPeerAsync(run);
         var scroll = (ScrollPattern)page.GetCurrentPattern(ScrollPattern.Pattern);
-        var scrollFrame = await ResetAutomationScrollAsync(run, page, scroll);
+        await ResetAutomationScrollAsync(run, page, scroll);
+        var (scrollFrame, headline, hero) = await WaitForSettledAutomationsHeroAsync(run, page, scroll);
         SaveAutomationsWindow(run, "automations-hero-top.png", "AutomationsHeadline", "AutomationsMast");
+        // The pixel checks read the top capture at these coordinates, so the layout must not move across it.
+        Assert.Equal((scrollFrame, headline, hero), await WaitForSettledAutomationsHeroAsync(run, page, scroll));
         Assert.True(scroll.Current.VerticallyScrollable, "The populated page must scroll to prove the hero placement.");
         var window = AutomationsWindow(run);
-        var (frame, viewport, headline, hero) = OwnedWindowCapture.WithPhysicalCoordinates(() => (
-            scrollFrame.Window, scrollFrame.Aperture,
-            FindById(run, "AutomationsHeadline")!.Current.BoundingRectangle,
-            FindById(run, "AutomationsMast")!.Current.BoundingRectangle));
+        var (frame, viewport) = (scrollFrame.Window, scrollFrame.Aperture);
         var scale = OwnedWindowCapture.OwnedDpiScale(run, window);
         var highContrast = new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
         var range = viewport.Height * (100 / scroll.Current.VerticalViewSize - 1);
         Assert.True(range > hero.Bottom - viewport.Top,
             "The fixture must provide enough scroll range to move the complete hero out of view.");
         var shift = Math.Min(hero.Top - viewport.Top - scale, hero.Height / 4);
-        Assert.True(range > 0 && shift >= 8 * scale, "A visible partial-scroll interval is required for wash tracking.");
+        Assert.True(range > 0 && shift >= 8 * scale,
+            $"A visible partial-scroll interval is required for wash tracking: aperture={viewport}, hero={hero}, scale={scale}, range={range}.");
         await MoveAutomationScrollAsync(run, scroll, scrollFrame, shift * 100 / range);
+        Assert.Equal(viewport, OwnedWindowCapture.WithPhysicalCoordinates(() => global::System.Windows.Rect.Intersect(
+            page.Current.BoundingRectangle, OwnedWindowCapture.ReadOwnedClientBounds(run, window))));
         var translatedHero = OwnedWindowCapture.WithPhysicalCoordinates(() =>
             FindById(run, "AutomationsMast")!.Current.BoundingRectangle);
         Assert.True(translatedHero.Top < hero.Top - scale);
@@ -1564,8 +1636,11 @@ public sealed partial class GatewayFixtureUiTests
         var marker = window.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "CronPageMarker"));
         if (marker is null) return null;
-        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, marker, run.AppProcessId),
+        // Polled while Automations re-renders: a marker peer that is detached or replaced proves nothing yet.
+        var markerEvidence = NativeUiOwnership.Classify(window, marker, run.AppProcessId);
+        Assert.True(markerEvidence != NativeUiOwnership.Evidence.Foreign,
             "Automations page marker must belong to the retained native window.");
+        if (markerEvidence != NativeUiOwnership.Evidence.Owned) return null;
         var markerIdentity = marker.GetRuntimeId();
         bool IsMarker(AutomationElement? element) => element is not null
             && NativeUiOwnership.IsOwnedDescendant(window, element, run.AppProcessId)
@@ -1763,8 +1838,28 @@ public sealed partial class GatewayFixtureUiTests
             });
             try
             {
-                await WaitUiAsync(run, () => FullyVisible() || Math.Abs(Read().Scroll.Current.VerticalScrollPercent - next) < 1,
-                    "editor scroll reaches computed position");
+                // Wait for the scroll geometry to settle rather than for the requested percent:
+                // focus restoration or anchoring after a schedule change can also move the editor
+                // (CI receipt: 49.4% requested and reached, then held at 22.4%). The loop then
+                // re-measures from the settled geometry instead of waiting for a stale target.
+                double[]? previousGeometry = null;
+                await WaitUiAsync(run, () =>
+                {
+                    if (FullyVisible()) return true;
+                    var geometry = OwnedWindowCapture.WithPhysicalCoordinates(() =>
+                    {
+                        var current = Read();
+                        var bounds = current.Field.Current.BoundingRectangle;
+                        return new[]
+                        {
+                            current.Scroll.Current.VerticalScrollPercent, current.Scroll.Current.VerticalViewSize,
+                            bounds.Top, bounds.Bottom,
+                        };
+                    });
+                    var settled = previousGeometry is not null && geometry.SequenceEqual(previousGeometry);
+                    previousGeometry = geometry;
+                    return settled;
+                }, "editor scroll geometry settles", onProbeError: _ => previousGeometry = null);
             }
             catch (Exception failure)
             {
@@ -1870,9 +1965,40 @@ public sealed partial class GatewayFixtureUiTests
         Assert.Equal(run.AppProcessId, window.Current.ProcessId);
         return window;
     }
-    private static AutomationElement? FindByIdPrefix(GatewayFixtureRun run, string prefix) => AppWindows(run)
-        .SelectMany(w => w.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>())
-        .FirstOrDefault(e => e.Current.AutomationId.StartsWith(prefix, StringComparison.Ordinal));
+    private static AutomationElement? FindByIdPrefix(GatewayFixtureRun run, string prefix)
+    {
+        // Cache AutomationId during the single FindAll so matching does not re-read live peers
+        // that a concurrent re-render may already have torn down.
+        var request = new CacheRequest();
+        request.Add(AutomationElement.AutomationIdProperty);
+        using (request.Activate())
+        {
+            foreach (var window in AppWindows(run))
+                foreach (AutomationElement element in window.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+                    if (element.Cached.AutomationId.StartsWith(prefix, StringComparison.Ordinal))
+                        return element;
+        }
+        return null;
+    }
+
+    // A whole-tree read fails when an element is torn down mid-traversal (e.g. while an agent switch
+    // re-renders the inventory): ElementNotAvailableException, or COMException E_UNEXPECTED "Pattern not
+    // found" from the UIA client. Assert absence on the first complete read.
+    private static async Task AssertNoIdPrefixAsync(GatewayFixtureRun run, string prefix, string description)
+    {
+        const int UiaElementTornDown = unchecked((int)0x8000FFFF);
+        AutomationElement? match = null;
+        await WaitUiAsync(run, () =>
+        {
+            try { match = FindByIdPrefix(run, prefix); }
+            catch (System.Runtime.InteropServices.COMException error) when (error.HResult == UiaElementTornDown)
+            {
+                return false;
+            }
+            return true;
+        }, description);
+        Assert.Null(match);
+    }
     private static void Capture(GatewayFixtureRun run, string name, params string[] assertedIds)
     {
         if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") != "1") return;
