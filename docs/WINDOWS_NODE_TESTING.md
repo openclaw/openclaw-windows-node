@@ -28,7 +28,7 @@ For changes touching tray UX, Settings, onboarding, chat/canvas, Command Center,
 
 Short version: run required tests, collect a closeout proof pass with `.\run-app-local.ps1 -Isolated` when UI is involved, use computer-use or developer-provided screenshots/output for the active changed UI state, prove MCP with `winnode` or raw JSON-RPC, prove gateway paths when available, and include current-head concrete output under `## Real behavior proof`. Mid-development computer-use/MCP/rubber-duck validation is fine when explicitly requested or needed to unblock work.
 
-### Reactor preview.16 compatibility proof
+### Reactor compatibility proof
 
 The [fixture Gateway harness](GATEWAY_FIXTURE_TESTING.md) can populate the real
 app without a running WSL Gateway or AI provider. Run
@@ -39,22 +39,30 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.16`, which includes the recycled-anchor
-workaround from
+Both Reactor packages use `0.1.0-preview.17`, including the recycled-anchor
+workaround introduced in preview.16 from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
 [microsoft/microsoft-ui-xaml#11865](https://github.com/microsoft/microsoft-ui-xaml/issues/11865),
-not evidence of a released native WinUI fix. Keep the existing row-targeted
-`StartBringItemIntoView` scrolling rather than the application-side extent-only
-workaround from #1407.
+not evidence of a released native WinUI fix. Keep row-targeted navigation rather
+than the application-side extent-only workaround from #1407. The scroll owner
+stages `ItemsRepeater.GetOrCreateElement` and `UIElement.StartBringIntoView` across
+natural layout, with settled geometry and renewed identity checks. Do not restore
+the synchronous `ItemsView.StartBringItemIntoView` call: a captured native hang
+and compiled-runtime inspection match the recycled-container loop fixed by
+[microsoft/microsoft-ui-xaml#12320](https://github.com/microsoft/microsoft-ui-xaml/pull/12320).
+This application mitigation does not replace the runtime or prove that the separate
+animated-scroll layout-cycle issue is fixed.
 
-Rechecked on 2026-10-22: `0.1.0-preview.16` remains the latest published version,
+Historical check on 2026-10-22: `0.1.0-preview.16` was the latest published version,
 including previews, in the authoritative NuGet feeds for
 [Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
 and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
 and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
-Keep both references aligned. The core package requires `System.Drawing.Common`
-`10.0.12` or newer; the tray's direct reference meets that floor.
+The [official preview.17 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17)
+now supplies the hash-verified packages used here. Keep both references aligned.
+Preview.17 requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
+reference meets that floor.
 
 Preview.16 enforces pooled-control resets with `REACTOR_POOL_001`. Chat uses
 Reactor's declarative `HelpText`, `ToolTip` and `ItemStatus` modifiers instead of
@@ -68,13 +76,49 @@ Star-content Grid list layout from
 [microsoft/microsoft-ui-reactor#1197](https://github.com/microsoft/microsoft-ui-reactor/pull/1197)
 instead of the preview.12 `MarkdownOptions.ListItem` override. That override
 assumed a horizontal StackElement and is incompatible with the upstream Grid.
-Sanitization, parser flags, inert links/images and custom block presentation
+Sanitization, parser flags, allowed web links, inert images and custom block presentation
 remain application-owned.
+
+`build.ps1`, Store packaging and CI initialize the hash-verified official
+GitHub release packages in the ignored `artifacts\reactor-packages` feed.
+Before a direct `dotnet restore` or first test build, run
+`.\scripts\Initialize-ReactorPackages.ps1`. `NuGet.Config` maps only the two
+Reactor package IDs to that feed; it does not change machine NuGet settings.
+Package digests, not the release DLLs' development-style ProductVersion, identify
+the published assets. `.\scripts\test-reactor-packages.ps1` checks acquisition,
+cache integrity, failure cleanup and source mapping without network access.
 
 Run `ReactorMarkdownListProofTests` in `OpenClaw.Tray.UITests` on the host's
 native architecture. These mounted tests check ordered/unordered wrapping at
 240 DIPs, reflow at 600 DIPs, and nested/loose list content and formatting.
 Keep the existing table and disposal proof in the focused run.
+
+The Systems page relies on two preview.13 fixes: reconciling a ContentDialog
+while it is open (microsoft/microsoft-ui-reactor#1073) and clearing pooled Border
+backgrounds so `Theme.Ref` fills survive reuse (microsoft/microsoft-ui-reactor#952).
+On the `systems-inventory` fixture, switch between machines and confirm that every
+statistics tile keeps its fill and usage meter.
+
+The published preview.17 train also replaces the task-local dialog-theme and
+pooled-Background backports. This is a runtime dependency, not just an API
+upgrade: Systems' Add/Rename/Forget dialogs are side-mounted by Reactor, and
+its feedback, resource tiles and Forget facts use `Theme.Ref` backgrounds.
+Preview.17 includes [ContentDialog theme forwarding](https://github.com/microsoft/microsoft-ui-reactor/pull/1389),
+[host-inherited theme resolution](https://github.com/microsoft/microsoft-ui-reactor/pull/1417),
+[dialog retirement on host disposal](https://github.com/microsoft/microsoft-ui-reactor/pull/1444),
+and [Border background precedence](https://github.com/microsoft/microsoft-ui-reactor/pull/1449)
+with [record-background restoration](https://github.com/microsoft/microsoft-ui-reactor/pull/1450).
+Stock preview.16 is not equivalent to the earlier patched preview.16 outputs.
+
+After integrating a new Windows App SDK, rerun
+`SystemsPageProofTests.AddAndForgetDialogs_ExposeConsequencesAndSafeDefaults`
+in Light and Dark, the stale-epoch Forget regression, and the full Systems
+mounted suite. Also verify current-app dialog theme, retirement during navigation,
+and feedback/resource fills after reconciliation and pooled reuse. Retain the
+shared `PageHeroTests` theme and highlight-background ownership regressions.
+Geometry-only or non-null-brush assertions do not prove the painted theme;
+current visible proof remains required. Earlier package or SDK results are
+historical, not acceptance for the newly integrated dependency graph.
 
 Before release, also exercise repeated session switching
 while a bring-into-view request is pending, using 240 mixed-height messages.
@@ -98,6 +142,135 @@ are resolved.
 ### New command MCP contract
 
 Every new Windows node call must be exposed through local MCP and `winnode`: register the capability, update `McpToolBridge.CommandDescriptions`, update `.agents/skills/winnode/SKILL.md`, add focused tests, and prove discovery/invocation with `winnode` or raw MCP JSON-RPC.
+
+The eight typed file commands (`file.stat`, `file.fetch`, `dir.list`,
+`dir.fetch`, `file.write`, `file.create`, `fs.listDir`, `terminal.upload`) share
+the existing Node Sandbox executor with `system.run`. Their
+[shipped reference](../.agents/skills/winnode/SKILL.md#files-and-directories)
+includes raw local input/output examples. The
+[file-channel extension](MCP_MODE.md#file-channel-extension-v1) documents bounded
+authenticated local streaming and Gateway JSON progress/input frames.
+`FileFrameChannelTests`, `McpFileTransportTests`, `GatewayFileTransportTests`,
+and CLI `FileTransferClientTests` cover parser, socket, admission and local IO
+boundaries with synthetic capabilities. They do not prove the fixed worker's
+native filesystem behavior, MXC isolation, actual pairing, packaging, or a
+launched Companion. Those still require the applicable authorized proof pools.
+
+Automatic uploads use a profile-specific, executor-owned sibling of its runtime
+roots, not Downloads or the legacy configured upload path. In contained mode,
+ordinary commands can read the current profile's retained uploads only after
+native ownership verification. Upload/Reap alone receive operation-scoped write
+authority, and the worker rejects an operation different from its admission.
+Explicit read-only/No access restrictions and protected/runtime-private roots
+remain enforced. The profile is the sharing boundary, not an individual upload
+or conversation. Existing valid transfer budgets remain in force without the
+former Sandbox configuration cards.
+
+The exact managed boundary is established as trusted metadata before SDK launch,
+under the committed policy epoch and a durable retention reservation. It is not
+a general host file operation: only the derived profile root can be created,
+with an atomic private owner/System ACL and native ownership EA. All uploaded
+bytes, child creation and reaping remain in the fixed worker. Reap never creates
+a missing managed boundary. Failed launch/cancellation may retain an owned empty
+root; unknown or identity-unbound roots require review rather than adoption or
+blind deletion.
+
+Native proof must cover first creation under Strict with no personal-folder
+grants, readback through approved system.run, denied ordinary writes and
+sibling/protected reads, restrictive saved policy, and identity-safe recovery.
+The host compatibility fixture is not evidence for these MXC assertions.
+
+Setup's `CapabilitiesConfig` uses the same file command IDs as the live handler
+for initial node pairing and the Gateway command allowlist. This does not enable
+the Gateway's `file-transfer` plugin, grant its path rules, or bypass node trust.
+Existing Gateway registrations still require approval when their declared
+command surface grows.
+
+CLI `FileWorkerProcessTests` also run the real worker through MCP and winnode
+using the explicit uncontained compatibility adapter and test-owned folders.
+They prove the concrete process/protocol path for all eight commands without
+claiming MXC containment or actual Companion startup.
+
+Existing browser-result file collection and Canvas `jsonlPath` content reads
+also use that shared file backend. Canvas keeps its additional temp-directory
+and JSONL size/line checks. A capability without an injected Sandbox reader
+does not fall back to reading caller files in the host process. Executable-name
+resolution used by exec approval remains trusted image metadata, not permission
+to fetch the executable's contents through file commands.
+
+The Sandbox page exposes permissions and blocked-cleanup status, not upload
+location or transfer-budget controls. Storage is automatic; remembered legacy
+roots remain eligible only for identity-checked cleanup under current rights.
+On positively unsupported Windows, file commands retain the same explicitly
+uncontained compatibility route as `system.run`.
+
+The committed transfer budget defaults to 50 MiB and cannot exceed 1024 MiB.
+Valid saved byte values remain effective.
+It bounds binary fetch/create and unary content before mutation;
+individual command limits can be lower. Archives additionally bound expanded
+bytes by this budget and the 64 MiB archive ceiling. Binary fetch and streaming
+create have a ten-minute executor ceiling, independent of the general Sandbox
+command timeout. A shorter Gateway invocation or MCP channel deadline still
+cancels the transfer. Unary operations use the saved Sandbox timeout; archives
+retain their separate 60-second ceiling.
+Running operations keep their admitted settings snapshot.
+
+The native worker supports ordinary local Windows drive paths. Reparse points,
+Cloud Files hydration, physical aliases, device/ADS names, case-sensitive
+directories and `followSymlinks:true` fail explicitly. `file.fetch.rootPath`
+confines ordinary paths; it does not enable parent-alias following. Contained
+multi-link files fail closed because access to all aliases cannot be proven.
+Contained writes cannot resolve a drive-root file's parent without a drive-root
+grant, so they fail explicitly rather than treating the target as its own parent.
+A directory target returns `IS_DIRECTORY`. Streaming create revalidates an
+existing destination after receiving and verifying the input. A removed or
+replaced destination returns `CANONICAL_PATH_CHANGED`, not a stale `exists`.
+Gzip-tar archives use PAX for Unicode and long names, with bounded member-name,
+metadata, traversal and content budgets, while retaining native file handles.
+Directory listings instead use no-follow native enumeration metadata. An
+unsupported reparse/offline/recall child is returned with `unsupported:true`;
+`dir.list` sets both `isFile` and `isDir` false for that child. `fs.listDir`
+can show an unsupported directory with the same marker, but never follows it.
+This listing classification grants no file access. `dir.fetch` rejects the
+entire archive when any member is unsupported, rather than silently omitting it.
+
+New-file staging is created with kernel delete-on-close ownership. After hash
+verification, a retained-parent no-clobber rename publishes complete bytes and
+only then clears delete-on-close on that same handle. Closing the handle before
+publication, including process termination, removes the owned staging file
+without scanning neighboring names. Existing-file overwrites preserve identity
+and can report `WRITE_UNCERTAIN`; they are not atomic replacements.
+Staging retains its protected owner/System ACL until the complete file has its
+final name. Before clearing delete-on-close, publication enables inheritance
+from the retained final parent. New user-facing parent directories also inherit
+normally. Overwrite preserves the existing object's ACL; uploads stay private.
+
+Upload retention remains 24 hours, 64 directories and 256 MiB. Before an upload
+can mutate a new root, the private inventory durably remembers its exact path;
+the worker subsequently supplies its retained identity. Startup can recover a
+reserved path without trusting it as a grant. Cleanup always uses the current
+Sandbox admission. Denied cleanup never falls back to host deletion. Reservations
+remain active until all admitted workers for that root have
+finalized, including cancelled workers. An older empty cleanup result cannot
+remove a newer admission. Expected worker-cache failures publish blocked cleanup
+and remain retryable through the existing scheduling/settings refresh path.
+Inventory persistence failures block new uploads and appear in Sandbox and coarse node
+diagnostics. Restore private-state access and restart Companion to reload an
+invalid inventory. Do not retry a completed upload automatically.
+
+Scheduling scans only remembered or admitted roots, not an unused configured
+location. Upload roots and directories use an atomic native extended attribute
+(EA) attached during creation, initially bound to the retained parent identity
+and exact child name. An interrupted, unbound creation is recoverable only while
+empty. Before publishing a payload, the worker flushes its full directory/file
+identities and creating state into that same object-attached record. Payload
+creation remains delete-on-close until that record is durable. Completion and
+deletion each update the single EA atomically; deletion records survive removal
+of payloads and legacy child markers until the directory itself is removed.
+Replaced, linked, unrecognized or invalid objects block cleanup and new uploads.
+New inventories require native EA support and fail closed if unavailable.
+Complete older JSON inventories migrate before deletion. Incomplete legacy
+markers cannot prove ownership and still require manual review, not a name sweep.
 
 ### Permissions exec policy editor
 
@@ -356,6 +529,15 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   current-source logical/physical deny behavior and ordinary sibling positive
   controls for each identity; a minimal packaged harness is not full
   Companion UI proof.
+  The executor-private `OpenClawMxc\Runs` and `OpenClawMxc\FileWorkerCache`
+  namespaces are excluded from typed
+  caller data under every preset, including User files read-write. Logical
+  and observed physical spellings are SDK denies for every contained
+  operation, including `system.run`. Only the executor's selected published code
+  (read-only) and scratch child (read-write) receive more-specific grants.
+  Caller folder overrides, executable paths and explicit cwd values cannot
+  select either namespace. These are separate private-data exclusions, not
+  exceptions to immutable credential/state denies.
   The SDK owns the child environment and package-private temporary storage:
   `ContainerRequest.Environment` is omitted. OpenClaw does not replace
   TEMP/TMP, APPDATA/LOCALAPPDATA, PATH or other Windows environment values.
@@ -376,11 +558,137 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 - Output retains bounded UTF-8 bytes per stream, including truncation markers; BOMs can be fragmented and discarded bytes continue to drain. Shared incremental capture exposes complete characters (including 1-3 byte short output) before EOF. Deadline responses preserve captured stdout/stderr without waiting for cleanup. `[truncated]` denotes either a byte-budget limit or capture cut off before EOF, including a deadline before any output arrived. Incomplete BOMs/characters at a cutoff are not invented; real EOF still uses the decoder's replacement behavior.
 - One command deadline covers launch/wait/drains. Direct root exit is independent of output EOF: at most 500 ms of post-exit drain grace fits inside the remaining deadline. Native execution observes and caches root exit through the SDK's non-finalizing `TryGetExitCode` before calling `WaitAsync`. A known root exit retains its exit code rather than becoming a timeout because a descendant holds a pipe or SDK finalization crosses the deadline. Incomplete capture uses the existing truncation marker when it fits the byte budget. Native SDK finalization still reaps descendants and completes teardown before ownership is released. Only unsupported-Windows host compatibility execution leaves intentional background descendants running after normal root exit.
 - Host pipe readers use cancellable public `ReadAsync`; native SDK readers use synchronous `Read` interrupted by `IMxcStreamCloser`. Cancellation returns promptly while a late launch, blocked kill or pending SDK finalization remains owned. Capacity (eight owners) is held until readers, native tasks and the scratch cleanup attempt finish. In host compatibility execution, a background descendant retaining scratch as its cwd can prevent directory deletion; that failure is logged, not remedied by killing the background application. Running commands retain their immutable policy; pending commands revalidate settings and approvals before spawn.
+- Cleanup uses the operation's atomically created directory identity and
+  retained no-follow ancestry, not a GUID name or manifest. Ended owned
+  operations get bounded sharing-violation retries; later admission retries
+  deferred cleanup after handles are released. Cleanup opens children
+  relative to retained handles, verifies the operation's full volume/file
+  ID and refuses replaced or reparse targets. It never sweeps siblings.
+  Each executor allows at most 16 active/deferred runtime cleanup leases.
+  Unreclaimed leases cause explicit `node_busy` backpressure, without
+  retaining the eight execution slots after a terminal cleanup attempt.
+  Failed launch or SDK finalization cannot establish ended process/pipe
+  ownership, so those operation directories and code pins remain until owner
+  shutdown and are not automatically reaped. Disposing the executor releases
+  retained pins but does not delete uncertain operation directories.
+  **Scratch crash recovery is not implemented:** a restarted process has neither
+  retained identities nor proof that a late SDK launch, descendants and
+  pipes ended. It must not adopt old operation directories. Repeated crashes can
+  leave scratch on disk, as with `system.run`; this is not an automatic
+  reclamation guarantee.
+- Fixed file-worker code uses a separate persistent cache, not a copy under each
+  operation directory. Each call still launches a fresh typed worker process.
+  Companion's embedded full manifest and process RID select one immutable
+  published entry. Both installed and cached bytes are independently hashed and
+  pinned for every call. Installation protection is unchanged, including Inno's
+  LocalAppData location. Unsupported-Windows host compatibility uses the
+  verified installed payload directly; cache or supported-Windows failures
+  never select host execution.
+  A cross-process OS file lock serializes builders and admission. Preparation
+  creates the final manifest-addressed directory with a non-executable `preparing`
+  EA attached atomically by `NtCreateFile`, including in an unowned legacy root.
+  Each new entry has a private current-user/System ACL without adopting its root.
+  Copied files are flushed, fully verified and pinned, then one bounded EA is
+  atomically replaced with a `published` record binding the root, entry and exact
+  create-new child identities. Metadata flush and a native published receipt
+  precede the returned lease. No directory rename is required, and verification
+  pins remain held through publication and the final full verification. Ordinary
+  read-only child handles therefore do not block publication. The creator's
+  delete-capable directory handle is exchanged for the normal restrictive
+  execution pin while all verified child pins and an entry identity handle remain
+  held. An in-process cancellation, deadline or preparation
+  failure rolls back only the creating call's unpublished files while it still
+  holds the builder lock and native directory/ancestry handles. Rollback opens
+  children relative to that retained directory, checks each create-new child's
+  full native file identity, rejects aliases/reparse files and preflights the
+  complete inventory before deleting by handle. It never adopts added or
+  replaced content. Rollback also reads back the exact original native `preparing`
+  veto under the lock. A changed, published or unreadable record blocks deletion,
+  including an uncertain native EA-write outcome. Successful rollback permits the same version to prepare on
+  retry. Ordinary copy I/O failures report
+  `FILE_WORKER_CACHE_PREPARATION_FAILED`, not a Windows/MXC repair error.
+  Cancellation remains cancellation. If identity checks, unknown objects or
+  locks block rollback, the failure explicitly reports blocked cleanup and
+  retains unproven objects; a non-cancellation failure reports
+  `FILE_WORKER_CACHE_CLEANUP_BLOCKED`. No failed call executes preparation code
+  or deletes an entry after publication. A crash before publication leaves a non-executable
+  preparation that blocks another copy of that identity. A crash after publication
+  permits fully verified reuse, including while another process retains a lease.
+  The EA replacement is the commit boundary: cancellation or a failed metadata
+  flush after that replacement retains the complete entry and never rolls it back.
+  Full manifest verification is still mandatory on reuse. Older `.preparing-*`
+  crash orphans remain charged, non-executable and unadopted; a matching orphan
+  blocks new preparation of that version instead of allocating a second copy.
+  The cache reserves at most eight entries of 128 MiB each (1 GiB total,
+  including transient preparations). This leaves headroom over the roughly
+  77 MiB x64 payload while bounding the former eight-operation full-copy footprint
+  across restarts. Every completed, partial or unknown entry consumes a full
+  reservation. Handle-checked lengths, flat inventory limits and refusal of
+  sparse files, reparse points, aliases or nested content prevent optimistic
+  accounting; unaccountable objects block new admission. A current verified
+  entry remains reusable when new-version admission is full.
+  New-version admission can reclaim an older **owned, idle** published entry
+  under that same builder lock. It does not prune on a timer or on ordinary
+  reuse. A newly created root receives a protected current-user/System ACL and
+  a native EA binding its canonical name, parent identity and own full native
+  identity. The trusted publisher replaces the initial veto with a flushed entry
+  EA containing the exact root, entry and every create-new child identity. These native
+  ownership records are not execution manifests. Caller JSON, names, digest
+  directories, age and builder-lock availability never grant deletion authority.
+  The root remains denied to contained commands, and selected code remains RO;
+  no caller receives EA-write access. Direct same-user native metadata tampering
+  outside that boundary is not a supported hostile principal.
+
+  Before any deletion, the resolver validates ownership and the complete flat
+  inventory, then retains nonshared read/delete handles for every child.
+  Existing resolver leases block these opens, including before a late launch
+  settles. Without a parent lease, an already mapped apphost still vetoes ordinary
+  non-POSIX `FileDispositionInfo` deletion. Exclusive opens alone do not prove
+  idleness. The apphost disposition is attempted first; rejection leaves every
+  child intact and restores the original ownership record. No POSIX or
+  ignore-readonly deletion, recursion, process termination or SDK cleanup receipt
+  substitutes for that kernel guard. Once accepted, retained handles exclude
+  late loaders until cleanup finishes. Other mapped dependencies or foreign
+  locks remain fail-closed.
+
+  A flushed `deleting` record precedes that first disposition and retains the
+  complete original identity inventory. An interrupted deletion cannot execute
+  or be repaired in place. Later capacity admission can remove only the remaining
+  matching children of that owned record; replacements or added entries block it.
+  Resolving the same version also finishes its owned interrupted deletion under
+  the builder lock, through the same identity checks and kernel deletion guards,
+  before publishing a new complete entry. Active or unproven remaining children
+  return an explicit recovery-blocked error. This never repairs a partial entry
+  in place or evicts a normally published current entry.
+  Each 128 MiB new-entry reservation includes 64 KiB of ownership-metadata
+  headroom. Unknown, preparing and deleting entries continue to debit capacity.
+  More than eight successive versions can therefore progress when owned idle
+  entries are available. Eight live or unknown slots still return an explicit
+  full error. An existing unowned root is not silently adopted: it retains legacy
+  finite admission and requires separately owned recovery once full. Unknown
+  crash preparations are not reclaimed by this path.
+
+  Current code is never replaced or repaired when its digest fails. Cache-full,
+  tamper or uncertain-preparation errors are failures, not
+  successful file operations. Diagnose active workers and arrange owned safe
+  cleanup before removing anything. Do not blindly delete a possibly live
+  executable payload. Cache persistence is intentional and is separate from
+  operation scratch and retained-upload lifecycle.
 - Saturation returns a `node_busy` tool error for either execution route, not a sandbox denial or a successful RPC payload with a failed exit. The eight owners can be running commands or pending cleanup. Admission has not selected an execution route, so busy diagnostics report neither host execution nor applied containment. Retry when an owner finishes; the limit still includes late launches and cleanup.
 - Approved direct executable arguments preserve embedded CR/LF, including multiline PowerShell `-Command` scripts. Null/NUL arguments are rejected for every route. Cmd transport additionally rejects CR/LF and requires the canonical `/d /s /c` shape whenever command mode is selected. Combined, attached, whitespace-prefixed, late or embedded `/c`, `/k` and `/r` switches are not reinterpreted with direct-argv quoting or silently rewritten after approval.
 - `NativeRootExitRetainsStatusWhenFinalizationCrossesDeadline` deterministically tests delayed finalization with a fake SDK process. The smallest opt-in native smoke is `NativeSdk_NormalRootExitReapsBackgroundDescendant` plus `NativeSdk_DeadlineRetainsStdoutAndStderr`: it verifies nonzero root exit, a live descendant reaped on normal completion, retained output and a genuinely running root timing out. It does not claim to reproduce slow native finalization.
 - Never run `wxc-host-prep`, mutate host DACLs or force a native tier as proof.
 - Native tests are separately opt-in with `OPENCLAW_RUN_MXC_NATIVE_PROOF=1`. Skipped tests are not proof. Prove RO/RW, protected children, aliases, environment secrecy, internet-only networking, UI/clipboard, timeout/kill and x64/ARM64 before completion.
+  `MxcRuntimeNamespaceNativeTests` is a bounded native SDK policy probe with
+  repository-local synthetic directories and owned PowerShell processes.
+  It separately tests raw SDK deny/child-grant precedence and two overlapping
+  production-built policies under a broad write grant. Each process can use
+  its own scratch but cannot alter code, access the sibling operation or
+  read/write sensitive sentinels. It records exact process identities and
+  checks fixture ACL preservation. Set `OPENCLAW_MXC_PROOF_ROOT` for its
+  artifacts and all three isolated tray roots before running the filter.
+  This is not installed-worker loading, packaged Companion, MCP/Gateway,
+  crash recovery, UI or native ARM64 proof.
   Product-runner native tests instead require `OPENCLAW_MXC_PROOF_ROOT` outside
   the checkout and all three isolated tray roots before process creation. The
   `validate-mxc-userfolders-native.ps1` script records process ownership, forbids
@@ -512,7 +820,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
 
 - `src/OpenClaw.Shared/WindowsNodeClient.cs` - Node protocol client
 - `src/OpenClaw.Shared/Capabilities/*.cs` - Capability handlers
-- `src/OpenClaw.Tray.WinUI/Services/Connection/GatewayRegistry.cs` - persistent gateway records
+- `src/OpenClaw.Connection/GatewayRegistry.cs` - persistent gateway records
 - `src/OpenClaw.Connection/GatewayConnectionManager.cs` - public lifecycle façade, operator/state/tunnel orchestration
 - `src/OpenClaw.Connection/NodeConnectionCoordinator.cs` - node generation, start/recovery, connector events, and telemetry
 - `src/OpenClaw.Connection/BootstrapTokenLifecycle.cs` - bootstrap/device-token handoff and durable clear timing

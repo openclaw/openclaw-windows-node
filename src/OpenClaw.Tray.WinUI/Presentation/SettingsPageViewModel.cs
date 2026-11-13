@@ -54,6 +54,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _notifyStock;
     private bool _notifyInfo;
     private bool _showChatToolCalls;
+    private bool _showChatThinking = true;
 
     public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
     {
@@ -221,6 +222,22 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
+    /// <summary>
+    /// "Show thinking" persists the setting. App's settings-save path applies it
+    /// to every live Reactor chat host.
+    /// </summary>
+    public bool ShowChatThinking
+    {
+        get => _showChatThinking;
+        set
+        {
+            if (SetField(ref _showChatThinking, value) && !_loading)
+            {
+                Persist(e => e.ShowChatThinking = value);
+            }
+        }
+    }
+
     public void Activate(object? parameter)
     {
         IsActive = true;
@@ -324,6 +341,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _notifyStock, s.NotifyStock, nameof(NotifyStock));
             SetField(ref _notifyInfo, s.NotifyInfo, nameof(NotifyInfo));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
+            SetField(ref _showChatThinking, s.ShowChatThinking, nameof(ShowChatThinking));
         }
         finally
         {

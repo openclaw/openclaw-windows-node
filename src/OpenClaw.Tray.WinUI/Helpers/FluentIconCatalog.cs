@@ -33,6 +33,7 @@ static class FluentIconCatalog
     public const string Hostname = "\uE977";       // Devices/IT — single hostname/system info pill
     public const string Permissions = "\uEA18";    // Shield
     public const string Sandbox = Permissions;    // Shared protection metaphor.
+    public const string SandboxOn = "\uF760";      // ShieldTask (shield with check); Segoe Fluent Icons only, absent from Win10 MDL2
     public const string SandboxStrict = "\uE72E";  // Lock
 
     // ── Capabilities (per-permission glyphs) ───────────────────────
@@ -50,12 +51,14 @@ static class FluentIconCatalog
     // ── Actions ────────────────────────────────────────────────────
     public const string Dashboard = "\uE774";      // Globe
     public const string OpenInBrowser = "\uE8A7";  // OpenInNewWindow — top-right dashboard launcher icon
+    public const string OpenPane = "\uE8A0";       // OpenPane - open content beside the conversation
     public const string Chat = "\uE8BD";           // Message
     public const string CanvasAct = "\uE790";      // Color (palette) - matches Canvas permission glyph
     public const string VoiceAct = "\uE720";       // Microphone
     public const string Settings = "\uE713";       // Settings
     public const string Setup = "\uE825";          // Bank — Reconfigure / Setup wizard launcher
     public const string About = "\uE946";          // Info
+    public const string Help = "\uE897";           // Help — account menu Help & about
     public const string Notifications = "\uEA8F";  // Ringer
     public const string DashboardView = "\uF246";  // ViewDashboard
     public const string Plugins = "\uEA86";        // Puzzle
@@ -79,9 +82,12 @@ static class FluentIconCatalog
     // ── Affordances ────────────────────────────────────────────────
     public const string ChevronR = "\uE76C";       // ChevronRight
     public const string ChevronDown = "\uE70D";    // ChevronDown
+    public const string BulletedList = "\uE8FD";   // BulletedList, chat tool activity summary row
     public const string Stop = "\uE71A";           // Stop
+    public const string StopFilled = "\uE73B";     // CheckboxFill, a solid square for the composer's Stop action
     public const string ChatSubmit = "\uE74A";     // Up, specific to sending a chat turn
-    public const string ChatAttach = "\uE723";     // Paperclip, opens the existing attachment picker
+    public const string ChatJumpLatest = "\uE74B"; // Down, returns to the latest chat content
+    public const string ChatAttach = "\uE710";     // Add (plus), opens the attachment picker like the web composer's plus menu
     public const string Check = "\uE73E";          // CheckMark
 
     // ── Diagnostics page glyphs ────────────────────────────────────

@@ -351,7 +351,8 @@ public sealed class SetupWizardRunner
                             _ctx,
                             ct,
                             noListenerRetryCount: 30,
-                            noListenerRetryDelay: TimeSpan.FromSeconds(1));
+                            noListenerRetryDelay: TimeSpan.FromSeconds(1),
+                            beforeConnectionAfterRestart: true);
                     if (restartProvenance is not null)
                     {
                         throw new WizardFatalException(
@@ -399,7 +400,8 @@ public sealed class SetupWizardRunner
                             _ctx,
                             ct,
                             noListenerRetryCount: 30,
-                            noListenerRetryDelay: TimeSpan.FromSeconds(1));
+                            noListenerRetryDelay: TimeSpan.FromSeconds(1),
+                            beforeConnectionAfterRestart: true);
                     if (restartProvenance is not null)
                         throw new WizardFatalException(restartProvenance.Message ?? "Gateway ownership changed.");
                     client = CreateWizardClient(
@@ -867,7 +869,8 @@ public sealed class SetupWizardRunner
                 _ctx,
                 ct,
                 noListenerRetryCount: 30,
-                noListenerRetryDelay: TimeSpan.FromSeconds(1));
+                noListenerRetryDelay: TimeSpan.FromSeconds(1),
+                beforeConnectionAfterRestart: true);
         return provenanceResult is null
             ? StepResult.Ok($"Verified managed gateway ownership {phase}")
             : StepResult.Fail(

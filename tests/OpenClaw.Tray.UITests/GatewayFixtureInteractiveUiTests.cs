@@ -6,6 +6,108 @@ public sealed partial class GatewayFixtureUiTests
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task InteractiveWork_DoesNotFadeCompletedMessagePixels()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.MainSentinel), "visible initial answer");
+            var window = FindHub(run);
+            var baselineInk = new Dictionary<string, int>(StringComparer.Ordinal);
+            async Task AssertStableInkAsync(string stage, string message)
+            {
+                await WaitUiAsync(run, () => IsVisibleInTimeline(run, message), $"{stage} message visible");
+                for (var frame = 0; frame < 12; frame++)
+                {
+                    var target = FindText(run, message)!;
+                    var file = $"{stage}-ink-{frame:00}.png";
+                    OwnedWindowCapture.Save(run, window, file, target);
+                    var path = Path.Combine(run.ArtifactsDirectory, file);
+                    using var metadata = System.Text.Json.JsonDocument.Parse(
+                        File.ReadAllText(Path.ChangeExtension(path, ".json")));
+                    var bounds = metadata.RootElement.GetProperty("assertions")[0];
+                    using var image = new System.Drawing.Bitmap(path);
+                    var left = (int)Math.Ceiling(bounds.GetProperty("left").GetDouble());
+                    var top = (int)Math.Ceiling(bounds.GetProperty("top").GetDouble());
+                    var right = Math.Min(image.Width, left + (int)bounds.GetProperty("Width").GetDouble());
+                    var bottom = Math.Min(image.Height, top + (int)bounds.GetProperty("Height").GetDouble());
+                    var readablePixels = CountReadableInk(image,
+                        System.Drawing.Rectangle.FromLTRB(left, top, right, bottom));
+                    Assert.True(readablePixels >= 40,
+                        $"{stage} frame {frame}: completed text lost its readable ink ({readablePixels} pixels). Capture: {path}");
+                    if (baselineInk.TryGetValue(message, out var baseline))
+                        Assert.True(readablePixels >= baseline * 0.9,
+                            $"{stage} frame {frame}: completed ink faded from {baseline} to {readablePixels} pixels. Capture: {path}");
+                    else
+                        baselineInk.Add(message, readablePixels);
+                    // Cover the complete two-second skeleton and 2.4-second shine cycles.
+                    await Task.Delay(250);
+                }
+            }
+
+            await AssertStableInkAsync("initial", GatewayScenario.MainSentinel);
+            var playback = run.Gateway.Interactive!.Playback;
+            playback.Select("tools");
+            playback.Pause();
+            await run.InvokeAsync("app.chat.send", new { message = "Inspect the synthetic file while earlier text stays readable." });
+            for (var step = 0; step < 3; step++)
+                playback.Step();
+            await WaitUiAsync(run, () => FindById(run, "ChatRunProgress") is not null &&
+                FindText(run, "fixture.txt") is not null, "running tool and clock");
+            await AssertStableInkAsync("running", GatewayScenario.MainSentinel);
+            playback.Resume();
+            await WaitUiAsync(run, () => FindById(run, "ChatRunProgress") is null &&
+                IsVisibleInTimeline(run, "FIXTURE INTERACTIVE COMPLETE"), "settled answer");
+            await AssertStableInkAsync("settled", "FIXTURE INTERACTIVE COMPLETE");
+        }, scenario: GatewayScenario.CreateInteractive());
+    }
+
+    [Theory]
+    [InlineData(249, 26, 40)]
+    [InlineData(249, 95, 40)]
+    [InlineData(249, 160, 0)]
+    [InlineData(32, 211, 40)]
+    [InlineData(32, 90, 0)]
+    [InlineData(249, 249, 0)]
+    public void ReadableInk_AcceptsPrimaryAndSecondaryTextButRejectsFadedOrMissingText(
+        int background, int foreground, int expected)
+    {
+        using var image = new System.Drawing.Bitmap(40, 21);
+        using (var graphics = System.Drawing.Graphics.FromImage(image))
+            graphics.Clear(System.Drawing.Color.FromArgb(background, background, background));
+        for (var x = 0; x < 40; x++)
+            image.SetPixel(x, 10, System.Drawing.Color.FromArgb(foreground, foreground, foreground));
+        Assert.Equal(expected, CountReadableInk(image, new(0, 0, image.Width, image.Height)));
+    }
+
+    private static int CountReadableInk(System.Drawing.Bitmap image, System.Drawing.Rectangle bounds)
+    {
+        var colors = new Dictionary<int, int>();
+        for (var y = bounds.Top; y < bounds.Bottom; y++)
+            for (var x = bounds.Left; x < bounds.Right; x++)
+            {
+                var color = image.GetPixel(x, y).ToArgb();
+                colors[color] = colors.GetValueOrDefault(color) + 1;
+            }
+        Assert.NotEmpty(colors);
+        static double Luminance(int argb)
+        {
+            var color = System.Drawing.Color.FromArgb(argb);
+            return ReactorChatLayoutProofTests.Luminance(
+                global::Windows.UI.Color.FromArgb(255, color.R, color.G, color.B));
+        }
+        // The text crop's dominant color is its actual background, independent of the app palette.
+        var background = Luminance(colors.MaxBy(pair => pair.Value).Key);
+        return colors.Sum(pair =>
+        {
+            var ink = Luminance(pair.Key);
+            var contrast = (Math.Max(ink, background) + 0.05) / (Math.Min(ink, background) + 0.05);
+            return contrast >= 4.5 ? pair.Value : 0;
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task InteractiveQuestionKeepsComposerAndAcknowledgesNativeAnswer()
     {
         await WithAppAsync(async run =>

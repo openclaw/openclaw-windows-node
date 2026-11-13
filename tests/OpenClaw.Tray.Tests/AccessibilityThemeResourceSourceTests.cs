@@ -3,6 +3,21 @@ namespace OpenClaw.Tray.Tests;
 public sealed class AccessibilityThemeResourceSourceTests
 {
     [Fact]
+    public void ConnectionGlanceButtons_RetainNativeContrastBordersAndForegroundStates()
+    {
+        // Retire when mounted high-contrast interaction proof covers the pill content and border.
+        var source = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ConnectionPage.xaml.cs");
+        var start = source.IndexOf("private FrameworkElement BuildGlanceChip(", StringComparison.Ordinal);
+        var end = source.IndexOf("private void ApplyOperatorCard(", start, StringComparison.Ordinal);
+        var factory = source[start..end];
+        var buttonBranch = factory[..factory.IndexOf("\n        else", StringComparison.Ordinal)];
+        Assert.DoesNotContain("BorderThickness =", buttonBranch);
+        Assert.DoesNotContain("Resources[stylePrefix + \"IconStyle\"]", buttonBranch);
+        Assert.DoesNotContain("Resources[stylePrefix + \"TextStyle\"]", buttonBranch);
+        Assert.DoesNotContain("Foreground =", buttonBranch);
+    }
+
+    [Fact]
     public void MainWindowShells_PreserveMicaAndHighContrastChatResources()
     {
         // Retirement: replace when production window shells can be mounted in native tests.
@@ -103,7 +118,7 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.Contains("Theme.Ref(\"CardBackgroundFillColorDefaultBrush\")", timeline);
         Assert.Contains("Theme.Ref(\"ControlStrokeColorDefaultBrush\")", timeline);
         Assert.Contains("ConnectionCapabilityPillSuccessBrush", connectionXaml);
-        Assert.Contains("Source=\"{StaticResource Chat_Icon}\"", hubXaml);
+        Assert.Contains("Source=\"{StaticResource Connection_Icon}\"", hubXaml);
         Assert.Contains("MicaBackdrop", ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));
         Assert.Contains("new ImageIcon", hub);
         Assert.Contains("NavView.Resources[\"Agents_Icon\"]", hub);

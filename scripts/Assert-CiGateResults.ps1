@@ -16,6 +16,8 @@ param(
     [Parameter(Mandatory)][string]$TrayResult,
     [Parameter(Mandatory)][string]$UiRequired,
     [Parameter(Mandatory)][string]$UiResult,
+    [Parameter(Mandatory)][string]$TrayUiShardResult,
+    [Parameter(Mandatory)][string]$GatewayFixtureResult,
     [Parameter(Mandatory)][string]$SetupE2eRequired,
     [Parameter(Mandatory)][string]$SetupE2eResult,
     [Parameter(Mandatory)][string]$RevocationE2eRequired,
@@ -124,6 +126,9 @@ switch ($Classification) {
 Assert-LaneResult "core tests" $required.core $CoreResult
 Assert-LaneResult "tray tests" $required.tray $TrayResult
 Assert-LaneResult "UI tests" $required.ui $UiResult
+# The ordinary Tray UI suite is split across ui-tests and this parallel shard.
+Assert-LaneResult "Tray UI shard" $required.ui $TrayUiShardResult
+Assert-LaneResult "Gateway fixture tests" $required.ui $GatewayFixtureResult
 Assert-LaneResult "setup E2E" $required.setup_e2e $SetupE2eResult
 Assert-LaneResult "revocation E2E" $required.revocation_e2e $RevocationE2eResult
 Assert-LaneResult "network E2E" $required.network_e2e $NetworkE2eResult
