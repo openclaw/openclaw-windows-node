@@ -2411,6 +2411,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             ListView? originalList = null;
             AutoSuggestBox? originalSearch = null;
             await ChangeModelFlyoutAsync(surface, open: true);
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width -
+                    (width == 320 ? 264 : 354)) < 0.01,
+                "model picker renders the initial viewport width",
+                () => $"Surface={surface.ActualWidth}; picker={FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width}"));
             await ui.RunOnUIAsync(() =>
             {
                 var flyout = FindControl<Button>(surface, "ChatComposerModelPicker").Flyout;
@@ -2465,8 +2470,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => Math.Abs(surface.ActualWidth - (width == 320 ? 800 : 320)) < 1 &&
-                    FindControl<TextBox>(surface, "ChatComposerInput").Text == Draft + " changed",
-                "resized composer renders the changed draft"));
+                    FindControl<TextBox>(surface, "ChatComposerInput").Text == Draft + " changed" &&
+                    Math.Abs(FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width -
+                        (width == 320 ? 354 : 264)) < 0.01,
+                "resized composer renders the changed draft and picker width",
+                () => $"Surface={surface.ActualWidth}; picker={FindDescendants<NativeChatModelPicker>(ModelPopup(surface)).Single().Width}"));
             await ui.RunOnUIAsync(() =>
             {
                 Assert.False(FindControl<Button>(surface, "ChatComposerModelPicker").Flyout.IsConstrainedToRootBounds);
@@ -3604,6 +3612,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             return rows.Length > 0 && rows.All(row =>
                 row is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } &&
                 FindDescendants<FontIcon>(row).Any(icon => icon.Name == "ModelSelectedCheck" &&
+                    icon.GetBindingExpression(UIElement.VisibilityProperty) is not null &&
                     icon.Visibility == (row.IsSelected ? Visibility.Visible : Visibility.Collapsed)));
         }, "model rows realize their templates and selection bindings"));
     }
