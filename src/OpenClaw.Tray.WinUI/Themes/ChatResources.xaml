@@ -19,6 +19,8 @@
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSendDisabledBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
             <SolidColorBrush x:Key="ChatSendDisabledTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
+            <SolidColorBrush x:Key="ChatAttachmentChipBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatAttachmentChipStrokeBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF79C0FF" />
             <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFFF8A80" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="#FFA5D6FF" />
@@ -83,6 +85,8 @@
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
             <SolidColorBrush x:Key="ChatSendDisabledBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
             <SolidColorBrush x:Key="ChatSendDisabledTextBrush" Color="{ThemeResource TextFillColorTertiary}" />
+            <SolidColorBrush x:Key="ChatAttachmentChipBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatAttachmentChipStrokeBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatSyntaxIdentifierBrush" Color="#FF0550AE" />
             <SolidColorBrush x:Key="ChatSyntaxKeywordBrush" Color="#FFB81B27" />
             <SolidColorBrush x:Key="ChatSyntaxStringBrush" Color="#FF0A3069" />
@@ -152,6 +156,8 @@
             <SolidColorBrush x:Key="ChatMutedTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSendDisabledBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatSendDisabledTextBrush" Color="{ThemeResource SystemColorGrayTextColor}" />
+            <SolidColorBrush x:Key="ChatAttachmentChipBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatAttachmentChipStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatClawBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatQuestionOptionBrush" Color="{ThemeResource SystemColorWindowColor}" />

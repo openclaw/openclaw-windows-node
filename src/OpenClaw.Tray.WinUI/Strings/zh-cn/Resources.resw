@@ -6250,6 +6250,7 @@
   <data name="Chat_Model_Search" xml:space="preserve"><value>搜索模型</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>添加模型提供商...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>移除附件 {0}</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在加载消息...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>

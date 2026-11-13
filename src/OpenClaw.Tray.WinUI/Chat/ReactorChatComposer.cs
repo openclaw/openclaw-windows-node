@@ -69,6 +69,10 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
         var controllerRef = UseRef(controller);
         controllerRef.Current = controller;
+        var (attachmentFocus, setAttachmentFocus) = UseState<ChatAttachmentFocusRequest?>(null);
+        var attachmentFocusToken = UseRef(0L);
+        var (attachmentRailScrollable, setAttachmentRailScrollable) = UseState(false);
+        var attachmentRailScrollToken = UseRef(0L);
         var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>
         {
             if (GetBitmapClipboardContent() is not { } clipboardContent)
@@ -322,24 +326,52 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
         }
 
+        var attachmentChipMaxWidth = Math.Min(ChatVisuals.AttachmentChipMaxWidth,
+            Math.Max(96, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 2 * ChatVisuals.ProseInset));
+        void RemoveAttachment(ChatAttachment attachment, FocusState focusState)
+        {
+            // Read the live list: the view model replaces it on every removal, so a list captured
+            // at render time is stale when two removals happen before the next render. Keyed chips
+            // unmount the focused button, so keyboard and pointer focus move on deliberately.
+            var current = vm.PendingAttachments;
+            var index = -1;
+            for (var candidate = 0; candidate < current.Count; candidate++)
+            {
+                if (ReferenceEquals(current[candidate], attachment))
+                {
+                    index = candidate;
+                    break;
+                }
+            }
+            var successor = index < 0 ? null
+                : index + 1 < current.Count ? current[index + 1]
+                : index > 0 ? current[index - 1]
+                : null;
+            controller.RemoveAttachment(attachment);
+            if (focusState == FocusState.Unfocused)
+                return;
+            if (successor is not null)
+                setAttachmentFocus(new(ChatAttachmentChip.KeyFor(successor), ++attachmentFocusToken.Current, focusState));
+            else
+                inputControl.Current?.Focus(focusState);
+        }
         var attachmentRows = vm.PendingAttachments
             .Select(attachment =>
-                (Element)Border(Grid(
-                    [GridSize.Auto, GridSize.Star(), GridSize.Auto],
-                    [GridSize.Auto],
-                    TextBlock(FluentIconCatalog.Document).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                        .FontSize(16).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center)
-                        .Set(text => text.IsTextScaleFactorEnabled = false).Grid(column: 0),
-                    TextBlock(attachment.FileName).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis)
-                        .Foreground(Theme.Ref("ChatTextBrush"))
-                        .ToolTip(attachment.FileName).VAlign(VerticalAlignment.Center).Grid(column: 1),
-                    IconButton(FluentIconCatalog.Exit,
-                        Localized("Chat_Attachment_Remove", "Remove attachment"),
-                        () => controller.RemoveAttachment(attachment)).Grid(column: 2)))
-                    .Padding(8, 4).CornerRadius(8)
-                    .Width(Math.Min(240, Math.Max(128, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 32)))
-                    .MinHeight(56).Margin(4)
-                    .Background(Theme.Ref("ChatCardBrush")))
+            {
+                var key = ChatAttachmentChip.KeyFor(attachment);
+                var removeLabel = string.IsNullOrWhiteSpace(attachment.FileName)
+                    ? Localized("Chat_Attachment_Remove", "Remove attachment")
+                    : string.Format(CultureInfo.CurrentCulture,
+                        Localized("Chat_Attachment_RemoveNamedFormat", "Remove attachment {0}"),
+                        attachment.FileName);
+                return (Element)Component<ChatAttachmentChip, ChatAttachmentChipProps>(new(
+                        attachment.FileName,
+                        removeLabel,
+                        focusState => RemoveAttachment(attachment, focusState),
+                        attachmentChipMaxWidth,
+                        attachmentFocus?.Key == key ? attachmentFocus : null))
+                    .WithKey(key);
+            })
             .ToArray();
         var audioLevel = Math.Clamp(vm.VoiceAudioLevel, 0f, 1f);
         var voiceFeedbackText = string.IsNullOrWhiteSpace(vm.VoiceTranscript)
@@ -793,14 +825,28 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .AutomationId("ChatPlacementProgress")
                 .LiveRegion(AutomationLiveSetting.Polite));
         if (attachmentRows.Length > 0)
-            composerChildren.Add(ScrollViewer(HStack(8, attachmentRows))
+            composerChildren.Add(ScrollViewer(HStack(ChatVisuals.AttachmentChipGap, attachmentRows)
+                    // Vertical room keeps focus visuals inside the clipped horizontal scroller. While the
+                    // rail can scroll, the bottom inset also clears the overlaid horizontal scroll bar.
+                    .Padding(0, 3, 0, 3 + (attachmentRailScrollable ? ChatVisuals.AttachmentRailScrollBarInset : 0)))
                 .AutomationId("ChatAttachmentRail")
                 .Set(scroll =>
                 {
                     scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
                     scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
                     scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
-                }));
+                })
+                .OnMount(control =>
+                {
+                    var scroll = (Microsoft.UI.Xaml.Controls.ScrollViewer)control;
+                    attachmentRailScrollToken.Current = scroll.RegisterPropertyChangedCallback(
+                        Microsoft.UI.Xaml.Controls.ScrollViewer.ScrollableWidthProperty,
+                        (sender, _) => setAttachmentRailScrollable(
+                            ((Microsoft.UI.Xaml.Controls.ScrollViewer)sender).ScrollableWidth > 0));
+                    setAttachmentRailScrollable(scroll.ScrollableWidth > 0);
+                })
+                .OnUnmount(control => ((Microsoft.UI.Xaml.Controls.ScrollViewer)control).UnregisterPropertyChangedCallback(
+                    Microsoft.UI.Xaml.Controls.ScrollViewer.ScrollableWidthProperty, attachmentRailScrollToken.Current)));
         // Status and attachment rows can be inserted before this stable editor/toolbar tail.
         composerChildren.Add(input.WithKey("chat-composer-input"));
         composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));

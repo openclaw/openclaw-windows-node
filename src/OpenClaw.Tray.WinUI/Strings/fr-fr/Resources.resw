@@ -6250,6 +6250,7 @@ Assurez-vous que la passerelle est en cours d'exécution.</value>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Rechercher des modèles</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Ajouter un fournisseur de modèles...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Supprimer la pièce jointe</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>Supprimer la pièce jointe {0}</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Chargement des messages...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 message en attente</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copié</value></data>

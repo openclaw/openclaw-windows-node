@@ -191,6 +191,15 @@ internal static class ChatVisuals
     internal const double ComposerSendGlyphSize = 12;
     internal const double ComposerStopGlyphSize = 10;
     internal const double ComposerToolbarInset = 8;
+    // Pending attachments are compact pills: a 14px document glyph, 12px SemiBold name and a
+    // 24px remove target revealed on hover, focus or touch, sized to the name up to the max width.
+    internal const double AttachmentChipHeight = 28;
+    internal const double AttachmentChipMaxWidth = 216;
+    internal const double AttachmentChipGap = 6;
+    internal const double AttachmentGlyphSize = 14;
+    internal const double AttachmentRemoveSize = 24;
+    // WinUI's expanded horizontal ScrollBar (ScrollBarSize) overlays content instead of reserving space.
+    internal const double AttachmentRailScrollBarInset = 12;
     // Space between the writing surface and the window's bottom edge.
     internal const double ComposerBottomInset = 16;
     internal const double SurfaceRadius = 12;

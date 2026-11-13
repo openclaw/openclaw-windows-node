@@ -789,9 +789,20 @@ web-only controls are added.
 Native virtualization, scroll navigation and list lifetime remain with the
 existing timeline and scroll-controller owners. The visual refresh does not
 replace their navigation algorithm.
-Pending attachments use a bounded horizontal rail with 56-pixel chips, 32-pixel
-removal targets and room for focus visuals instead of growing the composer for
-every file. Video-specific previews are not invented by the native file rail.
+Pending attachments use a bounded horizontal rail of compact pills, matching the
+GitHub Copilot app: at least 28 pixels tall (growing with Windows text scaling
+rather than clipping) with fully rounded ends, `ChatAttachmentChipBrush`
+(SubtleFillColorSecondary) and no visible border outside high contrast, where
+`ChatAttachmentChipStrokeBrush` outlines the pill. Each pill shows a 14-pixel
+Document glyph and the 12-pixel SemiBold file name, sizes to that name up to 216
+pixels and sits 6 pixels from its neighbors. Its 24-pixel removal target is named
+for the file ("Remove attachment {name}"), stays in layout and in keyboard and UI
+Automation order, and is visible on hover, keyboard focus or touch-capable devices.
+Pills are keyed to their attachment; removing one moves focus to the next file's
+removal target, or to the editor after the last file. The rail leaves room for
+focus visuals and, while it can scroll, for the overlaid horizontal scroll bar,
+instead of growing the composer for every file. Video-specific previews are not
+invented by the native file rail.
 
 On history reload, message-wide structured user attachments appear on the first
 nonempty text part only, not again on later text parts from that same message.

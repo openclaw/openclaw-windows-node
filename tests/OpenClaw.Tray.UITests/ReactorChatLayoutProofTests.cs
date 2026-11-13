@@ -3022,31 +3022,87 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     {
         await WithChatAsync(width, async (surface, _, session, _) =>
         {
-            await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments(
-                Enumerable.Range(1, 6).Select(index => new OpenClaw.Shared.ChatAttachment
+            var attachments = new[] { "a.txt" }
+                .Concat(Enumerable.Range(2, 5).Select(index => $"Attachment {index} with a long descriptive filename.txt"))
+                .Select(fileName => new OpenClaw.Shared.ChatAttachment
                 {
-                    FileName = $"Attachment {index} with a long descriptive filename.txt",
-                    MimeType = "text/plain", Content = "dGVzdA==",
-                }).ToArray()));
+                    FileName = fileName, MimeType = "text/plain", Content = "dGVzdA==",
+                }).ToArray();
+            var touch = new Windows.Devices.Input.TouchCapabilities().TouchPresent != 0;
+            Button[] removals = [];
+            await ui.RunOnUIAsync(() => session.ViewModel.AddAttachments(attachments));
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
                 var rail = FindControl<ScrollViewer>(surface, "ChatAttachmentRail");
-                Assert.InRange(rail.ActualHeight, 1, 96);
                 Assert.True(rail.ScrollableWidth > 0);
-                var removals = FindDescendants<Button>(rail).Where(button =>
-                    AutomationProperties.GetName(button) == "Remove attachment").ToArray();
-                Assert.Equal(6, removals.Length);
+                var chips = FindDescendants<Border>(rail).Where(chip =>
+                    AutomationProperties.GetAutomationId(chip) == "ChatAttachmentChip").ToArray();
+                Assert.Equal(6, chips.Length);
+                Assert.All(chips, chip =>
+                {
+                    Assert.True(chip.ActualHeight >= ChatVisuals.AttachmentChipHeight - 0.5);
+                    Assert.True(chip.ActualWidth <= ChatVisuals.AttachmentChipMaxWidth + 0.5);
+                });
+                // Text scaling may grow pills; the rail adds only focus room and scroll-bar clearance.
+                Assert.InRange(rail.ActualHeight, 1,
+                    chips.Max(chip => chip.ActualHeight) + 6 + ChatVisuals.AttachmentRailScrollBarInset + 1);
+                // Pills size to their names: a short name stays well below a trimmed long one.
+                Assert.True(chips[0].ActualWidth < chips[1].ActualWidth - 40);
+                removals = FindDescendants<Button>(rail).Where(button =>
+                    AutomationProperties.GetName(button)?.StartsWith("Remove attachment ", StringComparison.Ordinal) == true)
+                    .ToArray();
+                Assert.Equal(
+                    attachments.Select(attachment => $"Remove attachment {attachment.FileName}"),
+                    removals.Select(AutomationProperties.GetName));
                 Assert.All(removals, button =>
                 {
-                    Assert.True(button.ActualWidth >= 32 && button.ActualHeight >= 32);
+                    Assert.True(button.ActualWidth >= ChatVisuals.AttachmentRemoveSize &&
+                        button.ActualHeight >= ChatVisuals.AttachmentRemoveSize);
                     Assert.InRange(Bounds(button, surface).Top, Bounds(rail, surface).Top, Bounds(rail, surface).Bottom);
-                    Assert.True(Bounds(button, surface).Bottom <= Bounds(rail, surface).Bottom);
+                    // The overlaid horizontal scroll bar must not cover the removal targets.
+                    Assert.True(Bounds(button, surface).Bottom
+                        <= Bounds(rail, surface).Bottom - ChatVisuals.AttachmentRailScrollBarInset + 0.5);
                 });
-                Invoke(removals[0]);
+                // A resting system pointer can hover at most one pill; the others stay hidden.
+                if (!touch)
+                    Assert.True(removals.Count(button => button.Opacity != 0) <= 1);
+                Assert.True(removals[1].Focus(FocusState.Keyboard));
             });
             await SettleAsync();
-            Assert.Equal(5, session.ViewModel.PendingAttachments.Count);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(1, removals[1].Opacity);
+                if (!touch)
+                    Assert.True(removals.Where((_, index) => index != 1).Count(button => button.Opacity != 0) <= 1);
+                Invoke(removals[1]);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                // Removal targets the activated file, and keyboard focus moves to the next file's remove button.
+                Assert.Equal(attachments.Where((_, index) => index != 1), session.ViewModel.PendingAttachments);
+                var focused = Assert.IsType<Button>(FocusManager.GetFocusedElement(surface.XamlRoot));
+                Assert.Equal($"Remove attachment {attachments[2].FileName}", AutomationProperties.GetName(focused));
+                Assert.Equal(1, focused.Opacity);
+
+                // Two removals before the next render must pick the successor from the live list.
+                Button Removal(int attachment) => Assert.Single(FindDescendants<Button>(surface), button =>
+                    AutomationProperties.GetName(button) == $"Remove attachment {attachments[attachment].FileName}");
+                var fifth = Removal(4);
+                var last = Removal(5);
+                Assert.True(fifth.Focus(FocusState.Keyboard));
+                Invoke(fifth);
+                Assert.True(last.Focus(FocusState.Keyboard));
+                Invoke(last);
+            });
+            await SettleAsync();
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal(new[] { attachments[0], attachments[2], attachments[3] }, session.ViewModel.PendingAttachments);
+                var focused = Assert.IsType<Button>(FocusManager.GetFocusedElement(surface.XamlRoot));
+                Assert.Equal($"Remove attachment {attachments[3].FileName}", AutomationProperties.GetName(focused));
+            });
             if (width == 480)
                 await CaptureAsync(surface, "Attachment-rail-480");
         });

@@ -6251,6 +6251,7 @@ Controleer of de gateway actief is.</value>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Modellen zoeken</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Modelprovider toevoegen...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Bijlage verwijderen</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>Bijlage {0} verwijderen</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Berichten laden...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
