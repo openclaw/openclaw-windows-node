@@ -11885,6 +11885,116 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal("/workspace", completed.ToolOutput);
     }
 
+    private static ChatHistoryInfo PersistedExecHistory(string runId, string? result, long timestampMs = 0)
+    {
+        var resultRow = result is null ? "" : $$"""
+            ,{"role":"toolResult","toolCallId":"call-1","toolName":"exec","timestamp":{{timestampMs}},
+              "__openclaw":{"id":"{{runId}}-result","runId":"{{runId}}"},"content":"{{result}}"}
+            """;
+        using var json = JsonDocument.Parse($$$"""
+            {"messages":[{"role":"assistant","timestamp":{{{timestampMs}}},"__openclaw":{"id":"{{{runId}}}-call","runId":"{{{runId}}}"},
+              "content":[{"type":"toolCall","id":"call-1","name":"exec","arguments":{"command":"pwd"}}]}{{{resultRow}}}]}
+            """);
+        return ParseHistoryPayload(json.RootElement);
+    }
+
+    private static void RaiseExecTool(FakeBridge bridge, string runId, string? result = null, string callId = "call-1") =>
+        bridge.RaiseAgent(MakeAgentEvent("tool", result is null
+            ? $$$"""{"phase":"start","name":"exec","toolCallId":"{{{callId}}}","args":{"command":"pwd"}}"""
+            : $$$"""{"phase":"result","name":"exec","toolCallId":"{{{callId}}}","result":{"content":"{{{result}}}"}}""",
+            runId: runId));
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LoadHistoryAsync_LiveToolMergesWithItsPersistedCall(bool authoritative)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+            // Item frames carry the Gateway's title ("Exec pwd") but no arguments, so the live label
+            // never matches the saved call's argument label ("pwd"), even within the time window.
+            bridge.RaiseAgent(MakeAgentEvent("item", """{"itemId":"tool:call-1","toolCallId":"call-1","name":"exec","kind":"tool","phase":"start","title":"Exec pwd","status":"running","meta":"pwd","commandBearing":true}""", runId: "r"));
+            bridge.RaiseAgent(MakeAgentEvent("item", """{"itemId":"tool:call-1","toolCallId":"call-1","name":"exec","kind":"tool","phase":"end","title":"Exec pwd","status":"completed","meta":"pwd","commandBearing":true}""", runId: "r"));
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"end"}""", runId: "r"));
+            bridge.HistoryBehavior = _ => Task.FromResult(
+                PersistedExecHistory("r", "/workspace", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: authoritative);
+
+            var tool = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+            Assert.Equal(ChatToolCallStatus.Success, tool.ToolResult);
+            Assert.Equal("/workspace", tool.ToolOutput);
+        }
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_RunningLiveToolOutlivesPersistedCallWithoutResult()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+            RaiseExecTool(bridge, "r");
+            bridge.HistoryBehavior = _ => Task.FromResult(PersistedExecHistory("r", result: null));
+
+            // The second reload starts from the merged row, which now carries its persisted message ID.
+            for (var reload = 0; reload < 2; reload++)
+            {
+                await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+                var running = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+                Assert.Equal(ChatToolCallStatus.InProgress, running.ToolResult);
+            }
+            RaiseExecTool(bridge, "r", "/workspace");
+
+            var completed = Assert.Single(snapshots[^1].Timelines["main"].Entries);
+            Assert.Equal(ChatToolCallStatus.Success, completed.ToolResult);
+            Assert.Equal("/workspace", completed.ToolOutput);
+        }
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_CallIdReusedByLaterRunStaysSeparate()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r2"));
+            RaiseExecTool(bridge, "r2");
+            bridge.HistoryBehavior = _ => Task.FromResult(
+                PersistedExecHistory("r1", "earlier", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            RaiseExecTool(bridge, "r2", "later");
+
+            var tools = snapshots[^1].Timelines["main"].Entries;
+            Assert.Equal(["r1", "r2"], tools.Select(tool => tool.ToolRunId));
+            Assert.Equal(["earlier", "later"], tools.Select(tool => tool.ToolOutput));
+            Assert.All(tools, tool => Assert.Equal(ChatToolCallStatus.Success, tool.ToolResult));
+        }
+    }
+
+    [Fact]
+    public async Task LoadHistoryAsync_SameLabelCallMissingFromHistoryStaysSeparate()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+            RaiseExecTool(bridge, "r");
+            RaiseExecTool(bridge, "r", "/workspace");
+            RaiseExecTool(bridge, "r", callId: "call-2");
+            bridge.HistoryBehavior = _ => Task.FromResult(
+                PersistedExecHistory("r", "/workspace", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+            var tools = snapshots[^1].Timelines["main"].Entries;
+            Assert.Equal(["call-1", "call-2"], tools.Select(tool => tool.ToolCallId));
+        }
+    }
+
     [Fact]
     public async Task LoadHistoryAsync_ToolRole_RendersAsDimStatusEntry()
     {
