@@ -84,7 +84,7 @@ public static class TestSupport
     }
 
     private const string RenderedConditionTimeoutVariable = "OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS";
-    private static readonly TimeSpan RenderedConditionTimeout =
+    internal static readonly TimeSpan RenderedConditionTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(RenderedConditionTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
     // Re-check even when no frame renders (off-screen windows, dynamically inserted children).

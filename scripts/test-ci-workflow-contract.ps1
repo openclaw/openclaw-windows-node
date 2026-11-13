@@ -714,8 +714,8 @@ Assert-NotContains -Text $markdownProofStep -Unexpected "foreach" `
     -Message "Native Markdown disclosure proofs must not fan out per theme; Dark and HighContrast are screenshot-only."
 Assert-Contains -Text $markdownProofStep -Expected "      if: `${{ inputs.promotion_alpha == '' || hashFiles('tests/OpenClaw.Tray.UITests/ReactorMarkdownDisclosureProofTests.cs') != '' }}" `
     -Message "Native Markdown disclosure proofs must always run outside release promotion; a promotion may skip them only when the candidate has none."
-Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 15" `
-    -Message "Tray UI tests must have an outer timeout rather than consuming the six-hour job limit."
+Assert-Contains -Text $trayUiStep -Expected "timeout-minutes: 25" `
+    -Message "Tray UI tests must have an outer timeout with headroom over their 13-15 minute runtime rather than consuming the six-hour job limit."
 Assert-Contains -Text $trayUiStep -Expected "-HangTimeoutSeconds 300" `
     -Message "Tray UI tests must collect the interrupted test sequence on a five-minute hang."
 Assert-Contains -Text $trayUiStep -Expected "-CollectNativeFailureMetadata" `
