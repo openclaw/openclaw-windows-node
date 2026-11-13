@@ -454,6 +454,23 @@ public class ChatMarkdownAstBuilderTests
     }
 
     [Fact]
+    public void Link_DisplayOnly_AutolinkWithNormalisedTarget_EmitsNothing()
+    {
+        // md4c rewrites a bare "www." or e-mail autolink into a target with a
+        // scheme ("http://www.…", "mailto:…"), so display and target differ and
+        // an equality-based filter would speak the URL.
+        var builder = new ChatMarkdownAstBuilder(linkFlattening: MdLinkFlattening.DisplayOnly);
+
+        foreach (var markdown in new[] { "visit www.example.com/x now", "mail dev@example.com now" })
+        {
+            var para = Assert.IsType<MdParagraph>(Assert.Single(builder.Build(markdown).Blocks));
+            var joined = string.Join("", para.Inlines.OfType<MdInlineText>().Select(r => r.Text));
+            Assert.DoesNotContain("www.", joined);
+            Assert.DoesNotContain("@example.com", joined);
+        }
+    }
+
+    [Fact]
     public void Link_DisplayOnly_AutolinkWithNoDisplay_EmitsNothing()
     {
         var doc = new ChatMarkdownAstBuilder(linkFlattening: MdLinkFlattening.DisplayOnly)

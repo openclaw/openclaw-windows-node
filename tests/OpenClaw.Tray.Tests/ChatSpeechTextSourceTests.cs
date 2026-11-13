@@ -1,11 +1,14 @@
 namespace OpenClaw.Tray.Tests;
 
 /// <summary>
-/// Source guard for the closed speech-text ownership: chat Markdown is
-/// projected exactly once, by <c>OpenClaw.Shared.Markdown.ChatSpeechTextProjector</c>.
-/// A second regex sanitizer anywhere on the read-aloud path is what used to
-/// give auto-read and the Read aloud button different text (and glue
-/// snake_case words together).
+/// Source guard for the closed speech-text ownership. This is the only
+/// source-shape test in this area: it exists because the two regex sanitizers
+/// removed here can be reintroduced inside a WinUI code-behind path that no
+/// behavioural test reaches. Its retirement condition is recorded in
+/// <c>docs/ARCHITECTURE.md</c>.
+///
+/// The behaviour it protects, that both speech entry points project the same
+/// text, is covered by <see cref="ChatSpeechTextProjectionTests"/>.
 /// </summary>
 public sealed class ChatSpeechTextSourceTests
 {
@@ -16,32 +19,9 @@ public sealed class ChatSpeechTextSourceTests
             .Concat(pathParts).ToArray()));
 
     [Fact]
-    public void Coordinator_ProjectsSpeechTextThroughTheSharedProjector()
+    public void ChatSpeechOwners_DoNotReadmitTheRegexSanitizers()
     {
-        var source = ReadTrayFile("Chat", "OpenClawChatCoordinator.cs");
-
-        Assert.Contains("ChatSpeechTextProjector.Project(", source);
-        Assert.DoesNotContain("SanitizeForSpeech", source);
-    }
-
-    [Fact]
-    public void ReadAloudButton_DoesNotSanitizeBeforeTheCoordinator()
-    {
-        var source = ReadTrayFile("Chat", "ReactorChatTimeline.cs");
-
-        Assert.DoesNotContain("StripMarkdownForSpeech", source);
-        Assert.Contains("await readAloud(text);", source);
-    }
-
-    [Fact]
-    public void SpeechTextOwners_DoNotStripPunctuationWithCharacterBlacklists()
-    {
-        // The projector parses Markdown; it must never rewrite user punctuation
-        // character by character.
-        var source = File.ReadAllText(Path.Combine(
-            RepoRoot, "src", "OpenClaw.Shared", "Markdown", "ChatSpeechTextProjector.cs"));
-
-        Assert.DoesNotContain(@"[~|<>{}[\]\\*]", source);
-        Assert.DoesNotContain(@"\p{Cs}", source);
+        Assert.DoesNotContain("SanitizeForSpeech", ReadTrayFile("Chat", "OpenClawChatCoordinator.cs"));
+        Assert.DoesNotContain("StripMarkdownForSpeech", ReadTrayFile("Chat", "ReactorChatTimeline.cs"));
     }
 }
