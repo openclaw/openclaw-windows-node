@@ -604,6 +604,7 @@ separate TRX artifact:
 | `tray-ui-shard` | Tray UI (second shard: workspace window and chat layout classes) |
 | `gateway-fixture` | Mock Gateway fixture UI (shard A), profile/app checks, Release correlation and reader proofs, stable-profile compatibility |
 | `gateway-fixture-shard` | Mock Gateway fixture UI (shard B: Automations, Inbox, Dashboards, Usage and MainSearch scenarios) |
+| `new-test-soak` | Pull requests only: the Shared, Tray and Tray UI (including fixture UI) tests the pull request adds or changes, run repeatedly |
 
 The ordinary Tray UI suite is split by test class across `ui-tests` and
 `tray-ui-shard`, which run in parallel on separate runners. Both use the same
@@ -624,6 +625,50 @@ full-suite budget. The workflow contract checks that both filters come from
 that list, that every prefix still selects a scenario, and that no prefix
 overlaps another. To rebalance, move whole prefixes in that list. Local runs
 default to `-UiShard All`, which runs every scenario.
+
+On pull requests, `new-test-soak` catches an intermittent new test before it
+reaches main, where one passing run in its own pull request proves little.
+- `scripts/Get-CiChangedTests.ps1` diffs the pull request against its base and
+  selects each Shared, Tray and Tray UI test method whose lines changed,
+  including comment and string edits inside a test and lines next to a
+  deletion. A change elsewhere in a test type (for example a helper) selects the
+  tests of the nearest enclosing type that has tests, including its nested
+  types, and a change outside such a type selects the file's tests. Blank and
+  comment-only lines outside tests select nothing, unless they replaced code.
+- Tray UI tests are soaked only when the pull request changes the test method
+  itself. A helper change in a large UI file would otherwise run many native
+  tests the pull request did not write. Those tests are listed as not soaked.
+- `scripts/Invoke-CiTestSoak.ps1` builds each selected project once and runs
+  the selection repeatedly. Some runs start CPU burners so the tests also run on
+  a loaded machine. Each run gets its own `OPENCLAW_TRAY_*` data folders. Any
+  failed run, or a run without exactly one test report, fails the job, and CI
+  Gate requires the job on pull requests. A pull request that changes no tests
+  skips the soak.
+- Settings are step environment variables, never runner arguments:
+
+  | Variable | Default | Meaning |
+  |---|---|---|
+  | `OPENCLAW_CI_SOAK_ITERATIONS` | 10 | Runs per project |
+  | `OPENCLAW_CI_SOAK_CONTENTION_ITERATIONS` | 3 | Runs, spread evenly from the start, that start CPU burners |
+  | `OPENCLAW_CI_SOAK_CONTENTION_WORKERS` | half the logical processors | Burner processes |
+  | `OPENCLAW_CI_SOAK_MAX_TESTS` | 30 | Selected Shared or Tray tests per project; the rest are reported as not soaked |
+  | `OPENCLAW_CI_SOAK_MAX_UI_TESTS` | 8 | Selected Tray UI tests |
+  | `OPENCLAW_CI_SOAK_HANG_SECONDS` | 300 | Blame-hang timeout for one test; no dump is collected |
+
+- The step keeps a 40-minute budget shared by every project. A build or run that
+  would not finish within 90% of it (estimated at 1.5 times the slowest
+  comparable work so far) is not started. Repeat runs of a project also stop at
+  its share of the time left, so a slow project cannot take the first runs of
+  the projects after it. A warning annotation and the summary say how many runs
+  completed. A budget-limited soak still passes.
+- Tests that need their own lane environment (production resources, animation
+  preference, native onboarding, accessibility and native keyboard proof) are
+  excluded here and still run in their lanes. After the first run, the soak
+  warns about each selected test that did not run. A selection that runs no
+  test passes.
+- The soak does not see changes it cannot map to tests: helpers in other files,
+  partial classes split across files, non-C# fixture data, product code, and
+  test projects outside Shared, Tray and Tray UI.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported

@@ -68,8 +68,8 @@ public sealed class CiNugetCacheWorkflowTests
 
         Assert.DoesNotContain("NUGET_PACKAGES:", otherJobs, StringComparison.Ordinal);
         Assert.DoesNotContain("nuget-core-", otherJobs, StringComparison.Ordinal);
-        // The two Gateway fixture jobs and the Tray UI shard also restore the shared cache.
-        const int sharedCacheLaneCount = 11;
+        // The two Gateway fixture jobs, the Tray UI shard and the new-test soak also restore the shared cache.
+        const int sharedCacheLaneCount = 12;
         Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "path: ~/.nuget/packages"));
         Assert.Equal(
             sharedCacheLaneCount,
