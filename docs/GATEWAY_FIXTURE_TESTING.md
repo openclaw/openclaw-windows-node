@@ -1276,8 +1276,8 @@ the message or idempotency key.
 
 | Interaction | Behavior |
 | --- | --- |
-| `streaming` | Lifecycle start, reasoning, paced assistant deltas, Markdown/code/table, final message and lifecycle end |
-| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message), rather than `agent` assistant deltas |
+| `streaming` | Lifecycle start, reasoning, paced assistant text on both `chat` deltas and `agent` assistant deltas, Markdown/code/table, final message and lifecycle end. Like the Gateway, the fixture omits agent assistant text for clients that advertise `chat-only-assistant-text` |
+| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message) without `agent` assistant deltas |
 | `tools`, `tool-error` | Correlated tool start/result, success or failure, with tool-call/result transcript entries |
 | `tool-powershell` | A synthetic PowerShell command with variables, keywords and strings for input syntax-color proof, followed by literal output. Nothing executes |
 | `agent-activity` | Job activity, then `exec` and `apply_patch` activity items, each paired with correlated tool start/result events and transcript entries. All operations are inert |
