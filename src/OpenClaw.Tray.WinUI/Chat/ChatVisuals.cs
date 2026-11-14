@@ -312,7 +312,9 @@ internal static class ChatVisuals
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
-    internal const double AvatarSlot = 44;
+    internal const double AvatarSize = 36;
+    internal const double AvatarGap = 10;
+    internal const double AvatarSlot = AvatarSize + AvatarGap;
     internal const double HistoryTickSpacing = 10;
     internal const double HistoryTickHeight = 2;
     internal const double HistoryTickMinimumGap = 4;

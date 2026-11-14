@@ -54,7 +54,10 @@ use the actual pointer position; native tooltip placement must not shift which
 message is previewed. Native message realization retains bounded layout waits,
 identity checks and cancellation; it does not force synchronous ItemsView layout.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
-leave prose centered. Accessible sender and footer identity remain. Like the web
+leave prose centered. Its 36-pixel portrait has a 10-pixel gap to the prose,
+matching the pinned web chat's `startup-layout.css`; both side slots reserve
+46 pixels, so the portrait moves outward without shifting the reading column.
+Accessible sender and footer identity remain. Like the web
 transcript, one block of agent rows (assistant text, tool rows, tool groups and
 reasoning between user messages, status notices or a change of forwarded sender)
 shows one avatar, on its first row even when that row is a tool call, so tool
@@ -1172,7 +1175,16 @@ only while their own message is hovered or contains keyboard focus, including
 individual messages inside expanded Worked groups. Focusing a group header or
 a sibling message does not reveal other footers. They keep their
 measured space while hidden, so revealing a timestamp or Copy does not move the
-next message. In the main transcript only a run's final answer (its last
+next message. The whole footer fades in and out over 160 ms using a native
+opacity transition; Windows animations off makes disclosure immediate. Hidden
+footers stop accepting pointer input as soon as fade-out begins.
+`NativeChatMessageFooter` hosts the transition outside Reactor's generic
+layout-control pool, preventing retired fades from affecting recycled rows.
+Footers show sender identity and the recorded message time, not model names
+or token/context usage. User footers keep their timestamp beside Copy.
+These details do not depend on the tool-call display setting. Existing Copy
+and read-aloud actions remain; Reply and emoji reactions are not added.
+In the main transcript only a run's final answer (its last
 non-commentary assistant message) owns the footer, as in the web run frame, and
 a run still generating has no footer yet (waiting for subagents or an answer
 does not count). A merged tool group that spans runs still ends each earlier run,

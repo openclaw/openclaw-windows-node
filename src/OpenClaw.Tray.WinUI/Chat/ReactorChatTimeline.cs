@@ -52,6 +52,8 @@ public sealed record ReactorChatTimelineProps(
 /// </summary>
 public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 {
+    private static readonly TimeSpan MessageFooterFadeDuration = TimeSpan.FromMilliseconds(160);
+
     public override Element Render()
     {
         var props = Props;
@@ -723,14 +725,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         return VStack(
                 8,
                 bubble,
-                HStack(
+                WithMessageFooterFade(HStack(
                         8,
-                        row.Props.Timeline.ShowToolCalls
-                            ? UserMetadata(row, entry, isHovered || isFocused)
-                            : Empty(),
-                        CopyAction(accessibleText, row.Key, row.Props.TryCopyText))
-                    .Opacity(showFooter ? 1 : 0)
-                    .Set(panel => panel.IsHitTestVisible = showFooter)
+                        UserMetadata(row, entry),
+                        CopyAction(accessibleText, row.Key, row.Props.TryCopyText)), showFooter)
                     .AutomationId($"ChatMessageFooter_{entry.Id}")
                     .Margin(16, 2, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
@@ -801,8 +799,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                             entry,
                             isSpeaking,
                             isHovered,
-                            toggleSpeechAsync,
-                            includeMetadata: row.IsAssistantRunEnd && row.Props.Timeline.ShowToolCalls))
+                            toggleSpeechAsync))
                     .HAlign(HorizontalAlignment.Stretch)
                     .Grid(column: 1),
                 Border(Empty()).Width(includeAvatar ? AvatarGutter(row) : 0)
@@ -839,8 +836,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
         if (!row.IsAssistantRunStart)
             return Border(Empty())
-                .Size(36, 36)
-                .Margin(0, 0, 8, 0)
+                .Size(ChatVisuals.AvatarSize, ChatVisuals.AvatarSize)
+                .Margin(0, 0, ChatVisuals.AvatarGap, 0)
                 .VAlign(VerticalAlignment.Top);
 
         // Same identity rules as the welcome header and sidebar: image, text avatar, then generated face.
@@ -848,9 +845,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             row.Props.AssistantCatalog, row.Props.AssistantAgentId,
             row.Props.AssistantIdentity, row.Props.AssistantRosterAgent);
         return NativeChatWelcomeAvatarElement.NativeChatWelcomeAvatar()
-            .Set(avatar => avatar.Update(agent, 36, row.Props.AssistantAvatarImageSource))
-            .Size(36, 36)
-            .Margin(0, 0, 8, 0)
+            .Set(avatar => avatar.Update(agent, ChatVisuals.AvatarSize, row.Props.AssistantAvatarImageSource))
+            .Size(ChatVisuals.AvatarSize, ChatVisuals.AvatarSize)
+            .Margin(0, 0, ChatVisuals.AvatarGap, 0)
             .VAlign(VerticalAlignment.Top)
             .AutomationId("ChatAssistantAvatar")
             .AutomationName(agent.Name);
@@ -936,12 +933,11 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         ChatTimelineItem entry,
         bool isSpeaking,
         bool isHovered,
-        Func<ChatTimelineItem, Task> toggleSpeechAsync,
-        bool includeMetadata)
+        Func<ChatTimelineItem, Task> toggleSpeechAsync)
     {
         var children = new List<Element>();
         var sender = row.Props.AssistantIdentity?.DisplayName ?? row.Props.Timeline.AssistantSenderLabel;
-        var metadataText = includeMetadata ? FooterText(row, entry) : string.Empty;
+        var metadataText = FooterText(row, entry);
         var identity = string.IsNullOrWhiteSpace(metadataText) ? sender : $"{sender} · {metadataText}";
         children.Add(CopyAction(entry.Text, row.Key, row.Props.TryCopyText));
 
@@ -958,7 +954,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         var showFooter = isHovered || isSpeaking;
-        return Grid(
+        return WithMessageFooterFade(Grid(
                 [GridSize.Auto, GridSize.Star()],
                 [GridSize.Auto],
                 Text(identity, 12, FontWeights.Normal, "ChatSecondaryTextBrush")
@@ -970,12 +966,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .ToolTip(identity)
                     .Grid(column: 0),
                 HStack(4, children.ToArray()).Margin(8, 0, 0, 0)
-                    .HAlign(HorizontalAlignment.Left).Grid(column: 1))
-            .Opacity(showFooter ? 1 : 0)
-            .Set(panel => panel.IsHitTestVisible = showFooter)
+                    .HAlign(HorizontalAlignment.Left).Grid(column: 1)), showFooter)
             .AutomationId($"ChatMessageFooter_{entry.Id}")
             .HAlign(HorizontalAlignment.Stretch);
     }
+
+    private static NativeChatMessageFooterElement WithMessageFooterFade(Element content, bool visible) =>
+        NativeChatMessageFooterElement.NativeChatMessageFooter(content: content)
+            .Opacity(visible ? 1 : 0)
+            .OpacityTransition(new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled
+                ? MessageFooterFadeDuration : TimeSpan.Zero)
+            .Set(footer => footer.IsHitTestVisible = visible);
 
     private static Element CopyAction(
         string? text,
@@ -1345,45 +1346,20 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var resolvedMetadata) == true)
             metadata = resolvedMetadata;
 
-        var time = metadata?.Timestamp?.ToLocalTime().ToString("h:mm tt");
-        var model = metadata?.Model ?? row.Props.Timeline.DefaultModel;
-        var usageSummary = row.IsLatestAssistant
-            && row.Props.Timeline.ShowToolCalls
-            ? row.Props.Timeline.DefaultUsageSummary
-            : null;
-        return string.Join(
-                    " · ",
-                    new[] { time, model, usageSummary }.Where(static value => !string.IsNullOrWhiteSpace(value)));
+        return metadata?.Timestamp?.ToLocalTime().ToString("h:mm tt") ?? string.Empty;
     }
 
     private static Element UserMetadata(
         ReactorTimelineRow row,
-        ChatTimelineItem entry,
-        bool isHovered)
+        ChatTimelineItem entry)
     {
-        ChatEntryMetadata? metadata = null;
-        if (row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var resolvedMetadata) == true)
-            metadata = resolvedMetadata;
-
-        var timestamp = metadata?.Timestamp?.ToLocalTime().ToString("h:mm tt");
-        var model = metadata?.Model ?? row.Props.Timeline.DefaultModel;
-
-        return HoverMetadata(
+        return Border(
             Text(
-                string.Join(
-                    " · ",
-                    new[] { timestamp, model }.Where(static value => !string.IsNullOrWhiteSpace(value))),
+                FooterText(row, entry),
                 12,
                 FontWeights.Normal,
-                "TextFillColorSecondaryBrush"),
-            isHovered);
-    }
-
-    private static Element HoverMetadata(Element child, bool isHovered)
-    {
-        return Border(child)
+                "TextFillColorSecondaryBrush"))
             .VAlign(VerticalAlignment.Center)
-            .Opacity(isHovered ? 1 : 0)
             .Set(border => border.IsHitTestVisible = false);
     }
 
