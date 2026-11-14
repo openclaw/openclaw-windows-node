@@ -349,7 +349,13 @@ internal sealed class BootstrapTokenLifecycle
         if (lease is null)
             return false;
 
-        var identityPath = _registry.GetIdentityDirectory(attempt.GatewayRecordId);
+        var record = _registry.GetById(attempt.GatewayRecordId);
+        if (record is null)
+            return false;
+
+        var identityPath = LegacyStartupDeviceToken.SelectIdentityDirectory(
+            _registry.GetIdentityDirectory(attempt.GatewayRecordId),
+            record.Url);
         return TryClearBootstrapTokenUnderLease(
             attempt.GatewayRecordId,
             identityPath);

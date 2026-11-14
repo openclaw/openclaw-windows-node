@@ -150,7 +150,9 @@ internal sealed class GatewayDirectConnectService
 
             if (!request.NativeSetup && !string.IsNullOrWhiteSpace(request.SharedToken))
             {
-                var identityDir = _registry.GetIdentityDirectory(recordId);
+                var identityDir = OpenClaw.Connection.LegacyStartupDeviceToken.SelectIdentityDirectory(
+                    _registry.GetIdentityDirectory(recordId),
+                    candidate.Url);
                 var clearResult = DeviceIdentityStore.BeginTransactionalTokenClear(identityDir, _logger);
                 if (!clearResult.Success)
                 {
