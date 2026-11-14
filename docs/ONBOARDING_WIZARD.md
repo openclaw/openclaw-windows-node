@@ -340,8 +340,9 @@ The native path:
    local/loopback/token configuration, run `config validate --json`, and restart
    with owned-listener proof. Focused finalization then uses one authenticated
    operator connection for `health` (without an active probe) and exact primary
-   model verification. Typed startup retries, restart and health consume the
-   existing admission window; model verification retains its own existing bound.
+   model verification. Post-restart authorization, typed startup retries and
+   health consume the existing admission window; restart and model verification
+   retain their own existing bounds and the outer completion deadline.
    Neither automatic pairing nor credential recovery is allowed during finalization.
    A failed gate does not publish the staged record or permit mutation replay.
 5. Keeps the verified isolated Gateway running, publishes the staged registry
@@ -546,13 +547,21 @@ An exhausted session needs new setup preparation rather than another connection 
 This does not require the Gateway's broad `/startupz` sidecar readiness to finish
 before an operator connection is attempted.
 
-Focused finalization starts its admission budget after configuration validation,
-before the restart, and shares the remainder through operator admission and
-authenticated health. The health RPC also retains the configured native CLI
+Focused finalization starts its admission budget after configuration validation
+and the runtime-owned restart, preserving the existing startup allowance. It
+shares the remainder through operator admission and authenticated health.
+The health RPC also retains the configured native CLI
 timeout as an upper bound; it does not receive a fresh startup window.
 Health and exact-model verification must remain on the same authenticated
 connection generation. The classic compatibility wizard retains its separate
 `gateway health --json --timeout` check.
+
+Failed focused finalization ends that admission operation, but cannot replay
+its mutations. An explicit Back/Close Local AI withdrawal can establish its
+own bounded connection instead of inheriting an exhausted finishing budget.
+An unavailable ownership inspection still blocks credentials and publication;
+it retains runtime ownership just like a readiness timeout, rather than being
+treated as proof of a foreign listener.
 
 The health/startup contract was checked directly in Store package
 `2026.11.100.0` ARM64 on 2026-11-13. Its bundled OpenClaw `2026.11.1`

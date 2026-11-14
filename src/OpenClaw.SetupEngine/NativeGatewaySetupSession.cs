@@ -287,6 +287,8 @@ public sealed class NativeGatewaySetupSession(
         await runtime.EnsureRunningAsync(Record, cancellationToken);
         host.ReportProgress(NativeGatewaySetupStage.VerifyingEndpoint);
         var provenance = await runtime.InspectAsync(Record, cancellationToken);
+        if (NativeGatewayEndpointSecurity.IsInspectionUnavailable(provenance))
+            throw new NativeGatewayListenerException(provenance);
         if (provenance.Kind != GatewayEndpointProvenanceKind.ExpectedManagedGateway)
             throw new InvalidOperationException(provenance.Detail is { Length: > 0 } detail
                 ? $"Native gateway ownership could not be verified. No credential was sent. {detail}"
@@ -422,19 +424,14 @@ public sealed class NativeGatewaySetupSession(
         GatewayAiSetupCompletion proof, CancellationToken ct, IProgress<SetupLoadingStep>? progress)
     {
         var remaining = BeginAdmission();
-        if (remaining == TimeSpan.Zero)
-            throw CreateAdmissionTimeout();
         var startedAt = AdmissionTimeProvider.GetTimestamp();
         using var deadline = new CancellationTokenSource(remaining, AdmissionTimeProvider);
         using var bounded = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         NativeGatewaySetupConnection? connection = null;
         try
         {
-            if (IsIsolated)
-            {
-                progress?.Report(SetupLoadingStep.RestartGateway);
-                await runtime.RestartAsync(Record, bounded.Token);
-            }
+            if (remaining == TimeSpan.Zero)
+                throw CreateAdmissionTimeout();
             progress?.Report(SetupLoadingStep.ConnectGateway);
             await AuthorizeCoreAsync(bounded.Token);
             connection = await NativeGatewaySetupConnection.ConnectForFinalizationAsync(
@@ -469,6 +466,12 @@ public sealed class NativeGatewaySetupSession(
             if (connection is not null)
                 await connection.DisposeAsync();
             throw;
+        }
+        finally
+        {
+            // Explicit Local AI withdrawal has its own admission. Finalization replay
+            // remains blocked independently of this operation's connection budget.
+            EndAdmission();
         }
     }
 
@@ -537,6 +540,11 @@ public sealed class NativeGatewaySetupSession(
             if (proof is not null)
             {
                 RequireCompletion(proof);
+                if (IsIsolated)
+                {
+                    progress?.Report(SetupLoadingStep.RestartGateway);
+                    await runtime.RestartAsync(Record, linked.Token);
+                }
                 // The owner gate stays held while a fresh connection verifies the restarted runtime.
                 var healthy = await ConnectHealthyForFinalizationAsync(proof, linked.Token, progress);
                 await using var connection = healthy.Connection;
@@ -586,7 +594,9 @@ public sealed class NativeGatewaySetupSession(
             return Record;
         }
         catch (Exception error) when (IsIsolated && proof is not null &&
-            error is TimeoutException or OperationCanceledException)
+            (error is TimeoutException or OperationCanceledException ||
+             error is NativeGatewayListenerException listener &&
+                NativeGatewayEndpointSecurity.IsInspectionUnavailable(listener.Provenance)))
         {
             // A missed readiness observation is not rollback authority. Retain the runtime
             // until explicit session disposal; a second finalization cannot replay mutations.

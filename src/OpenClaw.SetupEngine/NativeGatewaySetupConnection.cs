@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using OpenClaw.Connection;
+using OpenClaw.Connection.NativeGateway;
 using OpenClaw.Shared;
 
 namespace OpenClaw.SetupEngine;
@@ -128,9 +129,12 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 owner.ReportHandshakeObservation(connectionAttempt, observation);
             client.HandshakeObserved += HandshakeObserved;
             var retained = false;
+            Task? authorizationTask = null;
             client.HandshakeAuthorizationAsync = client.ReconnectAuthorizationAsync = async cancellation =>
             {
-                await authorize(cancellation);
+                var current = authorize(cancellation);
+                Volatile.Write(ref authorizationTask, current);
+                await current;
                 return ReconnectAuthorizationResult.AllowedResult;
             };
             var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -142,7 +146,13 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
             {
                 if (status == ConnectionStatus.Connected) connected.TrySetResult();
                 else if (status == ConnectionStatus.Error)
-                    connected.TrySetException(new InvalidOperationException("Could not connect to the verified native Gateway."));
+                {
+                    var error = Volatile.Read(ref authorizationTask)?.Exception?.InnerException;
+                    connected.TrySetException(error is NativeGatewayListenerException listener &&
+                        NativeGatewayEndpointSecurity.IsInspectionUnavailable(listener.Provenance)
+                            ? listener
+                            : new InvalidOperationException("Could not connect to the verified native Gateway."));
+                }
             }
             void PairingRequired(object? sender, string? requestId) =>
                 connected.TrySetException(new NativePairingException(requestId));

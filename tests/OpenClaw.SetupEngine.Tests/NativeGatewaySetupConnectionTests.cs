@@ -64,6 +64,72 @@ public sealed class NativeGatewaySetupConnectionTests
         return client.GetVerifiedCompletion();
     }
 
+    [Fact]
+    public async Task Finalization_SlowOwnedRestartPreservesThePostRestartAdmissionAllowance()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        var clock = new ManualTimeProvider();
+        using var fixture = CreateFixture(server, isolated: true, clock);
+        await using var owner = await fixture.PrepareAsync();
+        var proof = await CaptureCompletionAsync(owner);
+        fixture.Events.Clear();
+        fixture.Runtime.StopConnections = async () =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(305)); // 25 seconds to stop, 280 seconds to start.
+            await server.CloseConnectionsAsync();
+        };
+        fixture.Runtime.Ensure = _ =>
+        {
+            clock.Advance(TimeSpan.FromSeconds(30));
+            fixture.Runtime.Ensure = _ => Task.CompletedTask;
+            return Task.CompletedTask;
+        };
+
+        await owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default).WaitAsync(FinalizationStepTimeout);
+
+        Assert.Equal(TimeSpan.FromSeconds(335).Ticks, clock.GetTimestamp());
+        Assert.Equal(owner.Record.Id, fixture.Registry.ActiveGatewayId);
+        Assert.Single(fixture.Events, entry => entry == "restart");
+        Assert.DoesNotContain("stop", fixture.Events);
+    }
+
+    [Theory]
+    [InlineData(1, GatewayEndpointProvenanceFailureReason.InspectionUnavailable)]
+    [InlineData(2, GatewayEndpointProvenanceFailureReason.InspectionUnavailable)]
+    [InlineData(3, GatewayEndpointProvenanceFailureReason.InspectionUnavailable)]
+    [InlineData(2, GatewayEndpointProvenanceFailureReason.ProcessIdentityUnavailable)]
+    public async Task Finalization_UnavailableInspectionRetainsRuntimeAndTypedCause(
+        int authorizationToReject, GatewayEndpointProvenanceFailureReason reason)
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var proof = await CaptureCompletionAsync(owner);
+        fixture.Events.Clear();
+        var requestsBefore = server.Requests.Count;
+        var authorizations = 0;
+        fixture.Runtime.Ensure = _ =>
+        {
+            if (++authorizations == authorizationToReject)
+            {
+                fixture.Runtime.Provenance = GatewayEndpointProvenanceKind.UnknownListener;
+                fixture.Runtime.InspectionFailureReason = reason;
+            }
+            return Task.CompletedTask;
+        };
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(() =>
+            owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default).WaitAsync(FinalizationStepTimeout));
+
+        Assert.Equal(reason, error.Provenance.FailureReason);
+        Assert.DoesNotContain("stop", fixture.Events);
+        Assert.DoesNotContain("release", fixture.Events);
+        Assert.Empty(fixture.Registry.GetAll());
+        var requests = server.Requests.Skip(requestsBefore).ToArray();
+        Assert.DoesNotContain(requests, request => request.Method is "health" or "openclaw.setup.verify");
+        Assert.Equal(authorizationToReject == 3 ? 1 : 0, requests.Count(request => request.Method == "connect"));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -112,6 +178,13 @@ public sealed class NativeGatewaySetupConnectionTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default));
         Assert.Equal(eventCount, fixture.Events.Count);
+
+        server.StartupRejectionsRemaining = 0;
+        // Back/Close uses a separate connection for Local AI withdrawal, not finalization replay.
+        await using (var cleanup = await NativeGatewaySetupConnection.ConnectAsync(owner).WaitAsync(FinalizationStepTimeout))
+            Assert.True(cleanup.IsConnected);
+        Assert.Single(fixture.Events, entry => entry == "restart");
+        Assert.Single(fixture.Events, entry => entry == "agent-capabilities");
 
         await owner.DisposeAsync();
         Assert.Single(fixture.Events, entry => entry == "dispose");
@@ -591,7 +664,8 @@ public sealed class NativeGatewaySetupConnectionTests
         fixture.Runtime.Provenance = GatewayEndpointProvenanceKind.ExpectedManagedGateway;
         fixture.Events.Clear();
 
-        await Assert.ThrowsAsync<TimeoutException>(() => NativeGatewaySetupConnection.ConnectAsync(owner));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default));
 
         Assert.DoesNotContain("stop", fixture.Events);
         Assert.DoesNotContain("validate", fixture.Events);
