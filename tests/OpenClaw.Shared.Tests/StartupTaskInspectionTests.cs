@@ -1,3 +1,5 @@
+using OpenClaw.TestSupport;
+
 namespace OpenClaw.Shared.Tests;
 
 public sealed class StartupTaskInspectionTests
@@ -44,6 +46,7 @@ public sealed class StartupTaskInspectionTests
     [InlineData("path", false)]
     [InlineData("executable", false)]
     [InlineData("arguments", false)]
+    [InlineData("no-arguments", false)]
     [InlineData("working-directory", false)]
     [InlineData("principal", false)]
     [InlineData("trigger", false)]
@@ -54,11 +57,50 @@ public sealed class StartupTaskInspectionTests
             changed != "disabled",
             changed == "path" ? "\\other" : "\\OpenClaw",
             changed == "executable" ? Path.Combine(Path.GetTempPath(), "old.exe") : executable,
-            changed == "arguments" ? "--other-profile" : "",
+            changed switch { "arguments" => "--other-profile", "no-arguments" => "", _ => "--background" },
             changed == "working-directory" ? Path.GetTempPath() : "",
             changed == "principal" ? "S-1-5-18" : "S-1-5-21-123",
             changed != "trigger");
         Assert.Equal(matches, WindowsStartupTaskRegistration.MatchesExpectedTask(
             description, "OpenClaw", executable, "S-1-5-21-123"));
+    }
+
+    [Fact]
+    public void EveryAutostartRegistrationUsesTheBackgroundLaunchCommand()
+    {
+        var executable = Path.Combine(Path.GetTempPath(), "OpenClaw.exe");
+        var command = WindowsStartupTaskRegistration.CreateBackgroundLaunchCommand(executable);
+
+        Assert.Equal($"\"{executable}\" --background", command);
+        var register = WindowsStartupTaskRegistration.CreateRegisterProcessStartInfo(executable).ArgumentList;
+        Assert.Equal(command, register[register.IndexOf("/TR") + 1]);
+    }
+
+    [Fact]
+    public void TaskRegisteredByTheAppMatchesTheStrictInspection()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var taskName = "OpenClaw-roundtrip-test-" + Guid.NewGuid().ToString("N");
+        // Each run owns its executable, so a concurrent run cannot delete it before RegisterForSetup checks it.
+        using var directory = new TempDirectory("openclaw-roundtrip-");
+        var executable = directory.Combine("OpenClaw-roundtrip-test.exe");
+        File.WriteAllBytes(executable, []);
+        try
+        {
+            var outcome = WindowsStartupTaskRegistration.RegisterForSetup(executable, taskName);
+            // Creating a logon task needs elevation on a standard Windows session.
+            if (outcome == StartupTaskRegistrationOutcome.Rejected)
+                return;
+
+            Assert.Equal(StartupTaskRegistrationOutcome.Registered, outcome);
+            Assert.Equal(StartupTaskInspection.ExpectedEnabled,
+                WindowsStartupTaskRegistration.InspectStrict(taskName, executable));
+        }
+        finally
+        {
+            WindowsStartupTaskRegistration.Unregister(taskName);
+        }
     }
 }
