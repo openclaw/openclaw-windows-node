@@ -116,7 +116,7 @@ public class SetupAndConnectTests
             "paths=$(find /home/openclaw/.openclaw /opt/openclaw /etc/openclaw -type f -name openclaw.json 2>/dev/null | sort); if [ -z \"$paths\" ]; then echo 'OPENCLAW_JSON_PATH:<not-found>'; else for path in $paths; do echo OPENCLAW_JSON_PATH:$path; cat \"$path\"; done; fi",
             TimeSpan.FromSeconds(15));
         AssertCommandSucceeded(openClawJsonProbe, "probe WSL openclaw.json");
-        Console.WriteLine($"[E2E] WSL openclaw.json probe:\n{openClawJsonProbe.Stdout}");
+        Console.WriteLine("[E2E] WSL openclaw.json probe completed; configuration contents withheld from proof logs.");
 
         if (openClawJsonProbe.Stdout.Contains('{', StringComparison.Ordinal))
         {
