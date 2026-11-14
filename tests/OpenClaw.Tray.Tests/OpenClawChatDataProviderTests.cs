@@ -9080,7 +9080,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         snapshots.Clear();
 
         bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
-        var evt = MakeAgentEvent("lifecycle", """{"phase":"error","message":"model unreachable"}""", runId: "run-1");
+        var evt = MakeAgentEvent("lifecycle", """{"phase":"error","error":"model unreachable"}""", runId: "run-1");
         bridge.RaiseAgent(evt);
 
         var timeline = snapshots[^1].Timelines["main"];
