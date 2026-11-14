@@ -28,7 +28,10 @@ public sealed partial class GatewayFixtureUiTests
             var pageRow = await ExpandInboxFeedRowAsync(run, "Command approval needed,");
             await AssertInboxFeedCommandAsync(run, pageRow, "curl https://example.test/run?token=*** ; echo fixture-end");
             Assert.Equal("Approvals 1", InboxFeedVisibleId(run, "WorkspaceNotificationsTabApprovals")!.Current.Name);
-            var firstCountdown = InboxFeedCountdown(pageRow);
+            // The countdown line can still be clipped (offscreen) while the expanded content settles. Wait for a
+            // parsed reading, including an invalid 0:00, then bound that same reading.
+            var firstCountdown = -1;
+            await WaitUiAsync(run, () => (firstCountdown = InboxFeedCountdown(pageRow)) >= 0, "visible approval countdown text");
             Assert.InRange(firstCountdown, 1, 45);
             await WaitUiAsync(run, () => InboxFeedCountdown(pageRow) is var remaining && remaining > 0 && remaining < firstCountdown,
                 "native approval countdown advances without another producer event");
