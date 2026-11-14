@@ -1736,7 +1736,7 @@ public class OpenClawGatewayClientTests
         Assert.False(result.LooksLikeStaleBaseHash);
         Assert.Null(result.Error);
         Assert.Null(result.RawResponse);
-        Assert.Contains("config.patch failed (InvalidOperationException)", logs);
+        Assert.Contains("config.patch failed (InvalidOperationException code=UNKNOWN)", logs);
         foreach (var secret in new[] { botToken, signingSecret, webhookUrl })
         {
             Assert.DoesNotContain(secret, result.Error ?? "");
