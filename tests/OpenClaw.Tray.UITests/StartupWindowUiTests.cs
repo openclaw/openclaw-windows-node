@@ -13,15 +13,19 @@ namespace OpenClaw.Tray.UITests;
 public sealed class StartupWindowUiTests(ITestOutputHelper output)
 {
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task UnconfiguredLaunchAndReactivation_ShowOnlySetup() => VerifyStartupAsync(configured: false);
 
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task ConfiguredLaunchAndReactivation_ShowOnlyWorkspaceWithoutNodePairing() => VerifyStartupAsync(configured: true);
 
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task PostSetupRestart_DoesNotReopenSetup() => VerifyStartupAsync(configured: false, postSetupRestart: true);
 
     [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public Task UnreadableIdentity_KeepsWorkspaceRecoveryAvailable() => VerifyStartupAsync(configured: true, corruptIdentity: true);
 
     private async Task VerifyStartupAsync(bool configured, bool postSetupRestart = false, bool corruptIdentity = false)
