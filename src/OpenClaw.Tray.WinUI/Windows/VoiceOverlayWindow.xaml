@@ -32,11 +32,11 @@
             </Grid.ColumnDefinitions>
 
             <FontIcon Grid.Column="0" Glyph="&#xE720;" FontSize="16"
-                      Foreground="{ThemeResource SystemAccentColor}"
+                      Foreground="{ThemeResource VoiceAccentBrush}"
                       VerticalAlignment="Center" Margin="0,0,8,0"/>
             <TextBlock x:Uid="VoiceOverlayWindow_HeaderText" x:Name="HeaderText" Grid.Column="1" Text="Companion Voice" FontSize="13"
                        FontWeight="SemiBold" VerticalAlignment="Center"/>
-            <Border Grid.Column="3" Background="{ThemeResource SystemAccentColor}"
+            <Border Grid.Column="3" Background="{ThemeResource VoiceAccentBrush}"
                     CornerRadius="10" Padding="10,3" VerticalAlignment="Center">
                 <TextBlock x:Uid="VoiceOverlayWindow_StatusBadge" x:Name="StatusBadge" Text="Ready" FontSize="11"
                            Foreground="White" FontWeight="SemiBold"/>
@@ -77,7 +77,7 @@
                 <Border Background="{ThemeResource ControlStrongFillColorDefaultBrush}"
                         CornerRadius="2" Opacity="0.3"/>
                 <Border x:Name="AudioLevelBar"
-                        Background="{ThemeResource SystemAccentColor}"
+                        Background="{ThemeResource VoiceAccentBrush}"
                         CornerRadius="2"
                         HorizontalAlignment="Left" Width="0" />
             </Grid>

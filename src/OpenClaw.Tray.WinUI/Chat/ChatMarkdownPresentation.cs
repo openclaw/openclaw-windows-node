@@ -107,10 +107,13 @@ internal static class ChatMarkdownPresentation
         quoted |= root is FrameworkElement element && s_quotes.TryGetValue(element, out _);
         if (root is RichTextBlock rich)
         {
-            // Fenced code owns its syntax highlighters; see ApplyCodeSyntax.
+            // Fenced code owns its syntax highlighters; see ApplyCodeSyntax. Only its font follows the theme here.
             if (IsCodeText(rich))
+            {
+                ChatVisuals.ApplyCodeFont(rich);
                 return;
-            rich.FontFamily = new FontFamily(ChatVisuals.BodyFontFamily);
+            }
+            ChatVisuals.ApplyBodyFont(rich);
             // Tight list items and table cells bypass the Paragraph hook; give them the prose tone.
             if (!compactSecondaryReading && rich.Style is null)
             {
@@ -142,6 +145,14 @@ internal static class ChatMarkdownPresentation
             StyleRichText(rich, compactSecondaryReading, muted);
             return;
         }
+        // Code labels carry the code font, and list markers, disclosure headers and inert labels the body font,
+        // locally; both follow theme switches.
+        // A body font is still required locally, so a pooled TextBlock reused for an icon glyph keeps its icon font.
+        if (root is TextBlock codeText && IsCodeText(codeText))
+            ChatVisuals.ApplyCodeFont(codeText);
+        else if (root is TextBlock bodyText &&
+            ChatVisuals.IsBodyFont(bodyText.ReadLocalValue(Microsoft.UI.Xaml.Controls.TextBlock.FontFamilyProperty) as FontFamily))
+            ChatVisuals.ApplyBodyFont(bodyText);
         if (root is TextBlock text && compactSecondaryReading && !IsCodeText(text))
         {
             ChatVisuals.StyleSecondaryText(text);
@@ -153,13 +164,21 @@ internal static class ChatMarkdownPresentation
             StyleInlines(VisualTreeHelper.GetChild(root, index), compactSecondaryReading, quoted);
     }
 
-    private static bool IsCodeText(FrameworkElement element) =>
-        element switch
+    // Text given the code or body font here keeps that role, because a plugin or imported theme may use one font
+    // stack for both. Other text falls back to its local font (prose may inherit a monospace theme font, so only the
+    // local value counts), and a font that served as both is prose.
+    private static bool IsCodeText(FrameworkElement element)
+    {
+        if (ChatVisuals.HasCodeRole(element) is { } code)
+            return code;
+        var local = element switch
         {
-            TextBlock text => text.FontFamily?.Source.Equals(ChatVisuals.CodeFontFamily, StringComparison.OrdinalIgnoreCase) == true,
-            RichTextBlock rich => rich.FontFamily?.Source.Equals(ChatVisuals.CodeFontFamily, StringComparison.OrdinalIgnoreCase) == true,
-            _ => false,
-        };
+            TextBlock text => text.ReadLocalValue(Microsoft.UI.Xaml.Controls.TextBlock.FontFamilyProperty),
+            RichTextBlock rich => rich.ReadLocalValue(Microsoft.UI.Xaml.Controls.RichTextBlock.FontFamilyProperty),
+            _ => null,
+        } as FontFamily;
+        return ChatVisuals.IsCodeFont(local) && !ChatVisuals.IsBodyFont(local);
+    }
 
     private static void StyleRichText(RichTextBlock rich, bool compactSecondaryReading, Brush? quoteText)
     {
@@ -199,8 +218,11 @@ internal static class ChatMarkdownPresentation
                         // Only Reactor's inline-code runs set the code font locally;
                         // fenced code blocks inherit it from their own text block.
                         if (length > 0 &&
-                            run.ReadLocalValue(Microsoft.UI.Xaml.Documents.TextElement.FontFamilyProperty) is FontFamily { Source: ChatVisuals.CodeFontFamily })
+                            ChatVisuals.IsCodeFont(run.ReadLocalValue(Microsoft.UI.Xaml.Documents.TextElement.FontFamilyProperty) as FontFamily))
+                        {
+                            ChatVisuals.ApplyCodeFont(run);
                             (strongRun ? strongCodeRanges : codeRanges).Add(new() { StartIndex = offset, Length = length });
+                        }
                         else if (length > 0 && strongRun && !link && !compactSecondaryReading)
                             strongRanges.Add(new() { StartIndex = offset, Length = length });
                         offset += length;
@@ -320,7 +342,8 @@ internal static class ChatMarkdownPresentation
         var column = (marker with { TextAlignment = TextAlignment.Right })
             .FontFamily(ChatVisuals.BodyFontFamily)
             .MinWidth(ChatVisuals.ListMarkerColumn)
-            .Set(text => StyleListMarker(text, compactSecondaryReading));
+            .Set(text => StyleListMarker(text, compactSecondaryReading))
+            .OnUnmountAdd(ChatVisuals.ClearFontRole);
         if (!compactSecondaryReading && content is RichTextBlockElement rich && !IsHeading(content))
         {
             var prose = (Style)Application.Current.Resources["ChatProseRichTextStyle"];
@@ -360,7 +383,6 @@ internal static class ChatMarkdownPresentation
                 {
                     marker.TextAlignment = TextAlignment.Right;
                     marker.MinWidth = ChatVisuals.ListMarkerColumn;
-                    marker.FontFamily = new FontFamily(ChatVisuals.BodyFontFamily);
                     StyleListMarker(marker, compactSecondaryReading);
                 }
             }
@@ -376,6 +398,7 @@ internal static class ChatMarkdownPresentation
     private static void StyleListMarker(TextBlock text, bool compactSecondaryReading)
     {
         var marker = text.Text ?? string.Empty;
+        ChatVisuals.ApplyBodyFont(text);
         var style = compactSecondaryReading || !marker.StartsWith('\u2022')
             ? "ChatSecondaryTextStyle"
             : "ChatMutedTextStyle";
@@ -494,8 +517,12 @@ internal static class ChatMarkdownPresentation
                 LineHeight = heading ? size * 1.4 : ChatVisuals.BodyLineHeight,
                 LineStackingStrategy = LineStackingStrategy.MaxHeight,
             })
-                .Set(text => text.Style = (Style)Application.Current.Resources[
-                    heading ? "ChatRichTextStyle" : "ChatProseRichTextStyle"])
+                .Set(text =>
+                {
+                    text.Style = (Style)Application.Current.Resources[heading ? "ChatRichTextStyle" : "ChatProseRichTextStyle"];
+                    ChatVisuals.ApplyBodyFont(text);
+                })
+                .OnUnmountAdd(ChatVisuals.ClearFontRole)
                 .Margin(0, heading ? ChatVisuals.HeadingTopInset : 0, 0, 0);
         }
         return element.Margin(0, 0, 0, 0);
@@ -512,7 +539,7 @@ internal static class ChatMarkdownPresentation
             .Set(text =>
             {
                 text.Style = (Style)Application.Current.Resources["ChatCodeTextStyle"];
-                text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
+                ChatVisuals.ApplyCodeFont(text);
                 text.LineHeight = ChatVisuals.CodeLineHeight;
                 text.LineStackingStrategy = LineStackingStrategy.MaxHeight;
                 text.IsTextSelectionEnabled = selectionOptions is null;
@@ -531,6 +558,7 @@ internal static class ChatMarkdownPresentation
                 control.ActualThemeChanged -= OnCodeThemeChanged;
                 UnwatchContrast(control);
                 ClearCodeSyntax((RichTextBlock)control);
+                ChatVisuals.ClearFontRole(control);
             })
             .Margin(ChatVisuals.CodeInset - 6, 0, ChatVisuals.CodeInset - 6, ChatVisuals.CodeInset - 6);
         if (selectionOptions is not null)
@@ -543,6 +571,8 @@ internal static class ChatMarkdownPresentation
                     TextBlock(label)
                         .FontSize(ChatVisuals.CodeLabelSize)
                         .FontFamily(ChatVisuals.CodeFontFamily)
+                        .Set(text => ChatVisuals.ApplyCodeFont(text))
+                        .OnUnmountAdd(ChatVisuals.ClearFontRole)
                         .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                         .TextTrimming(TextTrimming.CharacterEllipsis)
                         .VAlign(VerticalAlignment.Center)

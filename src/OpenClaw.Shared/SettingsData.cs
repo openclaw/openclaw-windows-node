@@ -196,6 +196,8 @@ public record class SettingsData
     /// </summary>
     public bool ShowCompletedSessions { get; set; } = false;
     public string AppTheme { get; set; } = "System";
+    /// <summary>Gateway theme and backdrop choice; null keeps the Windows default look with Mica.</summary>
+    public Themes.AppearanceSettings? Appearance { get; set; }
     public bool? ShowDiagnostics { get; set; }
     /// <summary>
     /// Optional OTLP collector endpoint for diagnostic telemetry.

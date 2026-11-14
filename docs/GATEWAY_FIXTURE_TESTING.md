@@ -828,6 +828,32 @@ the next frame is a reply. `NodeExecDenialWireTests` acknowledges only validated
 methods or events, and malformed statistics fail the fixture. Continued
 statistics cannot extend its existing invocation cancellation deadline.
 
+## Gateway theme catalog proof
+
+The `gateway-themes` scenario serves a read-only `themes.list` and `themes.get`
+catalog (Gateway 2026.9+ shape) with built-ins that have no definition, a
+dark-only plugin theme (`fixture-themes/neon-night`), a light and dark plugin
+theme (`fixture-themes/paper-mint`) and a light-only imported theme
+(`user/fixture-sunset`). It advertises `plugins.changed` and
+`users.prefs.changed` and grants `operator.read` and `operator.sessions.read`.
+`themes.set` and `themes.import` are not advertised: the Companion keeps its own
+selection and never writes the Gateway's.
+
+```powershell
+.\scripts\run-gateway-fixture.ps1 -AppPath $app -Scenario gateway-themes -Theme Dark
+```
+
+The host opens Settings, where the picker lists the fixture themes after the
+built-ins. Enter `reveal` in the host console to add `fixture-themes/aurora` and
+publish `plugins.changed`; the picker refreshes without reconnecting. Enter
+`select <theme-id>` to change the theme the fixture reports as selected (as a
+dashboard theme change would) and publish `users.prefs.changed`; with **Follow
+Gateway theme** on, the Companion switches to it. An id the catalog doesn't list
+is reported as a built-in newer than the Companion's table, which the Companion
+doesn't follow. `GatewayThemeCatalogWireTests` proves the same catalog,
+definitions, event refreshes and following through the real authenticated
+client.
+
 ## Targeted context-usage proof
 
 `ContextFooterReconcilesLiveReplayHistoryAndAuthoritativeUsage` opts into

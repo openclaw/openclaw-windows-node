@@ -4452,6 +4452,27 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Kies licht, donker of gebruik uw Windows-instelling.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Gateway-thema</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Gebruik de kleuren en lettertypen van een OpenClaw-dashboardthema. Hoog contrast van Windows heeft altijd voorrang.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Windows-standaard</value>
+  </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Mica-achtergrond</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>Laat het bureaublad door vensterachtergronden heen schijnen. Schakel uit voor een effen themaachtergrond.</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Gateway-thema volgen</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Gebruik het thema dat in het OpenClaw-dashboard is gekozen en werk het bij wanneer het daar verandert.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Systeem</value>
   </data>

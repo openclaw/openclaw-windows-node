@@ -4451,6 +4451,27 @@
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>选择浅色、深色，或使用 Windows 设置。</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>网关主题</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>使用 OpenClaw 仪表板主题的颜色和字体。Windows 高对比度始终优先。</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Windows 默认</value>
+  </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Mica 背景</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>让桌面透过窗口背景显示。关闭后使用纯色主题背景。</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>跟随网关主题</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>使用在 OpenClaw 仪表板中选择的主题，并在其更改时同步更新。</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>系统</value>
   </data>

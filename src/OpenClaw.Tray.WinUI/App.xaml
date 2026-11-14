@@ -8,6 +8,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+                <ResourceDictionary Source="Themes/TypographyResources.xaml" />
                 <ResourceDictionary Source="Themes/ChatResources.xaml" />
                 <ResourceDictionary Source="Themes/SessionsHubResources.xaml" />
                 <ResourceDictionary Source="Themes/AutomationsResources.xaml" />
@@ -60,6 +61,9 @@
                     <SolidColorBrush x:Key="UsagePalette5TintBrush" Color="#EE7AE3" Opacity="0.16" />
                     <SolidColorBrush x:Key="UsagePalette6Brush" Color="#6CCB5F" />
                     <SolidColorBrush x:Key="UsagePalette6TintBrush" Color="#6CCB5F" Opacity="0.16" />
+                    <!-- Accent visuals below follow the Windows accent, or the Gateway theme's accent when one is applied. -->
+                    <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="{ThemeResource SystemAccentColor}" />
+                    <SolidColorBrush x:Key="VoiceAccentBrush" Color="{ThemeResource SystemAccentColor}" />
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">False</x:Boolean>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Light">
@@ -91,6 +95,8 @@
                     <SolidColorBrush x:Key="UsagePalette5TintBrush" Color="#C239B3" Opacity="0.16" />
                     <SolidColorBrush x:Key="UsagePalette6Brush" Color="#107C10" />
                     <SolidColorBrush x:Key="UsagePalette6TintBrush" Color="#107C10" Opacity="0.16" />
+                    <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="{ThemeResource SystemAccentColor}" />
+                    <SolidColorBrush x:Key="VoiceAccentBrush" Color="{ThemeResource SystemAccentColor}" />
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">False</x:Boolean>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
@@ -122,13 +128,11 @@
                     <SolidColorBrush x:Key="UsagePalette5TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="UsagePalette6Brush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="UsagePalette6TintBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="VoiceAccentBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <x:Boolean x:Key="HubNavigationUseHighContrastIcons">True</x:Boolean>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-
-            <!-- Hub NavigationView selection indicator follows the user's Windows accent. -->
-            <SolidColorBrush x:Key="NavigationViewSelectionIndicatorForeground"
-                             Color="{ThemeResource SystemAccentColor}"/>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

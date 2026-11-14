@@ -250,10 +250,103 @@ internal static class ChatVisuals
     internal const double ComposerBottomInset = 12;
     internal const double SurfaceRadius = 12;
     internal const double BodySize = 14;
-    internal const string BodyFontFamily = "Segoe UI Variable Text";
+    /// <summary>Fluent chat body font when no Gateway theme supplies one.</summary>
+    internal const string DefaultBodyFontFamily = "Segoe UI Variable Text";
     internal const string TaskMarkerFontFamily = "Segoe UI Symbol";
     internal const double BodyLineHeight = 21;
-    internal const string CodeFontFamily = "Consolas";
+    internal const string DefaultCodeFontFamily = "Consolas";
+    private static readonly HashSet<string> s_codeFontFamilies = new(StringComparer.OrdinalIgnoreCase) { DefaultCodeFontFamily };
+    private static readonly HashSet<string> s_bodyFontFamilies = new(StringComparer.OrdinalIgnoreCase) { DefaultBodyFontFamily };
+
+    /// <summary>Code font for chat code blocks and inline code; a Gateway theme may replace it.</summary>
+    internal static string CodeFontFamily { get; private set; } = DefaultCodeFontFamily;
+
+    /// <summary>Chat prose font from the active Gateway theme, or null for the Fluent body font.</summary>
+    internal static string? ProseFontFamily { get; private set; }
+
+    /// <summary>Chat body font: the active Gateway theme's chat font, or Segoe UI Variable Text.</summary>
+    internal static string BodyFontFamily => ProseFontFamily ?? DefaultBodyFontFamily;
+
+    /// <summary>Sets the theme's chat fonts (null restores the defaults). Mounted surfaces pick them up on refresh.</summary>
+    internal static void SetThemeFonts(string? prose, string? code)
+    {
+        ProseFontFamily = prose;
+        CodeFontFamily = code ?? DefaultCodeFontFamily;
+        lock (s_codeFontFamilies)
+            s_codeFontFamilies.Add(CodeFontFamily);
+        lock (s_bodyFontFamilies)
+            s_bodyFontFamilies.Add(BodyFontFamily);
+    }
+
+    /// <summary>True for any code font this session has issued, so code rendered before a theme switch stays code.</summary>
+    internal static bool IsCodeFont(FontFamily? family) => IsIssued(s_codeFontFamilies, family);
+
+    /// <summary>True for any chat body font this session has issued, so a theme switch can restyle that text.</summary>
+    internal static bool IsBodyFont(FontFamily? family) => IsIssued(s_bodyFontFamilies, family);
+
+    // The role each chat text element was given. A plugin or imported theme may give prose and code the same font
+    // stack, so the font alone cannot tell them apart once a later theme separates them again. The role lives on the
+    // element itself: a weak table keyed by the managed wrapper loses it when the wrapper is collected and recreated
+    // while the control lives on.
+    private const int BodyRole = 1;
+    private const int CodeRole = 2;
+    private static DependencyProperty? s_fontRoleProperty;
+    // Registered on first use from UI code, not in the static initializer, which non-UI callers can also trigger.
+    private static DependencyProperty FontRoleProperty => s_fontRoleProperty ??= DependencyProperty.RegisterAttached(
+        "ChatFontRole", typeof(int), typeof(ChatVisuals), new PropertyMetadata(0));
+
+    /// <summary>True or false when the element was given the code or the body font here; null when it never was.</summary>
+    internal static bool? HasCodeRole(DependencyObject element) =>
+        element.GetValue(FontRoleProperty) is int role and (BodyRole or CodeRole) ? role == CodeRole : null;
+
+    /// <summary>Forgets an element's font role when Reactor unmounts it, since it may pool the control for other content.</summary>
+    internal static void ClearFontRole(DependencyObject element) => element.ClearValue(FontRoleProperty);
+
+    private static bool IsIssued(HashSet<string> issued, FontFamily? family)
+    {
+        if (family?.Source is not { } source)
+            return false;
+        lock (issued)
+            return issued.Contains(source);
+    }
+
+    /// <summary>Gives chat text the current body font; a theme switch calls it again on mounted text.</summary>
+    internal static void ApplyBodyFont(DependencyObject element)
+    {
+        element.SetValue(FontRoleProperty, BodyRole);
+        var source = BodyFontFamily;
+        switch (element)
+        {
+            case RichTextBlock rich when rich.FontFamily?.Source != source:
+                rich.FontFamily = new FontFamily(source);
+                break;
+            case TextBlock text when text.FontFamily?.Source != source:
+                text.FontFamily = new FontFamily(source);
+                break;
+            case Control control when control.FontFamily?.Source != source:
+                control.FontFamily = new FontFamily(source);
+                break;
+        }
+    }
+
+    /// <summary>Gives code text and inline-code runs the current code font; a theme switch calls it again on mounted code.</summary>
+    internal static void ApplyCodeFont(DependencyObject element)
+    {
+        element.SetValue(FontRoleProperty, CodeRole);
+        var source = CodeFontFamily;
+        switch (element)
+        {
+            case RichTextBlock rich when rich.FontFamily?.Source != source:
+                rich.FontFamily = new FontFamily(source);
+                break;
+            case TextBlock text when text.FontFamily?.Source != source:
+                text.FontFamily = new FontFamily(source);
+                break;
+            case Microsoft.UI.Xaml.Documents.TextElement run when run.FontFamily?.Source != source:
+                run.FontFamily = new FontFamily(source);
+                break;
+        }
+    }
     internal const double CodeSize = 13;
     internal const double CodeLineHeight = 18;
     // Web .chat-thinking is 12px muted text; 18 follows the 12/18 footer ramp.
@@ -508,7 +601,11 @@ internal static class ChatVisuals
     {
         input.ActualThemeChanged -= OnComposerThemeChanged;
         input.ActualThemeChanged += OnComposerThemeChanged;
-        ChatThemeChanges.Watch(input, () => ApplyComposerPlaceholder(input));
+        ChatThemeChanges.Watch(input, () =>
+        {
+            ApplyComposerPlaceholder(input);
+            ApplyBodyFont(input);
+        });
         ApplyComposerPlaceholder(input);
     }
 

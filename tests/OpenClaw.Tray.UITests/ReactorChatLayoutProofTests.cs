@@ -3054,7 +3054,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var menu = ReasoningMenu(surface);
                 Assert.All(menu.Items, item => Assert.InRange(item.ActualHeight, 31.5, 40.5));
                 var presenter = Assert.Single(Ancestors(menu.Items[0]).OfType<MenuFlyoutPresenter>());
-                Assert.Same(Application.Current.Resources["DefaultMenuFlyoutPresenterStyle"], presenter.Style.BasedOn);
+                // The base is the stock presenter style. Another app dictionary merged ahead of ChatResources
+                // (TypographyResources) makes WinUI give it its own instance, so compare content, not identity.
+                var stock = (Style)Application.Current.Resources["DefaultMenuFlyoutPresenterStyle"];
+                var basedOn = presenter.Style.BasedOn;
+                Assert.Equal(stock.TargetType, basedOn.TargetType);
+                Assert.Null(basedOn.BasedOn);
+                Assert.Equal(StockSetters(stock), StockSetters(basedOn));
                 Assert.All(menu.Items, item => Assert.Null(item.Style));
                 Assert.True(menu.Items[3].Focus(FocusState.Keyboard));
             });
@@ -3961,6 +3967,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             element = parent;
         }
     }
+
+    // Each setter's property, with its value when that is a plain value (brushes and templates are per instance).
+    private static (DependencyProperty Property, object? Value)[] StockSetters(Style style) =>
+        [.. style.Setters.OfType<Setter>().Select(setter =>
+            (setter.Property, setter.Value is ValueType or string ? setter.Value : null))];
 
     private static FrameworkElement? TryModelPopup(Border surface) =>
         VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)

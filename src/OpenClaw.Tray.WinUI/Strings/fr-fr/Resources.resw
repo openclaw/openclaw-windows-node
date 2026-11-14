@@ -4451,6 +4451,27 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Choisissez clair, sombre ou utilisez votre paramètre Windows.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Thème de la passerelle</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Utilisez les couleurs et les polices d’un thème du tableau de bord OpenClaw. Le contraste élevé de Windows reste toujours prioritaire.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Valeur par défaut de Windows</value>
+  </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Arrière-plan Mica</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>Laissez le bureau transparaître derrière les fenêtres. Désactivez cette option pour un arrière-plan de thème opaque.</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Suivre le thème de la passerelle</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Utilisez le thème sélectionné dans le tableau de bord OpenClaw et mettez-le à jour lorsqu’il y change.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Système</value>
   </data>
