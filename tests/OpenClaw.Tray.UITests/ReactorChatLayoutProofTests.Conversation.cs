@@ -165,7 +165,7 @@ public sealed partial class ReactorChatLayoutProofTests
             state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("proof-run", "reason",
                 "I will inspect the supplied files before editing.", 1000));
             await PublishAsync();
-            await OpenReasoningAsync(surface, "I will inspect the supplied files before editing.");
+            await OpenReasoningAsync(surface, "I will inspect the supplied files before editing.", "Feedback-thinking-collapsed");
             await CaptureAsync(surface, "Feedback-supplied-thinking");
             await ui.RunOnUIAsync(() => Assert.Contains("Thinking",
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(FindControl<Grid>(host, "ChatRunProgress"))));
@@ -1082,7 +1082,7 @@ public sealed partial class ReactorChatLayoutProofTests
 
     // Thinking starts collapsed behind a tool-row disclosure whose leading chevron tracks its state;
     // open it and wait for its Markdown before reading.
-    private async Task OpenReasoningAsync(DependencyObject root, string expectedText)
+    private async Task OpenReasoningAsync(FrameworkElement root, string expectedText, string? collapsedCapture = null)
     {
         static bool IsReasoning(Expander row) =>
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(row) == "ChatReasoning";
@@ -1091,6 +1091,8 @@ public sealed partial class ReactorChatLayoutProofTests
                 .First(button => button.Name == "ExpanderHeader")).First().Text;
         await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
             () => FindDescendants<Expander>(root).Any(IsReasoning), "the collapsed reasoning disclosure"));
+        if (collapsedCapture is not null)
+            await CaptureAsync(root, collapsedCapture);
         await ui.RunOnUIAsync(() =>
         {
             var reasoning = Assert.Single(FindDescendants<Expander>(root), IsReasoning);
