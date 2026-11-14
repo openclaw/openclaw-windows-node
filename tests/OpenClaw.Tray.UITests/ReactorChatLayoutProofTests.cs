@@ -32,6 +32,8 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 {
+    // Native float layout can differ by a few millionths of a DIP.
+    private const int NativeLayoutPrecision = 4;
     private Window? _captureWindow;
     private const string Draft = "Turn this into a schedule for tomorrow.";
     private const string UserMessage = "Help me plan a focused workday.";
@@ -434,9 +436,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 var face = Assert.Single(FindDescendants<Viewbox>(avatar!));
                 Assert.Equal(Visibility.Visible, face.Visibility);
-                Assert.Equal(36, avatar!.ActualWidth);
-                Assert.Equal(36, avatar.ActualHeight);
+                Assert.Equal(36, avatar!.ActualWidth, NativeLayoutPrecision);
+                Assert.Equal(36, avatar.ActualHeight, NativeLayoutPrecision);
                 AssertAvatarFitsSlot(face, avatar);
+                var message = Assert.Single(
+                    Assert.IsType<Grid>(VisualTreeHelper.GetParent(avatar)).Children.OfType<StackPanel>());
+                Assert.InRange(Bounds(message, surface).Left - Bounds(avatar, surface).Right, 9.5, 10.5);
             });
         });
     }

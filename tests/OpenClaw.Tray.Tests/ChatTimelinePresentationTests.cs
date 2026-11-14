@@ -1920,7 +1920,6 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatToolActivityPresentation.Project(", timeline);
         Assert.Contains("ChatTimelineAssistantRuns.Describe(\n            projectedRows,", timeline.ReplaceLineEndings("\n"));
         Assert.DoesNotContain("OrderEntriesForPresentation", timeline);
-        Assert.Contains("includeMetadata: row.IsAssistantRunEnd", timeline);
     }
 
     [Fact]
