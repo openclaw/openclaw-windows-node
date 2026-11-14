@@ -48,6 +48,7 @@ public sealed partial class ReactorChatLayoutProofTests
     private const double WorkHeaderMinimum = 31.5;
     private const double WorkHeaderMaximum = 40;
     private const double WorkDetailMaxHeight = 240;
+    private const double WorkDetailMaxWidth = 240;
     private const double WorkDetailInsetX = 12;
     private const double WorkDetailInsetY = 8;
     private const double WorkCommandInputRightInset = 58;
@@ -878,8 +879,13 @@ public sealed partial class ReactorChatLayoutProofTests
             WorkEdgeTolerance);
         AssertWorkAligned($"{label} title font size", title.FontSize,
             title.Text == WorkToolInput ? WorkInlineTextSize : WorkActivityTitleSize, 0.1);
-        if (texts.Count == 3)
-            AssertWorkAligned($"{label} status font size", texts[2].FontSize, WorkInlineTextSize, 0.1);
+        // A dimmed detail is width-capped and takes the quieter title size; a trailing status keeps the inline size.
+        foreach (var text in texts.Skip(2))
+        {
+            var detail = text.MaxWidth == WorkDetailMaxWidth;
+            AssertWorkAligned($"{label} {(detail ? "detail" : "status")} font size", text.FontSize,
+                detail ? WorkActivityTitleSize : WorkInlineTextSize, 0.1);
+        }
         var headerCenter = headerBounds.Top + headerBounds.Height / 2;
         for (var index = 0; index < texts.Count; index++)
         {

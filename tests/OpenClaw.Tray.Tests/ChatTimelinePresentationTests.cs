@@ -1456,9 +1456,10 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains(".OnUnmount(control => TextShimmer((TextBlock)control, false))", visuals);
 
         var renderer = File.ReadAllText(Path.Combine(chat, "ToolCallCardRenderer.cs"));
-        Assert.Contains("BuildRowTitle(title, detail, entry.ToolResult is null or ChatToolCallStatus.InProgress)", renderer);
+        Assert.Contains("BuildRowTitle(title, detail, entry.ToolResult is null or ChatToolCallStatus.InProgress,", renderer);
         Assert.Contains("ChatVisuals.ActivityText(title, running)", renderer);
-        Assert.Contains("ChatVisuals.ActivityText(headlineText, summary.IsRunning)", renderer);        Assert.Contains(".OnUnmount(ChatVisuals.StopToolRowShimmers)", renderer);
+        Assert.Contains("ChatVisuals.ActivityText(headlineText, summary.IsRunning)", renderer);
+        Assert.Contains(".OnUnmount(ChatVisuals.StopToolRowShimmers)", renderer);
         var progress = File.ReadAllText(Path.Combine(chat, "ReactorRunProgress.cs"));
         Assert.Contains("ChatVisuals.ActivityText(label, progress.Active && !progress.Waiting)", progress);
         var timeline = File.ReadAllText(Path.Combine(chat, "ReactorChatTimeline.cs"));

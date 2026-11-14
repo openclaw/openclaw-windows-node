@@ -163,8 +163,7 @@ public sealed partial class ReactorChatLayoutProofTests
             state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("proof-run", "reason",
                 "I will inspect the supplied files before editing.", 1000));
             await PublishAsync();
-            await ui.RunOnUIAsync(() =>
-                Assert.Contains("I will inspect the supplied files before editing.", ReadToolText(surface)));
+            await OpenReasoningAsync(surface, "I will inspect the supplied files before editing.");
             await CaptureAsync(surface, "Feedback-supplied-thinking");
             await ui.RunOnUIAsync(() => Assert.Contains("Thinking",
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(FindControl<Grid>(host, "ChatRunProgress"))));
@@ -795,11 +794,11 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await SettleAsync();
             await AwaitInitialTailAsync(surface, key, snapshot.Timelines[key].Entries.Last().Id);
+            await OpenReasoningAsync(surface, "PARITY THINKING");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Single(FindDescendants<TextBlock>(surface),
                     block => block.Text.StartsWith("Assistant ·", StringComparison.Ordinal));
-                Assert.Contains("PARITY THINKING", ReadToolText(surface));
                 var group = Assert.Single(FindDescendants<Expander>(surface), control =>
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control).StartsWith("ChatToolActivity_"));
                 Assert.False(group.IsExpanded);
@@ -1077,6 +1076,23 @@ public sealed partial class ReactorChatLayoutProofTests
             Assert.True(top >= 0 && top <= surface.ActualHeight - 40,
                 $"Header top={top}; requested={targetOffset}; scroll offset={scroll!.VerticalOffset}; maximum={scroll.ScrollableHeight}; request={requestId}");
         });
+    }
+
+    // Thinking starts collapsed behind its disclosure; open it and wait for its Markdown before reading.
+    private async Task OpenReasoningAsync(DependencyObject root, string expectedText)
+    {
+        static bool IsReasoning(Expander row) =>
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(row) == "ChatReasoning";
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () => FindDescendants<Expander>(root).Any(IsReasoning), "the collapsed reasoning disclosure"));
+        await ui.RunOnUIAsync(() =>
+        {
+            var reasoning = Assert.Single(FindDescendants<Expander>(root), IsReasoning);
+            Assert.False(reasoning.IsExpanded);
+            reasoning.IsExpanded = true;
+        });
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () => ReadToolText(root).Contains(expectedText, StringComparison.Ordinal), "the opened reasoning text"));
     }
 
     private static string ReadToolText(DependencyObject root) => string.Join("\n",
