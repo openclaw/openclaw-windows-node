@@ -17,6 +17,74 @@ public sealed class InteractiveGatewayChatTests
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
 
     [Fact]
+    public async Task FinalAfterPersistedReplyInLaterTurnRendersOnceWithoutHistoryReload()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Enqueue(args.Snapshot);
+        await provider.LoadAsync();
+        const string key = GatewayScenario.EmptySessionKey;
+
+        async Task Turn(int number, string prompt, string reply)
+        {
+            var runId = $"fixture-chat-{number}";
+            var finalReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // Subscribed after the bridge: this final's provider update completes before the barrier.
+            void OnMessage(object? sender, ChatMessageInfo message)
+            {
+                if (message.RunId == runId && message.IsFinal && string.IsNullOrEmpty(message.OpenClawId))
+                    finalReceived.TrySetResult();
+            }
+            client.ChatMessageReceived += OnMessage;
+            try
+            {
+                await provider.SendMessageAsync(key, prompt);
+                await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "start" });
+                await server.PublishSessionToolEventAsync(key, runId, new
+                {
+                    phase = "start", name = "read", toolCallId = $"{runId}-tool", args = new { path = "fixture.txt" },
+                });
+                await server.PublishSessionToolEventAsync(key, runId, new
+                {
+                    phase = "result", name = "read", toolCallId = $"{runId}-tool",
+                    result = new { content = "fixture-only" },
+                });
+                await server.PublishChatContentAsync(key, runId,
+                    new object[] { new { type = "text", text = reply } }, isFinal: false);
+                await server.PublishPersistedAssistantAsync(key, runId, $"fixture-reply-{number}", number * 2, reply);
+                await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "end" });
+                await server.PublishChatFinalAsync(key, runId, reply);
+                await finalReceived.Task.WaitAsync(HistoryMergeTimeout);
+            }
+            finally { client.ChatMessageReceived -= OnMessage; }
+        }
+
+        await Turn(1, "First fixture question.", "First fixture reply.");
+        await Turn(2, "Second fixture question.", "Second fixture reply.");
+        var timeline = Latest(snapshots, key)!;
+        Assert.Equal(
+            ["First fixture question.", "First fixture reply.", "Second fixture question.", "Second fixture reply."],
+            timeline.Entries.Where(entry => entry.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant)
+                .Select(entry => entry.Text));
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(timeline.Entries, entry => entry.IsStreaming);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.history");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
     public async Task SessionToolMirrorLinksAndCompletesExistingLiveChildWithoutHistory()
     {
         using var temp = new TempDirectory();

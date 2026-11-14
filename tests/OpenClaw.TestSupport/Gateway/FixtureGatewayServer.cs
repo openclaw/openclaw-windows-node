@@ -464,6 +464,30 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    public Task PublishPersistedAssistantAsync(string sessionKey, string runId, string messageId,
+        int messageSequence, string text, CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "session.message",
+            payload = new
+            {
+                sessionKey, runId, hasActiveRun = true, activeRunIds = new[] { runId },
+                messageId, messageSeq = messageSequence,
+                message = new
+                {
+                    role = "assistant", timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    __openclaw = new { id = messageId, seq = messageSequence, runId },
+                    content = new[] { new { type = "text", text,
+                        textSignature = JsonSerializer.Serialize(new { v = 1, id = messageId, phase = "final_answer" }) } },
+                }
+            }
+        }, cancellationToken);
+    }
+
     private void ValidateChatRun(string sessionKey, string runId)
     {
         if (!_scenario.ContainsChatRun(sessionKey, runId))
