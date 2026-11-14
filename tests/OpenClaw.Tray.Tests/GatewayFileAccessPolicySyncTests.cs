@@ -24,6 +24,7 @@ public sealed class GatewayFileAccessPolicySyncTests
         // A concurrent writer replaced the config, so an acknowledged write never appears in it.
         public bool LoseWrites;
         public Exception? ConfigGetError;
+        public readonly TaskCompletionSource Refreshed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         // Saved/applied revisions reported by config.get; null omits them (older Gateways).
         public string? SavedRevision;
         public string? AppliedRevision;
@@ -64,6 +65,7 @@ public sealed class GatewayFileAccessPolicySyncTests
                     return Task.FromResult(result);
                 case "RequestConfigAsync":
                     Calls.Add("config.refresh");
+                    Refreshed.TrySetResult();
                     return Task.CompletedTask;
                 default:
                     throw new NotSupportedException(targetMethod?.Name);
@@ -258,9 +260,9 @@ public sealed class GatewayFileAccessPolicySyncTests
         fixture.OnDelay = () => fixture.EnforcesSandbox = true;
 
         await fixture.Sync.RequestSync();
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (fixture.Sync.Status != GatewayFileAccessSyncStatus.Synced && DateTime.UtcNow < deadline)
-            await Task.Delay(20);
+        // The requeued pass ends by refreshing config; a following request joins or reads its settled outcome.
+        await fixture.Proxy.Refreshed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await fixture.Sync.RequestSync();
 
         Assert.Equal(GatewayFileAccessSyncStatus.Synced, fixture.Sync.Status);
         Assert.Single(fixture.Proxy.Calls, call => call.StartsWith("config.patch", StringComparison.Ordinal));
