@@ -374,6 +374,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         AppDomain.CurrentDomain.UnhandledException += OnDomainUnhandledException;
         TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
         AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+        // Dev builds write the measure/arrange chain of an imminent layout cycle to the native debugger
+        // (Sysinternals DebugView captures it). It records only when a cycle is detected.
+        if (AppIdentity.IsDev)
+            DebugSettings.LayoutCycleTracingLevel = LayoutCycleTracingLevel.High;
     }
 
     private static bool HasArg(string[] args, string name) =>
@@ -421,7 +425,34 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)
     {
         _crashLogger.Log("UnhandledException", e.Exception);
+        // E_LAYOUTCYCLE: CsWinRT maps it to LayoutCycleException; match the HRESULT too in case it arrives unmapped.
+        if (e.Exception is LayoutCycleException || e.Exception?.HResult == unchecked((int)0x802B0014))
+            LogLayoutCycleContext();
         e.Handled = true; // Try to prevent crash
+    }
+
+    // A layout cycle carries no managed stack; record what was on screen so a report can be traced.
+    private void LogLayoutCycleContext()
+    {
+        try
+        {
+            var theme = _themeApplicator.Current?.Id ?? "Windows default";
+            var focused = _windowManager?.DialogXamlRoot is { } root
+                ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) : null;
+            var popups = _windowManager?.DialogXamlRoot is { } popupRoot
+                ? string.Join(", ", Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(popupRoot)
+                    .Select(popup => popup.Child?.GetType().Name ?? "empty"))
+                : "";
+            Logger.Error($"[Layout] Layout cycle context: theme {theme}, focused {DescribeElement(focused)}, open popups [{popups}]");
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Layout] Layout cycle context unavailable: {ex.GetType().Name}");
+        }
+
+        static string DescribeElement(object? element) => element is FrameworkElement framework
+            ? $"{framework.GetType().Name}#{Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(framework)}"
+            : element?.GetType().Name ?? "none";
     }
 
     /// <summary>
