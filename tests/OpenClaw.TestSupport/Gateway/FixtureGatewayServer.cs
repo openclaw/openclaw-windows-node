@@ -392,6 +392,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     }
 
     public Task PublishChatRunEventAsync(string sessionKey, string runId, string stream, object data,
+        CancellationToken cancellationToken = default) =>
+        PublishChatRunEventAsync("agent", sessionKey, runId, stream, data, cancellationToken);
+
+    public Task PublishSessionToolEventAsync(string sessionKey, string runId, object data,
+        CancellationToken cancellationToken = default) =>
+        PublishChatRunEventAsync("session.tool", sessionKey, runId, "tool", data, cancellationToken);
+
+    private Task PublishChatRunEventAsync(string eventName, string sessionKey, string runId, string stream, object data,
         CancellationToken cancellationToken = default)
     {
         ValidateChatRun(sessionKey, runId);
@@ -400,7 +408,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(data);
         var message = new
         {
-            type = "event", @event = "agent",
+            type = "event", @event = eventName,
             payload = new
             {
                 sessionKey, runId, stream, data,

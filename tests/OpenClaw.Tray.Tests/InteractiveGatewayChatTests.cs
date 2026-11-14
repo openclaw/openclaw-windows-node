@@ -17,6 +17,80 @@ public sealed class InteractiveGatewayChatTests
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
 
     [Fact]
+    public async Task SessionToolMirrorLinksAndCompletesExistingLiveChildWithoutHistory()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        var linkedWhileRunning = new TaskCompletionSource<ChatTimelineItem>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const string key = GatewayScenario.EmptySessionKey;
+        const string runId = "fixture-chat-1";
+        provider.Changed += (_, args) =>
+        {
+            snapshots.Enqueue(args.Snapshot);
+            if (args.Snapshot.Timelines.GetValueOrDefault(key) is not { } timeline) return;
+            var child = timeline.Entries.FirstOrDefault(entry => entry.ToolCallId == "child");
+            if (timeline.TurnActive && child is { ToolParentCallId: "parent", ToolResult: ChatToolCallStatus.InProgress })
+                linkedWhileRunning.TrySetResult(child);
+            if (!timeline.TurnActive && child is not null) finished.TrySetResult();
+        };
+        await provider.LoadAsync();
+        await provider.SendMessageAsync(key, "Synthetic nested tool proof.");
+        await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "start" });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = "tool:parent", toolCallId = "parent", name = "exec", kind = "tool",
+            phase = "start", title = "Wrapper", status = "running",
+        });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = "tool:child", toolCallId = "child", name = "read", kind = "tool",
+            phase = "start", title = "Read fixture.txt", status = "running",
+        });
+        await server.PublishSessionToolEventAsync(key, runId, new
+        {
+            phase = "start", name = "read", toolCallId = "child", parentToolCallId = "parent",
+            args = new { path = "fixture.txt" },
+        });
+        await server.PublishSessionToolEventAsync(key, runId, new
+        {
+            phase = "result", name = "read", toolCallId = "child",
+            result = new { content = "fixture child result" },
+        });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = "tool:child", toolCallId = "child", name = "read", kind = "tool",
+            phase = "end", title = "Read fixture.txt", status = "completed",
+        });
+        // The ordinary lifecycle event is a same-socket barrier even if the mirror is dropped.
+        await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "end" });
+        await finished.Task.WaitAsync(HistoryMergeTimeout);
+        Assert.True(linkedWhileRunning.Task.IsCompletedSuccessfully);
+        var timeline = Latest(snapshots, key)!;
+        var tools = timeline.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToArray();
+        Assert.Equal(2, tools.Length);
+        var child = Assert.Single(tools, entry => entry.ToolCallId == "child");
+        Assert.Equal("parent", child.ToolParentCallId);
+        Assert.Equal(ChatToolCallStatus.Success, child.ToolResult);
+        Assert.Equal("fixture child result", child.ToolOutput);
+        Assert.False(timeline.HistoryLoaded);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.history");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
     public async Task HistoryReadMergesRetainedItemStreamWithoutLosingRunningState()
     {
         using var temp = new TempDirectory();

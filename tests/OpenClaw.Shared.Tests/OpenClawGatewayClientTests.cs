@@ -690,6 +690,28 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void SessionToolEvent_ReachesAgentConsumersWithItsParentCall()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var events = new List<AgentEventInfo>();
+        client.AgentEventReceived += (_, evt) => events.Add(evt);
+
+        helper.ProcessRawMessage("""
+            {"type":"event","event":"session.tool","payload":{"runId":"client-run","seq":7,"stream":"tool",
+             "ts":1700000000000,"sessionKey":"agent:main:main","agentId":"main",
+             "data":{"phase":"start","name":"session_status","toolCallId":"child","parentToolCallId":"parent","args":{}},
+             "session":{"key":"agent:main:main","sessionId":"s1"},"sessionId":"s1","kind":"direct",
+             "status":"running","updatedAt":1700000000000,"subagentRunState":null}}
+            """);
+
+        var evt = Assert.Single(events);
+        Assert.Equal(("client-run", 7, "tool", "agent:main:main"), (evt.RunId, evt.Seq, evt.Stream, evt.SessionKey));
+        Assert.Equal("child", evt.Data.GetProperty("toolCallId").GetString());
+        Assert.Equal("parent", evt.Data.GetProperty("parentToolCallId").GetString());
+    }
+
+    [Fact]
     public void QuestionEvents_AreRoutedSeparatelyFromChat_AndMalformedRequestsAreVisible()
     {
         var helper = new GatewayClientTestHelper();
