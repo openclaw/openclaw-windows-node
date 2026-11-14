@@ -94,13 +94,8 @@ public sealed partial class CanvasWindow : WindowEx
         {
             return true;
         }
-        // Allow URLs from the trusted gateway origin with strict boundary check
-        if (!string.IsNullOrEmpty(_trustedGatewayOrigin) &&
-            url.StartsWith(_trustedGatewayOrigin, StringComparison.OrdinalIgnoreCase) &&
-            (url.Length == _trustedGatewayOrigin.Length ||
-             url[_trustedGatewayOrigin.Length] == '/' ||
-             url[_trustedGatewayOrigin.Length] == '?' ||
-             url[_trustedGatewayOrigin.Length] == '#'))
+        // Scheme, host, and port. A portless https URL and the same URL with :443 are one origin.
+        if (CanvasGatewayUrlRewriter.SharesHttpOrigin(url, _trustedGatewayOrigin))
         {
             return true;
         }
@@ -788,14 +783,8 @@ public sealed partial class CanvasWindow : WindowEx
         return uri.AbsolutePath.StartsWith("/__openclaw__/a2ui/", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsUriForOrigin(string uri, string origin)
-    {
-        return uri.StartsWith(origin, StringComparison.OrdinalIgnoreCase) &&
-            (uri.Length == origin.Length ||
-             uri[origin.Length] == '/' ||
-             uri[origin.Length] == '?' ||
-             uri[origin.Length] == '#');
-    }
+    private static bool IsUriForOrigin(string uri, string origin) =>
+        CanvasGatewayUrlRewriter.SharesHttpOrigin(uri, origin);
     
     private Task EnsureWebViewReadyAsync()
     {
