@@ -140,7 +140,7 @@ internal sealed class UpdateCoordinator(
             if (checkOutcome.ActivatedFallbackTag is not null)
             {
                 Logger.Info(
-                    $"Using OpenClaw stable correction ordering for update {checkOutcome.ActivatedFallbackTag}");
+                    $"Using OpenClaw release ordering for update {checkOutcome.ActivatedFallbackTag}");
             }
 
             if (!updateFound)
