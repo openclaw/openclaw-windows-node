@@ -1522,6 +1522,9 @@ jobs:
         OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
         OPENCLAW_RUN_GATEWAY_FIXTURE_UI: '1'
         OPENCLAW_RUN_KEYBOARD_PROOF: '0'
+        # Fixture UI tests get native input as in the fixture lane (-NativeInputProof); the soak sets it
+        # only for their test process, so the step-wide opt-in above stays off.
+        OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT: '1'
         OPENCLAW_GATEWAY_FIXTURE_APP: ${{ github.workspace }}\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
         OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\Soak\fixture
         OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '0'

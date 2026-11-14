@@ -1408,6 +1408,12 @@ foreach ($token in @("if: `${{ steps.select.outputs.has_tests == 'true' }}", "OP
         'OPENCLAW_GATEWAY_FIXTURE_APP: ${{ github.workspace }}\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe')) {
     Assert-Contains -Text $soakStep -Expected $token -Message "The soak step is missing '$token'."
 }
+# Fixture UI tests soak with the fixture lanes' native-input opt-in (-NativeInputProof), so a test that
+# needs native input is soaked instead of failing closed; the step-wide opt-in above stays off.
+$fixtureNativeInput = @('gateway-fixture', 'gateway-fixture-shard' | ForEach-Object { (Get-JobBlock $_).Contains('-NativeInputProof') })
+if ($fixtureNativeInput -contains $false) { throw 'Both fixture UI lanes must pass -NativeInputProof, or the soak must stop enabling native input.' }
+Assert-Contains -Text $soakStep -Expected "OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT: '1'" `
+    -Message 'The soak must give fixture UI tests the same native-input opt-in as the fixture lanes.'
 # Iterations, contention and caps are environment settings; the invocation passes only file locations.
 $soakCall = [regex]::Match($soakStep, '(?m)^      run: (\./scripts/Invoke-CiTestSoak\.ps1 .+?)\r?$').Groups[1].Value
 $soakAst = [Management.Automation.Language.Parser]::ParseInput(($soakCall -replace '"[^"]*"', "'x'"), [ref]$null, [ref]$null).Find({ param($node)
@@ -1428,7 +1434,8 @@ foreach ($name in @('Install WindowsAppRuntime', 'Configure UI desktop')) {
 }
 $soakRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Invoke-CiTestSoak.ps1') -Raw
 foreach ($token in @('OPENCLAW_CI_SOAK_ITERATIONS', 'OPENCLAW_CI_SOAK_CONTENTION_ITERATIONS', 'OPENCLAW_CI_SOAK_CONTENTION_WORKERS',
-        'OPENCLAW_CI_SOAK_HANG_SECONDS', 'Get-CiStepTimeoutMinutes', '--no-build', '--blame-hang', '--blame-hang-dump-type none')) {
+        'OPENCLAW_CI_SOAK_HANG_SECONDS', 'OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT', 'Get-CiStepTimeoutMinutes', '--no-build', '--blame-hang',
+        '--blame-hang-dump-type none', 'KeyboardProof!=Required', "'&Category=GatewayFixture'", "'&Category!=GatewayFixture'")) {
     Assert-Contains -Text $soakRunner -Expected $token -Message "The soak runner lost '$token'."
 }
 $ciGateJob = Get-JobBlock "ci-gate"
