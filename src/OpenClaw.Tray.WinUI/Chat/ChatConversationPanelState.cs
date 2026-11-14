@@ -319,6 +319,22 @@ internal sealed class ChatConversationPanelState
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// Adopts a user drag order from the native tab strip. Only a permutation of the open tabs is
+    /// accepted, so a stale order from before an open or close cannot add, drop or resurrect a tab.
+    /// </summary>
+    internal bool Reorder(IReadOnlyList<string> order)
+    {
+        if (order.Count != _tabs.Count || order.SequenceEqual(_tabs) ||
+            !order.OrderBy(slot => slot, StringComparer.Ordinal).SequenceEqual(
+                _tabs.OrderBy(slot => slot, StringComparer.Ordinal), StringComparer.Ordinal))
+            return false;
+        _tabs.Clear();
+        _tabs.AddRange(order);
+        Changed?.Invoke();
+        return true;
+    }
+
     internal void Invalidate()
     {
         Clear();

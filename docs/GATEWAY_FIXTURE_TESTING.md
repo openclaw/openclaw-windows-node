@@ -117,6 +117,16 @@ reconnect or reconstruct the timeline to hide a duplicate.
 
 ### Assistant continuity capture
 
+`DisplayRetirementAndMessageLessTerminalsKeepNativeConversationUsable` exercises
+the real app through three consecutive conversation turns: a saved answer
+followed by an empty terminal display override, a message-less error, and a
+message-less abort. It checks native Send/Stop state, preview removal, one saved
+answer and absence of streaming rows, without using lifecycle end to mask a
+lost chat terminal. Main and dashboard conversation cases also retain public
+preamble progress; the dashboard case expands **Worked** and verifies the
+progress is visible inside it. With screenshots enabled, it captures each settled state.
+The fixture uses synthetic messages and does not contact a model provider.
+
 The opt-in UI case
 `SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
 selects an assistant and conversation through normal UI Automation. It closes
@@ -841,22 +851,23 @@ The test holds the selected session's initial history while sending a
 1,000-token request followed by a 1,500-token request. The second final is followed by an identical identityless,
 undated replay, then the held matching history at T-1 reports 1,000 tokens and
 20%. The history includes the complete transcript prefix, and the test checks
-that the final reply remains the last assistant entry. Its visible footer must
-remain `1.5K/5.0K (30%)`. It then exercises:
+that the final reply remains the last assistant entry. The composer's visible
+context indicator must remain `1.5K of 5.0K (30%)`; message footers do not carry
+usage details. It then exercises:
 
-| Listing timestamp | Wire usage | Required mounted footer |
+| Listing timestamp | Wire usage | Required mounted composer indicator |
 | --- | --- | --- |
-| T+10 | input 12, output 480, missing total, `totalTokensFresh=false` | `1.5K/5.0K (30%)` |
-| T+5 | valid total 800 | `800/5.0K (16%)` |
-| T+12 | valid total 600 | `600/5.0K (12%)` |
-| T+11, response held until after T+12 renders | valid total 1,200 | `600/5.0K (12%)` |
+| T+10 | input 12, output 480, missing total, `totalTokensFresh=false` | `1.5K of 5.0K (30%)` |
+| T+5 | valid total 800 | `800 of 5.0K (16%)` |
+| T+12 | valid total 600 | `600 of 5.0K (12%)` |
+| T+11, response held until after T+12 renders | valid total 1,200 | `600 of 5.0K (12%)` |
 
 A following `sessions.changed` request, with its reply held, acts as a wire
 barrier: all client subscribers for the preceding listing have finished before
 the native assertion, and another reply cannot repair a rewind before capture.
 No extra production debug command, provider replacement or timing sleep is used.
 Each asserted state always retains an owned-HWND PNG and adjacent JSON with
-footer UIA bounds, text and image SHA256, even without the screenshots flag.
+composer-indicator UIA bounds, text and image SHA256, even without the screenshots flag.
 `context-usage-proof.json` records the scenario and supporting final snapshot.
 
 Run from the worktree on an interactive Windows desktop (use `win-x64` on x64):
@@ -881,7 +892,7 @@ For a separate bounded computer-use capture, start an interactive host console:
 Select **Fixture Main**, then **Fixture: context usage Initial**. Send
 `Fixture usage: first request`, then `Fixture usage: repeat request` using the
 native composer. Enter `missing-total`, `lower800`, `lower600`, and
-`delayed1200` in the **host console**, capturing the footer after each changed
+`delayed1200` in the **host console**, capturing the composer indicator after each changed
 sidebar label appears. These controls only select synthetic listing replies
 and notify the real client. Unknown console controls do nothing. `stop`, Ctrl+C
 or the duration limit cleans up only this app/profile/server. The host prints
