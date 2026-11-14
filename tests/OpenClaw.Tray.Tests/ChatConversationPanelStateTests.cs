@@ -119,6 +119,32 @@ public sealed class ChatConversationPanelStateTests
     }
 
     [Fact]
+    public void Reorder_AdoptsOnlyAPermutationOfOpenTabsAndKeepsSelection()
+    {
+        var state = new ChatConversationPanelState();
+        state.Bind(_provider, "session", 1, 2, 3, [], () => true, subagentsCurrent: () => true);
+        Assert.True(state.OpenFiles(state.Revision));
+        Assert.True(state.OpenFile(new("session", "a.md"), state.Revision));
+        var revision = state.Revision;
+        var changes = 0;
+        state.Changed += () => changes++;
+
+        Assert.False(state.Reorder(["file"]));
+        Assert.False(state.Reorder(["file", "details"]));
+        Assert.False(state.Reorder(["files", "file"]));
+        Assert.Equal(0, changes);
+
+        Assert.True(state.Reorder(["file", "files"]));
+        Assert.Equal(["file", "files"], state.Tabs);
+        Assert.Equal("file", state.Selected);
+        Assert.Equal(revision, state.Revision);
+        Assert.Equal(1, changes);
+        state.Close("file");
+        Assert.Equal(["files"], state.Tabs);
+        Assert.Equal("files", state.Selected);
+    }
+
+    [Fact]
     public void SubagentsSharesTheTabStripWithoutReplacingToolDetails()
     {
         var state = new ChatConversationPanelState();

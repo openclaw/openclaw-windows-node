@@ -9,6 +9,60 @@ namespace OpenClaw.Shared.Tests;
 
 public sealed class OpenClawGatewayClientAssistantMediaTests
 {
+    [Theory]
+    [InlineData(false, "artifact-1", 78, true)]
+    [InlineData(true, "artifact-1", 78, true)]
+    [InlineData(false, "other-artifact", 78, false)]
+    [InlineData(false, "artifact-1", 1048577, false)]
+    public async Task ResolveFilePreview_UsesArtifactIdentityAndBoundedInlineOrTicketedBytes(
+        bool http, string returnedId, long size, bool ready)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("assistant-file-preview-");
+        await server.StartAsync();
+        var bytes = Encoding.UTF8.GetBytes("Hello from the artifact");
+        var handler = new SequentialMediaHandler(BytesResponse(bytes, "text/plain"));
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token",
+            identityPath: identity.Path, assistantMediaHandler: handler);
+        await client.ConnectAsync();
+        MarkHandshakeReady(client);
+
+        var pending = client.ResolveAssistantMediaAsync("main", new()
+        {
+            Kind = ChatMediaContentKind.File,
+            Source = ChatMediaContentSource.Structured,
+            ArtifactId = "artifact-1",
+            AgentId = "agent-1",
+        });
+        using var request = JsonDocument.Parse(await server.ReceiveTextAsync());
+        Assert.Equal("artifacts.download", request.RootElement.GetProperty("method").GetString());
+        var parameters = request.RootElement.GetProperty("params");
+        Assert.Equal("main", parameters.GetProperty("sessionKey").GetString());
+        Assert.Equal("artifact-1", parameters.GetProperty("artifactId").GetString());
+        Assert.Equal("agent-1", parameters.GetProperty("agentId").GetString());
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = request.RootElement.GetProperty("id").GetString(),
+            ok = true,
+            payload = new
+            {
+                artifact = new { id = returnedId, type = "file", mimeType = "text/plain", sizeBytes = size },
+                encoding = "base64",
+                data = http ? null : Convert.ToBase64String(bytes),
+                url = http ? "/api/chat/media/outgoing/a/b/full?mediaTicket=ticket-1" : null,
+            },
+        }));
+        var result = await pending;
+        Assert.Equal(ready ? AssistantMediaResolutionStatus.Ready : AssistantMediaResolutionStatus.Unavailable, result.Status);
+        if (ready)
+            Assert.Equal(bytes, result.Data);
+        if (http)
+            Assert.Contains("mediaTicket=ticket-1", Assert.Single(handler.Requests).Uri.Query, StringComparison.Ordinal);
+        else
+            Assert.Empty(handler.Requests);
+    }
+
     [Fact]
     public async Task ResolveStructuredMedia_InlineBase64_ReturnsBoundedTypedBytes()
     {

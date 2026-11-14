@@ -471,7 +471,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await UntilAsync(() => FindOptional<Grid>(surface, "ConversationPanel") is { Visibility: Visibility.Visible } &&
                     FindOptional<Border>(surface, "ChatFilesPane") is { IsLoaded: true } pane &&
                     FindOptional<TextBlock>(pane, "ChatFilesRoot") is { IsLoaded: true } &&
-                    FindDescendants<Grid>(pane).Count(row => AutomationProperties.GetName(row).Contains(", ")) == 4 &&
+                    FindDescendants<Button>(pane).Count(row => AutomationProperties.GetName(row).Contains(", ")) == 4 &&
                     PanelTabs(surface) is { TabItems: [TabViewItem { IsLoaded: true, Header: "Files" }] },
                 "Files tab with its rows");
             await ui.RunOnUIAsync(() =>
@@ -479,10 +479,10 @@ public sealed partial class ReactorChatLayoutProofTests
                 var pane = FindControl<Border>(surface, "ChatFilesPane");
                 Assert.Equal(@"C:\repo\openclaw", FindControl<TextBlock>(pane, "ChatFilesRoot").Text);
                 Assert.StartsWith("Parser.cs, Edited, src", AutomationProperties.GetName(
-                    FindDescendants<Grid>(pane).First(row => AutomationProperties.GetName(row).StartsWith("Parser.cs"))));
-                Assert.Contains(FindDescendants<Grid>(pane),
+                    FindDescendants<Button>(pane).First(row => AutomationProperties.GetName(row).StartsWith("Parser.cs"))));
+                Assert.Contains(FindDescendants<Button>(pane),
                     row => AutomationProperties.GetName(row).StartsWith("old-notes.md, Missing"));
-                Assert.DoesNotContain(FindDescendants<Grid>(pane),
+                Assert.DoesNotContain(FindDescendants<Button>(pane),
                     row => AutomationProperties.GetName(row).StartsWith("package.json"));
             });
             if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST") == "1")

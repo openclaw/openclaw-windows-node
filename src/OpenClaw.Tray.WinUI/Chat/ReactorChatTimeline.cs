@@ -761,7 +761,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     media,
                     row.Props.Timeline.SessionId,
                     row.Props.Timeline.ResolveAssistantMediaAsync,
-                    row.Props.Timeline.DownloadAssistantFileAsync)));
+                    row.Props.Timeline.DownloadAssistantFileAsync,
+                    row.Props.Timeline.OnOpenAssistantFile)));
             if (renderPlan.OmittedImages > 0)
             {
                 content.Add(TextBlock(string.Format(
