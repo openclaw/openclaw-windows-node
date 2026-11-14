@@ -221,6 +221,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         private long _openVersion;
         private long _closeRevision;
         private bool _closing;
+        private EventHandler<object>? _pendingLayout;
 
         internal PanelInteraction(Grid root, ChatConversationPanelState state, Func<int, Control?> tabAt)
         {
@@ -255,7 +256,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             if (presented && !_state.Passive &&
                 (!_presented || _selected != _state.Selected || _openVersion != _state.OpenVersion))
             {
-                QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(panel) as Control);
+                QueueSelectedTabFocus(panel);
             }
             _presented = presented;
             _selected = _state.Selected;
@@ -264,21 +265,66 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             _root.TabFocusNavigation = narrow && presented ? KeyboardNavigationMode.Cycle : KeyboardNavigationMode.Local;
         }
 
-        private void QueueFocus(Func<Control?> target, Func<Control?>? fallback = null)
+        private void QueueFocus(Func<Control?> target, Func<Control?>? fallback = null, bool awaitTarget = false)
         {
             var revision = ++_focusRevision;
             var generation = _state.Revision;
+            DetachPendingLayout();
+            bool Current() => revision == _focusRevision && generation == _state.Revision && _root.IsLoaded;
             void Attempt(int remaining) => _root.DispatcherQueue.TryEnqueue(
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                 {
-                    if (revision != _focusRevision || generation != _state.Revision || !_root.IsLoaded)
-                        return;
-                    if (TryFocus(target())) return;
+                    if (!Current()) return;
+                    var control = target();
+                    if (TryFocus(control)) return;
                     // A newly presented tab item can load a layout pass after the panel; retry before falling back.
                     if (remaining > 1) Attempt(remaining - 1);
+                    // On a slow layout pass the selected tab can exist without being focusable yet. Moving focus to the
+                    // fallback would leave the requested tab unfocused, so wait for the layout that makes it focusable.
+                    else if (awaitTarget && control is not null) FocusWhenUsable(target, Current);
                     else TryFocus(fallback?.Invoke());
                 });
             Attempt(FocusAttempts);
+        }
+
+        private void QueueSelectedTabFocus(FrameworkElement panel) =>
+            QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(panel) as Control, awaitTarget: true);
+
+        /// <summary>
+        /// Focuses <paramref name="target"/> after the layout pass that makes it focusable. A newer focus request,
+        /// a panel state change, keyboard focus the user moves meanwhile, or disposal cancels the wait.
+        /// </summary>
+        private void FocusWhenUsable(Func<Control?> target, Func<bool> current)
+        {
+            var focusedBefore = _root.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) : null;
+            var requested = _state.Selected;
+            // Closing the requested tab can select another one passively, without a revision change.
+            bool Pending() => current() && _presented && !_state.Passive && _state.Selected == requested;
+            void LayoutUpdated(object? sender, object args)
+            {
+                if (!Pending())
+                {
+                    DetachPendingLayout();
+                    return;
+                }
+                if (!IsUsable(target())) return;
+                DetachPendingLayout();
+                // Focusing from inside a layout callback would start another layout; apply it on the next pass.
+                _root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    if (Pending() && _root.XamlRoot is { } xamlRoot &&
+                        ReferenceEquals(FocusManager.GetFocusedElement(xamlRoot), focusedBefore))
+                        TryFocus(target());
+                });
+            }
+            _root.LayoutUpdated += LayoutUpdated;
+            _pendingLayout = LayoutUpdated;
+        }
+
+        private void DetachPendingLayout()
+        {
+            if (_pendingLayout is { } handler) _root.LayoutUpdated -= handler;
+            _pendingLayout = null;
         }
 
         private bool TryFocus(Control? control) => IsUsable(control) && control!.Focus(FocusState.Programmatic);
@@ -376,7 +422,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 if (_narrow) _toggle?.Invoke();
                 if (within) Restore();
                 else if (_panel is { } current)
-                    QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(current) as Control);
+                    QueueSelectedTabFocus(current);
                 args.Handled = true;
             }
         }
@@ -391,6 +437,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         public void Dispose()
         {
             _focusRevision++;
+            DetachPendingLayout();
             _closing = false;
             _root.RemoveHandler(UIElement.GettingFocusEvent, _redirectClosingFocus);
             _root.KeyDown -= KeyDown;

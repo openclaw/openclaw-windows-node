@@ -522,7 +522,8 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.True(opener.Focus(FocusState.Programmatic));
                 Invoke(opener);
             });
-            await UntilAsync(() => SelectedTabFocused(surface, 2, 1), "Subagents tab beside Tool details");
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => SelectedTabFocused(surface, 2, 1),
+                "Subagents tab beside Tool details", () => TabFocusDiagnostics(surface)));
             ScrollViewer? list = null;
             await ui.RunOnUIAsync(() =>
             {
@@ -569,6 +570,71 @@ public sealed partial class ReactorChatLayoutProofTests
             });
         });
     }
+
+    [Theory]
+    [InlineData(480)]
+    [InlineData(1100)]
+    public async Task Subagents_TabThatLoadsAfterTheFocusPassesStillReceivesFocus(int width)
+    {
+        await WithChatAsync(width, async (surface, _, _, provider) =>
+        {
+            await PublishPanelToolAsync(provider, "Retained tool result");
+            var snapshot = await provider.LoadAsync();
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Threads = [snapshot.Threads[0],
+                    new ChatThread { Id = "child", Title = "Research", ParentSessionKey = "proof", IsSubagent = true,
+                        Activity = ChatActivity.Working }],
+            }));
+            await UntilAsync(() => PillReady(surface), "Subagents pill");
+            await OpenPanelToolAsync(surface);
+            if (width < 652)
+            {
+                await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ConversationPanelToggle")));
+                await UntilAsync(() => FindOptional<Border>(surface, "ChatConversation") is { Visibility: Visibility.Visible },
+                    "conversation shown again in the compact layout");
+            }
+            // A collapsed tab strip keeps the new Subagents item from becoming focusable through the panel's
+            // focus passes, as a slow CI layout pass does.
+            await ui.RunOnUIAsync(() =>
+            {
+                PanelTabs(surface)!.Visibility = Visibility.Collapsed;
+                var pill = FindControl<Button>(surface, "ChatSubagentsPill");
+                Assert.True(pill.Focus(FocusState.Programmatic));
+                Invoke(pill);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => TabsSelected(surface, 2, 1),
+                "Subagents tab selected behind the collapsed tab strip", () => TabFocusDiagnostics(surface)));
+            await DrainLowPriorityPassesAsync();
+            var afterPasses = "";
+            await ui.RunOnUIAsync(() =>
+            {
+                afterPasses = TabFocusDiagnostics(surface);
+                PanelTabs(surface)!.Visibility = Visibility.Visible;
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => SelectedTabFocused(surface, 2, 1),
+                "Subagents tab focused once it loads", () => $"after focus passes: {afterPasses}; now: {TabFocusDiagnostics(surface)}"));
+        });
+    }
+
+    /// <summary>
+    /// Completes after every Low-priority dispatcher item already queued, and the chains they enqueue, have run.
+    /// Each pass re-enqueues behind them, so this outlasts the conversation panel's bounded focus passes (four)
+    /// without depending on time.
+    /// </summary>
+    private Task DrainLowPriorityPassesAsync() => ui.RunOnUIAsync(() =>
+    {
+        const int Passes = 8;
+        var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var queue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        void Pass(int remaining) => queue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (remaining > 1) Pass(remaining - 1);
+            else done.SetResult();
+        });
+        Pass(Passes);
+        return done.Task;
+    });
 
     private static void CloseSubagentsTab(DependencyObject surface)
     {
@@ -649,4 +715,14 @@ public sealed partial class ReactorChatLayoutProofTests
     private static bool SelectedTabFocused(FrameworkElement surface, int count, int selected) =>
         TabsSelected(surface, count, selected) && PanelTabs(surface) is { } view &&
         ReferenceEquals(view.TabItems[selected], FocusManager.GetFocusedElement(surface.XamlRoot));
+
+    private static string TabFocusDiagnostics(FrameworkElement surface)
+    {
+        var focused = FocusManager.GetFocusedElement(surface.XamlRoot) as FrameworkElement;
+        var tabs = PanelTabs(surface);
+        var items = tabs is null ? "no tab view" : string.Join(", ", tabs.TabItems.Select((item, index) =>
+            item is TabViewItem tab ? $"{index}:{tab.Header}(loaded {tab.IsLoaded}, focus {tab.FocusState})" : $"{index}:{item}"));
+        return $"focused: {focused?.GetType().Name ?? "none"} '{(focused is null ? "" : AutomationProperties.GetAutomationId(focused))}' " +
+            $"'{(focused is null ? "" : AutomationProperties.GetName(focused))}'; selected: {tabs?.SelectedIndex}; tabs: {items}";
+    }
 }
