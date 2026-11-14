@@ -165,7 +165,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             setSpeakingEntryId(entry.Id);
             try
             {
-                await readAloud(StripMarkdownForSpeech(text));
+                await readAloud(text);
             }
             catch (Exception ex)
             {
@@ -1414,15 +1414,6 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         return new SolidColorBrush(fallback);
-    }
-
-    private static string StripMarkdownForSpeech(string text)
-    {
-        var result = System.Text.RegularExpressions.Regex.Replace(text, @"```[\s\S]*?```", " code block ");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"`([^`]+)`", "$1");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"!\[[^\]]*\]\([^)]*\)", " image ");
-        result = System.Text.RegularExpressions.Regex.Replace(result, @"\[([^\]]+)\]\([^)]*\)", "$1");
-        return System.Text.RegularExpressions.Regex.Replace(result, @"[*_#>]+", " ");
     }
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<byte[], BitmapImage>

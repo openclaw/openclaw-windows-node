@@ -16,8 +16,14 @@ namespace OpenClaw.Shared.Markdown;
 /// renderer can re-introduce a <c>Hyperlink</c> or a remote-image fetch.
 /// Raw HTML blocks/spans are dropped (via <c>NoHtml</c> parser flag) and
 /// any that leak through are stored as inert <see cref="MdInlineText"/>.
+///
+/// <para><see cref="IsFallback"/> is true when the parser rejected the input or
+/// the input exceeded the size cap: <see cref="Blocks"/> then holds the
+/// verbatim source, not parsed structure. Display surfaces may still show it;
+/// speech projection must refuse it, because raw source carries fences, URLs
+/// and credentials that no Markdown rule has removed.</para>
 /// </summary>
-public sealed record ChatMarkdownDocument(IReadOnlyList<MdBlock> Blocks);
+public sealed record ChatMarkdownDocument(IReadOnlyList<MdBlock> Blocks, bool IsFallback = false);
 
 public abstract record MdBlock;
 
@@ -104,3 +110,18 @@ public sealed record MdInlineText(
 
 /// <summary>Soft or hard line break inside an inline sequence.</summary>
 public sealed record MdInlineLineBreak(bool IsHard) : MdInline;
+
+/// <summary>
+/// How <see cref="ChatMarkdownAstBuilder"/> collapses an anchor to inert text.
+/// </summary>
+public enum MdLinkFlattening
+{
+    /// <summary>Display renderer default: <c>"display (href)"</c>, so the
+    /// destination stays visible but is never a clickable hyperlink.</summary>
+    DisplayWithHref,
+
+    /// <summary>Speech projection: display text only. A text-less anchor or
+    /// an autolink whose display is its own href emits nothing, so no URL is
+    /// ever read aloud.</summary>
+    DisplayOnly,
+}

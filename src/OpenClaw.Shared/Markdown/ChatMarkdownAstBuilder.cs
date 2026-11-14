@@ -11,10 +11,13 @@ namespace OpenClaw.Shared.Markdown;
 ///
 /// <para>This builder applies the OpenClaw chat security posture in-line:</para>
 /// <list type="bullet">
-///   <item>Links: the navigation <c>href</c> is dropped and the link's
-///         display text is flattened via
-///         <c>"display (href)"</c> so the URL stays visible/inspectable but
-///         can never become a clickable <c>Hyperlink</c>.</item>
+///   <item>Links: the navigation <c>href</c> is dropped from the AST and the
+///         link's display text is flattened to inert text. The default
+///         <see cref="MdLinkFlattening.DisplayWithHref"/> keeps the URL
+///         visible/inspectable (<c>"display (href)"</c>) but it can never
+///         become a clickable <c>Hyperlink</c>; speech projection selects
+///         <see cref="MdLinkFlattening.DisplayOnly"/> so a URL is never read
+///         aloud.</item>
 ///   <item>Images: replaced with the inert literal <c>[Image: alt]</c>
 ///         (or <c>[Image]</c> when no alt is present). No URL is ever passed
 ///         downstream — guarantees no <c>BitmapImage</c> remote fetch.</item>
@@ -54,6 +57,7 @@ public sealed class ChatMarkdownAstBuilder
         | MarkdownParserFlags.CollapseWhitespace;
 
     private readonly MarkdownParserFlags _flags;
+    private readonly MdLinkFlattening _linkFlattening;
 
     // Block-frame stack — every EnterBlock pushes, every LeaveBlock pops and
     // either adds the resulting block to its parent frame, or (for inline
@@ -79,7 +83,7 @@ public sealed class ChatMarkdownAstBuilder
     // and emit the flattened inert form on LeaveSpan. A stack is used so
     // nested links (e.g. an autolink inside an explicit link, or an image
     // inside a link) preserve the outer span's accumulated buffer.
-    private readonly Stack<(StringBuilder Display, string? Href)> _linkStack = new();
+    private readonly Stack<(StringBuilder Display, string? Href, bool IsAutolink)> _linkStack = new();
     private int _linkDepth;
     private StringBuilder? _linkDisplay;
     private string? _pendingLinkHref;
@@ -105,9 +109,12 @@ public sealed class ChatMarkdownAstBuilder
     private bool _tableInHead;
     private int _tableCellIndex;
 
-    public ChatMarkdownAstBuilder(MarkdownParserFlags? flags = null)
+    public ChatMarkdownAstBuilder(
+        MarkdownParserFlags? flags = null,
+        MdLinkFlattening linkFlattening = MdLinkFlattening.DisplayWithHref)
     {
         _flags = flags ?? DefaultFlags;
+        _linkFlattening = linkFlattening;
     }
 
     /// <summary>
@@ -123,7 +130,13 @@ public sealed class ChatMarkdownAstBuilder
 
         if (markdown!.Length > MaxInputBytes)
         {
-            var truncated = markdown.Substring(0, MaxInputBytes);
+            // Never cut a surrogate pair in half: a lone surrogate is invalid
+            // UTF-16 and any later rune decode on it fails.
+            var length = MaxInputBytes;
+            if (char.IsHighSurrogate(markdown[length - 1]))
+                length--;
+
+            var truncated = markdown.Substring(0, length);
             return new ChatMarkdownDocument(new MdBlock[]
             {
                 new MdParagraph(new MdInline[]
@@ -132,7 +145,7 @@ public sealed class ChatMarkdownAstBuilder
                         truncated + "\n\n[truncated: input exceeded "
                                   + MaxInputBytes.ToString("N0") + " chars]"),
                 }),
-            });
+            }, IsFallback: true);
         }
 
         _stack.Clear();
@@ -171,7 +184,7 @@ public sealed class ChatMarkdownAstBuilder
             return new ChatMarkdownDocument(new MdBlock[]
             {
                 new MdParagraph(new MdInline[] { new MdInlineText(markdown) }),
-            });
+            }, IsFallback: true);
         }
 
         var doc = _stack.Pop();
@@ -432,7 +445,8 @@ public sealed class ChatMarkdownAstBuilder
                 _linkDepth++;
                 var display = new StringBuilder();
                 var href = detail is MarkdownSpanADetail a ? a.Href.Text : null;
-                _linkStack.Push((display, href));
+                var isAutolink = detail is MarkdownSpanADetail autolink && autolink.IsAutolink;
+                _linkStack.Push((display, href, isAutolink));
                 _linkDisplay = display;
                 _pendingLinkHref = href;
                 return 0;
@@ -474,11 +488,13 @@ public sealed class ChatMarkdownAstBuilder
                 if (_linkDepth > 0) _linkDepth--;
                 string display = string.Empty;
                 string? href = null;
+                var isAutolink = false;
                 if (_linkStack.Count > 0)
                 {
                     var popped = _linkStack.Pop();
                     display = popped.Display.ToString();
                     href = popped.Href;
+                    isAutolink = popped.IsAutolink;
                 }
                 // Reset current pointers to the new top of the link stack
                 // (if any), so further text inside an enclosing link
@@ -498,7 +514,7 @@ public sealed class ChatMarkdownAstBuilder
                 // link/image span after the pop, route the flattened text
                 // into that buffer instead of the inline accumulator so the
                 // outer span captures the full display.
-                EmitFlattenedLinkText(display, href);
+                EmitFlattenedLinkText(display, href, isAutolink);
                 return 0;
             }
             case MarkdownSpanType.Img:
@@ -519,8 +535,22 @@ public sealed class ChatMarkdownAstBuilder
         }
     }
 
-    private void EmitFlattenedLinkText(string display, string? href)
+    private void EmitFlattenedLinkText(string display, string? href, bool isAutolink)
     {
+        if (_linkFlattening == MdLinkFlattening.DisplayOnly)
+        {
+            // Speech projection: a URL must never be spoken, so autolinks
+            // (bare URLs, www., e-mail, <…>) are dropped whole. Their display
+            // text is the destination itself, and md4c may normalise it
+            // differently from the target ("www.example.com" →
+            // "http://www.example.com"), so comparing the two is not reliable.
+            // An explicit link keeps its label; URL-shaped labels are removed
+            // later by the speech projector's token filter.
+            if (!isAutolink && !string.IsNullOrEmpty(display))
+                EmitInlineText(display);
+            return;
+        }
+
         var text = string.IsNullOrEmpty(display)
             ? (href ?? string.Empty)
             : string.Equals(display, href, StringComparison.Ordinal)
