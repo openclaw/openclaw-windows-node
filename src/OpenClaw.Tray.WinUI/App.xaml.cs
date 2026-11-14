@@ -934,6 +934,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 EndpointLifecycle = _localAiGatewayLifecycle,
                 GetApiKey = _localAiGatewayLifecycle.GetApiKey,
                 GetRecoveryPort = _localAiGatewayLifecycle.GetRecoveryPort,
+                // OPENCLAW_LOCAL_AI_PREFIX_CACHE=0 forwards straight to the router, as before.
+                PrefixCacheProxy = Environment.GetEnvironmentVariable("OPENCLAW_LOCAL_AI_PREFIX_CACHE") != "0",
             },
             localAiLogger);
         _localAiModelSwitcher = new OpenClaw.SetupEngine.LocalAiModelSwitcher(
