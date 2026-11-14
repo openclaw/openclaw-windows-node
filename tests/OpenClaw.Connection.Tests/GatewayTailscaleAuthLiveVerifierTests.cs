@@ -70,6 +70,27 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
     }
 
     [Fact]
+    public async Task VerifyAsync_DefaultPreservesRunnerBudgetForHealthySlowProbes()
+    {
+        var runner = new FakeWslCommandRunner(async (_, command, cancellationToken) =>
+        {
+            if (command.SequenceEqual(["/usr/bin/tailscale", "status", "--json"]))
+                await Task.Delay(TimeSpan.FromSeconds(5.1), cancellationToken);
+            return command.Contains("serve", StringComparer.Ordinal)
+                ? ForegroundServeStatus(proxyPort: 35225)
+                : command.FirstOrDefault() == "/bin/bash"
+                    ? new WslCommandResult(0, "owned", "")
+                    : RunningStatus();
+        });
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner);
+
+        var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None)
+            .WaitAsync(StepTimeout);
+
+        Assert.Equal(GatewayTailscaleAuthLiveState.Ready, result);
+    }
+
+    [Fact]
     public async Task VerifyAsync_TimeoutIsUnavailable()
     {
         var runner = new FakeWslCommandRunner(async (_, _, cancellationToken) =>

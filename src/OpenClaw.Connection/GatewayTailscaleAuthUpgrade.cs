@@ -106,7 +106,6 @@ internal interface IGatewayTailscaleAuthLiveVerifier
 
 internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLiveVerifier
 {
-    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
     private static readonly IReadOnlyList<string> StatusCommand =
         ["/usr/bin/tailscale", "status", "--json"];
     private static readonly IReadOnlyList<string> ServeStatusCommand =
@@ -115,14 +114,14 @@ internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLi
         ["/usr/bin/systemctl", "--user", "show", "openclaw-gateway", "-p", "MainPID", "--value"];
 
     private readonly IWslCommandRunner _commandRunner;
-    private readonly TimeSpan _timeout;
+    private readonly TimeSpan? _timeout;
 
     public GatewayTailscaleAuthLiveVerifier(
         IWslCommandRunner commandRunner,
         TimeSpan? timeout = null)
     {
         _commandRunner = commandRunner ?? throw new ArgumentNullException(nameof(commandRunner));
-        _timeout = timeout ?? DefaultTimeout;
+        _timeout = timeout;
     }
 
     public async Task<GatewayTailscaleAuthLiveState> VerifyAsync(
@@ -138,7 +137,8 @@ internal sealed class GatewayTailscaleAuthLiveVerifier : IGatewayTailscaleAuthLi
         }
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_timeout);
+        if (_timeout is { } probeTimeout)
+            timeout.CancelAfter(probeTimeout);
 
         WslCommandResult statusResult;
         try
