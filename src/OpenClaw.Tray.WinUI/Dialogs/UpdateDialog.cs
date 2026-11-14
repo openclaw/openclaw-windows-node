@@ -109,6 +109,7 @@ public sealed class UpdateDialog : WindowEx
         root.Children.Add(buttonPanel);
 
         Content = root;
+        Theming.BackdropPolicy.Apply(this);
         Closed += (s, e) => _tcs.TrySetResult(_result);
 
         Logger.Info($"[Update] Update dialog shown for version {version}");
