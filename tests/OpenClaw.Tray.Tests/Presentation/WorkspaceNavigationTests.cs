@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
@@ -674,7 +675,22 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("ListenOnceAsync(args, cancellationToken, OnTranscription, OnAudioLevel)", capture);
         Assert.Contains("!cancellationToken.IsCancellationRequested && _pageActive", capture);
         Assert.Contains("generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost)", capture);
+        Assert.Contains("var preview = new VoiceCapturePreviewGate();", capture);
+        // Each callback reaches the preview only through the per-listen gate, on a dispatcher body that runs the gated write.
+        Assert.Matches(PostThroughGate("() => host?.SetVoiceTranscript(text)"), capture);
+        Assert.Matches(PostThroughGate("() => host?.SetVoiceAudioLevel(level)"), capture);
+        // Stop cancels the token first, so cleanup must always run and must not depend on it.
+        Assert.Matches(
+            @"finally\s*\{\s*(//[^\r\n]*\s*)*preview\.Complete\(\s*_pageActive && generation == _surfaceGeneration && ReferenceEquals\(host, _reactorHost\),",
+            capture);
+        var cleanup = capture[capture.IndexOf("finally", StringComparison.Ordinal)..];
+        Assert.Contains("host?.SetVoiceTranscript(null);", cleanup);
+        Assert.Contains("host?.SetVoiceAudioLevel(0f);", cleanup);
     }
+
+    private static string PostThroughGate(string setter) =>
+        @"preview\.Post\(\s*body\s*=>\s*\{\s*DispatcherQueue\.TryEnqueue\(\s*\(\)\s*=>\s*body\(\)\s*\);\s*\}\s*,\s*IsCurrentCapture\s*,\s*" +
+        Regex.Escape(setter) + @"\s*\)\s*;";
 
     [Fact]
     public void SettingsTransition_SuspendsCaptureBeforeHidingRetainedChat_AndSearchKeepsLocalAliases()
@@ -692,8 +708,9 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("_reactorHost?.SetHostVisible(false)", suspension);
         Assert.DoesNotContain("DisposeReactorHost();", suspension);
         Assert.Contains("_reactorHost?.SetHostVisible(true)", chat);
-        Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceTranscript(text)", chat);
-        Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceAudioLevel(level)", chat);
+        Assert.Contains("() => host?.SetVoiceTranscript(text)", chat);
+        Assert.Contains("() => host?.SetVoiceAudioLevel(level)", chat);
+        Assert.Contains("preview.Complete(", chat);
         Assert.Contains("e.Key == global::Windows.System.VirtualKey.E ||", workspace);
         Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", workspace);
     }

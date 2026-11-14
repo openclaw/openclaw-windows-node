@@ -1314,17 +1314,19 @@ public sealed partial class ChatPage : Page
             return null;
         }
 
-        // Subscribe to streaming events during recording
+        // A partial is posted to the dispatcher and can run after the listen returns,
+        // including after a fresh recording has already shown its own preview.
+        var preview = new VoiceCapturePreviewGate();
         bool IsCurrentCapture() => !cancellationToken.IsCancellationRequested && _pageActive &&
             generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost);
-        void OnTranscription(string text) => DispatcherQueue.TryEnqueue(() =>
-        {
-            if (IsCurrentCapture()) host?.SetVoiceTranscript(text);
-        });
-        void OnAudioLevel(float level) => DispatcherQueue.TryEnqueue(() =>
-        {
-            if (IsCurrentCapture()) host?.SetVoiceAudioLevel(level);
-        });
+        void OnTranscription(string text) => preview.Post(
+            body => { DispatcherQueue.TryEnqueue(() => body()); },
+            IsCurrentCapture,
+            () => host?.SetVoiceTranscript(text));
+        void OnAudioLevel(float level) => preview.Post(
+            body => { DispatcherQueue.TryEnqueue(() => body()); },
+            IsCurrentCapture,
+            () => host?.SetVoiceAudioLevel(level));
 
         onRecordingStarted?.Invoke();
         try
@@ -1339,11 +1341,14 @@ public sealed partial class ChatPage : Page
         }
         finally
         {
-            if (_pageActive && generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost))
-            {
-                host?.SetVoiceTranscript(null);
-                host?.SetVoiceAudioLevel(0f);
-            }
+            // Stop cancels the token before this runs. Still clear this surface.
+            preview.Complete(
+                _pageActive && generation == _surfaceGeneration && ReferenceEquals(host, _reactorHost),
+                () =>
+                {
+                    host?.SetVoiceTranscript(null);
+                    host?.SetVoiceAudioLevel(0f);
+                });
         }
     }
 
