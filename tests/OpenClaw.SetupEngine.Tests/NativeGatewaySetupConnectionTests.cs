@@ -191,6 +191,31 @@ public sealed class NativeGatewaySetupConnectionTests
     }
 
     [Fact]
+    public async Task Finalization_StartupRetryAuthorizationTimeoutRetainsRuntime()
+    {
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);
+        using var fixture = CreateFixture(server, isolated: true);
+        await using var owner = await fixture.PrepareAsync();
+        var proof = await CaptureCompletionAsync(owner);
+        fixture.Events.Clear();
+        var requestsBefore = server.Requests.Count;
+        var timeout = new TimeoutException("Fixture package status read timed out.");
+        server.StartupRejectionsRemaining = 1;
+        server.StartupRejected = () => fixture.Runtime.Ensure = _ => Task.FromException(timeout);
+
+        var error = await Assert.ThrowsAsync<TimeoutException>(() =>
+            owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default).WaitAsync(FinalizationStepTimeout));
+
+        Assert.Same(timeout, error);
+        Assert.DoesNotContain("stop", fixture.Events);
+        Assert.DoesNotContain("release", fixture.Events);
+        Assert.Null(fixture.Host.ApprovedId);
+        Assert.Empty(fixture.Registry.GetAll());
+        Assert.DoesNotContain(server.Requests.Skip(requestsBefore), request =>
+            request.Method is "health" or "openclaw.setup.verify");
+    }
+
+    [Fact]
     public async Task Finalization_HealthUsesRemainingAdmissionBudgetNotAFreshWindow()
     {
         await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateNativeSetup(Reply), Token);

@@ -148,10 +148,13 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
                 else if (status == ConnectionStatus.Error)
                 {
                     var error = Volatile.Read(ref authorizationTask)?.Exception?.InnerException;
-                    connected.TrySetException(error is NativeGatewayListenerException listener &&
-                        NativeGatewayEndpointSecurity.IsInspectionUnavailable(listener.Provenance)
-                            ? listener
-                            : new InvalidOperationException("Could not connect to the verified native Gateway."));
+                    connected.TrySetException(error switch
+                    {
+                        TimeoutException timeout => timeout,
+                        NativeGatewayListenerException listener when
+                            NativeGatewayEndpointSecurity.IsInspectionUnavailable(listener.Provenance) => listener,
+                        _ => new InvalidOperationException("Could not connect to the verified native Gateway.")
+                    });
                 }
             }
             void PairingRequired(object? sender, string? requestId) =>
