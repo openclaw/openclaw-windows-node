@@ -10127,6 +10127,18 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Gateway remoto conectado</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Verificado para esta configuração</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Abrir detalhes ao lado da conversa</value></data>
+  <data name="Chat_Tool_OpenFile" xml:space="preserve"><value>Abrir arquivo {0}</value></data>
+  <data name="Chat_Tool_OpenSubagent" xml:space="preserve"><value>Abrir subagente {0}</value></data>
+  <data name="Chat_Tool_DiffStat" xml:space="preserve"><value>{0} linhas adicionadas, {1} linhas removidas</value></data>
+  <data name="Chat_Panel_File" xml:space="preserve"><value>Arquivo</value></data>
+  <data name="Chat_File_Loading" xml:space="preserve"><value>Carregando arquivo…</value></data>
+  <data name="Chat_File_Empty" xml:space="preserve"><value>Este arquivo está vazio.</value></data>
+  <data name="Chat_File_Missing" xml:space="preserve"><value>Este arquivo não existe mais.</value></data>
+  <data name="Chat_File_NotPreviewable" xml:space="preserve"><value>Este arquivo não pode ser exibido como texto. Ele pode ser uma imagem, um arquivo binário ou grande demais.</value></data>
+  <data name="Chat_File_Unavailable" xml:space="preserve"><value>Não foi possível carregar este arquivo. Ele pode estar fora do espaço de trabalho da sessão ou ser grande demais.</value></data>
+  <data name="Chat_File_Unsupported" xml:space="preserve"><value>Este Gateway não pode abrir arquivos do espaço de trabalho.</value></data>
+  <data name="Chat_File_Stale" xml:space="preserve"><value>A conexão mudou antes de o arquivo carregar.</value></data>
+  <data name="Chat_File_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Detalhes da ferramenta</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Estes detalhes não estão mais disponíveis. Reconecte-se, se necessário, e reabra a ferramenta na conversa atual.</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionar painel da conversa</value></data>

@@ -668,9 +668,10 @@ public sealed class ChatToolActivityPresentationTests
 
         Assert.Equal(
             new ChatSpawnedSubagent("Telegram check", Enum.Parse<ChatSubagentStatus>(status),
-                elapsedMs is { } ms ? TimeSpan.FromMilliseconds(ms) : null),
+                elapsedMs is { } ms ? TimeSpan.FromMilliseconds(ms) : null, "agent:main:subagent:abc"),
             ChatToolRowPresentation.Resolve(launch, [child]).Subagent);
-        Assert.Equal(new ChatSpawnedSubagent("Telegram check"), ChatToolRowPresentation.Resolve(launch).Subagent);
+        Assert.Equal(new ChatSpawnedSubagent("Telegram check", ChildSessionKey: "agent:main:subagent:abc"),
+            ChatToolRowPresentation.Resolve(launch).Subagent);
         Assert.True(ChatToolRowPresentation.Resolve(launch with
         {
             ToolInputDetails = new("""{"task":"Diagnose the integration"}"""),

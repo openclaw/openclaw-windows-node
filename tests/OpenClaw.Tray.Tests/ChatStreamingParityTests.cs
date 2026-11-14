@@ -82,6 +82,9 @@ public sealed class ChatStreamingParityTests
         Assert.True(progress.Waiting);
         Assert.False(progress.Active);
         Assert.Equal("Waiting for subagents", progress.Label);
+        Assert.NotEqual(
+            ChatWorkingClawMotion.At(0, progress.IsInProgress, reducedMotion: false),
+            ChatWorkingClawMotion.At(.24, progress.IsInProgress, reducedMotion: false));
         Assert.Null(ChatRunProgressProjection.Project(state));
     }
 
@@ -481,6 +484,39 @@ public sealed class ChatStreamingParityTests
     {
         Assert.Equal("0s", ChatRunProgressProjection.Elapsed(Start, Start.AddSeconds(-10)));
         Assert.Equal("1h 1m 1s", ChatRunProgressProjection.Elapsed(Start, Start.AddSeconds(3661)));
+    }
+
+    [Fact]
+    public void ResultDetails_CarryDiffFactsToTheSucceededRowOnly()
+    {
+        ChatEvent Map(string data, int seq) => ChatEventMapper.Map(Event("tool", data, seq)).Event!;
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), Map("""
+            {"phase":"start","name":"write","toolCallId":"w","args":{"path":"a.txt","content":"x\ny"}}
+            """, 1));
+        state = ChatTimelineReducer.Apply(state, Map("""
+            {"phase":"result","toolCallId":"w","result":{"content":[{"type":"text","text":"Wrote"}],
+             "details":{"created":false,"diff":"-1 old\n+1 new\n+2 more"}}}
+            """, 2));
+        Assert.Equal(new ChatToolResultDiffFacts(2, 1, false, false, null), state.Entries[0].ToolResultDiffFacts);
+        Assert.Equal(new ChatToolDiffStat(2, 1), ChatToolDiffStats.Resolve(state.Entries[0]));
+
+        var failed = ChatTimelineReducer.Apply(ChatTimelineReducer.Apply(ChatTimelineState.Initial(), Map("""
+            {"phase":"start","name":"edit","toolCallId":"e","args":{"path":"a.txt","oldText":"a","newText":"b"}}
+            """, 1)), Map("""
+            {"phase":"result","toolCallId":"e","isError":true,"result":{"details":{"diff":"+1 b"}}}
+            """, 2));
+        Assert.Null(failed.Entries[0].ToolResultDiffFacts);
+        Assert.Null(ChatToolDiffStats.Resolve(failed.Entries[0]));
+
+        // Results that arrive before their start keep the first success's details.
+        var early = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), Map("""
+            {"phase":"result","toolCallId":"p","result":{"details":{"diff":"-1 a\n+1 b\n+2 c"}}}
+            """, 1));
+        early = ChatTimelineReducer.Apply(early, Map("""{"phase":"result","toolCallId":"p","result":"Saved"}""", 2));
+        early = ChatTimelineReducer.Apply(early, Map("""
+            {"phase":"start","name":"edit","toolCallId":"p","args":{"path":"a.txt","oldText":"a","newText":"b\nc"}}
+            """, 3));
+        Assert.Equal(new ChatToolResultDiffFacts(2, 1), early.Entries[0].ToolResultDiffFacts);
     }
 
     private static AgentEventInfo Event(string stream, string data, int seq = 1) =>

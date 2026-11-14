@@ -106,6 +106,20 @@ public class ExecApprovalCommandDisplaySanitizerTests
         Assert.Equal(once, ExecApprovalCommandDisplaySanitizer.Sanitize(once));
     }
 
+    [Fact]
+    public void DocumentTextRedactsTabObfuscatedSecretKeysWithoutChangingLayout()
+    {
+        const string secret = "opaque-value-for-document-test";
+        var input = "{\n\t\"pass\tword\":\n\t\t\"" + secret + "\",\n\t\"name\": \"visible\"\n}\n\tordinary\ttext";
+
+        var output = ExecApprovalCommandDisplaySanitizer.SanitizeDocumentText(input, 4096);
+
+        Assert.DoesNotContain(secret, output);
+        Assert.Contains("\t\"pass\tword\":\n\t\t\"", output);
+        Assert.Contains("\n\t\"name\": \"visible\"\n", output);
+        Assert.EndsWith("\n\tordinary\ttext", output);
+    }
+
     // The sanitizer deliberately does NOT escape combining marks, variation selectors,
     // or homoglyphs: none can be neutralized without mangling legitimate non-ASCII text
     // (accents, emoji, CJK). This matches the macOS original. These tests pin that

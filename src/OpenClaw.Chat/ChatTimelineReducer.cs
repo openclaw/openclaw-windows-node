@@ -736,7 +736,7 @@ public static class ChatTimelineReducer
     static ChatTimelineState ApplyToolOutput(ChatTimelineState state, ChatToolOutputEvent e) =>
         ApplyToolOutcome(state, e.Text, e.ToolCallId, e.RunId, ChatToolCallStatus.Success,
             handoffReceipt: e.ToolCallId is { Length: > 0 } ? e.HandoffReceipt : null,
-            resultReference: e.ResultReference);
+            resultReference: e.ResultReference, diffFacts: e.DiffFacts);
 
     static ChatTimelineState ApplyToolProgress(ChatTimelineState state, ChatToolProgressEvent e)
     {
@@ -776,10 +776,11 @@ public static class ChatTimelineReducer
         ChatToolCallStatus status,
         ChatToolErrorTextQuality errorTextQuality = ChatToolErrorTextQuality.Unspecified,
         OpenClaw.Shared.ChatToolHandoffReceipt? handoffReceipt = null,
-        ChatToolResultReference? resultReference = null)
+        ChatToolResultReference? resultReference = null,
+        OpenClaw.Shared.ChatToolResultDiffFacts? diffFacts = null)
     {
         var sequence = state.NextToolOutcomeSequence;
-        var incoming = new ChatPendingToolOutcome(text, status, sequence, errorTextQuality, handoffReceipt, resultReference);
+        var incoming = new ChatPendingToolOutcome(text, status, sequence, errorTextQuality, handoffReceipt, resultReference, diffFacts);
         var key = toolCallId is { Length: > 0 }
             ? ResolveBufferedCorrelationKey(state, runId, toolCallId)
             : default(ChatToolCorrelationKey?);
@@ -875,6 +876,7 @@ public static class ChatTimelineReducer
                     ToolErrorTextQuality = incomingErrorQuality,
                     HandoffReceipt = incoming.HandoffReceipt,
                     ToolResultReference = incoming.ResultReference,
+                    ToolResultDiffFacts = incoming.DiffFacts,
                 };
             }
 
@@ -904,12 +906,27 @@ public static class ChatTimelineReducer
             ToolErrorTextQuality = incomingErrorQuality,
             HandoffReceipt = incoming.Status == ChatToolCallStatus.Success
                 ? incoming.HandoffReceipt ?? entry.HandoffReceipt : null,
+            ToolResultDiffFacts = incoming.Status == ChatToolCallStatus.Success
+                ? incoming.DiffFacts ?? entry.ToolResultDiffFacts : null,
             ToolResultReference = incoming.ResultReference ??
                 (incoming.Status == currentStatus && string.IsNullOrEmpty(incoming.Text) ? entry.ToolResultReference : null),
         };
     }
 
     static ChatPendingToolOutcome SelectToolOutcome(
+        ChatPendingToolOutcome existing,
+        ChatPendingToolOutcome incoming)
+    {
+        var selected = SelectPendingOutcome(existing, incoming);
+        var other = ReferenceEquals(selected, incoming) ? existing : incoming;
+        // A later duplicate success without result details must not discard earlier diff facts.
+        return selected is { Status: ChatToolCallStatus.Success, DiffFacts: null } &&
+            other is { Status: ChatToolCallStatus.Success, DiffFacts: { } facts }
+                ? selected with { DiffFacts = facts }
+                : selected;
+    }
+
+    static ChatPendingToolOutcome SelectPendingOutcome(
         ChatPendingToolOutcome existing,
         ChatPendingToolOutcome incoming)
     {

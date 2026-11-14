@@ -225,7 +225,7 @@
       "requestFields": ["sessionKey", "path"],
       "responseEnvelope": ["file"],
       "responseEnvelopeSource": "ParseSessionFileContent(JsonElement payload",
-      "itemFields": ["path", "name", "kind", "content", "size", "updatedAtMs", "missing"],
+      "itemFields": ["path", "name", "kind", "content", "size", "updatedAtMs", "missing", "contentEncoding", "previewKind"],
       "_itemFieldsNote": "Nested file fields parsed by ParseSessionFileContent; documentation-only."
     },
     {

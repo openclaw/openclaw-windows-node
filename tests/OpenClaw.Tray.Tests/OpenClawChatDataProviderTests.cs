@@ -327,6 +327,196 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         }
     }
 
+    [Fact]
+    public async Task ToolDiffFacts_SameWriteGivesTheSameCountsLiveAndAfterHistoryReload()
+    {
+        // An overwrite: the content has two lines, but the result says one line was replaced and one added.
+        const string details = """{"created":false,"diff":"-1 old\n+1 new\n+2 more"}""";
+        var live = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), ChatEventMapper.Map(MakeAgentEvent("tool",
+            """{"phase":"start","name":"write","toolCallId":"call","args":{"path":"a.txt","content":"new\nmore"}}""",
+            runId: "r")).Event!);
+        live = ChatTimelineReducer.Apply(live, ChatEventMapper.Map(MakeAgentEvent("tool",
+            $$$"""{"phase":"result","toolCallId":"call","result":{"content":[{"type":"text","text":"Wrote"}],"details":{{{details}}}}}""",
+            runId: "r")).Event!);
+        var liveCounts = ChatToolDiffStats.Resolve(Assert.Single(live.Entries));
+        Assert.Equal(new ChatToolDiffStat(2, 1), liveCounts);
+
+        using var json = JsonDocument.Parse($$$"""
+            {"sessionId":"session","messages":[
+              {"role":"assistant","__openclaw":{"id":"input","runId":"r"},
+               "content":[{"type":"toolCall","id":"call","name":"write","arguments":{"path":"a.txt","content":"new\nmore"}}]},
+              {"role":"toolResult","toolCallId":"call","toolName":"write","__openclaw":{"id":"result","runId":"r"},
+               "content":"Wrote","details":{{{details}}}}
+            ]}
+            """);
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(ParseHistoryPayload(json.RootElement));
+            bridge.IsConnected = true;
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+            var history = Assert.Single((await provider.LoadAsync()).Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+            Assert.Equal(liveCounts, ChatToolDiffStats.Resolve(history));
+        }
+    }
+
+    [Fact]
+    public void ToolDiffFacts_MergeKeepsTheCopyThatCarriedResultDetails()
+    {
+        var bare = new ChatTimelineItem("h", ChatTimelineItemKind.ToolCall, "", ToolName: "write",
+            ToolResult: ChatToolCallStatus.Success, ToolCallId: "call");
+        var detailed = bare with { Id = "l", ToolResultDiffFacts = new(2, 1) };
+        Assert.Equal(new ChatToolResultDiffFacts(2, 1), ChatHistoryState.KeepToolResultFacts(bare, detailed).ToolResultDiffFacts);
+        Assert.Same(detailed, ChatHistoryState.KeepToolResultFacts(detailed, bare));
+        Assert.Null(ChatHistoryState.KeepToolResultFacts(bare, detailed with { ToolCallId = "other" }).ToolResultDiffFacts);
+    }
+
+    [Fact]
+    public async Task WorkspaceFile_ForwardsRowIdentityAndClassifiesOutcomes()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            var request = new ChatWorkspaceFileRequest("main", "skills/SKILL.md");
+            Assert.Equal(ChatWorkspaceFileStatus.Stale, (await provider.LoadWorkspaceFileAsync(request, CancellationToken.None)).Status);
+            Assert.Empty(bridge.SessionFileReads);
+            bridge.IsConnected = true;
+            Assert.Equal(ChatWorkspaceFileStatus.Unsupported, (await provider.LoadWorkspaceFileAsync(request, CancellationToken.None)).Status);
+            bridge.SessionFileBehavior = (key, path, _) => Task.FromResult(new SessionFileContent { Key = key, Path = path, Content = "# Skill" });
+            Assert.Equal(new ChatWorkspaceFileResult(ChatWorkspaceFileStatus.Loaded, "# Skill"),
+                await provider.LoadWorkspaceFileAsync(request, CancellationToken.None));
+            bridge.SessionFileBehavior = (key, path, _) => Task.FromResult(new SessionFileContent { Key = key, Path = path, Missing = true });
+            Assert.Equal(ChatWorkspaceFileStatus.Missing, (await provider.LoadWorkspaceFileAsync(request, CancellationToken.None)).Status);
+            bridge.SessionFileBehavior = (_, _, _) => Task.FromException<SessionFileContent>(new InvalidOperationException("outside workspace"));
+            Assert.Equal(ChatWorkspaceFileStatus.Unavailable, (await provider.LoadWorkspaceFileAsync(request, CancellationToken.None)).Status);
+            Assert.All(bridge.SessionFileReads, read => Assert.Equal(("main", "skills/SKILL.md", 1L), read));
+        }
+    }
+
+    [Theory]
+    [InlineData(null, "utf8", null, "Loaded")]
+    [InlineData(null, "base64", "image", "NotPreviewable")]
+    [InlineData(null, null, "unsupported", "NotPreviewable")]
+    [InlineData("outside_session_boundary", null, null, "Unavailable")]
+    public void WorkspaceFile_ShowsOnlyUtf8TextAndMapsRefusedReads(
+        string? reason, string? encoding, string? preview, string expected)
+    {
+        var file = new SessionFileContent { Key = "main", Path = "a.png", Content = reason is null ? "iVBORw0KGgo=" : null,
+            Missing = reason is not null, Reason = reason, ContentEncoding = encoding, PreviewKind = preview };
+        Assert.Equal(expected, OpenClawChatDataProvider.ClassifyWorkspaceFile(file).Status.ToString());
+        // A file that exists but sent no content (too large) is not "missing".
+        Assert.Equal(ChatWorkspaceFileStatus.NotPreviewable, OpenClawChatDataProvider.ClassifyWorkspaceFile(
+            new SessionFileContent { Key = "main", Path = "big.log", Size = 50_000_000 }).Status);
+    }
+
+    [Fact]
+    public void WorkspaceFile_RedactsSecretsAndEscapesHiddenCharacters()
+    {
+        const string secret = "sk-live-0123456789abcdefghijklmnop";
+        var result = OpenClawChatDataProvider.ClassifyWorkspaceFile(new SessionFileContent
+        {
+            Key = "main", Path = ".env", ContentEncoding = "utf8", PreviewKind = "text",
+            Content = $"API_KEY={secret}\r\nPASSWORD=hunter2-example\nNAME=ok\u202Egnp.exe\tend\n" +
+                "-----BEGIN PRIVATE KEY-----\nMIIBVAIBADANBgkqhkiG9w0BAQEFAASC\n-----END PRIVATE KEY-----\nAFTER=visible\n",
+        });
+        Assert.Equal(ChatWorkspaceFileStatus.Loaded, result.Status);
+        var content = Assert.IsType<string>(result.Content);
+        Assert.DoesNotContain("MIIBVAIBADANBgkqhkiG9w0BAQEFAASC", content);
+        Assert.Contains("AFTER=visible", content);
+        Assert.DoesNotContain(secret, content);
+        Assert.DoesNotContain("hunter2-example", content);
+        Assert.DoesNotContain('\u202E', content);
+        Assert.Contains("\\u{202E}", content);
+        Assert.Contains("NAME=ok", content);
+        Assert.Contains("\tend\n", content);
+        Assert.DoesNotContain('\r', content);
+    }
+
+    [Fact]
+    public void WorkspaceFile_RedactsASecretWhoseHiddenNameAndValueSpanLines()
+    {
+        var result = OpenClawChatDataProvider.ClassifyWorkspaceFile(new SessionFileContent
+        {
+            Key = "main", Path = "config.json", ContentEncoding = "utf8", PreviewKind = "text",
+            Content = "{\n  \"pass\u200Bword\":\n    \"Hunter2-Example-Value-9876\",\n  \"name\": \"visible\"\n}",
+        });
+        var content = Assert.IsType<string>(result.Content);
+        Assert.DoesNotContain("Hunter2-Example-Value-9876", content);
+        Assert.Contains("\"name\": \"visible\"", content);
+    }
+
+    [Fact]
+    public void WorkspaceFile_BoundsTheTextShownInTheTab()
+    {
+        var result = OpenClawChatDataProvider.ClassifyWorkspaceFile(new SessionFileContent
+        {
+            Key = "main", Path = "big.log", ContentEncoding = "utf8", PreviewKind = "text",
+            Content = string.Join('\n', Enumerable.Repeat("plain log line", 20_000)),
+        });
+        var content = Assert.IsType<string>(result.Content);
+        Assert.True(content.Length <= OpenClawChatDataProvider.MaxWorkspaceFileDisplayChars + 32, content.Length.ToString());
+        Assert.StartsWith("plain log line\n", content);
+        Assert.EndsWith(OpenClaw.Shared.ExecApprovals.ExecApprovalCommandDisplaySanitizer.TruncationMarker, content);
+    }
+
+    [Fact]
+    public void WorkspaceFile_CuttingALongFileNeverShowsHalfAKey()
+    {
+        // The key starts just before the input limit, so its END line is cut off.
+        var padding = string.Join('\n', Enumerable.Repeat(new string('x', 99), 2620));
+        var content = padding + "\n-----BEGIN PRIVATE KEY-----\nMIIBVAIBADANBgkqhkiG9w0BAQEFAASC\n" +
+            string.Join('\n', Enumerable.Repeat("AT4wggE6AgEAAkEAq7BFUpkGp3LQmlQ", 400)) + "\n-----END PRIVATE KEY-----\n";
+        var shown = OpenClaw.Shared.ExecApprovals.ExecApprovalCommandDisplaySanitizer.SanitizeDocumentText(content, int.MaxValue);
+        Assert.DoesNotContain("MIIBVAIBADANBgkqhkiG9w0BAQEFAASC", shown);
+        Assert.DoesNotContain("AT4wggE6AgEAAkEAq7BFUpkGp3LQmlQ", shown);
+    }
+
+    [Fact]
+    public async Task WorkspaceFile_PassesCancellationToTheBridgeAndHandshakePendingIsRetryable()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.IsConnected = true;
+            CancellationToken observed = default;
+            var blocked = new TaskCompletionSource<SessionFileContent>(TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.SessionFileBehavior = (_, _, token) =>
+            {
+                observed = token;
+                token.Register(() => blocked.TrySetCanceled(token));
+                return blocked.Task;
+            };
+            using var cancellation = new CancellationTokenSource();
+            var pending = provider.LoadWorkspaceFileAsync(new("main", "a.txt"), cancellation.Token);
+            cancellation.Cancel();
+            Assert.True(observed.IsCancellationRequested);
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
+
+            bridge.SessionFileBehavior = (_, _, _) => Task.FromException<SessionFileContent>(
+                new InvalidOperationException("Gateway handshake has not completed; refusing to send 'sessions.files.get'"));
+            Assert.Equal(ChatWorkspaceFileStatus.Unavailable,
+                (await provider.LoadWorkspaceFileAsync(new("main", "a.txt"), CancellationToken.None)).Status);
+        }
+    }
+
+    [Fact]
+    public async Task WorkspaceFile_ReconnectDuringReadDiscardsTheOldConnectionsContent()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.IsConnected = true;
+            var response = new TaskCompletionSource<SessionFileContent>(TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.SessionFileBehavior = (_, _, _) => response.Task;
+            var pending = provider.LoadWorkspaceFileAsync(new("main", "a.txt"), CancellationToken.None);
+            bridge.ChatMessageReadConnectionEpoch = 2;
+            response.SetResult(new SessionFileContent { Key = "main", Path = "a.txt", Content = "old connection" });
+            Assert.Equal(new ChatWorkspaceFileResult(ChatWorkspaceFileStatus.Stale), await pending);
+        }
+    }
+
     private sealed class ChatActivityCollector : IDisposable
     {
         private readonly ActivityListener _listener;
@@ -406,6 +596,15 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         public Func<ChatHistoryPageRequest, Task<ChatHistoryInfo>>? OlderHistoryBehavior { get; set; }
         public List<ChatHistoryPageRequest> OlderHistoryRequests { get; } = [];
         public long? ChatMessageReadConnectionEpoch { get; set; } = 1;
+        public Func<string, string, CancellationToken, Task<SessionFileContent>>? SessionFileBehavior { get; set; }
+        public List<(string Key, string Path, long Epoch)> SessionFileReads { get; } = [];
+        public Task<SessionFileContent> GetSessionFileAsync(
+            string sessionKey, string path, long expectedConnectionEpoch, CancellationToken cancellationToken)
+        {
+            SessionFileReads.Add((sessionKey, path, expectedConnectionEpoch));
+            return SessionFileBehavior?.Invoke(sessionKey, path, cancellationToken) ??
+                Task.FromResult(new SessionFileContent { Key = sessionKey, Path = path, IsSupported = false });
+        }
         public Func<CancellationToken, Task<ChatMessageReadResult>>? MessageReadBehavior { get; set; }
         public List<(string Key, string Session, string Message, int MaxChars, long Epoch)> MessageReads { get; } = [];
         public Task<ChatMessageReadResult> RequestChatMessageAsync(
