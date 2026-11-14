@@ -2181,7 +2181,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             using var submittedConfig = JsonDocument.Parse(raw);
             var staleBaseHash = ConfigPatchResult.IsStaleBaseHashError(
                 SanitizeConfigPatchError(ex.Message, submittedConfig.RootElement));
-            _logger.Warn($"config.patch failed ({ex.GetType().Name}); staleBaseHash={staleBaseHash}");
+            var code = GatewayRequestErrors.Code(ex) is { } gatewayCode ? $" code={gatewayCode}" : "";
+            _logger.Warn($"config.patch failed ({ex.GetType().Name}{code}); staleBaseHash={staleBaseHash}");
             return new ConfigPatchResult
             {
                 Ok = false,
