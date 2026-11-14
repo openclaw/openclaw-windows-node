@@ -888,6 +888,32 @@ supervision. Reconnect verifies package/agent listener identity again rather
 than adopting an unrelated port. Failed/cancelled setup
 must not publish an unverified Gateway record.
 
+Focused `CompleteVerifiedAsync` retains isolated ownership through its explicit
+restart and replaces the separate CLI health connection with `health {}` on
+`NativeGatewaySetupConnection`. After the runtime-owned restart, per-handshake
+provenance checks, typed startup retries and health share the remaining admission
+budget. Restart retains its existing bound and outer completion deadline. Exact-model
+verification keeps its existing bound and must use the same authenticated
+generation as health; reconciliation cannot replace that generation before
+publication. Configuration, selected model, agent, session and signing identity
+checks remain mandatory, without automatic pairing or credential recovery.
+
+Only a successful registry publication releases a focused isolated runtime for
+adoption. An observation timeout or cancellation leaves that runtime with the
+session until explicit disposal, rather than stopping it as a side effect of a
+failed readiness wait. Typed inspection-unavailable failures retain that same
+uncertainty through handshake authorization. Confirmed terminal failures still
+use the runtime's owned cleanup.
+Once focused finalization is admitted, another call cannot repeat capabilities,
+configuration or restart mutations; a published call is an idempotent read.
+Failed finalization ends its admission operation so explicit Local AI withdrawal
+on Back/Close can establish a separate bounded connection without replaying it.
+Runtime-internal launch rollback and pre-existing-service cleanup rules are
+unchanged. The connection regression covers startup past ten seconds, remaining
+deadline, cancellation, terminal auth/provenance rejection and generation drift.
+Installed producer mapping and fixture/live-proof limits are documented in
+[native startup and completion deadlines](ONBOARDING_WIZARD.md#native-startup-and-completion-deadlines).
+
 ### Removal and remaining boundaries
 
 Disconnect stops a Gateway that Companion started, but preserves its data;

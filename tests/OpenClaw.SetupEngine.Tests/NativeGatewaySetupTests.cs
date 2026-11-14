@@ -1256,6 +1256,7 @@ public sealed class NativeGatewaySetupTests
             new(Provenance, new Uri(record.Url).Port);
 
         public GatewayEndpointProvenanceKind Provenance { get; set; } = GatewayEndpointProvenanceKind.ExpectedManagedGateway;
+        public GatewayEndpointProvenanceFailureReason InspectionFailureReason { get; set; }
         public Action Stop { get; set; } = () => { };
         public Func<Task> StopConnections { get; set; } = () => Task.CompletedTask;
         public Func<Task> DisposeRuntime { get; set; } = () => Task.CompletedTask;
@@ -1281,7 +1282,8 @@ public sealed class NativeGatewaySetupTests
         public Task<GatewayEndpointProvenance> InspectAsync(GatewayRecord record, CancellationToken cancellationToken)
         {
             events.Add("inspect");
-            return Task.FromResult(new GatewayEndpointProvenance(Provenance, new Uri(record.Url).Port));
+            return Task.FromResult(new GatewayEndpointProvenance(
+                Provenance, new Uri(record.Url).Port, FailureReason: InspectionFailureReason));
         }
         public ValueTask DisposeAsync()
         {
