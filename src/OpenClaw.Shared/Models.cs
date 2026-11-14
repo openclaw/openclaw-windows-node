@@ -1958,6 +1958,8 @@ public class ChatToolContentInfo
     public bool IsError { get; set; }
     public ChatToolHandoffInput? HandoffInput { get; set; }
     public ChatToolHandoffReceipt? HandoffReceipt { get; set; }
+    /// <summary>Line-count facts from the result's <c>details</c>, when it carried them.</summary>
+    public ChatToolResultDiffFacts? ResultDiffFacts { get; set; }
 }
 
 public enum ChatMessageContentPartKind

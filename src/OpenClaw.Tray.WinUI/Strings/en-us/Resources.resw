@@ -10145,6 +10145,18 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Remote Gateway connected</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Verified for this setup</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Open details beside chat</value></data>
+  <data name="Chat_Tool_OpenFile" xml:space="preserve"><value>Open file {0}</value></data>
+  <data name="Chat_Tool_OpenSubagent" xml:space="preserve"><value>Open subagent {0}</value></data>
+  <data name="Chat_Tool_DiffStat" xml:space="preserve"><value>{0} lines added, {1} lines removed</value></data>
+  <data name="Chat_Panel_File" xml:space="preserve"><value>File</value></data>
+  <data name="Chat_File_Loading" xml:space="preserve"><value>Loading file…</value></data>
+  <data name="Chat_File_Empty" xml:space="preserve"><value>This file is empty.</value></data>
+  <data name="Chat_File_Missing" xml:space="preserve"><value>This file no longer exists.</value></data>
+  <data name="Chat_File_NotPreviewable" xml:space="preserve"><value>This file can't be shown as text. It may be an image, a binary file or too large.</value></data>
+  <data name="Chat_File_Unavailable" xml:space="preserve"><value>Couldn't load this file. It may be outside the session workspace or too large.</value></data>
+  <data name="Chat_File_Unsupported" xml:space="preserve"><value>This Gateway can't open workspace files.</value></data>
+  <data name="Chat_File_Stale" xml:space="preserve"><value>The connection changed before the file loaded.</value></data>
+  <data name="Chat_File_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Tool details</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>These details are no longer available. Reconnect if needed, then reopen the tool from the current conversation.</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>Resize conversation panel</value></data>

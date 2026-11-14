@@ -7,7 +7,11 @@ namespace OpenClawTray.Chat;
 
 public sealed record ChatRunProgressPresentation(
     DateTimeOffset? StartedAt, DateTimeOffset? EndedAt, string Label, bool Active, bool Waiting,
-    long? OutputTokens = null, DateTimeOffset? RetryAt = null);
+    long? OutputTokens = null, DateTimeOffset? RetryAt = null)
+{
+    /// <summary>A yielded parent may still be waiting for work, even though its own turn is inactive.</summary>
+    public bool IsInProgress => Active || Waiting;
+}
 
 internal static class ChatRunProgressProjection
 {

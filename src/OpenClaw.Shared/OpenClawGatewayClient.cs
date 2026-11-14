@@ -784,6 +784,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     private const int ChatMessageReadTimeoutMs = 15000;
+    private const int SessionFileReadTimeoutMs = 15000;
+    private const string SessionFileReadTimeoutEnvironmentVariable = "OPENCLAW_SESSION_FILE_READ_TIMEOUT_MS";
     // Wire-schema ceiling only. Callers retain their own, smaller display budget.
     private const int ChatMessageReadMaxChars = 8_000_000;
 
@@ -1309,6 +1311,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                             ReadNullableBoolean(item, "isError", "is_error")
                                 ?? ReadBoolean(message, "isError", "is_error"))
                         : null,
+                    ResultDiffFacts = kind == ChatToolContentKind.Result
+                        ? ChatToolResultDiffFacts.Read(item)
+                        : null,
                 });
             }
         }
@@ -1341,6 +1346,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 Text = messageText,
                 IsError = ReadBoolean(message, "isError", "is_error"),
                 HandoffReceipt = fallbackHandoff,
+                ResultDiffFacts = ChatToolResultDiffFacts.Read(message),
             });
         }
 
@@ -3443,7 +3449,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         if (!root.TryGetProperty("error", out var error) || error.ValueKind != JsonValueKind.Object)
             return null;
-        return TryGetErrorDetailString(error, "code");
+        // Session-file errors name their kind in details.type; only allow-listed values are kept.
+        return TryGetErrorDetailString(error, "code") ?? TryGetErrorDetailString(error, "type");
     }
 
     // Top-level error.code (distinct from the nested error.details.code). A gateway may deliver a
@@ -5389,6 +5396,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (item.TryGetProperty("hasActiveSubagentRun", out var hasActiveSubagentRun))
             session.HasActiveSubagentRun = hasActiveSubagentRun.ValueKind is JsonValueKind.True or JsonValueKind.False
                 ? hasActiveSubagentRun.GetBoolean() : null;
+        else if (authoritativeSessionList)
+            // The Gateway omits this field once no children are active. Sparse events still preserve it.
+            session.HasActiveSubagentRun = null;
         if (item.TryGetProperty("providerReview", out var review))
             session.ProviderReview = ParseProviderReview(review);
         else if (authoritativeSessionList)
