@@ -112,7 +112,9 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
         _search.PlaceholderText = props.EnvironmentPicker
             ? Localized("Chat_Placement_SearchDevices", "Search environments")
             : browsing ? Localized("Chat_Placement_Path", "Enter a folder path")
-                : Localized("Chat_Placement_SearchProjects", "Search projects or paste a Git URL");
+                : state.Catalog?.CanAddRepository != false
+                    ? Localized("Chat_Placement_SearchProjects", "Search projects or paste a Git URL")
+                    : Localized("Chat_Placement_Projects", "Projects");
         AutomationProperties.SetAutomationId(_search, props.EnvironmentPicker ? "ChatEnvironmentSearch" : "ChatWorkspaceSearch");
         AutomationProperties.SetName(_search, _search.PlaceholderText);
         AutomationProperties.SetAutomationId(_list, props.EnvironmentPicker ? "ChatEnvironmentList" : "ChatWorkspaceList");
@@ -124,7 +126,8 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
             _search.Text = browsing ? state.Directory?.Path ?? "" : "";
             _updatingSearch = false;
         }
-        _browse.Visibility = !props.EnvironmentPicker && !browsing ? Visibility.Visible : Visibility.Collapsed;
+        _browse.Visibility = !props.EnvironmentPicker && !browsing && state.Catalog?.CanBrowseFolders == true
+            ? Visibility.Visible : Visibility.Collapsed;
         _up.Visibility = _useFolder.Visibility = _back.Visibility = browsing ? Visibility.Visible : Visibility.Collapsed;
         _up.IsEnabled = props.Controller.CanEdit && !state.BrowsingLoading && state.Directory?.Parent is not null;
         _useFolder.IsEnabled = browsing && props.Controller.CanEdit && !state.BrowsingLoading &&
@@ -173,7 +176,8 @@ internal sealed class NativeChatPlacementPicker : Control, IDisposable
                     workspace.Path ?? "", true, workspace)).ToArray();
         }
         _list.ItemsSource = _rows;
-        _repository.Visibility = !_props.EnvironmentPicker && !_state.Browsing && ChatPlacementController.IsGitUrl(query)
+        _repository.Visibility = !_props.EnvironmentPicker && !_state.Browsing &&
+            _state.Catalog?.CanAddRepository == true && ChatPlacementController.IsGitUrl(query)
             ? Visibility.Visible : Visibility.Collapsed;
         _repository.IsEnabled = _props.Controller.CanEdit && !_state.Loading;
         ToolTipService.SetToolTip(_repository, query);

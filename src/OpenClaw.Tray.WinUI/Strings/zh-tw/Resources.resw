@@ -2824,7 +2824,7 @@
     <value>歡迎使用 OpenClaw</value>
   </data>
   <data name="Chat_ZeroState_WelcomeSubtitle" xml:space="preserve">
-    <value>選擇此工作階段的執行位置，再說明要做什麼。</value>
+    <value>說說你想做什麼。</value>
   </data>
   <data name="Chat_Status_Done" xml:space="preserve">
     <value>完成</value>

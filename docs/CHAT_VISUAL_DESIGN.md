@@ -846,28 +846,44 @@ selected agent's image and emoji, with no new request or copied identity.
 
 Welcome guidance, the Recent chats label, and the four starter prompts are
 bundled in the app's native `.resw` resources for all six supported languages.
-They match the current web welcome copy, but Windows owns its presentation and
-updates the strings with the app. No welcome RPC, catalog download, or Gateway
-upgrade is required. Clicking a suggestion sends its displayed text through the
-normal chat send path. Copy uses the app's startup UI language and the existing
+Windows owns this presentation and updates the strings with the app. Guidance
+invites a first message without requiring a location choice. No welcome RPC,
+catalog download, or Gateway upgrade is required. Clicking a suggestion sends
+its displayed text through the normal chat send path. Copy uses the app's startup UI language and the existing
 Windows resource fallback, independently of the connected Gateway version.
 
-An authoritative empty chat also shows **Environment** and **Workspace** pickers
-above the writing surface. They use the same native toolbar chrome and searchable,
-single-selection flyouts as the model picker. Labels shrink at narrow widths;
+An authoritative empty chat also shows **Environment** and **Workspace** locations
+above the writing surface. A single supported target is a quiet, noninteractive
+label, not a selector with nothing to change. Registered targets or supported
+folder/repository actions expose the same native toolbar chrome and searchable, single-selection flyouts as the model
+picker. An unavailable explicit environment retains a picker when a usable
+replacement exists; it is never silently redirected. Labels shrink at narrow widths;
 native selection, disabled reasons, keyboard focus, and system theme resources
 remain intact, with computer and folder glyphs on the environment/workspace triggers and their
 native menu rows. These decorative glyphs use `FluentIconCatalog` and do not replace
 the controls' accessible names. The workspace picker offers the agent's default workspace,
-registered projects, explicit Git URLs, and Gateway-side folder browsing. It never
+registered projects, explicit Git URLs, and Gateway-side folder browsing. An
+explicit Gateway method advertisement gates folder and repository actions; an
+older Gateway without an advertisement retains the existing discovery workflow. It never
 interprets a Gateway path as a folder on the Companion machine.
 
 An existing session's current location is not inferred from the agent's default
-workspace. Until there is explicit local selection intent, its picker labels show
-**Not verified**, with no selected flyout row. Sending without changing a picker
-preserves the existing session location. Explicitly choosing even the displayed
-default creates placement intent and runs preparation before sending. Genuinely
-new compose-only targets may show the agent defaults.
+workspace. The placement client reads the exact session through `sessions.describe`.
+For a local session with no persisted execution path, `sessions.files.list` can
+supply the resolved workspace root. That multi-request read requires a session
+ID and rechecks the same incarnation and local placement before publication.
+Gateway paths remain literal; they are not inspected on the Companion machine.
+The full workspace path is available in the location's tooltip and accessible help,
+and single-workspace labels show the path directly.
+
+If the Gateway cannot establish the location, including unsupported reads,
+redacted paths or a remote session, labels remain **Not verified**, with no
+selected flyout row. The available location catalog and unchanged send behavior
+remain usable. Reading a location creates no placement intent. Explicitly choosing
+an unverified or different target creates intent and runs preparation before
+sending; choosing an already verified target is a no-op. Genuinely new compose-only
+targets may show the agent defaults. Materialization and reentry into freshly
+empty history invalidate a previous read rather than reusing its location.
 
 `ChatPlacementController` owns each mounted host's local selection and cancellation
 scope. Discovery and selection are read-only. On first send, `GatewayChatPlacementClient`
