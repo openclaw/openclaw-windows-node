@@ -1260,6 +1260,58 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         Publish(_state.Snapshot(ProjectionContext()));
     }
 
+    /// <summary>
+    /// Reads a tool row's workspace file once on the current connection. The result is discarded as stale when
+    /// the connection changes; there is no automatic retry. Text is secret-redacted and escaped for display.
+    /// </summary>
+    internal async Task<ChatWorkspaceFileResult> LoadWorkspaceFileAsync(
+        ChatWorkspaceFileRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var epoch = _bridge.ChatMessageReadConnectionEpoch;
+        bool Current() => !_state.IsDisposed && _bridge.IsConnected && _bridge.ChatMessageReadConnectionEpoch == epoch;
+        if (epoch is not { } expectedEpoch || !Current())
+            return new(ChatWorkspaceFileStatus.Stale);
+        SessionFileContent file;
+        try
+        {
+            file = await _bridge.GetSessionFileAsync(request.SessionKey, request.Path, expectedEpoch, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Missing, too-large and refused files, timeouts and a pending handshake all allow a manual retry.
+            Logger.Warn($"[ChatProvider] sessions.files.get failed: {ex.GetType().Name}");
+            return new(Current() ? ChatWorkspaceFileStatus.Unavailable : ChatWorkspaceFileStatus.Stale);
+        }
+        if (!Current())
+            return new(ChatWorkspaceFileStatus.Stale);
+        return ClassifyWorkspaceFile(file);
+    }
+
+    internal static ChatWorkspaceFileResult ClassifyWorkspaceFile(SessionFileContent file)
+    {
+        // Only a Gateway that rejected the method is unsupported; anything else may succeed on retry.
+        if (!file.IsSupported)
+            return new(ChatWorkspaceFileStatus.Unsupported);
+        if (file.Reason is { Length: > 0 })
+            return new(ChatWorkspaceFileStatus.Unavailable);
+        if (file.Missing)
+            return new(ChatWorkspaceFileStatus.Missing);
+        if (file.Content is not { } content || file.PreviewKind is { } kind && kind != "text" ||
+            file.ContentEncoding is { } encoding && encoding != "utf8")
+            return new(ChatWorkspaceFileStatus.NotPreviewable);
+        return new(ChatWorkspaceFileStatus.Loaded,
+            OpenClaw.Shared.ExecApprovals.ExecApprovalCommandDisplaySanitizer.SanitizeDocumentText(content, MaxWorkspaceFileDisplayChars));
+    }
+
+    // The File tab shows text in one selectable TextBlock laid out on the UI thread; keep it small enough to stay responsive.
+    internal const int MaxWorkspaceFileDisplayChars = 64 * 1024;
+
     public async Task<ChatToolOutputResult> LoadToolOutputAsync(
         ChatToolOutputRequest request, CancellationToken cancellationToken)
     {

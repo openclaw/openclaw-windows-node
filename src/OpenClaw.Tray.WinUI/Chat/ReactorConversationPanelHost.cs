@@ -18,7 +18,8 @@ namespace OpenClawTray.Chat;
 internal sealed record ReactorConversationPanelHostProps(
     Element Conversation, ChatConversationPanelState State, Action<bool>? ConversationVisibilityChanged = null,
     ChatTimelinePresentationContext? Timeline = null, Element? Subagents = null,
-    DashboardsPageState? Dashboards = null, Element? Files = null);
+    DashboardsPageState? Dashboards = null, Element? Files = null,
+    Func<ChatWorkspaceFileRequest, CancellationToken, Task<ChatWorkspaceFileResult>>? LoadWorkspaceFile = null);
 
 /// <summary>Applies native tab selection, split sizing, compact presentation and focus.</summary>
 internal sealed class ReactorConversationPanelHost : Component<ReactorConversationPanelHostProps>
@@ -74,7 +75,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         var tabStrip = TabView((int?)Array.IndexOf(tabs, selected), index =>
             {
                 if (index >= 0 && index < tabs.Length) state.Select(tabs[index]);
-            }, tabs.Select(tab => Tab(TabTitle(tab), Empty()) with { IsClosable = true }).ToArray())
+            }, tabs.Select(tab => Tab(TabTitle(tab, state), Empty()) with { IsClosable = true }).ToArray())
             .IsAddTabButtonVisible(false)
             .CanDragTabs(false).CanReorderTabs(false)
             .TabWidthMode(TabViewWidthMode.SizeToContent)
@@ -97,6 +98,9 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     ChatConversationPanelState.SubagentsSlot => Props.Subagents ?? Empty(),
                     ChatConversationPanelState.DashboardSlot => DashboardBody(state.Dashboard, Props.Dashboards),
                     ChatConversationPanelState.FilesSlot => Props.Files ?? Empty(),
+                    ChatConversationPanelState.FileSlot => state.File is { } file
+                        ? Component<ReactorChatWorkspaceFile, ReactorChatWorkspaceFileProps>(new(file, Props.LoadWorkspaceFile))
+                        : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16),
                     _ => state.Details is { } request && state.Resolve(request) is { } entry
                         ? ToolCallCardRenderer.BuildPanelDetails(
                             Props.Timeline ?? new(request.SessionKey, [], false, null), entry)
@@ -106,6 +110,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 {
                     ChatConversationPanelState.DetailsSlot => state.Details?.ToString() ?? slot,
                     ChatConversationPanelState.DashboardSlot => slot + ":" + state.Dashboard?.SessionKey,
+                    ChatConversationPanelState.FileSlot => state.FileBodyKey ?? slot,
                     _ => slot,
                 })
                 .IsVisible(slot == selected))
@@ -178,11 +183,13 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
 
     private static string Text(string name) => LocalizationHelper.GetString("Chat_Panel_" + name);
 
-    private static string TabTitle(string slot) => slot switch
+    private static string TabTitle(string slot, ChatConversationPanelState state) => slot switch
     {
         ChatConversationPanelState.SubagentsSlot => LocalizationHelper.GetString("Chat_Subagents_Title"),
         ChatConversationPanelState.DashboardSlot => Text("Dashboard"),
         ChatConversationPanelState.FilesSlot => LocalizationHelper.GetString("Chat_Files_Title"),
+        ChatConversationPanelState.FileSlot => state.File is { } file &&
+            NativeToolProjector.SanitizeToolDisplayValue(file.Name) is { Length: > 0 } name ? name : Text("File"),
         _ => Text("Details"),
     };
 

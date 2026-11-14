@@ -1675,8 +1675,10 @@ foreach ($lane in $e2eLanes.GetEnumerator()) {
             -Message "E2E lane '$($lane.Key)' is missing '$token'."
     }
     $jobHeader = ($job -split '(?m)^    steps:\s*$', 2)[0]
-    Assert-Contains -Text $jobHeader -Expected 'timeout-minutes: 25' `
-        -Message "E2E lane '$($lane.Key)' must leave a stalled job bounded to 25 minutes."
+    # Setup steps before the 20-minute test step take up to about 5 minutes; the runner's own wall
+    # deadline, cleanup and the always() upload must all fit before the job limit.
+    Assert-Contains -Text $jobHeader -Expected 'timeout-minutes: 30' `
+        -Message "E2E lane '$($lane.Key)' must leave room after its test step for the always() upload and bound a stalled job to 30 minutes."
     $testStep = Get-StepBlock -Text $job -Name $lane.Value.Step
     Assert-Contains -Text $testStep -Expected 'timeout-minutes: 20' `
         -Message "E2E lane '$($lane.Key)' must stop stalled tests before the job deadline."
@@ -2255,11 +2257,11 @@ try {
 
     $e2eHarness = Join-Path $tempRoot 'e2e-runner-harness.ps1'
     Set-Content -LiteralPath $e2eHarness -Value @'
-param([string]$Runner, [string]$Root, [int]$Timeout, [int]$TestExit, [string]$Name, [switch]$Override, [int]$Budget)
+param([string]$Runner, [string]$Root, [int]$Timeout, [int]$TestExit, [string]$Name, [switch]$Override, [int]$Budget, [string]$Reserve)
 $ErrorActionPreference = 'Stop'
 Set-Location $Root
 function Invoke-FakeCiProcess {
-    param($FilePath, $ArgumentList, $IdleTimeoutSeconds, $OutputPath)
+    param($FilePath, $ArgumentList, $IdleTimeoutSeconds, $OutputPath, $WallTimeoutSeconds = 0)
     Set-Content -LiteralPath 'dotnet-called.txt' -Value 'called'
     $values = @($ArgumentList)
     if ($FilePath -cne 'dotnet' -or $IdleTimeoutSeconds -ne $Timeout -or
@@ -2273,6 +2275,12 @@ function Invoke-FakeCiProcess {
     if ($index -lt 0 -or $values[$index + 1] -cne 'Sentinel.Filter') {
         throw 'Unexpected E2E filter.'
     }
+    $session = @($values | Where-Object { $_ -like 'RunConfiguration.TestSessionTimeout=*' })
+    $sessionMilliseconds = if ($session.Count -eq 1) { [long]$session[0].Substring('RunConfiguration.TestSessionTimeout='.Length) } else { 0 }
+    if ($session.Count -eq 1 -and $values[-2] -cne '--') {
+        throw 'The VSTest session timeout must be the trailing run setting.'
+    }
+    Set-Content -LiteralPath 'deadlines.txt' -Value "$WallTimeoutSeconds;$sessionMilliseconds"
     if ($TestExit -eq 0) {
         $directory = $values[[Array]::IndexOf($values, '--results-directory') + 1]
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
@@ -2289,6 +2297,7 @@ $parameters = @{ Name = $Name; Filter = 'Sentinel.Filter' }
 if ($Override) { $parameters.HangTimeoutSeconds = $Timeout }
 # CI passes the budget in the step environment, never as a runner argument.
 if ($Budget) { $env:OPENCLAW_CI_STEP_TIMEOUT_MINUTES = [string]$Budget } else { Remove-Item Env:OPENCLAW_CI_STEP_TIMEOUT_MINUTES -ErrorAction SilentlyContinue }
+if ($Reserve) { $env:OPENCLAW_CI_E2E_STOP_RESERVE_SECONDS = $Reserve } else { Remove-Item Env:OPENCLAW_CI_E2E_STOP_RESERVE_SECONDS -ErrorAction SilentlyContinue }
 & (Join-Path $Root 'Invoke-CiE2e.ps1') @parameters
 exit $LASTEXITCODE
 '@
@@ -2298,8 +2307,13 @@ exit $LASTEXITCODE
         @{ Id = 'override'; Timeout = 2; TestExit = 0; ExpectedExit = 0; Override = $true },
         @{ Id = 'invalid'; Timeout = 0; TestExit = 0; ExpectedExit = 1; Override = $true },
         @{ Id = 'failed'; Timeout = 600; TestExit = 9; ExpectedExit = 9 },
-        @{ Id = 'budget'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 20 },
-        @{ Id = 'budget-failed'; Timeout = 600; TestExit = 9; ExpectedExit = 9; Budget = 20 },
+        @{ Id = 'budget'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 20; Session = 1020; Wall = 1110 },
+        @{ Id = 'budget-reserve'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 20; Reserve = '300'; Session = 900; Wall = 1050 },
+        @{ Id = 'budget-minimum-reserve'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 20; Reserve = '120'; Session = 1080; Wall = 1140 },
+        @{ Id = 'budget-reserve-too-small'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 20; Reserve = '60'; Session = 1020; Wall = 1110 },
+        @{ Id = 'budget-invalid-reserve'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 20; Reserve = '5'; Session = 1020; Wall = 1110 },
+        @{ Id = 'budget-too-small'; Timeout = 600; TestExit = 0; ExpectedExit = 0; Budget = 4; Reserve = '200'; Session = 0; Wall = 0 },
+        @{ Id = 'budget-failed'; Timeout = 600; TestExit = 9; ExpectedExit = 9; Budget = 20; Session = 1020; Wall = 1110 },
         @{ Id = 'missing-proof'; Timeout = 600; TestExit = 0; ExpectedExit = 1; Name = 'setup-connect' }
     )
     foreach ($case in $e2eRunnerCases) {
@@ -2309,6 +2323,7 @@ exit $LASTEXITCODE
             '-TestExit', $case.TestExit, '-Name', $(if ($case.ContainsKey('Name')) { $case.Name } else { 'network-recovery' }))
         if ($case.ContainsKey('Override')) { $caseArguments += '-Override' }
         if ($case.ContainsKey('Budget')) { $caseArguments += @('-Budget', $case.Budget) }
+        if ($case.ContainsKey('Reserve')) { $caseArguments += @('-Reserve', $case.Reserve) }
         $previousPreference = $ErrorActionPreference
         try {
             $ErrorActionPreference = 'Continue'
@@ -2324,9 +2339,24 @@ exit $LASTEXITCODE
         if ($case.Id -eq 'missing-proof' -and ($output -join "`n") -notmatch 'did not report the MXC proof') {
             throw "E2E hang protection must preserve required proof assertions: $output"
         }
-        $budgetReported = ($output -join "`n") -match "CI step budget: E2E shard 'network-recovery' used \d+\.\d of 20 minutes \(\d+%\)"
+        $budgetMinutes = if ($case.ContainsKey('Budget')) { $case.Budget } else { 20 }
+        $budgetReported = ($output -join "`n") -match "CI step budget: E2E shard 'network-recovery' used \d+\.\d of $budgetMinutes minutes \(\d+%\)"
         if ($budgetReported -ne $case.ContainsKey('Budget')) {
             throw "E2E runner case '$($case.Id)' must report its step budget only when one is passed, including on failure: $output"
+        }
+        $deadlines = Join-Path $caseRoot 'deadlines.txt'
+        if (Test-Path -LiteralPath $deadlines) {
+            $wallSeconds, $sessionMilliseconds = ([IO.File]::ReadAllText($deadlines).Trim() -split ';') | ForEach-Object { [long]$_ }
+            $expectedWall = if ($case.ContainsKey('Wall')) { $case.Wall } else { 0 }
+            $expectedSession = if ($case.ContainsKey('Session')) { $case.Session } else { 0 }
+            # The runner subtracts its own elapsed startup (under a few seconds here) from the budget;
+            # a disabled deadline must be exactly zero.
+            $wallMismatch = if ($expectedWall -eq 0) { $wallSeconds -ne 0 } else { [Math]::Abs($wallSeconds - $expectedWall) -gt 5 }
+            $sessionMismatch = if ($expectedSession -eq 0) { $sessionMilliseconds -ne 0 } else { [Math]::Abs($sessionMilliseconds / 1000 - $expectedSession) -gt 5 }
+            if ($wallMismatch -or $sessionMismatch -or
+                ($expectedWall -gt 0 -and ($sessionMilliseconds / 1000 -ge $wallSeconds -or $wallSeconds -gt $case.Budget * 60 - 60))) {
+                throw "E2E runner case '$($case.Id)' must end the run before its step limit: wall $wallSeconds s, session $sessionMilliseconds ms. $output"
+            }
         }
     }
     Write-Host "E2E runner hang-guard contracts passed: $($e2eRunnerCases.Count) cases."

@@ -727,8 +727,13 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         };
         await WithChatAsync(800, async (surface, _, session, provider) =>
         {
-            await Task.Delay(1000);
-            await SettleAsync();
+            // An empty conversation shows its placement pickers, and allows editing, only after the
+            // chat root's settle delay, so wait for that state instead of a fixed delay.
+            await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+                () => session.Placement!.CanEdit && FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is not null,
+                "editable placement row in the empty conversation",
+                () => $"CanEdit: {session.Placement!.CanEdit}; environment picker: " +
+                    (FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is null ? "absent" : "present")));
             Task<bool>? sending = null;
             await ui.RunOnUIAsync(() =>
             {
@@ -744,7 +749,19 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             gateway.PrepareCompletion.SetResult();
             Assert.False(await sending!);
             await ui.RunOnUIAsync(() => { Assert.True(session.Controller.TrySelectSession("proof")); });
-            await Task.Delay(1000);
+            // Wait for the restored row rather than a fixed delay.
+            await ui.RunOnUIAsync(() => TestSupport.WaitForRenderedConditionAsync(
+                () => FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is { } environment &&
+                    AutomationProperties.GetName(environment).Contains("Windows host") &&
+                    FindControlOrNull<Button>(surface, "ChatWorkspacePicker") is { } workspace &&
+                    AutomationProperties.GetName(workspace).Contains("Repository") &&
+                    FindControlOrNull<TextBlock>(surface, "ChatPlacementError") is { } error &&
+                    error.Text.Contains("may have changed"),
+                "restored placement row after returning to the interrupted session",
+                () => $"environment: {(FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is { } e ? AutomationProperties.GetName(e) : "absent")}; " +
+                    $"workspace: {(FindControlOrNull<Button>(surface, "ChatWorkspacePicker") is { } w ? AutomationProperties.GetName(w) : "absent")}; " +
+                    $"error: {FindControlOrNull<TextBlock>(surface, "ChatPlacementError")?.Text ?? "absent"}"));
+            // Let the restored row finish layout before the checks and the visual proof capture.
             await SettleAsync();
             await ui.RunOnUIAsync(() =>
             {
@@ -3817,6 +3834,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
     private static T FindControl<T>(DependencyObject root, string id) where T : FrameworkElement =>
         Assert.Single(FindDescendants<T>(root), control => AutomationProperties.GetAutomationId(control) == id);
+
+    private static T? FindControlOrNull<T>(DependencyObject root, string id) where T : FrameworkElement =>
+        FindDescendants<T>(root).SingleOrDefault(control => AutomationProperties.GetAutomationId(control) == id);
 
     private static Rect Bounds(FrameworkElement control, UIElement root) =>
         control.TransformToVisual(root).TransformBounds(new Rect(0, 0, control.ActualWidth, control.ActualHeight));

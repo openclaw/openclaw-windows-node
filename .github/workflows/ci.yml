@@ -1515,7 +1515,7 @@ jobs:
     needs: change-classification
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.setup_e2e == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
@@ -1594,7 +1594,7 @@ jobs:
     needs: change-classification
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.revocation_e2e == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}
@@ -1673,7 +1673,7 @@ jobs:
     needs: change-classification
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.network_e2e == 'true' }}
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_E2E_GATEWAY_VERSION: ${{ needs.change-classification.outputs.gateway_version }}

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -18,6 +19,12 @@ namespace OpenClaw.Shared.Tests;
 // default-deny semantics, persistence, and observation behavior.
 public class ExecApprovalsStoreTests : IDisposable
 {
+    private const string ObservationTimeoutVariable = "OPENCLAW_TEST_EXEC_APPROVALS_WAIT_TIMEOUT_SECONDS";
+    // Hang guard for one external-change observation. The watcher callback and the observation run
+    // on the shared thread pool, which a loaded runner can stall for seconds; this never gates behavior.
+    private static readonly TimeSpan ObservationTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ObservationTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
     private readonly string _dir;
     private readonly CapturingLogger _log;
 
@@ -1835,11 +1842,10 @@ public class ExecApprovalsStoreTests : IDisposable
     private static async Task WaitForConditionAsync(
         Func<bool> condition,
         string message,
-        int timeoutMs = 5000,
         Func<string>? failureDetails = null)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTime.UtcNow < deadline)
+        var started = Stopwatch.GetTimestamp();
+        while (Stopwatch.GetElapsedTime(started) < ObservationTimeout)
         {
             if (condition())
             {

@@ -369,7 +369,8 @@ internal sealed class WindowManager : IWindowManager
                 _readyWindow?.Close();
                 ShowHub("connection");
             },
-            gatewayId => _callbacks.GetGatewayRegistry()?.GetById(gatewayId));
+            gatewayId => _callbacks.GetGatewayRegistry()?.GetById(gatewayId),
+            collectLogs: ShowSetupDiagnosticsAsync);
         _readyWindow = ready;
         ready.Closed += (_, _) =>
         {
@@ -899,6 +900,7 @@ internal sealed class WindowManager : IWindowManager
                     _callbacks.GetGatewayRegistry() is { } registry
                     ? new SetupNativeConnectionHost(directConnect, registry, new AppLogger(), NotifyIncompleteNativeConnection)
                     : null,
+                collectLogs: ShowSetupDiagnosticsAsync,
                 commandLineArgs: SetupWindowArgumentProjection.Project(
                     _callbacks.GetStartupArgs(),
                     _callbacks.IsDeepLinkArg,
@@ -950,6 +952,38 @@ internal sealed class WindowManager : IWindowManager
 
             Logger.Error($"Failed to open setup window: {ex}");
             return (null, false);
+        }
+    }
+
+    private async Task ShowSetupDiagnosticsAsync(FrameworkElement page)
+    {
+        if (_isShuttingDown || page.XamlRoot is not { } root)
+            throw new InvalidOperationException("The setup diagnostics window is unavailable.");
+        var app = (App)Application.Current;
+        var state = app.BuildCommandCenterState();
+        var events = app.GetConnectionDiagnosticEvents().ToArray();
+        var bundle = await Task.Run(() => DiagnosticsBundleBuilder.Build(state, events));
+        if (_isShuttingDown || !page.IsLoaded || !ReferenceEquals(page.XamlRoot, root))
+            throw new InvalidOperationException("The setup diagnostics window has closed.");
+        var dialog = new DiagnosticsBundleDialog
+        {
+            XamlRoot = root,
+            Title = LocalizationHelper.GetString("DiagnosticsBundleDialog_DiagnosticsBundle.Title"),
+        };
+        dialog.Configure(bundle,
+            LocalizationHelper.GetString("DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text"),
+            $"openclaw-setup-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            ResolveWindowHandle);
+        await dialog.ShowAsync();
+
+        IntPtr ResolveWindowHandle()
+        {
+            if (!page.IsLoaded || _isShuttingDown) return IntPtr.Zero;
+            if (_setupWindow is { IsClosed: false } setup && ReferenceEquals((setup.Content as FrameworkElement)?.XamlRoot, root))
+                return WinRT.Interop.WindowNative.GetWindowHandle(setup);
+            if (_readyWindow is { IsClosed: false } ready && ReferenceEquals((ready.Content as FrameworkElement)?.XamlRoot, root))
+                return WinRT.Interop.WindowNative.GetWindowHandle(ready);
+            return IntPtr.Zero;
         }
     }
 

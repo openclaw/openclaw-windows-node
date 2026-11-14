@@ -39,9 +39,10 @@ public sealed partial class SetupFooterPanel : Panel
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var actions = VisibleActions();
-        foreach (var action in actions)
+        // Measure collapsed children too, so WinUI can propagate later visibility changes.
+        foreach (var action in Children)
             action.Measure(new Size(double.PositiveInfinity, availableSize.Height));
+        var actions = VisibleActions();
         var widths = actions.Select(action => action.DesiredSize.Width).ToArray();
         _stacked = !SetupFooterLayout.FitsOnOneRow(widths, Spacing, availableSize.Width);
         if (!_stacked)
