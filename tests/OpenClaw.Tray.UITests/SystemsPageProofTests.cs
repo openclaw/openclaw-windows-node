@@ -2333,10 +2333,13 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
         var navigated = new List<string>();
         try
         {
-            await ui.RunOnUIAsync(() =>
+            await ui.RunOnUIAsync(async () =>
             {
                 if (fitNativeViewport)
                 {
+                    await TestSupport.WaitForRenderedConditionAsync(
+                        () => ui.Container.IsLoaded && ui.Container.XamlRoot is not null,
+                        "Systems native viewport is attached before reading its scale");
                     // The suite's default 1x1 off-screen window can clip a dialog's
                     // Cancel button out of the native focus viewport.
                     previousWindowSize = ui.TestWindow.AppWindow.Size;

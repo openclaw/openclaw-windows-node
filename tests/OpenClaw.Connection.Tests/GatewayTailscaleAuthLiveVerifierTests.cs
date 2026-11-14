@@ -6,6 +6,10 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class GatewayTailscaleAuthLiveVerifierTests
 {
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(15);
+
     [Theory]
     [MemberData(nameof(StatusResults))]
     public async Task VerifyAsync_ClassifiesStatusResult(
@@ -254,7 +258,7 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
                 : command.FirstOrDefault() == "/bin/bash"
                     ? fixture.RunAsync(runner!.StandardInputs.Single(), cancellationToken, runner.PrivilegedStandardInput)
                     : Task.FromResult(RunningStatus()));
-        var verifier = new GatewayTailscaleAuthLiveVerifier(runner);
+        var verifier = new GatewayTailscaleAuthLiveVerifier(runner, StepTimeout);
 
         var result = await verifier.VerifyAsync(ManagedRecord(), 18789, CancellationToken.None);
 
