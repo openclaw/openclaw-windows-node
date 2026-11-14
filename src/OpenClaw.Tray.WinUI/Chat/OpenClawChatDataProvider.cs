@@ -1284,6 +1284,34 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         bool Current() => !_state.IsDisposed && _bridge.IsConnected && _bridge.ChatMessageReadConnectionEpoch == epoch;
         if (epoch is not { } expectedEpoch || !Current())
             return new(ChatWorkspaceFileStatus.Stale);
+        if (request.ArtifactId is { } artifactId)
+        {
+            // The card already knows the attachment's type and size: binary or oversized files are never fetched.
+            if (request.MimeType is { } knownMime && !IsTextMimeType(knownMime) ||
+                request.SizeBytes > OpenClawGatewayClient.MaximumAssistantFilePreviewBytes)
+                return new(ChatWorkspaceFileStatus.NotPreviewable);
+            try
+            {
+                var resolved = await _bridge.ResolveAssistantMediaAsync(request.SessionKey, new()
+                {
+                    Kind = ChatMediaContentKind.File,
+                    Source = ChatMediaContentSource.Structured,
+                    ArtifactId = artifactId,
+                    AgentId = request.AgentId,
+                }, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                return Current() ? ClassifyAssistantFile(resolved) : new(ChatWorkspaceFileStatus.Stale);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[ChatProvider] Artifact preview failed: {ex.GetType().Name}");
+                return new(Current() ? ChatWorkspaceFileStatus.Unavailable : ChatWorkspaceFileStatus.Stale);
+            }
+        }
         SessionFileContent file;
         try
         {
@@ -1323,6 +1351,32 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
     // The File tab shows text in one selectable TextBlock laid out on the UI thread; keep it small enough to stay responsive.
     internal const int MaxWorkspaceFileDisplayChars = 64 * 1024;
+
+    internal static ChatWorkspaceFileResult ClassifyAssistantFile(AssistantMediaResolutionResult result)
+    {
+        if (result.Status != AssistantMediaResolutionStatus.Ready || result.Data is not { } bytes)
+            return new(ChatWorkspaceFileStatus.Unavailable);
+        if (result.MimeType is not { } mime || !IsTextMimeType(mime))
+            return new(ChatWorkspaceFileStatus.NotPreviewable);
+        try
+        {
+            var text = new System.Text.UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF');
+            if (text.Contains('\0'))
+                return new(ChatWorkspaceFileStatus.NotPreviewable);
+            return ClassifyWorkspaceFile(new SessionFileContent { Content = text, ContentEncoding = "utf8", PreviewKind = "text" });
+        }
+        catch (System.Text.DecoderFallbackException)
+        {
+            return new(ChatWorkspaceFileStatus.NotPreviewable);
+        }
+    }
+
+    internal static bool IsTextMimeType(string mimeType) =>
+        mimeType.Split(';', 2)[0].Trim() is var mime &&
+        (mime.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
+         mime.Equals("application/json", StringComparison.OrdinalIgnoreCase) ||
+         mime.Equals("application/xml", StringComparison.OrdinalIgnoreCase) ||
+         mime.Equals("application/javascript", StringComparison.OrdinalIgnoreCase));
 
     public async Task<ChatToolOutputResult> LoadToolOutputAsync(
         ChatToolOutputRequest request, CancellationToken cancellationToken)

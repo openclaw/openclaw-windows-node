@@ -3,8 +3,10 @@
 //        var result = await provider.LoadWorkspaceFileAsync(request, ct);
 namespace OpenClawTray.Chat;
 
-/// <summary>A file named by a tool row, scoped to the chat session whose workspace the Gateway resolves.</summary>
-internal sealed record ChatWorkspaceFileRequest(string SessionKey, string Path)
+/// <summary>A session workspace path or artifact identity; Path is only a display name for artifacts.</summary>
+internal sealed record ChatWorkspaceFileRequest(
+    string SessionKey, string Path, string? ArtifactId = null, string? AgentId = null,
+    string? MimeType = null, long? SizeBytes = null)
 {
     /// <summary>The last path segment, for the tab title.</summary>
     internal string Name => FileName(Path);

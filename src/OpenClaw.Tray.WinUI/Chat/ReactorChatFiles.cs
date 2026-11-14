@@ -1,4 +1,4 @@
-// List content for the shared conversation panel's Files tab. Rows are read-only; the chat root
+// List content for the shared conversation panel's Files tab. Rows open read-only previews; the chat root
 // owns the ChatSessionFilesState read: Component<ReactorChatFiles, ReactorChatFilesProps>(new(files, files.Version)).
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
@@ -11,7 +11,8 @@ using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
 
-internal sealed record ReactorChatFilesProps(ChatSessionFilesState Files, long FilesVersion);
+internal sealed record ReactorChatFilesProps(
+    ChatSessionFilesState Files, long FilesVersion, Action<string>? OpenFile = null);
 
 /// <summary>Session files the agent edited or read, with the workspace root and a manual refresh.</summary>
 internal sealed class ReactorChatFiles : Component<ReactorChatFilesProps>
@@ -54,7 +55,8 @@ internal sealed class ReactorChatFiles : Component<ReactorChatFilesProps>
             children.Add(TextBlock(status).TextWrapping(TextWrapping.Wrap).Set(ChatVisuals.StyleSecondaryText)
                 .AutomationId("ChatFilesStatus")
                 .LiveRegion(AutomationLiveSetting.Polite));
-        children.Add(VStack(0, rows.Select(Row).ToArray()).AutomationId("ChatFilesRows"));
+        children.Add(VStack(0, rows.Select(entry => Row(entry, Props.OpenFile).WithKey(entry.RelativePath)).ToArray())
+            .AutomationId("ChatFilesRows"));
         var title = L("Chat_Files_Title", "Files");
         return Border(ScrollViewer(VStack(ChatVisuals.BlockGap, children.ToArray()).Margin(ChatVisuals.BlockGap))
                 .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled)
@@ -63,7 +65,7 @@ internal sealed class ReactorChatFiles : Component<ReactorChatFilesProps>
             .AutomationName(title);
     }
 
-    private static Element Row(WorkspaceFilesModel.WorkspaceFileEntry entry)
+    private static Element Row(WorkspaceFilesModel.WorkspaceFileEntry entry, Action<string>? openFile)
     {
         var badge = !entry.Exists ? L("WorkspacePage_Badge_Missing", "Missing")
             : entry.Touched ? L("WorkspacePage_Badge_Edited", "Edited")
@@ -73,7 +75,7 @@ internal sealed class ReactorChatFiles : Component<ReactorChatFilesProps>
         var detail = string.Join(" · ", new[] { directory, WorkspaceFilesModel.FormatSize(entry.Size) }
             .Where(part => part.Length > 0));
         var accessible = string.Join(", ", new[] { entry.Name, badge ?? "", detail }.Where(part => part.Length > 0));
-        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+        var content = Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 VStack(2,
                     TextBlock(entry.Name).FontSize(ChatVisuals.BodySize)
                         .Foreground(Theme.Ref("ChatTextBrush"))
@@ -89,9 +91,16 @@ internal sealed class ReactorChatFiles : Component<ReactorChatFilesProps>
                     .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
                     .Margin(ChatVisuals.CompactGap, 0, 0, 0)
                     .VAlign(VerticalAlignment.Center).Grid(column: 1))
-            .Padding(ChatVisuals.BlockGap, ChatVisuals.CompactGap)
+            .Padding(ChatVisuals.BlockGap, ChatVisuals.CompactGap);
+        return Button(content, () => openFile?.Invoke(entry.RequestPath))
+            .Resources(ChatVisuals.ToolbarButtonResources)
+            .Padding(0).BorderThickness(0)
+            .HAlign(HorizontalAlignment.Stretch)
+            .HorizontalContentAlignment(HorizontalAlignment.Stretch)
+            .IsEnabled(entry.CanPreview && !entry.IsDirectory && openFile is not null)
             .AutomationName(accessible)
-            .WithKey(entry.RelativePath);
+            .AutomationId("ChatFilesOpenFile")
+            .ToolTip(entry.RelativePath);
     }
 
     private static string L(string key, string fallback) => ReactorQuestionPanel.L(key, fallback);

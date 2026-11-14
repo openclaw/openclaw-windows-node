@@ -280,7 +280,9 @@ using the same pill look (`ChatPanelPill`). Selecting it opens or reselects the
 Files tab. The tab lists the files the session edited or read, with the
 workspace root, the folder and size of each file, and an Edited, Read or
 Missing badge; untouched files from the workspace root are not shown or
-counted. Rows are not interactive. The list comes from the existing
+counted. Selecting a previewable row opens the read-only File tab using the
+Gateway's original request path, without normalizing it into another target.
+The list comes from the existing
 `sessions.files.list` read when the chat is selected or its history is
 replaced (for example by a checkpoint restore), after each run ends, and from
 the tab's refresh button. An unsupported Gateway or a failed read shows a
@@ -297,8 +299,21 @@ non-text and unavailable reads have distinct states; retry is explicit.
 Reopening the same target reads it again. The preview survives history reloads,
 but disconnecting or changing chats closes it. The Files list remains separate.
 
+File attachment cards open the same sidebar preview when their name or icon
+is selected. Their separate Download button retains the browser-download action.
+Attachments use their session-scoped artifact ID and optional agent ID through
+`artifacts.download`, never a guessed workspace path derived from the filename.
+The existing media client bounds preview downloads to 1 MiB and keeps Gateway
+tickets out of presentation code. UTF-8 text is displayed as selectable,
+secret-redacted plain text, bounded to 64 KiB of characters. Binary and invalid
+UTF-8 content show the existing non-previewable state; unavailable reads offer
+an explicit retry. Reopening, cancellation and connection/session retirement
+use the same File tab lifecycle as workspace reads.
+
 `ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
-resizing, 440-DIP initial width and compact layout below 652 DIPs. There is no
+resizing, 440-DIP initial width and compact layout below 652 DIPs. The native
+`TabView` keeps its default drag reordering, and the state adopts the dragged
+order; unselected tabs show their close button on pointer hover. There is no
 second subagent split/focus owner. Compact presentation retains the hidden main
 conversation and uses the existing composer-visibility guard. The composer and question dock
 measure the remaining conversation column, not the full shell.

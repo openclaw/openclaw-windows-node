@@ -683,6 +683,81 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             new SessionFileContent { Key = "main", Path = "big.log", Size = 50_000_000 }).Status);
     }
 
+    [Theory]
+    [InlineData("text/plain", "Hello", "Loaded")]
+    [InlineData("application/json", "{\"ok\":true}", "Loaded")]
+    [InlineData("application/zip", "PK", "NotPreviewable")]
+    [InlineData("text/plain", "binary\0data", "NotPreviewable")]
+    [InlineData("text/plain", "", "Loaded")]
+    public void ArtifactPreview_ClassifiesTextWithoutTreatingBinaryAsText(string mime, string content, string expected)
+    {
+        var result = OpenClawChatDataProvider.ClassifyAssistantFile(
+            new(AssistantMediaResolutionStatus.Ready, System.Text.Encoding.UTF8.GetBytes(content), mime));
+        Assert.Equal(expected, result.Status.ToString());
+        if (expected == "Loaded")
+            Assert.Equal(content, result.Content);
+        Assert.Equal(ChatWorkspaceFileStatus.NotPreviewable,
+            OpenClawChatDataProvider.ClassifyAssistantFile(new(AssistantMediaResolutionStatus.Ready, [0xff], "text/plain")).Status);
+    }
+
+    [Theory]
+    [InlineData("application/zip", 64690236L)]
+    [InlineData("image/png", 2048L)]
+    [InlineData("text/plain", 1048577L)]
+    public async Task ArtifactPreview_KnownBinaryOrOversizedAttachmentIsNotPreviewableWithoutAGatewayRead(
+        string mime, long size)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.IsConnected = true;
+            var reads = 0;
+            bridge.MediaBehavior = (_, _, _) =>
+            {
+                reads++;
+                return Task.FromResult(AssistantMediaResolutionResult.Unavailable);
+            };
+            var result = await provider.LoadWorkspaceFileAsync(
+                new ChatWorkspaceFileRequest("main", "agent-images.zip", "artifact-2", null, mime, size),
+                CancellationToken.None);
+            Assert.Equal(ChatWorkspaceFileStatus.NotPreviewable, result.Status);
+            Assert.Equal(0, reads);
+        }
+    }
+
+    [Fact]
+    public async Task ArtifactPreview_PreservesArtifactScopeRedactsTextAndDiscardsReconnectResult()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.IsConnected = true;
+            var response = new TaskCompletionSource<AssistantMediaResolutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.MediaBehavior = (session, media, _) =>
+            {
+                Assert.Equal("main", session);
+                Assert.Equal("artifact-1", media.ArtifactId);
+                Assert.Equal("agent-1", media.AgentId);
+                Assert.Null(media.FileName);
+                return response.Task;
+            };
+            var request = new ChatWorkspaceFileRequest("main", "hello.txt", "artifact-1", "agent-1");
+            var pending = provider.LoadWorkspaceFileAsync(request, CancellationToken.None);
+            response.SetResult(new(AssistantMediaResolutionStatus.Ready,
+                System.Text.Encoding.UTF8.GetBytes("api_key=sk-secret-value"), "text/plain"));
+            var loaded = await pending;
+            Assert.Equal(ChatWorkspaceFileStatus.Loaded, loaded.Status);
+            Assert.DoesNotContain("sk-secret-value", loaded.Content);
+            Assert.Empty(bridge.SessionFileReads);
+
+            response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            pending = provider.LoadWorkspaceFileAsync(request, CancellationToken.None);
+            bridge.ChatMessageReadConnectionEpoch = 2;
+            response.SetResult(new(AssistantMediaResolutionStatus.Ready, [65], "text/plain"));
+            Assert.Equal(ChatWorkspaceFileStatus.Stale, (await pending).Status);
+        }
+    }
+
     [Fact]
     public void WorkspaceFile_RedactsSecretsAndEscapesHiddenCharacters()
     {
@@ -868,6 +943,10 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         public Func<ChatHistoryPageRequest, Task<ChatHistoryInfo>>? OlderHistoryBehavior { get; set; }
         public List<ChatHistoryPageRequest> OlderHistoryRequests { get; } = [];
         public long? ChatMessageReadConnectionEpoch { get; set; } = 1;
+        public Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>? MediaBehavior { get; set; }
+        public Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
+            string sessionKey, ChatMediaContentInfo media, CancellationToken cancellationToken = default) =>
+            MediaBehavior?.Invoke(sessionKey, media, cancellationToken) ?? Task.FromResult(AssistantMediaResolutionResult.Unavailable);
         public Func<string, string, CancellationToken, Task<SessionFileContent>>? SessionFileBehavior { get; set; }
         public List<(string Key, string Path, long Epoch)> SessionFileReads { get; } = [];
         public Task<SessionFileContent> GetSessionFileAsync(
