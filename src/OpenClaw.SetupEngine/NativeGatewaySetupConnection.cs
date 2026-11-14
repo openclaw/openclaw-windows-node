@@ -261,7 +261,7 @@ public sealed class NativeGatewaySetupConnection : IGatewayAiSetupTransport, IAs
         public string? RequestId { get; } = requestId;
     }
 
-    private sealed class NativeAdmissionCanceledException(
+    internal sealed class NativeAdmissionCanceledException(
         GatewayStartupUnavailable startup, Exception inner, CancellationToken ct)
         : OperationCanceledException("Native Gateway operator admission is still starting.", inner, ct)
     {

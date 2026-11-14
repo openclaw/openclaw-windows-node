@@ -337,13 +337,20 @@ The native path:
    After draining the operator, setup retains isolated stop ownership through
    the explicit package restart. The legacy path first stops its own runtime
    and restores its reload setting. Both check the selected
-   local/loopback/token configuration, runs `config validate --json`, restarts
-   with owned-listener proof and runs authenticated `gateway health --json`
-   with the configured native CLI timeout applied to both the process and RPC.
-   It also verifies the exact primary model on the restarted runtime. A failed
-   gate remains retryable and does not publish the staged record.
-5. Stops the setup-owned runtime before reloading and updating the registry.
-   The isolated runtime leaves a pre-existing service running on detach.
+   local/loopback/token configuration, run `config validate --json`, and restart
+   with owned-listener proof. Focused finalization then uses one authenticated
+   operator connection for `health` (without an active probe) and exact primary
+   model verification. Typed startup retries, restart and health consume the
+   existing admission window; model verification retains its own existing bound.
+   Neither automatic pairing nor credential recovery is allowed during finalization.
+   A failed gate does not publish the staged record or permit mutation replay.
+5. Keeps the verified isolated Gateway running, publishes the staged registry
+   record, then releases runtime ownership to the normal connection manager.
+   The legacy path stops its setup-owned runtime before publication.
+   An isolated finalization timeout or cancellation retains runtime ownership
+   until explicit setup disposal instead of stopping ongoing startup in a
+   `finally` block. Disposal still cleans up owned starts and preserves a
+   pre-existing service.
    The selected destination uses the same protected restart receipt as WSL.
    The normal connection manager owns the native runtime after restart and
    supplies the authorized connection for another fresh verification before
@@ -538,6 +545,22 @@ ownership failures do not retry. Caller cancellation remains cancellation.
 An exhausted session needs new setup preparation rather than another connection retry.
 This does not require the Gateway's broad `/startupz` sidecar readiness to finish
 before an operator connection is attempted.
+
+Focused finalization starts its admission budget after configuration validation,
+before the restart, and shares the remainder through operator admission and
+authenticated health. The health RPC also retains the configured native CLI
+timeout as an upper bound; it does not receive a fresh startup window.
+Health and exact-model verification must remain on the same authenticated
+connection generation. The classic compatibility wizard retains its separate
+`gateway health --json --timeout` check.
+
+The health/startup contract was checked directly in Store package
+`2026.11.100.0` ARM64 on 2026-11-13. Its bundled OpenClaw `2026.11.1`
+`dist/build-info.json` identifies commit
+`4ffdd2047d192dd65554de3c8c46c0e0197c6e2a`. The shipped CLI dispatches `health`
+without probe parameters, honors the explicit RPC timeout, and the server emits
+typed retryable `UNAVAILABLE` with reason `startup-sidecars`. This is installed
+source evidence, not live delayed-start proof or a minimum-version claim.
 
 The current package status contract does not expose attempt-bound startup-phase
 progress. Repeated unchanged status snapshots and unverified Gateway log lines
