@@ -245,4 +245,39 @@ $budgetChecks = & ([scriptblock]::Create("`$stepTimeoutMinutes = 40; `$stepBudge
         "@((Test-SoakBudget 0 2160), (Test-SoakBudget 60 2160), (Test-SoakBudget 300 2160), (Test-SoakBudget 60 1850))"))
 Assert-Equal @($false, $true, $false, $false) $budgetChecks 'Work starts only when 1.5 times its estimate, or a quarter budget without one, fits before the deadline.'
 
+# Each subset runs with its CI lane's environment: fixture UI tests get native input only through the
+# soak setting, and other UI tests run without the fixture or native-input opt-ins.
+$subsetsAst = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Get-SoakSubsets' }, $true)
+function Get-SubsetPlan([int]$NativeInput, [bool]$Ui) {
+    (& ([scriptblock]::Create("`$fixtureNativeInput = $NativeInput; $($subsetsAst.Extent.Text); Get-SoakSubsets `$$Ui"))) | ForEach-Object {
+        $environment = ($_.Environment.GetEnumerator() | Sort-Object Key | ForEach-Object { "$($_.Key)=$(if ($null -eq $_.Value) { '(unset)' } else { $_.Value })" }) -join ','
+        "$($_.Name)|$($_.Filter)|$environment"
+    }
+}
+Assert-Equal @('fixture-ui|&Category=GatewayFixture|OPENCLAW_RUN_GATEWAY_FIXTURE_UI=1,OPENCLAW_RUN_KEYBOARD_PROOF=1',
+    'ui|&Category!=GatewayFixture|OPENCLAW_RUN_GATEWAY_FIXTURE_UI=(unset),OPENCLAW_RUN_KEYBOARD_PROOF=(unset)') (Get-SubsetPlan 1 $true) `
+    'With native input enabled, only fixture UI tests get it.'
+Assert-Equal 'fixture-ui|&Category=GatewayFixture|OPENCLAW_RUN_GATEWAY_FIXTURE_UI=1,OPENCLAW_RUN_KEYBOARD_PROOF=0' @(Get-SubsetPlan 0 $true)[0] `
+    'Without the setting, fixture UI tests run without native input.'
+Assert-Equal @('tests||') (Get-SubsetPlan 1 $false) 'Unit test projects run as one subset with the step environment.'
+# A removed variable must be absent in child processes, not present and empty.
+$setVariable = $runnerAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Set-SoakVariable' }, $true)
+$childSees = & ([scriptblock]::Create("$($setVariable.Extent.Text); Set-SoakVariable 'OPENCLAW_SOAK_PROBE' 'x'; " +
+        "`$set = & pwsh -NoProfile -NonInteractive -Command 'Test-Path Env:\OPENCLAW_SOAK_PROBE'; Set-SoakVariable 'OPENCLAW_SOAK_PROBE' `$null; " +
+        "`$removed = & pwsh -NoProfile -NonInteractive -Command 'Test-Path Env:\OPENCLAW_SOAK_PROBE'; @(`$set, `$removed)"))
+Assert-Equal @('True', 'False') @($childSees) 'Subset variables are set for child processes and truly removed afterwards.'
+$nativeSelection = Join-Path ([IO.Path]::GetTempPath()) ("openclaw-native-soak-" + [Guid]::NewGuid().ToString('N') + '.json')
+'{"projects":[]}' | Set-Content -LiteralPath $nativeSelection
+try {
+    & pwsh -NoProfile -NonInteractive -Command "`$env:OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT = 'yes'; & '$runner' -SelectionPath '$nativeSelection'" *> $null
+    if ($LASTEXITCODE -eq 0) { throw 'The soak runner accepted an invalid OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT.' }
+    # The expected failure must not become this script's exit code; CI's pwsh shell exits with it.
+    $global:LASTEXITCODE = 0
+} finally {
+    Remove-Item -LiteralPath $nativeSelection -ErrorAction SilentlyContinue
+}
+
 Write-Host 'Changed-test selection and soak runner checks passed.'
+# CI's pwsh shell exits with the last native exit code. Every check above throws on failure, so an
+# expected non-zero code from a child process must never become this script's result.
+exit 0
