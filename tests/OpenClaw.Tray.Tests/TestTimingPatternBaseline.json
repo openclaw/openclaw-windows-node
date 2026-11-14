@@ -133,7 +133,7 @@
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.cs": 133,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureWarningUiTests.cs": 8,
     "tests/OpenClaw.Tray.UITests/SshForwardPortUiTests.cs": 4,
-    "tests/OpenClaw.Tray.UITests/WorkspaceWindowProofTests.cs": 163
+    "tests/OpenClaw.Tray.UITests/WorkspaceWindowProofTests.cs": 160
   },
   "short-literal-hang-guard": {
     "tests/OpenClaw.Connection.Tests/DevicePairApprovalCoordinatorTests.cs": 2,
