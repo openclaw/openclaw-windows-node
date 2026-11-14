@@ -1126,9 +1126,10 @@ public sealed partial class GatewayFixtureUiTests
                     $"offline {action} command")).Current.IsEnabled);
             Assert.False((await WaitForElementByIdAsync(run, "AutomationAgenda:morning-brief", "offline agenda row"))
                 .Current.IsEnabled);
-            Assert.Contains(AutomationsWindow(run).FindAll(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>(),
-                element => element.Current.Name.StartsWith("Schedule as of ", StringComparison.Ordinal));
+            await WaitUiAsync(run, () => AutomationsWindow(run).FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>()
+                .Any(element => element.Current.Name.StartsWith("Schedule as of ", StringComparison.Ordinal)),
+                "offline schedule as-of text");
             Capture(run, "automations-offline.png", "AutomationsHeadline", "AutomationsOpenConnection");
             run.Gateway.GoOnline();
         }, scenario: scenario);
@@ -1152,10 +1153,13 @@ public sealed partial class GatewayFixtureUiTests
             await run.InvokeAsync("app.navigate", new { page = "agent:main:cron" });
             await WaitUiAsync(run, () => FindById(run, "AutomationExpander:scheduled-000") is not null, "large inventory");
             ((WindowPattern)AutomationsWindow(run).GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Maximized);
-            var initialAgendaRows = (await WaitForElementByIdAsync(run, "AutomationsAgendaList", "paged agenda"))
-                .FindAll(TreeScope.Descendants,
+            // The list peer can be published before its row buttons; wait for rows, then bound the count from that poll.
+            AutomationElement[] AgendaRowButtons(AutomationElement agendaList) => agendaList.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>()
                 .Where(e => e.Current.AutomationId.StartsWith("AutomationAgenda:", StringComparison.Ordinal)).ToArray();
+            AutomationElement[] initialAgendaRows = [];
+            await WaitForAutomationElementAsync(run, () => FindById(run, "AutomationsAgendaList"), "paged agenda rows",
+                agendaList => (initialAgendaRows = AgendaRowButtons(agendaList)).Length > 0);
             Assert.InRange(initialAgendaRows.Length, 1, 6);
             Assert.Null(FindById(run, "AutomationExpander:scheduled-204"));
             var page = await WaitForPageScrollPeerAsync(run);
@@ -1176,12 +1180,15 @@ public sealed partial class GatewayFixtureUiTests
                 return true;
             }, "one expandable group for the reported pagination date");
             Invoke(more!);
-            list = await WaitForAutomationElementAsync(run, () => FindById(run, "AutomationsAgendaList"),
-                "expanded agenda contains additional native items",
-                current => current.FindAll(TreeScope.Children, Condition.TrueCondition).Count > before);
-            var item = list.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
-                .Cast<AutomationElement>().First(e => e.Current.Name.Contains("Scheduled fixture 204", StringComparison.Ordinal));
-            if (item.TryGetCurrentPattern(VirtualizedItemPattern.Pattern, out var virtualItem))
+            AutomationElement? item = null;
+            await WaitForAutomationElementAsync(run, () => FindById(run, "AutomationsAgendaList"),
+                "expanded agenda contains additional native items including Scheduled fixture 204",
+                current => current.FindAll(TreeScope.Children, Condition.TrueCondition).Count > before
+                    && (item = current.FindAll(TreeScope.Descendants,
+                            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                        .Cast<AutomationElement>()
+                        .FirstOrDefault(e => e.Current.Name.Contains("Scheduled fixture 204", StringComparison.Ordinal))) is not null);
+            if (item!.TryGetCurrentPattern(VirtualizedItemPattern.Pattern, out var virtualItem))
                 ((VirtualizedItemPattern)virtualItem).Realize();
             ((ScrollItemPattern)item.GetCurrentPattern(ScrollItemPattern.Pattern)).ScrollIntoView();
             await WaitUiAsync(run, () => FindById(run, "AutomationAgenda:scheduled-204") is not null, "last paged agenda job");
