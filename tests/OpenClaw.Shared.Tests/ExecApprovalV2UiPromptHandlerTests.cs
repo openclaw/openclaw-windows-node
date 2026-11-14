@@ -91,8 +91,10 @@ public class ExecApprovalV2UiPromptHandlerTests
         Assert.Equal(ExecApprovalPromptOutcome.Failed, result);
     }
 
-    [Fact]
-    public async Task AssignmentRedaction_DeniesWithoutShowingDialog()
+    [Theory]
+    [InlineData("echo API_SECRET=sk-abc123456789012345678")]
+    [InlineData("echo sk-abc123\u2800456789012345678 remainder")]
+    public async Task SecretRedaction_DeniesWithoutShowingDialog(string command)
     {
         var dialogShown = false;
         var handler = Handler((_, _) =>
@@ -101,8 +103,7 @@ public class ExecApprovalV2UiPromptHandlerTests
             return Task.FromResult(ExecApprovalPromptOutcome.AllowOnce);
         });
 
-        var result = await handler.PromptAsync(
-            Request(command: "echo API_SECRET=sk-abc123456789012345678"));
+        var result = await handler.PromptAsync(Request(command: command));
 
         Assert.Equal(ExecApprovalPromptOutcome.Deny, result);
         Assert.False(dialogShown);

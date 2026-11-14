@@ -73,10 +73,13 @@ public class ExecApprovalV2PipelineIntegrationTests : IDisposable
             log);
     }
 
-    [Fact]
-    public async Task AttackCommand_ReachesDialogSanitized_AllowOnceProducesAllow()
+    [Theory]
+    [InlineData(Rlo, @"\u{202E}")]
+    [InlineData(0x2800, @"\u{2800}")]
+    public async Task InvisibleCommand_ReachesDialogEscaped_ExecutionRetainsOriginal(
+        int codePoint, string expectedEscape)
     {
-        var attackArg = "safe" + U(Rlo) + "evil";
+        var attackArg = "safe" + U(codePoint) + "text";
         var request = Req($$"""{"command":["where","{{attackArg}}"]}""");
 
         ExecApprovalPromptView? captured = null;
@@ -86,11 +89,12 @@ public class ExecApprovalV2PipelineIntegrationTests : IDisposable
 
         Assert.True(result.IsAllow);
         Assert.NotNull(captured);
-        // The raw override reached the pipeline but was escaped before the dialog saw it.
-        // Ordinal comparison: culture-sensitive search treats format characters as
-        // ignorable and would match them in any string.
-        Assert.DoesNotContain(U(Rlo), captured!.CommandText, StringComparison.Ordinal);
-        Assert.Contains(@"\u{202E}", captured.CommandText);
+        // Presentation escapes the invisible without rewriting the approved argv.
+        Assert.DoesNotContain(U(codePoint), captured!.CommandText, StringComparison.Ordinal);
+        Assert.Contains("safe" + expectedEscape + "text", captured.CommandText, StringComparison.Ordinal);
+        Assert.NotNull(result.Execution);
+        Assert.Equal(attackArg, result.Execution!.Argv[1]);
+        Assert.Equal(attackArg, request.Args.GetProperty("command")[1].GetString());
     }
 
     [Fact]
