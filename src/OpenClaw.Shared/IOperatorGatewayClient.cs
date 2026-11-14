@@ -189,6 +189,9 @@ public interface IOperatorGatewayClient
     Task<GatewayUpdateStatus?> GetUpdateStatusAsync(int timeoutMs = 5000) =>
         Task.FromResult<GatewayUpdateStatus?>(null);
     Task<JsonElement> SendWizardRequestAsync(string method, object? parameters = null, int timeoutMs = 30000);
+    /// <summary>Create an agent only on the authenticated connection captured by the caller.</summary>
+    Task<JsonElement> CreateAgentConfirmedAsync(string name, string workspace, long connectionEpoch, int timeoutMs = 30000)
+        => throw new NotSupportedException("Connection-bound agent creation is not supported by this client.");
     /// <summary>Sends only on the captured authenticated connection; refuses before transmission when the epoch changed.</summary>
     Task<JsonElement> SendWizardRequestOnConnectionAsync(string method, object? parameters, long connectionEpoch, int timeoutMs = 30000)
         => Task.FromException<JsonElement>(new NotSupportedException("Connection-bound requests are not supported by this gateway client."));

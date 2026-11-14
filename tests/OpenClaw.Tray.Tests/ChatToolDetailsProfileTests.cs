@@ -9,7 +9,6 @@ public sealed class ChatToolDetailsProfileTests
 {
     public class ProfileProxy : AgentCreationServiceTests.GatewayProxy
     {
-        public long? Epoch = 1;
         public string Device = "device";
         public List<long> ReadEpochs = [];
 
