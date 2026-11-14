@@ -1446,6 +1446,13 @@ foreach ($token in @(' new-test-soak, ', "NEW_TEST_SOAK_REQUIRED: `${{ github.ev
 }
 Assert-Contains -Text (Get-JobBlock "fast-validation") -Expected 'run: ./scripts/test-ci-changed-tests.ps1' `
     -Message 'Fast validation must test the changed-test selection.'
+# The soak checks deliberately run child processes that must fail. CI's pwsh shell exits with the last
+# native exit code, so the script must end with an explicit success exit.
+$changedTestsAst = [Management.Automation.Language.Parser]::ParseFile((Join-Path $repoRootPath 'scripts\test-ci-changed-tests.ps1'), [ref]$null, [ref]$null)
+$lastStatement = @($changedTestsAst.EndBlock.Statements)[-1]
+if ($lastStatement -isnot [Management.Automation.Language.ExitStatementAst] -or $lastStatement.Pipeline.Extent.Text -ne '0') {
+    throw 'scripts/test-ci-changed-tests.ps1 must end with exit 0, so an expected child-process failure cannot fail the CI step.'
+}
 
 # Main failure watch: only failed pushes to main of this workflow, least privilege, untrusted run data
 # kept out of expressions in scripts, and no reruns, reverts or pushes.

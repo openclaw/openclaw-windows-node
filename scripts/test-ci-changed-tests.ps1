@@ -271,8 +271,13 @@ $nativeSelection = Join-Path ([IO.Path]::GetTempPath()) ("openclaw-native-soak-"
 try {
     & pwsh -NoProfile -NonInteractive -Command "`$env:OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT = 'yes'; & '$runner' -SelectionPath '$nativeSelection'" *> $null
     if ($LASTEXITCODE -eq 0) { throw 'The soak runner accepted an invalid OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT.' }
+    # The expected failure must not become this script's exit code; CI's pwsh shell exits with it.
+    $global:LASTEXITCODE = 0
 } finally {
     Remove-Item -LiteralPath $nativeSelection -ErrorAction SilentlyContinue
 }
 
 Write-Host 'Changed-test selection and soak runner checks passed.'
+# CI's pwsh shell exits with the last native exit code. Every check above throws on failure, so an
+# expected non-zero code from a child process must never become this script's result.
+exit 0
