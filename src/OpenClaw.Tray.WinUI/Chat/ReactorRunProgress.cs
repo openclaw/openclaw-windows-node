@@ -25,7 +25,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         var (now, setNow) = UseState(DateTimeOffset.UtcNow);
         UseEffect((Func<Action>)(() =>
         {
-            if (!progress.Active)
+            if (!progress.IsInProgress)
                 return static () => { };
             var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
             timer.Interval = TimeSpan.FromSeconds(1);
@@ -33,9 +33,9 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             timer.Tick += tick;
             timer.Start();
             return () => { timer.Stop(); timer.Tick -= tick; };
-        }), progress.Active, progress.StartedAt);
+        }), progress.IsInProgress, progress.StartedAt);
         var elapsed = ChatRunProgressProjection.Elapsed(progress.StartedAt,
-            progress.EndedAt ?? (progress.Active ? now : progress.StartedAt ?? now));
+            progress.Waiting ? now : progress.EndedAt ?? (progress.Active ? now : progress.StartedAt ?? now));
         var label = progress.Label == ChatRunProgressProjection.RetryLabel
             ? ChatRunProgressProjection.RetryLabelText(progress, now, ReactorQuestionPanel.L)
             : LocalizedLabel(progress.Label);
@@ -71,7 +71,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         return Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
             Grid([GridSize.Star()], [GridSize.Star()],
                 NativeWorkingClawElement.NativeWorkingClaw()
-                    .Set(claw => claw.Update(progress.Active, progress.Waiting, progress.StartedAt?.ToString("O") ?? "idle"))
+                    .Set(claw => claw.Update(progress.IsInProgress, progress.Waiting, progress.StartedAt?.ToString("O") ?? "idle"))
                     .Size(18, 18).Opacity(1))
                 .Size(18, 18).Grid(column: 0).VAlign(VerticalAlignment.Center)
                 .AccessibilityView(AccessibilityView.Raw).AutomationId("ChatRunProgressClaw"),
@@ -100,7 +100,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             .MinHeight(28).Margin(0, 4, 0, 2).Opacity(1).AutomationId("ChatRunProgress").AutomationName(text)
             .OnMount(row =>
             {
-                if (entrance.Current is null && progress.Active &&
+                if (entrance.Current is null && progress.IsInProgress &&
                     new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
                     entrance.Current = AnimateEntrance(row);
             })

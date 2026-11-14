@@ -17,7 +17,7 @@
              Targets="Restore;Publish"
              RemoveProperties="TargetFramework;TargetFrameworks;Platform;OutputPath;RuntimeIdentifiers;AppxPackage;WindowsPackageType"
              Properties="Configuration=$(Configuration);RuntimeIdentifier=$(FileWorkerRid);SelfContained=true;PublishDir=$(FileWorkerPayload)" />
-    <Exec Command="&quot;$(SystemRoot)\System32\WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\..\scripts\Write-FileWorkerManifest.ps1&quot; -PayloadDirectory &quot;$(FileWorkerPayload).&quot; -RuntimeIdentifier &quot;$(FileWorkerRid)&quot; -ProductVersion &quot;$(Version)&quot; $(_FileWorkerSignatureArgs)" />
+    <Exec Command="pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)..\..\scripts\Write-FileWorkerManifest.ps1&quot; -PayloadDirectory &quot;$(FileWorkerPayload).&quot; -RuntimeIdentifier &quot;$(FileWorkerRid)&quot; -ProductVersion &quot;$(Version)&quot; $(_FileWorkerSignatureArgs)" />
     <GetFileHash Files="$(FileWorkerPayload)payload-manifest.json" Algorithm="SHA256">
       <Output TaskParameter="Items" ItemName="_FixedFileWorkerManifestIdentity" />
     </GetFileHash>

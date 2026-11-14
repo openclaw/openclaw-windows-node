@@ -40,7 +40,8 @@ internal static class ToolCallCardRenderer
         ChatTimelineItem entry,
         bool isNested = false,
         IReadOnlyList<ChatToolCallNode>? children = null) =>
-        Component<ToolResultCard, ToolResultCardProps>(new(props, entry, isNested, children));
+        Component<ToolResultCard, ToolResultCardProps>(new(props, entry, isNested, children))
+            .WithKey($"tool-result:{entry.Id}");
 
     internal static Element BuildStandaloneCore(
         ChatTimelinePresentationContext props, ChatTimelineItem entry, bool isNested,
@@ -55,12 +56,11 @@ internal static class ToolCallCardRenderer
             : ChatToolRowPresentation.DisplayName(entry.ToolName);
         var statusLabel = entry.ToolResult == ChatToolCallStatus.InProgress && entry.ToolInputPreparing
             ? LocalizedOrDefault("Chat_Tool_Preparing", "Preparing input") : StatusLabel(entry.ToolResult);
-        if (entry.ToolResult == ChatToolCallStatus.InProgress && entry.ToolLiveDiff is { } diff)
-            statusLabel += $" (+{diff.Added} / -{diff.Removed})";
         var preview = ToolPreview(entry);
         var row = ChatToolRowPresentation.Resolve(entry, props.ChildThreads);
         var rowText = RowText(row);
         var title = rowText ?? (string.IsNullOrWhiteSpace(preview) ? toolName : preview);
+        var diffStat = ChatToolDiffStats.Resolve(entry);
         // Web step rows: muted title, a muted inline "failed", no trailing "Done".
         var inlineStatus = entry.ToolResult switch
         {
@@ -79,8 +79,9 @@ internal static class ToolCallCardRenderer
             ToolGlyph(entry),
             showChevron,
             isExpanded,
-            BuildRowTitle(title, detail, entry.ToolResult is null or ChatToolCallStatus.InProgress),
-            inlineStatus,
+            BuildRowTitle(title, detail, entry.ToolResult is null or ChatToolCallStatus.InProgress,
+                ResolveRowLink(props, entry, row), entry.Id),
+            WithDiffStat(diffStat, inlineStatus),
             onHeaderHover);
         // Screen readers hear what the row shows: its title and the state beside it. A spawned
         // subagent whose own state is unknown shows no state, so none is announced.
@@ -132,9 +133,10 @@ internal static class ToolCallCardRenderer
             .OnLostFocus((sender, args) => { if (IsOwnHeader(sender, args)) onHeaderFocus?.Invoke(false); })
             .AutomationId($"ChatToolCall_{SanitizeAutomationId(entry.Id)}")
             .AutomationName(
-                string.IsNullOrEmpty(displayedStatus)
+                (string.IsNullOrEmpty(displayedStatus)
                     ? $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {accessibleTitle}."
-                    : $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {accessibleTitle}. {displayedStatus}.")
+                    : $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {accessibleTitle}. {displayedStatus}.") +
+                (diffStat is null ? "" : $" {DiffStatDescription(diffStat)}."))
             .HelpText(preview)
             .WithKey($"tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}");
 
@@ -468,7 +470,8 @@ internal static class ToolCallCardRenderer
         Func<ChatTimelineItem, Element>? buildWorkEntry = null,
         bool animateEntrance = false) =>
         Component<ToolActivityCard, ToolActivityCardProps>(
-            new ToolActivityCardProps(props, activity, expansionState, buildWorkEntry, animateEntrance));
+            new ToolActivityCardProps(props, activity, expansionState, buildWorkEntry, animateEntrance))
+            .WithKey($"tool-activity:{activity.Key}");
 
     internal static Element BuildActivityCore(
         ChatTimelinePresentationContext props,
@@ -636,15 +639,19 @@ internal static class ToolCallCardRenderer
 
     // A dimmed detail (directory or search scope) follows the title. The title takes the star
     // column so it trims with an ellipsis; the detail is capped and trims on its own.
-    private static Element BuildRowTitle(string title, string? detail, bool running)
+    // A row link replaces only the title text; the dimmed detail and the header toggle stay as they are.
+    private static Element BuildRowTitle(string title, string? detail, bool running,
+        RowLink? link = null, string? entryId = null)
     {
-        var text = ChatVisuals.ActivityText(title, running);
+        Element text = link is not null && entryId is not null
+            ? BuildRowLink(title, link, entryId, running)
+            : ChatVisuals.ActivityText(title, running);
         if (string.IsNullOrWhiteSpace(detail))
             return text.WithKey("preview");
         return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 text.Grid(column: 0).VAlign(VerticalAlignment.Center),
                 TextBlock(detail)
-                    .FontSize(12)
+                    .FontSize(ChatVisuals.ActivityTextFontSize)
                     .Foreground(Theme.Ref("TextFillColorTertiaryBrush"))
                     .TextWrapping(TextWrapping.NoWrap)
                     .TextTrimming(TextTrimming.CharacterEllipsis)
@@ -674,6 +681,62 @@ internal static class ToolCallCardRenderer
                 .Foreground(Theme.Ref(subagent!.Status == ChatSubagentStatus.Failed
                     ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush"))
             : null;
+
+    private sealed record RowLink(Action Open, string AutomationName);
+
+    /// <summary>
+    /// A file row opens its workspace file; a launch row opens its subagent session once that session
+    /// is known. The Expander header keeps its own expand/collapse toggle around the link.
+    /// </summary>
+    private static RowLink? ResolveRowLink(ChatTimelinePresentationContext props, ChatTimelineItem entry, ChatToolRowView row)
+    {
+        if (props.OnOpenWorkspaceFile is { } openFile && ChatToolRowLinks.WorkspaceFilePath(entry) is { } path)
+        {
+            var name = NativeToolProjector.SanitizeToolDisplayValue(ChatWorkspaceFileRequest.FileName(path));
+            return new(() => openFile(path), LocalizationHelper.Format("Chat_Tool_OpenFile", name));
+        }
+        if (props.OnOpenSession is { } openSession &&
+            row.Subagent is { ChildSessionKey: { } key } subagent &&
+            props.CanOpenSession?.Invoke(key) == true)
+            return new(() => openSession(key), LocalizationHelper.Format("Chat_Tool_OpenSubagent", subagent.Label));
+        return null;
+    }
+
+    private static Element BuildRowLink(string title, RowLink link, string entryId, bool running) =>
+        Button(TextBlock(title)
+                .FontSize(ChatVisuals.ActivityTextFontSize)
+                .Foreground(Theme.Ref("AccentTextFillColorPrimaryBrush"))
+                .TextWrapping(TextWrapping.NoWrap)
+                .TextTrimming(TextTrimming.CharacterEllipsis)
+                .WithTextShimmer(running), link.Open)
+            .SubtleButton()
+            .Padding(2, 0)
+            .MinHeight(0)
+            .MinWidth(0)
+            .AutomationName(link.AutomationName)
+            // Row-specific so focus restoration never matches a pooled button reused by another row.
+            .AutomationId($"ChatToolRowLink_{SanitizeAutomationId(entryId)}")
+            .WithKey("row-link");
+
+    /// <summary>Web-style "+N -M" counts before the inline status; zeros stay visible as on the web.</summary>
+    private static Element? WithDiffStat(ChatToolDiffStat? stat, Element? status)
+    {
+        if (stat is null)
+            return status;
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var chips = HStack(4,
+                TextBlock("+" + stat.Added.ToString(culture)).FontSize(ChatVisuals.ToolRowFontSize)
+                    .Foreground(Theme.Ref("SystemFillColorSuccessBrush")),
+                TextBlock("-" + stat.Removed.ToString(culture)).FontSize(ChatVisuals.ToolRowFontSize)
+                    .Foreground(Theme.Ref("SystemFillColorCriticalBrush")))
+            .AutomationName(DiffStatDescription(stat))
+            .AutomationId("ChatToolDiffStat")
+            .WithKey("diff-stat");
+        return status is null ? chips : HStack(6, chips, status);
+    }
+
+    private static string DiffStatDescription(ChatToolDiffStat stat) =>
+        LocalizationHelper.Format("Chat_Tool_DiffStat", stat.Added, stat.Removed);
 
     private static string ToolPreview(ChatTimelineItem entry)
     {

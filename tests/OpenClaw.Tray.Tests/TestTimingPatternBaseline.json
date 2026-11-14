@@ -100,7 +100,7 @@
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Conversation.cs": 33,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.Panels.cs": 17,
     "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.WorkAlignment.cs": 14,
-    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.cs": 134,
+    "tests/OpenClaw.Tray.UITests/ReactorChatLayoutProofTests.cs": 119,
     "tests/OpenClaw.Tray.UITests/ReactorMarkdownReadingRampProofTests.cs": 1,
     "tests/OpenClaw.Tray.UITests/ReactorMarkdownWebParityProofTests.cs": 2,
     "tests/OpenClaw.Tray.UITests/ReactorQuestionProofTests.cs": 26,
@@ -115,14 +115,13 @@
   },
   "one-shot-uia-lookup": {
     "tests/OpenClaw.Tray.UITests/AutomationsPinnedHostUiTests.cs": 15,
-    "tests/OpenClaw.Tray.UITests/AutomationsUiTests.cs": 68,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureAccessibilityBaselineTests.cs": 33,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureChatRunCorrelationTests.cs": 3,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureContextUsageUiTests.cs": 6,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureDashboardUiTests.cs": 21,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureInteractiveUiTests.cs": 14,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureMainSearchUiTests.cs": 52,
-    "tests/OpenClaw.Tray.UITests/GatewayFixtureNativeDashboardsUiTests.cs": 31,
+    "tests/OpenClaw.Tray.UITests/GatewayFixtureNativeDashboardsUiTests.cs": 30,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureSettingsModalUiTests.cs": 22,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureSystemsUiTests.cs": 29,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.ComposerHistory.cs": 14,
@@ -133,7 +132,7 @@
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.cs": 133,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureWarningUiTests.cs": 8,
     "tests/OpenClaw.Tray.UITests/SshForwardPortUiTests.cs": 4,
-    "tests/OpenClaw.Tray.UITests/WorkspaceWindowProofTests.cs": 163
+    "tests/OpenClaw.Tray.UITests/WorkspaceWindowProofTests.cs": 160
   },
   "short-literal-hang-guard": {
     "tests/OpenClaw.Connection.Tests/DevicePairApprovalCoordinatorTests.cs": 2,

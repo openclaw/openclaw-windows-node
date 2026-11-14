@@ -18,7 +18,8 @@ namespace OpenClawTray.Chat;
 internal sealed record ReactorConversationPanelHostProps(
     Element Conversation, ChatConversationPanelState State, Action<bool>? ConversationVisibilityChanged = null,
     ChatTimelinePresentationContext? Timeline = null, Element? Subagents = null,
-    DashboardsPageState? Dashboards = null, Element? Files = null);
+    DashboardsPageState? Dashboards = null, Element? Files = null,
+    Func<ChatWorkspaceFileRequest, CancellationToken, Task<ChatWorkspaceFileResult>>? LoadWorkspaceFile = null);
 
 /// <summary>Applies native tab selection, split sizing, compact presentation and focus.</summary>
 internal sealed class ReactorConversationPanelHost : Component<ReactorConversationPanelHostProps>
@@ -33,6 +34,41 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         var (showCompact, setShowCompact) = UseState(true);
         var focus = UseRef<PanelInteraction?>(null);
         var tabView = UseRef<TabView?>(null);
+        // The native drag handler is attached once at mount; it must reach the current state.
+        var latestState = UseRef(state);
+        latestState.Current = state;
+        // A native drag removes the moved tab and reinserts it; removing the selected tab makes the strip
+        // select a neighbor, possibly after the reinsert. Selection events from the move start until its
+        // order is adopted are not the user's.
+        var movePending = UseRef(false);
+        var renderedTabCount = UseRef(state.Tabs.Count);
+        renderedTabCount.Current = state.Tabs.Count;
+        // One delegate for the mount's lifetime, so unmount removes exactly what mount added.
+        var adoptNativeOrderRef = UseRef<TypedEventHandler<TabView, global::Windows.Foundation.Collections.IVectorChangedEventArgs>?>(null);
+        var adoptNativeOrder = adoptNativeOrderRef.Current ??= (view, args) =>
+        {
+            // Reactor removes a closed tab after state already dropped it; a native move removes a rendered one.
+            if (args.CollectionChange == global::Windows.Foundation.Collections.CollectionChange.ItemRemoved &&
+                view.TabItems.Count == renderedTabCount.Current - 1)
+            {
+                movePending.Current = true;
+                return;
+            }
+            // A drag ends with an insert; Reactor's own inserts already match state order, so Reorder ignores them.
+            if (args.CollectionChange != global::Windows.Foundation.Collections.CollectionChange.ItemInserted) return;
+            var order = view.TabItems.Select(SlotOf).ToArray();
+            if (order.Any(slot => slot is null)) return;
+            var target = latestState.Current;
+            var revision = target.Revision;
+            // Applied later: reject it if the view unmounted or the conversation was rebound meanwhile.
+            view.DispatcherQueue.TryEnqueue(() =>
+            {
+                movePending.Current = false;
+                if (ReferenceEquals(tabView.Current, view) && ReferenceEquals(latestState.Current, target) &&
+                    target.Revision == revision)
+                    target.Reorder(order!);
+            });
+        };
         UseEffect((Func<Action>)(() =>
         {
             long revision = 0;
@@ -71,25 +107,42 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             setShowCompact(true);
         }
 
+        // Reactor pairs native tab items with this array by index and reports no drag reorder, so each
+        // item carries its slot. Selection and close resolve the native item; a drag adopts its order.
+        string? SlotAt(int index) =>
+            tabView.Current is { } view && index >= 0 && index < view.TabItems.Count
+                ? SlotOf(view.TabItems[index])
+                : index >= 0 && index < tabs.Length ? tabs[index] : null;
         var tabStrip = TabView((int?)Array.IndexOf(tabs, selected), index =>
             {
-                if (index >= 0 && index < tabs.Length) state.Select(tabs[index]);
-            }, tabs.Select(tab => Tab(TabTitle(tab), Empty()) with { IsClosable = true }).ToArray())
+                if (movePending.Current || tabView.Current is { } view && view.TabItems.Count < tabs.Length) return;
+                if (SlotAt(index) is { } slot) state.Select(slot);
+            }, tabs.Select(tab => Tab(TabTitle(tab, state),
+                    Border(null).IsVisible(false).Set(marker => marker.Tag = tab)) with { IsClosable = true }).ToArray())
             .IsAddTabButtonVisible(false)
-            .CanDragTabs(false).CanReorderTabs(false)
+            .CanDragTabs(false).CanReorderTabs(true)
             .TabWidthMode(TabViewWidthMode.SizeToContent)
-            .CloseButtonOverlayMode(TabViewCloseButtonOverlayMode.Always)
+            .CloseButtonOverlayMode(TabViewCloseButtonOverlayMode.OnPointerOver)
             .TabCloseRequested(index =>
             {
-                if (index < 0 || index >= tabs.Length) return;
-                focus.Current?.BeforeClose(tabs[index]);
-                state.Close(tabs[index]);
+                if (SlotAt(index) is not { } slot) return;
+                focus.Current?.BeforeClose(slot);
+                state.Close(slot);
                 focus.Current?.AfterClose();
             })
             .AutomationName(Text("Tabs"))
             .AutomationId("ConversationPanelTabs")
-            .OnMount(control => tabView.Current = (TabView)control)
-            .OnUnmount(_ => tabView.Current = null);
+            .OnMount(control =>
+            {
+                var view = (TabView)control;
+                tabView.Current = view;
+                view.TabItemsChanged += adoptNativeOrder;
+            })
+            .OnUnmount(control =>
+            {
+                ((TabView)control).TabItemsChanged -= adoptNativeOrder;
+                tabView.Current = null;
+            });
 
         var bodies = tabs.Select(slot =>
             Border(slot switch
@@ -97,6 +150,9 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     ChatConversationPanelState.SubagentsSlot => Props.Subagents ?? Empty(),
                     ChatConversationPanelState.DashboardSlot => DashboardBody(state.Dashboard, Props.Dashboards),
                     ChatConversationPanelState.FilesSlot => Props.Files ?? Empty(),
+                    ChatConversationPanelState.FileSlot => state.File is { } file
+                        ? Component<ReactorChatWorkspaceFile, ReactorChatWorkspaceFileProps>(new(file, Props.LoadWorkspaceFile))
+                        : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16),
                     _ => state.Details is { } request && state.Resolve(request) is { } entry
                         ? ToolCallCardRenderer.BuildPanelDetails(
                             Props.Timeline ?? new(request.SessionKey, [], false, null), entry)
@@ -106,6 +162,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 {
                     ChatConversationPanelState.DetailsSlot => state.Details?.ToString() ?? slot,
                     ChatConversationPanelState.DashboardSlot => slot + ":" + state.Dashboard?.SessionKey,
+                    ChatConversationPanelState.FileSlot => state.FileBodyKey ?? slot,
                     _ => slot,
                 })
                 .IsVisible(slot == selected))
@@ -178,11 +235,16 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
 
     private static string Text(string name) => LocalizationHelper.GetString("Chat_Panel_" + name);
 
-    private static string TabTitle(string slot) => slot switch
+    private static string? SlotOf(object item) =>
+        item is TabViewItem { Content: FrameworkElement { Tag: string slot } } ? slot : null;
+
+    private static string TabTitle(string slot, ChatConversationPanelState state) => slot switch
     {
         ChatConversationPanelState.SubagentsSlot => LocalizationHelper.GetString("Chat_Subagents_Title"),
         ChatConversationPanelState.DashboardSlot => Text("Dashboard"),
         ChatConversationPanelState.FilesSlot => LocalizationHelper.GetString("Chat_Files_Title"),
+        ChatConversationPanelState.FileSlot => state.File is { } file &&
+            NativeToolProjector.SanitizeToolDisplayValue(file.Name) is { Length: > 0 } name ? name : Text("File"),
         _ => Text("Details"),
     };
 
@@ -214,6 +276,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         private long _openVersion;
         private long _closeRevision;
         private bool _closing;
+        private EventHandler<object>? _pendingLayout;
 
         internal PanelInteraction(Grid root, ChatConversationPanelState state, Func<int, Control?> tabAt)
         {
@@ -248,7 +311,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             if (presented && !_state.Passive &&
                 (!_presented || _selected != _state.Selected || _openVersion != _state.OpenVersion))
             {
-                QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(panel) as Control);
+                QueueSelectedTabFocus(panel);
             }
             _presented = presented;
             _selected = _state.Selected;
@@ -257,21 +320,66 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             _root.TabFocusNavigation = narrow && presented ? KeyboardNavigationMode.Cycle : KeyboardNavigationMode.Local;
         }
 
-        private void QueueFocus(Func<Control?> target, Func<Control?>? fallback = null)
+        private void QueueFocus(Func<Control?> target, Func<Control?>? fallback = null, bool awaitTarget = false)
         {
             var revision = ++_focusRevision;
             var generation = _state.Revision;
+            DetachPendingLayout();
+            bool Current() => revision == _focusRevision && generation == _state.Revision && _root.IsLoaded;
             void Attempt(int remaining) => _root.DispatcherQueue.TryEnqueue(
                 Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
                 {
-                    if (revision != _focusRevision || generation != _state.Revision || !_root.IsLoaded)
-                        return;
-                    if (TryFocus(target())) return;
+                    if (!Current()) return;
+                    var control = target();
+                    if (TryFocus(control)) return;
                     // A newly presented tab item can load a layout pass after the panel; retry before falling back.
                     if (remaining > 1) Attempt(remaining - 1);
+                    // On a slow layout pass the selected tab can exist without being focusable yet. Moving focus to the
+                    // fallback would leave the requested tab unfocused, so wait for the layout that makes it focusable.
+                    else if (awaitTarget && control is not null) FocusWhenUsable(target, Current);
                     else TryFocus(fallback?.Invoke());
                 });
             Attempt(FocusAttempts);
+        }
+
+        private void QueueSelectedTabFocus(FrameworkElement panel) =>
+            QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(panel) as Control, awaitTarget: true);
+
+        /// <summary>
+        /// Focuses <paramref name="target"/> after the layout pass that makes it focusable. A newer focus request,
+        /// a panel state change, keyboard focus the user moves meanwhile, or disposal cancels the wait.
+        /// </summary>
+        private void FocusWhenUsable(Func<Control?> target, Func<bool> current)
+        {
+            var focusedBefore = _root.XamlRoot is { } root ? FocusManager.GetFocusedElement(root) : null;
+            var requested = _state.Selected;
+            // Closing the requested tab can select another one passively, without a revision change.
+            bool Pending() => current() && _presented && !_state.Passive && _state.Selected == requested;
+            void LayoutUpdated(object? sender, object args)
+            {
+                if (!Pending())
+                {
+                    DetachPendingLayout();
+                    return;
+                }
+                if (!IsUsable(target())) return;
+                DetachPendingLayout();
+                // Focusing from inside a layout callback would start another layout; apply it on the next pass.
+                _root.DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+                {
+                    if (Pending() && _root.XamlRoot is { } xamlRoot &&
+                        ReferenceEquals(FocusManager.GetFocusedElement(xamlRoot), focusedBefore))
+                        TryFocus(target());
+                });
+            }
+            _root.LayoutUpdated += LayoutUpdated;
+            _pendingLayout = LayoutUpdated;
+        }
+
+        private void DetachPendingLayout()
+        {
+            if (_pendingLayout is { } handler) _root.LayoutUpdated -= handler;
+            _pendingLayout = null;
         }
 
         private bool TryFocus(Control? control) => IsUsable(control) && control!.Focus(FocusState.Programmatic);
@@ -369,7 +477,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 if (_narrow) _toggle?.Invoke();
                 if (within) Restore();
                 else if (_panel is { } current)
-                    QueueFocus(SelectedTab, () => FocusManager.FindFirstFocusableElement(current) as Control);
+                    QueueSelectedTabFocus(current);
                 args.Handled = true;
             }
         }
@@ -384,6 +492,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         public void Dispose()
         {
             _focusRevision++;
+            DetachPendingLayout();
             _closing = false;
             _root.RemoveHandler(UIElement.GettingFocusEvent, _redirectClosingFocus);
             _root.KeyDown -= KeyDown;

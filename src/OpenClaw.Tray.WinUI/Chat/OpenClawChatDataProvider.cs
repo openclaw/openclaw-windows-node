@@ -858,6 +858,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         object? sender,
         ChatHistoryLoadResult result)
     {
+        if (result.RunLease is { } lease && result.TerminalRun is { } terminal)
+        {
+            var message = new ChatMessageInfo
+            {
+                SessionKey = result.Token.ThreadId, RunId = terminal.RunId, Role = "assistant",
+                State = terminal.State, ErrorMessage = terminal.ErrorMessage ??
+                    (terminal.State == "error" ? LocalizationHelper.GetString("Chat_Status_Error") : null),
+            };
+            if (_state.ReconcileHistoryRun(result.Token, lease, result.SessionId, message,
+                    ProjectionContext()) is { } transition)
+                PublishAssistantTransition(message, transition);
+        }
         void Deliver()
         {
             var snapshot = _state.SnapshotIfHistoryTokenCurrent(
@@ -1260,6 +1272,112 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         Publish(_state.Snapshot(ProjectionContext()));
     }
 
+    /// <summary>
+    /// Reads a tool row's workspace file once on the current connection. The result is discarded as stale when
+    /// the connection changes; there is no automatic retry. Text is secret-redacted and escaped for display.
+    /// </summary>
+    internal async Task<ChatWorkspaceFileResult> LoadWorkspaceFileAsync(
+        ChatWorkspaceFileRequest request, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var epoch = _bridge.ChatMessageReadConnectionEpoch;
+        bool Current() => !_state.IsDisposed && _bridge.IsConnected && _bridge.ChatMessageReadConnectionEpoch == epoch;
+        if (epoch is not { } expectedEpoch || !Current())
+            return new(ChatWorkspaceFileStatus.Stale);
+        if (request.ArtifactId is { } artifactId)
+        {
+            // The card already knows the attachment's type and size: binary or oversized files are never fetched.
+            if (request.MimeType is { } knownMime && !IsTextMimeType(knownMime) ||
+                request.SizeBytes > OpenClawGatewayClient.MaximumAssistantFilePreviewBytes)
+                return new(ChatWorkspaceFileStatus.NotPreviewable);
+            try
+            {
+                var resolved = await _bridge.ResolveAssistantMediaAsync(request.SessionKey, new()
+                {
+                    Kind = ChatMediaContentKind.File,
+                    Source = ChatMediaContentSource.Structured,
+                    ArtifactId = artifactId,
+                    AgentId = request.AgentId,
+                }, cancellationToken).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                return Current() ? ClassifyAssistantFile(resolved) : new(ChatWorkspaceFileStatus.Stale);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Logger.Warn($"[ChatProvider] Artifact preview failed: {ex.GetType().Name}");
+                return new(Current() ? ChatWorkspaceFileStatus.Unavailable : ChatWorkspaceFileStatus.Stale);
+            }
+        }
+        SessionFileContent file;
+        try
+        {
+            file = await _bridge.GetSessionFileAsync(request.SessionKey, request.Path, expectedEpoch, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // Missing, too-large and refused files, timeouts and a pending handshake all allow a manual retry.
+            Logger.Warn($"[ChatProvider] sessions.files.get failed: {ex.GetType().Name}");
+            return new(Current() ? ChatWorkspaceFileStatus.Unavailable : ChatWorkspaceFileStatus.Stale);
+        }
+        if (!Current())
+            return new(ChatWorkspaceFileStatus.Stale);
+        return ClassifyWorkspaceFile(file);
+    }
+
+    internal static ChatWorkspaceFileResult ClassifyWorkspaceFile(SessionFileContent file)
+    {
+        // Only a Gateway that rejected the method is unsupported; anything else may succeed on retry.
+        if (!file.IsSupported)
+            return new(ChatWorkspaceFileStatus.Unsupported);
+        if (file.Reason is { Length: > 0 })
+            return new(ChatWorkspaceFileStatus.Unavailable);
+        if (file.Missing)
+            return new(ChatWorkspaceFileStatus.Missing);
+        if (file.Content is not { } content || file.PreviewKind is { } kind && kind != "text" ||
+            file.ContentEncoding is { } encoding && encoding != "utf8")
+            return new(ChatWorkspaceFileStatus.NotPreviewable);
+        return new(ChatWorkspaceFileStatus.Loaded,
+            OpenClaw.Shared.ExecApprovals.ExecApprovalCommandDisplaySanitizer.SanitizeDocumentText(content, MaxWorkspaceFileDisplayChars));
+    }
+
+    // The File tab shows text in one selectable TextBlock laid out on the UI thread; keep it small enough to stay responsive.
+    internal const int MaxWorkspaceFileDisplayChars = 64 * 1024;
+
+    internal static ChatWorkspaceFileResult ClassifyAssistantFile(AssistantMediaResolutionResult result)
+    {
+        if (result.Status != AssistantMediaResolutionStatus.Ready || result.Data is not { } bytes)
+            return new(ChatWorkspaceFileStatus.Unavailable);
+        if (result.MimeType is not { } mime || !IsTextMimeType(mime))
+            return new(ChatWorkspaceFileStatus.NotPreviewable);
+        try
+        {
+            var text = new System.Text.UTF8Encoding(false, true).GetString(bytes).TrimStart('\uFEFF');
+            if (text.Contains('\0'))
+                return new(ChatWorkspaceFileStatus.NotPreviewable);
+            return ClassifyWorkspaceFile(new SessionFileContent { Content = text, ContentEncoding = "utf8", PreviewKind = "text" });
+        }
+        catch (System.Text.DecoderFallbackException)
+        {
+            return new(ChatWorkspaceFileStatus.NotPreviewable);
+        }
+    }
+
+    internal static bool IsTextMimeType(string mimeType) =>
+        mimeType.Split(';', 2)[0].Trim() is var mime &&
+        (mime.StartsWith("text/", StringComparison.OrdinalIgnoreCase) ||
+         mime.Equals("application/json", StringComparison.OrdinalIgnoreCase) ||
+         mime.Equals("application/xml", StringComparison.OrdinalIgnoreCase) ||
+         mime.Equals("application/javascript", StringComparison.OrdinalIgnoreCase));
+
     public async Task<ChatToolOutputResult> LoadToolOutputAsync(
         ChatToolOutputRequest request, CancellationToken cancellationToken)
     {
@@ -1393,6 +1511,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         {
             Publish(snapshot);
         }
+        foreach (var threadId in _state.HistoryRecoveryCandidates(usage.Sessions))
+            _ = LoadHistoryAsync(threadId, force: true);
     }
 
     internal static bool ShouldPreserveLiveEntryDuringAuthoritativeReload(
@@ -1672,7 +1792,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             : null;
         if (role != "assistant" ||
             ChatMessageInfo.IsSilentAssistantDirective(role, message.Text) ||
-            (string.IsNullOrEmpty(message.Text) && assistantContent is null &&
+            (!message.IsTerminal && string.IsNullOrEmpty(message.Text) && assistantContent is null &&
                 !message.ContentParts.Any(part => part.Kind is ChatMessageContentPartKind.Tool or ChatMessageContentPartKind.Reasoning)))
         {
             message.SuppressNotification();
@@ -1681,12 +1801,21 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
         var assistantText = ChatContentFormatting.RepairContentBlockSeams(
             ChatContentFormatting.TruncateForChatEntry(message.Text));
+        if (string.Equals(message.State, "error", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(message.ErrorMessage))
+            message.ErrorMessage = LocalizationHelper.GetString("Chat_Status_Error");
         var transition = _state.ApplyAssistant(
             message,
             assistantText,
             ProjectionContext(),
             gate.RuntimeGeneration,
             assistantContent);
+        PublishAssistantTransition(message, transition);
+    }
+
+    private void PublishAssistantTransition(ChatMessageInfo message, ChatAssistantTransition transition)
+    {
+        var threadId = message.SessionKey;
         if (transition.SuppressNotification)
             message.SuppressNotification();
         if (!transition.Rendered)
@@ -1708,12 +1837,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             ? null
             : _telemetry.PrepareFinishByRunId(
                 transition.CompletedRunId,
-                ChatTelemetryOutcome.Success,
+                message.State?.ToLowerInvariant() switch
+                {
+                    "error" => ChatTelemetryOutcome.Failure,
+                    "aborted" => ChatTelemetryOutcome.Canceled,
+                    _ => ChatTelemetryOutcome.Success,
+                },
                 ChatTurnTelemetryReason.AssistantFinal);
         _telemetry.CompletePreparedTurn(completion);
         Publish(
             transition.Snapshot!,
-            notification: transition.TurnComplete ? new ChatProviderNotification(
+            notification: transition.TurnComplete && message.IsFinal && !transition.SuppressNotification
+                ? new ChatProviderNotification(
                 ChatProviderNotificationKind.TurnComplete,
                 threadId,
                 LocalizationHelper.GetString(

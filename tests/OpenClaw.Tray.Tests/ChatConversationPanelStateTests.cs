@@ -43,6 +43,108 @@ public sealed class ChatConversationPanelStateTests
     }
 
     [Fact]
+    public void FileTab_OpensOnlyForTheCurrentConnectedSessionAndClosesWithIt()
+    {
+        var state = new ChatConversationPanelState();
+        var connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true, subagentsCurrent: () => connected);
+        var revision = state.Revision;
+        Assert.False(state.OpenFile(new("other-session", "a.md"), revision));
+        Assert.True(state.OpenFile(new("session", "a.md"), revision));
+        Assert.True(state.OpenFile(new("session", "docs/b.md"), revision));
+        Assert.Equal(["file"], state.Tabs);
+        Assert.Equal(new ChatWorkspaceFileRequest("session", "docs/b.md"), state.File);
+        Assert.Equal("b.md", state.File!.Name);
+        state.Close("file");
+        Assert.Null(state.File);
+        Assert.True(state.OpenFile(new("session", "a.md"), revision));
+        connected = false;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true, subagentsCurrent: () => connected);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.File);
+        Assert.False(state.OpenFile(new("session", "a.md"), state.Revision));
+        connected = true;
+        state.Bind(_provider, "next-session", 1, 2, 3, [], () => true, subagentsCurrent: () => connected);
+        Assert.False(state.OpenFile(new("next-session", "a.md"), revision));
+    }
+
+    [Fact]
+    public void FileTab_SurvivesAHistoryReloadButNotANewConnection()
+    {
+        var state = new ChatConversationPanelState();
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true, subagentsCurrent: () => true);
+        Assert.True(state.OpenFile(new("session", "a.md"), state.Revision));
+        state.Bind(_provider, "session", 1, 2, 4, [Tool("first")], () => true, subagentsCurrent: () => true);
+        Assert.Equal(["file"], state.Tabs);
+        Assert.Equal(new ChatWorkspaceFileRequest("session", "a.md"), state.File);
+        state.Bind(_provider, "session", 2, 2, 4, [Tool("first")], () => true, subagentsCurrent: () => true);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.File);
+    }
+
+    [Fact]
+    public void FileTab_ReopeningTheSameFileRemountsItsBodyForAFreshRead()
+    {
+        var state = new ChatConversationPanelState();
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true, subagentsCurrent: () => true);
+        Assert.Null(state.FileBodyKey);
+        Assert.True(state.OpenFile(new("session", "a.md"), state.Revision));
+        var first = state.FileBodyKey;
+        Assert.True(state.OpenSubagents(state.Revision));
+        Assert.Equal(first, state.FileBodyKey);
+        Assert.True(state.OpenFile(new("session", "a.md"), state.Revision));
+        Assert.NotEqual(first, state.FileBodyKey);
+    }
+
+    [Fact]
+    public void FilesListAndFilePreviewKeepDistinctHistoryAndConnectionLifetimes()
+    {
+        var state = new ChatConversationPanelState();
+        var connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [], () => true, subagentsCurrent: () => connected);
+        Assert.True(state.OpenFiles(state.Revision));
+        Assert.True(state.OpenFile(new("session", "a.md"), state.Revision));
+        Assert.Equal(["files", "file"], state.Tabs);
+        var body = state.FileBodyKey;
+
+        state.Bind(_provider, "session", 1, 2, 4, [], () => true, subagentsCurrent: () => connected);
+        Assert.Equal(["file"], state.Tabs);
+        Assert.Equal(body, state.FileBodyKey);
+        Assert.True(state.OpenFiles(state.Revision));
+
+        connected = false;
+        state.Bind(_provider, "session", 1, 2, 4, [], () => true, subagentsCurrent: () => connected);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.File);
+    }
+
+    [Fact]
+    public void Reorder_AdoptsOnlyAPermutationOfOpenTabsAndKeepsSelection()
+    {
+        var state = new ChatConversationPanelState();
+        state.Bind(_provider, "session", 1, 2, 3, [], () => true, subagentsCurrent: () => true);
+        Assert.True(state.OpenFiles(state.Revision));
+        Assert.True(state.OpenFile(new("session", "a.md"), state.Revision));
+        var revision = state.Revision;
+        var changes = 0;
+        state.Changed += () => changes++;
+
+        Assert.False(state.Reorder(["file"]));
+        Assert.False(state.Reorder(["file", "details"]));
+        Assert.False(state.Reorder(["files", "file"]));
+        Assert.Equal(0, changes);
+
+        Assert.True(state.Reorder(["file", "files"]));
+        Assert.Equal(["file", "files"], state.Tabs);
+        Assert.Equal("file", state.Selected);
+        Assert.Equal(revision, state.Revision);
+        Assert.Equal(1, changes);
+        state.Close("file");
+        Assert.Equal(["files"], state.Tabs);
+        Assert.Equal("files", state.Selected);
+    }
+
+    [Fact]
     public void SubagentsSharesTheTabStripWithoutReplacingToolDetails()
     {
         var state = new ChatConversationPanelState();

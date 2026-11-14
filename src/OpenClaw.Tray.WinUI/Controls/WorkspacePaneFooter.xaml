@@ -37,11 +37,12 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8,7" Height="40" HorizontalAlignment="Stretch"
+        <Button x:Name="OwnerButton" Style="{StaticResource SubtleButtonStyle}" Padding="8,4" Height="40" HorizontalAlignment="Stretch"
                 HorizontalContentAlignment="Stretch">
             <Grid x:Name="OwnerContent" ColumnSpacing="12">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="24"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                <Grid Width="24" Height="24" VerticalAlignment="Center">
+                <!-- No explicit size: a sized Grid clips the overhanging status and update dots. -->
+                <Grid VerticalAlignment="Center">
                     <PersonPicture x:Name="OwnerPicture" Width="24" Height="24"
                                    IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
                     <Border Width="14" Height="14" CornerRadius="7" BorderThickness="2"

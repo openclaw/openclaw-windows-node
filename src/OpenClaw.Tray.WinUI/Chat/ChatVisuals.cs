@@ -251,6 +251,7 @@ internal static class ChatVisuals
     internal const double SurfaceRadius = 12;
     internal const double BodySize = 14;
     internal const string BodyFontFamily = "Segoe UI Variable Text";
+    internal const string TaskMarkerFontFamily = "Segoe UI Symbol";
     internal const double BodyLineHeight = 21;
     internal const string CodeFontFamily = "Consolas";
     internal const double CodeSize = 13;
@@ -276,6 +277,15 @@ internal static class ChatVisuals
     internal const double ListItemGap = 6;
     // Compact thinking text keeps Reactor's original 2px list rhythm.
     internal const double CompactListItemGap = 2;
+    // Web blockquote: 8px 12px padding over a 3px rounded bar inset 4px from the top and bottom.
+    internal const double QuoteBarWidth = 3;
+    internal const double QuoteBarInset = 4;
+    internal const double QuoteVerticalInset = 8;
+    internal const double QuoteHorizontalInset = 12;
+    // Web table: rounded 1px frame, 8px 12px cells separated by 1px rules, tinted header row.
+    internal const double TableRadius = 8;
+    internal const double TableCellHorizontalInset = 12;
+    internal const double TableCellVerticalInset = 8;
     internal const double CompactGap = 4;
     internal const double TurnGap = 4;
     internal const double DetailHorizontalInset = 12;
@@ -284,6 +294,8 @@ internal static class ChatVisuals
     internal const double ToolRowMinHeight = 32;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
+    // Quieter activity titles (tool, thinking and run status) and their dimmed details.
+    internal const double ActivityTextFontSize = 12;
     // A tool row's dimmed directory or search scope never takes more than this; it trims with "…".
     internal const double ToolRowDetailMaxWidth = 240;
     internal const double ActivityDetailsMaxHeight = 160;
@@ -302,7 +314,14 @@ internal static class ChatVisuals
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
-    internal const double AvatarSlot = 44;
+    internal const double AvatarSize = 36;
+    internal const double AvatarGap = 10;
+    internal const double AvatarSlot = AvatarSize + AvatarGap;
+    internal const double HistoryTickSpacing = 10;
+    internal const double HistoryTickHeight = 2;
+    internal const double HistoryTickMinimumGap = 4;
+    internal const double HistoryRailInset = 8;
+    internal const int HistoryPreviewLength = 240;
     // Subagents pill above the composer and rows in the Subagents tab.
     internal const double SubagentPillHeight = 28;
     internal const double SubagentPillIconSize = 14;
@@ -326,7 +345,7 @@ internal static class ChatVisuals
 
     internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;
-    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 32;
+    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 40;
     internal static double ProseWidth(double width) =>
         Math.Min(ReadingWidth - 2 * ProseInset, width - 2 * (Gutter(width) + ProseInset));
 
@@ -375,7 +394,7 @@ internal static class ChatVisuals
 
     /// <summary>Quiet 12px activity title; it shimmers only while its work is active.</summary>
     internal static TextBlockElement ActivityText(string label, bool active) =>
-        Factories.TextBlock(label).FontSize(12).TextWrapping(TextWrapping.NoWrap)
+        Factories.TextBlock(label).FontSize(ActivityTextFontSize).TextWrapping(TextWrapping.NoWrap)
             .TextTrimming(TextTrimming.CharacterEllipsis)
             .Set(StyleSecondaryText)
             .WithTextShimmer(active);

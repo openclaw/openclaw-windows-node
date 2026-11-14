@@ -7756,6 +7756,8 @@
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新訊息。跳至最新訊息</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>跳至最新訊息</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>聊天訊息導覽</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>使用向上和向下鍵在訊息之間跳轉，或使用 Home 和 End 鍵跳至第一則和最新訊息。</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 個子代理程式，{1} 個正在工作，{2} 個需要關注</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等候子代理程式</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在準備輸入</value></data>
@@ -10072,6 +10074,18 @@
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>遠端 Gateway 已連線</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>已為此設定驗證</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁開啟詳細資料</value></data>
+  <data name="Chat_Tool_OpenFile" xml:space="preserve"><value>開啟檔案 {0}</value></data>
+  <data name="Chat_Tool_OpenSubagent" xml:space="preserve"><value>開啟子代理程式 {0}</value></data>
+  <data name="Chat_Tool_DiffStat" xml:space="preserve"><value>新增了 {0} 行，移除了 {1} 行</value></data>
+  <data name="Chat_Panel_File" xml:space="preserve"><value>檔案</value></data>
+  <data name="Chat_File_Loading" xml:space="preserve"><value>正在載入檔案…</value></data>
+  <data name="Chat_File_Empty" xml:space="preserve"><value>此檔案是空的。</value></data>
+  <data name="Chat_File_Missing" xml:space="preserve"><value>此檔案已不存在。</value></data>
+  <data name="Chat_File_NotPreviewable" xml:space="preserve"><value>無法將此檔案顯示為文字。它可能是影像、二進位檔案或太大。</value></data>
+  <data name="Chat_File_Unavailable" xml:space="preserve"><value>無法載入此檔案。它可能位於工作階段工作區之外或太大。</value></data>
+  <data name="Chat_File_Unsupported" xml:space="preserve"><value>此 Gateway 無法開啟工作區檔案。</value></data>
+  <data name="Chat_File_Stale" xml:space="preserve"><value>檔案載入完成前連線已變更。</value></data>
+  <data name="Chat_File_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>工具詳細資料</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>這些詳細資料已無法使用。如有需要，請重新連線，然後從目前對話重新開啟工具。</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>調整對話面板大小</value></data>
@@ -10079,6 +10093,8 @@
   <data name="Chat_Panel_Back" xml:space="preserve"><value>返回對話</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>顯示面板</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>對話面板</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>收集記錄</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>無法收集記錄（{0}）。請重試。</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>重新整理</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>重新整理</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>儀表板</value></data>

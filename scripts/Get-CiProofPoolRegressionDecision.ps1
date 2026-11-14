@@ -25,7 +25,8 @@ function Complete-Decision([bool]$ShouldRun) {
     $ShouldRun.ToString().ToLowerInvariant()
 }
 
-if ($EventName -ne "pull_request") {
+# Merge groups are diffed against the queue's base like pull requests; other events run fail-closed.
+if ($EventName -notin @("pull_request", "merge_group")) {
     Complete-Decision $true
     return
 }

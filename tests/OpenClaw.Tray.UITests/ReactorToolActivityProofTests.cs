@@ -1,3 +1,4 @@
+using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Animation;
 using Microsoft.UI.Reactor.Hosting;
@@ -27,6 +28,44 @@ public sealed class ReactorToolActivityProofTests
     private readonly UIThreadFixture _ui;
 
     public ReactorToolActivityProofTests(UIThreadFixture ui) => _ui = ui;
+
+    [Fact]
+    public async Task ToolRow_RecyclingBetweenActivityAndStandaloneDoesNotReuseIncompatibleProps()
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var first = Tool("first", "read", "alpha", ChatToolCallStatus.Success);
+            var second = Tool("second", "edit", "saved", ChatToolCallStatus.Success);
+            var timeline = BuildTimeline([first, second], 1);
+            var activity = Assert.Single(ChatToolActivityPresentation.Project(
+                timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+            var expansion = new ChatToolActivityExpansionState();
+            Element Group() => Grid([GridSize.Star()], [GridSize.Auto],
+                ToolCallCardRenderer.BuildActivity(timeline, activity, expansion));
+            Element Single() => Grid([GridSize.Star()], [GridSize.Auto],
+                ToolCallCardRenderer.BuildStandalone(timeline, first));
+            var element = Group();
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                foreach (var next in new[] { Single(), Group(), Single() })
+                {
+                    root = host.Reconciler.Reconcile(element, next, root!, static () => { });
+                    element = next;
+                    host.Content = root;
+                    Assert.NotEmpty(FindLogical<Expander>(root!));
+                }
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
 
     [Theory]
     [InlineData("Waiting for approval", true)]

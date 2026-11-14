@@ -392,6 +392,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     }
 
     public Task PublishChatRunEventAsync(string sessionKey, string runId, string stream, object data,
+        CancellationToken cancellationToken = default) =>
+        PublishChatRunEventAsync("agent", sessionKey, runId, stream, data, cancellationToken);
+
+    public Task PublishSessionToolEventAsync(string sessionKey, string runId, object data,
+        CancellationToken cancellationToken = default) =>
+        PublishChatRunEventAsync("session.tool", sessionKey, runId, "tool", data, cancellationToken);
+
+    private Task PublishChatRunEventAsync(string eventName, string sessionKey, string runId, string stream, object data,
         CancellationToken cancellationToken = default)
     {
         ValidateChatRun(sessionKey, runId);
@@ -400,7 +408,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(data);
         var message = new
         {
-            type = "event", @event = "agent",
+            type = "event", @event = eventName,
             payload = new
             {
                 sessionKey, runId, stream, data,
@@ -440,6 +448,32 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    /// <summary>Publishes the producer's optional terminal content and authoritative display-tail override.</summary>
+    public Task PublishChatTerminalAsync(string sessionKey, string runId, string state,
+        string? text = null, IReadOnlyList<object>? displayContent = null, bool yielded = false,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        if (state is not ("final" or "error" or "aborted"))
+            throw new ArgumentException("Expected a terminal chat state.", nameof(state));
+        var payload = new Dictionary<string, object?>
+        {
+            ["sessionKey"] = sessionKey, ["runId"] = runId, ["state"] = state,
+            ["seq"] = Interlocked.Increment(ref _chatEventSequence),
+        };
+        if (yielded)
+            payload["yielded"] = true;
+        if (text is not null)
+        {
+            var message = new Dictionary<string, object?> { ["role"] = "assistant",
+                ["content"] = new[] { new { type = "text", text } } };
+            if (displayContent is not null)
+                message["openclawDisplayContent"] = displayContent;
+            payload["message"] = message;
+        }
+        return PublishEventAsync(new { type = "event", @event = "chat", payload }, cancellationToken);
+    }
+
     public Task PublishChatSnapshotAsync(string sessionKey, string runId, string text,
         bool includeRunId, CancellationToken cancellationToken = default)
     {
@@ -452,6 +486,30 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 sessionKey, runId = includeRunId ? runId : null,
                 message = new { role = "assistant", content = text }
+            }
+        }, cancellationToken);
+    }
+
+    public Task PublishPersistedAssistantAsync(string sessionKey, string runId, string messageId,
+        int messageSequence, string text, CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "session.message",
+            payload = new
+            {
+                sessionKey, runId, hasActiveRun = true, activeRunIds = new[] { runId },
+                messageId, messageSeq = messageSequence,
+                message = new
+                {
+                    role = "assistant", timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    __openclaw = new { id = messageId, seq = messageSequence, runId },
+                    content = new[] { new { type = "text", text,
+                        textSignature = JsonSerializer.Serialize(new { v = 1, id = messageId, phase = "final_answer" }) } },
+                }
             }
         }, cancellationToken);
     }

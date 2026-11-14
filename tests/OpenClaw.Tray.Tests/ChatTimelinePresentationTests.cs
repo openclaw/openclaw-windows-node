@@ -82,7 +82,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_UsesReactiveAnnotatedScrollBarControllerBinding()
+    public void ReactorTimeline_UsesReactiveHistoryRailBinding()
     {
         var binding = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -93,7 +93,7 @@ public sealed class ChatTimelinePresentationTests
 
         Assert.Contains("context.BindFor(itemsView, element)", binding);
         Assert.Contains("binding.Reference(", binding);
-        Assert.Contains("VerticalScrollController = scrollBar?.ScrollController", binding);
+        Assert.Contains("HistoryNavigation.SetScrollBar(scrollBar)", binding);
         Assert.Contains("explicitJump: false", binding);
         Assert.Contains("oldElement.JumpRevision != newElement.JumpRevision", binding);
         Assert.DoesNotContain(".Current", binding);
@@ -1921,7 +1921,6 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatToolActivityPresentation.Project(", timeline);
         Assert.Contains("ChatTimelineAssistantRuns.Describe(\n            projectedRows,", timeline.ReplaceLineEndings("\n"));
         Assert.DoesNotContain("OrderEntriesForPresentation", timeline);
-        Assert.Contains("includeMetadata: row.IsAssistantRunEnd", timeline);
     }
 
     [Fact]

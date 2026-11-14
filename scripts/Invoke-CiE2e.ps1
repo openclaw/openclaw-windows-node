@@ -27,18 +27,80 @@ $resultsDirectory = "TestResults\E2E"
 $trxPath = Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.trx"
 # VSTest's hang timer resets on test events, not fixture progress. A progressing
 # WSL install can exceed it before the first case starts. Bound output inactivity
-# instead; the existing workflow step still caps total wall time at 20 minutes.
+# instead, and end the whole run before the workflow step limit (below).
 $testArguments = @(
     'test', 'tests/OpenClaw.E2ETests', '--no-build', '-c', 'Debug', '-r', 'win-x64',
     '--verbosity', 'normal', '--results-directory', $resultsDirectory,
     '--logger', "trx;LogFileName=OpenClaw.E2ETests.$Name.trx",
     '--logger', 'console;verbosity=detailed', '--blame', '--filter', $Filter
 )
+# A step that reaches its timeout-minutes cannot report, and if it does not end, the job limit cancels
+# it before the always() upload runs. With a step budget, VSTest aborts the session (keeping the TRX
+# and console output) at the budget minus a reserve. The runner's wall deadline, at least 60 s
+# before the step limit, then lists recent processes and ends the run if the abort did not.
+# OPENCLAW_CI_E2E_STOP_RESERVE_SECONDS: seconds of the step budget kept for that (default 180,
+# 120 to 1800). Older candidates ignore it and keep relying on the step timeout alone.
+# Neither deadline helps when the hosted runner's worker itself freezes during WSL work
+# (actions/runner-images#14938): then no step timeout fires and the job keeps no log.
+$wallTimeoutSeconds = 0
+$consoleLogPath = Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.console.log"
+# Records which WSL distros were still running when a deadline ended the run. Bounded, because a
+# wedged WSL service is one of the states this captures; diagnostics never change the result.
+function Save-WslStateAtDeadline {
+    $previousUtf8 = $env:WSL_UTF8
+    try {
+        $wslState = Join-Path $resultsDirectory "wsl-state-at-deadline.$Name.txt"
+        $env:WSL_UTF8 = '1'
+        $wsl = Start-Process -FilePath 'wsl.exe' -ArgumentList '--list', '--verbose' -NoNewWindow -PassThru `
+            -RedirectStandardOutput $wslState -RedirectStandardError "$wslState.stderr"
+        if (-not $wsl.WaitForExit(15000)) {
+            $wsl.Kill($true)
+            Add-Content -LiteralPath $wslState -Value 'wsl.exe --list --verbose did not finish within 15 seconds.'
+        }
+    } catch {
+        Write-Warning "WSL state capture failed: $($_.Exception.Message)"
+    } finally {
+        $env:WSL_UTF8 = $previousUtf8
+    }
+}
+if ($StepTimeoutMinutes -gt 0) {
+    $reserveSeconds = 180
+    $configuredReserve = [Environment]::GetEnvironmentVariable('OPENCLAW_CI_E2E_STOP_RESERVE_SECONDS')
+    if (-not [string]::IsNullOrWhiteSpace($configuredReserve)) {
+        $parsedReserve = 0
+        if ([int]::TryParse($configuredReserve.Trim(), [Globalization.NumberStyles]::None,
+                [Globalization.CultureInfo]::InvariantCulture, [ref]$parsedReserve) -and
+            $parsedReserve -ge 120 -and $parsedReserve -le 1800) {
+            $reserveSeconds = $parsedReserve
+        } else {
+            Write-Warning 'OPENCLAW_CI_E2E_STOP_RESERVE_SECONDS must be a whole number of seconds from 120 to 1800; using 180.'
+        }
+    }
+    $availableSeconds = [int]($StepTimeoutMinutes * 60 - $stepBudget.Elapsed.TotalSeconds)
+    $sessionSeconds = $availableSeconds - $reserveSeconds
+    if ($sessionSeconds -ge 60) {
+        # Bounded cleanup after the wall deadline (snapshot, kill 5 s, readers 1 s, WSL state 15 s)
+        # needs well under a minute.
+        $wallTimeoutSeconds = $availableSeconds - [Math]::Max(60, [int][Math]::Ceiling($reserveSeconds / 2))
+        $testArguments += @('--', "RunConfiguration.TestSessionTimeout=$($sessionSeconds * 1000)")
+        Write-Host "E2E shard '$Name' run deadline: VSTest aborts after $sessionSeconds s; the runner stops after $wallTimeoutSeconds s ($StepTimeoutMinutes-minute step, $reserveSeconds s reserve)."
+    } else {
+        Write-Warning "E2E shard '$Name' step budget leaves under 60 s after its $reserveSeconds s reserve; relying on the step timeout alone."
+    }
+}
 try {
     & (Join-Path $PSScriptRoot 'Invoke-CiProcess.ps1') -FilePath 'dotnet' `
         -ArgumentList $testArguments -IdleTimeoutSeconds $HangTimeoutSeconds `
-        -OutputPath (Join-Path $resultsDirectory "OpenClaw.E2ETests.$Name.console.log")
+        -WallTimeoutSeconds $wallTimeoutSeconds `
+        -OutputPath $consoleLogPath
     $testExitCode = $LASTEXITCODE
+    if ($testExitCode -ne 0 -and (Test-Path -LiteralPath $consoleLogPath) -and
+        (Select-String -LiteralPath $consoleLogPath -SimpleMatch 'Aborting test run: test run timeout' -Quiet)) {
+        Save-WslStateAtDeadline
+    }
+} catch {
+    Save-WslStateAtDeadline
+    throw
 } finally {
     # Also report when the idle deadline throws.
     if ($StepTimeoutMinutes -gt 0) {

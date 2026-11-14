@@ -7756,6 +7756,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nouveaux messages. Aller aux plus récents</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Aller aux plus récents</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>Navigation dans les messages</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>Utilisez Haut et Bas pour parcourir les messages, ou Début et Fin pour le premier et le dernier message.</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} sous-agents, {1} en cours, {2} nécessitent votre attention</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>En attente des sous-agents</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Préparation des paramètres</value></data>
@@ -10072,6 +10074,18 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Gateway distant connecté</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Vérifié pour cette configuration</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Ouvrir les détails à côté de la conversation</value></data>
+  <data name="Chat_Tool_OpenFile" xml:space="preserve"><value>Ouvrir le fichier {0}</value></data>
+  <data name="Chat_Tool_OpenSubagent" xml:space="preserve"><value>Ouvrir le sous-agent {0}</value></data>
+  <data name="Chat_Tool_DiffStat" xml:space="preserve"><value>{0} lignes ajoutées, {1} lignes supprimées</value></data>
+  <data name="Chat_Panel_File" xml:space="preserve"><value>Fichier</value></data>
+  <data name="Chat_File_Loading" xml:space="preserve"><value>Chargement du fichier…</value></data>
+  <data name="Chat_File_Empty" xml:space="preserve"><value>Ce fichier est vide.</value></data>
+  <data name="Chat_File_Missing" xml:space="preserve"><value>Ce fichier n'existe plus.</value></data>
+  <data name="Chat_File_NotPreviewable" xml:space="preserve"><value>Ce fichier ne peut pas être affiché comme texte. Il s'agit peut-être d'une image, d'un fichier binaire ou d'un fichier trop volumineux.</value></data>
+  <data name="Chat_File_Unavailable" xml:space="preserve"><value>Impossible de charger ce fichier. Il est peut-être en dehors de l'espace de travail de la session ou trop volumineux.</value></data>
+  <data name="Chat_File_Unsupported" xml:space="preserve"><value>Cette passerelle ne peut pas ouvrir les fichiers de l'espace de travail.</value></data>
+  <data name="Chat_File_Stale" xml:space="preserve"><value>La connexion a changé avant le chargement du fichier.</value></data>
+  <data name="Chat_File_Retry" xml:space="preserve"><value>Réessayer</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Détails de l’outil</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Ces détails ne sont plus disponibles. Reconnectez-vous si nécessaire, puis rouvrez l’outil depuis la conversation actuelle.</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>Redimensionner le panneau de conversation</value></data>
@@ -10079,6 +10093,8 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Revenir à la conversation</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Afficher le panneau</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Panneaux de conversation</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Collecter les journaux</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>Les journaux n'ont pas pu être collectés ({0}). Réessayez.</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Actualiser</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Actualiser</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Tableau de bord</value></data>

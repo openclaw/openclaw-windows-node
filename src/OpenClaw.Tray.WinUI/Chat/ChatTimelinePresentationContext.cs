@@ -45,4 +45,9 @@ public sealed record ChatTimelinePresentationContext(
     string UserDisplayName = "",
     Microsoft.UI.Xaml.Media.ImageSource? UserProfilePicture = null,
     Action<ChatToolDetailRequest>? OnOpenToolDetails = null,
-    IReadOnlyList<ChatThread>? ChildThreads = null);
+    IReadOnlyList<ChatThread>? ChildThreads = null,
+    // Tool row links: the workspace file a row names, and the subagent session a launch started.
+    Action<string>? OnOpenWorkspaceFile = null,
+    Func<string, bool>? CanOpenSession = null,
+    Action<string>? OnOpenSession = null,
+    Action<ChatAssistantMediaPresentation>? OnOpenAssistantFile = null);

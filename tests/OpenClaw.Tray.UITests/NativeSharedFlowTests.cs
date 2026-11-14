@@ -198,8 +198,9 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
     }
 
     [Fact]
-    public async Task FailedReturnFromFinishingStillOffersCloseWithoutRetryingSetup()
+    public async Task FailedReturnFromFinishingKeepsDiagnosticsWithoutRestoringNavigation()
     {
+        var collections = new List<FrameworkElement>();
         await WithNativeAsync(async (window, frame, _, runtime, _, completed) =>
         {
             await Assert.IsType<AiSetupPage>(frame.Content).CloseAsync();
@@ -214,29 +215,47 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
             typeof(SetupWindow).GetField("_completionPreparation", BindingFlags.NonPublic | BindingFlags.Instance)!
                 .SetValue(window, owner);
             frame.Navigate(typeof(AiCompletionPage));
-            runtime.DisposeFailure = new IOException("Synthetic native release failure");
-            await Assert.IsAssignableFrom<Task>(typeof(SetupWindow)
-                .GetMethod("ReturnFromFinishingAsync", BindingFlags.NonPublic | BindingFlags.Instance)!
-                .Invoke(window, [owner]));
+            typeof(SetupWindow).GetMethod("RefreshCompletionRecovery", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .Invoke(window, null);
             var recovery = Assert.IsType<AiCompletionPage>(frame.Content);
+            var back = Find<Button>(recovery, "BackButton");
+            await WaitAsync(() => back.IsLoaded, "finishing Back action loaded");
+            runtime.DisposeFailure = new IOException("Synthetic native release failure");
+            Invoke(back);
+            await Assert.IsAssignableFrom<Task>(typeof(SetupWindow)
+                .GetField("_preparationTask", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(window));
+            Assert.Same(recovery, frame.Content);
             Assert.True(Find<InfoBar>(recovery, "ErrorBar").IsOpen);
             Assert.Equal(Visibility.Collapsed, Find<Button>(recovery, "RetryButton").Visibility);
-            Assert.Equal(Visibility.Collapsed, Find<Button>(recovery, "BackButton").Visibility);
-            var close = Find<Button>(recovery, "CloseButton");
-            Assert.Equal(Visibility.Visible, close.Visibility);
-            Assert.True(close.IsEnabled);
-            await WaitAsync(() => close.IsLoaded, "failed cleanup Close action loaded");
+            Assert.Equal(Visibility.Collapsed, back.Visibility);
+            var collect = Find<Button>(recovery, "CollectLogsButton");
+            Assert.Equal(Visibility.Visible, collect.Visibility);
+            Assert.True(collect.IsEnabled);
+            Invoke(collect);
+            await WaitAsync(() => collections.Count == 1, "failed cleanup diagnostics callback");
+            Assert.Same(recovery, Assert.Single(collections));
+            foreach (var handler in new[] { "Retry_Click", "Back_Click" })
+                typeof(AiCompletionPage).GetMethod(handler, BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .Invoke(recovery, [recovery, new RoutedEventArgs()]);
+            Assert.Same(recovery, frame.Content);
+            Assert.Equal(Visibility.Collapsed, back.Visibility);
+            Assert.Null(recovery.FindName("CloseButton"));
             if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
             {
                 window.AppWindow.Move(new(120, 120));
                 OnboardingNativeProof.ActivateOwned(window);
-                using (await OnboardingNativeProof.CaptureAsync(window, "finishing-cleanup-failed-close", output,
-                    ["Finishing setup", "Close"], requiredContent: recovery)) { }
+                using (await OnboardingNativeProof.CaptureAsync(window, "finishing-cleanup-failed-diagnostics", output,
+                    ["Finishing setup", "Collect logs"], requiredContent: recovery)) { }
             }
-            Invoke(close);
-            await WaitAsync(() => window.IsClosed, "failed cleanup can close setup");
+            window.Close();
+            await WaitAsync(() => window.IsClosed, "failed cleanup can close setup from the title bar");
             Assert.Empty(completed);
-        }, isolated: true);
+        }, isolated: true, collectLogs: source =>
+        {
+            collections.Add(source);
+            return Task.CompletedTask;
+        });
     }
 
     [Fact]
@@ -506,7 +525,8 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
         Func<string, JsonElement, object>? wizardReply = null, bool isolated = false,
         Func<JsonElement, object>? logReply = null, bool startupRegistrationAllowed = false,
         Func<bool, CancellationToken, Task>? applyStartup = null,
-        Func<SetupWindow, Frame, Task>? beforeAi = null)
+        Func<SetupWindow, Frame, Task>? beforeAi = null,
+        Func<FrameworkElement, Task>? collectLogs = null)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         var detectionAttempts = 0;
@@ -577,6 +597,7 @@ public sealed class NativeSharedFlowTests(UIThreadFixture ui, ITestOutputHelper 
                     startupRegistrationAllowed: startupRegistrationAllowed,
                     applyNativeStartup: applyStartup ??
                         ((_, _) => throw new InvalidOperationException("No OS startup changes in this fixture.")),
+                    collectLogs: collectLogs,
                     publishNativePreparation: (preparation, _) =>
                     {
                         Assert.Equal(native.Record.Id, registry.ActiveGatewayId);

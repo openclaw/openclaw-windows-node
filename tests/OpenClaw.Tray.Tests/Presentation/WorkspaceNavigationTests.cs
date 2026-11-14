@@ -1343,7 +1343,14 @@ public sealed class WorkspaceNavigationTests
     public void RailOwner_UsesCompactPaddingAndRestoresExpandedPadding()
     {
         var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
-        Assert.Contains("OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8, 7, 8, 7);", footer);
+        Assert.Contains("OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8, 4, 8, 4);", footer);
+        // The rail keeps the account at the bottom, below Dashboard and the bell.
+        Assert.Contains("Place(DashboardButton, 0, rail ? 0 : 1);", footer);
+        Assert.Contains("Place(NotificationsButton, rail ? 1 : 0, rail ? 0 : 2);", footer);
+        Assert.Contains("Place(OwnerButton, rail ? 2 : 0, 0);", footer);
+        Assert.Contains("DashboardButton.TabIndex = rail ? 0 : 1;", footer);
+        Assert.Contains("NotificationsButton.TabIndex = rail ? 1 : 2;", footer);
+        Assert.Contains("OwnerButton.TabIndex = rail ? 2 : 0;", footer);
     }
 
     [Fact]
@@ -1362,6 +1369,12 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("Right", (string?)ring.Attribute("HorizontalAlignment"));
         Assert.Equal("Bottom", (string?)ring.Attribute("VerticalAlignment"));
         Assert.Equal("0,0,-3.5,-3.5", (string?)ring.Attribute("Margin"));
+        // A sized or clipped overlay Grid cuts the overhanging dots off at the avatar bounds.
+        foreach (var size in new[] { "Width", "Height", "MinWidth", "MinHeight", "MaxWidth", "MaxHeight", "Clip" })
+            Assert.Null(ring.Parent!.Attribute(size));
+        // The avatar needs slack in the 40 DIP button; ApplyLayout sets the same expanded padding.
+        var ownerButton = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "OwnerButton");
+        Assert.Equal("8,4", (string?)ownerButton.Attribute("Padding"));
         Assert.DoesNotContain(doc.Descendants(), element => (string?)element.Attribute(x + "Name") == "OwnerDetail");
         Assert.Equal("FontIcon", dot.Name.LocalName);
         Assert.Equal("Raw", (string?)dot.Attribute("AutomationProperties.AccessibilityView"));

@@ -186,7 +186,8 @@ public record ChatTimelineItem(
     bool ToolInputPreparing = false,
     int ToolFeedbackSequence = 0,
     System.Collections.Immutable.ImmutableList<ChatToolReview>? ToolReviews = null,
-    string? ToolParentCallId = null)
+    string? ToolParentCallId = null,
+    ChatToolResultDiffFacts? ToolResultDiffFacts = null)
 {
     public ChatToolHandoffReceipt? ConfirmedHandoff =>
         ToolResult == ChatToolCallStatus.Success && !string.IsNullOrWhiteSpace(ToolCallId) &&
@@ -194,8 +195,12 @@ public record ChatTimelineItem(
             ? HandoffReceipt : null;
 }
 
-/// <summary>Bounded, redacted tool input for disclosure, separate from persisted row summaries.</summary>
-public sealed record ChatToolInputDetails(string Text, string? Command = null, string? Preview = null, bool Unavailable = false);
+/// <summary>
+/// Bounded, redacted tool input for disclosure, separate from persisted row summaries. <paramref name="Lossy"/>
+/// is true when secret redaction or truncation changed the text, so it no longer holds the tool's exact input.
+/// </summary>
+public sealed record ChatToolInputDetails(string Text, string? Command = null, string? Preview = null, bool Unavailable = false,
+    bool Lossy = false);
 
 /// <summary>Supplied live edit counts, not a reconstruction of incomplete arguments.</summary>
 public sealed record ChatToolDiffStat(long Added, long Removed);
@@ -241,7 +246,9 @@ public record ChatTimelineState(
     string? ProgressText = null,
     ChatRunUsage? RunUsage = null,
     ChatReasoningStream? ReasoningStream = null,
-    long? ProgressRetryAtMs = null)
+    long? ProgressRetryAtMs = null,
+    string? ReconcilableAssistantId = null,
+    System.Collections.Immutable.ImmutableDictionary<(string RunId, string ItemId), int>? PreambleSequences = null)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
@@ -276,7 +283,8 @@ public record ChatPendingToolOutcome(
     long Sequence,
     ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
     ChatToolHandoffReceipt? HandoffReceipt = null,
-    ChatToolResultReference? ResultReference = null);
+    ChatToolResultReference? ResultReference = null,
+    ChatToolResultDiffFacts? DiffFacts = null);
 
 public enum ChatQueuedMessageSendState
 {
@@ -318,6 +326,8 @@ public record ChatMessageEvent(string Text, string? ReasoningText = null, bool R
     bool ReplacesStreamText = false, bool ActivatesTurn = true) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
 public record ChatAssistantStreamRetireEvent(string RunId) : ChatEvent;
+/// <summary>Public progress commentary, separate from reasoning and the accumulated answer stream.</summary>
+public record ChatPreambleEvent(string RunId, string? ItemId, string Text, int Sequence, bool Complete) : ChatEvent;
 public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
@@ -348,7 +358,8 @@ public record ChatToolOutputEvent(
     string? ToolCallId = null,
     string? RunId = null,
     ChatToolHandoffReceipt? HandoffReceipt = null,
-    ChatToolResultReference? ResultReference = null) : ChatEvent;
+    ChatToolResultReference? ResultReference = null,
+    ChatToolResultDiffFacts? DiffFacts = null) : ChatEvent;
 public record ChatToolProgressEvent(
     string Text,
     string? ToolCallId,

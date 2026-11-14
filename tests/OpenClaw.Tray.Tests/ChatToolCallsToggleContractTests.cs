@@ -36,8 +36,6 @@ public sealed class ChatToolCallsToggleContractTests
         // Timeline still consumes the props from the root.
         Assert.Contains("props.Timeline.ShowToolCalls", timeline);
         Assert.Contains("ToolCallsCollapseVersion", renderer);
-        Assert.Contains("row.Props.Timeline.ShowToolCalls", timeline);
-        Assert.Contains("row.IsAssistantRunEnd && row.Props.Timeline.ShowToolCalls", timeline);
         Assert.Contains("ChatToolActivityPresentation.Project(", timeline);
         Assert.Contains("props.Timeline.ShowToolCalls);", timeline);
         Assert.Contains("ChatToolActivityExpansionState", timeline);

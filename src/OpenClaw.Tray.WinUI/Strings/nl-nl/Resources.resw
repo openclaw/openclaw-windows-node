@@ -7757,6 +7757,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Naar nieuwste gaan</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>Navigatie door chatberichten</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>Gebruik Omhoog en Omlaag om tussen berichten te springen, of Home en End voor het eerste en nieuwste bericht.</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagenten, {1} bezig, {2} vereisen aandacht</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Wachten op subagenten</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Invoer voorbereiden</value></data>
@@ -10073,6 +10075,18 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Externe Gateway verbonden</value></data>
   <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Geverifieerd voor deze installatie</value></data>
   <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Details naast het gesprek openen</value></data>
+  <data name="Chat_Tool_OpenFile" xml:space="preserve"><value>Bestand {0} openen</value></data>
+  <data name="Chat_Tool_OpenSubagent" xml:space="preserve"><value>Subagent {0} openen</value></data>
+  <data name="Chat_Tool_DiffStat" xml:space="preserve"><value>{0} regels toegevoegd, {1} regels verwijderd</value></data>
+  <data name="Chat_Panel_File" xml:space="preserve"><value>Bestand</value></data>
+  <data name="Chat_File_Loading" xml:space="preserve"><value>Bestand laden…</value></data>
+  <data name="Chat_File_Empty" xml:space="preserve"><value>Dit bestand is leeg.</value></data>
+  <data name="Chat_File_Missing" xml:space="preserve"><value>Dit bestand bestaat niet meer.</value></data>
+  <data name="Chat_File_NotPreviewable" xml:space="preserve"><value>Dit bestand kan niet als tekst worden weergegeven. Het is mogelijk een afbeelding, een binair bestand of te groot.</value></data>
+  <data name="Chat_File_Unavailable" xml:space="preserve"><value>Kan dit bestand niet laden. Het staat mogelijk buiten de werkruimte van de sessie of is te groot.</value></data>
+  <data name="Chat_File_Unsupported" xml:space="preserve"><value>Deze Gateway kan geen werkruimtebestanden openen.</value></data>
+  <data name="Chat_File_Stale" xml:space="preserve"><value>De verbinding is gewijzigd voordat het bestand was geladen.</value></data>
+  <data name="Chat_File_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Chat_Panel_Details" xml:space="preserve"><value>Tooldetails</value></data>
   <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>Deze details zijn niet meer beschikbaar. Maak indien nodig opnieuw verbinding en open de tool opnieuw vanuit het huidige gesprek.</value></data>
   <data name="Chat_Panel_Resize" xml:space="preserve"><value>Formaat van gesprekspaneel wijzigen</value></data>
@@ -10080,6 +10094,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Terug naar gesprek</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Paneel weergeven</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Gesprekspanelen</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Logboeken verzamelen</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>De logboeken konden niet worden verzameld ({0}). Probeer het opnieuw.</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vernieuwen</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Vernieuwen</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>

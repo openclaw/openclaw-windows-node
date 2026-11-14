@@ -68,6 +68,40 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void CumulativeStrip_KeepsReplyThatRepeatsAnotherRunInCurrentTurn()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatUserMessageEvent("status?"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("All services are healthy.", Presentation: new(RunId: "queued")));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("All services are healthy. Backups finished.", Presentation: new(RunId: "r")));
+        Assert.Equal(["status?", "All services are healthy.", "All services are healthy. Backups finished."],
+            state.Entries.Select(entry => entry.Text));
+    }
+
+    [Fact]
+    public void CumulativeStrip_LaterTurnAfterToolDoesNotRepeatPreamble()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatUserMessageEvent("first"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Earlier reply.", Presentation: new(RunId: "previous")));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("second"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Let me check.", ReconcilePrevious: true, Presentation: new(RunId: "current")));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("read", "read", ToolCallId: "current-tool", RunId: "current"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("fixture-only", ToolCallId: "current-tool", RunId: "current"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Let me check.\n\nThe result is ready.", ReconcilePrevious: true,
+                Presentation: new(RunId: "current")));
+
+        Assert.Equal(["Earlier reply.", "Let me check.", "The result is ready."],
+            state.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).Select(entry => entry.Text));
+    }
+
+    [Fact]
     public void StreamRetirement_RemovesUnpersistedPreviewAcrossToolButKeepsSavedRow()
     {
         var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),
@@ -2248,13 +2282,7 @@ public class ChatTimelineReducerTests
     [Fact]
     public void ApplyTurnEnd_DemotesAbandonedStreamingAssistant()
     {
-        // Regression guard: after the UpsertAssistant frontier-gate fix,
-        // intra-turn delta→tool→delta produces an abandoned streaming bubble
-        // (the pre-tool deltas). ApplyTurnEnd must demote IsStreaming on any
-        // *non-last* assistant entry so the typing indicator does not persist
-        // on the abandoned bubble. The LAST assistant entry retains
-        // IsStreaming=true to allow a late ChatMessageEvent(reconcile=true)
-        // to collapse into it (see FinalAssistant_UpdatesStreamingAssistantAfterTurnEnd).
+        // Every segment stops streaming; only the frontier remains eligible for a late final.
         var state = ChatTimelineReducer.Apply(
             ChatTimelineState.Initial(),
             new ChatUserMessageEvent("Do work."));
@@ -2272,9 +2300,11 @@ public class ChatTimelineReducerTests
             .ToList();
         Assert.Equal(2, assistants.Count);
         Assert.False(assistants[0].IsStreaming);
-        // The last assistant intentionally keeps IsStreaming=true so a late
-        // final reconcile (post-TurnEnd) can still collapse into it.
-        Assert.True(assistants[1].IsStreaming);
+        Assert.False(assistants[1].IsStreaming);
+        var repaired = ChatTimelineReducer.Apply(updated,
+            new ChatMessageEvent("World complete", ReconcilePrevious: true));
+        Assert.Equal(["Hello", "World complete"],
+            repaired.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).Select(entry => entry.Text));
     }
 
     [Fact]
@@ -2325,8 +2355,7 @@ public class ChatTimelineReducerTests
         // gun was a final UpsertA call with aid=null (cleared by
         // ApplyTurnEnd) that bypassed the fast-path strip and fell into
         // the scan-back reconcile. With reconcilePrevious=true and the
-        // last assistant still IsStreaming=true (preserved by
-        // ApplyTurnEnd's preserveIdx), shouldMerge=true and the raw
+        // last assistant still eligible for reconciliation, the raw
         // cumulative text (A1 + A2 + A3) was being written verbatim
         // into A3 — visible to users as A3 mutating, AFTER initially
         // rendering correctly, to repeat all prior segments.
@@ -2358,8 +2387,7 @@ public class ChatTimelineReducerTests
         state = ChatTimelineReducer.Apply(state,
             new ChatMessageEvent(a1 + sep + a2 + sep + a3,
                 ReconcilePrevious: true, IsStreaming: true));
-        // Turn ends — aid is cleared, A3 stays IsStreaming=true because
-        // it's the timeline tail (ApplyTurnEnd.preserveIdx).
+        // Turn ends. A3 stops streaming but remains eligible for late reconciliation.
         state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
 
         Assert.Null(state.ActiveAssistantId);
@@ -2368,7 +2396,7 @@ public class ChatTimelineReducerTests
             .ToList();
         Assert.Equal(3, preEnd.Count);
         Assert.Equal(a3, preEnd[2].Text);
-        Assert.True(preEnd[2].IsStreaming);
+        Assert.False(preEnd[2].IsStreaming);
         var a3IdBeforeReconcile = preEnd[2].Id;
 
         // A late cumulative chat.message arrives with reconcilePrevious=true
@@ -2432,7 +2460,7 @@ public class ChatTimelineReducerTests
         var preEnd = state.Entries.Where(e => e.Kind == ChatTimelineItemKind.Assistant).ToList();
         Assert.Equal(2, preEnd.Count);
         Assert.Equal(a2Tail, preEnd[1].Text);
-        Assert.True(preEnd[1].IsStreaming);
+        Assert.False(preEnd[1].IsStreaming);
         var a2Id = preEnd[1].Id;
 
         // Gateway re-emits a stale cumulative frame containing ONLY A1's

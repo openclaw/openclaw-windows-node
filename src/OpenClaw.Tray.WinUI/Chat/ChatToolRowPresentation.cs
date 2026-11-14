@@ -28,12 +28,14 @@ public enum ChatToolRowVerb
 /// <summary>
 /// The subagent a <c>sessions_spawn</c> call started, named by its launch label. Status and
 /// elapsed time come from <see cref="ChatSubagentPresentation"/>; both are null until the
-/// session snapshot lists the child.
+/// session snapshot lists the child. <see cref="ChildSessionKey"/> is the session the launch's
+/// own result names, once that result arrives.
 /// </summary>
 internal sealed record ChatSpawnedSubagent(
     string Label,
     ChatSubagentStatus? Status = null,
-    TimeSpan? Elapsed = null);
+    TimeSpan? Elapsed = null,
+    string? ChildSessionKey = null);
 
 /// <summary>
 /// Collapsed row facts. <see cref="Title"/> is an agent-supplied purpose; <see cref="Command"/>
@@ -196,11 +198,12 @@ internal static class ChatToolRowPresentation
         var child = childKey is null ? null : children?.FirstOrDefault(thread =>
             string.Equals(thread.Id, childKey, StringComparison.OrdinalIgnoreCase));
         if (child is null)
-            return new(label);
+            return new(label, ChildSessionKey: childKey);
         // The Subagents pill owns subagent status, so a launch row and the pill always agree.
         var row = ChatSubagentPresentation.Project([child], DateTimeOffset.UtcNow) is var summary &&
             summary.Running.Count > 0 ? summary.Running[0] : summary.Finished[0];
-        return new(label, row.Status, row.IsRunning ? null : row.Elapsed);
+        // The link opens the listed session, so carry its own ID, not the result's spelling of it.
+        return new(label, row.Status, row.IsRunning ? null : row.Elapsed, child.Id);
     }
 
     private static bool IsOwnSessionLaunch(ChatTimelineItem entry) =>

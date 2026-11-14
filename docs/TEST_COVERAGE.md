@@ -97,7 +97,10 @@ dedicated thread and bounds each loopback step with
 pipeline itself runs on the shared thread pool. The MXC native-reader regression
 advances the command deadline on a manual clock once both readers have drained
 their pipes, bounds each step with `OPENCLAW_TEST_MXC_STEP_TIMEOUT_SECONDS`
-(default 30 s), and checks that blocking SDK reads stay off the thread pool. The standalone clean-uninstall
+(default 30 s), and checks that blocking SDK reads stay off the thread pool. The exec-approvals
+observation regressions wait for each file-watcher change with
+`OPENCLAW_TEST_EXEC_APPROVALS_WAIT_TIMEOUT_SECONDS` (default 30 s) on a monotonic clock, because
+the watcher callback and the observation run on the shared thread pool. The standalone clean-uninstall
 regression runs about 50 interpreted Windows PowerShell 5.1 cases in one process.
 It takes 16-37 s on hosted runners, but its run time grows with host load, so it is bounded by
 `OPENCLAW_CLEAN_UNINSTALL_TEST_TIMEOUT_SECONDS` (default 240 s). With a short
@@ -217,7 +220,10 @@ file and digest at this build boundary. Actual MSIX archive inventory and
 embedded-manifest checks remain a separate packaging acceptance boundary.
 Release worker EXE/DLL signatures are verified before manifest hashing.
 `FileWorkerManifestTests.ReleaseManifestRejectsUnsignedWorkerBeforeWritingDigests`
-checks rejection for both RIDs; workflow contracts verify the signed input reaches
+checks rejection for both RIDs through the production MSBuild target launched
+from PowerShell 7, retaining its inherited module environment. It must reach
+the unsigned-worker rejection rather than fail loading the Authenticode module.
+Workflow contracts verify the signed input reaches
 portable/Inno and MSIX builds without republishing the worker. These checks do
 not prove Azure signing or installed-package acceptance.
 Companion packages each worker payload in a manifest-addressed RID slot, and its
@@ -394,7 +400,7 @@ required closeout lane for code changes.
 | Agent skills | `.\scripts\validate-agent-skills.ps1` and `.\scripts\test-agent-skills-validator.ps1` | Changes under `.agents\skills`; validates skill metadata, agent-facing prose, and local links |
 | Result and evidence contracts | `.\scripts\test-proof-evidence.ps1` | Changes to report admission, generic proof, CI test wrappers, evidence summaries, or their source/artifact correspondence |
 | Agent readiness | `.\scripts\test-agent-readiness.ps1` | Changes to read-only host and optional agent-tool readiness reporting |
-| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
+| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request, merge queue group and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
 | Accessibility scan | `.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64` | UI changes and CI quality gate; runs real-process Axe.Windows scans; see `docs\ACCESSIBILITY.md` |
 | Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |
 | Local MXC E2E | `.\scripts\validate-mxc-e2e.ps1` | MXC sandboxing, `system.run`, exec approvals, Windows node command execution, gateway setup/connect changes that affect MXC |
@@ -523,6 +529,14 @@ CI Gate still requires `fast-validation` to succeed, so this removes it from
 the critical path without relaxing acceptance. A `fast-validation` failure no
 longer skips selected test lanes; their runner time is the accepted cost.
 Release asset preparation still waits for `fast-validation`.
+
+CI also runs for merge queue groups (`merge_group`). A group is classified from
+its own diff, from the queue's base to the group's head, with the pull request
+rules, so it runs the same lanes its pull requests would (x64 release smoke
+only, no coverage collection). The new-test soak is skipped, because it already
+ran on each pull request. CI Gate reports for every event, so it can be the
+merge queue's required check. The workflow contract rejects new
+pull-request-only conditions that would skip work in a merge group.
 
 The setup/connect, revocation recovery and network recovery E2E jobs each run once
 against npm Latest, matching normal WSL setup.
@@ -669,6 +683,35 @@ reaches main, where one passing run in its own pull request proves little.
 - The soak does not see changes it cannot map to tests: helpers in other files,
   partial classes split across files, non-C# fixture data, product code, and
   test projects outside Shared, Tray and Tray UI.
+- There is no opt-out. A soak failure always blocks CI Gate, including for an
+  edit to an older test that was already timing-sensitive: fix the test or the
+  product race it found.
+
+When `Build and Test` fails on a push to `main`, the `Main Failure Watch`
+workflow (`.github/workflows/main-failure-watch.yml`) reports it:
+- `scripts/Watch-CiMainFailures.ps1` downloads the `test-results-*` and
+  `e2e-test-results-*` artifacts that the failed run attempt uploaded (for each
+  name, the newest one created between that attempt's start and the next
+  attempt's start) and lists each failed test method once. A failed download
+  fails the watch instead of posting a partial report.
+- Each test is attributed to the most recent commit that changed the method's
+  lines at the failing commit (`git log -L`), and to that commit's merged pull
+  request (preferring one merged into `main`) and author. When no pull request
+  is found, or the lookup keeps failing after retries, the commit's GitHub
+  author is mentioned. That commit is often the cause, but it can be a later
+  refactor, or a product change can fail an older test.
+- It adds one comment per run attempt to the oldest open issue labeled
+  `ci: main-flake`, mentioning every author. It creates the label and the issue
+  when they are missing; close the issue when main is green again. Only issues
+  and comments the workflow created count: a hand-made issue with the label is
+  not used, and other commenters cannot hide a report by copying its marker.
+- It never reruns, cancels or reverts. The job can only read actions, contents
+  and pull requests and write issues, and test names reach the issue only as
+  escaped code spans. It has no concurrency group, because GitHub cancels
+  pending runs in a group; every report keeps the oldest open tracking issue
+  and closes newer duplicates.
+- To preview a report without posting, check out the failing commit and run
+  `.\scripts\Watch-CiMainFailures.ps1 -Repository openclaw/openclaw-windows-node -RunId <id> -RunAttempt <n> -HeadSha <sha> -DryRun`.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported
@@ -879,6 +922,19 @@ Two checks enforce the riskiest patterns:
   `scripts\test-ci-workflow-contract.ps1` rejects a value that differs from the
   step's `timeout-minutes`, and requires a multi-command runner step to be listed
   as an explicit exception. A step stopped by its timeout cannot report.
+- `Invoke-CiE2e.ps1` therefore tries to end a WSL E2E shard before its step
+  limit, so a hang fails the step with its TRX and console log, and the
+  `always()` upload runs within the 30-minute job limit. With a step budget,
+  VSTest aborts the session (`RunConfiguration.TestSessionTimeout`) at the
+  budget minus a reserve. The runner's wall deadline, at least 60 seconds before
+  the step limit, then lists the processes started since the test run began
+  (names and start times, no command lines) and ends the run if the abort did
+  not. Either deadline records `wsl.exe --list --verbose`.
+  `OPENCLAW_CI_E2E_STOP_RESERVE_SECONDS` sets the reserve (180 by default, 120
+  to 1800). A job cancelled at its limit with no log at all is most likely a hosted-runner
+  worker freeze during WSL work
+  ([actions/runner-images#14938](https://github.com/actions/runner-images/issues/14938)):
+  no step timeout fires, and no in-job deadline can report it.
 - Alpha promotion runs the current workflow against an older candidate's
   checkout and its own scripts, which reject parameters they do not declare.
   This applies to every repository script that a candidate-checkout job calls

@@ -157,6 +157,7 @@ internal sealed class DesktopCompanionChatHost : IDisposable
             mounted.SetHostVisible(true);
             target.Visibility = Visibility.Visible;
             _recovery.Visibility = Visibility.Collapsed;
+            mounted.FocusInput();
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {

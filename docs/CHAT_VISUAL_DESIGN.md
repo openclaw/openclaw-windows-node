@@ -20,8 +20,44 @@ pixels. Transcript prose is inset 16 pixels from the aligned composer edge.
 Outer gutters are 12 pixels below 640 pixels and 40 pixels above it. The native
 annotated rail overlays only the unused right gutter, leaving transcript and
 composer centered on the viewport, including while the rail is focused.
+The rail represents displayed user and assistant messages, excluding tool,
+reasoning and loading rows. Ticks are visible without hover or focus.
+Their normal, visible-message and hover/pressed treatments follow the web
+position rail at `10285cd35ca7d696957430bbc6c8556f55af79fe`
+(`ui/src/styles/chat/message-layout.css`): 8-by-2-pixel rounded ticks use muted
+gray at 40% opacity, increasing to full muted gray for messages in the viewport.
+Hover and press use the primary text tone, never an accent-colored thumb.
+The hovered tick expands to 32 pixels; its three neighbors expand to 24, 16 and
+12 pixels. Native semantic brushes preserve light, dark and High Contrast;
+High Contrast does not reduce tick opacity. Expansion stays within the unused
+gutter, including on narrow windows. Ticks have
+10-pixel pitch before the rail reaches the transcript viewport height. The
+rail has 8-pixel vertical and 4-pixel horizontal insets. At the viewport cap,
+ticks remain equidistant regardless of message height. Long histories sample
+messages evenly, retaining the first and last, so rendered ticks have at least
+4 logical pixels of clear vertical space after layout rounding. The tick budget
+adapts to the rail height and display scale on resize. Hover and pointer
+navigation resolve the same sampled message; keyboard navigation still reaches
+every message. The rail uses a fixed ordinal range independent of virtualized
+transcript height estimates, keeping its native ticks mounted during navigation.
+Streaming sender/preview updates retain existing labels when their sampled
+identities and row positions are unchanged. Visual updates are coalesced per
+rendered frame; unrelated window layout does not rescan the transcript.
+Hover previews show sender identity and up to 240 characters in
+three lines within 280 pixels, inside a native 12-pixel rounded tooltip.
+Click or drag resolves an ordinal position to the current keyed message, not
+its approximate pixel offset. Keyboard Up/Down, Home/End and Enter/Space provide
+the same destinations. After reading with the wheel or touch, Up/Down starts
+from the first visible message rather than an old rail selection. Consecutive
+rail keys retain their selection while navigation is pending. Touch previews
+use the actual pointer position; native tooltip placement must not shift which
+message is previewed. Native message realization retains bounded layout waits,
+identity checks and cancellation; it does not force synchronous ItemsView layout.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
-leave prose centered. Accessible sender and footer identity remain. Like the web
+leave prose centered. Its 36-pixel portrait has a 10-pixel gap to the prose,
+matching the pinned web chat's `startup-layout.css`; both side slots reserve
+46 pixels, so the portrait moves outward without shifting the reading column.
+Accessible sender and footer identity remain. Like the web
 transcript, one block of agent rows (assistant text, tool rows, tool groups and
 reasoning between user messages, status notices or a change of forwarded sender)
 shows one avatar, on its first row even when that row is a tool call, so tool
@@ -244,7 +280,9 @@ using the same pill look (`ChatPanelPill`). Selecting it opens or reselects the
 Files tab. The tab lists the files the session edited or read, with the
 workspace root, the folder and size of each file, and an Edited, Read or
 Missing badge; untouched files from the workspace root are not shown or
-counted. Rows are not interactive. The list comes from the existing
+counted. Selecting a previewable row opens the read-only File tab using the
+Gateway's original request path, without normalizing it into another target.
+The list comes from the existing
 `sessions.files.list` read when the chat is selected or its history is
 replaced (for example by a checkpoint restore), after each run ends, and from
 the tab's refresh button. An unsupported Gateway or a failed read shows a
@@ -252,8 +290,30 @@ status line instead of inventing files, and a failed refresh keeps the last
 list. An unsupported Gateway is asked again only by refresh or after
 reconnecting. Disconnect or another chat closes the tab, like Subagents.
 
+File targets in read, edit and write tool rows open a separate read-only file
+preview tab without toggling the row's disclosure. Only safe workspace-relative
+paths are linked; a patch links only one surviving, unmoved file. The preview
+uses the Gateway's existing `sessions.files.get` authorization, redacts secrets,
+escapes hidden characters and bounds displayed text. Missing, unsupported,
+non-text and unavailable reads have distinct states; retry is explicit.
+Reopening the same target reads it again. The preview survives history reloads,
+but disconnecting or changing chats closes it. The Files list remains separate.
+
+File attachment cards open the same sidebar preview when their name or icon
+is selected. Their separate Download button retains the browser-download action.
+Attachments use their session-scoped artifact ID and optional agent ID through
+`artifacts.download`, never a guessed workspace path derived from the filename.
+The existing media client bounds preview downloads to 1 MiB and keeps Gateway
+tickets out of presentation code. UTF-8 text is displayed as selectable,
+secret-redacted plain text, bounded to 64 KiB of characters. Binary and invalid
+UTF-8 content show the existing non-previewable state; unavailable reads offer
+an explicit retry. Reopening, cancellation and connection/session retirement
+use the same File tab lifecycle as workspace reads.
+
 `ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
-resizing, 440-DIP initial width and compact layout below 652 DIPs. There is no
+resizing, 440-DIP initial width and compact layout below 652 DIPs. The native
+`TabView` keeps its default drag reordering, and the state adopts the dragged
+order; unselected tabs show their close button on pointer hover. There is no
 second subagent split/focus owner. Compact presentation retains the hidden main
 conversation and uses the existing composer-visibility guard. The composer and question dock
 measure the remaining conversation column, not the full shell.
@@ -315,6 +375,11 @@ their target, a shell tool's own title or `$ command` with leading `cd`, `set`,
 `export` and `unset` stages removed, and a labeled `sessions_spawn` as its label
 with the subagent's state (running, failed, stopped or elapsed time), classified
 by the same `ChatSubagentPresentation` as the Subagents pill so both always agree.
+Known, unarchived direct-child subagent labels open their session independently
+of the row's expand/collapse action. Edit, write and patch rows show live or
+successful final `+N -M` line counts when exact facts are available. History
+reloads retain result-derived counts; redacted or incomplete input never
+supplies guessed counts.
 An unknown or stale subagent outcome shows no state rather than a duration. Only
 read, search and fetch rows add their dimmed directory or scope, capped at
 `ChatVisuals.ToolRowDetailMaxWidth`; long titles trim with an ellipsis. A patch
@@ -387,6 +452,14 @@ visible; trailing failed work stays outside the disclosure. Tool-only turns
 retain their result rows. The disclosure key uses the terminal answer, session,
 and generation, so older-history prepends do not reset explicit expansion.
 Existing native tool controls, literal details, accents, and backplates are reused.
+
+Public `item/preamble` progress appears as commentary in this same disclosure,
+not as private reasoning or a second answer. Nonempty start/update drafts stay
+hidden until complete. Run/item identity and event sequence protect updates and
+empty-item retirement; saved commentary wins over its live copy. Clearing the
+accumulated answer preview does not erase keyed progress. This follows the
+[installed web preamble contract](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/pages/chat/tool-stream-preamble.ts)
+without changing thinking visibility preferences.
 
 Newly completed work settles with a 200-millisecond fade, and a changing live
 tool headline enters over 160 milliseconds. Reactor owns these enter-only
@@ -461,6 +534,21 @@ retained matching run events replay through the live event path, and the
 buffered text becomes the streaming tail. Stop aborts that run. A live run,
 pending abort, reset or terminal outcome already known to this client wins, and
 the run's later live lifecycle end settles it.
+
+Terminal chat events settle their owning run even without visible content.
+An assistant's `openclawDisplayContent` overrides its original content, including
+an empty array; retirement removes only the owned unsaved preview, not saved
+answers or unrelated runs. Completed rows stop streaming while retaining the
+separate eligibility needed for a delayed final to repair the same row.
+Confirmed error/abort outcomes cannot become successful through a late final.
+A yielded parent stops executing without declaring its subagents finished.
+
+An idle session-list row is a recovery hint, not terminal authority: cached
+activity updates also publish session rows. The hint requests history through
+the existing loader. Recovery requires an explicit idle observation naming the
+captured run and session incarnation, with the connection, reset, replacement,
+and run-start fences still current. Missing identity leaves the outcome
+unresolved instead of inferring success from elapsed time.
 
 ### Conversation details panel
 
@@ -1125,7 +1213,16 @@ only while their own message is hovered or contains keyboard focus, including
 individual messages inside expanded Worked groups. Focusing a group header or
 a sibling message does not reveal other footers. They keep their
 measured space while hidden, so revealing a timestamp or Copy does not move the
-next message. In the main transcript only a run's final answer (its last
+next message. The whole footer fades in and out over 160 ms using a native
+opacity transition; Windows animations off makes disclosure immediate. Hidden
+footers stop accepting pointer input as soon as fade-out begins.
+`NativeChatMessageFooter` hosts the transition outside Reactor's generic
+layout-control pool, preventing retired fades from affecting recycled rows.
+Footers show sender identity and the recorded message time, not model names
+or token/context usage. User footers keep their timestamp beside Copy.
+These details do not depend on the tool-call display setting. Existing Copy
+and read-aloud actions remain; Reply and emoji reactions are not added.
+In the main transcript only a run's final answer (its last
 non-commentary assistant message) owns the footer, as in the web run frame, and
 a run still generating has no footer yet (waiting for subagents or an answer
 does not count). A merged tool group that spans runs still ends each earlier run,
