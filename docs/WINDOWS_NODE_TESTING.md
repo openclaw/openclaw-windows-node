@@ -402,10 +402,14 @@ These features need the gateway to send `node.invoke` commands:
 | `ollama.models` | Discover local Ollama chat models | Requires Share Windows Ollama in Permissions; reads the separately installed Ollama service on `127.0.0.1:11434` |
 | `ollama.chat` | Run bounded local Ollama inference | Requires Share Windows Ollama, gateway command approval, and an exact local model returned by `ollama.models` |
 
-For the Windows command-approval dialog, verify a long command remains scrollable
-and selectable, but **Allow Once** becomes enabled after the 1.5-second
-anti-clickthrough delay without scrolling. **Deny** remains available immediately;
-initial focus stays on Deny, and Escape or closing the dialog denies the request.
+For the Windows command-approval dialog, start typing in another application
+before the request arrives. The dialog must appear above other windows without
+taking the foreground or the text caret, so continued typing never reaches it.
+Verify a long command remains scrollable and selectable, and that **Deny** and
+**Allow Once** become enabled together after the 1.5-second anti-clickthrough
+delay, measured from when the dialog is first rendered, without scrolling. After
+you click or switch to the dialog, keyboard focus is on **Deny**. Escape after the
+delay or closing the dialog at any time denies the request.
 **Allow Always** follows the same delay when offered. It is hidden for
 `ask=always`, non-allowlist security, or commands without a reusable identity,
 including inline PowerShell `-Command` scripts. Check a simple resolved executable
