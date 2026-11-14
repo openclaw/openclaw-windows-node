@@ -21,6 +21,14 @@ public sealed partial class GatewayFixtureUiTests
     private static AutomationElement? FindDashboardGalleryCard(GatewayFixtureRun run, string sessionKey) =>
         FindById(run, $"DashboardCardFresh_{sessionKey}") ?? FindById(run, $"DashboardCard_{sessionKey}");
 
+    private const string DashboardPixelsTimeoutVariable = "OPENCLAW_GATEWAY_FIXTURE_DASHBOARD_PIXELS_TIMEOUT_SECONDS";
+    // CI boards render in 1.8-6.6 s, but an HTML widget's WebView2 load stayed in the product's Slow state past 30 s
+    // under the soak's CPU contention. 60 s covers one product frame retry after its 30-second load deadline plus a
+    // normal render. Overrides are capped below the 150-second test body budget so the widget-state diagnostic is kept.
+    private static readonly TimeSpan DashboardPixelsTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(DashboardPixelsTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(Math.Min(seconds, 90)) : TimeSpan.FromSeconds(60);
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     public async Task DashboardsPinnedHost_RecordsBothThemesAcrossPaneAndScrollStates()
@@ -1641,21 +1649,68 @@ public sealed partial class GatewayFixtureUiTests
     {
         var engine = OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"))
             ?? throw new InvalidOperationException("English Windows OCR is required to verify the sandbox's rendered pixels.");
-        await run.WaitForAsync(async () =>
+        try
         {
-            await DismissDashboardContainmentNoticeAsync(run, hub, imageName);
-            var widget = widgetId is null ? null : await RevealDashboardWidgetAsync(run, hub, widgetId, imageName);
-            OwnedWindowCapture.Save(run, hub, imageName, widget is null ? [] : [widget]);
-            var path = Path.Combine(run.ArtifactsDirectory, imageName);
-            var file = await StorageFile.GetFileFromPathAsync(path);
-            using var stream = await file.OpenReadAsync();
-            var decoder = await BitmapDecoder.CreateAsync(stream);
-            using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
-            var result = await engine.RecognizeAsync(bitmap);
-            File.WriteAllText(Path.ChangeExtension(path, ".ocr.txt"), result.Text);
-            return expectedText.All(text => result.Text.Contains(text, StringComparison.OrdinalIgnoreCase))
-                && (!requireDeploymentPlot || DeploymentPlotHasVisibleInk(path, result, widgetId));
-        }, $"visible dashboard pixels: {string.Join(", ", expectedText)}", TimeSpan.FromSeconds(30));
+            await run.WaitForAsync(async () =>
+            {
+                await DismissDashboardContainmentNoticeAsync(run, hub, imageName);
+                var widget = widgetId is null ? null : await RevealDashboardWidgetAsync(run, hub, widgetId, imageName);
+                OwnedWindowCapture.Save(run, hub, imageName, widget is null ? [] : [widget]);
+                var path = Path.Combine(run.ArtifactsDirectory, imageName);
+                var file = await StorageFile.GetFileFromPathAsync(path);
+                using var stream = await file.OpenReadAsync();
+                var decoder = await BitmapDecoder.CreateAsync(stream);
+                using var bitmap = await decoder.GetSoftwareBitmapAsync(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied);
+                var result = await engine.RecognizeAsync(bitmap);
+                File.WriteAllText(Path.ChangeExtension(path, ".ocr.txt"), result.Text);
+                return expectedText.All(text => result.Text.Contains(text, StringComparison.OrdinalIgnoreCase))
+                    && (!requireDeploymentPlot || DeploymentPlotHasVisibleInk(path, result, widgetId));
+            }, $"visible dashboard pixels: {string.Join(", ", expectedText)}", DashboardPixelsTimeout);
+        }
+        catch (TimeoutException timeout)
+        {
+            // Name the widget host state so a slow WebView2 load stays distinguishable from a failed one.
+            throw new TimeoutException($"{timeout.Message} {(widgetId is null ? "Board widget states" : "Widget state")}: " +
+                $"{DashboardWidgetStates(run, widgetId)}.", timeout);
+        }
+    }
+
+    // Diagnostic only: it adds detail to a timeout and must never replace it.
+    private static string DashboardWidgetStates(GatewayFixtureRun run, string? widgetId)
+    {
+        try
+        {
+            var cache = new CacheRequest { TreeScope = TreeScope.Element };
+            cache.Add(AutomationElement.AutomationIdProperty);
+            cache.Add(AutomationElement.NameProperty);
+            cache.Add(AutomationElement.ControlTypeProperty);
+            string[] states;
+            using (cache.Activate())
+            {
+                var widgets = widgetId is null
+                    ? AppWindows(run).SelectMany(window => window.FindAll(TreeScope.Descendants, Condition.TrueCondition)
+                        .Cast<AutomationElement>()).Where(element => element.Cached.AutomationId.StartsWith("BoardWidget_", StringComparison.Ordinal))
+                        .ToArray()
+                    : FindById(run, widgetId) is { } widget ? [widget] : [];
+                if (widgetId is not null && widgets.Length == 0) return $"{widgetId} not found";
+                states = widgets.Select(widget =>
+                {
+                    var parts = widget.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>().ToArray();
+                    // The Slow overlay's panel has no UIA peer, so identify it by its text rather than its id.
+                    var state = parts.Any(part => part.Cached.Name.Contains("taking longer than usual", StringComparison.Ordinal)) ? "Slow"
+                        : parts.Any(part => part.Cached.AutomationId == "BoardWidgetError") ? "Error"
+                        : parts.Any(part => part.Cached.AutomationId.StartsWith("BoardWidgetNeedsApproval_", StringComparison.Ordinal)) ? "NeedsApproval"
+                        : parts.Any(part => part.Cached.ControlType == ControlType.ProgressBar) ? "Loading" : null;
+                    return state is null ? null : $"{widgetId ?? widget.Cached.AutomationId} {state}";
+                }).OfType<string>().ToArray();
+            }
+            return states.Length > 0 ? string.Join(", ", states)
+                : widgetId is null ? "no board widget is Loading, Slow or in Error" : $"{widgetId} not Loading, Slow or in Error";
+        }
+        catch (Exception error)
+        {
+            return $"unavailable ({error.GetType().Name})";
+        }
     }
 
     private static async Task DismissDashboardContainmentNoticeAsync(GatewayFixtureRun run, AutomationElement hub,
