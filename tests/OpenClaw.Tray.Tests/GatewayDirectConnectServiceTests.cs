@@ -1,7 +1,9 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.TestSupport;
 using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.Tests;
@@ -199,6 +201,15 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
     private readonly SettingsManager _settings;
     private readonly FakeConnectionManager _manager = new();
     private int _tunnelReconcileCount;
+
+    private const string HeldResumeGuardVariable = "OPENCLAW_TRAY_TEST_DIRECT_CONNECT_HELD_RESUME_GUARD_SECONDS";
+    // Bounds only a broken run: the held resumption is posted once the short terminal
+    // deadline expires, and draining it runs synchronously against the fakes.
+    private static readonly TimeSpan HeldResumeGuard =
+        int.TryParse(Environment.GetEnvironmentVariable(HeldResumeGuardVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
+    // Advanced on a manual clock, so its length never adds real waiting.
+    private static readonly TimeSpan NativeTerminalTimeout = TimeSpan.FromSeconds(15);
 
     public GatewayDirectConnectServiceTests()
     {
@@ -691,6 +702,207 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
         Assert.Equal(1, _manager.ConnectCount);
         Assert.Equal(1, _manager.DisconnectCount);
         Assert.Equal("wss://pairing.example", _registry.GetActive()?.Url);
+    }
+
+    [Fact]
+    public async Task Connect_TerminalStateBeforeExpiredWaitResumes_CommitsInsteadOfTimingOut()
+    {
+        _manager.NextSnapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Connecting,
+            OperatorState = RoleConnectionState.Connecting,
+            NodeState = RoleConnectionState.Connecting,
+        };
+        var context = new QueuedSynchronizationContext();
+        var original = SynchronizationContext.Current;
+        Task<GatewayDirectConnectResult> connect;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            connect = CreateService().ConnectAsync(new GatewayDirectConnectRequest(
+                "wss://late-terminal.example",
+                SharedToken: null,
+                FriendlyName: null,
+                SshTunnel: null));
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+
+        // The terminal-state deadline expired and its resumption is held, as on a busy pool.
+        Assert.True(await context.WaitForPostAsync(HeldResumeGuard), "The terminal-state wait never resumed.");
+        Assert.False(connect.IsCompleted);
+        var recordId = Assert.IsType<string>(_manager.LastGatewayId);
+        _manager.PublishSnapshot(Connected(recordId));
+
+        await context.RunUntilCompletedAsync(connect, HeldResumeGuard);
+        var result = await connect;
+
+        Assert.Equal(GatewayDirectConnectOutcome.Connected, result.Outcome);
+        Assert.True(result.GatewayCommitted);
+        Assert.Null(result.Error);
+        Assert.Equal(recordId, _registry.ActiveGatewayId);
+        Assert.Equal(1, _manager.ConnectCount);
+        Assert.Equal(1, _manager.DisconnectCount);
+    }
+
+    [Fact]
+    public async Task NativeConnect_TerminalStateBeforeAttemptDeadline_SurvivesLateResume()
+    {
+        var clock = new ManualTimeProvider();
+        var (connect, context) = StartHeldNativeConnect(clock);
+        var recordId = Assert.IsType<string>(_manager.LastGatewayId);
+        var attemptToken = _manager.LastConnectCancellation;
+
+        _manager.PublishSnapshot(Connected(recordId));
+        // The terminal state's resumption is held, as on a busy pool, while the native
+        // attempt deadline passes. That deadline must not tear down the live connection.
+        Assert.True(await context.WaitForPostAsync(HeldResumeGuard), "The terminal-state wait never resumed.");
+        clock.Advance(NativeTerminalTimeout);
+        Assert.False(attemptToken.IsCancellationRequested);
+
+        await context.RunUntilCompletedAsync(connect, HeldResumeGuard);
+        var result = await connect;
+
+        Assert.Equal(GatewayDirectConnectOutcome.Connected, result.Outcome);
+        Assert.True(result.GatewayCommitted);
+        Assert.Null(result.Error);
+        Assert.Equal(recordId, _registry.ActiveGatewayId);
+    }
+
+    [Fact]
+    public async Task NativeConnect_TerminalStateAfterAttemptDeadline_ReportsTimeout()
+    {
+        var clock = new ManualTimeProvider();
+        var (connect, context) = StartHeldNativeConnect(clock);
+        var recordId = Assert.IsType<string>(_manager.LastGatewayId);
+        var attemptToken = _manager.LastConnectCancellation;
+
+        clock.Advance(NativeTerminalTimeout);
+        Assert.True(attemptToken.IsCancellationRequested);
+        Assert.True(await context.WaitForPostAsync(HeldResumeGuard), "The terminal-state wait never resumed.");
+        // The state arrives after the deadline but before the held wait resumes.
+        _manager.PublishSnapshot(Connected(recordId));
+
+        await context.RunUntilCompletedAsync(connect, HeldResumeGuard);
+        var result = await connect;
+
+        Assert.Equal(GatewayDirectConnectOutcome.Failed, result.Outcome);
+        Assert.False(result.GatewayCommitted);
+        Assert.StartsWith("Timed out waiting for the gateway connection.", result.Error);
+    }
+
+    [Fact]
+    public async Task NativeConnect_TerminalLookingStateDuringConnect_KeepsAttemptDeadline()
+    {
+        var clock = new ManualTimeProvider();
+        var cancelledWhileConnecting = false;
+        _manager.NextSnapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Connecting,
+            OperatorState = RoleConnectionState.Connecting,
+            NodeState = RoleConnectionState.Connecting,
+        };
+        _manager.BeforeSnapshot = () =>
+        {
+            // A retained node-pairing state is published while ConnectAsync is still
+            // running. The native deadline must still bound that ConnectAsync call.
+            _manager.PublishSnapshot(new GatewayConnectionSnapshot
+            {
+                GatewayId = _manager.LastGatewayId,
+                OverallState = OverallConnectionState.Connecting,
+                OperatorState = RoleConnectionState.Connecting,
+                NodeState = RoleConnectionState.PairingRequired,
+            });
+            clock.Advance(NativeTerminalTimeout);
+            cancelledWhileConnecting = _manager.LastConnectCancellation.IsCancellationRequested;
+        };
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () => _tunnelReconcileCount++,
+            NullLogger.Instance,
+            NativeTerminalTimeout,
+            clock);
+
+        var result = await service.ConnectAsync(new("wss://candidate.example", "candidate", null, null, NativeSetup: true));
+
+        Assert.True(cancelledWhileConnecting);
+        Assert.Equal(GatewayDirectConnectOutcome.Failed, result.Outcome);
+        Assert.StartsWith("Timed out waiting for the gateway connection.", result.Error);
+    }
+
+    [Fact]
+    public async Task NativeConnect_DeadlineCallbackAlreadyRunning_CannotCancelReportedSuccess()
+    {
+        var clock = new HeldCallbackTimeProvider();
+        var tornDown = false;
+        Thread? deadlineThread = null;
+        _manager.NextSnapshot = Connected("pending");
+        _manager.BeforeSnapshot = () =>
+        {
+            // Stands in for the manager linking the live transport to the attempt token.
+            _manager.LastConnectCancellation.Register(() => tornDown = true);
+            // The deadline callback starts at the same moment the connection succeeds, and is
+            // held until the service has reported that success.
+            deadlineThread = new Thread(() => clock.Advance(NativeTerminalTimeout)) { IsBackground = true };
+            deadlineThread.Start();
+            Assert.True(clock.CallbackStarted.Wait(HeldResumeGuard), "The deadline callback never started.");
+        };
+        _manager.AfterStateChangedUnsubscribe = () =>
+        {
+            _manager.AfterStateChangedUnsubscribe = null;
+            clock.ReleaseCallback.Set();
+            Assert.True(deadlineThread!.Join(HeldResumeGuard), "The deadline callback never finished.");
+        };
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () => _tunnelReconcileCount++,
+            NullLogger.Instance,
+            NativeTerminalTimeout,
+            clock);
+
+        var result = await service.ConnectAsync(new("wss://candidate.example", "candidate", null, null, NativeSetup: true));
+
+        Assert.Equal(GatewayDirectConnectOutcome.Connected, result.Outcome);
+        Assert.Null(result.Error);
+        Assert.False(tornDown);
+    }
+
+    private (Task<GatewayDirectConnectResult> Connect, QueuedSynchronizationContext Context) StartHeldNativeConnect(
+        ManualTimeProvider clock)
+    {
+        _manager.NextSnapshot = new GatewayConnectionSnapshot
+        {
+            OverallState = OverallConnectionState.Connecting,
+            OperatorState = RoleConnectionState.Connecting,
+            NodeState = RoleConnectionState.Connecting,
+        };
+        var service = new GatewayDirectConnectService(
+            _manager,
+            _registry,
+            _settings,
+            () => _tunnelReconcileCount++,
+            NullLogger.Instance,
+            NativeTerminalTimeout,
+            clock);
+        var context = new QueuedSynchronizationContext();
+        var original = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            var connect = service.ConnectAsync(new("wss://candidate.example", "candidate", null, null, NativeSetup: true));
+            Assert.False(connect.IsCompleted);
+            return (connect, context);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
     }
 
     [Fact]
@@ -1226,6 +1438,68 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
             OperatorError = error,
         };
 
+    // A manual clock whose timer callbacks signal when they start and then wait for release,
+    // so a test can hold a deadline callback that is already running.
+    private sealed class HeldCallbackTimeProvider : TimeProvider
+    {
+        private readonly ManualTimeProvider _clock = new();
+
+        public ManualResetEventSlim CallbackStarted { get; } = new();
+        public ManualResetEventSlim ReleaseCallback { get; } = new();
+        public override long TimestampFrequency => _clock.TimestampFrequency;
+        public override long GetTimestamp() => _clock.GetTimestamp();
+        public override DateTimeOffset GetUtcNow() => _clock.GetUtcNow();
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) =>
+            _clock.CreateTimer(
+                value =>
+                {
+                    CallbackStarted.Set();
+                    ReleaseCallback.Wait(HeldResumeGuard);
+                    callback(value);
+                },
+                state,
+                dueTime,
+                period);
+
+        public void Advance(TimeSpan elapsed) => _clock.Advance(elapsed);
+    }
+
+    // Holds posted continuations until the test runs them, so a deadline's resumption can
+    // be delayed past a later state change without relying on real scheduler load.
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _callbacks = new();
+        private readonly SemaphoreSlim _posted = new(0);
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            _callbacks.Enqueue((callback, state));
+            _posted.Release();
+        }
+
+        public async Task<bool> WaitForPostAsync(TimeSpan guard)
+        {
+            if (!await _posted.WaitAsync(guard))
+                return false;
+            _posted.Release();
+            return true;
+        }
+
+        public async Task RunUntilCompletedAsync(Task task, TimeSpan guard)
+        {
+            while (!task.IsCompleted)
+            {
+                Assert.True(await _posted.WaitAsync(guard), "A held continuation never arrived.");
+                Assert.True(_callbacks.TryDequeue(out var next));
+                var previous = Current;
+                SetSynchronizationContext(this);
+                try { next.Callback(next.State); }
+                finally { SetSynchronizationContext(previous); }
+            }
+        }
+    }
+
     private sealed class FakeConnectionManager : IGatewayConnectionManager
     {
         public GatewayConnectionSnapshot CurrentSnapshot { get; private set; } =
@@ -1271,7 +1545,18 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
             return Task.FromResult(ValidationResult);
         }
 
-        public event EventHandler<GatewayConnectionSnapshot>? StateChanged;
+        private EventHandler<GatewayConnectionSnapshot>? _stateChanged;
+        public Action? AfterStateChangedUnsubscribe { get; set; }
+
+        public event EventHandler<GatewayConnectionSnapshot>? StateChanged
+        {
+            add => _stateChanged += value;
+            remove
+            {
+                _stateChanged -= value;
+                AfterStateChangedUnsubscribe?.Invoke();
+            }
+        }
 #pragma warning disable CS0067
         public event EventHandler<ConnectionDiagnosticEvent>? DiagnosticEvent;
         public event EventHandler<OperatorClientChangedEventArgs>? OperatorClientChanged;
@@ -1289,7 +1574,7 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
             {
                 GatewayId = gatewayId ?? snapshot.GatewayId
             };
-            StateChanged?.Invoke(this, CurrentSnapshot);
+            _stateChanged?.Invoke(this, CurrentSnapshot);
             return Task.CompletedTask;
         }
 
@@ -1300,6 +1585,12 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
             return ConnectAsync(gatewayId);
         }
 
+        public void PublishSnapshot(GatewayConnectionSnapshot snapshot)
+        {
+            CurrentSnapshot = snapshot;
+            _stateChanged?.Invoke(this, snapshot);
+        }
+
         public void SetCurrentSnapshot(GatewayConnectionSnapshot snapshot) =>
             CurrentSnapshot = snapshot;
 
@@ -1307,7 +1598,7 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
         {
             DisconnectCount++;
             CurrentSnapshot = GatewayConnectionSnapshot.Idle;
-            StateChanged?.Invoke(this, CurrentSnapshot);
+            _stateChanged?.Invoke(this, CurrentSnapshot);
             return Task.CompletedTask;
         }
 

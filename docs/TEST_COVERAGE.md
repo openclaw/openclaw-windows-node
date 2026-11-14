@@ -127,6 +127,10 @@ shared thread pool. The onboarding bootstrap regressions raise the run completio
 soon as the fake client reports the hatching send, not after a fixed delay, and bound
 the completion with `OPENCLAW_TRAY_TEST_ONBOARDING_BOOTSTRAP_TIMEOUT_SECONDS` (default
 30 s), because a loaded runner can hold a test continuation past a short deadline.
+The direct-connect late-terminal-state regressions hold the deadline's resumption on a
+queued synchronization context instead of loading the scheduler (the native-setup cases
+advance a manual clock), and bound those waits with
+`OPENCLAW_TRAY_TEST_DIRECT_CONNECT_HELD_RESUME_GUARD_SECONDS` (default 30 s).
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
