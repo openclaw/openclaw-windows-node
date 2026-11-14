@@ -240,6 +240,30 @@ with tempfile.TemporaryDirectory() as tree:
     check("non-model removed", (root / "OpenClawTray" / "settings.json").exists(), False)
     check("kept list records model", kept, [root / "OpenClawTray" / "LocalAI" / "models" / "keep.gguf"])
 
+# Junctions are not walked and rmdir removes only the link. The mount-point
+# helper is the Python 3.11 path; 3.12+ also has Path.is_junction.
+junction_root = Path(wipe.temp) / "junction-proof"
+target = junction_root / "target"
+parent = junction_root / "OpenClawTray"
+junction = parent / "via"
+target.mkdir(parents=True)
+parent.mkdir()
+(target / "hidden.gguf").write_bytes(b"through-junction")
+created = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(target)], check=False, capture_output=True, text=True)
+if created.returncode != 0:
+    failures.append(f"mklink /J failed: {created.stderr.strip() or created.stdout.strip()}")
+else:
+    check("directory is not a junction", wipe.is_junction(parent), False)
+    check("missing path is not a junction", wipe.is_junction(junction_root / "missing"), False)
+    check("mount point is a junction", wipe.is_junction(junction), True)
+    check("fallback sees the mount point", wipe._is_mount_point(junction), True)
+    check("fallback ignores a directory", wipe._is_mount_point(parent), False)
+    check("models do not walk a junction", wipe.models_in(junction), [])
+    kept = []
+    wipe.remove_path(junction, kept)
+    check("junction link removed", junction.exists(), False)
+    check("junction target kept", (target / "hidden.gguf").is_file(), True)
+
 # Orphan session detection covers the retained development identity, not just the Store prefix.
 packages_root = Path(wipe.localappdata) / "Packages"
 dev_family = "OpenClaw.Gateway_4tq5h6e8r9k2m"
