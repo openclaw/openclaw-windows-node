@@ -356,7 +356,7 @@ internal sealed class UsageContributorsSection : Component<UsageContributorsProp
                     VStack(4, new[] { Note(S("Usage_LoadedSessions")) }.Concat(entries).ToArray()).Padding(12),
                     open, value => Expand(id, value))
                 .HorizontalContentAlignment(HorizontalAlignment.Stretch).HAlign(HorizontalAlignment.Stretch)
-                .HeaderTemplate(header)
+                .HeaderContent(header)
                 .AutomationName(item.Label + ": " + value)
                 .AutomationId("UsageContributor_" + kind + "_" + item.Label)
                 .WithKey(id);

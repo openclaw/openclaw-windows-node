@@ -39,7 +39,7 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.17`, including the recycled-anchor
+Both Reactor packages use `0.1.0-preview.18`, including the recycled-anchor
 workaround introduced in preview.16 from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
@@ -59,7 +59,7 @@ including previews, in the authoritative NuGet feeds for
 [Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
 and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
 and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
-The [official preview.17 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17)
+The [official preview.18 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.18)
 now supplies the hash-verified packages used here. Keep both references aligned.
 Preview.17 requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
 reference meets that floor.

@@ -212,6 +212,8 @@ public sealed class MountedReactorChat(
 
     internal void SetHostVisible(bool visible) => session.SetHostVisible(visible);
 
+    internal void FocusInput() => session.RequestInputFocus();
+
     public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) =>
         callbacks.AttachFiles?.Invoke(attachments);
 

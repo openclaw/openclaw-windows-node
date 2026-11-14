@@ -577,6 +577,9 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     await ui.YieldToRenderAsync();
                     await ui.RunOnUIAsync(() =>
                     {
+                        // A resized re-render can replace button content before the next layout
+                        // pass attaches it; inspect the tree only after layout has settled.
+                        surface!.UpdateLayout();
                         AssertTextAlignment(surface!);
                         AssertNewButton(surface!, artifacts, reusedWidth);
                         var more = Controls(surface!).FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == "AutomationsHeaderMore") as Button;

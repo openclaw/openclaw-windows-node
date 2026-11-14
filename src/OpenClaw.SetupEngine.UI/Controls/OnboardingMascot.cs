@@ -105,6 +105,13 @@ public sealed class OnboardingMascot : UserControl
             _animator.SetPointer(x is { } px && y is { } py ? new(px, py) : null);
     }
 
+    /// <summary>Wakes an interactive mascot during a host-owned drag without counting a tap.</summary>
+    public void WakeUp()
+    {
+        if (CanAnimate && IsInteractive)
+            _animator.WakeUp();
+    }
+
     private void OnPointerMoved(object sender, PointerRoutedEventArgs args)
     {
         if (!CanAnimate || ActualWidth <= 0 || ActualHeight <= 0)

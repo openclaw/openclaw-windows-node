@@ -20,8 +20,49 @@ pixels. Transcript prose is inset 16 pixels from the aligned composer edge.
 Outer gutters are 12 pixels below 640 pixels and 40 pixels above it. The native
 annotated rail overlays only the unused right gutter, leaving transcript and
 composer centered on the viewport, including while the rail is focused.
+The rail represents displayed user and assistant messages, excluding tool,
+reasoning and loading rows. Ticks are visible without hover or focus.
+Their normal, visible-message and hover/pressed treatments follow the web
+position rail at `10285cd35ca7d696957430bbc6c8556f55af79fe`
+(`ui/src/styles/chat/message-layout.css`): 8-by-2-pixel rounded ticks use muted
+gray at 40% opacity, increasing to full muted gray for messages in the viewport.
+Hover and press use the primary text tone, never an accent-colored thumb.
+The hovered tick expands to 32 pixels; its three neighbors expand to 24, 16 and
+12 pixels. Native semantic brushes preserve light, dark and High Contrast;
+High Contrast does not reduce tick opacity. Expansion stays within the unused
+gutter, including on narrow windows. Ticks have
+10-pixel pitch before the rail reaches the transcript viewport height. The
+rail has 8-pixel vertical and 4-pixel horizontal insets. At the viewport cap,
+ticks remain equidistant regardless of message height. Long histories sample
+messages evenly, retaining the first and last, so rendered ticks have at least
+4 logical pixels of clear vertical space after layout rounding. The tick budget
+adapts to the rail height and display scale on resize. Hover and pointer
+navigation resolve the same sampled message; keyboard navigation still reaches
+every message. The rail uses a fixed ordinal range independent of virtualized
+transcript height estimates, keeping its native ticks mounted during navigation.
+Streaming sender/preview updates retain existing labels when their sampled
+identities and row positions are unchanged. Visual updates are coalesced per
+rendered frame; unrelated window layout does not rescan the transcript.
+Hover previews show sender identity and up to 240 characters in
+three lines within 280 pixels, inside a native 12-pixel rounded tooltip.
+Click or drag resolves an ordinal position to the current keyed message, not
+its approximate pixel offset. Keyboard Up/Down, Home/End and Enter/Space provide
+the same destinations. After reading with the wheel or touch, Up/Down starts
+from the first visible message rather than an old rail selection. Consecutive
+rail keys retain their selection while navigation is pending. Touch previews
+use the actual pointer position; native tooltip placement must not shift which
+message is previewed. Native message realization retains bounded layout waits,
+identity checks and cancellation; it does not force synchronous ItemsView layout.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
-leave prose centered. Accessible sender and footer identity remain.
+leave prose centered. Accessible sender and footer identity remain. Like the web
+transcript, one block of agent rows (assistant text, tool rows, tool groups and
+reasoning between user messages, status notices or a change of forwarded sender)
+shows one avatar, on its first row even when that row is a tool call, so tool
+calls and back-to-back runs such as heartbeats no longer repeat it. Inside a
+block, each run owns one actions footer; a run also ends where its recorded
+identity changes and at messages that start their own turn (turn boundaries and
+independent or background messages). Tool rows and groups keep one grid shape whether or not they
+carry the avatar, so they are never rebuilt when it moves.
 
 The writing surface uses a 20-pixel corner radius, 16-pixel editor inset, and a
 96-pixel minimum height. Its padding is 16,12,16,8 pixels and the editor-to-toolbar
@@ -227,6 +268,23 @@ This version intentionally has no child transcript, separate child
 discovery/pagination, descendant tree, Stop, persisted layout, or docking
 controls. Its session-list scope is not a claim that every historical child has
 been discovered.
+
+The **Files** pill sits beside the Subagents pill in the same row. It appears
+once the selected chat's Gateway session file list has files, after a failed
+read, or while the
+Files tab is open, and shows "Files" with the file count in secondary text,
+using the same pill look (`ChatPanelPill`). Selecting it opens or reselects the
+Files tab. The tab lists the files the session edited or read, with the
+workspace root, the folder and size of each file, and an Edited, Read or
+Missing badge; untouched files from the workspace root are not shown or
+counted. Rows are not interactive. The list comes from the existing
+`sessions.files.list` read when the chat is selected or its history is
+replaced (for example by a checkpoint restore), after each run ends, and from
+the tab's refresh button. An unsupported Gateway or a failed read shows a
+status line instead of inventing files, and a failed refresh keeps the last
+list. An unsupported Gateway is asked again only by refresh or after
+reconnecting. Disconnect or another chat closes the tab, like Subagents.
+
 `ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
 resizing, 440-DIP initial width and compact layout below 652 DIPs. There is no
 second subagent split/focus owner. Compact presentation retains the hidden main
@@ -272,11 +330,33 @@ detail renderer. Recovery uses the canonical saved result's call and message
 identity, not the invocation's display identity. These rules follow the
 [pinned message-read handler](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/src/gateway/server-methods/chat-message-get-handler.ts).
 
-Consecutive tool groups stay within the exact run identity and legacy turn.
-Every consecutive tool span, including a single call, renders as one collapsed
-summary row that counts operations per category in web order, for example
-`3 commands · 2 reads · 1 other operation`. Failed and interrupted steps stay
-inside their group, where the step row shows an inline red `failed` instead of
+Like the web `coalesceActivityRuns`, tool rows and groups that nothing visible
+separates read as one log even across runs, so a burst of heartbeat calls is one
+group; recorded nesting still never crosses a run. Two or more such calls render
+as one collapsed summary row that counts operations per category in web order,
+then failures (errors only; a stopped call reads Interrupted on its row), for example
+`3 commands · 2 reads · 1 other operation · 1 subagent · 1 failed`. Raw snake_case
+tool names read as titles (`heartbeat_respond` is "Heartbeat Respond"), like the
+web `defaultTitle`. A launch counts as a
+subagent only when it started one; failed launches and launches that opened
+their own session count as other operations. Routine bookkeeping (yields, plan
+progress, process polls and message reactions) is left out of the counts unless
+nothing else remains. A single call keeps its own step row titled like the web
+`ToolRowContent`: `Read SKILL.md`, `Edited`/`Wrote`/`Created`/`Changed` for
+mutations (patches name one file or `N files`), `Searched` and `Fetched` with
+their target, a shell tool's own title or `$ command` with leading `cd`, `set`,
+`export` and `unset` stages removed, and a labeled `sessions_spawn` as its label
+with the subagent's state (running, failed, stopped or elapsed time), classified
+by the same `ChatSubagentPresentation` as the Subagents pill so both always agree.
+An unknown or stale subagent outcome shows no state rather than a duration. Only
+read, search and fetch rows add their dimmed directory or scope, capped at
+`ChatVisuals.ToolRowDetailMaxWidth`; long titles trim with an ellipsis. A patch
+whose text was cut for display shows its input preview instead of a partial file
+summary. Other calls show their input preview. Fields outside the persisted
+display arguments come from the redacted tool input. A row's accessible name is
+its displayed title and state. A single row the user opened stays open when the
+next call turns it into a group. Failed and interrupted steps stay
+inside their group, where the step row shows a muted inline `failed` instead of
 a trailing status. Calls with provider reviews or input still being prepared
 keep their standalone disclosure so the review and live diff stay visible.
 Each row shows its category glyph; hovering or focusing the row header swaps
@@ -296,7 +376,8 @@ A call the Gateway records as wrapping others (`parentToolCallId`, same run)
 lists its nested calls first when expanded, then its own input behind a
 collapsed **Tool input** disclosure, like the web `groupToolCalls` tree. Links
 are never inferred; ambiguous identities and cycles stay top-level. Group
-counts include nested calls but not their wrapper. Each layer keeps its own
+counts include nested calls instead of a completed wrapper, except when all its
+nested calls are routine, as in the web `resolveCompletedActivityWrappers`. Each layer keeps its own
 expansion key, so opening a group never opens its first row.
 The last transcript row keeps a 38-pixel bottom inset above the composer: the
 32-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
@@ -306,6 +387,10 @@ Mica shows through. The real transcript remains opaque and scrolls normally;
 an inner host clips the copied band from its normal rendering. Child replacement,
 resize and detach update or release the surface, clip and brushes. High contrast
 omits the mask, including when switched on while the window stays open.
+While the mask is active, bring-into-view requests inside the transcript, such as
+a keyboard selection caret, extend their target by the band so they land fully
+readable above it. Pointer drag auto-scroll still starts only once the pointer
+leaves the transcript's layout bounds, below the band.
 The composer itself keeps a 12-pixel bottom margin, the same distance from the window edge as the Workspace owner footer buttons.
 Existing chronological messages, reasoning,
 partial-output updates, collapsed-by-default disclosures and explicit group
@@ -546,8 +631,8 @@ the actual final message to be visible without invoking **Jump to latest**.
 Streaming follow retains its exact-bottom assertions and the bounded correction
 above, not an extent-follow loop. The existing follow threshold is unchanged.
 Anchoring differs during the bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
-transcript then anchors to the top, so the header stays put and its details
-grow downward, as on the web. Any other reader input or programmatic tail scroll
+transcript then anchors to the top, with the toggled header itself as the anchor, so the header stays put and its details
+grow downward, as on the web, even inside a tall message with later messages below it. Any other reader input or programmatic tail scroll
 restores bottom anchoring.
 Actual tail visibility is tracked separately from follow eligibility. The
 landing predicate uses absolute distance to the current bottom, so an offset
@@ -973,6 +1058,34 @@ same resources and bounded layouts. Markdown sanitization, disabled HTML,
 inert images, list measurement, timeline keys and scroll-follow remain with
 their existing owners.
 
+Assistant Markdown opts into one Reactor text-selection scope per message,
+spanning paragraphs, headings, list content, tables, code and expanded
+disclosures. Reactor owns pointer and keyboard selection, geometry, scrolling
+and the UI Automation text provider. Neighboring message rows, code toolbar
+labels and buttons, and collapsed disclosure bodies are outside the selected
+document. OpenClaw registers the summary once and supplies disclosure visibility;
+it does not infer selectable text from Reactor's layout tree.
+
+Selection copy has one clipboard writer in Reactor. Its `OnCopyResult` callback
+only updates native localized Copied or Copy failed feedback outside the
+selection scope. Feedback resets after two seconds; content replacement and
+unmount fence stale callbacks and timers. The separate whole-message and code
+Copy buttons retain their existing clipboard and feedback paths. Native
+acceptance for cross-block selection and recycling is required in addition to
+the mounted typography and layout checks.
+
+Assistant Markdown accepts balanced, block-level `<details>` wrappers with a
+nonempty `<summary>` as an OpenClaw extension. The summary may follow the
+opening tag on the same line or the next nonblank line; `<details open>` starts
+expanded. The app recognizes these wrappers only outside Markdown code, quotes,
+lists and table cells. Unsupported attributes, empty or incomplete summaries,
+and unbalanced wrappers remain inert Markdown text. The extension supports
+nested disclosures to a maximum depth of 16 and summary text up to 4096
+characters. A native `Expander` renders each accepted disclosure, and its body
+uses the existing Markdown typography, list, table, quote, code and copy
+presentation. HTML in summary text is not executed; body links and images keep
+the existing sanitization policy.
+
 Assistant links follow the web chat's anchor policy: Markdown links, bare
 `http(s)://` and `www.` URLs become native WinUI hyperlinks in the Windows
 accent color without an underline, and open in the default browser. Inline
@@ -1045,7 +1158,14 @@ only while their own message is hovered or contains keyboard focus, including
 individual messages inside expanded Worked groups. Focusing a group header or
 a sibling message does not reveal other footers. They keep their
 measured space while hidden, so revealing a timestamp or Copy does not move the
-next message. Metadata and action glyphs share a vertical center, with Copy
+next message. In the main transcript only a run's final answer (its last
+non-commentary assistant message) owns the footer, as in the web run frame, and
+a run still generating has no footer yet (waiting for subagents or an answer
+does not count). A merged tool group that spans runs still ends each earlier run,
+and only the run holding a streaming message or running tool waits for its
+footer; earlier paragraphs interleaved with tool
+calls reserve no footer space. A message being read aloud keeps its Stop action
+until playback ends. Metadata and action glyphs share a vertical center, with Copy
 retaining its 32-pixel hit target. A failed queued message keeps its recovery
 actions visible; an active read-aloud operation keeps its Stop action visible. Commentary has
 no final-answer footer. Code-block Copy remains a separate, static header
@@ -1055,7 +1175,5 @@ These rules follow the pinned web
 [running-label gradient](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/base.css#L1276-L1310)
 and [message-footer disclosure](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/chat/grouped.css).
 
-The web's GitHub mark
-and issue/pull-request chips need a custom link renderer, which the consumed
-Reactor `0.1.0-preview.16` declares but does not call (`LinkBuilder` is honored
-from `0.1.0-preview.17`); they remain a follow-up for that upgrade.
+The web's GitHub mark and issue/pull-request chips need a custom link renderer
+and remain a follow-up.

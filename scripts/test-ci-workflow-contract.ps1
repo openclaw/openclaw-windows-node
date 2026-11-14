@@ -362,6 +362,34 @@ Assert-Contains `
     -Expected "cancel-in-progress: `${{ github.event_name == 'pull_request' }}" `
     -Message "CI cancellation must apply only to pull_request runs."
 
+# Merge queue: the required CI Gate and every lane it reads must run for merge groups, which are
+# classified from their own diff like pull requests. Only the listed pull-request-only uses may stay.
+$onBlock = [regex]::Match($workflow, '(?ms)^on:\r?\n(.*?)^\S').Groups[1].Value
+if ($onBlock -notmatch '(?m)^  merge_group:\r?\n    types: \[ checks_requested \]\r?$') {
+    throw 'CI must run for merge queue groups (merge_group: types: [ checks_requested ]).'
+}
+foreach ($job in @((Get-JobBlock "change-classification"), (Get-JobBlock "proof-pool-contracts"))) {
+    foreach ($token in @('PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}',
+            'PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}')) {
+        Assert-Contains -Text $job -Expected $token -Message "Merge groups must be diffed against the queue base: '$token'."
+    }
+}
+$pullRequestOnly = @([regex]::Matches($workflow, "[^\r\n]*github\.event_name == 'pull_request'[^\r\n]*") | ForEach-Object { $_.Value.Trim() })
+$allowedPullRequestOnly = @(
+    "group: `${{ github.workflow }}-`${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}",
+    "cancel-in-progress: `${{ github.event_name == 'pull_request' }}",
+    "if: `${{ !cancelled() && github.event_name == 'pull_request' && needs.change-classification.result == 'success' }}",
+    "NEW_TEST_SOAK_REQUIRED: `${{ github.event_name == 'pull_request' }}")
+foreach ($use in $pullRequestOnly) {
+    if ($use -notin $allowedPullRequestOnly) {
+        throw "A pull-request-only condition would skip work in merge groups; include merge_group or extend the reviewed list: $use"
+    }
+}
+if (@($pullRequestOnly | Where-Object { $_ -like 'if:*' }).Count -ne 1 -or (Get-JobBlock "new-test-soak") -notmatch [regex]::Escape($allowedPullRequestOnly[2])) {
+    throw 'Only the new-test soak may be limited to pull requests; it already ran before the pull request entered the queue.'
+}
+if ((Get-JobBlock "ci-gate") -notmatch '(?m)^    if: \$\{\{ always\(\) \}\}\r?$') { throw 'CI Gate must report for every event, including merge groups.' }
+
 $classificationJob = Get-JobBlock "change-classification"
 $classificationGuard = [regex]::Match(
     $classificationJob,
@@ -500,8 +528,8 @@ foreach ($lane in $testLanes.GetEnumerator()) {
         -Message "Test lane '$($lane.Key)' must fetch full history for GitVersion.MsBuild."
     Assert-Contains `
         -Text $job `
-        -Expected "OPENCLAW_CI_COLLECT_COVERAGE: `${{ github.event_name != 'pull_request' }}" `
-        -Message "Test lane '$($lane.Key)' does not preserve push/tag coverage."
+        -Expected "OPENCLAW_CI_COLLECT_COVERAGE: `${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}" `
+        -Message "Test lane '$($lane.Key)' must collect coverage on push and tag runs only, not on pull requests or merge groups."
     Assert-Contains `
         -Text $job `
         -Expected "name: $($lane.Value.Artifact)" `
@@ -636,8 +664,8 @@ foreach ($token in @(
         'restore-keys: nuget-${{ runner.os }}-'
     )) {
     $count = ([regex]::Matches($nonCoreWorkflow, [regex]::Escape($token))).Count
-    if ($count -ne 11) {
-        throw "Expected 11 non-core cache entries for '$token', found $count."
+    if ($count -ne 12) {
+        throw "Expected 12 non-core cache entries for '$token', found $count."
     }
 }
 Assert-NotContains `
@@ -1361,11 +1389,89 @@ foreach ($requiredRunnerToken in @(
         -Message "CI test runner is missing required token '$requiredRunnerToken'."
 }
 
+# New-test soak: pull requests only, full history for the diff, environment-only settings, the same
+# runtime and desktop preparation as the UI lane, and a CI Gate requirement on pull requests.
+$soakJob = Get-JobBlock "new-test-soak"
+foreach ($token in @(
+        "if: `${{ !cancelled() && github.event_name == 'pull_request' && needs.change-classification.result == 'success' }}",
+        'fetch-depth: 0', "ref: `${{ inputs.promotion_source_sha || github.sha }}", 'persist-credentials: false',
+        'run: ./scripts/Get-CiChangedTests.ps1 -OutputPath "$env:RUNNER_TEMP\soak-selection.json"',
+        'OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTraySoak',
+        'OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTraySoak-Roaming',
+        'OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTraySoak-Local',
+        'name: test-results-new-test-soak')) {
+    Assert-Contains -Text $soakJob -Expected $token -Message "The new-test soak job is missing '$token'."
+}
+$soakStep = Get-StepBlock -Text $soakJob -Name 'Soak added and changed tests'
+foreach ($token in @("if: `${{ steps.select.outputs.has_tests == 'true' }}", "OPENCLAW_RUN_GATEWAY_FIXTURE_UI: '1'",
+        "OPENCLAW_RUN_KEYBOARD_PROOF: '0'", 'OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard',
+        'OPENCLAW_GATEWAY_FIXTURE_APP: ${{ github.workspace }}\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe')) {
+    Assert-Contains -Text $soakStep -Expected $token -Message "The soak step is missing '$token'."
+}
+# Iterations, contention and caps are environment settings; the invocation passes only file locations.
+$soakCall = [regex]::Match($soakStep, '(?m)^      run: (\./scripts/Invoke-CiTestSoak\.ps1 .+?)\r?$').Groups[1].Value
+$soakAst = [Management.Automation.Language.Parser]::ParseInput(($soakCall -replace '"[^"]*"', "'x'"), [ref]$null, [ref]$null).Find({ param($node)
+        $node -is [Management.Automation.Language.CommandAst] }, $true)
+if (-not $soakAst) { throw 'The soak step must call scripts/Invoke-CiTestSoak.ps1 directly.' }
+$soakParameters = @($soakAst.CommandElements | Where-Object { $_ -is [Management.Automation.Language.CommandParameterAst] } | ForEach-Object ParameterName)
+if (Compare-Object @('ResultsDirectory', 'SelectionPath') @($soakParameters | Sort-Object)) {
+    throw "The soak step may pass only -SelectionPath and -ResultsDirectory; use OPENCLAW_CI_SOAK_* settings for the rest, not '$($soakParameters -join ', ')'."
+}
+foreach ($name in @('Install WindowsAppRuntime', 'Configure UI desktop')) {
+    $soakPreparation = Get-StepBlock -Text $soakJob -Name $name
+    Assert-Contains -Text $soakPreparation -Expected "if: `${{ steps.select.outputs.ui_tests == 'true' }}" `
+        -Message "The soak job must prepare '$name' only for selected UI tests."
+    $uiRun = [regex]::Match((Get-StepBlock -Text $uiJob -Name $name), '(?ms)^      run: .*').Value.Trim()
+    if ([regex]::Match($soakPreparation, '(?ms)^      run: .*').Value.Trim() -cne $uiRun) {
+        throw "The soak job must prepare '$name' exactly as the UI lane does."
+    }
+}
+$soakRunner = Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Invoke-CiTestSoak.ps1') -Raw
+foreach ($token in @('OPENCLAW_CI_SOAK_ITERATIONS', 'OPENCLAW_CI_SOAK_CONTENTION_ITERATIONS', 'OPENCLAW_CI_SOAK_CONTENTION_WORKERS',
+        'OPENCLAW_CI_SOAK_HANG_SECONDS', 'Get-CiStepTimeoutMinutes', '--no-build', '--blame-hang', '--blame-hang-dump-type none')) {
+    Assert-Contains -Text $soakRunner -Expected $token -Message "The soak runner lost '$token'."
+}
+$ciGateJob = Get-JobBlock "ci-gate"
+foreach ($token in @(' new-test-soak, ', "NEW_TEST_SOAK_REQUIRED: `${{ github.event_name == 'pull_request' }}",
+        'NEW_TEST_SOAK_RESULT: ${{ needs.new-test-soak.result }}', '-NewTestSoakRequired $env:NEW_TEST_SOAK_REQUIRED',
+        '-NewTestSoakResult $env:NEW_TEST_SOAK_RESULT')) {
+    Assert-Contains -Text $ciGateJob -Expected $token -Message "CI Gate must require the new-test soak on pull requests: '$token'."
+}
+Assert-Contains -Text (Get-JobBlock "fast-validation") -Expected 'run: ./scripts/test-ci-changed-tests.ps1' `
+    -Message 'Fast validation must test the changed-test selection.'
+
+# Main failure watch: only failed pushes to main of this workflow, least privilege, untrusted run data
+# kept out of expressions in scripts, and no reruns, reverts or pushes.
+$watchWorkflow = Get-Content -LiteralPath (Join-Path $repoRootPath '.github\workflows\main-failure-watch.yml') -Raw
+if ($workflow -notmatch '\A\s*name: Build and Test\r?\n') { throw 'The main failure watch listens for the workflow named "Build and Test"; keep the names in sync.' }
+foreach ($token in @('workflows: [Build and Test]', 'types: [completed]', 'branches: [main]',
+        "github.event.workflow_run.conclusion == 'failure'", "github.event.workflow_run.event == 'push'",
+        "github.event.workflow_run.head_branch == 'main'", 'github.event.workflow_run.head_repository.full_name == github.repository',
+        'ref: ${{ github.event.workflow_run.head_sha }}', 'fetch-depth: 0', 'persist-credentials: false',
+        'run: ./scripts/Watch-CiMainFailures.ps1 -Repository $env:REPOSITORY -RunId $env:RUN_ID -RunAttempt $env:RUN_ATTEMPT -HeadSha $env:HEAD_SHA')) {
+    Assert-Contains -Text $watchWorkflow -Expected $token -Message "The main failure watch is missing '$token'."
+}
+if ($watchWorkflow -notmatch '(?m)^permissions: \{\}\r?$') { throw 'The main failure watch must grant no workflow-level permissions.' }
+$watchPermissions = [regex]::Matches($watchWorkflow, '(?m)^    permissions:\r?\n((?:      [a-z-]+: [a-z]+\r?\n)+)')
+$watchGrants = if ($watchPermissions.Count -eq 1) { (@($watchPermissions[0].Groups[1].Value -split '\r?\n' | Where-Object { $_ } | ForEach-Object Trim | Sort-Object) -join ',') } else { '' }
+if ($watchGrants -cne 'actions: read,contents: read,issues: write,pull-requests: read') {
+    throw 'The main failure watch job may only read actions, contents and pull requests and write issues.'
+}
+if ($watchWorkflow -match '(?m)^concurrency:') { throw 'The main failure watch must not use a concurrency group: GitHub cancels pending runs in a group, which drops reports.' }
+foreach ($source in @($watchWorkflow, (Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\Watch-CiMainFailures.ps1') -Raw),
+        (Get-Content -LiteralPath (Join-Path $repoRootPath 'scripts\CiMainFailureWatch.ps1') -Raw))) {
+    if ($source -match '(?i)pull_request_target|\brun\s+rerun\b|/rerun|\brun\s+cancel\b|\bgit\s+(?:revert|push)\b') {
+        throw "The main failure watch must not rerun, cancel, revert or push: '$($Matches[0])'."
+    }
+}
+Assert-Contains -Text (Get-JobBlock "fast-validation") -Expected 'run: ./scripts/test-ci-main-failure-watch.ps1' `
+    -Message 'Fast validation must test the main failure watch.'
+
 # Step budget visibility: each timed single-runner step declares its own timeout-minutes in
 # OPENCLAW_CI_STEP_TIMEOUT_MINUTES so the runner can warn before a passing suite outgrows it.
 # Drift between the two values is rejected. It must never be a runner argument: alpha promotion
 # runs this workflow against an older candidate's runner scripts, which reject unknown parameters.
-$budgetedRunnerPattern = '(?m)^      run: >\r?\n\s+\./scripts/(?:Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1\r?$'
+$budgetedRunnerPattern = '(?m)^      run: (?:>\r?\n\s+\./scripts/(?:Invoke-CiTest|Invoke-CiE2e|test-gateway-fixture)\.ps1\r?$|\./scripts/Invoke-CiTestSoak\.ps1 )'
 # A multi-command step would understate its budget from inside the runner, so it must be named here.
 $unbudgetedRunnerSteps = @('Run latest stable profile compatibility')
 $budgetedSteps = 0
@@ -1388,7 +1494,7 @@ foreach ($stepText in [regex]::Split($workflow, '(?m)^(?=    - (?:name:|uses:))'
         throw "CI step '$stepName' runs a test runner with other commands. Make it a single-runner step with OPENCLAW_CI_STEP_TIMEOUT_MINUTES, or list it in `$unbudgetedRunnerSteps."
     }
 }
-if ($budgetedSteps -lt 13) { throw "Expected at least 13 budgeted runner steps, found $budgetedSteps." }
+if ($budgetedSteps -lt 14) { throw "Expected at least 14 budgeted runner steps, found $budgetedSteps." }
 if (([regex]::Matches($workflow, '(?m)^\s+OPENCLAW_CI_STEP_TIMEOUT_MINUTES:')).Count -ne $budgetedSteps) {
     throw 'OPENCLAW_CI_STEP_TIMEOUT_MINUTES may only be set on budgeted runner steps, not at job or workflow level.'
 }
@@ -1896,7 +2002,7 @@ $ciGateJob = Get-JobBlock "ci-gate"
 foreach ($token in @(
         "name: CI Gate",
         "if: `${{ always() }}",
-        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, tray-ui-shard, gateway-fixture, gateway-fixture-shard, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
+        "needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, tray-ui-shard, gateway-fixture, gateway-fixture-shard, new-test-soak, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]",
         "./scripts/Assert-CiGateResults.ps1",
         "CLASSIFICATION_RESULT: `${{ needs.change-classification.result }}",
         "CLASSIFICATION: `${{ needs.change-classification.outputs.classification }}",
@@ -2121,6 +2227,14 @@ try {
         -RepoRoot $tempRoot
     if ($unrelatedDecision -ne "false") {
         throw "Unrelated PR change produced decision '$unrelatedDecision'."
+    }
+    $mergeGroupDecision = & $selectorPath -EventName merge_group -BaseSha $baseSha -HeadSha $headSha -RepoRoot $tempRoot
+    if ($mergeGroupDecision -ne "false") {
+        throw "A merge group must be diffed like a pull request, but an unrelated change produced '$mergeGroupDecision'."
+    }
+    $mergeGroupMissing = & $selectorPath -EventName merge_group -BaseSha '' -HeadSha $headSha -RepoRoot $tempRoot
+    if ($mergeGroupMissing -ne "true") {
+        throw "A merge group without diff inputs must run the regression fail-closed."
     }
 
     $missingDiffDecision = & $selectorPath `

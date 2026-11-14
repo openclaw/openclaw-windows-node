@@ -284,6 +284,8 @@ internal static class ChatVisuals
     internal const double ToolRowMinHeight = 32;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
+    // A tool row's dimmed directory or search scope never takes more than this; it trims with "…".
+    internal const double ToolRowDetailMaxWidth = 240;
     internal const double ActivityDetailsMaxHeight = 160;
     internal const double TranscriptTopInset = 8;
     // The transcript's bottom edge fades into the composer over this height. Like the web
@@ -301,6 +303,11 @@ internal static class ChatVisuals
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
     internal const double AvatarSlot = 44;
+    internal const double HistoryTickSpacing = 10;
+    internal const double HistoryTickHeight = 2;
+    internal const double HistoryTickMinimumGap = 4;
+    internal const double HistoryRailInset = 8;
+    internal const int HistoryPreviewLength = 240;
     // Subagents pill above the composer and rows in the Subagents tab.
     internal const double SubagentPillHeight = 28;
     internal const double SubagentPillIconSize = 14;
@@ -324,7 +331,7 @@ internal static class ChatVisuals
 
     internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;
-    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 32;
+    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 40;
     internal static double ProseWidth(double width) =>
         Math.Min(ReadingWidth - 2 * ProseInset, width - 2 * (Gutter(width) + ProseInset));
 

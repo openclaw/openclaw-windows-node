@@ -613,11 +613,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 });
                 await SettleAsync();
                 await AwaitInitialTailAsync(surface, key, initial.Timelines[key].Entries.Last().Id);
-                await ui.RunOnUIAsync(() =>
-                    FindControl<Expander>(surface, $"ChatToolActivity_{entry.Id}").IsExpanded = true);
-                await SettleAsync();
+                // The lone recovered call is its own row, so it opens directly.
                 var expander = await ui.RunOnUIAsync(() =>
                 {
+                    Assert.DoesNotContain(FindDescendants<Expander>(surface), control =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control) ==
+                            $"ChatToolActivity_{entry.Id}");
                     var control = FindControl<Expander>(surface, $"ChatToolCall_{entry.Id}");
                     control.IsExpanded = true;
                     return Task.FromResult(control);
@@ -1093,6 +1094,13 @@ public sealed partial class ReactorChatLayoutProofTests
     private sealed class ConversationParityBridge(ChatHistoryInfo history, SessionInfo session) : IChatGatewayBridge
     {
         public SessionInfo[] Children { get; set; } = [];
+        public SessionFileList? Files { get; set; }
+        public async Task<SessionFileList> ListSessionFilesAsync(string sessionKey)
+        {
+            // A real read completes after the render that started it.
+            await Task.Yield();
+            return Files ?? new SessionFileList { Key = sessionKey, IsSupported = false };
+        }
         public System.Collections.Concurrent.ConcurrentQueue<string> HistoryRequests { get; } = new();
         public bool IsConnected => true;
         public ConnectionStatus CurrentStatus => ConnectionStatus.Connected;

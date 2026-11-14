@@ -644,6 +644,11 @@ and set `OpenClawSignedFileWorkerPath` to the matching RID directory.
 Companion embeds its manifest. Ordinary non-release builds still publish a
 local unsigned worker.
 
+Manifest generation explicitly launches PowerShell 7 (`pwsh` on the build
+host's `PATH`), matching the signing job and cleanup-helper checks. It does
+not launch Windows PowerShell 5.1 with inherited PowerShell 7 module paths,
+which can prevent the Authenticode module from loading.
+
 Do not sign or republish the worker after manifest generation: either changes
 the bytes checked by Companion's embedded digests. Final release signing covers
 the app binaries separately and verifies the already-signed worker in its

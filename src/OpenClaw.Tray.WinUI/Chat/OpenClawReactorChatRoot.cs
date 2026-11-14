@@ -53,6 +53,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     private string? _pendingSelectedThreadId;
     private bool _initialSelectionApplied;
     private readonly ChatConversationPanelState _panels = new();
+    private readonly ChatSessionFilesState _files = new();
 
     public static void SetToolCallsVisible(bool visible)
     {
@@ -95,6 +96,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             {
                 if (native is not null) native.ToolDetailsInvalidated -= Invalidated;
                 _panels.Invalidate();
+                _files.Bind(null, 0, 0, 0, false, null);
             };
         }), props.Provider);
         var dashboardBinding = props.Dashboards;
@@ -364,7 +366,14 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 _panels.OpenDashboard(explicitDashboardTarget);
             return static () => { };
         }), (object?)explicitDashboardTarget ?? this, (object?)dashboardBinding?.PendingOpen ?? this);
+        _files.Bind(isGatewayConnected && !isComposeOnly ? panelSession : null, panelConnection, timelineGeneration,
+            historyRevision, timeline.TurnActive, nativeProvider is null ? null : nativeProvider.ListSessionFilesAsync);
 
+        // One child list feeds the Subagents pill, its tab and the spawn rows in the timeline.
+        var subagentChildren = isGatewayConnected && effectiveThread is not null
+            ? snapshot.Threads.Where(child => child.IsSubagent && !child.IsArchived
+                && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
+            : Array.Empty<ChatThread>();
         var timelineProps = new ChatTimelinePresentationContext(
             effectiveThread?.Id,
             entries,
@@ -412,7 +421,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             ReadToolDetailsProfileState: dataProvider is null ? null : dataProvider.ReadToolDetailsProfileState,
             UserDisplayName: props.UserDisplayName,
             UserProfilePicture: props.UserProfilePicture,
-            OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null);
+            OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null,
+            ChildThreads: subagentChildren);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
@@ -612,10 +622,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .IsVisible(composerVisible)
             .AutomationId("ChatComposerArea")
             .WithKey("chat-composer-area");
-        var subagentChildren = isGatewayConnected && effectiveThread is not null
-            ? snapshot.Threads.Where(child => child.IsSubagent && !child.IsArchived
-                && child.Id != effectiveThread.Id && child.ParentSessionKey == effectiveThread.Id).ToArray()
-            : [];
         var conversation = Grid(
             [GridSize.Star()],
             [showWelcome ? GridSize.Auto : props.Compact ? (isEmptyConversation ? GridSize.Auto : GridSize.Star()) : GridSize.Star(),
@@ -631,9 +637,17 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             Component<ReactorChatProviderReview, ReactorChatProviderReviewProps>(
                     new(isGatewayConnected ? effectiveThread?.ProviderReview : null, viewportWidth))
                 .WithKey("chat-provider-review").Grid(row: 3),
-            Component<ReactorChatSubagentsPill, ReactorChatSubagentsPillProps>(
-                    new(_panels, subagentChildren, viewportWidth))
-                .WithKey("chat-subagents-pill").Grid(row: 4),
+            // Panel pills share one reading-width row; each pill hides itself when it has nothing to open.
+            Border(HStack(6,
+                    Component<ReactorChatSubagentsPill, ReactorChatSubagentsPillProps>(new(_panels, subagentChildren))
+                        .WithKey("chat-subagents-pill"),
+                    Component<ReactorChatFilesPill, ReactorChatFilesPillProps>(
+                            new(_panels, _files, panelRevision, _panels.AreSubagentsReady, _files.Version))
+                        .WithKey("chat-files-pill")))
+                .MaxWidth(ChatVisuals.ReadingWidth)
+                .Margin(ChatVisuals.Gutter(viewportWidth), 0, ChatVisuals.Gutter(viewportWidth), 0)
+                .HAlign(HorizontalAlignment.Stretch)
+                .WithKey("chat-panel-pills").Grid(row: 4),
             composerArea.Grid(row: 5))
             .Background(Theme.Ref("ChatCanvasBrush"))
             .Set(grid =>
@@ -646,8 +660,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth, setViewportHeight))
             .OnUnmount(ChatVisuals.StopObserving);
         var subagents = Component<ReactorChatSubagents, ReactorChatSubagentsProps>(new(subagentChildren, _panels));
+        var files = Component<ReactorChatFiles, ReactorChatFilesProps>(new(_files, _files.Version));
         return Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(
-            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents, dashboardView));
+            new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents,
+                dashboardView, files));
     }
 
     private static Element RenderLoading() =>

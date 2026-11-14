@@ -17,6 +17,7 @@ internal sealed class ChatConversationPanelState
     internal const string DetailsSlot = "details";
     internal const string SubagentsSlot = "subagents";
     internal const string DashboardSlot = "dashboard";
+    internal const string FilesSlot = "files";
     // Closing a dashboard suppresses automatic reveals for that session while chat stays mounted.
     private readonly HashSet<string> _dismissedDashboards = new(StringComparer.Ordinal);
     // The dashboard tab was revealed automatically and the user has not opened it yet.
@@ -65,6 +66,7 @@ internal sealed class ChatConversationPanelState
         {
             Remove(DetailsSlot);
             Remove(SubagentsSlot);
+            Remove(FilesSlot);
             Revision++;
         }
         else if (_profileRevision != profileRevision)
@@ -81,10 +83,11 @@ internal sealed class ChatConversationPanelState
         _entries = entries;
         _isCurrent = isCurrent;
         _subagentsCurrent = subagentsCurrent ?? (() => false);
-        if (!AreSubagentsReady && _tabs.Contains(SubagentsSlot))
+        if (!AreSubagentsReady && (_tabs.Contains(SubagentsSlot) || _tabs.Contains(FilesSlot)))
         {
-            var selected = Selected == SubagentsSlot;
+            var selected = Selected is SubagentsSlot or FilesSlot;
             Remove(SubagentsSlot);
+            Remove(FilesSlot);
             if (selected) Selected = _tabs.LastOrDefault();
         }
         // A fallback chosen here was not requested by the user: never move focus or cover a narrow conversation.
@@ -107,6 +110,14 @@ internal sealed class ChatConversationPanelState
     {
         if (Revision != expectedRevision || !AreSubagentsReady) return false;
         Show(SubagentsSlot);
+        return true;
+    }
+
+    /// <summary>Files share the Subagents admission: the current session on the current connection.</summary>
+    internal bool OpenFiles(long expectedRevision)
+    {
+        if (Revision != expectedRevision || !AreSubagentsReady) return false;
+        Show(FilesSlot);
         return true;
     }
 

@@ -15,6 +15,8 @@ internal static class DesktopCompanionNative
     [DllImport("user32.dll")]
     internal static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
+    internal static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")]
     private static extern int GetWindowLong(IntPtr hwnd, int index);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hwnd, int index, int value);

@@ -732,7 +732,7 @@ internal static class SessionsHubSessionsView
                 {
                     // Archived rows in All are dimmed to tell them apart, but only in the header:
                     // opacity on the Expander would also fade the editable body.
-                    HeaderTemplate = Grid(columns.ToArray(), [GridSize.Auto], cells.ToArray())
+                    HeaderContent = Grid(columns.ToArray(), [GridSize.Auto], cells.ToArray())
                         .Opacity(row.Archived && state.Filters.Status == SessionArchiveFilter.All ? 0.75 : 1),
                 })
             .HAlign(HorizontalAlignment.Stretch)

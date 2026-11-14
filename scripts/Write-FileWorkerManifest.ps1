@@ -1,3 +1,4 @@
+#requires -Version 7
 param(
     [Parameter(Mandatory)][string]$PayloadDirectory,
     [Parameter(Mandatory)][ValidateSet('win-x64', 'win-arm64')][string]$RuntimeIdentifier,

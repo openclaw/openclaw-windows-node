@@ -1,6 +1,7 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Microsoft.UI.Xaml.Controls">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorLight2}" />
@@ -11,6 +12,7 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatHistoryTickBrush" Color="{ThemeResource TextFillColorSecondary}" Opacity="0.4" />
             <!-- 82% primary + 18% secondary alpha: (0.82*255 + 0.18*197)/255. -->
             <SolidColorBrush x:Key="ChatCommandOutputBrush" Color="{ThemeResource TextFillColorPrimary}" Opacity="0.9590588235294118" />
             <SolidColorBrush x:Key="ChatToolActionHoverBrush" Color="{ThemeResource SubtleFillColorSecondary}" Opacity="0.7" />
@@ -79,6 +81,7 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatHistoryTickBrush" Color="{ThemeResource TextFillColorSecondary}" Opacity="0.4" />
             <!-- 82% primary + 18% secondary alpha: (0.82*228 + 0.18*158)/228. -->
             <SolidColorBrush x:Key="ChatCommandOutputBrush" Color="{ThemeResource TextFillColorPrimary}" Opacity="0.9447368421052632" />
             <SolidColorBrush x:Key="ChatToolActionHoverBrush" Color="{ThemeResource SubtleFillColorSecondary}" Opacity="0.7" />
@@ -146,6 +149,7 @@
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+            <SolidColorBrush x:Key="ChatHistoryTickBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatCommandOutputBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatToolActionHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
             <SolidColorBrush x:Key="ChatToolActionHoverForegroundBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
@@ -353,6 +357,104 @@
     <ControlTemplate x:Key="ChatModelPickerControlTemplate" TargetType="Control">
         <ContentPresenter x:Name="PickerRoot" />
     </ControlTemplate>
+    <ControlTemplate x:Key="ChatHistoryTickTemplate" TargetType="ContentControl">
+        <Grid>
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters>
+                            <Setter Target="Tick.Width" Value="32" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="HoverAdjacent">
+                        <VisualState.Setters>
+                            <Setter Target="Tick.Width" Value="24" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="HoverNear">
+                        <VisualState.Setters>
+                            <Setter Target="Tick.Width" Value="16" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="HoverFar">
+                        <VisualState.Setters>
+                            <Setter Target="Tick.Width" Value="12" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+                <VisualStateGroup x:Name="ToneStates">
+                    <VisualState x:Name="Quiet" />
+                    <VisualState x:Name="Visible">
+                        <VisualState.Setters>
+                            <Setter Target="Tick.Background" Value="{ThemeResource ChatSecondaryTextBrush}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Highlighted">
+                        <VisualState.Setters>
+                            <Setter Target="Tick.Background" Value="{ThemeResource ChatTextBrush}" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+            <Border x:Name="Tick" Width="8" Height="2" CornerRadius="1"
+                    MaxWidth="{TemplateBinding MaxWidth}" HorizontalAlignment="Right"
+                    Background="{ThemeResource ChatHistoryTickBrush}" />
+        </Grid>
+    </ControlTemplate>
+    <Style x:Key="ChatHistoryScrollBarStyle" TargetType="controls:AnnotatedScrollBar">
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="LabelTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <ContentControl Width="32" Height="2" IsTabStop="False" IsHitTestVisible="False"
+                             Foreground="{ThemeResource ChatHistoryTickBrush}"
+                             Template="{StaticResource ChatHistoryTickTemplate}"
+                             VerticalAlignment="Top" HorizontalAlignment="Right"
+                             AutomationProperties.AccessibilityView="Raw" />
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="DetailLabelTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <StackPanel Spacing="4" MaxWidth="280">
+                        <TextBlock Text="{Binding Sender}" Style="{ThemeResource BodyStrongTextBlockStyle}"
+                                   TextTrimming="CharacterEllipsis" MaxLines="1" />
+                        <TextBlock Text="{Binding Preview}" Style="{ThemeResource BodyTextBlockStyle}"
+                                   TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:AnnotatedScrollBar">
+                    <Grid x:Name="PART_RootGrid" Padding="4,8" Background="Transparent">
+                        <Grid x:Name="PART_VerticalGrid">
+                            <Grid x:Name="PART_LabelsGrid" Background="Transparent" />
+                            <Border x:Name="PART_ToolTipRail" HorizontalAlignment="Right" Width="1">
+                                <ToolTipService.ToolTip>
+                                    <ToolTip x:Name="PART_DetailLabelToolTip" Placement="Left"
+                                             MaxWidth="320" CornerRadius="12">
+                                        <ContentPresenter x:Name="PART_TooltipContentPresenter" />
+                                    </ToolTip>
+                                </ToolTipService.ToolTip>
+                            </Border>
+                            <!-- Retain native offset mapping without gallery scroll buttons or a second visible thumb. -->
+                            <Border x:Name="PART_VerticalThumb" Width="1" Height="2"
+                                    VerticalAlignment="Top" HorizontalAlignment="Right"
+                                    Opacity="0" IsHitTestVisible="False" />
+                            <Border x:Name="PART_VerticalThumbGhost" Width="16" Height="1"
+                                    Opacity="0"
+                                    VerticalAlignment="Top" HorizontalAlignment="Right"
+                                    IsHitTestVisible="False" Visibility="Collapsed" />
+                        </Grid>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <ResourceDictionary x:Key="ChatModelListResources">
         <x:Boolean x:Key="ListViewItemSelectionCheckMarkVisualEnabled">False</x:Boolean>
         <x:Boolean x:Key="ListViewItemSelectionIndicatorVisualEnabled">False</x:Boolean>

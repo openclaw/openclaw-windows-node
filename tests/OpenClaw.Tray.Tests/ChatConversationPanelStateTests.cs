@@ -1,4 +1,5 @@
 using OpenClaw.Chat;
+using OpenClaw.Shared;
 using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Chat;
 
@@ -84,6 +85,175 @@ public sealed class ChatConversationPanelStateTests
         state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => true,
             subagentsCurrent: () => connected);
         Assert.False(state.OpenSubagents(revision));
+    }
+
+    [Fact]
+    public void FilesSharesTheConnectionAdmissionAndRetiresWithIt()
+    {
+        var state = new ChatConversationPanelState();
+        var connected = true;
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        var revision = state.Revision;
+        Assert.True(state.OpenSubagents(revision));
+        Assert.True(state.OpenFiles(revision));
+        Assert.Equal(["subagents", "files"], state.Tabs);
+        Assert.Equal("files", state.Selected);
+        connected = false;
+        Assert.False(state.OpenFiles(revision));
+        state.Bind(_provider, "session", 1, 2, 3, [Tool("first")], () => false,
+            subagentsCurrent: () => connected);
+        Assert.Empty(state.Tabs);
+        Assert.Null(state.Selected);
+    }
+
+    private static SessionFileList FileList(params string[] paths) => new()
+    {
+        Key = "session",
+        Root = @"C:\repo",
+        Files = paths.Select(path => new SessionFileEntry { Path = path, Kind = "modified" }).ToArray(),
+    };
+
+    private static Func<string, Task<SessionFileList>> Reads(List<(string Session, TaskCompletionSource<SessionFileList> Result)> reads) =>
+        session =>
+        {
+            var result = new TaskCompletionSource<SessionFileList>();
+            reads.Add((session, result));
+            return result.Task;
+        };
+
+    [Fact]
+    public Task SessionFiles_DiscardsTheResultOfAReplacedSession() => Task.Run(() =>
+    {
+        var files = new ChatSessionFilesState();
+        var reads = new List<(string Session, TaskCompletionSource<SessionFileList> Result)>();
+        var load = Reads(reads);
+        files.Bind("a", 1, 1, 1, false, load);
+        files.Bind("b", 1, 1, 1, false, load);
+        Assert.Equal(["a", "b"], reads.Select(read => read.Session));
+        reads[0].Result.SetResult(FileList("old.cs"));
+        Assert.Equal(ChatSessionFilesStatus.Loading, files.Status);
+        Assert.Equal(0, files.FileCount);
+        reads[1].Result.SetResult(FileList("src/new.cs"));
+        Assert.Equal(ChatSessionFilesStatus.Loaded, files.Status);
+        Assert.Equal("src/new.cs", Assert.Single(files.Rows).RelativePath);
+        // A reset keeps the key but starts a new timeline, so its pre-reset read is stale.
+        files.Bind("b", 1, 2, 1, false, load);
+        Assert.Equal(0, files.FileCount);
+        files.Bind("b", 1, 3, 1, false, load);
+        reads[2].Result.SetResult(FileList("pre-reset.cs"));
+        Assert.Equal(0, files.FileCount);
+        reads[3].Result.SetResult(FileList("kept.cs"));
+        Assert.Equal(1, files.FileCount);
+        // A checkpoint restore replaces history under the same key, connection and timeline.
+        files.Bind("b", 1, 3, 2, false, load);
+        Assert.Equal(0, files.FileCount);
+        Assert.Equal(5, reads.Count);
+        reads[4].Result.SetResult(FileList("restored.cs"));
+        Assert.Equal("restored.cs", Assert.Single(files.Rows).RelativePath);
+        files.Bind(null, 1, 1, 1, false, null);
+        Assert.Equal(0, files.FileCount);
+    });
+
+    [Fact]
+    public Task SessionFiles_ReloadsOnceWhenARunEndsAndKeepsTheListOnFailure() => Task.Run(() =>
+    {
+        var files = new ChatSessionFilesState();
+        var reads = new List<(string Session, TaskCompletionSource<SessionFileList> Result)>();
+        var load = Reads(reads);
+        files.Bind("session", 1, 1, 1, true, load);
+        reads[0].Result.SetResult(FileList("a.cs"));
+        files.Bind("session", 1, 1, 1, true, load);
+        Assert.Single(reads);
+        files.Bind("session", 1, 1, 1, false, load);
+        Assert.Equal(2, reads.Count);
+        files.Refresh();
+        files.Refresh();
+        Assert.Equal(2, reads.Count);
+        reads[1].Result.SetException(new InvalidOperationException("closed"));
+        Assert.Equal(3, reads.Count);
+        Assert.Equal(1, files.FileCount);
+        reads[2].Result.SetResult(FileList("a.cs", "b.cs"));
+        Assert.Equal(ChatSessionFilesStatus.Loaded, files.Status);
+        Assert.Equal(2, files.FileCount);
+    });
+
+    [Fact]
+    public void SessionFiles_CountsOnlySessionFilesNotTheWorkspaceRootListing()
+    {
+        var files = new ChatSessionFilesState();
+        var list = FileList("src/Parser.cs");
+        // sessions.files.list also lists the workspace root when no path is requested.
+        list.Browser = new SessionFileBrowser
+        {
+            Path = "",
+            Entries =
+            [
+                new SessionFileBrowserEntry { Path = "README.md", Name = "README.md", SessionKind = "read" },
+                new SessionFileBrowserEntry { Path = "package.json", Name = "package.json" },
+                new SessionFileBrowserEntry { Path = "src", Name = "src", Kind = "directory" },
+            ],
+        };
+        files.Bind("session", 1, 1, 1, false, _ => Task.FromResult(list));
+        Assert.Equal(["README.md", "src/Parser.cs"], files.Rows.Select(row => row.RelativePath).Order(StringComparer.Ordinal));
+        Assert.Equal(2, files.FileCount);
+    }
+
+    [Fact]
+    public void SessionFiles_SynchronousResultUpdatesDuringBindWithoutRaisingChanged()
+    {
+        var files = new ChatSessionFilesState();
+        var changes = 0;
+        files.Changed += () => changes++;
+        var before = files.Version;
+        files.Bind("session", 1, 1, 1, false, _ => Task.FromResult(FileList("a.cs")));
+        Assert.Equal(ChatSessionFilesStatus.Loaded, files.Status);
+        Assert.Equal(1, files.FileCount);
+        Assert.Equal(0, changes);
+        // The version is the render-time signal that redraws the pill and tab.
+        Assert.True(files.Version > before);
+        files.Refresh();
+        Assert.Equal(2, changes);
+    }
+
+    [Fact]
+    public Task SessionFiles_QueuedAutomaticReadStopsAfterUnsupportedButQueuedRefreshRuns() => Task.Run(() =>
+    {
+        var files = new ChatSessionFilesState();
+        var reads = new List<(string Session, TaskCompletionSource<SessionFileList> Result)>();
+        var load = Reads(reads);
+        files.Bind("session", 1, 1, 1, true, load);
+        files.Bind("session", 1, 1, 1, false, load);
+        Assert.Single(reads);
+        reads[0].Result.SetResult(new SessionFileList { Key = "session", IsSupported = false });
+        Assert.Single(reads);
+        Assert.Equal(ChatSessionFilesStatus.Unsupported, files.Status);
+        files.Refresh();
+        files.Refresh();
+        Assert.Equal(2, reads.Count);
+        reads[1].Result.SetResult(new SessionFileList { Key = "session", IsSupported = false });
+        Assert.Equal(3, reads.Count);
+    });
+
+    [Fact]
+    public void SessionFiles_UnsupportedGatewayIsNotAskedAgainOnTheSameConnection()
+    {
+        var files = new ChatSessionFilesState();
+        var reads = 0;
+        Func<string, Task<SessionFileList>> load = session =>
+        {
+            reads++;
+            return Task.FromResult(new SessionFileList { Key = session, IsSupported = false });
+        };
+        files.Bind("a", 1, 1, 1, true, load);
+        files.Bind("a", 1, 1, 1, false, load);
+        files.Bind("b", 1, 1, 1, false, load);
+        Assert.Equal(1, reads);
+        Assert.Equal(ChatSessionFilesStatus.Unsupported, files.Status);
+        files.Refresh();
+        Assert.Equal(2, reads);
+        files.Bind("b", 2, 1, 1, false, load);
+        Assert.Equal(3, reads);
     }
 
     [Fact]

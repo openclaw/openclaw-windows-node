@@ -109,14 +109,18 @@ the process tree and reports the script's last output and errors.
 The composer lifetime- and voice-disposal reentrancy regressions use dedicated
 workers so their bounded reentrancy assertions (`OPENCLAW_TRAY_TEST_REENTRANCY_TIMEOUT_SECONDS`,
 default 10 s) measure controller lock ownership rather than shared thread-pool
-scheduling latency. The settings-coordinator and native-restart handoff
+scheduling latency. The composer view-model reentrancy and dispose-linearization
+regressions use the same budget for their hang guards. The settings-coordinator and native-restart handoff
 regressions follow the same rule (`OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS`,
 default 15 s). Each Windows PowerShell 5.1 uninstall-helper run is bounded by
 `OPENCLAW_UNINSTALL_SCRIPT_TEST_TIMEOUT_SECONDS` (default 120 s) because a
 cold 5.1 start on a loaded runner can exceed 30 s. The isolated wizard
 console-tail regressions wait through the tail's real poll interval and retry
 backoff, so each step is bounded by `OPENCLAW_TRAY_TEST_WIZARD_TAIL_TIMEOUT_SECONDS`
-(default 30 s).
+(default 30 s). The chat-readiness loopback regressions bound each exchange with
+`OPENCLAW_TRAY_TEST_CHAT_READINESS_TIMEOUT_SECONDS` (default 30 s) rather than the
+product's 3 s per-probe client timeout, because their fake server runs on the
+shared thread pool.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
@@ -213,7 +217,10 @@ file and digest at this build boundary. Actual MSIX archive inventory and
 embedded-manifest checks remain a separate packaging acceptance boundary.
 Release worker EXE/DLL signatures are verified before manifest hashing.
 `FileWorkerManifestTests.ReleaseManifestRejectsUnsignedWorkerBeforeWritingDigests`
-checks rejection for both RIDs; workflow contracts verify the signed input reaches
+checks rejection for both RIDs through the production MSBuild target launched
+from PowerShell 7, retaining its inherited module environment. It must reach
+the unsigned-worker rejection rather than fail loading the Authenticode module.
+Workflow contracts verify the signed input reaches
 portable/Inno and MSIX builds without republishing the worker. These checks do
 not prove Azure signing or installed-package acceptance.
 Companion packages each worker payload in a manifest-addressed RID slot, and its
@@ -390,7 +397,7 @@ required closeout lane for code changes.
 | Agent skills | `.\scripts\validate-agent-skills.ps1` and `.\scripts\test-agent-skills-validator.ps1` | Changes under `.agents\skills`; validates skill metadata, agent-facing prose, and local links |
 | Result and evidence contracts | `.\scripts\test-proof-evidence.ps1` | Changes to report admission, generic proof, CI test wrappers, evidence summaries, or their source/artifact correspondence |
 | Agent readiness | `.\scripts\test-agent-readiness.ps1` | Changes to read-only host and optional agent-tool readiness reporting |
-| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
+| GitHub-hosted PR/main CI | `.github\workflows\ci.yml` | Every pull request, merge queue group and push to `main`; explicit conservative impact outputs select the required test, E2E, and release-publish lanes |
 | Accessibility scan | `.\scripts\run-proof-tests.ps1 -Project 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' -Filter 'Category=Accessibility' -ResultName 'winui-accessibility' -RuntimeIdentifier win-x64` | UI changes and CI quality gate; runs real-process Axe.Windows scans; see `docs\ACCESSIBILITY.md` |
 | Local E2E | `OPENCLAW_RUN_E2E=1` with `OpenClaw.E2ETests` | Gateway setup/connect, recovery, or pairing changes that need real WSL Gateway coverage |
 | Local MXC E2E | `.\scripts\validate-mxc-e2e.ps1` | MXC sandboxing, `system.run`, exec approvals, Windows node command execution, gateway setup/connect changes that affect MXC |
@@ -520,6 +527,14 @@ the critical path without relaxing acceptance. A `fast-validation` failure no
 longer skips selected test lanes; their runner time is the accepted cost.
 Release asset preparation still waits for `fast-validation`.
 
+CI also runs for merge queue groups (`merge_group`). A group is classified from
+its own diff, from the queue's base to the group's head, with the pull request
+rules, so it runs the same lanes its pull requests would (x64 release smoke
+only, no coverage collection). The new-test soak is skipped, because it already
+ran on each pull request. CI Gate reports for every event, so it can be the
+merge queue's required check. The workflow contract rejects new
+pull-request-only conditions that would skip work in a merge group.
+
 The setup/connect, revocation recovery and network recovery E2E jobs each run once
 against npm Latest, matching normal WSL setup.
 `scripts\Resolve-CiGateway.ps1` resolves Latest once in change-classification and
@@ -600,6 +615,7 @@ separate TRX artifact:
 | `tray-ui-shard` | Tray UI (second shard: workspace window and chat layout classes) |
 | `gateway-fixture` | Mock Gateway fixture UI (shard A), profile/app checks, Release correlation and reader proofs, stable-profile compatibility |
 | `gateway-fixture-shard` | Mock Gateway fixture UI (shard B: Automations, Inbox, Dashboards, Usage and MainSearch scenarios) |
+| `new-test-soak` | Pull requests only: the Shared, Tray and Tray UI (including fixture UI) tests the pull request adds or changes, run repeatedly |
 
 The ordinary Tray UI suite is split by test class across `ui-tests` and
 `tray-ui-shard`, which run in parallel on separate runners. Both use the same
@@ -620,6 +636,79 @@ full-suite budget. The workflow contract checks that both filters come from
 that list, that every prefix still selects a scenario, and that no prefix
 overlaps another. To rebalance, move whole prefixes in that list. Local runs
 default to `-UiShard All`, which runs every scenario.
+
+On pull requests, `new-test-soak` catches an intermittent new test before it
+reaches main, where one passing run in its own pull request proves little.
+- `scripts/Get-CiChangedTests.ps1` diffs the pull request against its base and
+  selects each Shared, Tray and Tray UI test method whose lines changed,
+  including comment and string edits inside a test and lines next to a
+  deletion. A change elsewhere in a test type (for example a helper) selects the
+  tests of the nearest enclosing type that has tests, including its nested
+  types, and a change outside such a type selects the file's tests. Blank and
+  comment-only lines outside tests select nothing, unless they replaced code.
+- Tray UI tests are soaked only when the pull request changes the test method
+  itself. A helper change in a large UI file would otherwise run many native
+  tests the pull request did not write. Those tests are listed as not soaked.
+- `scripts/Invoke-CiTestSoak.ps1` builds each selected project once and runs
+  the selection repeatedly. Some runs start CPU burners so the tests also run on
+  a loaded machine. Each run gets its own `OPENCLAW_TRAY_*` data folders. Any
+  failed run, or a run without exactly one test report, fails the job, and CI
+  Gate requires the job on pull requests. A pull request that changes no tests
+  skips the soak.
+- Settings are step environment variables, never runner arguments:
+
+  | Variable | Default | Meaning |
+  |---|---|---|
+  | `OPENCLAW_CI_SOAK_ITERATIONS` | 10 | Runs per project |
+  | `OPENCLAW_CI_SOAK_CONTENTION_ITERATIONS` | 3 | Runs, spread evenly from the start, that start CPU burners |
+  | `OPENCLAW_CI_SOAK_CONTENTION_WORKERS` | half the logical processors | Burner processes |
+  | `OPENCLAW_CI_SOAK_MAX_TESTS` | 30 | Selected Shared or Tray tests per project; the rest are reported as not soaked |
+  | `OPENCLAW_CI_SOAK_MAX_UI_TESTS` | 8 | Selected Tray UI tests |
+  | `OPENCLAW_CI_SOAK_HANG_SECONDS` | 300 | Blame-hang timeout for one test; no dump is collected |
+
+- The step keeps a 40-minute budget shared by every project. A build or run that
+  would not finish within 90% of it (estimated at 1.5 times the slowest
+  comparable work so far) is not started. Repeat runs of a project also stop at
+  its share of the time left, so a slow project cannot take the first runs of
+  the projects after it. A warning annotation and the summary say how many runs
+  completed. A budget-limited soak still passes.
+- Tests that need their own lane environment (production resources, animation
+  preference, native onboarding, accessibility and native keyboard proof) are
+  excluded here and still run in their lanes. After the first run, the soak
+  warns about each selected test that did not run. A selection that runs no
+  test passes.
+- The soak does not see changes it cannot map to tests: helpers in other files,
+  partial classes split across files, non-C# fixture data, product code, and
+  test projects outside Shared, Tray and Tray UI.
+- There is no opt-out. A soak failure always blocks CI Gate, including for an
+  edit to an older test that was already timing-sensitive: fix the test or the
+  product race it found.
+
+When `Build and Test` fails on a push to `main`, the `Main Failure Watch`
+workflow (`.github/workflows/main-failure-watch.yml`) reports it:
+- `scripts/Watch-CiMainFailures.ps1` downloads the `test-results-*` and
+  `e2e-test-results-*` artifacts that the failed run attempt uploaded (for each
+  name, the newest one created between that attempt's start and the next
+  attempt's start) and lists each failed test method once. A failed download
+  fails the watch instead of posting a partial report.
+- Each test is attributed to the most recent commit that changed the method's
+  lines at the failing commit (`git log -L`), and to that commit's merged pull
+  request (preferring one merged into `main`) and author. When no pull request
+  is found, or the lookup keeps failing after retries, the commit's GitHub
+  author is mentioned. That commit is often the cause, but it can be a later
+  refactor, or a product change can fail an older test.
+- It adds one comment per run attempt to the oldest open issue labeled
+  `ci: main-flake`, mentioning every author. It creates the label and the issue
+  when they are missing; close the issue when main is green again. Only issues
+  and comments the workflow created count: a hand-made issue with the label is
+  not used, and other commenters cannot hide a report by copying its marker.
+- It never reruns, cancels or reverts. The job can only read actions, contents
+  and pull requests and write issues, and test names reach the issue only as
+  escaped code spans. It has no concurrency group, because GitHub cancels
+  pending runs in a group; every report keeps the oldest open tracking issue
+  and closes newer duplicates.
+- To preview a report without posting, check out the failing commit and run
+  `.\scripts\Watch-CiMainFailures.ps1 -Repository openclaw/openclaw-windows-node -RunId <id> -RunAttempt <n> -HeadSha <sha> -DryRun`.
 
 The core lane uses a dedicated runner-temp NuGet package directory and a key
 scoped to its complete transitive project graph plus the SDK, NuGet, and imported

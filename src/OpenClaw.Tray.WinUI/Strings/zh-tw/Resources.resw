@@ -6355,6 +6355,7 @@
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 則佇列訊息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已複製</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>複製失敗</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>訊息文字</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理強度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
@@ -7809,10 +7810,36 @@
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新訊息。跳至最新訊息</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>跳至最新訊息</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>聊天訊息導覽</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>使用向上和向下鍵在訊息之間跳轉，或使用 Home 和 End 鍵跳至第一則和最新訊息。</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 個子代理程式，{1} 個正在工作，{2} 個需要關注</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等候子代理程式</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在準備輸入</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>失敗</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} 個子代理程式</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} 個子代理程式</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} 個失敗</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>執行中</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} 個檔案</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>已讀取</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>編輯</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>正在編輯</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>已編輯</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>建立</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>正在建立</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>已建立</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>刪除</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>正在刪除</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>已刪除</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>變更</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>正在變更</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>已變更</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>寫入</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>正在寫入</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>已寫入</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>已搜尋</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>已擷取</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>需要提供者審核</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>提供者審核警告</value></data>
@@ -7983,6 +8010,13 @@
   <data name="Chat_Subagents_Done" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>已停止</value></data>
   <data name="Chat_Subagents_Failed" xml:space="preserve"><value>失敗</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>檔案</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>工作階段檔案：{0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>此工作階段中尚無檔案。</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>正在載入檔案...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>此 Gateway 不提供工作階段檔案。</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>無法載入檔案。請重新整理以再試一次。</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>重新整理檔案</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>代理程式：{0}</value>
   </data>

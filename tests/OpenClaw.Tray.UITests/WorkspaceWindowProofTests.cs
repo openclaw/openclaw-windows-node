@@ -86,9 +86,8 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
 
         Invoke(Find(root, "WorkspacePagesCustomize"));
-        await WaitUntilAsync(() => FindPopup(root, "WorkspacePagesToggle:connection") is not null);
-        ((TogglePattern)FindPopup(root, "WorkspacePagesToggle:connection")!
-            .GetCurrentPattern(TogglePattern.Pattern)).Toggle();
+        var connectionToggle = await WaitForPopupAsync(root, "WorkspacePagesToggle:connection");
+        ((TogglePattern)connectionToggle.GetCurrentPattern(TogglePattern.Pattern)).Toggle();
         await WaitUntilAsync(() => IsVisible(root, "WorkspacePinnedPage:connection"));
         ((SelectionItemPattern)Find(root, "WorkspacePinnedPage:connection")
             .GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
@@ -206,10 +205,10 @@ public sealed class WorkspaceWindowProofTests
         AssertIconCenter(homeBounds, center, color => color.B > color.R + 70 && color.B > color.G + 50);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
         var researchEntry = await WaitForPopupAsync(root, "WorkspaceAgent:research");
-        Assert.Equal("Configured assistant, main", (await WaitForPopupAsync(root, "WorkspaceAgent:main")).Current.Name);
         Assert.Equal("Research assistant, research", researchEntry.Current.Name);
+        Assert.Equal("Configured assistant, main", (await WaitForPopupAsync(root, "WorkspaceAgent:main")).Current.Name);
         Assert.Equal("No configured icon, fallback", (await WaitForPopupAsync(root, "WorkspaceAgent:fallback")).Current.Name);
-        Assert.NotNull(FindPopup(root, "WorkspaceNewAgent"));
+        await WaitForPopupAsync(root, "WorkspaceNewAgent");
         await Task.Delay(500);
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
@@ -400,24 +399,11 @@ public sealed class WorkspaceWindowProofTests
 
         AutomationElement? SearchBox() => FindPopupForPid(root.Current.ProcessId, "SettingsSearchBox");
 
-        // Keep the element the successful poll produced. A separate lookup after the wait races the
-        // popup's creation and its transient offscreen state, and comes back null instead of retrying.
-        async Task<AutomationElement> WaitForSearchBoxAsync()
-        {
-            AutomationElement? ready = null;
-            await WaitUntilAsync(() =>
-            {
-                try
-                {
-                    return (ready = SearchBox()) is { } found && found.Current.ControlType == ControlType.Edit;
-                }
-                catch (ElementNotAvailableException) { return false; }
-            });
-            return ready!;
-        }
-
-        // One fresh lookup per poll, so a box replaced between appearing and taking focus is retried
-        // instead of leaving the wait bound to a dead element.
+        // Waits for keyboard focus, not just for the box to appear. Every shortcut that opens search
+        // has to leave the caret in the input, and the Escape each caller sends next only reaches the
+        // flyout while its own input holds focus. Keep the element the successful poll produced: a
+        // separate lookup after the wait races the popup's creation and its transient offscreen
+        // state, and a fresh lookup per poll retries a box that a re-render replaced.
         async Task<AutomationElement> WaitForFocusedSearchBoxAsync()
         {
             AutomationElement? ready = null;
@@ -458,7 +444,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(IsVisible(root, "SettingsPageMarker"));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitForSearchBoxAsync();
+        await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Invoke(Find(root, "SettingsTogglePane"));
@@ -470,7 +456,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitForSearchBoxAsync();
+        await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
@@ -512,7 +498,7 @@ public sealed class WorkspaceWindowProofTests
         if (compact)
         {
             var toggle = Find(root, "SettingsTogglePane").Current.BoundingRectangle;
-            Assert.True(owner.Bottom <= dashboard.Top && dashboard.Bottom <= bell.Top, $"Rail footer is not stacked: {owner} {dashboard} {bell}");
+            Assert.True(dashboard.Bottom <= bell.Top && bell.Bottom <= owner.Top, $"Rail footer is not stacked with the account last: {dashboard} {bell} {owner}");
             foreach (var bounds in new[] { owner, dashboard, bell })
             {
                 // Same 40 DIP target as the toggle; allow scaled-DPI rounding like the reopen-button check.

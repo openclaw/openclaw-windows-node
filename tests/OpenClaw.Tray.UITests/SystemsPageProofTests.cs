@@ -2054,10 +2054,21 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     public async Task GatewayRow_CollapsesMachineDetailsAndCopiesSummaryFromOneSubtleHeadingButton(double width)
     {
         var copied = new List<string>();
+        var node = new GatewayNodeInfo { NodeId = "studio", DisplayName = "Studio" };
+        var inventory = new SystemsInventorySnapshot
+        {
+            Environments =
+            [
+                new SystemEnvironment { Id = "gateway", Type = "local", Label = "Original Gateway", Status = SystemStatus.Online },
+                new SystemEnvironment { Id = "node:studio", Type = "node", Status = SystemStatus.Online },
+            ],
+            Nodes = [node],
+        };
+        var pageGateway = new PageGateway(node, legacyInventory: false, inventory, inventoryError: null);
         await WithPageAsync(900, _ => { }, async (surface, controller, _) => await ui.RunOnUIAsync(async () =>
         {
+            var machineDetails = await WaitForRowSectionAsync<SettingsCard>(surface, "gateway", "SystemsMachineDetailsCard");
             var gateway = Find<SettingsExpander>(surface, "SystemsRow_gateway");
-            var machineDetails = Find<SettingsCard>(gateway, "SystemsMachineDetailsCard");
             Assert.Contains(machineDetails, gateway.Items);
             var bar = Find<Microsoft.UI.Xaml.Controls.CommandBar>(gateway, "SystemsCommandBar");
             Assert.Same(bar, Find<Microsoft.UI.Xaml.Controls.CommandBar>(
@@ -2076,9 +2087,27 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             Invoke(more);
             await TestSupport.WaitForRenderedConditionAsync(() => bar.IsOpen, "Gateway overflow opens independently");
             Assert.Equal(expanded, gateway.IsExpanded);
-            bar.IsOpen = false;
+            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnClosed(object? sender, object args) => closed.TrySetResult();
+            bar.Closed += OnClosed;
+            try
+            {
+                bar.IsOpen = false;
+                await closed.Task.WaitAsync(TestSupport.RenderedConditionTimeout);
+            }
+            finally { bar.Closed -= OnClosed; }
+            pageGateway.Replacement = inventory with
+            {
+                Environments = inventory.Environments!.Select(environment => environment.Id == "gateway"
+                    ? environment with { Label = "Refreshed Gateway" } : environment).ToArray(),
+            };
             await controller.RefreshAsync();
-            await ui.YieldToRenderAsync();
+            // An unchanged control can match before the refresh has rendered. Observe its
+            // new data first so retained-identity assertions cannot pass on the old tree.
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+                TryFind<SettingsExpander>(surface, "SystemsRow_gateway") is { } refreshed &&
+                TryFind<TextBlock>(refreshed, "SystemsSelectedName")?.Text == "Refreshed Gateway",
+                "refreshed Gateway name reaches its mounted header");
             Assert.Same(gateway, Find<SettingsExpander>(surface, "SystemsRow_gateway"));
             Assert.Same(bar, Find<Microsoft.UI.Xaml.Controls.CommandBar>(gateway, "SystemsCommandBar"));
             Assert.Same(more, Assert.Single(TestSupport.FindDescendants<Button>(bar), button => button.Name == "MoreButton"));
@@ -2106,7 +2135,7 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 () => Math.Abs(gateway.ActualHeight - expandedHeight) < 1,
                 "Gateway reopens with Machine details inside its native frame");
             Assert.Same(copy, Find<Button>(gateway, "SystemsCopyDebug"));
-        }), width: width, copyText: copied.Add);
+        }), width: width, copyText: copied.Add, pageGateway: pageGateway);
     }
 
     [Theory]
@@ -2338,8 +2367,8 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
                 if (fitNativeViewport)
                 {
                     await TestSupport.WaitForRenderedConditionAsync(
-                        () => ui.Container.IsLoaded && ui.Container.XamlRoot is not null,
-                        "Systems native viewport is attached before reading its scale");
+                        () => ui.Container is { IsLoaded: true, XamlRoot: not null },
+                        "native Systems fixture container attached before measuring DPI");
                     // The suite's default 1x1 off-screen window can clip a dialog's
                     // Cancel button out of the native focus viewport.
                     previousWindowSize = ui.TestWindow.AppWindow.Size;

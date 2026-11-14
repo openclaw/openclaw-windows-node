@@ -44,4 +44,5 @@ public sealed record ChatTimelinePresentationContext(
     ChatToolActivityExpansionState? ToolExpansionState = null,
     string UserDisplayName = "",
     Microsoft.UI.Xaml.Media.ImageSource? UserProfilePicture = null,
-    Action<ChatToolDetailRequest>? OnOpenToolDetails = null);
+    Action<ChatToolDetailRequest>? OnOpenToolDetails = null,
+    IReadOnlyList<ChatThread>? ChildThreads = null);
