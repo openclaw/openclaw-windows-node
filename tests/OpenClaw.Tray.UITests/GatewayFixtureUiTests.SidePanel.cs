@@ -5,6 +5,9 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    // Covers the TabView item entrance fade so proof captures show the tab label, not a partly faded header.
+    private static readonly TimeSpan SidePanelTabEntranceCaptureDelay = TimeSpan.FromMilliseconds(600);
+
     // Real pointer input proves the title-bar pass-through regions: UIA Invoke would bypass the
     // window's non-client hit testing and pass even when a click would drag the window instead.
     [GatewayFixtureUiTheory]
@@ -19,7 +22,7 @@ public sealed partial class GatewayFixtureUiTests
             if (Environment.GetEnvironmentVariable("OPENCLAW_RUN_KEYBOARD_PROOF") != "1")
                 throw new InvalidOperationException("Side panel pointer proof requires explicit native input opt-in.");
             await run.InvokeAsync("app.navigate", new { page = "chat" });
-            var window = FindHub(run);
+            var window = await WaitForHubAsync(run, "workspace window");
             var windowPattern = (WindowPattern)window.GetCurrentPattern(WindowPattern.Pattern);
             windowPattern.SetWindowVisualState(maximized ? WindowVisualState.Maximized : WindowVisualState.Normal);
             await WaitUiAsync(run, () => windowPattern.Current.WindowVisualState ==
@@ -33,9 +36,17 @@ public sealed partial class GatewayFixtureUiTests
             }
             async Task<AutomationElement> TabAsync(Func<System.Windows.Rect, bool> placed, string description)
             {
+                // The pane and panel animate, so a placement is accepted only once two polls agree;
+                // a click on a still-moving tab would land where it used to be.
                 AutomationElement? tab = null;
-                await WaitUiAsync(run, () => (tab = SubagentsTab(run)) is { } found && placed(found.Current.BoundingRectangle),
-                    description);
+                System.Windows.Rect? previous = null;
+                await WaitUiAsync(run, () =>
+                {
+                    var bounds = (tab = SubagentsTab(run))?.Current.BoundingRectangle;
+                    var settled = bounds is { } b && placed(b) && previous == b;
+                    previous = bounds;
+                    return settled;
+                }, description);
                 return tab!;
             }
 
@@ -49,6 +60,7 @@ public sealed partial class GatewayFixtureUiTests
             await ClickOwnedElementAsync(run, window, toggle);
             await ClickOwnedElementAsync(run, window, await VisibleAsync("ConversationPanelLauncherSubagents", "panel launcher"));
             await TabAsync(bounds => bounds.Top < minimize.Bottom, "Subagents tab joins the caption row");
+            await Task.Delay(SidePanelTabEntranceCaptureDelay); // test-timing-exception: capture-only; the TabView item fade is a composition animation with no observable completion
             await CaptureIfRequestedAsync(run, $"side-panel-{theme}-{(maximized ? "max" : "normal")}-split.png");
 
             // An operation banner above chat must stay visible and dismissable: the panel leaves the caption row.
@@ -65,14 +77,19 @@ public sealed partial class GatewayFixtureUiTests
                 "banner dismissed by pointer");
             await TabAsync(bounds => bounds.Top < minimize.Bottom, "tab rejoins the caption row");
 
-            // Expanded with the sidebar collapsed, the tab starts after the reopen-sidebar button.
-            await ClickOwnedElementAsync(run, window, await VisibleAsync("WorkspaceTogglePane", "sidebar toggle"));
-            var reopen = await VisibleAsync("WorkspaceReopenPane", "sidebar collapsed");
+            // Expanded, the panel fills the chat area. Captured with the sidebar open: an empty tab over the
+            // collapsed sidebar is too uniform for the capture's blank-content guard.
             await ClickOwnedElementAsync(run, window, await VisibleAsync("WorkspaceExpandSidePanel", "expand button"));
             await WaitUiAsync(run, () => FindById(run, "WorkspaceExpandSidePanel")?.Current.Name == "Restore split", "expanded");
-            var reopenRight = reopen.Current.BoundingRectangle.Right;
-            var tab = await TabAsync(bounds => bounds.Left >= reopenRight, "tab clears the reopen-sidebar button");
+            await TabAsync(bounds => bounds.Top < minimize.Bottom, "expanded tab stays in the caption row");
+            await Task.Delay(SidePanelTabEntranceCaptureDelay); // test-timing-exception: capture-only; the TabView item fade is a composition animation with no observable completion
             await CaptureIfRequestedAsync(run, $"side-panel-{theme}-{(maximized ? "max" : "normal")}-expanded.png");
+
+            // With the sidebar collapsed, the expanded tab starts after the reopen-sidebar button.
+            await ClickOwnedElementAsync(run, window, await VisibleAsync("WorkspaceTogglePane", "sidebar toggle"));
+            var reopenRight = (await VisibleAsync("WorkspaceReopenPane", "sidebar collapsed")).Current.BoundingRectangle.Right;
+            var tab = await TabAsync(bounds => bounds.Left >= reopenRight && bounds.Top < minimize.Bottom,
+                "tab clears the reopen-sidebar button");
 
             // The tab's Close button lies in the caption row; a pass-through miss would drag the window instead.
             AutomationElement? close = null;
