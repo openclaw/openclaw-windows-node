@@ -78,7 +78,7 @@ public sealed partial class GatewayFixtureUiTests
                 .Cast<AutomationElement>().Count(element => element.Current.AutomationId.StartsWith("AutomationAgenda:", StringComparison.Ordinal));
             await ResizeAsync(1400);
             await WaitUiAsync(run, () => AgendaWidth() >= 1000 && AgendaRows() == 6, "wide agenda has six scheduled rows");
-            Assert.NotNull(FindById(run, "AutomationAgenda:inbox-sweep"));
+            await WaitForElementByIdAsync(run, "AutomationAgenda:inbox-sweep", "present AutomationAgenda:inbox-sweep");
             Assert.Null(FindById(run, "AutomationAgendaMore:Running"));
             await CaptureAgendaAsync("automations-designer-Light-1400.png");
             await ResizeAsync(1000);
@@ -99,8 +99,8 @@ public sealed partial class GatewayFixtureUiTests
                 OwnedWindowCapture.Save(run, AutomationsWindow(run), "automations-designer-editor-errors.png",
                     await WaitForElementByIdAsync(run, "AutomationEditorName", "editor name for error capture"),
                     await WaitForElementByIdAsync(run, "AutomationEditorSave", "editor footer for error capture"));
-            SetEditorValue(run, "AutomationEditorName", "Resize-kept name");
-            SetEditorValue(run, "AutomationEditorPrompt", "Resize-kept prompt");
+            await SetEditorValueAsync(run, "AutomationEditorName", "Resize-kept name");
+            await SetEditorValueAsync(run, "AutomationEditorPrompt", "Resize-kept prompt");
             await ResizeAsync(1400);
             Assert.Equal("Resize-kept name", await WaitForEditorValueAsync(run, "AutomationEditorName"));
             Assert.Equal("Resize-kept prompt", await WaitForEditorValueAsync(run, "AutomationEditorPrompt"));
@@ -134,7 +134,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Empty(scheduledExpander.FindAll(TreeScope.Descendants, new PropertyCondition(
                 AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>());
             Assert.Null(FindById(run, "AutomationRow:morning-brief"));
-            Assert.NotNull(FindById(run, "AutomationRowChat:morning-brief"));
+            await WaitForElementByIdAsync(run, "AutomationRowChat:morning-brief", "present AutomationRowChat:morning-brief");
             await WaitUiAsync(run,
                 () => FindById(run, "AutomationExpander:morning-brief") is { Current.IsOffscreen: false },
                 "scheduled row visible for expand/collapse proof");
@@ -231,32 +231,32 @@ public sealed partial class GatewayFixtureUiTests
                     && FindText(run, "Describe the task this agent should run.") is not null
                     && EditorValueElement(run, "AutomationEditorName") is { Current.HasKeyboardFocus: true },
                     "required errors and first invalid focus");
-                Assert.NotNull(FindText(run, "Complete the required fields before saving."));
+                await WaitForAutomationElementAsync(run, () => FindText(run, "Complete the required fields before saving."), "present Complete the required fields before saving.");
             }
             Capture(run, "automations-designer-editor-errors-Light.png", "AutomationEditorName", "AutomationEditorSave");
-            SetEditorValue(run, "AutomationEditorName", "New draft only");
-            SetEditorValue(run, "AutomationEditorPrompt", "Keep this new prompt");
+            await SetEditorValueAsync(run, "AutomationEditorName", "New draft only");
+            await SetEditorValueAsync(run, "AutomationEditorPrompt", "Keep this new prompt");
             await InvokeWhenEnabledAsync(run, "AutomationEditorCancel", "enabled AutomationEditorCancel");
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "cancel keeps new draft");
 
-            ExpandAutomation(run, "morning-brief");
+            await ExpandAutomationAsync(run, "morning-brief");
             await InvokeWhenEnabledAsync(run, () => FindCommand(run, "Edit"), "edit source job");
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null, "edit draft");
-            SetEditorValue(run, "AutomationEditorName", "Edited draft only");
+            await SetEditorValueAsync(run, "AutomationEditorName", "Edited draft only");
             await InvokeWhenEnabledAsync(run, "AutomationEditorCancel", "enabled AutomationEditorCancel");
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "cancel edit");
             await OpenAutomationMoreAsync(run, "morning-brief");
             await InvokeWhenEnabledAsync(run, () => FindInvokable(run, "Copy as new"), "copy source job");
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null, "copy draft");
             Assert.NotEqual("Edited draft only", EditorValue(run, "AutomationEditorName"));
-            SetEditorValue(run, "AutomationEditorName", "Copy draft only");
+            await SetEditorValueAsync(run, "AutomationEditorName", "Copy draft only");
             await InvokeWhenEnabledAsync(run, "AutomationEditorCancel", "enabled AutomationEditorCancel");
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "cancel copy");
 
             await InvokeWhenEnabledAsync(run, () => FindCommand(run, "Edit"), "reopen source draft");
             await WaitUiAsync(run, () => EditorValue(run, "AutomationEditorName") == "Edited draft only", "separate edit draft restored");
             await WaitForElementByIdAsync(run, "AutomationEditorDiscardDraft", "restored edit draft offers discard");
-            SetEditorValue(run, "AutomationEditorName", "");
+            await SetEditorValueAsync(run, "AutomationEditorName", "");
             await InvokeWhenEnabledAsync(run, "AutomationEditorSave", "enabled AutomationEditorSave");
             await WaitUiAsync(run, () => EditorValueElement(run, "AutomationEditorName") is { Current.HasKeyboardFocus: true }
                 && FindText(run, "Enter a name.") is not null, "edit uses identical required validation");
@@ -279,7 +279,7 @@ public sealed partial class GatewayFixtureUiTests
             await InvokeWhenEnabledAsync(run, "AutomationEditorCancel", "enabled AutomationEditorCancel");
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "closed copy");
             var inboxTop = (await WaitForAutomationRowLayoutAsync(run, "inbox-sweep", expanded: false)).Title.Top;
-            ExpandAutomation(run, "inbox-sweep");
+            await ExpandAutomationAsync(run, "inbox-sweep");
             bool HasTextInCard(string id, string value) => FindById(run, $"AutomationExpander:{id}") is { } card
                 && card.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
                     .Cast<AutomationElement>().Any(element => element.Current.Name.Contains(value, StringComparison.Ordinal));
@@ -328,8 +328,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindText(run, "Enter a name.") is not null
                 && FindText(run, "Describe the task this agent should run.") is not null,
                 "empty editor validation before input");
-            SetEditorValue(run, "AutomationEditorName", "Created from native designer proof");
-            SetEditorValue(run, "AutomationEditorPrompt", "Synthetic prompt, do not execute anything");
+            await SetEditorValueAsync(run, "AutomationEditorName", "Created from native designer proof");
+            await SetEditorValueAsync(run, "AutomationEditorPrompt", "Synthetic prompt, do not execute anything");
             await WaitUiAsync(run, () => EditorValue(run, "AutomationEditorName") == "Created from native designer proof"
                 && EditorValue(run, "AutomationEditorPrompt") == "Synthetic prompt, do not execute anything"
                 && FindById(run, "AutomationEditorName") is { Current.ItemStatus: "" }
@@ -344,7 +344,7 @@ public sealed partial class GatewayFixtureUiTests
                 ((ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Current.ExpandCollapseState);
             Assert.Null(FindById(run, "AutomationsEmptyNew"));
             Assert.Null(FindText(run, "No automations yet"));
-            if (!emptyAgent) Assert.NotNull(FindById(run, "AutomationExpander:scheduled-059"));
+            if (!emptyAgent) await WaitForElementByIdAsync(run, "AutomationExpander:scheduled-059", "present AutomationExpander:scheduled-059");
             Assert.Single(run.Gateway.Requests, request => request.Method == "cron.add" && request.Outcome == "ok");
             Capture(run, emptyAgent ? "automations-designer-created-from-empty.png" : "automations-designer-created-later-page.png",
                 "AutomationExpander:created-1");
@@ -368,7 +368,7 @@ public sealed partial class GatewayFixtureUiTests
             var row = await WaitForElementByIdAsync(run, "AutomationExpander:flaky-report", "revealed failing row");
             Assert.Equal("Vendor report",
                 (await WaitForElementByIdAsync(run, "CronJobTitle:flaky-report", "revealed failing row title")).Current.Name);
-            Assert.NotNull(FindById(run, "AutomationAttentionBadge:flaky-report"));
+            await WaitForElementByIdAsync(run, "AutomationAttentionBadge:flaky-report", "present AutomationAttentionBadge:flaky-report");
             Capture(run, "automations-failing-tile-reveal.png", "CronJobTitle:flaky-report", "AutomationAttentionBadge:flaky-report");
             Assert.Equal("AutomationExpander:flaky-report", row.Current.AutomationId);
         }, scenario: GatewayScenario.CreateAutomations());
@@ -381,7 +381,7 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await OpenAutomationEditorAsync(run);
-            SetEditorValue(run, "AutomationEditorName", "Keep this unsaved draft");
+            await SetEditorValueAsync(run, "AutomationEditorName", "Keep this unsaved draft");
             await run.Gateway.GoOfflineAsync();
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorSave") is { Current.IsEnabled: false }, "disconnected editor");
             Assert.Equal("Keep this unsaved draft", EditorValue(run, "AutomationEditorName"));
@@ -399,7 +399,7 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await OpenAutomationEditorAsync(run);
-            SetEditorValue(run, "AutomationEditorName", "Saved editor A");
+            await SetEditorValueAsync(run, "AutomationEditorName", "Saved editor A");
             run.Gateway.HoldResponses("cron.update");
             await InvokeWhenEnabledAsync(run, "AutomationEditorSave", "enabled AutomationEditorSave");
             await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(r =>
@@ -409,7 +409,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "closed editor A");
             await InvokeWhenEnabledAsync(run, "AutomationsNew", "enabled AutomationsNew");
             await WaitUiAsync(run, () => EditorValue(run, "AutomationEditorName") == "", "new editor B");
-            SetEditorValue(run, "AutomationEditorName", "Unsaved editor B");
+            await SetEditorValueAsync(run, "AutomationEditorName", "Unsaved editor B");
             run.Gateway.ReleaseResponses("cron.update");
             await run.WaitForAsync(() => Task.FromResult(run.Gateway.Requests.Any(r =>
                 r.Method == "cron.update" && r.Outcome == "ok")), "completed editor A save");
@@ -553,13 +553,13 @@ public sealed partial class GatewayFixtureUiTests
                 await SelectJobAsync("morning-brief");
                 await WaitUiAsync(run, () => FindById(run, "AutomationScheduleSummary") is not null
                     && FindText(run, "12/13 recent runs succeeded") is not null, "inline details and recent runs");
-                Assert.NotNull(FindById(run, "AutomationExpander:weekly-digest"));
-                Assert.NotNull(FindByIdPrefix(run, "AutomationRunChat:"));
+                await WaitForElementByIdAsync(run, "AutomationExpander:weekly-digest", "present AutomationExpander:weekly-digest");
+                await WaitForAutomationElementAsync(run, () => FindByIdPrefix(run, "AutomationRunChat:"), "present AutomationRunChat:");
                 await WaitUiAsync(run, () => FindText(run, "Three things today") is not null, "visible run response");
                 Assert.StartsWith("Open chat:", (await WaitForAutomationElementAsync(run,
                     () => FindByIdPrefix(run, "AutomationRunChat:"), "run chat")).Current.Name);
                 await ScanStateAsync("inline details");
-                Assert.NotNull(FindCommand(run, "Edit"));
+                await WaitForAutomationElementAsync(run, () => FindCommand(run, "Edit"), "present Edit");
                 await ScrollAutomationIntoViewAsync(run, "AutomationExpander:morning-brief");
                 await WaitUiAsync(run, () => FindById(run, "CronJobTitle:morning-brief") is { Current.IsOffscreen: false }
                     && FindById(run, "AutomationScheduleSummary") is { Current.IsOffscreen: false }, "visible expanded row and definition");
@@ -577,13 +577,13 @@ public sealed partial class GatewayFixtureUiTests
                 await SelectJobAsync("morning-brief");
                 await InvokeWhenEnabledAsync(run, () => FindCommand(run, "Edit"), "invoked Edit");
                 await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null, "native editor dialog");
-                Assert.NotNull(FindById(run, "AutomationEditorDialog"));
-                Assert.NotNull(FindById(run, "AutomationEditorPreserved"));
+                await WaitForElementByIdAsync(run, "AutomationEditorDialog", "present AutomationEditorDialog");
+                await WaitForElementByIdAsync(run, "AutomationEditorPreserved", "present AutomationEditorPreserved");
                 Assert.Null(FindById(run, "AutomationEditorKind:Event"));
                 Assert.Null(FindById(run, "AutomationEditorCronExpr"));
                 Assert.Null(FindById(run, "AutomationEditorStagger"));
-                Assert.NotNull(FindById(run, "AutomationEditorCalendarTime"));
-                SetEditorValue(run, "AutomationEditorName", "Morning brief (edited)");
+                await WaitForElementByIdAsync(run, "AutomationEditorCalendarTime", "present AutomationEditorCalendarTime");
+                await SetEditorValueAsync(run, "AutomationEditorName", "Morning brief (edited)");
                 Assert.False((await WaitForElementByIdAsync(run, "AutomationEditorSave", "editor Save")).Current.IsOffscreen);
                 Assert.False((await WaitForElementByIdAsync(run, "AutomationEditorCancel", "editor Cancel")).Current.IsOffscreen);
                 await ScanStateAsync("editor");
@@ -616,7 +616,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null
                     && FindById(run, "AutomationEditorPreserved") is not null, "copy as new editor");
                 var copiedName = scenario.GetCronJobs().Single(job => job.GetProperty("id").GetString() == "morning-brief").GetProperty("name").GetString();
-                Assert.NotNull(FindText(run, $"Copy “{copiedName}” as new"));
+                await WaitForAutomationElementAsync(run, () => FindText(run, $"Copy “{copiedName}” as new"), $"present Copy “{copiedName}” as new");
                 Capture(run, "automations-copy-as-new.png", "AutomationEditorTitle", "AutomationEditorName");
                 await InvokeWhenEnabledAsync(run, "AutomationEditorCancel", "enabled AutomationEditorCancel");
                 await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is null, "closed copy editor");
@@ -770,7 +770,7 @@ public sealed partial class GatewayFixtureUiTests
                 await ChooseAutomationAgentAsync(run, "ops");
                 await WaitUiAsync(run, () => FindById(run, $"AutomationExpander:{GatewayScenario.AutomationsOtherAgentJobId}") is not null
                     && FindById(run, "AutomationExpander:morning-brief") is null, "single-job agent");
-                Assert.NotNull(FindById(run, "AutomationsAgentFilter"));
+                await WaitForElementByIdAsync(run, "AutomationsAgentFilter", "present AutomationsAgentFilter");
                 await ChooseAutomationAgentAsync(run, "All agents");
                 await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief") is not null, "return from single-job agent");
                 await run.InvokeAsync("app.navigate", new { page = "agent:research:cron" });
@@ -780,7 +780,7 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindById(run, "AutomationsHeroAnswer") is { } headline
                     && headline.Current.Name == "Nothing scheduled yet", "overview commits empty headline");
                 RecordHeadline(run, "empty-overview-committed");
-                Assert.NotNull(FindById(run, "AutomationsEmptyNew"));
+                await WaitForElementByIdAsync(run, "AutomationsEmptyNew", "present AutomationsEmptyNew");
                 Assert.Null(FindById(run, "AutomationsOperationError"));
                 Capture(run, "automations-empty.png", "AutomationsEmptyChat");
                 await ChooseAutomationAgentAsync(run, "All agents");
@@ -1051,13 +1051,13 @@ public sealed partial class GatewayFixtureUiTests
             await OpenMainAutomationsAsync(run);
             await WaitUiAsync(run, () => FindById(run, "AutomationsReadOnlyBanner") is not null, "read-only explanation");
             Assert.Null(FindById(run, "AutomationsNew"));
-            Assert.NotNull(FindById(run, "AutomationExpander:weekly-digest"));
+            await WaitForElementByIdAsync(run, "AutomationExpander:weekly-digest", "present AutomationExpander:weekly-digest");
             (await WaitForElementByIdAsync(run, "AutomationExpander:morning-brief", "read-only scheduled row")).SetFocus();
-            ExpandAutomation(run, "morning-brief");
+            await ExpandAutomationAsync(run, "morning-brief");
             await WaitUiAsync(run, () => FindByIdPrefix(run, "AutomationRunChat:") is not null, "readable inline runs");
             foreach (var label in new[] { "Run now", "Pause", "Resume", "Edit", "Edit in web" })
                 Assert.Null(FindCommand(run, label));
-            Assert.NotNull(FindCommand(run, "Copy automation ID"));
+            await WaitForAutomationElementAsync(run, () => FindCommand(run, "Copy automation ID"), "present Copy automation ID");
             await ScanAutomationsAsync(run, "Default", "read-only");
             await ScrollAutomationIntoViewAsync(run, "AutomationExpander:morning-brief");
             await WaitUiAsync(run, () => FindById(run, "CronJobTitle:morning-brief") is { Current.IsOffscreen: false }
@@ -1104,20 +1104,22 @@ public sealed partial class GatewayFixtureUiTests
             await InvokeWhenEnabledAsync(run, "AutomationsRetry", "enabled AutomationsRetry");
             await WaitUiAsync(run, () => FindById(run, "AutomationExpander:morning-brief") is not null
                 && FindById(run, "AutomationAgenda:morning-brief") is not null, "sparse inventory");
-            Assert.NotNull(FindById(run, "AutomationsSchedulerOffBanner"));
+            await WaitForElementByIdAsync(run, "AutomationsSchedulerOffBanner", "present AutomationsSchedulerOffBanner");
             Assert.Null(FindById(run, "AutomationsStatusFilter"));
             Capture(run, "automations-sparse-scheduler-off.png", "AutomationsHeadline", "AutomationsSchedulerOffBanner");
             scenario.CronReadError = "Synthetic refresh failure.";
             await InvokeWhenEnabledAsync(run, "AutomationsRefresh", "enabled AutomationsRefresh");
             await WaitUiAsync(run, () => FindById(run, "AutomationsRefreshWarning") is not null, "refresh warning");
+            // Retention check: the loaded row must still be present now, so read it once without waiting.
             Assert.NotNull(FindById(run, "AutomationExpander:morning-brief"));
             Capture(run, "automations-refresh-error.png", "AutomationsRefreshWarning");
-            ExpandAutomation(run, "morning-brief");
+            await ExpandAutomationAsync(run, "morning-brief");
             await WaitUiAsync(run, () => FindCommand(run, "Run now") is { Current.IsEnabled: true }
                 && FindCommand(run, "Pause") is { Current.IsEnabled: true }
                 && FindCommand(run, "Edit") is { Current.IsEnabled: true }, "authorized controls before disconnect");
             await run.Gateway.GoOfflineAsync();
             await WaitUiAsync(run, () => FindById(run, "AutomationsHeroAnswer")?.Current.Name.Contains("as last seen", StringComparison.Ordinal) == true, "offline last seen");
+            // Retention check: the loaded row must still be present now, so read it once without waiting.
             Assert.NotNull(FindById(run, "AutomationExpander:morning-brief"));
             foreach (var action in new[] { "Run now", "Pause", "Edit" })
                 Assert.False((await WaitForAutomationElementAsync(run, () => FindCommand(run, action),
@@ -1237,15 +1239,14 @@ public sealed partial class GatewayFixtureUiTests
     {
         await OpenMainAutomationsAsync(run);
         (await WaitForElementByIdAsync(run, "AutomationExpander:morning-brief", "scheduled row for editing")).SetFocus();
-        ExpandAutomation(run, "morning-brief");
+        await ExpandAutomationAsync(run, "morning-brief");
         await InvokeWhenEnabledAsync(run, () => FindCommand(run, "Edit"), "invoked Edit command");
         await WaitUiAsync(run, () => FindById(run, "AutomationEditorName") is not null, "editor dialog");
     }
 
-    private static void ExpandAutomation(GatewayFixtureRun run, string id)
+    private static async Task ExpandAutomationAsync(GatewayFixtureRun run, string id)
     {
-        var expander = FindById(run, $"AutomationExpander:{id}")
-            ?? throw new InvalidOperationException($"Missing automation {id}.");
+        var expander = await WaitForElementByIdAsync(run, $"AutomationExpander:{id}", $"automation {id}");
         ((ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
     }
 
@@ -1915,9 +1916,11 @@ public sealed partial class GatewayFixtureUiTests
     private static async Task<string> WaitForEditorValueAsync(GatewayFixtureRun run, string id) =>
         ((ValuePattern)(await WaitForAutomationElementAsync(run, () => EditorValueElement(run, id), $"editor value peer {id}"))
             .GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
-    private static void SetEditorValue(GatewayFixtureRun run, string id, string value)
+    private static async Task SetEditorValueAsync(GatewayFixtureRun run, string id, string value)
     {
-        var element = EditorValueElement(run, id) ?? throw new InvalidOperationException($"Missing {id}.");
+        // Wait for the editable peer, then write once: a UIA error does not prove that SetValue had no effect.
+        var element = await WaitForAutomationElementAsync(run, () => EditorValueElement(run, id), $"editable {id}",
+            candidate => candidate.Current.IsEnabled);
         void Record(string phase) => File.AppendAllText(Path.Combine(run.ArtifactsDirectory, "automation-editor-input.jsonl"),
             System.Text.Json.JsonSerializer.Serialize(new
             {
