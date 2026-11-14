@@ -33,14 +33,22 @@ public sealed class NativeGatewaySetupConnectionTests
         fixture.Host.Health = () => throw new TimeoutException("The separate CLI connection must not gate finalization.");
         server.StartupRejectionsRemaining = 2;
         server.StartupRejected = () => clock.Advance(TimeSpan.FromSeconds(11));
+        var healthOccurrence = server.Requests.Count(request => request.Method == "health") + 2;
+        server.HoldResponses("openclaw.setup.verify");
 
-        await owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default)
-            .WaitAsync(FinalizationStepTimeout);
+        var completing = owner.CompleteVerifiedAsync(proof, new CapabilitiesConfig(), default);
+        try
+        {
+            await server.WaitForRequestAsync("health", occurrence: healthOccurrence).WaitAsync(FinalizationStepTimeout);
+        }
+        finally { server.ReleaseResponses("openclaw.setup.verify"); }
+        await completing.WaitAsync(FinalizationStepTimeout);
 
         Assert.Equal(TimeSpan.FromSeconds(22).Ticks, clock.GetTimestamp());
         Assert.Equal(connectionsBefore + 3, server.ConnectionCount);
         var methods = server.Requests.Skip(requestsBefore).Select(request => request.Method).ToArray();
-        Assert.Single(methods, method => method == "health");
+        // The normal client can also send its post-hello health refresh.
+        Assert.Contains("health", methods);
         Assert.Single(methods, method => method == "openclaw.setup.verify");
         Assert.True(Array.IndexOf(methods, "health") < Array.IndexOf(methods, "openclaw.setup.verify"));
         Assert.Single(fixture.Events, entry => entry == "restart");
