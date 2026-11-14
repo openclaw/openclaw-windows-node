@@ -559,6 +559,11 @@ channel selection, source/Store overrides, exact pins, archive integrity and
 provenance without network access or changing installed packages.
 `scripts\test-gateway-packaged-release.ps1` covers release/tag resolution, embedded
 payload identity, asset digest, extraction safety and inventory-verified cache reuse.
+`scripts\test-gateway-theme-upstream.ps1` covers how the daily
+`gateway-theme-sync.yml` workflow maps the latest stable packaging release to the openclaw
+commit in its verified payload for the built-in theme table, and
+`scripts\test-gateway-theme-sync-publish.ps1` covers when it pushes, opens, updates or leaves alone the
+sync pull request, both without network access.
 
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,

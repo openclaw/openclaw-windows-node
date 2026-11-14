@@ -239,6 +239,9 @@
     <Style x:Key="ChatClawSparkStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatClawBrush}" />
     </Style>
+    <Style x:Key="ChatWorkingDotStyle" TargetType="Ellipse">
+        <Setter Property="Fill" Value="{ThemeResource ChatClawBrush}" />
+    </Style>
     <Style x:Key="ChatCanvasStyle" TargetType="Grid">
         <Setter Property="Background" Value="{ThemeResource ChatCanvasBrush}" />
     </Style>
@@ -562,14 +565,17 @@
         <Setter Property="Background" Value="{ThemeResource ChatCardBrush}" />
         <Setter Property="BorderBrush" Value="{ThemeResource ChatQuestionCardStrokeBrush}" />
     </Style>
+    <!-- FontFamily makes picker text follow a Gateway theme's font; it is XamlAutoFontFamily under the Windows default. -->
     <Style x:Key="ChatPickerFlyoutStyle" TargetType="FlyoutPresenter" BasedOn="{StaticResource DefaultFlyoutPresenterStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
         <Setter Property="Background" Value="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}" />
         <Setter Property="Padding" Value="0" />
         <Setter Property="MinWidth" Value="0" />
         <Setter Property="CornerRadius" Value="8" />
     </Style>
-    <!-- Only the fill matches the model flyout; padding, width, corners and items stay stock. -->
+    <!-- Only the fill and font differ from the stock menu; padding, width, corners and items stay stock. -->
     <Style x:Key="ChatPickerMenuStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
+        <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
         <Setter Property="Background" Value="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}" />
     </Style>
 </ResourceDictionary>

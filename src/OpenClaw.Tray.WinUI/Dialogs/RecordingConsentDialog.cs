@@ -179,6 +179,7 @@ public sealed class RecordingConsentDialog : WindowEx
         outerGrid.Children.Add(root);
 
         Content = outerGrid;
+        Theming.BackdropPolicy.Apply(this);
 
         Closed += (s, e) => _tcs.TrySetResult(_consented);
 

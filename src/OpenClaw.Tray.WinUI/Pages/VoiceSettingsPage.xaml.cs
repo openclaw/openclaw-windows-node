@@ -377,7 +377,9 @@ public sealed partial class VoiceSettingsPage : Page
     {
         if (_inlineTestPillContainer != null) return;
 
-        var accentColor = (global::Windows.UI.Color)Application.Current.Resources["SystemAccentColor"];
+        // The shared brush follows the Windows accent or the Gateway theme's accent, including live theme switches.
+        var accent = (SolidColorBrush)Application.Current.Resources["VoiceAccentBrush"];
+        var accentColor = accent.Color;
         _inlineTestPillDot = new Border
         {
             Width = 6, Height = 6,
@@ -389,7 +391,7 @@ public sealed partial class VoiceSettingsPage : Page
         {
             Text = "Recording",
             FontSize = 11,
-            Foreground = new SolidColorBrush(accentColor),
+            Foreground = accent,
             VerticalAlignment = VerticalAlignment.Center
         };
         var pillWavePanel = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1.5, VerticalAlignment = VerticalAlignment.Center };
@@ -400,7 +402,7 @@ public sealed partial class VoiceSettingsPage : Page
             {
                 Width = 2, Height = 3,
                 CornerRadius = new CornerRadius(1),
-                Background = new SolidColorBrush(accentColor),
+                Background = accent,
                 VerticalAlignment = VerticalAlignment.Center
             };
             _inlineTestPillBars[bi] = bar;
@@ -514,7 +516,6 @@ public sealed partial class VoiceSettingsPage : Page
             }
             else
             {
-                var accentColor = (global::Windows.UI.Color)Application.Current.Resources["SystemAccentColor"];
                 var bubbleText = new TextBlock
                 {
                     Text = text,
@@ -525,7 +526,7 @@ public sealed partial class VoiceSettingsPage : Page
                 var bubble = new Border
                 {
                     Child = bubbleText,
-                    Background = new SolidColorBrush(accentColor),
+                    Background = (Brush)Application.Current.Resources["VoiceAccentBrush"],
                     CornerRadius = new CornerRadius(12, 12, 4, 12),
                     Padding = new Thickness(12, 8, 12, 8),
                     HorizontalAlignment = HorizontalAlignment.Right,

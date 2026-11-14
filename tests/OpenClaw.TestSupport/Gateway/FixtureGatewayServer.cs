@@ -752,6 +752,22 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         return BroadcastAsync("cron", new { action = "updated" });
     }
 
+    /// <summary>Announces a plugin inventory change, which invalidates plugin themes, through the real event.</summary>
+    public Task PublishPluginsChangedAsync()
+    {
+        if (_scenario.Themes is null)
+            throw new InvalidOperationException("The scenario has no theme catalog.");
+        return BroadcastAsync("plugins.changed", new { reason = "fixture" });
+    }
+
+    /// <summary>Announces a profile preference change, which invalidates imported themes, through the real event.</summary>
+    public Task PublishUserPrefsChangedAsync()
+    {
+        if (_scenario.Themes is null)
+            throw new InvalidOperationException("The scenario has no theme catalog.");
+        return BroadcastAsync("users.prefs.changed", new { profileId = _scenario.AuthenticatedProfileId });
+    }
+
     public async Task PublishAgentEventAsync(
         string sessionKey,
         object data,

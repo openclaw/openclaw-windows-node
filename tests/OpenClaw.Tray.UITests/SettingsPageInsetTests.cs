@@ -57,6 +57,44 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
         });
     }
 
+    // Narrator must read each appearance control's localized header, not a fixed English name.
+    [Fact]
+    public async Task AppearanceControlsTakeTheirAccessibleNamesFromTheirLocalizedHeaders()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var resources = new ChatThemeProofScope("Light");
+            var page = new SettingsPage();
+            ui.Container.Children.Add(page);
+            try
+            {
+                (string Label, string Control)[] rows =
+                [
+                    ("GatewayThemeLabel", "GatewayThemeComboBox"),
+                    ("FollowGatewayThemeLabel", "FollowGatewayThemeToggle"),
+                    ("UseMicaLabel", "UseMicaToggle"),
+                ];
+                // LabeledBy is an ElementName binding, so it resolves once the page has loaded.
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => page.IsLoaded && rows.All(row => page.FindName(row.Control) is UIElement control &&
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetLabeledBy(control) is not null),
+                    "appearance controls are labeled by their headers");
+                foreach (var (label, control) in rows)
+                {
+                    var header = Assert.IsType<TextBlock>(page.FindName(label));
+                    header.Text = $"Localized {label}";
+                    var peer = FrameworkElementAutomationPeer.CreatePeerForElement(Assert.IsAssignableFrom<UIElement>(page.FindName(control)));
+                    Assert.Equal(header.Text, peer.GetName());
+                }
+            }
+            finally
+            {
+                ui.Container.Children.Remove(page);
+            }
+        });
+    }
+
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {
         for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
