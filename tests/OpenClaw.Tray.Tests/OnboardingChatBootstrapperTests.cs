@@ -531,6 +531,164 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         Assert.True(settings.HasInjectedFirstRunBootstrap);
     }
 
+    [Fact]
+    public async Task BootstrapAsync_ReportsCompletion_WhenItArrivesBeforeTheExpiredWaitResumes()
+    {
+        // A completion that is already recorded when the wait resumes must win over the deadline.
+        // On a busy thread pool the deadline timer can resume the wait before the queued
+        // completion continuation runs; the queued context reproduces that ordering exactly.
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-late-resume" } };
+        var context = new QueuedSynchronizationContext();
+        using var stop = new CancellationTokenSource();
+
+        var task = StartUnder(context, () => OnboardingChatBootstrapper.BootstrapAsync(
+            client, settings, ShortDeadline, stop.Token));
+        try
+        {
+            await WaitForHeldResumeAsync(context, task);
+            client.RaiseFinalAssistant("run-late-resume");
+            context.Drain();
+
+            Assert.True(await task.WaitAsync(CompletionTimeout));
+            Assert.Equal(1, client.SendCount);
+        }
+        finally
+        {
+            await FinishSuspendedBootstrapAsync(context, task, stop);
+        }
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_UsesWorkspaceList_WhenItArrivesBeforeTheExpiredProbeResumes()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient
+        {
+            Result = new ChatSendResult { RunId = "run-late-probe" },
+            FinalRunIdRaisedDuringSend = "run-late-probe",
+        };
+        var registry = CreateFreshCredentialRegistry("registry-late-probe");
+        var context = new QueuedSynchronizationContext();
+        using var stop = new CancellationTokenSource();
+
+        var task = StartUnder(context, () => OnboardingChatBootstrapper.BootstrapAsync(
+            client, settings, CompletionTimeout, stop.Token, registry, existingWorkspaceProbeTimeout: ShortDeadline));
+        try
+        {
+            await WaitForHeldResumeAsync(context, task);
+            client.RaiseAgentFilesList(CreateAgentFilesList());
+            context.Drain();
+
+            Assert.True(await task.WaitAsync(CompletionTimeout));
+            Assert.Equal(1, client.SendCount);
+        }
+        finally
+        {
+            await FinishSuspendedBootstrapAsync(context, task, stop);
+        }
+    }
+
+    [Fact]
+    public async Task BootstrapAsync_DoesNotSendPrompt_WhenWorkspaceListArrivesAfterCancellation()
+    {
+        var settings = new SettingsManager(_settingsDir);
+        var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-cancelled-probe" } };
+        var registry = CreateFreshCredentialRegistry("registry-cancelled-probe");
+        var context = new QueuedSynchronizationContext();
+        using var stop = new CancellationTokenSource();
+
+        var task = StartUnder(context, () => OnboardingChatBootstrapper.BootstrapAsync(
+            client, settings, CompletionTimeout, stop.Token, registry, existingWorkspaceProbeTimeout: CompletionTimeout));
+        try
+        {
+            Assert.False(task.IsCompleted);
+            stop.Cancel();
+            await WaitForHeldResumeAsync(context, task);
+            client.RaiseAgentFilesList(CreateAgentFilesList());
+            context.Drain();
+
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task.WaitAsync(CompletionTimeout));
+            Assert.Equal(0, client.SendCount);
+            Assert.False(settings.HasInjectedFirstRunBootstrap);
+        }
+        finally
+        {
+            await FinishSuspendedBootstrapAsync(context, task, stop);
+        }
+    }
+
+    // Long enough for the synchronous fake path (including the settings save) to reach its wait.
+    private static readonly TimeSpan ShortDeadline = TimeSpan.FromSeconds(2);
+
+    private GatewayRegistry CreateFreshCredentialRegistry(string name)
+    {
+        var registryDir = Path.Combine(_settingsDir, name);
+        Directory.CreateDirectory(registryDir);
+        var registry = new GatewayRegistry(registryDir);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "gw-" + name,
+            Url = "ws://localhost:18789",
+            BootstrapToken = "fresh-bootstrap-token",
+            IsLocal = true
+        });
+        return registry;
+    }
+
+    private static Task<T> StartUnder<T>(SynchronizationContext context, Func<Task<T>> start)
+    {
+        var previous = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            return start();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
+        }
+    }
+
+    private static async Task WaitForHeldResumeAsync(QueuedSynchronizationContext context, Task task)
+    {
+        var posted = context.WaitForPostAsync(CompletionTimeout);
+        await Task.WhenAny(posted, task);
+        Assert.False(task.IsCompleted, "Bootstrap finished before its wait resumed; its deadline expired before the wait started.");
+        Assert.True(await posted, "Bootstrap's wait did not resume.");
+    }
+
+    // Finishes a bootstrap a failed assertion left suspended, so its static in-flight gate is released.
+    private static async Task FinishSuspendedBootstrapAsync(QueuedSynchronizationContext context, Task task, CancellationTokenSource stop)
+    {
+        stop.Cancel();
+        context.Drain();
+        while (!task.IsCompleted && await context.WaitForPostAsync(CompletionTimeout))
+            context.Drain();
+        if (task.IsFaulted)
+            _ = task.Exception;
+    }
+
+    // Holds posted continuations until the test drains them, so the test decides when a wait resumes.
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _callbacks = new();
+        private readonly SemaphoreSlim _posted = new(0);
+
+        public Task<bool> WaitForPostAsync(TimeSpan timeout) => _posted.WaitAsync(timeout);
+
+        public override void Post(SendOrPostCallback callback, object? state)
+        {
+            _callbacks.Enqueue((callback, state));
+            _posted.Release();
+        }
+
+        public void Drain()
+        {
+            while (_callbacks.TryDequeue(out var callback))
+                callback.Callback(callback.State);
+        }
+    }
     private static JsonElement CreateAgentFilesList(params string[] fileNames)
         => CreateAgentFilesListForAgent("main", fileNames);
 
@@ -605,6 +763,8 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
                 RaiseFinalAssistant(FinalRunIdRaisedDuringSend);
             return Task.FromResult(Result);
         }
+
+        public void RaiseAgentFilesList(JsonElement payload) => AgentFilesListUpdated?.Invoke(this, payload.Clone());
 
         public void RaiseFinalAssistant(string runId)
         {
