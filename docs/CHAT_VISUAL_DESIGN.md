@@ -97,8 +97,9 @@ are re-resolved when the element's theme changes.
 Text/media stacks use that same gap. The transcript has an 8-pixel lead-in.
 Assistant turns use 4-pixel outer spacing without extra body padding. User
 bubbles use 16-pixel horizontal and 12-pixel vertical insets, with an 8-pixel
-stack gap plus a 2-pixel top margin before their action footer. Thinking blocks
-and tool details keep 12-pixel horizontal and 8-pixel vertical insets.
+stack gap plus a 2-pixel top margin before their action footer. Tool details
+keep 12-pixel horizontal and 8-pixel vertical insets; opened thinking text
+aligns with its disclosure title, 24 pixels in.
 Related tool labels, details and action footers keep one 4-pixel gap. Comparisons
 normalize the released web header separately rather than adding fake app chrome.
 Code remains literal and selectable, with native horizontal and vertical
@@ -512,9 +513,16 @@ and matching cumulative text prefixes reconcile within their causal/run boundary
 Conflicting unidentified text remains visible rather than being guessed away. Pixel-level parity
 requires current-build visible proof in addition to the offscreen control tests.
 
-Supplied assistant `thinking` blocks render as inline native Markdown, not as
-an extra closed disclosure. Their text uses the web thinking block's 12/18
-secondary tone, and their lists and headings share that ramp. Session
+Supplied assistant `thinking` blocks render as native Markdown inside a
+**Thinking** disclosure that starts collapsed. Its header is a tool row with an
+always-visible leading chevron (right while closed, down while open) and the
+native Expander chevron hidden, like the nested **Tool input** row. The open
+choice lives in the tool-row expansion store, so a recycled row never inherits
+another thought's state. Like tool rows, the disclosure is keyed by the
+collapse-all version, so collapse-all closes thinking and resets its chevron. The 12px title
+shimmers only while that thought is the stream's active item. The opened text
+aligns with the title and uses the web thinking block's 12/18 secondary tone in
+a scroller capped at 240 pixels, and its lists and headings share that ramp. Session
 `reasoningLevel` falls back to
 `reasoningDefault`: `on` shows saved reasoning and live previews; `stream`
 shows previews only; other or absent values hide both. The client default
@@ -536,8 +544,23 @@ compaction and retry labels remain visibly present beside elapsed time rather
 than existing only in accessibility text. A `run_status` retry with a valid
 `retryAt` counts down ("Retrying in Ns") on the existing one-second progress
 timer, then falls back to the plain retry label; text, tool or turn events clear
-it. While a current-run reasoning stream exists and no reply text has arrived,
-progress reads "Thinking" instead of "Working". These changes do not alter send
+it. Progress reads "Thinking" only while a current-run thought is active: the
+Gateway's reasoning end event, a new in-progress tool call or changed text on any
+reply row ends it, while a replayed reply snapshot with unchanged text does not.
+A saved thought stays streaming until the turn ends, but only the reducer's
+active reasoning row shimmers. "Responding" appears only while the
+active reply is the newest row, so an earlier reply preamble does not relabel
+running tools. The footer shows the status and elapsed time on one line; the
+status trims before the elapsed time. When the phase changes, the old line rises
+one line height and fades out while the new line rises in from below, in 220 ms,
+on composition visuals clipped to the row, so layout, focus and the XAML tree do
+not move. The leaving line rests hidden between swaps. A phase change during a
+swap does not restart it: the leaving line continues out with its original text,
+and the arriving line moves on from its current position and opacity
+(`this.StartingValue`) with the newest label, so it never snaps back down or
+flashes the skipped label. Windows animation off skips the swap, and unmount resets the
+composition opacity, translation and clip before Reactor can reuse the controls.
+These changes do not alter send
 admission, terminal-run classification or the panel's typed detail action.
 
 While history loads, the transcript shows a skeleton
@@ -1196,9 +1219,10 @@ complete literal text visible. Syntax runs retain native selection and theme
 changes without reinterpreting markup or executing code.
 A settled call shows its outcome (**Completed** or **failed**)
 right-aligned under a divider. Tool rows have no hover tooltip. While work is
-active, the running tool title, running group headline and streaming **Thinking**
+active, the running tool title, running group headline and active **Thinking**
 label use the web's `text-shimmer`: a brighter band sweeps
-across the text every 2.4 seconds. The gradient's endpoints stay fixed to the
+across the text in 0.9 seconds, repeating every 1.3 seconds. Activity titles and
+their dimmed details use quieter 12px text. The gradient's endpoints stay fixed to the
 label; its three interior stops move only between offsets 0 and 1 while the
 two edge stops retain readable base ink. Do not animate the text brush's
 `RelativeTransform`: on the tested native runtime that faded unrelated text
@@ -1206,13 +1230,9 @@ and backgrounds in a rectangular shared rendering region, despite their XAML
 opacity remaining 1. `InteractiveWork_DoesNotFadeCompletedMessagePixels`
 checks real-window pixels before, during and after a synthetic tool run;
 offscreen control-property assertions alone do not catch that failure.
-The gradient uses native primary ink as its Light base and a softer secondary
-ink for the lighter flare. The primary-to-secondary alpha gap is increased
-by 20 percent so the moving band is clearly distinguishable. Dark reverses
-those roles: softer secondary base with a primary-ink flare.
-This preserves a noticeable moving band rather than an
-almost invisible ten-percent alpha change. The flare changes
-emphasis without washing out the sentence. The color stops retain at least
+The gradient uses the native secondary ink as its base and the primary ink for
+the brighter flare, in both Light and Dark, so the band reads as the same
+subtle highlight on quiet secondary text. The color stops retain at least
 4.5:1 contrast against the tested light and dark backdrops. Windows animation off or high
 contrast keeps static text, matching the web's reduced-motion and forced-colors
 gates. Ink is resolved through the native primary and secondary text styles on the actual

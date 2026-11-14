@@ -257,6 +257,16 @@ public sealed class ChatStreamingParityTests
         Assert.Null(ChatRunProgressProjection.Project(state));
     }
 
+    [Fact]
+    public void StatusSwapContinuesOnlyWhileAnEarlierSwapIsMoving()
+    {
+        var now = Environment.TickCount64;
+        // The first phase change after mount must animate, not continue a swap that never started.
+        Assert.False(ChatRunProgressProjection.IsStatusSwapInFlight(null, now));
+        Assert.True(ChatRunProgressProjection.IsStatusSwapInFlight(now - 100, now));
+        Assert.False(ChatRunProgressProjection.IsStatusSwapInFlight(now - 220, now));
+    }
+
     [Theory]
     [InlineData("""{"delta":"not cumulative","itemId":"i"}""")]
     [InlineData("""{"text":"missing identity"}""")]
@@ -605,6 +615,78 @@ public sealed class ChatStreamingParityTests
         Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
         state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("Answer"), Start);
         Assert.Equal("Responding", ChatRunProgressProjection.Project(state)!.Label);
+    }
+
+    [Fact]
+    public void RunLabel_TracksTheCurrentPhaseAcrossThinkingToolsAndReply()
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("I will check"));
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "first", "Planning", 1));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+
+        // A replayed snapshot of unchanged reply text does not end the thought.
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("I will check", ReconcilePrevious: true, IsStreaming: true));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Read file", "read", ToolCallId: "tool", RunId: "r"));
+        Assert.Equal("Running read", ChatRunProgressProjection.Project(state)!.Label);
+        // Neither the finished thought nor the earlier preamble names the phase between tools.
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("Done", "tool", "r"));
+        Assert.Equal("Working", ChatRunProgressProjection.Project(state)!.Label);
+
+        state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("Here is what I found."));
+        Assert.Equal("Responding", ChatRunProgressProjection.Project(state)!.Label);
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "second", "Rechecking", 2));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+    }
+
+    [Fact]
+    public void RunLabel_GatewayReasoningEndStopsTheLiveThought()
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "i", "Planning", 1));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+        // The pause before the next tool call or reply is not thinking.
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningEndEvent());
+        Assert.Null(state.ReasoningStream!.ActiveItemId);
+        Assert.Equal("Working", ChatRunProgressProjection.Project(state)!.Label);
+    }
+
+    [Fact]
+    public void SavedThought_StopsBeingActiveWhenAToolStartsWhileTheTurnRuns()
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningDeltaEvent("Planning"));
+        var thought = state.Entries.Single(entry => entry.Kind == ChatTimelineItemKind.Reasoning);
+        Assert.True(ChatReasoningPresentation.IsActive(thought, state.ReasoningStream, state.ActiveReasoningId));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Read file", "read", ToolCallId: "tool", RunId: "r"));
+        thought = state.Entries.Single(entry => entry.Id == thought.Id);
+        // Saved thoughts stay streaming until the turn ends, but this one is no longer being written.
+        Assert.True(thought.IsStreaming);
+        Assert.False(ChatReasoningPresentation.IsActive(thought, state.ReasoningStream, state.ActiveReasoningId));
+    }
+
+    [Fact]
+    public void RunLabel_ChangedTextOnAnEarlierReplyEndsTheThought()
+    {
+        var reply = new ChatMessagePresentation(RunId: "r", MessageId: "m", SourceRole: "assistant");
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("I will check",
+            ReconcilePrevious: true, IsStreaming: true, Presentation: reply, ActivatesTurn: true));
+        var replyId = state.Entries.Last().Id;
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Read file", "read", ToolCallId: "tool", RunId: "r"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("Done", "tool", "r"));
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "i", "Rechecking", 1));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+        // A snapshot updates the reply that sits behind the finished tool row.
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("I will check the file",
+            ReconcilePrevious: true, IsStreaming: true, Presentation: reply, ActivatesTurn: true));
+        Assert.Equal("I will check the file", state.Entries.Single(entry => entry.Id == replyId).Text);
+        Assert.NotEqual(ChatTimelineItemKind.Assistant, state.Entries.Last().Kind);
+        Assert.Null(state.ReasoningStream!.ActiveItemId);
+        Assert.NotEqual("Thinking", ChatRunProgressProjection.Project(state)!.Label);
     }
 
     [Fact]
