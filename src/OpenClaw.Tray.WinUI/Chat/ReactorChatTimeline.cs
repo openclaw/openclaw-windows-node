@@ -676,8 +676,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             ChatTimelineItemKind.ToolCall => ToolCallCardRenderer.BuildStandalone(row.Props.Timeline, entry),
             ChatTimelineItemKind.Reasoning => Component<ReactorReasoningDisclosure, ReactorReasoningDisclosureProps>(new(
                     row.Props.Timeline, entry,
-                    ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream)))
-                .WithKey($"reasoning:{entry.Id}"),
+                    ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream,
+                        row.Props.Timeline.ActiveReasoningId)))
+                // Like tool rows, collapse-all remounts the disclosure so its local open state resets too.
+                .WithKey($"reasoning:{entry.Id}:collapse:{row.Props.Timeline.ToolCallsCollapseVersion}"),
             ChatTimelineItemKind.PermissionRequest => BuildPermission(row, entry),
             ChatTimelineItemKind.Status => BuildStatus(row, entry),
             _ => BuildGenericStatus(entry),

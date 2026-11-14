@@ -495,7 +495,8 @@ Supplied assistant `thinking` blocks render as native Markdown inside a
 always-visible leading chevron (right while closed, down while open) and the
 native Expander chevron hidden, like the nested **Tool input** row. The open
 choice lives in the tool-row expansion store, so a recycled row never inherits
-another thought's state and collapse-all also closes thinking. The 12px title
+another thought's state. Like tool rows, the disclosure is keyed by the
+collapse-all version, so collapse-all closes thinking and resets its chevron. The 12px title
 shimmers only while that thought is the stream's active item. The opened text
 aligns with the title and uses the web thinking block's 12/18 secondary tone in
 a scroller capped at 240 pixels, and its lists and headings share that ramp. Session
@@ -520,9 +521,11 @@ compaction and retry labels remain visibly present beside elapsed time rather
 than existing only in accessibility text. A `run_status` retry with a valid
 `retryAt` counts down ("Retrying in Ns") on the existing one-second progress
 timer, then falls back to the plain retry label; text, tool or turn events clear
-it. Progress reads "Thinking" only while a current-run thought is active: a
-new in-progress tool call or changed reply text ends it, while a replayed reply
-snapshot with unchanged text does not. "Responding" appears only while the
+it. Progress reads "Thinking" only while a current-run thought is active: the
+Gateway's reasoning end event, a new in-progress tool call or changed text on any
+reply row ends it, while a replayed reply snapshot with unchanged text does not.
+A saved thought stays streaming until the turn ends, but only the reducer's
+active reasoning row shimmers. "Responding" appears only while the
 active reply is the newest row, so an earlier reply preamble does not relabel
 running tools. The footer shows the status and elapsed time on one line; the
 status trims before the elapsed time. When the phase changes, the old line rises

@@ -88,7 +88,9 @@ public static class ChatTimelineReducer
             ChatReasoningDeltaEvent e => UpsertReasoning(BeginTurn(state), e.Text, replace: false, e.Presentation, streaming: true),
             ChatReasoningStreamEvent e => ApplyReasoningStream(state, e),
             ChatReasoningReceiptEvent e => ApplyReasoningReceipt(state, e),
-            ChatReasoningEndEvent => state.ActiveReasoningId is null ? state : state with { ActiveReasoningId = null },
+            ChatReasoningEndEvent => state.ActiveReasoningId is null && state.ReasoningStream?.ActiveItemId is null
+                ? state
+                : state with { ActiveReasoningId = null, ReasoningStream = EndReasoningStream(state.ReasoningStream) },
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true, presentation: e.Presentation),
             ChatMessageEvent e => UpsertAssistant(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
             ChatAssistantStreamRetireEvent e => RetireAssistantStreamPreview(state, e.RunId),
@@ -121,9 +123,7 @@ public static class ChatTimelineReducer
         if (state.TurnActive && !next.TurnActive)
             next = next with { TurnEndedAt = timestamp, ProgressText = null, ProgressRetryAtMs = null };
         if ((evt is ChatMessageDeltaEvent or ChatMessageEvent { ActivatesTurn: true }) &&
-            next.Entries.LastOrDefault() is { Kind: ChatTimelineItemKind.Assistant, Text.Length: > 0 } assistant &&
-            !string.Equals(state.Entries.FirstOrDefault(entry => entry.Id == assistant.Id)?.Text,
-                assistant.Text, StringComparison.Ordinal))
+            AssistantTextChanged(state.Entries, next.Entries))
         {
             var runId = evt switch
             {
@@ -146,6 +146,34 @@ public static class ChatTimelineReducer
 
     private static ChatReasoningStream? EndReasoningStream(ChatReasoningStream? stream) =>
         stream is { ActiveItemId: not null } ? stream with { ActiveItemId = null } : stream;
+
+    /// <summary>
+    /// True when any nonempty reply row gained or changed text, wherever it sits: a snapshot can
+    /// update an earlier reply behind later tool rows. Unchanged rows keep their record identity.
+    /// </summary>
+    private static bool AssistantTextChanged(
+        System.Collections.Immutable.ImmutableList<ChatTimelineItem> before,
+        System.Collections.Immutable.ImmutableList<ChatTimelineItem> after)
+    {
+        if (ReferenceEquals(before, after))
+            return false;
+        Dictionary<string, string>? previousText = null;
+        var index = 0;
+        foreach (var entry in after)
+        {
+            var unchanged = index < before.Count && ReferenceEquals(before[index], entry);
+            index++;
+            if (unchanged || entry is not { Kind: ChatTimelineItemKind.Assistant, Text.Length: > 0 })
+                continue;
+            previousText ??= before.Where(item => item.Kind == ChatTimelineItemKind.Assistant)
+                .GroupBy(item => item.Id, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Last().Text, StringComparer.Ordinal);
+            if (!previousText.TryGetValue(entry.Id, out var text) ||
+                !string.Equals(text, entry.Text, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
 
     private static ChatTimelineState ApplyRunUsage(ChatTimelineState state, ChatRunUsageEvent evt) =>
         state.RunUsage is { } usage && usage.RunId == evt.RunId

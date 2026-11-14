@@ -36,11 +36,14 @@ internal static class ChatReasoningPresentation
 
     private const string PreviewPrefix = "thinking:";
 
-    /// <summary>Live previews keep streaming after their thought ends; only the stream's active item is thinking.</summary>
-    internal static bool IsActive(ChatTimelineItem entry, ChatReasoningStream? stream) =>
+    /// <summary>
+    /// Only the current thought is thinking: the stream's active item for live previews, and the
+    /// reducer's active reasoning row for saved thoughts, which stay streaming until the turn ends.
+    /// </summary>
+    internal static bool IsActive(ChatTimelineItem entry, ChatReasoningStream? stream, string? activeReasoningId) =>
         entry.Id.StartsWith(PreviewPrefix, StringComparison.Ordinal)
             ? stream?.ActiveItemId is { } active && entry.Presentation?.BlockId == active
-            : entry.IsStreaming;
+            : entry.IsStreaming && entry.Id == activeReasoningId;
 
     /// <summary>Selects saved thoughts or live previews, handing ownership to exact accepted receipts.</summary>
     internal static IReadOnlyList<ChatTimelineItem> Project(

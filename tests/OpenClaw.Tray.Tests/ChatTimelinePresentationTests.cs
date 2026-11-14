@@ -1463,7 +1463,8 @@ public sealed class ChatTimelinePresentationTests
         var progress = File.ReadAllText(Path.Combine(chat, "ReactorRunProgress.cs"));
         Assert.Contains("ChatVisuals.ActivityText(label, progress.Active && !progress.Waiting)", progress);
         var timeline = File.ReadAllText(Path.Combine(chat, "ReactorChatTimeline.cs"));
-        Assert.Contains("ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream)", timeline);
+        Assert.Contains("ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream,", timeline);
+        Assert.Contains("reasoning:{entry.Id}:collapse:{row.Props.Timeline.ToolCallsCollapseVersion}", timeline);
     }
 
     private static int CountOccurrences(string text, string normalizedValue)

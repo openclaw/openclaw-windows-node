@@ -434,7 +434,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ? media => _panels.OpenFile(new(artifactSession,
                     ChatAssistantMediaRenderer.DisplayName(media), media.Reference.ArtifactId, media.Reference.AgentId,
                     media.MimeType ?? media.Reference.MimeType, media.Reference.SizeBytes), panelRevision)
-                : null);
+                : null,
+            ActiveReasoningId: timeline.ActiveReasoningId);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
