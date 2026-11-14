@@ -1,0 +1,102 @@
+<!--
+  Theme-aware Fluent type ramp and font inheritance anchors.
+
+  WinUI's BaseTextBlockStyle sets FontFamily to the literal XamlAutoFontFamily, and every type-ramp style
+  (Caption, Body, BodyStrong, Subtitle, Title, ...) plus NavigationViewItemHeaderTextStyle is BasedOn it.
+  Text using those styles therefore ignores ContentControlThemeFontFamily, which AppThemeApplicator overrides
+  for a Gateway theme. These copies keep every WinUI setter and change only FontFamily to
+  {ThemeResource ContentControlThemeFontFamily}, which is still XamlAutoFontFamily under the Windows default.
+  ThemeHelper's root-theme refresh re-resolves the reference when the theme changes.
+
+  Merged after XamlControlsResources so app XAML and C# lookups of these keys find these copies.
+  Keep the other setters identical to the WinUI version in use: GatewayThemeTypographyTests compares them.
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="BaseTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
+        <Setter Property="FontSize" Value="{StaticResource BodyTextBlockFontSize}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        <Setter Property="TextWrapping" Value="Wrap" />
+        <Setter Property="LineStackingStrategy" Value="MaxHeight" />
+        <Setter Property="TextLineBounds" Value="Full" />
+    </Style>
+    <Style x:Key="HeaderTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="46" />
+        <Setter Property="FontWeight" Value="Light" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="SubheaderTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="34" />
+        <Setter Property="FontWeight" Value="Light" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="TitleTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="{StaticResource TitleTextBlockFontSize}" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="SubtitleTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="{StaticResource SubtitleTextBlockFontSize}" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="BodyTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style x:Key="CaptionTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="{StaticResource CaptionTextBlockFontSize}" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+    <Style x:Key="BodyStrongTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="{StaticResource BodyStrongTextBlockFontSize}" />
+    </Style>
+    <Style x:Key="BodyLargeTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontWeight" Value="Normal" />
+        <Setter Property="FontSize" Value="{StaticResource BodyLargeTextBlockFontSize}" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="BodyLargeStrongTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="{StaticResource BodyLargeTextBlockFontSize}" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="TitleLargeTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="{StaticResource TitleLargeTextBlockFontSize}" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="DisplayTextBlockStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="{StaticResource DisplayTextBlockFontSize}" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+    </Style>
+    <Style x:Key="NavigationViewItemHeaderTextStyle" TargetType="TextBlock" BasedOn="{StaticResource BaseTextBlockStyle}">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="OpticalMarginAlignment" Value="TrimSideBearings" />
+        <Setter Property="TextWrapping" Value="NoWrap" />
+    </Style>
+
+    <!--
+      Inheritance anchors. Unstyled text (and InfoBar, menu items, Reactor text) inherits FontFamily from the nearest
+      ancestor that sets it. Pages, user controls and popup roots set none, so that text fell back to the system font.
+      Pages are hosted by a Frame and flyouts, menus and dialogs by these presenters; window roots are anchored by
+      ThemeHelper.ApplyWindowFont. These styles deliberately have no BasedOn: WinUI still applies each control's
+      default style beneath an app style, while basing on the framework's keyed Default*Style resolved its
+      ThemeResource brushes against the application theme instead of the window's (a light flyout in a dark window).
+    -->
+    <Style TargetType="Frame">
+        <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
+    </Style>
+    <!-- Custom presenter styles (search, Automations) are BasedOn these keyed styles. -->
+    <Style x:Key="ThemedFlyoutPresenterStyle" TargetType="FlyoutPresenter">
+        <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
+    </Style>
+    <Style x:Key="ThemedMenuFlyoutPresenterStyle" TargetType="MenuFlyoutPresenter">
+        <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
+    </Style>
+    <Style TargetType="FlyoutPresenter" BasedOn="{StaticResource ThemedFlyoutPresenterStyle}" />
+    <Style TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource ThemedMenuFlyoutPresenterStyle}" />
+    <Style TargetType="ContentDialog">
+        <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
+    </Style>
+</ResourceDictionary>

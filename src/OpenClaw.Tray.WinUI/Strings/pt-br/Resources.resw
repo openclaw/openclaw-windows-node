@@ -4470,6 +4470,27 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Escolha claro, escuro, ou use a configuração do Windows.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Tema do Gateway</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use as cores e as fontes de um tema do painel do OpenClaw. O Alto Contraste do Windows sempre tem prioridade.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Padrão do Windows</value>
+  </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Plano de fundo Mica</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>Deixe a área de trabalho aparecer através do fundo das janelas. Desative para um fundo de tema sólido.</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Seguir o tema do Gateway</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use o tema selecionado no painel do OpenClaw e atualize quando ele mudar lá.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Sistema</value>
   </data>

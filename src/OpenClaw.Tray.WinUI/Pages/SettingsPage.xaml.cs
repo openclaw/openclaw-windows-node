@@ -63,6 +63,7 @@ public sealed partial class SettingsPage : Page
         {
             _viewModel.SavedIndicated += OnViewModelSavedIndicated;
             _viewModel.ExternalChanged += OnViewModelExternalChanged;
+            _viewModel.DefaultThemeLabel = LocalizationHelper.GetString("SettingsPage_GatewayTheme_Default");
         }
     }
 

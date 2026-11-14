@@ -292,6 +292,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\NavigationScopeManager.cs" Link="Presentation\NavigationScopeManager.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\AppNavigationService.cs" Link="Presentation\AppNavigationService.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPageViewModel.cs" Link="Presentation\SettingsPageViewModel.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayThemeCatalog.cs" Link="Theming\GatewayThemeCatalog.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayThemeFollower.cs" Link="Theming\GatewayThemeFollower.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\ThemeResourceProjection.cs" Link="Theming\ThemeResourceProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPagePresentationTypes.cs" Link="Presentation\PermissionsPagePresentationTypes.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageRuntimeSource.cs" Link="Presentation\PermissionsPageRuntimeSource.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPageViewModel.cs" Link="Presentation\PermissionsPageViewModel.cs" />

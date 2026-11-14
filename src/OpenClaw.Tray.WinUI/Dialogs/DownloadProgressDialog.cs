@@ -21,6 +21,7 @@ public sealed class DownloadProgressDialog
         panel.Children.Add(progressText);
         panel.Children.Add(progressBar);
         _window.Content = panel;
+        Theming.BackdropPolicy.Apply(_window);
         
         // Size and center the window
         _window.AppWindow.Resize(new global::Windows.Graphics.SizeInt32(400, 200));

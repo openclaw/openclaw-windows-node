@@ -153,6 +153,7 @@ public sealed class WelcomeDialog : WindowEx
         Grid.SetRow(root, 1);
         outerGrid.Children.Add(root);
         Content = outerGrid;
+        Theming.BackdropPolicy.Apply(this);
         SetTitleBar(titleBar);
         
         Closed += (s, e) => _tcs.TrySetResult(_result);
