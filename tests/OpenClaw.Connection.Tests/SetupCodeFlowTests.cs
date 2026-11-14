@@ -313,7 +313,7 @@ public class SetupCodeFlowTests : IDisposable
         _registry.SetActive("gw-shared");
 
         var resolver = new CredentialResolver(new FakeIdentityReader());
-        var factory = new RecordingClientFactory();
+        var factory = new RecordingClientFactory { ReportHandshakeSuccess = true };
         var manager = new GatewayConnectionManager(
             resolver, factory, _registry, NullLogger.Instance);
 
@@ -531,11 +531,12 @@ public class SetupCodeFlowTests : IDisposable
     {
         public List<CreateCall> Calls { get; } = [];
         public List<FakeLifecycle> CreatedLifecycles { get; } = [];
+        public bool ReportHandshakeSuccess { get; init; }
 
         public IGatewayClientLifecycle Create(string gatewayUrl, GatewayCredential credential, string identityPath, IOpenClawLogger logger)
         {
             Calls.Add(new CreateCall(gatewayUrl, credential, identityPath));
-            var lifecycle = new FakeLifecycle();
+            var lifecycle = new FakeLifecycle { ReportHandshakeSuccess = ReportHandshakeSuccess };
             CreatedLifecycles.Add(lifecycle);
             return lifecycle;
         }
@@ -551,7 +552,20 @@ public class SetupCodeFlowTests : IDisposable
         public event EventHandler<ConnectionStatus>? StatusChanged;
         public event EventHandler<string>? AuthenticationFailed;
 #pragma warning restore CS0067
-        public Task ConnectAsync(CancellationToken ct) => Task.CompletedTask;
+        public bool ReportHandshakeSuccess { get; init; }
+
+        public Task ConnectAsync(CancellationToken ct)
+        {
+            if (!ReportHandshakeSuccess)
+                return Task.CompletedTask;
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(100);
+                _client.SimulateHandshakeSucceeded();
+            });
+            return Task.CompletedTask;
+        }
         public void Dispose() { }
         public void SimulateDeviceTokenReceived(string token, string role, string[]? scopes = null) =>
             _client.SimulateDeviceTokenReceived(token, role, scopes);
@@ -560,6 +574,15 @@ public class SetupCodeFlowTests : IDisposable
     private sealed class FakeClient : OpenClawGatewayClient
     {
         public FakeClient() : base("ws://fake", "fake-token", NullLogger.Instance) { }
+
+        public void SimulateHandshakeSucceeded()
+        {
+            var field = typeof(OpenClawGatewayClient).GetField(
+                nameof(HandshakeSucceeded),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            var handler = field?.GetValue(this) as EventHandler;
+            handler?.Invoke(this, EventArgs.Empty);
+        }
 
         public void SimulateDeviceTokenReceived(string token, string role, string[]? scopes = null)
         {
