@@ -70,7 +70,6 @@
     "tests/OpenClaw.Tray.Tests/Dashboards/DashboardModelsTests.cs": 2,
     "tests/OpenClaw.Tray.Tests/InteractiveGatewayChatTests.cs": 1,
     "tests/OpenClaw.Tray.Tests/ManagedLocalGatewayRepairCoordinatorTests.cs": 1,
-    "tests/OpenClaw.Tray.Tests/OnboardingChatBootstrapperTests.cs": 6,
     "tests/OpenClaw.Tray.Tests/OpenClawChatDataProviderTests.cs": 49,
     "tests/OpenClaw.Tray.Tests/Presentation/LocalAiPageViewModelTests.cs": 2,
     "tests/OpenClaw.Tray.Tests/Presentation/PermissionsPageViewModelTests.cs": 2,
