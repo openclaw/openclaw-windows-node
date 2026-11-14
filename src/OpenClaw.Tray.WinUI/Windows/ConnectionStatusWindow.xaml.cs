@@ -251,7 +251,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
             var sp = new StackPanel();
             sp.Children.Add(new TextBlock
             {
-                Text = $"{statusIcon} {gw.Url}",
+                Text = $"{statusIcon} {GatewayUrlHelper.SanitizeForDisplay(gw.Url)}",
                 FontSize = 11.5,
                 FontWeight = isActive ? FontWeights.Bold : FontWeights.Normal
             });
@@ -319,7 +319,7 @@ public sealed partial class ConnectionStatusWindow : WindowEx
 
         var decoded = SetupCodeDecoder.Decode(code);
         if (decoded.Success)
-            SetupCodePreview.Text = $"→ {decoded.Url ?? "?"}\n  token: {decoded.Token?[..Math.Min(8, decoded.Token?.Length ?? 0)]}…";
+            SetupCodePreview.Text = $"→ {(decoded.Url is null ? "?" : GatewayUrlHelper.SanitizeForDisplay(decoded.Url))}\n  token: {decoded.Token?[..Math.Min(8, decoded.Token?.Length ?? 0)]}…";
         else
             SetupCodePreview.Text = $"✗ {decoded.Error}";
     }

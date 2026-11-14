@@ -3134,7 +3134,10 @@ public sealed partial class ConnectionPage : Page
         var decoded = SetupCodeDecoder.Decode(code);
         if (decoded.Success)
         {
-            AddSetupCodePreviewUrl.Text = string.Format(LocalizationHelper.GetString("ConnectionPage_PreviewGateway"), decoded.Url ?? LocalizationHelper.GetString("ConnectionPage_PreviewGatewayNotSpecified"));
+            var previewUrl = decoded.Url is null
+                ? LocalizationHelper.GetString("ConnectionPage_PreviewGatewayNotSpecified")
+                : GatewayUrlHelper.SanitizeForDisplay(decoded.Url);
+            AddSetupCodePreviewUrl.Text = string.Format(LocalizationHelper.GetString("ConnectionPage_PreviewGateway"), previewUrl);
             var tokenHint = string.IsNullOrEmpty(decoded.Token)
                 ? LocalizationHelper.GetString("ConnectionPage_PreviewNoToken")
                 : decoded.Token!.Substring(0, Math.Min(8, decoded.Token.Length)) + "…";

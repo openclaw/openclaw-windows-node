@@ -1039,7 +1039,9 @@ public sealed partial class ChatPage : Page
                          e.WebErrorStatus == CoreWebView2WebErrorStatus.ServerUnreachable)
                 {
                     ChatPagePanelStates.ApplyShowingError(PanelHost);
-                    ErrorText.Text = string.Format(LocalizationHelper.GetString("ChatPage_CannotConnectToGateway"), credential.GatewayUrl);
+                    ErrorText.Text = string.Format(
+                        LocalizationHelper.GetString("ChatPage_CannotConnectToGateway"),
+                        GatewayUrlHelper.SanitizeForDisplay(credential.GatewayUrl));
                 }
             };
             WebView.CoreWebView2.NavigationCompleted += _navCompletedHandler;
