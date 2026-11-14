@@ -1150,12 +1150,14 @@ public sealed class WorkspaceWindowProofTests
         Assert.False(IsVisible(workspaceElement, "NotificationsPageMarker"));
         Invoke(await WaitForPopupAsync(workspaceElement, "WorkspaceNotificationsOpenPage"));
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Invoke(Find(workspaceElement, "WorkspaceBack"));
+        // Navigation enables the history buttons; a fresh UIA traversal can miss a peer while WinUI
+        // updates it, and the page marker does not establish their readiness.
+        await InvokeWhenEnabledAsync(workspaceElement, "WorkspaceBack");
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "NotificationsPageMarker"));
         // A page marker does not establish sibling history-button readiness.
         await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == true,
             () => "WorkspaceForward did not become enabled after Back.");
-        Invoke(Find(workspaceElement, "WorkspaceForward"));
+        await InvokeWhenEnabledAsync(workspaceElement, "WorkspaceForward");
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
         await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == false,
             () => "WorkspaceForward did not become disabled after Forward.");
