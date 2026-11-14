@@ -529,6 +529,89 @@ public sealed class ChatConversationPanelStateTests
         Assert.False(state.Passive);
     }
 
+    [Fact]
+    public void SidePanelToggle_OpensTheLauncherWithoutTabsAndMinimizesWhileKeepingTabs()
+    {
+        var state = new ChatConversationPanelState();
+        state.Bind(_provider, "session", 1, 2, 3, [], () => true, subagentsCurrent: () => true);
+        Assert.False(state.IsOpen);
+        var openVersion = state.OpenVersion;
+        state.ToggleOpen();
+        Assert.True(state.IsOpen);
+        Assert.True(state.LauncherOpen);
+        Assert.True(state.OpenVersion > openVersion);
+
+        Assert.True(state.OpenFiles(state.Revision));
+        Assert.False(state.LauncherOpen);
+        state.SetPresentation(presented: true, narrow: false);
+        state.ToggleOpen();
+        Assert.True(state.Hidden);
+        Assert.False(state.IsOpen);
+        Assert.Equal(["files"], state.Tabs);
+
+        // An automatic reveal respects the minimized panel; an explicit open shows it again.
+        state.SetPresentation(presented: false, narrow: false);
+        Assert.True(state.RevealDashboard(Board));
+        Assert.False(state.IsOpen);
+        Assert.True(state.OpenSubagents(state.Revision));
+        Assert.True(state.IsOpen);
+        Assert.False(state.Hidden);
+    }
+
+    [Fact]
+    public void SidePanelExpand_FillsOnlyBesideAWideConversationAndTheToggleRestoresTheSplit()
+    {
+        var state = new ChatConversationPanelState();
+        Bind(state, Tool("first"));
+        state.ToggleExpanded();
+        Assert.False(state.Expanded);
+        state.Open(Request("first"), state.Revision);
+        state.SetPresentation(presented: true, narrow: false);
+        state.ToggleExpanded();
+        Assert.True(state.IsExpanded);
+        state.SetPresentation(presented: true, narrow: true);
+        Assert.False(state.CanExpand);
+        Assert.False(state.IsExpanded);
+        state.SetPresentation(presented: true, narrow: false);
+        Assert.True(state.IsExpanded);
+
+        state.ToggleOpen();
+        Assert.False(state.Expanded);
+        Assert.True(state.IsOpen);
+        state.ToggleExpanded();
+        state.Close("details");
+        Assert.False(state.Expanded);
+    }
+
+    [Fact]
+    public void TitleRow_IsOfferedOnlyWhenTabsKeepUsableWidthBesideTheWindowControls()
+    {
+        var state = new ChatConversationPanelState();
+        Assert.False(state.CanJoinTitleRow(800));
+        state.SetTitleRow(48, 140);
+        Assert.True(state.CanJoinTitleRow(140 + ChatConversationPanelState.MinimumTitleRowTabsWidth));
+        Assert.False(state.CanJoinTitleRow(ChatConversationPanelState.MinimumPanelWidth));
+
+        // A panel that fills the area also leaves the leading window controls clear.
+        state.SetTitleRow(56, 140, startInset: 48, captionHeight: 48);
+        Assert.Equal(48, state.TitleRowCaptionHeight);
+        var exact = 140 + ChatConversationPanelState.MinimumTitleRowTabsWidth;
+        Assert.True(state.CanJoinTitleRow(exact));
+        Assert.False(state.CanJoinTitleRow(exact, fillsArea: true));
+        Assert.True(state.CanJoinTitleRow(exact + 48, fillsArea: true));
+
+        // Hosts withdraw the row (Settings, hidden chat, a banner above chat) with a zero height.
+        state.SetTitleRow(0, 140);
+        Assert.False(state.CanJoinTitleRow(800));
+
+        var changes = 0;
+        state.Changed += () => changes++;
+        state.SetTitleRow(48, 140);
+        state.SetTitleRow(48.2, 140.3);
+        state.SetTitleRow(double.NaN, 140);
+        Assert.Equal(1, changes);
+    }
+
     [Theory]
     [InlineData("run")]
     [InlineData("call")]

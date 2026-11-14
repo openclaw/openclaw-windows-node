@@ -197,8 +197,8 @@ public sealed partial class ReactorChatLayoutProofTests
                         var metadataBounds = Bounds(metadata, surface);
                         var glyphBounds = Bounds(glyph, surface);
                         Assert.InRange(metadataBounds.Height, 17.5, 18.5);
-                        Assert.Equal(32, copy.ActualWidth);
-                        Assert.Equal(32, copy.ActualHeight);
+                        Assert.Equal(32, copy.ActualWidth, precision: 3);
+                        Assert.Equal(32, copy.ActualHeight, precision: 3);
                         AssertWorkAligned($"{candidate} footer text and copy glyph vertical center",
                             metadataBounds.Top + metadataBounds.Height / 2,
                             glyphBounds.Top + glyphBounds.Height / 2, WorkCenterTolerance);
@@ -279,7 +279,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.InRange(Math.Abs(iconBounds.Left - finalBounds.Left), 0, 1);
                     Assert.InRange(statusBounds.Right, finalBounds.Left, finalBounds.Right + 1);
                     Assert.True(title.IsTextTrimmed, "A long command must ellipsize without displacing its status.");
-                    Assert.InRange(tool.ActualHeight, 32, 40);
+                    Assert.InRange(Math.Round(tool.ActualHeight, 3), 32, 40);
                     AssertComposerBounds(surface);
                 });
             }

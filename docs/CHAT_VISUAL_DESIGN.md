@@ -300,6 +300,29 @@ second subagent split/focus owner. Compact presentation retains the hidden main
 conversation and uses the existing composer-visibility guard. The composer and question dock
 measure the remaining conversation column, not the full shell.
 
+In the Workspace window, the title bar mirrors the web Control UI's side-panel
+controls flush against the caption buttons while chat is shown, and uses tall
+caption buttons so both share one row. While the panel sits beside or over a
+wide conversation and leaves room for tabs beside the title-bar actions, the
+panel and its divider extend to the window's top edge:
+its tab strip (or launcher title) occupies the caption row, kept clear of the
+title-bar actions, and its tab list is registered as a title-bar pass-through
+region so it stays clickable while the rest of the row still drags the window.
+Expanded with the sidebar closed, the header also leaves the reopen-sidebar
+button clear. The panel stays below the title row while an operation or speech
+banner shows above chat, so the banner and its close button stay reachable. F6
+from an expanded panel restores the split and returns to the conversation.
+The **side panel
+toggle** (dock-right icon) minimizes a panel shown beside the conversation and
+keeps its tabs; selecting it again shows the panel. Opened with no tabs, the
+panel shows an **Explore panels** launcher listing Files, Subagents and the
+session Dashboard when each can open, and Escape closes it. Pills and other
+explicit opens show a minimized panel again; automatic dashboard reveals do not.
+While the panel is beside a wide conversation, **Expand** (full-screen icon)
+lets it fill the conversation area; the button then restores the split, as does
+the toggle. Expand is hidden in the compact layout, where the panel already
+fills the area. Closing the last tab or minimizing ends the expansion.
+
 Gateway-truncated tool results keep their typed truncation flag and canonical
 saved result-message/session/call identity, separately from invocation input.
 An expanded disclosure offers **Show full output** only when a read can be

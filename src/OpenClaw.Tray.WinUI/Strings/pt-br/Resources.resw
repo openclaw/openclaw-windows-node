@@ -10151,4 +10151,13 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Atualizar</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Atualizar</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Painel</value></data>
+  <data name="WorkspaceShell_SidePanelShow" xml:space="preserve"><value>Mostrar painel lateral</value></data>
+  <data name="WorkspaceShell_SidePanelMinimize" xml:space="preserve"><value>Minimizar painel lateral</value></data>
+  <data name="WorkspaceShell_SidePanelExpand" xml:space="preserve"><value>Expandir painel lateral</value></data>
+  <data name="WorkspaceShell_SidePanelRestore" xml:space="preserve"><value>Restaurar divisão</value></data>
+  <data name="Chat_Panel_Launcher" xml:space="preserve"><value>Explorar painéis</value></data>
+  <data name="Chat_Panel_LauncherFiles" xml:space="preserve"><value>Arquivos que esta sessão editou ou leu.</value></data>
+  <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Acompanhe o trabalho delegado desta conversa.</value></data>
+  <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets e guias publicados por esta sessão.</value></data>
+  <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Ainda não há painéis disponíveis para esta conversa.</value></data>
 </root>

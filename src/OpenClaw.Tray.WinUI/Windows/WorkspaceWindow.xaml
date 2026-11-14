@@ -23,11 +23,38 @@
             <TitleBar.Resources>
                 <!-- Match the pane toolbar's 40 DIP controls and 8 DIP vertical insets. -->
                 <x:Double x:Key="TitleBarExpandedHeight">56</x:Double>
+                <!-- The chat side panel's tabs start at the conversation edge; the content area spans the whole bar. -->
+                <x:Double x:Key="TitleBarLeftPaddingWidth">0</x:Double>
+                <x:Double x:Key="TitleBarLeftHeaderPaddingWidth">0</x:Double>
+                <HorizontalAlignment x:Key="TitleBarContentHorizontalAlignment">Stretch</HorizontalAlignment>
+                <VerticalAlignment x:Key="TitleBarContentVerticalAlignment">Stretch</VerticalAlignment>
+                <!-- Right actions share the caption buttons' row instead of the bar's vertical center. -->
+                <VerticalAlignment x:Key="TitleBarRightHeaderVerticalAlignment">Top</VerticalAlignment>
             </TitleBar.Resources>
+            <TitleBar.Content>
+                <!-- Tracks the side panel's tab list so it stays clickable; the rest of the bar stays draggable. -->
+                <Canvas x:Name="TitleBarPassthroughCanvas">
+                    <Border x:Name="SidePanelTabsPassthrough" TitleBar.IsDragRegion="False" Visibility="Collapsed"/>
+                </Canvas>
+            </TitleBar.Content>
             <TitleBar.RightHeader>
-                <!-- Shown only while the Chat pane is hidden, so Dashboard and the bell stay one click away. -->
-                <controls:WorkspacePaneFooter x:Name="TitleBarFooter" AutomationIdPrefix="WorkspaceTitleBar"
-                                              Visibility="Collapsed" VerticalAlignment="Center"/>
+                <StackPanel x:Name="TitleBarRightActions" Orientation="Horizontal" Spacing="4" Height="48"
+                            SizeChanged="OnTitleBarRightActionsSizeChanged">
+                    <!-- Shown only while the Chat pane is hidden, so Dashboard and the bell stay one click away. -->
+                    <controls:WorkspacePaneFooter x:Name="TitleBarFooter" AutomationIdPrefix="WorkspaceTitleBar"
+                                                  Visibility="Collapsed" VerticalAlignment="Center"/>
+                    <!-- Chat side panel controls, matching the web Control UI: Expand while open, then the toggle. -->
+                    <Button x:Name="ExpandSidePanelButton" Click="OnExpandSidePanel" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="WorkspaceExpandSidePanel" VerticalAlignment="Center"
+                            Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon x:Name="ExpandSidePanelIcon" Glyph="&#xE740;" FontSize="16"/>
+                    </Button>
+                    <Button x:Name="ToggleSidePanelButton" Click="OnToggleSidePanel" Visibility="Collapsed"
+                            AutomationProperties.AutomationId="WorkspaceToggleSidePanel" VerticalAlignment="Center"
+                            Width="40" Height="40" Padding="0" Style="{StaticResource SubtleButtonStyle}">
+                        <FontIcon Glyph="&#xE90D;" FontSize="16"/>
+                    </Button>
+                </StackPanel>
             </TitleBar.RightHeader>
         </TitleBar>
         <Grid x:Name="NavigationSection" Grid.ColumnSpan="2" SizeChanged="OnNavigationSizeChanged">
