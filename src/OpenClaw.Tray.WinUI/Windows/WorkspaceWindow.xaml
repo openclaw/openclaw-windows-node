@@ -32,10 +32,15 @@
                 <VerticalAlignment x:Key="TitleBarRightHeaderVerticalAlignment">Top</VerticalAlignment>
             </TitleBar.Resources>
             <TitleBar.Content>
-                <!-- Tracks the side panel's tab list so it stays clickable; the rest of the bar stays draggable. -->
-                <Canvas x:Name="TitleBarPassthroughCanvas">
-                    <Border x:Name="SidePanelTabsPassthrough" TitleBar.IsDragRegion="False" Visibility="Collapsed"/>
-                </Canvas>
+                <Grid>
+                    <!-- The bar has no background so clicks reach the panel tabs beneath it. This transparent,
+                         non-hit-testable fill keeps its automation bounds covering the whole bar. -->
+                    <Rectangle Fill="Transparent" IsHitTestVisible="False"/>
+                    <!-- Tracks the side panel's tab list so it stays clickable; the rest of the bar stays draggable. -->
+                    <Canvas x:Name="TitleBarPassthroughCanvas">
+                        <Border x:Name="SidePanelTabsPassthrough" TitleBar.IsDragRegion="False" Visibility="Collapsed"/>
+                    </Canvas>
+                </Grid>
             </TitleBar.Content>
             <TitleBar.RightHeader>
                 <StackPanel x:Name="TitleBarRightActions" Orientation="Horizontal" Spacing="4" Height="48"
