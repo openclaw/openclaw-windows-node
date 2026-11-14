@@ -858,6 +858,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         object? sender,
         ChatHistoryLoadResult result)
     {
+        if (result.RunLease is { } lease && result.TerminalRun is { } terminal)
+        {
+            var message = new ChatMessageInfo
+            {
+                SessionKey = result.Token.ThreadId, RunId = terminal.RunId, Role = "assistant",
+                State = terminal.State, ErrorMessage = terminal.ErrorMessage ??
+                    (terminal.State == "error" ? LocalizationHelper.GetString("Chat_Status_Error") : null),
+            };
+            if (_state.ReconcileHistoryRun(result.Token, lease, result.SessionId, message,
+                    ProjectionContext()) is { } transition)
+                PublishAssistantTransition(message, transition);
+        }
         void Deliver()
         {
             var snapshot = _state.SnapshotIfHistoryTokenCurrent(
@@ -1445,6 +1457,8 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         {
             Publish(snapshot);
         }
+        foreach (var threadId in _state.HistoryRecoveryCandidates(usage.Sessions))
+            _ = LoadHistoryAsync(threadId, force: true);
     }
 
     internal static bool ShouldPreserveLiveEntryDuringAuthoritativeReload(
@@ -1724,7 +1738,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             : null;
         if (role != "assistant" ||
             ChatMessageInfo.IsSilentAssistantDirective(role, message.Text) ||
-            (string.IsNullOrEmpty(message.Text) && assistantContent is null &&
+            (!message.IsTerminal && string.IsNullOrEmpty(message.Text) && assistantContent is null &&
                 !message.ContentParts.Any(part => part.Kind is ChatMessageContentPartKind.Tool or ChatMessageContentPartKind.Reasoning)))
         {
             message.SuppressNotification();
@@ -1733,12 +1747,21 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
         var assistantText = ChatContentFormatting.RepairContentBlockSeams(
             ChatContentFormatting.TruncateForChatEntry(message.Text));
+        if (string.Equals(message.State, "error", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(message.ErrorMessage))
+            message.ErrorMessage = LocalizationHelper.GetString("Chat_Status_Error");
         var transition = _state.ApplyAssistant(
             message,
             assistantText,
             ProjectionContext(),
             gate.RuntimeGeneration,
             assistantContent);
+        PublishAssistantTransition(message, transition);
+    }
+
+    private void PublishAssistantTransition(ChatMessageInfo message, ChatAssistantTransition transition)
+    {
+        var threadId = message.SessionKey;
         if (transition.SuppressNotification)
             message.SuppressNotification();
         if (!transition.Rendered)
@@ -1760,12 +1783,18 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             ? null
             : _telemetry.PrepareFinishByRunId(
                 transition.CompletedRunId,
-                ChatTelemetryOutcome.Success,
+                message.State?.ToLowerInvariant() switch
+                {
+                    "error" => ChatTelemetryOutcome.Failure,
+                    "aborted" => ChatTelemetryOutcome.Canceled,
+                    _ => ChatTelemetryOutcome.Success,
+                },
                 ChatTurnTelemetryReason.AssistantFinal);
         _telemetry.CompletePreparedTurn(completion);
         Publish(
             transition.Snapshot!,
-            notification: transition.TurnComplete ? new ChatProviderNotification(
+            notification: transition.TurnComplete && message.IsFinal && !transition.SuppressNotification
+                ? new ChatProviderNotification(
                 ChatProviderNotificationKind.TurnComplete,
                 threadId,
                 LocalizationHelper.GetString(

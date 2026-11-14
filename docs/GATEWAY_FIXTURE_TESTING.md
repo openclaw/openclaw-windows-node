@@ -117,6 +117,16 @@ reconnect or reconstruct the timeline to hide a duplicate.
 
 ### Assistant continuity capture
 
+`DisplayRetirementAndMessageLessTerminalsKeepNativeConversationUsable` exercises
+the real app through three consecutive conversation turns: a saved answer
+followed by an empty terminal display override, a message-less error, and a
+message-less abort. It checks native Send/Stop state, preview removal, one saved
+answer and absence of streaming rows, without using lifecycle end to mask a
+lost chat terminal. Main and dashboard conversation cases also retain public
+preamble progress; the dashboard case expands **Worked** and verifies the
+progress is visible inside it. With screenshots enabled, it captures each settled state.
+The fixture uses synthetic messages and does not contact a model provider.
+
 The opt-in UI case
 `SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
 selects an assistant and conversation through normal UI Automation. It closes

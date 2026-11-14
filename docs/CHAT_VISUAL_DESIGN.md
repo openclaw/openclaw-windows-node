@@ -438,6 +438,14 @@ retain their result rows. The disclosure key uses the terminal answer, session,
 and generation, so older-history prepends do not reset explicit expansion.
 Existing native tool controls, literal details, accents, and backplates are reused.
 
+Public `item/preamble` progress appears as commentary in this same disclosure,
+not as private reasoning or a second answer. Nonempty start/update drafts stay
+hidden until complete. Run/item identity and event sequence protect updates and
+empty-item retirement; saved commentary wins over its live copy. Clearing the
+accumulated answer preview does not erase keyed progress. This follows the
+[installed web preamble contract](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/pages/chat/tool-stream-preamble.ts)
+without changing thinking visibility preferences.
+
 Newly completed work settles with a 200-millisecond fade, and a changing live
 tool headline enters over 160 milliseconds. Reactor owns these enter-only
 animations; no transcript dimensions, scroll position or focus are animated.
@@ -511,6 +519,21 @@ retained matching run events replay through the live event path, and the
 buffered text becomes the streaming tail. Stop aborts that run. A live run,
 pending abort, reset or terminal outcome already known to this client wins, and
 the run's later live lifecycle end settles it.
+
+Terminal chat events settle their owning run even without visible content.
+An assistant's `openclawDisplayContent` overrides its original content, including
+an empty array; retirement removes only the owned unsaved preview, not saved
+answers or unrelated runs. Completed rows stop streaming while retaining the
+separate eligibility needed for a delayed final to repair the same row.
+Confirmed error/abort outcomes cannot become successful through a late final.
+A yielded parent stops executing without declaring its subagents finished.
+
+An idle session-list row is a recovery hint, not terminal authority: cached
+activity updates also publish session rows. The hint requests history through
+the existing loader. Recovery requires an explicit idle observation naming the
+captured run and session incarnation, with the connection, reset, replacement,
+and run-start fences still current. Missing identity leaves the outcome
+unresolved instead of inferring success from elapsed time.
 
 ### Conversation details panel
 
