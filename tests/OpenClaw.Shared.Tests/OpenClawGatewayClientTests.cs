@@ -2260,6 +2260,8 @@ public class OpenClawGatewayClientTests
         Assert.Equal("agent:new:main", client.MainSessionKey);
         Assert.Equal(generation, client.ServerHandshakeGeneration);
         Assert.Equal(0, authorizationCalls);
+        // The loopback server records a socket after sending 101, so ConnectAsync can return first.
+        await server.WaitForAcceptedCountAsync(delayedSend ? 2 : 1, StepTimeout);
         Assert.Equal(delayedSend ? 2 : 1, server.AcceptedCount);
         await client.CheckHealthAsync();
     }
