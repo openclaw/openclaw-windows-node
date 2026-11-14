@@ -20,6 +20,77 @@ public sealed partial class GatewayFixtureUiTests
     [InlineData(false)]
     [InlineData(true)]
     [Trait("Category", "GatewayFixture")]
+    public async Task DisplayRetirementAndMessageLessTerminalsKeepNativeConversationUsable(bool dashboard)
+    {
+        await WithAppAsync(async run =>
+        {
+            var sessionKey = dashboard ? GatewayScenario.ProgressSessionKey : GatewayScenario.MainSessionKey;
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            await SelectSessionAsync(run, dashboard ? GatewayScenario.ProgressSessionTitle : GatewayScenario.MainTitle, sessionKey);
+            var number = 0;
+            foreach (var state in new[] { "final", "error", "aborted" })
+            {
+                var runId = $"fixture-chat-{++number}";
+                await run.InvokeAsync("app.chat.send", new { threadId = sessionKey, message = $"Fixture terminal question {number}." });
+                await run.Gateway.PublishChatRunEventAsync(sessionKey, runId, "lifecycle", new { phase = "start" });
+                if (state == "final")
+                {
+                    await run.Gateway.PublishChatRunEventAsync(sessionKey, runId, "item",
+                        new { kind = "preamble", phase = "end", itemId = "progress", progressText = "Checking the digit equation." });
+                    await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Checking the digit equation."),
+                        "public progress while running");
+                }
+                var preview = $"Fixture preview {number}.";
+                await run.Gateway.PublishChatContentAsync(sessionKey, runId, [new { type = "text", text = preview }], isFinal: false);
+                await WaitUiAsync(run, () => IsVisibleInTimeline(run, preview), "live preview");
+                await WaitPrimaryActionAsync(run, "Stop");
+                if (state == "final")
+                {
+                    await run.Gateway.PublishPersistedAssistantAsync(sessionKey, runId,
+                        "saved-reply", 2, "Fixture saved answer.");
+                    await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture saved answer."),
+                        "saved answer before terminal display retirement");
+                }
+                await run.Gateway.PublishChatTerminalAsync(sessionKey, runId, state,
+                    text: state == "final" ? preview : null, displayContent: state == "final" ? [] : null);
+                await WaitPrimaryActionAsync(run, "Send");
+                var timeline = (await run.InvokeAsync("app.chat.snapshot", new { threadId = sessionKey }))
+                    .GetProperty("selectedTimeline");
+                Assert.False(timeline.GetProperty("turnActive").GetBoolean());
+                Assert.DoesNotContain(timeline.GetProperty("entries").EnumerateArray(),
+                    entry => entry.GetProperty("IsStreaming").GetBoolean());
+                if (state == "final")
+                {
+                    Assert.Single(timeline.GetProperty("entries").EnumerateArray(),
+                        entry => entry.GetProperty("Text").GetString() == "Fixture saved answer.");
+                    Assert.DoesNotContain(timeline.GetProperty("entries").EnumerateArray(),
+                        entry => entry.GetProperty("Text").GetString() == preview);
+                    await WaitUiAsync(run, () => !IsVisibleInTimeline(run, preview), "retired preview removed");
+                    if (dashboard)
+                    {
+                        AutomationElement? worked = null;
+                        await WaitUiAsync(run, () =>
+                            (worked = FindTimeline(run)?.FindAll(TreeScope.Descendants,
+                                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                                .Cast<AutomationElement>().FirstOrDefault(element =>
+                                    element.Current.Name.StartsWith("Activity: Worked", StringComparison.Ordinal))) is not null,
+                            "completed Worked disclosure");
+                        ((ExpandCollapsePattern)worked!.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+                    }
+                    await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Checking the digit equation."),
+                        "public progress retained in the completed conversation");
+                }
+                Assert.Null(FindById(run, "ChatRunProgress"));
+                await CaptureIfRequestedAsync(run, $"terminal-{state}-composer-ready.png");
+            }
+            Assert.Equal(3, run.Gateway.Requests.Count(request => request.Method == "chat.send"));
+        }, scenario: GatewayScenario.CreateChatProgress());
+    }
+
+    [GatewayFixtureUiTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("Category", "GatewayFixture")]
     public async Task CompletedRunLateSnapshotLeavesNativeComposerReadyAndQueueDraining(bool includeRunId)
     {
         await WithAppAsync(async run =>

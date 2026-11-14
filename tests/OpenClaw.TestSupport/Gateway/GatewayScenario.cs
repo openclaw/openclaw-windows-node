@@ -298,6 +298,16 @@ public sealed partial class GatewayScenario
         return new([.. browse._sessions, voice with { Messages = messages }], browse._reads);
     }
 
+    public const string ProgressSessionKey = "agent:main:dashboard:fixture-progress";
+    public const string ProgressSessionTitle = "Fixture: progress conversation";
+
+    public static GatewayScenario CreateChatProgress()
+    {
+        var browse = CreateBrowse(allowChatSend: true);
+        var progress = CreateSession(ProgressSessionKey, ProgressSessionTitle, "main", "browse", browse._sessions.Length, []);
+        return new([.. browse._sessions, progress], browse._reads, allowChatSend: true);
+    }
+
     public static GatewayScenario CreateBrowse(bool allowAgentCreation = false, bool requireAgentSelection = false,
         bool allowSessionMutations = false, bool allowChatSend = false, bool publishedModelCatalog = false)
     {

@@ -92,6 +92,7 @@ public static class ChatTimelineReducer
             ChatMessageDeltaEvent e => UpsertAssistant(BeginTurn(state), e.Text, replace: false, streaming: true, presentation: e.Presentation),
             ChatMessageEvent e => UpsertAssistant(e.ActivatesTurn ? BeginTurn(state) : state, e.Text, replace: true, streaming: e.IsStreaming, e.ReconcilePrevious, e.Presentation, e.IsContentPart, e.ReplacesStreamText),
             ChatAssistantStreamRetireEvent e => RetireAssistantStreamPreview(state, e.RunId),
+            ChatPreambleEvent e => ApplyPreamble(state, e),
             ChatBackgroundFinalEvent e => ApplyBackgroundFinal(state, e.Text),
             ChatTurnEndEvent e => ApplyTurnEnd(state, e.RetainToolCorrelations),
             ChatIntentEvent e => state with { CurrentIntent = e.Intent },
@@ -130,6 +131,40 @@ public static class ChatTimelineReducer
         && evt.OutputTokens >= 0 && evt.Sequence > usage.Sequence
             ? state with { RunUsage = usage with { OutputTokens = evt.OutputTokens, Sequence = evt.Sequence } }
             : state;
+
+    private static ChatTimelineState ApplyPreamble(ChatTimelineState state, ChatPreambleEvent evt)
+    {
+        var sequences = state.PreambleSequences ?? ImmutableDictionary<(string RunId, string ItemId), int>.Empty;
+        var key = (evt.RunId, evt.ItemId ?? "latest");
+        if (sequences.TryGetValue(key, out var previous) && evt.Sequence <= previous)
+            return state;
+        state = state with { PreambleSequences = sequences.SetItem(key, evt.Sequence) };
+        if (!evt.Complete)
+            return state;
+
+        // The web uses this display-only key for legacy events without an item ID.
+        var itemId = evt.ItemId ?? System.Text.Json.JsonSerializer.Serialize(
+            new object[] { "openclaw-ui-preamble", evt.RunId, evt.Sequence });
+        var index = state.Entries.FindIndex(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+            entry.Presentation is { IsImported: false } p && p.RunId == evt.RunId && p.StreamItemId == itemId);
+        if (index >= 0)
+        {
+            var existing = state.Entries[index];
+            if (existing.Presentation?.MessageId is not null)
+                return state;
+            return state with
+            {
+                Entries = evt.Text.Length == 0 ? state.Entries.RemoveAt(index)
+                    : state.Entries.SetItem(index, existing with { Text = evt.Text }),
+            };
+        }
+        return evt.Text.Length == 0 ? state : state with
+        {
+            Entries = state.Entries.Add(new($"e{state.NextId}", ChatTimelineItemKind.Assistant, evt.Text,
+                Presentation: new(Phase: "commentary", RunId: evt.RunId, StreamItemId: itemId, SourceRole: "assistant"))),
+            NextId = state.NextId + 1,
+        };
+    }
 
     private static ChatTimelineState ApplyReasoningStream(ChatTimelineState state, ChatReasoningStreamEvent evt)
     {
@@ -210,6 +245,7 @@ public static class ChatTimelineReducer
     // is dropped or delayed by the gateway.
     static ChatTimelineState ClearStreamingAtTurnBoundary(ChatTimelineState state)
     {
+        var preambleSequences = state.PreambleSequences;
         var terminalCorrelations = state.TerminalToolCorrelations
             ?? ImmutableDictionary<ChatToolCorrelationKey, long>.Empty;
         var hasOpenToolState =
@@ -244,9 +280,11 @@ public static class ChatTimelineReducer
         {
             Entries = entries,
             ActiveAssistantId = null,
+            ReconcilableAssistantId = null,
             ActiveReasoningId = null,
             RunUsage = null,
             ReasoningStream = null,
+            PreambleSequences = preambleSequences,
         };
     }
 
@@ -263,7 +301,7 @@ public static class ChatTimelineReducer
         var start = state.Entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User) + 1;
         var retiredIds = state.Entries.Skip(start)
             .Where(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
-                entry.Presentation is { MessageId: null } presentation && presentation.RunId == runId)
+                entry.Presentation is { MessageId: null, StreamItemId: null } presentation && presentation.RunId == runId)
             .Select(entry => entry.Id)
             .ToHashSet(StringComparer.Ordinal);
         if (retiredIds.Count == 0)
@@ -273,6 +311,8 @@ public static class ChatTimelineReducer
             Entries = state.Entries.Where(entry => !retiredIds.Contains(entry.Id)).ToImmutableList(),
             ActiveAssistantId = state.ActiveAssistantId is { } activeId && retiredIds.Contains(activeId)
                 ? null : state.ActiveAssistantId,
+            ReconcilableAssistantId = state.ReconcilableAssistantId is { } pendingId && retiredIds.Contains(pendingId)
+                ? null : state.ReconcilableAssistantId,
         };
     }
 
@@ -1320,16 +1360,20 @@ public static class ChatTimelineReducer
         // A supplied message/block identity can reconcile a cumulative snapshot in
         // place across tool rows. Run IDs alone never identify a transcript row.
         if (replace && presentation is { } incoming &&
-            (incoming.BlockId is not null || incoming.StreamItemId is not null))
+            (incoming.MessageId is not null || incoming.BlockId is not null || incoming.StreamItemId is not null))
         {
             for (var index = state.Entries.Count - 1; index >= 0; index--)
             {
                 var candidate = state.Entries[index];
                 if (candidate.Kind == ChatTimelineItemKind.User)
                     break;
+                var adoptsPreamble = candidate.Presentation is
+                    { MessageId: null, StreamItemId: not null, RunId: not null, IsImported: false } live &&
+                    !incoming.IsImported && live.RunId == incoming.RunId && live.StreamItemId == incoming.StreamItemId;
                 if (candidate.Kind == ChatTimelineItemKind.Assistant &&
                     SameAssistantSegment(candidate.Presentation, incoming, ignorePhase: true) &&
-                    candidate.Presentation?.BlockId == incoming.BlockId &&
+                    (adoptsPreamble || (incoming.MessageId is null || candidate.Presentation?.MessageId == incoming.MessageId) &&
+                        candidate.Presentation?.BlockId == incoming.BlockId) &&
                     candidate.Presentation?.StreamItemId == incoming.StreamItemId)
                 {
                     return state with
@@ -1422,40 +1466,16 @@ public static class ChatTimelineReducer
                     continue;
                 if (candidate.Kind == ChatTimelineItemKind.Assistant)
                 {
-                    // ``reconcilePrevious`` only collapses into a still-streaming
-                    // assistant entry (a delta-state chat.message preview that
-                    // hasn't been replaced by its final yet). A finalised
-                    // assistant entry (IsStreaming=false, left behind by a
-                    // prior final chat.message or ApplyTurnEnd) belongs to a
-                    // completed turn and must NOT be overwritten by a new
-                    // turn's reply — doing so silently swaps an older bubble's
-                    // text in place and the new reply appears nowhere (see
-                    // the system.run-denied repro: user → reply → tool →
-                    // tool-output → reply, where the second reply was
-                    // overwriting the first instead of appending).
-                    //
-                    // Additionally, the reconcile path must NOT cross
-                    // non-Assistant entries (tool calls, tool output, etc.):
-                    // if any such entry has been appended after the
-                    // candidate, the candidate belongs to a closed intra-turn
-                    // segment. The next chat.message in the same turn is a
-                    // NEW block (e.g. text₁ → tool → text₂ within one turn)
-                    // and must create a new bubble — otherwise text₂ silently
-                    // merges into the text₁ bubble and the two-bubble split
-                    // visible in the HTML UI disappears.
-                    //
-                    // The byte-equal duplicate safety net is ALSO gated by
-                    // !hasInterveningEntries: identical short replies
-                    // ("Done.", "OK.") across a tool entry are legitimately
-                    // distinct assistant turns and must NOT collapse back
-                    // into one bubble — that would reintroduce the symptom
-                    // this PR fixes for the exact-match case.
+                    // A late final may repair the retired frontier. Neither it nor a
+                    // byte-equal replay may merge distinct segments across tool rows.
                     var hasInterveningEntries = (li < state.Entries.Count - 1);
                     var shouldMerge = !hasInterveningEntries &&
                         (SameAssistantSegment(candidate.Presentation, presentation) ||
-                         CanRefineUnphasedStream(candidate, presentation, text)) &&
+                         CanRefineUnphasedStream(candidate, presentation, text,
+                             candidate.Id == state.ReconcilableAssistantId)) &&
                         (string.Equals(candidate.Text, text, StringComparison.Ordinal)
-                         || (reconcilePrevious && candidate.IsStreaming));
+                         || (reconcilePrevious && (candidate.IsStreaming ||
+                             candidate.Id == state.ReconcilableAssistantId)));
                     if (!shouldMerge)
                         break;
 
@@ -1565,8 +1585,9 @@ public static class ChatTimelineReducer
         (right?.TurnBoundary != true || left?.MessageId is not null && left.MessageId == right.MessageId);
 
     private static bool CanRefineUnphasedStream(
-        ChatTimelineItem entry, OpenClaw.Shared.ChatMessagePresentation? incoming, string text) =>
-        entry.IsStreaming && entry.Text.Length > 0 && text.Length > 0 &&
+        ChatTimelineItem entry, OpenClaw.Shared.ChatMessagePresentation? incoming, string text,
+        bool reconcilable = false) =>
+        (entry.IsStreaming || reconcilable) && entry.Text.Length > 0 && text.Length > 0 &&
         entry.Presentation is { Phase: null, RunId: not null } previous &&
         incoming is { Phase: not null, RunId: not null } && previous.RunId == incoming.RunId &&
         SameAssistantSegment(previous, incoming, ignorePhase: true) &&
@@ -1830,30 +1851,7 @@ public static class ChatTimelineReducer
             }
         }
 
-        // Demote assistant entries that became "closed segments" mid-turn —
-        // i.e. an assistant entry that is no longer the most recent assistant
-        // because the model continued with a tool call (and possibly more
-        // text) afterwards. Without this, the abandoned pre-tool bubble keeps
-        // IsStreaming=true after the UpsertAssistant frontier-gate fix and
-        // shows a typing indicator past the turn boundary.
-        //
-        // We deliberately leave the LAST assistant entry's IsStreaming flag
-        // alone: a turn may end with a delta-only preview that never received
-        // its final frame, and a late ChatMessageEvent(reconcile=true) is
-        // still expected to collapse into it (see the
-        // FinalAssistant_UpdatesStreamingAssistantAfterTurnEnd contract).
-        // That late-final reconcile is gated on `IsStreaming=true` in
-        // UpsertAssistant's scan-back block, so demoting the frontier would
-        // silently break it.
-        // Preserve IsStreaming ONLY on the last Assistant entry AND only
-        // when it is also the last entry overall (i.e., no Tool sits after
-        // it). The late cross-lifecycle final-reconcile contract
-        // (FinalAssistant_UpdatesStreamingAssistantAfterTurnEnd) requires
-        // the streaming flag to remain set so a delayed reconcile can
-        // collapse into it — but if there's a Tool between this Assistant
-        // and the timeline tail, the scan-back's hasInterveningEntries
-        // gate will block any merge anyway, so preserving the flag would
-        // leave a stranded typing indicator on an orphaned pre-tool bubble.
+        // A late final can repair the frontier without keeping it visibly streaming.
         var lastAssistantIdx = -1;
         for (var i = entries.Count - 1; i >= 0; i--)
         {
@@ -1863,10 +1861,12 @@ public static class ChatTimelineReducer
                 break;
             }
         }
-        var preserveIdx = (lastAssistantIdx == entries.Count - 1) ? lastAssistantIdx : -1;
+        var frontier = lastAssistantIdx >= 0 && lastAssistantIdx == entries.Count - 1
+            ? entries[lastAssistantIdx] : null;
+        var reconcilableId = frontier is not null &&
+            (frontier.IsStreaming || frontier.Id == state.ReconcilableAssistantId) ? frontier.Id : null;
         for (var i = 0; i < entries.Count; i++)
         {
-            if (i == preserveIdx) continue;
             if (entries[i].Kind is ChatTimelineItemKind.Assistant or ChatTimelineItemKind.Reasoning && entries[i].IsStreaming)
             {
                 entries = entries.SetItem(i, entries[i] with { IsStreaming = false });
@@ -1921,7 +1921,9 @@ public static class ChatTimelineReducer
             Entries = entries,
             TurnActive = false,
             ReasoningStream = null,
+            PreambleSequences = null,
             ActiveAssistantId = null,
+            ReconcilableAssistantId = reconcilableId,
             ActiveReasoningId = null,
             ActiveToolCallId = null,
             ActiveToolCalls = System.Collections.Immutable.ImmutableDictionary<ChatToolCorrelationKey, string>.Empty,

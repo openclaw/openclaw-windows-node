@@ -14,6 +14,48 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    [Theory]
+    [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"done"}""", "final")]
+    [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"timeout"}""", "error")]
+    [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"killed"}""", "aborted")]
+    [InlineData("""{"lastRunId":"r","status":"done"}""", null)]
+    [InlineData("""{"hasActiveRun":false,"status":"done"}""", null)]
+    [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"running"}""", null)]
+    [InlineData("""{"hasActiveRun":true,"lastRunId":"r","status":"done"}""", null)]
+    [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"done","sessionId":"other"}""", null)]
+    [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"done","activeRunIds":["new"]}""", null)]
+    public void HistoryTerminalObservation_RequiresExplicitUnambiguousIdle(string sessionInfo, string? expected)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var history = helper.ParseChatHistoryPayload(
+            """{"sessionId":"session","messages":[],"sessionInfo":""" + sessionInfo + "}");
+        Assert.Equal(expected, history.TerminalRun?.State);
+        Assert.Null(helper.ParseChatHistoryPayload(
+            """{"messages":[],"sessionInfo":""" + sessionInfo + "}").TerminalRun);
+    }
+
+    [Fact]
+    public void DisplayProjection_PreservesProjectedMediaAndIdentityWithoutRawTools()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        const string message = """
+            {"role":"assistant","__openclaw":{"id":"m","runId":"r"},
+             "content":[{"type":"text","text":"Retired"},{"type":"toolCall","id":"hidden","name":"read","arguments":{}}],
+             "openclawDisplayContent":[
+               {"type":"text","text":"Visible","textSignature":"{\"v\":1,\"id\":\"block\",\"phase\":\"final_answer\"}"},
+               {"type":"image","artifactId":"image-1","fileName":"fixture.png"}]}
+            """;
+        var history = helper.ParseChatHistoryPayload("""{"messages":[""" + message + "]}");
+        var row = Assert.Single(history.Messages);
+        Assert.Equal("Visible", row.Text);
+        Assert.Equal("m", row.OpenClawId);
+        Assert.Empty(row.ToolContent);
+        Assert.Contains(row.ContentParts, part => part.Kind == ChatMessageContentPartKind.Media);
+        Assert.Contains(row.ContentParts, part => part.Phase == "final_answer" && part.TextSignatureId == "block");
+    }
+
     private const string StepTimeoutVariable = "OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS";
     // Ceiling for each loopback step (receive a frame, await a response, observe an accept). The
     // client's own timeouts in these tests are far shorter, so this only absorbs CI scheduling delay
