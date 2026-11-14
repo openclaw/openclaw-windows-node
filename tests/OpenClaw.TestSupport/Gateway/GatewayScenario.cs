@@ -59,6 +59,8 @@ public sealed partial class GatewayScenario
     private int _accessibilityUsageRevision;
     private readonly bool _allowAgentCreation;
     private readonly bool _publishedModelCatalog;
+    private readonly bool _modelCatalogReadiness;
+    private readonly bool _legacyModelConfigurationFlags;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
     public bool IsInteractive { get; }
@@ -75,7 +77,7 @@ public sealed partial class GatewayScenario
 
     public FixtureBoards? Boards => _boards;
 
-    public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
+    public string Name => _modelCatalogReadiness ? "model-catalog-readiness" : _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
         : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(MarkdownSelectionSessionKey) ? "markdown-selection"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
@@ -93,7 +95,8 @@ public sealed partial class GatewayScenario
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
         bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
         UsageAnalyticsFixture? usageAnalytics = null, bool accessibilityBaseline = false,
-        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false)
+        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false,
+        bool modelCatalogReadiness = false, bool legacyModelConfigurationFlags = false)
     {
         _inboxFeed = inboxFeed;
         _accessibilityBaseline = accessibilityBaseline;
@@ -113,6 +116,8 @@ public sealed partial class GatewayScenario
         _setup = setup;
         _allowAgentCreation = allowAgentCreation;
         _publishedModelCatalog = publishedModelCatalog;
+        _modelCatalogReadiness = modelCatalogReadiness;
+        _legacyModelConfigurationFlags = legacyModelConfigurationFlags;
         _allowSessionMutations = allowSessionMutations;
         IsInteractive = interactive;
         _allowChatSend = allowChatSend;
@@ -140,7 +145,8 @@ public sealed partial class GatewayScenario
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
         {
-            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, boards = boards?.SessionKeys,
+            Name, Version, ProtocolVersion, ContractProvenance, publishedModelCatalog, modelCatalogReadiness,
+            legacyModelConfigurationFlags, boards = boards?.SessionKeys,
             sessions = sessions.Select(s => new { s.Row, s.Messages }), reads, cronJobs
         });
         if (inboxFeed is not null)
@@ -197,6 +203,13 @@ public sealed partial class GatewayScenario
     {
         var browse = CreateBrowse();
         return new(browse._sessions, browse._reads, interactive: true);
+    }
+
+    public static GatewayScenario CreateModelCatalogReadiness(bool legacyConfigurationFlags = false)
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, modelCatalogReadiness: true,
+            legacyModelConfigurationFlags: legacyConfigurationFlags);
     }
 
     /// <summary>Read-only health data that lets the real app publish an actionable channel reminder.</summary>
@@ -884,6 +897,30 @@ public sealed partial class GatewayScenario
         OptionalBoolean(p, "includeDetails");
         if (!_publishedModelCatalog && p.TryGetProperty("includeDetails", out _))
             throw new FixtureRequestException("INVALID_PARAMS", "Fixture does not advertise published-model-catalog.");
+        if (_modelCatalogReadiness && sessionKey is null)
+        {
+            // Pinned model-catalog.ts readiness fields, not real provider health.
+            var current = JsonSerializer.SerializeToNode(new
+            {
+                id = "browse", name = "Fixture Browse", provider = "fixture",
+                available = false, manualSelectionAllowed = false, unavailableReason = "cooldown",
+            })!.AsObject();
+            if (_legacyModelConfigurationFlags)
+                current["configured"] = false;
+            return new
+            {
+                models = view == "all" ? new object[]
+                {
+                    current,
+                    new
+                    {
+                        id = "offline", name = "Fixture Offline", provider = "fixture",
+                        available = false, manualSelectionAllowed = false, unavailableReason = "missing-auth",
+                        contextWindow = 32_000,
+                    },
+                } : [current],
+            };
+        }
         if (sessionKey == EdgeSessionKey)
         {
             // Configured reads retain current-model metadata without granting manual selection.
