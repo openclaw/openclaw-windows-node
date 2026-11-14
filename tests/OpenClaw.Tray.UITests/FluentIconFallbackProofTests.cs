@@ -40,9 +40,10 @@ public sealed class FluentIconFallbackProofTests
             var app = Application.Current;
             var saved = app.Resources["SymbolThemeFontFamily"];
             app.Resources["SymbolThemeFontFamily"] = "degraded-resource-value";
+            TrayMenuWindow? menu = null;
             try
             {
-                var menu = new TrayMenuWindow();
+                menu = new TrayMenuWindow();
                 menu.AddMenuItem("First row", MenuGlyph, "first");
                 menu.AddMenuItem("Second row", MenuGlyph, "second");
                 menu.AddToggleItem("Toggle row", MenuGlyph, description: "with icon", isOn: true, "toggle");
@@ -61,6 +62,10 @@ public sealed class FluentIconFallbackProofTests
                 app.Resources.Remove("SymbolThemeFontFamily");
                 if (saved is not null)
                     app.Resources["SymbolThemeFontFamily"] = saved;
+                // The test owns this native window; close it on the UI thread so
+                // successful runs and assertion failures do not leak it into the
+                // remaining suite.
+                menu?.Close();
             }
         });
     }
