@@ -725,14 +725,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         return VStack(
                 8,
                 bubble,
-                HStack(
+                WithMessageFooterFade(HStack(
                         8,
                         UserMetadata(row, entry),
-                        CopyAction(accessibleText, row.Key, row.Props.TryCopyText))
-                    .Opacity(showFooter ? 1 : 0)
-                    .OpacityTransition(new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled
-                        ? MessageFooterFadeDuration : TimeSpan.Zero)
-                    .Set(panel => panel.IsHitTestVisible = showFooter)
+                        CopyAction(accessibleText, row.Key, row.Props.TryCopyText)), showFooter)
                     .AutomationId($"ChatMessageFooter_{entry.Id}")
                     .Margin(16, 2, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
@@ -958,7 +954,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
 
         var showFooter = isHovered || isSpeaking;
-        return Grid(
+        return WithMessageFooterFade(Grid(
                 [GridSize.Auto, GridSize.Star()],
                 [GridSize.Auto],
                 Text(identity, 12, FontWeights.Normal, "ChatSecondaryTextBrush")
@@ -970,14 +966,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .ToolTip(identity)
                     .Grid(column: 0),
                 HStack(4, children.ToArray()).Margin(8, 0, 0, 0)
-                    .HAlign(HorizontalAlignment.Left).Grid(column: 1))
-            .Opacity(showFooter ? 1 : 0)
-            .OpacityTransition(new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled
-                ? MessageFooterFadeDuration : TimeSpan.Zero)
-            .Set(panel => panel.IsHitTestVisible = showFooter)
+                    .HAlign(HorizontalAlignment.Left).Grid(column: 1)), showFooter)
             .AutomationId($"ChatMessageFooter_{entry.Id}")
             .HAlign(HorizontalAlignment.Stretch);
     }
+
+    private static NativeChatMessageFooterElement WithMessageFooterFade(Element content, bool visible) =>
+        NativeChatMessageFooterElement.NativeChatMessageFooter(content: content)
+            .Opacity(visible ? 1 : 0)
+            .OpacityTransition(new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled
+                ? MessageFooterFadeDuration : TimeSpan.Zero)
+            .Set(footer => footer.IsHitTestVisible = visible);
 
     private static Element CopyAction(
         string? text,

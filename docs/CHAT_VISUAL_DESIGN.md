@@ -1178,6 +1178,8 @@ measured space while hidden, so revealing a timestamp or Copy does not move the
 next message. The whole footer fades in and out over 160 ms using a native
 opacity transition; Windows animations off makes disclosure immediate. Hidden
 footers stop accepting pointer input as soon as fade-out begins.
+`NativeChatMessageFooter` hosts the transition outside Reactor's generic
+layout-control pool, preventing retired fades from affecting recycled rows.
 Footers show sender identity and the recorded message time, not model names
 or token/context usage. User footers keep their timestamp beside Copy.
 These details do not depend on the tool-call display setting. Existing Copy
