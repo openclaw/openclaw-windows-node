@@ -17,6 +17,9 @@ public sealed class ConfigPatchResult
     /// <summary>True when the request deadline elapsed without a response.</summary>
     public bool TimedOut { get; init; }
 
+    /// <summary>True when the Gateway explicitly denied the patch before accepting it.</summary>
+    public bool IsGatewayRejection { get; init; }
+
     /// <summary>Optional safe error detail. Remote rejection text is withheld; pages use localized fallback guidance.</summary>
     public string? Error { get; init; }
 

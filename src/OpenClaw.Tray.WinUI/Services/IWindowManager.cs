@@ -42,7 +42,7 @@ internal interface IWindowManager
     /// <summary>Shows the Local AI setup flow.</summary>
     Task ShowLocalAiSetupAsync();
     Task ShowGatewayWizardAsync();
-    Task ShowDashboardLaunchFailureAsync(Action? retry);
+    Task ShowDashboardLaunchFailureAsync(Action? retry, string? localizedReason = null);
     Task ShowNativeSetupAsync(OpenClaw.SetupEngine.SetupNativeCompletion completion, CancellationToken ct);
     Task ShowNativeSetupPreparingAsync(OpenClaw.SetupEngine.GatewayAiSetupCompletion proof,
         Func<CancellationToken, Task<OpenClaw.SetupEngine.SetupVerifiedNativeRoute>> verify, CancellationToken ct);

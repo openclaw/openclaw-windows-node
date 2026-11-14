@@ -125,10 +125,14 @@ public sealed class AppNotificationServiceTests
         var launch = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         string? launchedUrl = null;
         var failures = 0;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new InteractiveGatewayCredential("http://127.0.0.1:18789", "fixture-token", false,
-                CredentialResolver.SourceSharedGatewayToken),
-            url => { launchedUrl = url; return launch.Task; }, () => failures++);
+        var launcher = new GatewayDashboardLauncher(
+            () => true,
+            path => new GatewayDashboardLinkRequest(
+                "http://127.0.0.1:18789", path, "fixture-token", AppendBrowserCredential: true),
+            new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key),
+            url => { launchedUrl = url; return launch.Task; },
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => failures++);
 
         var action = service.NavigateActionAsync("channel", (target, _) =>
             WorkspaceNavigation.DispatchAsync(target,

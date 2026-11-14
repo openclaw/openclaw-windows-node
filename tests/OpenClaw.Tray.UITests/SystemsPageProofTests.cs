@@ -372,8 +372,55 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             {
                 var details = Find<FrameworkElement>(cards[0], "SystemsDetails");
                 var bounds = Bounds(details, cards[0]);
-                Assert.True(bounds.Top >= 0 && bounds.Bottom <= cards[0].ActualHeight + .5,
-                    "Expanded contents stay inside their own bordered row.");
+                var detailsStayInsideRow = bounds.Top >= 0 && bounds.Bottom <= cards[0].ActualHeight + .5;
+                var geometryMessage = "Expanded contents stay inside their own bordered row.";
+                if (!detailsStayInsideRow)
+                {
+                    try
+                    {
+                        geometryMessage += " " +
+                            $"selectedId='{controller.State.SelectedId}', rowCount={cards.Length}, " +
+                            $"rowId='{AutomationProperties.GetAutomationId(cards[0])}', expanded={cards[0].IsExpanded}, " +
+                            $"detailsInRow={bounds}, rowSize={cards[0].ActualWidth:R}x{cards[0].ActualHeight:R}, " +
+                            $"detailsSize={details.ActualWidth:R}x{details.ActualHeight:R}, " +
+                            $"rootSize={surface.XamlRoot?.Size}, scale={surface.XamlRoot?.RasterizationScale:R}, " +
+                            $"windowSize={ui.TestWindow.AppWindow.Size}";
+                        var chrome = VisualTreeHelper.GetChild(cards[0], 0) as Grid;
+                        var clip = chrome?.Children.OfType<Border>().FirstOrDefault(element => element.Name == "ExpanderContentClip");
+                        var content = clip?.Child as Border;
+                        string Describe(FrameworkElement? element)
+                        {
+                            if (element is null) return "<missing>";
+                            var automationId = AutomationProperties.GetAutomationId(element);
+                            var transform = element.RenderTransform is CompositeTransform composite
+                                ? $"Composite(translate={composite.TranslateX:R},{composite.TranslateY:R}, " +
+                                    $"scale={composite.ScaleX:R},{composite.ScaleY:R})"
+                                : element.RenderTransform?.GetType().Name ?? "none";
+                            return $"{element.GetType().Name}(name='{element.Name}', id='{automationId}', " +
+                                $"loaded={element.IsLoaded}, visibility={element.Visibility}, " +
+                                $"actual={element.ActualWidth:R}x{element.ActualHeight:R}, desired={element.DesiredSize}, " +
+                                $"opacity={element.Opacity:R}, renderTransform={transform}, " +
+                                $"surfaceBounds={Bounds(element, surface)})";
+                        }
+                        var owners = new List<string>();
+                        for (DependencyObject? current = details; current is not null; current = VisualTreeHelper.GetParent(current))
+                        {
+                            if (current is FrameworkElement owner)
+                                owners.Add(Describe(owner));
+                            if (ReferenceEquals(current, cards[0]))
+                                break;
+                        }
+                        geometryMessage += $", surface={Describe(surface)}, row={Describe(cards[0])}, " +
+                            $"details={Describe(details)}, clip={Describe(clip)}, clipContent={Describe(content)}, " +
+                            $"templateContentVisibility={clip?.Visibility}, " +
+                            $"ownersFromDetailsToRow=[{string.Join(" <- ", owners)}]";
+                    }
+                    catch (Exception diagnosticFailure)
+                    {
+                        geometryMessage += $", diagnosticError={diagnosticFailure.GetType().Name}";
+                    }
+                }
+                Assert.True(detailsStayInsideRow, geometryMessage);
             }
             Find<Expander>(surface, "SystemsRow_node:gap-2").IsExpanded = true;
             await TestSupport.WaitForRenderedConditionAsync(() => controller.State.SelectedId == "node:gap-2",

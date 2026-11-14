@@ -83,11 +83,15 @@ public sealed class DashboardsWebHandoffTests
     public async Task Handoff_ThroughTheDashboardLauncher_OpensTheWebGalleryNotABoard(string gatewayUrl, string expected)
     {
         var launched = new List<string>();
-        var launcher = new OpenClawTray.Services.GatewayDashboardLauncher(() => true,
-            () => new OpenClaw.Connection.InteractiveGatewayCredential(gatewayUrl, "do-not-export", false,
-                OpenClaw.Connection.CredentialResolver.SourceDeviceToken),
+        var linkService = new OpenClawTray.Services.GatewayDashboardLinkService(
+            (_, _) => Task.FromResult(false), key => key);
+        var launcher = new OpenClawTray.Services.GatewayDashboardLauncher(
+            () => true,
+            path => new OpenClawTray.Services.GatewayDashboardLinkRequest(gatewayUrl, path, null, false),
+            linkService,
             url => { launched.Add(url); return Task.FromResult(true); },
-            () => throw new InvalidOperationException("Unexpected launch failure"));
+            _ => throw new InvalidOperationException("Unexpected link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
         Assert.True(await launcher.OpenAsync(DashboardsRoute.WebGalleryPath));
 
         var url = Assert.Single(launched);

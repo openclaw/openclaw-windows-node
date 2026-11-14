@@ -338,9 +338,9 @@ public sealed class NativeCompletionPresentationTests
         var app = Read(@"src\OpenClaw.Tray.WinUI\App.xaml.cs");
         var callback = app[app.IndexOf("OpenSetupDashboard: async (completion, path, ct) =>", StringComparison.Ordinal)..];
         callback = callback[..callback.IndexOf("}));", StringComparison.Ordinal)];
-        Assert.Contains("CreateDashboardLauncher(", callback);
+        Assert.Contains("CreateGatewayDashboardLauncher(", callback);
         Assert.Contains("throw new InvalidOperationException(", callback);
-        var dispatchGate = callback[callback.IndexOf("launcher.OpenAsync(path, () =>", StringComparison.Ordinal)..];
+        var dispatchGate = callback[callback.IndexOf("launcher.OpenAsync(path, authorizeDispatch: ()", StringComparison.Ordinal)..];
         Assert.True(dispatchGate.IndexOf("ct.ThrowIfCancellationRequested();", StringComparison.Ordinal) <
             dispatchGate.IndexOf("RequireSetupDashboardAuthority(completion);", StringComparison.Ordinal));
         Assert.Contains("IsSetupDashboardCredentialAllowed(setupCompletion, record)", app);

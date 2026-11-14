@@ -528,11 +528,47 @@ public sealed class GatewayRegistry
             return false;
         }
 
+        if (AreEquivalentRootUrls(normalizedLeft, leftUri, normalizedRight, rightUri))
+            return true;
+
         return string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
             leftUri.Port == rightUri.Port &&
             IsLoopbackHost(leftUri.Host) &&
             IsLoopbackHost(rightUri.Host) &&
             string.Equals(leftUri.PathAndQuery, rightUri.PathAndQuery, StringComparison.Ordinal);
+    }
+
+    private static bool AreEquivalentRootUrls(string leftUrl, Uri leftUri, string rightUrl, Uri rightUri) =>
+        string.Equals(leftUri.Scheme, rightUri.Scheme, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(leftUri.Host, rightUri.Host, StringComparison.OrdinalIgnoreCase) &&
+        leftUri.Port == rightUri.Port &&
+        string.Equals(leftUri.AbsolutePath, "/", StringComparison.Ordinal) &&
+        string.Equals(rightUri.AbsolutePath, "/", StringComparison.Ordinal) &&
+        HasRootPathSpelling(leftUrl) &&
+        HasRootPathSpelling(rightUrl) &&
+        string.Equals(GetQueryAndFragment(leftUrl), GetQueryAndFragment(rightUrl), StringComparison.Ordinal);
+
+    private static bool HasRootPathSpelling(string url)
+    {
+        var schemeSeparator = url.IndexOf("://", StringComparison.Ordinal);
+        if (schemeSeparator < 0)
+            return false;
+
+        var authorityStart = schemeSeparator + 3;
+        var pathOrSuffixStart = url.IndexOfAny(['/', '?', '#'], authorityStart);
+        if (pathOrSuffixStart < 0 || url[pathOrSuffixStart] != '/')
+            return true;
+
+        var suffixStart = url.IndexOfAny(['?', '#'], pathOrSuffixStart);
+        var pathEnd = suffixStart < 0 ? url.Length : suffixStart;
+        return pathEnd == pathOrSuffixStart + 1;
+    }
+
+    private static string GetQueryAndFragment(string url)
+    {
+        var authorityStart = url.IndexOf("://", StringComparison.Ordinal) + 3;
+        var suffixStart = url.IndexOfAny(['?', '#'], authorityStart);
+        return suffixStart < 0 ? string.Empty : url[suffixStart..];
     }
 
     private static bool IsLoopbackHost(string host) =>

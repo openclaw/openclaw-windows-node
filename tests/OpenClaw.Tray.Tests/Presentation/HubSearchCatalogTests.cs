@@ -173,10 +173,13 @@ public sealed class HubSearchCatalogTests
     {
         string? launched = null;
         var launcher = new GatewayDashboardLauncher(() => true,
-            () => new("wss://gateway.example/control/", "shared secret", false,
-                CredentialResolver.SourceSharedGatewayToken),
+            path => new("wss://gateway.example/control/", path, "shared secret", true),
+            new GatewayDashboardLinkService(
+                (_, _) => throw new InvalidOperationException("Unexpected Tailscale revalidation"),
+                key => key),
             url => { launched = url; return Task.FromResult(true); },
-            () => throw new InvalidOperationException("Unexpected failure"));
+            _ => throw new InvalidOperationException("Unexpected link failure"),
+            _ => throw new InvalidOperationException("Unexpected launch failure"));
         var path = HubSearchCatalog.ContextualDashboardPath(
             new(WorkspacePageId.Home, sessionKey), "agent:main:main");
 

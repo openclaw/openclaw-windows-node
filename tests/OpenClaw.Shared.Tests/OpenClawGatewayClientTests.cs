@@ -684,7 +684,11 @@ public class OpenClawGatewayClientTests
         if (unavailable)
             await Assert.ThrowsAsync<GatewayQuestionUnavailableException>(() => getting.WaitAsync(StepTimeout));
         else
-            await Assert.ThrowsAsync<InvalidOperationException>(() => getting.WaitAsync(StepTimeout));
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => getting.WaitAsync(StepTimeout));
+            Assert.Equal("QUESTION_NOT_FOUND", error.Message);
+            Assert.Equal("UNKNOWN", GatewayRequestErrors.Code(error));
+        }
     }
 
     [Theory]
@@ -717,8 +721,14 @@ public class OpenClawGatewayClientTests
         }));
         var error = await Record.ExceptionAsync(() => sending.WaitAsync(StepTimeout));
         Assert.IsType(expectedType, error);
-        if (expectedType != typeof(InvalidOperationException))
-            Assert.DoesNotContain("private answer", error.Message);
+        if (GatewayRequestErrors.TryGetCodes(error!, out var code, out var detailCode))
+        {
+            Assert.Equal("INVALID_REQUEST", code);
+            Assert.Null(detailCode);
+            Assert.Equal("private answer: QUESTION_ALREADY_TERMINAL QUESTION_INVALID_ANSWER", error!.Message);
+        }
+        else
+            Assert.DoesNotContain("private answer", error!.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
@@ -1407,6 +1417,14 @@ public class OpenClawGatewayClientTests
             return GetPendingRegistry().Count;
         }
 
+        public SemaphoreSlim GetSendLockForTest()
+        {
+            var field = typeof(WebSocketClientBase).GetField(
+                "_sendLock",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            return (SemaphoreSlim)field!.GetValue(_client)!;
+        }
+
         private PendingRequestRegistry GetPendingRegistry()
         {
             var field = typeof(OpenClawGatewayClient).GetField(
@@ -1615,7 +1633,7 @@ public class OpenClawGatewayClientTests
             error = new { message = "permission denied" },
             payload = new { ok = false, reason = "permission denied" }
         }));
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => task);
+        var error = await Assert.ThrowsAnyAsync<InvalidOperationException>(() => task);
         Assert.Equal("permission denied", error.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
@@ -1663,6 +1681,15 @@ public class OpenClawGatewayClientTests
         };
         await Assert.ThrowsAsync<InvalidOperationException>(() => send);
         Assert.Equal(0, helper.GetPendingRequestCount());
+        var probe = client.SendWizardRequestAsync("epoch.probe");
+        var probeFrame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        using (var json = JsonDocument.Parse(probeFrame))
+            Assert.Equal("epoch.probe", json.RootElement.GetProperty("method").GetString());
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res", id = ReadRequestId(probeFrame), ok = true, payload = new { ok = true }
+        }));
+        Assert.True((await probe).GetProperty("ok").GetBoolean());
     }
 
     [Fact]
@@ -1750,6 +1777,51 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public async Task SearchSessions_CallerCancellationWhileQueuedDoesNotWriteAfterUnlock()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("search-request-cancel-send-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var sendLock = helper.GetSendLockForTest();
+        await sendLock.WaitAsync();
+        var lockHeld = true;
+        try
+        {
+            using var cancellation = new CancellationTokenSource();
+            var search = client.SearchSessionsAsync("private-query", messages: true, cancellation.Token);
+            Assert.Equal(1, helper.GetPendingRequestCount());
+
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => search.WaitAsync(StepTimeout));
+            Assert.Equal(0, helper.GetPendingRequestCount());
+
+            sendLock.Release();
+            lockHeld = false;
+
+            var probe = client.SendWizardRequestAsync("health");
+            var probeFrame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+            using (var json = JsonDocument.Parse(probeFrame))
+                Assert.Equal("health", json.RootElement.GetProperty("method").GetString());
+            await server.SendTextAsync(JsonSerializer.Serialize(new
+            {
+                type = "res", id = ReadRequestId(probeFrame), ok = true, payload = new { ok = true }
+            }));
+            Assert.True((await probe).GetProperty("ok").GetBoolean());
+            Assert.True(helper.IsTransportConnectedForTest());
+        }
+        finally
+        {
+            if (lockHeld)
+                sendLock.Release();
+        }
+    }
+
+    [Fact]
     public async Task SendWizardRequestAsync_GatewayError_PropagatesUnchangedAndCleansTracking()
     {
         using var server = new LoopbackWebSocketServer();
@@ -1827,6 +1899,94 @@ public class OpenClawGatewayClientTests
     [Fact]
     public void LocalRefusalCarriesNoGatewayCodes() =>
         Assert.False(GatewayRequestErrors.TryGetCodes(new InvalidOperationException("hello-ok pending"), out _, out _));
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_ClassifiesGatewayRejectionAsAuthoritative()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-rejection-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        var requestId = ReadRequestId(request);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestId,
+            ok = false,
+            error = new { code = "INVALID_REQUEST", message = "patch rejected" },
+        }));
+
+        var result = await responseTask.WaitAsync(StepTimeout);
+
+        Assert.False(result.Ok);
+        Assert.True(result.IsGatewayRejection);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_DoesNotClassifyUnavailableAsAuthoritative()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-unavailable-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 10_000);
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        var requestId = ReadRequestId(request);
+        await server.SendTextAsync(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = requestId,
+            ok = false,
+            error = new { code = "UNAVAILABLE", message = "runtime activation failed" },
+        }));
+
+        var result = await responseTask.WaitAsync(StepTimeout);
+
+        Assert.False(result.Ok);
+        Assert.False(result.IsGatewayRejection);
+        Assert.Null(result.Error);
+    }
+
+    [Fact]
+    public async Task PatchConfigDetailedAsync_DoesNotClassifyTimeoutAsGatewayRejection()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("config-patch-timeout-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var config = JsonDocument.Parse("{}");
+
+        var responseTask = client.PatchConfigDetailedAsync(config.RootElement, "base-hash", 250);
+        await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        var result = await responseTask.WaitAsync(StepTimeout);
+
+        Assert.False(result.Ok);
+        Assert.False(result.IsGatewayRejection);
+        Assert.True(result.TimedOut);
+        Assert.Null(result.Error);
+    }
 
     [Fact]
     public async Task PatchConfigDetailedAsync_RejectedSave_DoesNotDiscloseTransformedOrPartialEchoes()
@@ -2050,6 +2210,52 @@ public class OpenClawGatewayClientTests
 
         Assert.Equal("Timed out waiting for wizard.status response", exception.Message);
         Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task SendWizardRequestAsync_DeadlineExpiresWhileQueuedForSend_DoesNotWriteAfterUnlock()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("wizard-request-send-timeout-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var sendLock = helper.GetSendLockForTest();
+        await sendLock.WaitAsync();
+        var lockHeld = true;
+        try
+        {
+            var request = client.SendWizardRequestAsync("wizard.status", timeoutMs: 150);
+            Assert.Equal(1, helper.GetPendingRequestCount());
+
+            var exception = await Assert.ThrowsAsync<TimeoutException>(async () =>
+                await request.WaitAsync(StepTimeout));
+
+            Assert.Equal("Timed out sending wizard.status request", exception.Message);
+            Assert.Equal(0, helper.GetPendingRequestCount());
+            sendLock.Release();
+            lockHeld = false;
+
+            var probe = client.SendWizardRequestAsync("wizard.after-timeout");
+            var probeFrame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+            using (var json = JsonDocument.Parse(probeFrame))
+                Assert.Equal("wizard.after-timeout", json.RootElement.GetProperty("method").GetString());
+            await server.SendTextAsync(JsonSerializer.Serialize(new
+            {
+                type = "res", id = ReadRequestId(probeFrame), ok = true, payload = new { ok = true }
+            }));
+            Assert.True((await probe).GetProperty("ok").GetBoolean());
+        }
+        finally
+        {
+            if (lockHeld)
+                sendLock.Release();
+        }
     }
 
     [Fact]
