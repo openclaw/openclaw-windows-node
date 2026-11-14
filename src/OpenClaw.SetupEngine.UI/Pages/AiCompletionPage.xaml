@@ -17,17 +17,22 @@
                        Text="Applying your choices, restarting OpenClaw, and checking your AI. This may take a few minutes."
                        Style="{StaticResource SetupHeroSubtitleTextStyle}" />
         </StackPanel>
-        <StackPanel Grid.Row="1" Margin="0,24,48,16" Spacing="16">
-            <ProgressBar x:Name="Progress" IsIndeterminate="True" HorizontalAlignment="Stretch" />
-            <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" />
-        </StackPanel>
-        <controls:SetupFooterPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
+        <ScrollViewer Grid.Row="1" Margin="0,24,48,16" HorizontalContentAlignment="Stretch">
+            <StackPanel Spacing="16">
+                <ProgressBar x:Name="Progress" IsIndeterminate="True" HorizontalAlignment="Stretch" />
+                <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error" />
+                <Button x:Name="CollectLogsButton" x:Uid="Onboarding_Finishing_CollectLogs" Content="Collect logs"
+                        Visibility="Collapsed" HorizontalAlignment="Left"
+                        Click="CollectLogs_Click" Style="{StaticResource SetupSecondaryButtonStyle}" />
+                <TextBlock x:Name="DiagnosticsStatus" Style="{StaticResource SetupFootnoteTextStyle}"
+                           Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
+            </StackPanel>
+        </ScrollViewer>
+        <controls:SetupFooterPanel x:Name="RecoveryActions" Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
             <Button x:Name="BackButton" x:Uid="Onboarding_V2_Back" Content="Back"
                     Visibility="Collapsed" Click="Back_Click" Style="{StaticResource SetupSecondaryButtonStyle}" />
             <Button x:Name="RetryButton" x:Uid="Onboarding_Ready_Return" Content="Check readiness again"
                     Visibility="Collapsed" Click="Retry_Click" Style="{StaticResource SetupPrimaryButtonStyle}" />
-            <Button x:Name="CloseButton" Content="Close"
-                    Visibility="Collapsed" Click="Close_Click" Style="{StaticResource SetupSecondaryButtonStyle}" />
         </controls:SetupFooterPanel>
     </Grid>
 </Page>

@@ -10152,6 +10152,8 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_Back" xml:space="preserve"><value>Back to conversation</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>Show panel</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Conversation panels</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Collect logs</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>Logs could not be collected ({0}). Try again.</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Refresh</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Refresh</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>

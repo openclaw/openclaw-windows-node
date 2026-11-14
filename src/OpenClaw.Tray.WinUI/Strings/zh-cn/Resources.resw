@@ -10081,6 +10081,8 @@
   <data name="Chat_Panel_Back" xml:space="preserve"><value>返回对话</value></data>
   <data name="Chat_Panel_Show" xml:space="preserve"><value>显示面板</value></data>
   <data name="Chat_Panel_Tabs" xml:space="preserve"><value>对话面板</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>收集日志</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>无法收集日志（{0}）。请重试。</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>刷新</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>刷新</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>仪表板</value></data>
