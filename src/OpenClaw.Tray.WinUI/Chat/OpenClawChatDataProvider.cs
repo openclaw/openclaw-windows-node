@@ -254,7 +254,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         cancellationToken.ThrowIfCancellationRequested();
         Questions?.Start();
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
-        return Task.FromResult(_state.Load(sessions, ProjectionContext()));
+        return Task.FromResult(WithApprovalDecisionState(_state.Load(sessions, ProjectionContext())));
     }
 
     internal void RememberSelectedThread(string? threadId)
@@ -1042,6 +1042,13 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         QueueFencedDelivery(Deliver);
     }
 
+    internal Func<string, bool>? IsApprovalDecisionUncertain { get; set; }
+
+    internal void RefreshApprovalDecisionState() => Publish(_state.Snapshot(ProjectionContext()));
+
+    private bool IsUncertainApproval(string id) => IsApprovalDecisionUncertain is { } check &&
+        (check(id) || _state.AlternateApprovalId(id) is { } alternate && check(alternate));
+
     public Task SetPermissionModeAsync(string threadId, bool allowAll, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -1062,6 +1069,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             return;
 
         var decision = NormalizeApprovalAction(action);
+        if (IsUncertainApproval(requestId))
+        {
+            RefreshApprovalDecisionState();
+            return;
+        }
         if (!_state.CanRespondToPermission(threadId, requestId, decision))
         {
             Logger.Warn("[Approval] response blocked: no matching pending approval permits this decision");
@@ -1080,15 +1092,19 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
 
         try
         {
-            await _bridge.ResolveExecApprovalAsync(requestId, decision);
+            await _bridge.ResolveExecApprovalAsync(requestId, _state.AlternateApprovalId(requestId), decision);
+        }
+        catch (ApprovalDecisionRefusedException ex) when (ex.Outcome == ApprovalDecisionOutcome.Uncertain)
+        {
+            RefreshApprovalDecisionState();
+            return;
         }
         catch (Exception ex)
         {
-            // Send failed: leave the Allow/Deny banner up so the user can
-            // retry. Clearing it on failure would silently swallow the
-            // problem and leave the agent waiting on an approval that the
-            // user has no way to re-issue.
-            Logger.Warn($"[Approval] response send failed requestId={requestId}: {ex.Message} (banner preserved for retry)");
+            // The shared owner maps post-admission uncertainty to the branch above.
+            // A pre-admission failure leaves the banner available for an explicit retry.
+            // Clearing it would hide an approval the user still needs to decide.
+            Logger.Warn($"[Approval] response send failed decision={decision}: {ex.GetType().Name} (banner preserved for retry)");
             return;
         }
 
@@ -2421,9 +2437,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         failure?.Throw();
     }
 
+    private ChatDataSnapshot WithApprovalDecisionState(ChatDataSnapshot snapshot) =>
+        IsApprovalDecisionUncertain is null ? snapshot
+            : ChatSnapshotProjector.WithUncertainApprovals(snapshot, IsUncertainApproval,
+                LocalizationHelper.GetString("Inbox_ApprovalDecisionUncertain"));
+
     private ExceptionDispatchInfo? InvokeChangedSubscribers(
         ChatDataSnapshot snapshot)
     {
+        // Apply after authoritative coalescing and for direct catalog deliveries too.
+        snapshot = WithApprovalDecisionState(snapshot);
         var handlers = Changed;
         if (handlers is null)
             return null;

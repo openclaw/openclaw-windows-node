@@ -904,6 +904,14 @@ if ($null -ne (ConvertTo-CiTestHostCrashMetadata `
 }
 
 $fixtureJob = Get-JobBlock "gateway-fixture"
+foreach ($lane in @("ui-tests", "gateway-fixture", "gateway-fixture-shard")) {
+    $restoreStep = Get-StepBlock -Text (Get-JobBlock $lane) -Name "Restore UI test projects"
+    $initializeIndex = $restoreStep.IndexOf('./scripts/Initialize-ReactorPackages.ps1', [StringComparison]::Ordinal)
+    $restoreIndex = $restoreStep.IndexOf('dotnet restore', [StringComparison]::Ordinal)
+    if ($initializeIndex -lt 0 -or $restoreIndex -le $initializeIndex) {
+        throw "UI lane '$lane' must initialize the verified Reactor feed before restoring packages."
+    }
+}
 $fixtureShardJob = Get-JobBlock "gateway-fixture-shard"
 $fixtureJobs = @(
     @{ Name = 'gateway-fixture'; Job = $fixtureJob; Shard = 'A'; Archive = 'test-results-gateway-fixture' },

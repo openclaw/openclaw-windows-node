@@ -61,6 +61,7 @@ public sealed partial class GatewayScenario
     private readonly bool _publishedModelCatalog;
     private readonly bool _allowSessionMutations;
     private readonly bool _allowChatSend;
+    private readonly bool _allowApprovals;
     public bool IsInteractive { get; }
     private readonly ContextUsageFixture? _contextUsage;
     private readonly FixtureBoards? _boards;
@@ -76,7 +77,7 @@ public sealed partial class GatewayScenario
     public FixtureBoards? Boards => _boards;
 
     public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
-        : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+        : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _allowApprovals ? "approval-review" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(MarkdownSelectionSessionKey) ? "markdown-selection"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
@@ -92,10 +93,11 @@ public sealed partial class GatewayScenario
         Func<string, JsonElement, object>? setup = null, bool advertiseSetup = true, bool allowAgentCreation = false,
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
         bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
-        UsageAnalyticsFixture? usageAnalytics = null, bool accessibilityBaseline = false,
+        UsageAnalyticsFixture? usageAnalytics = null, bool accessibilityBaseline = false, bool allowApprovals = false,
         FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false)
     {
         _inboxFeed = inboxFeed;
+        _allowApprovals = allowApprovals;
         _accessibilityBaseline = accessibilityBaseline;
         _hubMethods = hubMethods;
         _hubReadOnly = hubReadOnly;
@@ -133,6 +135,7 @@ public sealed partial class GatewayScenario
             .Concat(inboxFeed is null ? [] : ["exec.approval.list", "models.authStatus"])
             .Concat(inboxFeed is not null && allowChatSend ? ["chat.send"] : [])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
+            .Concat(allowApprovals ? ["exec.approval.resolve", "plugin.approval.resolve"] : [])
             .Concat(hubMethods ?? [])
             .Concat(boards is null ? [] : FixtureBoards.Methods)
             .Concat(systems is null ? [] : SystemsFixture.Methods)
@@ -162,6 +165,13 @@ public sealed partial class GatewayScenario
         "accessibility-baseline" => CreateAccessibilityBaseline(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
+
+    /// <summary>Browse data with an explicit approval grant, without unrelated mutation permissions.</summary>
+    public static GatewayScenario CreateApprovalReview()
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, allowApprovals: true);
+    }
 
     /// <summary>Synthetic session dashboards: gallery rows, boards, widget documents, and a sandbox proxy.</summary>
     public static GatewayScenario CreateDashboards()
@@ -500,6 +510,7 @@ public sealed partial class GatewayScenario
                     ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "cron", "exec.approval.requested" }
                     : IsInteractive
                     ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
+                    : _allowApprovals ? new[] { "connect.challenge", "sessions.changed", "agent", "exec.approval.requested", "exec.approval.resolved", "plugin.approval.requested" }
                     : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
                     : _systems is not null ? new[] { "connect.challenge", "sessions.changed", "agent" }.Concat(SystemsFixture.Events).ToArray()
                     : new[] { "connect.challenge", "sessions.changed", "agent" },
@@ -522,6 +533,7 @@ public sealed partial class GatewayScenario
                             : new[] { "operator.read", "operator.approvals" })
                     : IsInteractive
                         ? new[] { "operator.read", "operator.write", "operator.sessions.read", "operator.sessions.write", "operator.questions", "operator.approvals" }
+                        : _allowApprovals ? new[] { "operator.read", "operator.approvals" }
                         : _hubMethods is not null ? (_hubReadOnly ? new[] { "operator.read" } : new[] { "operator.admin", "operator.write", "operator.read" })
                         : _contextUsage is not null || _accessibilityBaseline ? new[] { "operator.read", "operator.write" }
                         : _systems is not null ? new[] { "operator.admin", "operator.read", "operator.pairing" }
@@ -608,6 +620,13 @@ public sealed partial class GatewayScenario
             return AgentIdentity(parameters);
         if (method == "exec.approval.resolve")
             return ResolveApproval(parameters);
+        if (_allowApprovals && method == "plugin.approval.resolve")
+        {
+            // The narrow Inbox fixture publishes only these two plugin decisions.
+            if (RequiredString(parameters, "decision") is not ("allow-once" or "deny"))
+                throw new FixtureRequestException("INVALID_PARAMS", "Unsupported plugin approval decision.");
+            return ResolveApproval(parameters);
+        }
         if (_systems is not null && _systems.Handles(method))
             return _systems.Respond(method, parameters);
         if (_allowSessionMutations && method == "sessions.create")
@@ -954,7 +973,7 @@ public sealed partial class GatewayScenario
     private static bool IsWrite(string method) => method is
         "chat.send" or "chat.abort" or "chat.inject" or "config.set" or "config.patch" or "config.apply"
         or "sessions.patch" or "sessions.reset" or "sessions.delete" or "sessions.compact" or "sessions.create"
-        or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "node.rename"
+        or "sessions.compaction.branch" or "node.invoke" or "exec.approval.resolve" or "plugin.approval.resolve" or "node.rename"
         or "node.pair.approve" or "node.pair.reject" or "node.pair.remove" or "device.pair.approve"
         or "device.pair.reject" or "device.token.rotate" or "device.token.revoke" or "update.run"
         or "cron.add" or "cron.update" or "cron.remove" or "cron.run"
