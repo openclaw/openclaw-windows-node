@@ -75,6 +75,7 @@ public sealed class GatewayTailscaleAuthLiveVerifierTests
         var runner = new FakeWslCommandRunner(async (_, command, cancellationToken) =>
         {
             if (command.SequenceEqual(["/usr/bin/tailscale", "status", "--json"]))
+                // test-timing-exception: Deliberate probe latency crosses the former deadline; this is not a readiness wait.
                 await Task.Delay(TimeSpan.FromSeconds(5.1), cancellationToken);
             return command.Contains("serve", StringComparer.Ordinal)
                 ? ForegroundServeStatus(proxyPort: 35225)
