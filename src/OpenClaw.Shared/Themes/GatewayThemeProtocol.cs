@@ -4,14 +4,20 @@ using System.Text.RegularExpressions;
 
 namespace OpenClaw.Shared.Themes;
 
-/// <summary>One catalog entry from <c>themes.list</c> (<c>ThemeDescriptor</c>). Branding fields are not read.</summary>
+/// <summary>
+/// One catalog entry from <c>themes.list</c> (<c>ThemeDescriptor</c>). Of the branding fields only the mascot,
+/// brand icon and working indicator are read, into <see cref="Branding"/>; artwork URLs are not.
+/// </summary>
 public sealed record GatewayThemeDescriptor(
     string Id,
     string Name,
     string Description,
     GatewayThemeSource Source,
     ImmutableArray<ThemeColorMode> Modes,
-    string? PluginId);
+    string? PluginId)
+{
+    public ThemeBranding Branding { get; init; } = ThemeBranding.Default;
+}
 
 /// <summary>The portable palette of one mode: 19 CSS colors plus optional font-family lists.</summary>
 public sealed record GatewayThemeTokens(
@@ -77,6 +83,8 @@ public static class GatewayThemeProtocol
     private static readonly Regex s_themeId = new(
         "^(?:[a-z0-9][a-z0-9_-]{0,63}|@?[a-z0-9][a-z0-9._-]*(?:/[a-z0-9][a-z0-9._-]*)*/[a-z0-9][a-z0-9_-]{0,63})$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex s_artworkId = new("^[a-z0-9][a-z0-9_-]{0,31}$", RegexOptions.CultureInvariant);
 
     public static bool IsThemeId(string? id) =>
         id is { Length: > 0 and <= MaxIdLength } && s_themeId.IsMatch(id);
@@ -161,9 +169,19 @@ public static class GatewayThemeProtocol
         TryString(entry, "description", MaxDescriptionLength, out var description);
         TryString(entry, "pluginId", MaxIdLength, out var pluginId);
         descriptor = new GatewayThemeDescriptor(
-            id, name, description, source.Value, modes.ToImmutable(), pluginId.Length == 0 ? null : pluginId);
+            id, name, description, source.Value, modes.ToImmutable(), pluginId.Length == 0 ? null : pluginId)
+        {
+            Branding = ThemeBranding.Resolve(
+                OptionalText(entry, "mascot"), OptionalText(entry, "brandIcon"), OptionalText(entry, "workingIndicator")),
+        };
         return true;
     }
+
+    /// <summary>A brand icon or artwork id (upstream <c>THEME_ARTWORK_ID_PATTERN</c>); <c>claw</c> and <c>mark</c> also match.</summary>
+    public static bool IsArtworkId(string? id) => id is { Length: > 0 } && s_artworkId.IsMatch(id);
+
+    private static string? OptionalText(JsonElement entry, string name) =>
+        entry.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     public static bool TryParseDefinition(JsonElement raw, out GatewayThemeDefinition definition, out string error)
     {

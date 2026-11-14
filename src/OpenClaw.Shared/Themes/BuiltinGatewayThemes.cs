@@ -16,7 +16,10 @@ public static partial class BuiltinGatewayThemes
     private static readonly Lazy<ImmutableArray<ResolvedTheme>> s_themes = new(() =>
         [.. Data.Select(theme => new ResolvedTheme(
             theme.Id, theme.Name, theme.Description, GatewayThemeSource.Builtin,
-                ToPalette(theme.Light), ToPalette(theme.Dark)))]);
+                ToPalette(theme.Light), ToPalette(theme.Dark))
+            {
+                Branding = ThemeBranding.Resolve(theme.Mascot, theme.BrandIcon, theme.WorkingIndicator),
+            })]);
 
     /// <summary>The built-in themes in upstream catalog order.</summary>
     public static ImmutableArray<ResolvedTheme> All => s_themes.Value;
@@ -60,10 +63,14 @@ public static partial class BuiltinGatewayThemes
         MonoFont = ThemeFontStack.Parse(palette.Mono),
     };
 
+    // Branding is resolved by the generator with upstream's resolveThemeBranding defaults.
     private sealed record BuiltinTheme(
         string Id,
         string Name,
         string Description,
+        string Mascot,
+        string BrandIcon,
+        string WorkingIndicator,
         BuiltinPalette Light,
         BuiltinPalette Dark);
 

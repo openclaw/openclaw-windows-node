@@ -75,6 +75,7 @@ internal sealed class AppThemeApplicator
         if (theme is null)
         {
             ChatVisuals.SetThemeFonts(null, null);
+            ThemeBrandingState.Set(ThemeBranding.Default);
             Logger.Info("[Themes] Restored the Windows default look.");
             return true;
         }
@@ -158,6 +159,9 @@ internal sealed class AppThemeApplicator
         Guard("ContentControlThemeFontFamily", () =>
             Override(resources, "ContentControlThemeFontFamily", new FontFamily(fonts.Body)));
         ChatVisuals.SetThemeFonts(fonts.Chat, fonts.Mono);
+        // Brand spots and the working indicator follow the theme's branding once its colors are in place;
+        // High Contrast only changes colors.
+        ThemeBrandingState.Set(theme.Branding);
         Logger.Info($"[Themes] Applied theme {theme.Id}: {shared} shared brushes recolored, {rootOverrides} root overrides, " +
             $"{accentFollowers} accent visuals, {_readOnlyBrushes} read-only brushes, {failures} failures.");
         return true;

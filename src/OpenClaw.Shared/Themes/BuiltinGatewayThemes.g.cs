@@ -14,6 +14,7 @@ public static partial class BuiltinGatewayThemes
     [
         new("claw", "Claw",
             "Signature coral red and teal on charcoal or pale surfaces, with Instrument Sans throughout. A balanced everyday workspace.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#f4f4f4",
                 Content: "#f8f8f8",
@@ -72,6 +73,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("knot", "Knot",
             "Crimson accents on true black or clean white, with Geist typography. Sharp, minimal, and high contrast.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#f0f0f3",
                 Content: "#f4f4f7",
@@ -130,6 +132,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("dash", "Dash",
             "Toasted caramel on deep cocoa or warm cream, with DM Sans controls and Fraunces serif chat. Warm and bookish.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#e8e2dc",
                 Content: "#ebe5e0",
@@ -188,6 +191,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("absolutely", "Absolutely",
             "Terracotta clay on warm graphite or soft cream, with Space Grotesk controls and Lora serif chat. Quiet editorial character.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#f3f2f1",
                 Content: "#f7f6f5",
@@ -246,6 +250,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("tide", "Tide",
             "Steel cyan on cool slate or pale blue-gray, with IBM Plex Sans throughout. Calm, technical, and understated.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#edeff1",
                 Content: "#f1f3f5",
@@ -304,6 +309,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("beacon", "Beacon",
             "High-visibility amber on black or white, bold focus rings, and Atkinson Hyperlegible typography. Designed for maximum readability.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#f3f3f3",
                 Content: "#f8f8f8",
@@ -362,6 +368,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("phosphor", "Phosphor",
             "Luminous green on green-tinted black or pale green, with JetBrains Mono throughout. A classic green terminal atmosphere.",
+            Mascot: "none", BrandIcon: "mark", WorkingIndicator: "dots",
             Light: new(
                 Canvas: "#edf0ed",
                 Content: "#f1f4f1",
@@ -420,6 +427,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("crt", "CRT",
             "White phosphor and amber on tube black, with a light counterpart, JetBrains Mono, and nearly square corners. A retro computer console.",
+            Mascot: "none", BrandIcon: "mark", WorkingIndicator: "dots",
             Light: new(
                 Canvas: "#f0f0f0",
                 Content: "#f4f4f4",
@@ -478,6 +486,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("manuscript", "Manuscript",
             "Lapis blue and gold on aged paper, with a dark reading-room variant and Lora serif throughout. A quiet illuminated manuscript.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#edece6",
                 Content: "#f1f0ea",
@@ -536,6 +545,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("rose", "Rosé",
             "Dried rose and gold on deep plum-gray or soft rose-tinted cream, with DM Sans. Gentle, muted, and warm.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#edeae7",
                 Content: "#f1eeea",
@@ -594,6 +604,7 @@ public static partial class BuiltinGatewayThemes
                 Mono: "\"JetBrains Mono\", ui-monospace, SFMono-Regular, \"SF Mono\", Menlo, Monaco, Consolas, monospace")),
         new("miami", "Miami",
             "Hot magenta and cyan on violet-black or pale lavender, with Space Grotesk. Bright neon energy and a synthwave character.",
+            Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw",
             Light: new(
                 Canvas: "#f2eef1",
                 Content: "#f6f2f5",

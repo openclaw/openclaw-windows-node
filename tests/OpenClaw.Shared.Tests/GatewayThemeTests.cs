@@ -256,6 +256,47 @@ public class GatewayThemeTests
         Assert.Null(AppearanceResolver.ResolveTheme(new AppearanceSettings { FollowGatewayTheme = true }));
     }
 
+    [Theory]
+    [InlineData(null, null, null, true, "claw", ThemeWorkingIndicator.Claw)]
+    [InlineData("none", null, null, false, "mark", ThemeWorkingIndicator.Dots)]
+    [InlineData("none", "claw", "claw", false, "claw", ThemeWorkingIndicator.Claw)]
+    [InlineData("claw", null, "none", true, "claw", ThemeWorkingIndicator.None)]
+    [InlineData("claw", "acme-icon", "brand", true, "acme-icon", ThemeWorkingIndicator.Brand)]
+    // Unknown or invalid values count as missing, as upstream resolveThemeBranding would see them.
+    [InlineData("penguin", "Not An Id!", "sparkle", true, "claw", ThemeWorkingIndicator.Claw)]
+    [InlineData("none", "", "sparkle", false, "mark", ThemeWorkingIndicator.Dots)]
+    public void BrandingResolvesLikeTheDashboard(
+        string? mascot, string? brandIcon, string? indicator, bool hasMascot, string icon, ThemeWorkingIndicator working)
+    {
+        var branding = ThemeBranding.Resolve(mascot, brandIcon, indicator);
+
+        Assert.Equal(new ThemeBranding(hasMascot, icon, working), branding);
+        Assert.Equal(icon == ThemeBranding.ClawIcon, branding.ShowsClaw);
+    }
+
+    [Fact]
+    public void BrandingReachesBuiltinPluginAndSnapshottedThemes()
+    {
+        foreach (var theme in BuiltinGatewayThemes.All)
+        {
+            var terminal = theme.Id is "phosphor" or "crt";
+            Assert.Equal(terminal ? new ThemeBranding(false, "mark", ThemeWorkingIndicator.Dots) : ThemeBranding.Default, theme.Branding);
+        }
+
+        using var json = JsonDocument.Parse("""
+            { "themes": [ { "id": "acme/ink", "name": "Ink", "source": "plugin", "pluginId": "acme", "modes": ["dark"],
+                            "mascot": "none", "workingIndicator": "brand", "brandIcon": "ink-logo" } ] }
+            """);
+        var descriptor = Assert.Single(GatewayThemeProtocol.ParseList(json.RootElement).Themes);
+        Assert.Equal(new ThemeBranding(false, "ink-logo", ThemeWorkingIndicator.Brand), descriptor.Branding);
+
+        // The snapshot keeps the branding, so an offline restart still shows the theme's indicator.
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: Palette("#000000")), out var definition, out _));
+        var data = new SettingsData { Appearance = new AppearanceSettings { Theme = AppearanceResolver.Select(descriptor, definition, "gw-1") } };
+        var reloaded = SettingsData.FromJson(data.ToJson())!;
+        Assert.Equal(descriptor.Branding, AppearanceResolver.ResolveTheme(reloaded.Appearance)?.Branding);
+    }
+
     private static GatewayThemeDescriptor Descriptor(string id, GatewayThemeSource source) =>
         new(id, id, "", source, [ThemeColorMode.Light, ThemeColorMode.Dark], source == GatewayThemeSource.Plugin ? "acme" : null);
 

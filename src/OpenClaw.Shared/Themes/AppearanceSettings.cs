@@ -47,11 +47,16 @@ public sealed record ThemeSelection
     /// <summary>Upstream-shaped <c>ThemeDefinition</c> snapshot for non-built-in themes.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonElement? Definition { get; init; }
+    /// <summary>Wire branding values of a non-built-in theme's descriptor (built-ins use the generated table).</summary>
+    public string? Mascot { get; init; }
+    public string? BrandIcon { get; init; }
+    public string? WorkingIndicator { get; init; }
 
     public bool Equals(ThemeSelection? other) =>
         other is not null &&
         Id == other.Id && Name == other.Name && Source == other.Source &&
         OriginGatewayId == other.OriginGatewayId &&
+        Mascot == other.Mascot && BrandIcon == other.BrandIcon && WorkingIndicator == other.WorkingIndicator &&
         // Semantic comparison: the settings writer re-indents the snapshot.
         (Definition, other.Definition) switch
         {
@@ -103,6 +108,9 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         WriteOptional(writer, nameof(ThemeSelection.Name), selection.Name);
         writer.WriteString(nameof(ThemeSelection.Source), selection.Source);
         WriteOptional(writer, nameof(ThemeSelection.OriginGatewayId), selection.OriginGatewayId);
+        WriteOptional(writer, nameof(ThemeSelection.Mascot), selection.Mascot);
+        WriteOptional(writer, nameof(ThemeSelection.BrandIcon), selection.BrandIcon);
+        WriteOptional(writer, nameof(ThemeSelection.WorkingIndicator), selection.WorkingIndicator);
         if (selection.Definition is { } definition)
         {
             writer.WritePropertyName(nameof(ThemeSelection.Definition));
@@ -121,6 +129,9 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
             Name = Text(value, nameof(ThemeSelection.Name)),
             Source = Text(value, nameof(ThemeSelection.Source)) ?? "builtin",
             OriginGatewayId = Text(value, nameof(ThemeSelection.OriginGatewayId)),
+            Mascot = Text(value, nameof(ThemeSelection.Mascot)),
+            BrandIcon = Text(value, nameof(ThemeSelection.BrandIcon)),
+            WorkingIndicator = Text(value, nameof(ThemeSelection.WorkingIndicator)),
             Definition = value.TryGetProperty(nameof(ThemeSelection.Definition), out var definition) &&
                 definition.ValueKind == JsonValueKind.Object
                     ? definition.Clone()
@@ -203,7 +214,10 @@ public static class AppearanceResolver
         if (definition.Light is not null) modes.Add(ThemeColorMode.Light);
         if (definition.Dark is not null) modes.Add(ThemeColorMode.Dark);
         var descriptor = new GatewayThemeDescriptor(
-            selection.Id, selection.Name ?? definition.Name, definition.Description, source, [.. modes], null);
+            selection.Id, selection.Name ?? definition.Name, definition.Description, source, [.. modes], null)
+        {
+            Branding = ThemeBranding.Resolve(selection.Mascot, selection.BrandIcon, selection.WorkingIndicator),
+        };
         var theme = ThemePaletteExpander.Resolve(descriptor, definition);
         return ThemeLegibility.IsReadable(theme) ? theme : null;
     }
@@ -233,6 +247,9 @@ public static class AppearanceResolver
                 Name = descriptor.Name,
                 Source = SourceText(descriptor.Source),
                 OriginGatewayId = gatewayId,
+                Mascot = descriptor.Branding.MascotText,
+                BrandIcon = descriptor.Branding.BrandIcon,
+                WorkingIndicator = descriptor.Branding.WorkingIndicatorText,
                 Definition = GatewayThemeProtocol.ToJson(
                     definition ?? throw new ArgumentNullException(nameof(definition))),
             };

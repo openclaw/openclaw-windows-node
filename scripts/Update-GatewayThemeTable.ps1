@@ -8,7 +8,8 @@ cascade in the Control UI (ui/src/styles/base.css plus ui/public/themes/<id>.css
 color-mix() derivations). This script fetches those stylesheets at -UpstreamRef, resolves every
 token the Companion uses (colors plus the --font-body, --font-chat and --mono stacks) in headless
 Microsoft Edge for each theme and mode, and writes src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs.
-The script fails when any token does not resolve.
+Each theme's mascot, brand icon and working indicator come from BUILTIN_THEMES, resolved with upstream's
+resolveThemeBranding defaults. The script fails when any token does not resolve or a branding value is unknown.
 
 It needs gh (authenticated for github.com) and Microsoft Edge. It writes only the output file and a
 temporary directory it deletes afterwards.
@@ -49,9 +50,43 @@ function ConvertTo-CSharpString([string]$value) {
 
 # Theme descriptors and their order come from the protocol's BUILTIN_THEMES.
 $themeSource = Get-UpstreamText 'packages/gateway-protocol/src/theme.ts'
-$descriptorPattern = 'id:\s*"(?<id>[a-z0-9-]+)",\s*name:\s*"(?<name>[^"]+)",[\s\S]*?description:\s*"(?<description>(?:[^"\\]|\\.)*)"'
-$themes = @([regex]::Matches($themeSource, $descriptorPattern) | ForEach-Object {
-    [pscustomobject]@{ Id = $_.Groups['id'].Value; Name = $_.Groups['name'].Value; Description = $_.Groups['description'].Value }
+$descriptorPattern = 'id:\s*"(?<id>[a-z0-9-]+)",\s*name:\s*"(?<name>[^"]+)",(?<branding>[\s\S]*?)description:\s*"(?<description>(?:[^"\\]|\\.)*)"'
+
+# Branding resolved with upstream resolveThemeBranding defaults; an unknown value fails the run so a new
+# upstream option is handled deliberately rather than shipped as a fallback.
+function Resolve-Branding([string]$id, [string]$fields) {
+    # $fields is the whole entry, so a key after description is still seen; a non-literal value fails.
+    function Get-Field([string]$name) {
+        $key = [regex]::Match($fields, "(?m)^\s*$name\s*:\s*(?<value>[^\r\n]*?)\s*,?\s*$")
+        if (-not $key.Success) { return $null }
+        $literal = [regex]::Match($key.Groups['value'].Value, '\A"(?<value>[^"]*)"\z')
+        if (-not $literal.Success) { throw "Built-in theme $id sets $name to a non-literal value: $($key.Groups['value'].Value)" }
+        return $literal.Groups['value'].Value
+    }
+    $mascot = Get-Field 'mascot'
+    if (-not $mascot) { $mascot = 'claw' }
+    $brandIcon = Get-Field 'brandIcon'
+    if (-not $brandIcon) { $brandIcon = if ($mascot -eq 'claw') { 'claw' } else { 'mark' } }
+    $working = Get-Field 'workingIndicator'
+    if (-not $working) { $working = if ($mascot -eq 'claw') { 'claw' } else { 'dots' } }
+    if ($mascot -notin 'claw', 'none') { throw "Built-in theme $id has an unknown mascot '$mascot'." }
+    if ($brandIcon -notin 'claw', 'mark') { throw "Built-in theme $id has an unknown brand icon '$brandIcon'." }
+    if ($working -notin 'claw', 'dots', 'brand', 'none') { throw "Built-in theme $id has an unknown working indicator '$working'." }
+    return [pscustomobject]@{ Mascot = $mascot; BrandIcon = $brandIcon; WorkingIndicator = $working }
+}
+
+$descriptors = @([regex]::Matches($themeSource, $descriptorPattern))
+$themes = @(for ($index = 0; $index -lt $descriptors.Count; $index++) {
+    $descriptor = $descriptors[$index]
+    # The entry runs to the next descriptor, or to the closing brace after the last description.
+    $end = if ($index + 1 -lt $descriptors.Count) { $descriptors[$index + 1].Index } else {
+        $themeSource.IndexOf('}', $descriptor.Index + $descriptor.Length)
+    }
+    [pscustomobject]@{
+        Id = $descriptor.Groups['id'].Value; Name = $descriptor.Groups['name'].Value
+        Description = $descriptor.Groups['description'].Value
+        Branding = Resolve-Branding $descriptor.Groups['id'].Value $themeSource.Substring($descriptor.Index, $end - $descriptor.Index)
+    }
 })
 if ($themes.Count -lt 1) { throw 'No BUILTIN_THEMES entries were found.' }
 
@@ -181,6 +216,8 @@ $out = [System.Text.StringBuilder]::new()
 foreach ($theme in $themes) {
     [void]$out.AppendLine("        new($(ConvertTo-CSharpString $theme.Id), $(ConvertTo-CSharpString $theme.Name),")
     [void]$out.AppendLine("            $(ConvertTo-CSharpString $theme.Description),")
+    $branding = $theme.Branding
+    [void]$out.AppendLine("            Mascot: $(ConvertTo-CSharpString $branding.Mascot), BrandIcon: $(ConvertTo-CSharpString $branding.BrandIcon), WorkingIndicator: $(ConvertTo-CSharpString $branding.WorkingIndicator),")
     foreach ($mode in @('light', 'dark')) {
         $palette = $parsed.result.($theme.Id).$mode
         $label = if ($mode -eq 'light') { 'Light' } else { 'Dark' }
