@@ -7,6 +7,13 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class OnboardingChatBootstrapperTests : IDisposable
 {
+    private const string CompletionTimeoutVariable = "OPENCLAW_TRAY_TEST_ONBOARDING_BOOTSTRAP_TIMEOUT_SECONDS";
+    // Hang guard for the bootstrap send and its run completion. It is also the bootstrapper's
+    // completion deadline, so keep it long: a loaded runner can delay test steps for seconds.
+    private static readonly TimeSpan CompletionTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(CompletionTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
+
     private readonly string _settingsDir;
 
     public OnboardingChatBootstrapperTests()
@@ -27,9 +34,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         var settings = new SettingsManager(_settingsDir);
         var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-1", SessionKey = "agent:main:main" } };
 
-        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5));
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, CompletionTimeout);
+        // Raise the completion once the hatching send is observed, not after a fixed delay: a loaded
+        // runner can hold this test's continuation past the bootstrapper's completion deadline.
+        await client.Sent.Task.WaitAsync(CompletionTimeout);
+        Assert.False(task.IsCompleted);
         client.RaiseFinalAssistant("run-1");
         var result = await task;
 
@@ -320,9 +329,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
             IsLocal = true
         });
 
-        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, CompletionTimeout, registry: registry);
+        // Raise the completion once the hatching send is observed, not after a fixed delay: a loaded
+        // runner can hold this test's continuation past the bootstrapper's completion deadline.
+        await client.Sent.Task.WaitAsync(CompletionTimeout);
+        Assert.False(task.IsCompleted);
         client.RaiseFinalAssistant("run-fresh-credentialed");
         var result = await task;
 
@@ -364,9 +375,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
             IsLocal = false
         });
 
-        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, CompletionTimeout, registry: registry);
+        // Raise the completion once the hatching send is observed, not after a fixed delay: a loaded
+        // runner can hold this test's continuation past the bootstrapper's completion deadline.
+        await client.Sent.Task.WaitAsync(CompletionTimeout);
+        Assert.False(task.IsCompleted);
         client.RaiseFinalAssistant("run-missing-markers");
         var result = await task;
 
@@ -425,9 +438,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
             IsLocal = true
         });
 
-        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, CompletionTimeout, registry: registry);
+        // Raise the completion once the hatching send is observed, not after a fixed delay: a loaded
+        // runner can hold this test's continuation past the bootstrapper's completion deadline.
+        await client.Sent.Task.WaitAsync(CompletionTimeout);
+        Assert.False(task.IsCompleted);
         client.RaiseFinalAssistant("run-fresh-seed-soul");
         var result = await task;
 
@@ -483,9 +498,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         var registry = new GatewayRegistry(registryDir);
         // Registry has no records — this is a true first-run scenario.
 
-        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5), registry: registry);
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, CompletionTimeout, registry: registry);
+        // Raise the completion once the hatching send is observed, not after a fixed delay: a loaded
+        // runner can hold this test's continuation past the bootstrapper's completion deadline.
+        await client.Sent.Task.WaitAsync(CompletionTimeout);
+        Assert.False(task.IsCompleted);
         client.RaiseFinalAssistant("run-new");
         var result = await task;
 
@@ -501,9 +518,11 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         var settings = new SettingsManager(_settingsDir);
         var client = new FakeOperatorGatewayClient { Result = new ChatSendResult { RunId = "run-noregistry" } };
 
-        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, TimeSpan.FromSeconds(5));
-        // slopwatch-ignore: SW004 Test delay is an intentional bounded async wait; replacing it would change the scenario under test.
-        await Task.Delay(50);
+        var task = OnboardingChatBootstrapper.BootstrapAsync(client, settings, CompletionTimeout);
+        // Raise the completion once the hatching send is observed, not after a fixed delay: a loaded
+        // runner can hold this test's continuation past the bootstrapper's completion deadline.
+        await client.Sent.Task.WaitAsync(CompletionTimeout);
+        Assert.False(task.IsCompleted);
         client.RaiseFinalAssistant("run-noregistry");
         var result = await task;
 
@@ -527,6 +546,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
     private sealed class FakeOperatorGatewayClient : IOperatorGatewayClient
     {
         public int SendCount { get; private set; }
+        public TaskCompletionSource Sent { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string? LastMessage { get; private set; }
         public Exception? SendException { get; init; }
         public ChatSendResult Result { get; init; } = new();
@@ -579,6 +599,7 @@ public sealed class OnboardingChatBootstrapperTests : IDisposable
         {
             SendCount++;
             LastMessage = message;
+            Sent.TrySetResult();
             if (SendException != null) throw SendException;
             if (!string.IsNullOrWhiteSpace(FinalRunIdRaisedDuringSend))
                 RaiseFinalAssistant(FinalRunIdRaisedDuringSend);

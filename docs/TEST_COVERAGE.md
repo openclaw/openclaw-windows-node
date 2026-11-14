@@ -123,7 +123,10 @@ backoff, so each step is bounded by `OPENCLAW_TRAY_TEST_WIZARD_TAIL_TIMEOUT_SECO
 (default 30 s). The chat-readiness loopback regressions bound each exchange with
 `OPENCLAW_TRAY_TEST_CHAT_READINESS_TIMEOUT_SECONDS` (default 30 s) rather than the
 product's 3 s per-probe client timeout, because their fake server runs on the
-shared thread pool.
+shared thread pool. The onboarding bootstrap regressions raise the run completion as
+soon as the fake client reports the hatching send, not after a fixed delay, and bound
+the completion with `OPENCLAW_TRAY_TEST_ONBOARDING_BOOTSTRAP_TIMEOUT_SECONDS` (default
+30 s), because a loaded runner can hold a test continuation past a short deadline.
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
