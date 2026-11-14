@@ -114,8 +114,10 @@ $tokens = [ordered]@{
     Ring = 'ring'; Destructive = 'destructive'; Danger = 'danger'; Ok = 'ok'; Warn = 'warn'; Info = 'info'
     ComposerSurface = 'chat-composer-surface'; InlineCode = 'inline-code-bg'
 }
-# Consumers read these through var() fallbacks (ui/src/styles/chat/text.css).
-$fallbacks = @{ 'inline-code-bg' = 'bg-muted' }
+# Consumers read these through var() fallbacks (ui/src/styles/chat/text.css). Releases older than the root
+# definitions of bg-content and chat-composer-surface read var(--bg-content, var(--bg)) and give the composer
+# var(--popover) in chat/composer-surface.css, so the packaged Gateway's themes resolve the same way.
+$fallbacks = @{ 'inline-code-bg' = 'bg-muted'; 'bg-content' = 'bg'; 'chat-composer-surface' = 'popover' }
 $probeThemes = ($themes | ForEach-Object { "'$($_.Id)'" }) -join ','
 $probeTokens = ($tokens.GetEnumerator() | ForEach-Object {
     $fallback = if ($fallbacks.ContainsKey($_.Value)) { "'$($fallbacks[$_.Value])'" } else { 'null' }
