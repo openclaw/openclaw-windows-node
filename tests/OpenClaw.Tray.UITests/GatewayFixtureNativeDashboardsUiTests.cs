@@ -154,7 +154,11 @@ public sealed partial class GatewayFixtureUiTests
                             }));
                     }
                     await NativeKeyboardProof.ActivateAsync(hwnd);
-                    var negativeBounds = FindChrome("WorkspaceTogglePane")!.Current.BoundingRectangle;
+                    AutomationElement? negativeToggle = null;
+                    await WaitUiAsync(run, () => (negativeToggle = FindChrome("WorkspaceTogglePane")) is not null,
+                        "pane toggle for the occlusion negative control");
+                    var negativeControl = negativeToggle!;
+                    var negativeBounds = negativeControl.Current.BoundingRectangle;
                     var negativePoint = new FixturePoint
                     {
                         X = (int)Math.Round(negativeBounds.Left + negativeBounds.Width / 2),
@@ -171,7 +175,7 @@ public sealed partial class GatewayFixtureUiTests
                         Assert.NotEqual(IntPtr.Zero, occluder);
                         Assert.Equal(occluder, GetAncestor(WindowFromPoint(negativePoint), 2));
                         Assert.Throws<Xunit.Sdk.EqualException>(() => AssertPointOwner(negativePoint));
-                        Assert.False(FindChrome("WorkspaceTogglePane")!.Current.IsOffscreen);
+                        Assert.False(negativeControl.Current.IsOffscreen);
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "pinned-hit-occlusion-negative.json"),
                             JsonSerializer.Serialize(new
                             {
@@ -187,7 +191,8 @@ public sealed partial class GatewayFixtureUiTests
                     {
                         if (board)
                         {
-                            Invoke(FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey)!);
+                            await InvokeWhenEnabledAsync(run, () => FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey),
+                                "enabled Ops dashboard card");
                             await WaitUiAsync(run, () => FindById(run, "DashboardView") is not null, "pinned board ready");
                         }
                         var surface = board ? "board" : "gallery";
@@ -216,7 +221,12 @@ public sealed partial class GatewayFixtureUiTests
                                     (FindById(run, "WorkspacePagesCustomize") is not { Current.IsOffscreen: false } ||
                                      FindById(run, "WorkspaceSessionsAdd") is not { Current.IsOffscreen: false }))
                                     return false;
-                                var current = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle.Width / scale;
+                                if (FindById(run, "DashboardsContentHost") is not { } contentHost)
+                                {
+                                    previousHostWidth = null;
+                                    return false;
+                                }
+                                var current = contentHost.Current.BoundingRectangle.Width / scale;
                                 var settled = current > 0 && previousHostWidth is { } before && Math.Abs(before - current) < 0.5;
                                 previousHostWidth = current;
                                 return settled;
@@ -230,15 +240,18 @@ public sealed partial class GatewayFixtureUiTests
                                 // separately, then restore the top before inset and hit testing.
                                 await WaitForDashboardPixelsAsync(run, hub, name.Replace(".png", "-report.png", StringComparison.Ordinal),
                                     ["Tickets closed", "128"], widgetId: "BoardWidget_weekly-report");
-                                var boardScroll = (ScrollPattern)FindById(run, "DashboardPageScroll")!
-                                    .GetCurrentPattern(ScrollPattern.Pattern);
+                                var boardScroll = (ScrollPattern)(await WaitForElementByIdAsync(run, "DashboardPageScroll",
+                                    "pinned board scroll")).GetCurrentPattern(ScrollPattern.Pattern);
                                 if (boardScroll.Current.VerticallyScrollable)
                                     boardScroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
                                 await WaitUiAsync(run, () => !boardScroll.Current.VerticallyScrollable ||
                                     boardScroll.Current.VerticalScrollPercent <= 0.1, "pinned board restored to top");
                             }
-                            var host = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
-                            var viewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!.Current.BoundingRectangle;
+                            var scrollId = board ? "DashboardPageScroll" : "DashboardsGalleryScroll";
+                            var host = (await WaitForElementByIdAsync(run, "DashboardsContentHost", "pinned content host"))
+                                .Current.BoundingRectangle;
+                            var viewport = (await WaitForElementByIdAsync(run, scrollId, "pinned page viewport"))
+                                .Current.BoundingRectangle;
                             if (!collapsed)
                                 openHostTop = host.Top;
                             var measuredInset = (viewport.Top - host.Top) / scale;
@@ -252,19 +265,30 @@ public sealed partial class GatewayFixtureUiTests
                             await ClickToggleAsync(oppositeId, toggleId);
                             await WaitUiAsync(run, () =>
                             {
-                                var currentHost = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
-                                var currentViewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!
-                                    .Current.BoundingRectangle;
+                                if (FindById(run, "DashboardsContentHost") is not { } hostPeer ||
+                                    FindById(run, scrollId) is not { } viewportPeer)
+                                    return false;
+                                var currentHost = hostPeer.Current.BoundingRectangle;
+                                var currentViewport = viewportPeer.Current.BoundingRectangle;
                                 return Math.Abs((currentViewport.Top - currentHost.Top) / scale - 56) <= 1 &&
                                     Math.Abs((currentHost.Top - openHostTop.Value) / scale) <= 1;
                             }, "pinned geometry retained after the physical pane roundtrip");
                             if (collapsed)
                             {
-                                var reopen = FindChrome("WorkspaceReopenPane")!;
+                                AutomationElement? reopenPeer = null;
+                                await WaitUiAsync(run, () => (reopenPeer = FindChrome("WorkspaceReopenPane")) is not null,
+                                    "pinned reopen control");
+                                var reopen = reopenPeer!;
                                 var toggleBounds = reopen.Current.BoundingRectangle;
+                                async Task<AutomationElement> WaitForHistoryAsync(string id)
+                                {
+                                    AutomationElement? history = null;
+                                    await WaitUiAsync(run, () => (history = FindChrome(id)) is not null, $"pinned history control {id}");
+                                    return history!;
+                                }
                                 foreach (var id in new[] { "SettingsBack", "SettingsForward" })
                                 {
-                                    var history = FindChrome(id)!;
+                                    var history = await WaitForHistoryAsync(id);
                                     Assert.True(toggleBounds.Right <= history.Current.BoundingRectangle.Left,
                                         $"Pinned reopen overlaps {id}.");
                                 }
@@ -272,7 +296,7 @@ public sealed partial class GatewayFixtureUiTests
                                 await WaitUiAsync(run, () => reopen.Current.HasKeyboardFocus, "pinned reopen keyboard focus");
                                 foreach (var id in new[] { "SettingsBack", "SettingsForward" })
                                 {
-                                    var history = FindChrome(id)!;
+                                    var history = await WaitForHistoryAsync(id);
                                     if (!history.Current.IsEnabled)
                                         continue;
                                     NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
@@ -313,8 +337,8 @@ public sealed partial class GatewayFixtureUiTests
                                     AssertOwnedForeground(hwnd, GetForegroundWindow);
                                     Assert.Equal(expected.GetRuntimeId(), AutomationElement.FocusedElement.GetRuntimeId());
                                 }
-                                var pageContent = FindById(run, "DashboardsContentHost")!;
-                                var pageViewport = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!;
+                                var pageContent = await WaitForElementByIdAsync(run, "DashboardsContentHost", "pinned page content");
+                                var pageViewport = await WaitForElementByIdAsync(run, scrollId, "pinned page viewport for focus");
                                 bool HasVisiblePageFocus()
                                 {
                                     if (AutomationElement.FocusedElement is not { } focused) return false;
@@ -351,7 +375,7 @@ public sealed partial class GatewayFixtureUiTests
                             }
                             if (!collapsed)
                                 continue;
-                            var scroll = FindById(run, board ? "DashboardPageScroll" : "DashboardsGalleryScroll")!;
+                            var scroll = await WaitForElementByIdAsync(run, scrollId, "collapsed pinned page scroll");
                             var pattern = (ScrollPattern)scroll.GetCurrentPattern(ScrollPattern.Pattern);
                             Assert.True(pattern.Current.VerticallyScrollable);
                             pattern.SetScrollPercent(ScrollPattern.NoScroll, 25);
@@ -473,24 +497,32 @@ public sealed partial class GatewayFixtureUiTests
                     var workArea = DashboardWorkArea(hwnd);
                     window.SetWindowVisualState(WindowVisualState.Normal);
                     await WaitUiAsync(run, () => window.Current.WindowVisualState == WindowVisualState.Normal, "backdrop normal shell");
-                    double HostWidth() => (FindById(run, "DashboardsContentHost")
-                        ?? throw new InvalidOperationException("Named backdrop host is missing.")).Current.BoundingRectangle.Width / scale;
-                    async Task StableHost()
+                    double? TryHostWidth() => FindById(run, "DashboardsContentHost") is { } hostPeer
+                        ? hostPeer.Current.BoundingRectangle.Width / scale : null;
+                    // Returns the settled width so callers do not re-read a peer that a resize can briefly drop.
+                    async Task<double> StableHost()
                     {
                         double? previous = null;
+                        var settled = 0d;
                         var lastRead = DateTimeOffset.MinValue;
                         await WaitUiAsync(run, () =>
                         {
                             if ((DateTimeOffset.UtcNow - lastRead).TotalMilliseconds < 300)
                                 return false;
-                            var current = HostWidth();
+                            lastRead = DateTimeOffset.UtcNow;
+                            if (TryHostWidth() is not { } current)
+                            {
+                                previous = null;
+                                return false;
+                            }
                             var stable = current > 0 && previous is { } before &&
                                 OpenClawTray.Presentation.PageResponsiveLayout.Snap(current) ==
                                 OpenClawTray.Presentation.PageResponsiveLayout.Snap(before);
                             previous = current;
-                            lastRead = DateTimeOffset.UtcNow;
+                            if (stable) settled = current;
                             return stable;
                         }, "stable backdrop host");
+                        return settled;
                     }
                     var states = new List<object>();
                     async Task Capture(string surface, bool minimum = false)
@@ -499,9 +531,9 @@ public sealed partial class GatewayFixtureUiTests
                         try
                         {
                             await DismissDashboardContainmentNoticeAsync(run, hub, name);
-                            await StableHost();
+                            var settledHost = await StableHost();
                             var before = DashboardRect(hwnd);
-                            var chrome = before.Width - HostWidth() * scale;
+                            var chrome = before.Width - settledHost * scale;
                             var target = (int)Math.Round(minimum ? 1000 * scale : Math.Min(workArea.Width, 1400 * scale + chrome));
                             var height = (int)Math.Round(Math.Min(workArea.Height, 900 * scale));
                             var targets = new List<int>();
@@ -509,11 +541,11 @@ public sealed partial class GatewayFixtureUiTests
                             {
                                 targets.Add(target);
                                 DashboardResize(hwnd, target, height);
-                                await StableHost();
-                                if (minimum || Math.Abs(HostWidth() - 1400) <= 2)
+                                settledHost = await StableHost();
+                                if (minimum || Math.Abs(settledHost - 1400) <= 2)
                                     break;
                                 if (correction < 2)
-                                    target = Math.Clamp(target + (int)Math.Round((1400 - HostWidth()) * scale),
+                                    target = Math.Clamp(target + (int)Math.Round((1400 - settledHost) * scale),
                                         (int)Math.Round(1000 * scale), workArea.Width);
                             }
                             if (surface == "board")
@@ -521,7 +553,10 @@ public sealed partial class GatewayFixtureUiTests
                             else
                                 OwnedWindowCapture.Save(run, hub, name);
                             var rect = DashboardRect(hwnd);
-                            var host = HostWidth();
+                            // Re-read after the capture so the recorded and asserted width describe the saved frame.
+                            double? capturedHost = null;
+                            await WaitUiAsync(run, () => (capturedHost = TryHostWidth()) is not null, "backdrop host after capture");
+                            var host = capturedHost!.Value;
                             var displayCapped = !minimum && DashboardBackdropIsDisplayCapped(host, target, workArea.Width);
                             var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
                                 await File.ReadAllBytesAsync(Path.Combine(run.ArtifactsDirectory, name))));
@@ -569,22 +604,26 @@ public sealed partial class GatewayFixtureUiTests
                         }, surface + " page scrollable");
                         scrolling!.SetScrollPercent(ScrollPattern.NoScroll, 0);
                         await WaitUiAsync(run, () => scrolling.Current.VerticalScrollPercent <= 0.1, surface + " scroll top");
-                        var titleTop = FindById(run, "DashboardsTitle")!.Current.BoundingRectangle.Top;
+                        var titleTop = (await WaitForElementByIdAsync(run, "DashboardsTitle", surface + " title at top"))
+                            .Current.BoundingRectangle.Top;
                         var topName = $"dashboards-{theme}-viewport-{surface}-top.png";
                         OwnedWindowCapture.Save(run, hub, topName);
                         scrolling.Scroll(ScrollAmount.NoAmount, ScrollAmount.SmallIncrement);
                         await WaitUiAsync(run, () => scrolling.Current.VerticalScrollPercent > 0 &&
-                            FindById(run, "DashboardsTitle")!.Current.BoundingRectangle.Top < titleTop - scale,
+                            FindById(run, "DashboardsTitle") is { } scrolledTitle &&
+                            scrolledTitle.Current.BoundingRectangle.Top < titleTop - scale,
                             surface + " mast scrolls with page content");
                         var scrolledName = $"dashboards-{theme}-viewport-{surface}-scrolled.png";
                         OwnedWindowCapture.Save(run, hub, scrolledName);
+                        var titleAfterTop = (await WaitForElementByIdAsync(run, "DashboardsTitle", surface + " scrolled title"))
+                            .Current.BoundingRectangle.Top;
                         await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, $"viewport-{surface}.json"),
                             JsonSerializer.Serialize(new
                             {
                                 surface, theme, topName, scrolledName, beforePercent = 0,
                                 afterPercent = scrolling.Current.VerticalScrollPercent,
                                 titleBeforeTop = titleTop,
-                                titleAfterTop = FindById(run, "DashboardsTitle")!.Current.BoundingRectangle.Top,
+                                titleAfterTop,
                             }));
                         scrolling.SetScrollPercent(ScrollPattern.NoScroll, 0);
                         await WaitUiAsync(run, () => scrolling.Current.VerticalScrollPercent <= 0.1, surface + " restore top");
@@ -594,7 +633,8 @@ public sealed partial class GatewayFixtureUiTests
                         await CaptureScroll("gallery");
                     if (theme == "Light")
                         await Capture("gallery", minimum: true);
-                    Invoke(FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey)!);
+                    await InvokeWhenEnabledAsync(run, () => FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey),
+                        "enabled Ops dashboard card");
                     await Capture("board");
                     if (theme == "Light")
                         await CaptureScroll("board");
@@ -649,6 +689,8 @@ public sealed partial class GatewayFixtureUiTests
                         throw new InvalidOperationException("The Reactor content host has no positive UIA width.");
                     return bounds.Width / scale;
                 }
+                double? TryHostWidth() => FindById(run, "DashboardsContentHost") is { } hostPeer &&
+                    hostPeer.Current.BoundingRectangle.Width is var hostWidth && hostWidth > 0 ? hostWidth / scale : null;
                 var preflightHost = FindById(run, "DashboardsContentHost");
                 OwnedWindowCapture.Save(run, hub, "dashboards-Light-responsive-baseline.png");
                 await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "responsive-baseline.json"),
@@ -667,16 +709,23 @@ public sealed partial class GatewayFixtureUiTests
                         JsonSerializer.Serialize(DashboardUiaContext(preflightHost ?? hub, run.AppProcessId)));
                     throw new InvalidOperationException("The named page-host peer is missing or zero-width. Baseline frame and UIA context saved.");
                 }
-                async Task WaitStableHost(string description, double? priorHost = null, int direction = 0, bool collapsed = false)
+                // Returns the settled width so callers do not re-read a peer that a resize can briefly drop.
+                async Task<double> WaitStableHost(string description, double? priorHost = null, int direction = 0, bool collapsed = false)
                 {
                     double? previous = null;
                     double? previousNav = null;
+                    var settled = 0d;
                     var lastRead = DateTimeOffset.MinValue;
                     await WaitUiAsync(run, () =>
                     {
                         if ((DateTimeOffset.UtcNow - lastRead).TotalMilliseconds < 300)
                             return false;
-                        var value = HostWidth();
+                        if (TryHostWidth() is not { } value)
+                        {
+                            previous = previousNav = null;
+                            lastRead = DateTimeOffset.UtcNow;
+                            return false;
+                        }
                         var anchorId = collapsed ? "WorkspaceReopenPane" : "WorkspacePinnedPage:dashboards";
                         var navElement = FindById(run, anchorId);
                         var home = FindById(run, "WorkspaceNavHome");
@@ -701,8 +750,10 @@ public sealed partial class GatewayFixtureUiTests
                         previous = value;
                         previousNav = nav;
                         lastRead = DateTimeOffset.UtcNow;
+                        if (stable) settled = value;
                         return stable;
                     }, description);
+                    return settled;
                 }
                 var observations = new List<object>();
                 var capturedBounds = new List<(double Host, int WindowWidth, int WindowHeight, string Sha)>();
@@ -716,8 +767,7 @@ public sealed partial class GatewayFixtureUiTests
                     var targets = new List<object>();
                     try
                     {
-                        await WaitStableHost("settled page host measurement");
-                        var current = HostWidth();
+                        var current = await WaitStableHost("settled page host measurement");
                         Assert.True(current > 0, "The page must report its actual Reactor host width.");
                         var outer = DashboardRect(hwnd);
                         var chrome = outer.Width - current * scale;
@@ -726,15 +776,16 @@ public sealed partial class GatewayFixtureUiTests
                         var targetWindowHeight = (int)Math.Round(Math.Min(workArea.Height, Math.Max(outer.Height, 900 * scale)));
                         var expectedTier = width >= 1000 ? OpenClawTray.Presentation.PageWidthTier.Wide : OpenClawTray.Presentation.PageWidthTier.Medium;
                         DashboardNativeRect resized = outer;
+                        var settledHost = current;
                         for (var correction = 0; correction <= 2; correction++)
                         {
-                            var prior = HostWidth();
+                            var prior = settledHost;
                             var beforeWindow = DashboardRect(hwnd);
                             DashboardResize(hwnd, targetWindowWidth, targetWindowHeight);
                             resized = DashboardRect(hwnd);
-                            await WaitStableHost($"stable page host for {name}, correction {correction}", prior,
+                            settledHost = await WaitStableHost($"stable page host for {name}, correction {correction}", prior,
                                 Math.Sign(resized.Width - beforeWindow.Width));
-                            var value = HostWidth();
+                            var value = settledHost;
                             targets.Add(new { correction, targetWindowWidthPx = targetWindowWidth, targetWindowHeightPx = targetWindowHeight,
                                 measuredHostWidth = value, aimHostWidth });
                             var tier = OpenClawTray.Presentation.PageResponsiveLayout.TierFor(value);
@@ -746,15 +797,15 @@ public sealed partial class GatewayFixtureUiTests
                         }
                         if (collapsed)
                         {
-                            var openWidth = HostWidth();
-                            Invoke(FindById(run, "WorkspaceTogglePane")
-                                ?? throw new InvalidOperationException("Standalone Dashboard workspace collapse control is missing."));
+                            var openWidth = settledHost;
+                            await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceTogglePane"),
+                                "enabled standalone Dashboard workspace collapse control");
                             paneCollapsed = true;
-                            await WaitStableHost("stable collapsed-pane host and reopen control", openWidth, 1, collapsed: true);
+                            settledHost = await WaitStableHost("stable collapsed-pane host and reopen control", openWidth, 1, collapsed: true);
                         }
-                        var measured = HostWidth();
-                        var hostBounds = FindById(run, "DashboardsContentHost")!.Current.BoundingRectangle;
-                        var hostElement = FindById(run, "DashboardsContentHost")!;
+                        var measured = settledHost;
+                        var hostElement = await WaitForElementByIdAsync(run, "DashboardsContentHost", $"responsive {name} host");
+                        var hostBounds = hostElement.Current.BoundingRectangle;
                         string? focusFailure = null;
                         try { if (hostElement.Current.IsKeyboardFocusable) hostElement.SetFocus(); }
                         catch (Exception focusError) { focusFailure = focusError.Message; }
@@ -825,10 +876,13 @@ public sealed partial class GatewayFixtureUiTests
                         {
                             try
                             {
-                                var closedWidth = HostWidth();
-                                Invoke(FindById(run, "WorkspaceReopenPane")
-                                    ?? throw new InvalidOperationException("Standalone Dashboard workspace reopen control is missing."));
-                                await WaitUiAsync(run, () => HostWidth() < closedWidth - 100, "navigation pane reopened");
+                                double? closedWidth = null;
+                                await WaitUiAsync(run, () => (closedWidth = TryHostWidth()) is not null,
+                                    "collapsed host before pane recovery");
+                                await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceReopenPane"),
+                                    "enabled standalone Dashboard workspace reopen control");
+                                await WaitUiAsync(run, () => TryHostWidth() is { } reopened && reopened < closedWidth!.Value - 100,
+                                    "navigation pane reopened");
                             }
                             catch (Exception paneError)
                             {
@@ -1234,9 +1288,8 @@ public sealed partial class GatewayFixtureUiTests
                         "Settings navigation visible");
                     Assert.Null(FindById(run, "HubNavDashboards"));
                     await run.InvokeAsync("app.navigate", new { page = "chat" });
-                    await WaitUiAsync(run, () => FindById(run, "WorkspacePinnedPage:dashboards") is
-                        { Current.IsOffscreen: false, Current.IsEnabled: true }, "default Dashboards page pin");
-                    Invoke(FindById(run, "WorkspacePinnedPage:dashboards")!);
+                    await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspacePinnedPage:dashboards") is
+                        { Current.IsOffscreen: false } pin ? pin : null, "default Dashboards page pin");
                     await WaitUiAsync(run, () => FindDashboardGalleryCard(run, FixtureBoards.OpsSessionKey) is not null,
                         "dashboard gallery populated");
                     bool GalleryHeaderMatches() =>
@@ -1249,9 +1302,10 @@ public sealed partial class GatewayFixtureUiTests
                     await WaitUiAsync(run, GalleryHeaderMatches,
                         "current gallery title, selected Gateway agent and saved-board count");
                     Assert.NotNull(FindById(run, "DashboardsOpenWeb"));
-                    Assert.False(FindById(run, "WorkspacePagesCustomize")!.Current.IsOffscreen);
-                    Assert.True(((SelectionItemPattern)FindById(run, "WorkspacePinnedPage:dashboards")!
-                        .GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
+                    Assert.False((await WaitForElementByIdAsync(run, "WorkspacePagesCustomize", "pinned pages customize"))
+                        .Current.IsOffscreen);
+                    Assert.True(((SelectionItemPattern)(await WaitForElementByIdAsync(run, "WorkspacePinnedPage:dashboards",
+                        "selected Dashboards pin")).GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
                     var hub = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.AutomationIdProperty, "DashboardsTitle")) is not null);
                     ((WindowPattern)hub.GetCurrentPattern(WindowPattern.Pattern)).SetWindowVisualState(WindowVisualState.Maximized);
@@ -1283,7 +1337,10 @@ public sealed partial class GatewayFixtureUiTests
                         widgetId: "BoardWidget_deploy-chart");
                     AxeHelper.AssertNoAccessibilityErrors(new IntPtr(hub.Current.NativeWindowHandle),
                         context: $"Dashboards widgets ({theme})", targetProcessId: run.AppProcessId);
-                    ScrollAncestorToBottom(run, FindDashboardWidget(run, "overview", "BoardWidget_broken-widget")!);
+                    AutomationElement? brokenWidget = null;
+                    await WaitUiAsync(run, () => (brokenWidget = FindDashboardWidget(run, "overview", "BoardWidget_broken-widget"))
+                        is not null, "broken widget card");
+                    ScrollAncestorToBottom(run, brokenWidget!);
                     await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-approval-error.png",
                         ["Needs approval", "contained to this card"]);
 
@@ -1307,10 +1364,9 @@ public sealed partial class GatewayFixtureUiTests
                     Assert.NotNull(FindById(run, "BoardWebsiteOpen_docs-site"));
 
                     // Copy only the synthetic fixture session identity, never a production identifier.
-                    Invoke(FindById(run, "DashboardMoreActions")!);
-                    await WaitUiAsync(run, () => FindById(run, "DashboardCopySessionKey") is
-                        { Current.IsOffscreen: false, Current.IsEnabled: true }, "visible copy session menu");
-                    Invoke(FindById(run, "DashboardCopySessionKey")!);
+                    await InvokeWhenEnabledAsync(run, () => FindById(run, "DashboardMoreActions"), "enabled dashboard more actions");
+                    await InvokeWhenEnabledAsync(run, () => FindById(run, "DashboardCopySessionKey") is
+                        { Current.IsOffscreen: false } copy ? copy : null, "visible copy session menu");
                     bool HasCopyNotice() => FindInApp(run,
                         new PropertyCondition(AutomationElement.NameProperty, "Copied session key")) is not null ||
                         FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Couldn't copy the session key.")) is not null;
@@ -1320,17 +1376,16 @@ public sealed partial class GatewayFixtureUiTests
                         "clipboard notice auto-dismissed");
 
                     // The titlebar Back button returns from an in-page board, even without a frame back-stack.
-                    Invoke(FindById(run, "WorkspaceBack")!);
+                    await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspaceBack"), "enabled Workspace Back");
                     await WaitUiAsync(run, () => FindById(run, $"DashboardCard_{FixtureBoards.EmptySessionKey}")
                             is { Current.IsOffscreen: false },
                         "gallery after same-route navigation");
                     Assert.True(GalleryHeaderMatches(), "Returning from the board must retain the gallery agent and count.");
                     foreach (var pinned in new[] { false, true })
                     {
-                        Invoke(FindById(run, "WorkspacePagesCustomize")!);
-                        await WaitUiAsync(run, () => FindById(run, "WorkspacePagesToggle:dashboards") is not null,
-                            "Dashboards pin toggle");
-                        var toggle = FindById(run, "WorkspacePagesToggle:dashboards")!;
+                        await InvokeWhenEnabledAsync(run, () => FindById(run, "WorkspacePagesCustomize"),
+                            "enabled pinned pages customize");
+                        var toggle = await WaitForElementByIdAsync(run, "WorkspacePagesToggle:dashboards", "Dashboards pin toggle");
                         Assert.Equal(pinned ? ToggleState.Off : ToggleState.On,
                             ((TogglePattern)toggle.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
                         Invoke(toggle);
