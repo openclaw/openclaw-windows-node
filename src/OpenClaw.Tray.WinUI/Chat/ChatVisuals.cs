@@ -251,6 +251,7 @@ internal static class ChatVisuals
     internal const double SurfaceRadius = 12;
     internal const double BodySize = 14;
     internal const string BodyFontFamily = "Segoe UI Variable Text";
+    internal const string TaskMarkerFontFamily = "Segoe UI Symbol";
     internal const double BodyLineHeight = 21;
     internal const string CodeFontFamily = "Consolas";
     internal const double CodeSize = 13;
@@ -276,6 +277,15 @@ internal static class ChatVisuals
     internal const double ListItemGap = 6;
     // Compact thinking text keeps Reactor's original 2px list rhythm.
     internal const double CompactListItemGap = 2;
+    // Web blockquote: 8px 12px padding over a 3px rounded bar inset 4px from the top and bottom.
+    internal const double QuoteBarWidth = 3;
+    internal const double QuoteBarInset = 4;
+    internal const double QuoteVerticalInset = 8;
+    internal const double QuoteHorizontalInset = 12;
+    // Web table: rounded 1px frame, 8px 12px cells separated by 1px rules, tinted header row.
+    internal const double TableRadius = 8;
+    internal const double TableCellHorizontalInset = 12;
+    internal const double TableCellVerticalInset = 8;
     internal const double CompactGap = 4;
     internal const double TurnGap = 4;
     internal const double DetailHorizontalInset = 12;

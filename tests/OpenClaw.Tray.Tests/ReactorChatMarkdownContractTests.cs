@@ -13,7 +13,7 @@ public sealed class ReactorChatMarkdownContractTests
             "ReactorChatTimeline.cs"));
 
         Assert.Contains(
-            "MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml |\n                MarkdownParserFlags.PermissiveUrlAutolinks | MarkdownParserFlags.PermissiveWwwAutolinks",
+            "MarkdownParserFlags.DialectGitHub | MarkdownParserFlags.NoHtml |\n                MarkdownParserFlags.HardSoftBreaks",
             timeline.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains(
@@ -50,6 +50,14 @@ public sealed class ReactorChatMarkdownContractTests
         Assert.Contains("UnorderedList = items => ChatMarkdownPresentation.List(items, compactSecondaryReading)", timeline, StringComparison.Ordinal);
         Assert.Contains("OrderedList = (_, items) => ChatMarkdownPresentation.List(items, compactSecondaryReading)", timeline, StringComparison.Ordinal);
         Assert.Contains("ThematicBreak = ChatMarkdownPresentation.ThematicBreak", timeline, StringComparison.Ordinal);
+        // Web-parity quotes: unfilled content beside a rounded bar, muted by the inline styling pass.
+        Assert.Contains("BlockQuote = ChatMarkdownPresentation.BlockQuote", timeline, StringComparison.Ordinal);
+        Assert.Contains("quote is not BorderElement { Child: { } content }", presentation, StringComparison.Ordinal);
+        Assert.Contains("ThemeRef.Resolve(\"ChatMutedTextBrush\"", presentation, StringComparison.Ordinal);
+        // Web-parity tables: one flattened grid (aligned columns, unchanged copy order) in a rounded frame.
+        Assert.Contains("Table = ChatMarkdownPresentation.Table", timeline, StringComparison.Ordinal);
+        Assert.Contains("TableHeaderBackground = null", timeline, StringComparison.Ordinal);
+        Assert.Contains("rows.Select(row => (row as GridElement)?.Children.ToArray())", presentation, StringComparison.Ordinal);
         // Fenced code keeps Reactor's single literal run (so reconcile never rebuilds it and
         // selection survives) and is colored by theme-resolved highlighters.
         Assert.Contains("ApplyCodeSyntax(text, code, language);", presentation, StringComparison.Ordinal);
