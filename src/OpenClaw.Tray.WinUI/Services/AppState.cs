@@ -171,15 +171,6 @@ internal sealed class AppState : INotifyPropertyChanged, IChatAgentRosterSource
         lock (_agentFilesCacheLock) return _agentFilesCache.TryGetValue(agentId, out data);
     }
 
-    private JsonElement? _cronList;
-    public JsonElement? CronList { get => _cronList; set => SetField(ref _cronList, value); }
-
-    private JsonElement? _cronStatus;
-    public JsonElement? CronStatus { get => _cronStatus; set => SetField(ref _cronStatus, value); }
-
-    private JsonElement? _cronRuns;
-    public JsonElement? CronRuns { get => _cronRuns; set => SetField(ref _cronRuns, value); }
-
     private JsonElement? _agentFileContent;
     public JsonElement? AgentFileContent { get => _agentFileContent; set => SetField(ref _agentFileContent, value); }
 
@@ -271,9 +262,6 @@ internal sealed class AppState : INotifyPropertyChanged, IChatAgentRosterSource
         AgentFilesListAgentId = null;
         lock (_agentFilesCacheLock) _agentFilesCache.Clear();
         AgentFileContent = null;
-        CronList = null;
-        CronStatus = null;
-        CronRuns = null;
         lock (_sessionPreviewsLock) _sessionPreviews.Clear();
     }
 }

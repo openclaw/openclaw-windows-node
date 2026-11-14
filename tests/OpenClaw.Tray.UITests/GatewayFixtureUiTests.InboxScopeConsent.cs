@@ -79,8 +79,7 @@ public sealed partial class GatewayFixtureUiTests
                     Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "plugin.approval.resolve" && request.ApprovalId == id);
                     await CaptureIfRequestedAsync(run, $"inbox-scope-{context}-{item.Name}-disclosure.png");
 
-                    await RevealInboxDecisionAsync(run, "InboxApprovalAllowOnce");
-                    Invoke(FindInboxReviewAction(run, "InboxApprovalAllowOnce")!);
+                    Invoke(await RevealInboxDecisionAsync(run, "InboxApprovalAllowOnce"));
                     await AssertInboxDecisionAsync(run, id, "allow-once", title);
                 }
             }
@@ -155,15 +154,15 @@ public sealed partial class GatewayFixtureUiTests
                         await WaitUiAsync(run, () => FindInboxDisclosure(run, item.Disclosure) is not null, "complete redacted/suppressed scope disclosure");
                         await RevealInboxTextRangeAsync(run, item.Disclosure, item.Critical);
                     }
-                    AssertInboxScopeHasNoAccessibleSecrets(run, concealed, malformedSecret, suppressedTail);
+                    await AssertInboxScopeHasNoAccessibleSecretsAsync(run, concealed, malformedSecret, suppressedTail);
                     Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "plugin.approval.resolve" && request.ApprovalId == id);
                     await CaptureIfRequestedAsync(run, $"inbox-scope-{context}-{item.Name}-safe-disclosure.png");
-                    await RevealInboxDecisionAsync(run, "InboxApprovalDeny");
+                    var deny = await RevealInboxDecisionAsync(run, "InboxApprovalDeny");
                     Assert.Null(FindInboxReviewAction(run, "InboxApprovalAllowOnce"));
                     Assert.Null(FindInboxReviewAction(run, "InboxApprovalAllowAlways"));
-                    AssertInboxScopeHasNoAccessibleSecrets(run, concealed, malformedSecret, suppressedTail);
+                    await AssertInboxScopeHasNoAccessibleSecretsAsync(run, concealed, malformedSecret, suppressedTail);
                     await CaptureIfRequestedAsync(run, $"inbox-scope-{context}-{item.Name}-deny-only.png");
-                    Invoke(FindInboxReviewAction(run, "InboxApprovalDeny")!);
+                    Invoke(deny);
                     await AssertInboxDecisionAsync(run, id, "deny", title);
                 }
             }
@@ -181,10 +180,11 @@ public sealed partial class GatewayFixtureUiTests
     private static Task PublishInboxScopeAsync(GatewayFixtureRun run, string id, string title, JsonElement scope) =>
         run.Gateway.PublishPluginApprovalRequestedAsync(id, title, InboxScopePluginDetail, scope: scope);
 
-    private static void AssertInboxScopeHasNoAccessibleSecrets(GatewayFixtureRun run, params string[] forbidden)
+    private static async Task AssertInboxScopeHasNoAccessibleSecretsAsync(GatewayFixtureRun run, params string[] forbidden)
     {
-        var list = FindInboxReviewList(run)!;
-        var elements = list.FindAll(TreeScope.Subtree, Condition.TrueCondition).Cast<AutomationElement>().ToArray();
+        AutomationElement? list = null;
+        await WaitUiAsync(run, () => (list = FindInboxReviewList(run)) is not null, "mounted Inbox review list");
+        var elements = list!.FindAll(TreeScope.Subtree, Condition.TrueCondition).Cast<AutomationElement>().ToArray();
         Assert.InRange(elements.Length, 1, InboxAutomationNodeLimit);
         foreach (var element in elements)
         {

@@ -6,6 +6,9 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
+  # Merge queue checks. Each merge group is validated like a pull request against the queue's base.
+  merge_group:
+    types: [ checks_requested ]
   workflow_dispatch:
     inputs:
       local_ai_proof_baseline:
@@ -93,8 +96,8 @@ jobs:
       id: classify
       shell: pwsh
       env:
-        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
       run: |
         $impactJson = ./scripts/Get-CiChangeClassification.ps1 `
           -EventName $env:GITHUB_EVENT_NAME `
@@ -177,6 +180,11 @@ jobs:
       shell: pwsh
       run: ./scripts/test-agent-skills-validator.ps1
 
+    # Always-on so pull requests that change only UI or Shared tests cannot skip the ratchet.
+    - name: Validate timing-sensitive test patterns
+      shell: pwsh
+      run: ./scripts/validate-test-timing-patterns.ps1
+
     - name: Test proof results and local evidence
       shell: pwsh
       run: ./scripts/test-proof-evidence.ps1
@@ -208,6 +216,14 @@ jobs:
     - name: Validate CI Gate result contracts
       shell: pwsh
       run: ./scripts/test-ci-gate-results.ps1
+
+    - name: Test new-test soak selection
+      shell: pwsh
+      run: ./scripts/test-ci-changed-tests.ps1
+
+    - name: Test main failure watch
+      shell: pwsh
+      run: ./scripts/test-ci-main-failure-watch.ps1
 
     - name: Validate CI workflow contracts
       shell: pwsh
@@ -303,8 +319,8 @@ jobs:
       continue-on-error: true
       shell: pwsh
       env:
-        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
       run: |
         $decision = ./scripts/Get-CiProofPoolRegressionDecision.ps1 `
           -EventName $env:GITHUB_EVENT_NAME `
@@ -473,7 +489,7 @@ jobs:
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.core_tests == 'true' }}
     runs-on: windows-latest
     env:
-      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
     steps:
     - uses: actions/checkout@v7
@@ -533,7 +549,7 @@ jobs:
         dotnet restore tests/OpenClaw.FileWorker.Tests
 
     - name: Install dotnet-coverage
-      if: ${{ github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build core test projects
@@ -546,6 +562,7 @@ jobs:
     - name: Run Shared Tests
       timeout-minutes: 15
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '15'
         OPENCLAW_RUN_INTEGRATION: 1
       run: >
         ./scripts/Invoke-CiTest.ps1
@@ -592,7 +609,7 @@ jobs:
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.tray_tests == 'true' }}
     runs-on: windows-latest
     env:
-      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayTests
     steps:
@@ -627,7 +644,7 @@ jobs:
         dotnet restore tests/OpenClaw.Tray.IntegrationTests -r win-x64
 
     - name: Install dotnet-coverage
-      if: ${{ github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build tray test projects
@@ -691,7 +708,7 @@ jobs:
     if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
     runs-on: windows-latest
     env:
-      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' }}
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
       OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
       OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
@@ -730,7 +747,7 @@ jobs:
         dotnet restore tests/OpenClawTray.FunctionalUI.Tests -r win-x64
 
     - name: Install dotnet-coverage
-      if: ${{ github.event_name != 'pull_request' }}
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
       run: dotnet tool install --global dotnet-coverage
 
     - name: Build UI test projects
@@ -784,15 +801,47 @@ jobs:
       run: |
         "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
 
+    # The ordinary Tray UI suite is split by test class across this job and
+    # tray-ui-shard so neither serial run approaches its timeout. Both filters
+    # start with the same category exclusions; this job negates exactly the
+    # class list that tray-ui-shard selects, so together they run every test
+    # once. scripts/test-ci-workflow-contract.ps1 enforces the partition.
     - name: Run Tray UI Tests
-      timeout-minutes: 15
+      # -HangTimeoutSeconds still bounds a single stalled test.
+      timeout-minutes: 25
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '25'
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
         -ResultsDirectory TestResults\TrayUI
         -TrxFileName OpenClaw.Tray.UITests.trx
         -Runtime win-x64
-        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&FullyQualifiedName!~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.&FullyQualifiedName!~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests."
+        -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
+    - name: Run steady-resource Automations UI tests
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 15
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '15'
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Production
+        OPENCLAW_UI_TEST_APP_THEME: Light
+        OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+        OPENCLAW_RUN_KEYBOARD_PROOF: '1'
+        OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
+        OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\AutomationsSteadyResources\captures
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\AutomationsSteadyResources
+        -TrxFileName AutomationsSteadyResources.trx
+        -Runtime win-x64
+        -Filter "Category=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled"
+        -RequireAllTestsPassed
         -HangTimeoutSeconds 300
         -CollectNativeFailureMetadata
         -CaptureHostExit
@@ -813,6 +862,8 @@ jobs:
     - name: Run animation-enabled reveal proof
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 5
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '5'
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
@@ -827,6 +878,8 @@ jobs:
     - name: Run animations-disabled behavior proof
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 5
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '5'
       run: >
         ./scripts/Invoke-CiTest.ps1
         -Project tests/OpenClaw.Tray.UITests
@@ -887,6 +940,8 @@ jobs:
         Write-Host "DevBuild identity marker verified at $($marker.FullName): $identity"
 
     - name: Capture Local AI hardware profiles before and after
+      # Runs after earlier UI test failures so they cannot hide this independent native proof.
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
       timeout-minutes: 20
       env:
         LOCAL_AI_PROOF_BASELINE: ${{ inputs.local_ai_proof_baseline }}
@@ -897,6 +952,128 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         name: test-results-ui
+        path: TestResults/
+        if-no-files-found: warn
+
+  # Second half of the ordinary Tray UI suite (see "Run Tray UI Tests" in
+  # ui-tests). It runs in parallel on its own runner and only builds what the
+  # Tray UI tests need. CI Gate requires it whenever ui-tests is required.
+  tray-ui-shard:
+    name: Tray UI tests (workspace and chat layout shard)
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    runs-on: windows-latest
+    env:
+      OPENCLAW_CI_COLLECT_COVERAGE: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests
+      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Roaming
+      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayUITests-Local
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore UI test projects
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
+
+    - name: Install dotnet-coverage
+      if: ${{ github.event_name != 'pull_request' && github.event_name != 'merge_group' }}
+      run: dotnet tool install --global dotnet-coverage
+
+    - name: Build UI test projects
+      id: ui-build
+      run: dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+
+    - name: Install WindowsAppRuntime
+      id: ui-runtime
+      shell: pwsh
+      run: |
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
+        $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+        Invoke-WebRequest -Uri $url -OutFile $exe
+        & $exe --quiet
+        if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Configure UI desktop
+      id: ui-desktop
+      shell: pwsh
+      run: ./scripts/Set-CiDesktopResolution.ps1
+
+    - name: Mark Tray UI crash metadata window
+      id: tray-ui-crash-window
+      shell: pwsh
+      run: |
+        "startedUtc=$((Get-Date).ToUniversalTime().ToString('o'))" >> $env:GITHUB_OUTPUT
+
+    - name: Run Tray UI Tests
+      # -HangTimeoutSeconds still bounds a single stalled test.
+      timeout-minutes: 25
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '25'
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -ResultsDirectory TestResults\TrayUIShard
+        -TrxFileName OpenClaw.Tray.UITests.Shard.trx
+        -Runtime win-x64
+        -Filter "Category!=Accessibility&Category!=NativeOnboardingProof&Category!=GatewayFixture&Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&(FullyQualifiedName~OpenClaw.Tray.UITests.WorkspaceWindowProofTests.|FullyQualifiedName~OpenClaw.Tray.UITests.ReactorChatLayoutProofTests.)"
+        -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
+    - name: Capture non-memory Tray UI crash metadata
+      if: always() && steps.tray-ui-crash-window.outcome == 'success'
+      shell: pwsh
+      env:
+        TRAY_UI_TEST_STARTED_UTC: ${{ steps.tray-ui-crash-window.outputs.startedUtc }}
+      run: |
+        # This helper belongs to the workflow, not the historical product checkout.
+        $helperSource = & git show "${env:GITHUB_SHA}:scripts/Capture-CiTestHostCrashMetadata.ps1"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not load pipeline crash metadata helper.' }
+        $helperPath = Join-Path $env:RUNNER_TEMP 'Capture-CiTestHostCrashMetadata.ps1'
+        $helperSource | Set-Content -LiteralPath $helperPath -Encoding utf8
+        & $helperPath -StartedUtc $env:TRAY_UI_TEST_STARTED_UTC
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-tray-ui-shard
         path: TestResults/
         if-no-files-found: warn
 
@@ -979,16 +1156,77 @@ jobs:
     - name: Run mock Gateway application scenarios
       id: gateway-fixture
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      # Shard A of the fixture UI scenarios; gateway-fixture-shard runs shard B in parallel.
+      # The prefix list in scripts/test-gateway-fixture.ps1 drives both filters. An older
+      # candidate's runner (alpha promotion) ignores the shard variable and runs every scenario,
+      # so the step keeps the full-suite budget.
       timeout-minutes: 30
       shell: pwsh
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '30'
+        OPENCLAW_GATEWAY_FIXTURE_UI_SHARD: A
       run: >
         ./scripts/test-gateway-fixture.ps1
         -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
         -ArtifactsDirectory .\TestResults\GatewayFixture
-        -TestTimeoutSeconds 1200
+        -TestTimeoutSeconds 1500
         -Screenshots
         -NativeInputProof
         -NoBuild
+
+    - name: Build Release correlation fixture
+      id: release-fixture-build
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      run: |
+        dotnet build tests/OpenClaw.Tray.UITests -c Release -r win-x64 --no-restore -p:DevBuild=false -p:RequireSignedCleanupHost=false
+        if ($LASTEXITCODE -ne 0) { throw 'Release fixture build failed.' }
+        New-Item -ItemType Directory -Force .\TestResults\GatewayFixtureRelease\compiled | Out-Null
+        Copy-Item .\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.dll .\TestResults\GatewayFixtureRelease\compiled\
+
+    - name: Run Release correlation fixture
+      if: ${{ !cancelled() && steps.release-fixture-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 15
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '15'
+        OPENCLAW_RUN_GATEWAY_FIXTURE_UI: '1'
+        OPENCLAW_RUN_KEYBOARD_PROOF: '0'
+        OPENCLAW_GATEWAY_FIXTURE_APP: ${{ github.workspace }}\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
+        OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\GatewayFixtureRelease\captures
+        OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '1'
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -Configuration Release
+        -ResultsDirectory TestResults\GatewayFixtureRelease
+        -TrxFileName GatewayFixtureRelease.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~GatewayFixtureUiTests.CompletedRunLateSnapshotLeavesNativeComposerReadyAndQueueDraining"
+        -ExpectedTestCount 2
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 300
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
+
+    - name: Run Release reader layout proof
+      if: ${{ !cancelled() && steps.release-fixture-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 5
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '5'
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
+        OPENCLAW_VISUAL_TEST_DIR: ${{ github.workspace }}\TestResults\ReaderRelease\observations
+      run: >
+        ./scripts/Invoke-CiTest.ps1
+        -Project tests/OpenClaw.Tray.UITests
+        -Configuration Release
+        -ResultsDirectory TestResults\ReaderRelease
+        -TrxFileName ReaderRelease.trx
+        -Runtime win-x64
+        -Filter "FullyQualifiedName~ReactorChatLayoutProofTests.ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch"
+        -ExpectedTestCount 2
+        -RequireAllTestsPassed
+        -HangTimeoutSeconds 120
+        -CollectNativeFailureMetadata
+        -CaptureHostExit
 
     - name: Run latest stable profile compatibility
       if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
@@ -1055,6 +1293,223 @@ jobs:
             process.env.GITHUB_WORKSPACE, '.github', 'scripts', 'gateway-fixture-report', 'report.mjs')).href);
           await report.run({ core, context });
 
+  # Shard B of the mock Gateway fixture UI scenarios (see "Run mock Gateway application
+  # scenarios" in gateway-fixture). It runs in parallel on its own runner. It builds both fixture
+  # test projects so an older candidate, which ignores the shard variable, can run the full suite.
+  # CI Gate requires it whenever gateway-fixture is required.
+  gateway-fixture-shard:
+    name: Mock Gateway application tests (fixture UI shard B)
+    needs: change-classification
+    if: ${{ !cancelled() && needs.change-classification.result == 'success' && needs.change-classification.outputs.ui_tests == 'true' }}
+    runs-on: windows-latest
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests
+      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests-Roaming
+      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTrayFixtureTests-Local
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Restore UI test projects
+      run: |
+        $ErrorActionPreference = 'Stop'
+        ./scripts/Initialize-ReactorPackages.ps1
+        dotnet restore tests/OpenClaw.Tray.UITests -r win-x64
+        dotnet restore tests/OpenClaw.Tray.IntegrationTests -r win-x64
+
+    - name: Build UI test projects
+      id: ui-build
+      run: |
+        dotnet build tests/OpenClaw.Tray.UITests -c Debug -r win-x64 --no-restore
+        dotnet build tests/OpenClaw.Tray.IntegrationTests -c Debug -r win-x64 --no-restore
+
+    - name: Install WindowsAppRuntime
+      id: ui-runtime
+      shell: pwsh
+      run: |
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
+        $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+        Invoke-WebRequest -Uri $url -OutFile $exe
+        & $exe --quiet
+        if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Configure UI desktop
+      id: ui-desktop
+      shell: pwsh
+      run: ./scripts/Set-CiDesktopResolution.ps1
+
+    - name: Run mock Gateway application scenarios
+      id: gateway-fixture
+      if: ${{ !cancelled() && steps.ui-build.outcome == 'success' && steps.ui-runtime.outcome == 'success' && steps.ui-desktop.outcome == 'success' }}
+      timeout-minutes: 30
+      shell: pwsh
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '30'
+        OPENCLAW_GATEWAY_FIXTURE_UI_SHARD: B
+      run: >
+        ./scripts/test-gateway-fixture.ps1
+        -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
+        -ArtifactsDirectory .\TestResults\GatewayFixture
+        -TestTimeoutSeconds 1500
+        -Screenshots
+        -NativeInputProof
+        -NoBuild
+
+    - name: Upload Test Results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-gateway-fixture-shard
+        path: TestResults/
+        if-no-files-found: warn
+
+    - name: Prepare mock Gateway screenshot publisher
+      id: screenshot-publisher
+      if: always() && steps.gateway-fixture.outcome == 'failure'
+      shell: pwsh
+      run: npm ci --prefix .github/scripts/gateway-fixture-report --ignore-scripts --no-audit --no-fund
+
+    - name: Publish browsable mock Gateway screenshots
+      if: always() && steps.screenshot-publisher.outcome == 'success'
+      uses: actions/github-script@v9
+      with:
+        script: |
+          const path = require('node:path');
+          const { pathToFileURL } = require('node:url');
+          const report = await import(pathToFileURL(path.join(
+            process.env.GITHUB_WORKSPACE, '.github', 'scripts', 'gateway-fixture-report', 'report.mjs')).href);
+          await report.run({ core, context, archive: 'test-results-gateway-fixture-shard' });
+
+  # Runs the xUnit tests a pull request adds or changes several times, some runs under CPU
+  # contention, so an intermittent new test fails here instead of later on main. Settings are
+  # environment variables only (see scripts/Invoke-CiTestSoak.ps1); CI Gate requires this job on
+  # pull requests.
+  new-test-soak:
+    name: New and changed test soak
+    needs: change-classification
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && needs.change-classification.result == 'success' }}
+    runs-on: windows-latest
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      OPENCLAW_TRAY_DATA_DIR: ${{ github.workspace }}\TestData\OpenClawTraySoak
+      OPENCLAW_TRAY_APPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTraySoak-Roaming
+      OPENCLAW_TRAY_LOCALAPPDATA_DIR: ${{ github.workspace }}\TestData\OpenClawTraySoak-Local
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+        ref: ${{ inputs.promotion_source_sha || github.sha }}
+        persist-credentials: false
+
+    - *promotion-version-tag
+
+    - name: Select added and changed tests
+      id: select
+      shell: pwsh
+      run: ./scripts/Get-CiChangedTests.ps1 -OutputPath "$env:RUNNER_TEMP\soak-selection.json"
+
+    - name: Setup .NET 10
+      if: ${{ steps.select.outputs.has_tests == 'true' }}
+      uses: actions/setup-dotnet@v6
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Cache NuGet packages
+      if: ${{ steps.select.outputs.has_tests == 'true' }}
+      continue-on-error: true
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.nuget/packages
+        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-
+
+    - name: Initialize Reactor packages
+      if: ${{ steps.select.outputs.has_tests == 'true' }}
+      shell: pwsh
+      run: ./scripts/Initialize-ReactorPackages.ps1
+
+    - name: Install WindowsAppRuntime
+      if: ${{ steps.select.outputs.ui_tests == 'true' }}
+      shell: pwsh
+      run: |
+        [xml]$props = Get-Content (Join-Path $env:GITHUB_WORKSPACE "Directory.Build.props")
+        $versionNode = $props.SelectSingleNode("/Project/PropertyGroup/MicrosoftWindowsAppSDKVersion")
+        if ($null -eq $versionNode -or [string]::IsNullOrWhiteSpace($versionNode.InnerText)) {
+          throw "MicrosoftWindowsAppSDKVersion was not found in Directory.Build.props"
+        }
+
+        $version = $versionNode.InnerText.Trim()
+        $channel = [regex]::Match($version, '^\d+\.\d+').Value
+        if ([string]::IsNullOrWhiteSpace($channel)) {
+          throw "Cannot derive WindowsAppRuntime channel from MicrosoftWindowsAppSDKVersion '$version'"
+        }
+
+        $url = "https://aka.ms/windowsappsdk/$channel/$version/windowsappruntimeinstall-x64.exe"
+        Write-Host "Installing WindowsAppRuntime $version from $url"
+        $exe = "$env:RUNNER_TEMP\WindowsAppRuntimeInstall.exe"
+        Invoke-WebRequest -Uri $url -OutFile $exe
+        & $exe --quiet
+        if ($LASTEXITCODE -ne 0) { throw "WindowsAppRuntimeInstall failed with exit code $LASTEXITCODE" }
+
+    - name: Configure UI desktop
+      if: ${{ steps.select.outputs.ui_tests == 'true' }}
+      shell: pwsh
+      run: ./scripts/Set-CiDesktopResolution.ps1
+
+    - name: Soak added and changed tests
+      if: ${{ steps.select.outputs.has_tests == 'true' }}
+      timeout-minutes: 40
+      shell: pwsh
+      env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '40'
+        OPENCLAW_UI_TEST_RESOURCE_PROFILE: Standard
+        OPENCLAW_RUN_GATEWAY_FIXTURE_UI: '1'
+        OPENCLAW_RUN_KEYBOARD_PROOF: '0'
+        OPENCLAW_GATEWAY_FIXTURE_APP: ${{ github.workspace }}\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe
+        OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS: ${{ github.workspace }}\TestResults\Soak\fixture
+        OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS: '0'
+      run: ./scripts/Invoke-CiTestSoak.ps1 -SelectionPath "$env:RUNNER_TEMP\soak-selection.json" -ResultsDirectory TestResults\Soak
+
+    - name: Upload soak results
+      if: ${{ always() && steps.select.outputs.has_tests == 'true' }}
+      uses: actions/upload-artifact@v7
+      with:
+        name: test-results-new-test-soak
+        path: TestResults/Soak/
+        if-no-files-found: warn
+
   setup-e2e:
     name: Setup and connect E2E (WSL Latest)
     needs: change-classification
@@ -1117,6 +1572,7 @@ jobs:
     - name: Run setup and connect E2E tests
       timeout-minutes: 20
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '20'
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
       run: >
@@ -1195,6 +1651,7 @@ jobs:
     - name: Run revocation recovery E2E tests
       timeout-minutes: 20
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '20'
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
       run: >
@@ -1273,6 +1730,7 @@ jobs:
     - name: Run network recovery E2E tests
       timeout-minutes: 20
       env:
+        OPENCLAW_CI_STEP_TIMEOUT_MINUTES: '20'
         OPENCLAW_RUN_E2E: 1
       shell: pwsh
       run: >
@@ -1504,6 +1962,11 @@ jobs:
 
     - name: Setup .NET 10
       uses: actions/setup-dotnet@v6
+      env:
+        # windows-11-arm: pwsh launched by setup-dotnet can crash with Internal CLR error 0x80131506
+        # (PowerShell/PowerShell#28186, actions/runner-images#15107). A 64 MiB gen0 budget avoids it
+        # for this step only. Remove once the image ships a PowerShell release containing #28186.
+        DOTNET_GCgen0size: '4000000'
       with:
         dotnet-version: 10.0.x
 
@@ -1605,6 +2068,11 @@ jobs:
 
     - name: Setup .NET from global.json
       uses: actions/setup-dotnet@v6
+      env:
+        # windows-11-arm: pwsh launched by setup-dotnet can crash with Internal CLR error 0x80131506
+        # (PowerShell/PowerShell#28186, actions/runner-images#15107). A 64 MiB gen0 budget avoids it
+        # for this step only. Remove once the image ships a PowerShell release containing #28186.
+        DOTNET_GCgen0size: '4000000'
       with:
         global-json-file: global.json
 
@@ -1812,7 +2280,7 @@ jobs:
   ci-gate:
     name: CI Gate
     if: ${{ always() }}
-    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, gateway-fixture, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
+    needs: [change-classification, fast-validation, proof-pool-contracts, metadata, core-tests, tray-tests, ui-tests, tray-ui-shard, gateway-fixture, gateway-fixture-shard, new-test-soak, setup-e2e, revocation-e2e, network-e2e, build-x64, build-arm64, build-msix, build-msix-bundle]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
@@ -1831,7 +2299,11 @@ jobs:
         TRAY_RESULT: ${{ needs.tray-tests.result }}
         UI_REQUIRED: ${{ needs.change-classification.outputs.ui_tests }}
         UI_RESULT: ${{ needs.ui-tests.result }}
+        TRAY_UI_SHARD_RESULT: ${{ needs.tray-ui-shard.result }}
         GATEWAY_FIXTURE_RESULT: ${{ needs.gateway-fixture.result }}
+        GATEWAY_FIXTURE_SHARD_RESULT: ${{ needs.gateway-fixture-shard.result }}
+        NEW_TEST_SOAK_REQUIRED: ${{ github.event_name == 'pull_request' }}
+        NEW_TEST_SOAK_RESULT: ${{ needs.new-test-soak.result }}
         SETUP_E2E_REQUIRED: ${{ needs.change-classification.outputs.setup_e2e }}
         SETUP_E2E_RESULT: ${{ needs.setup-e2e.result }}
         REVOCATION_E2E_REQUIRED: ${{ needs.change-classification.outputs.revocation_e2e }}
@@ -1858,7 +2330,11 @@ jobs:
           -TrayResult $env:TRAY_RESULT `
           -UiRequired $env:UI_REQUIRED `
           -UiResult $env:UI_RESULT `
+          -TrayUiShardResult $env:TRAY_UI_SHARD_RESULT `
           -GatewayFixtureResult $env:GATEWAY_FIXTURE_RESULT `
+          -GatewayFixtureShardResult $env:GATEWAY_FIXTURE_SHARD_RESULT `
+          -NewTestSoakRequired $env:NEW_TEST_SOAK_REQUIRED `
+          -NewTestSoakResult $env:NEW_TEST_SOAK_RESULT `
           -SetupE2eRequired $env:SETUP_E2E_REQUIRED `
           -SetupE2eResult $env:SETUP_E2E_RESULT `
           -RevocationE2eRequired $env:REVOCATION_E2E_REQUIRED `

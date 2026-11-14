@@ -473,7 +473,7 @@ try {
 
     $workflow = Get-Content (Join-Path $RepoRoot '.github\workflows\ci.yml') -Raw
     $entry = Get-Content (Join-Path $RepoRoot '.github\workflows\promote-alpha-release.yml') -Raw
-    foreach ($name in @('metadata', 'core-tests', 'tray-tests', 'ui-tests', 'gateway-fixture', 'setup-e2e', 'revocation-e2e',
+    foreach ($name in @('metadata', 'core-tests', 'tray-tests', 'ui-tests', 'tray-ui-shard', 'gateway-fixture', 'gateway-fixture-shard', 'setup-e2e', 'revocation-e2e',
         'network-e2e', 'build-x64', 'build-arm64', 'build-msix')) {
         $job = [regex]::Match($workflow, "(?ms)^  ${name}:\r?`n.*?(?=^  [a-z][a-z-]+:|\z)").Value
         if (-not $job.Contains('ref: ${{ inputs.promotion_source_sha || github.sha }}') -or

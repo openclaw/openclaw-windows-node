@@ -72,6 +72,9 @@ public sealed partial class InboxView : UserControl
         RootGrid.Width = double.NaN;
         RootGrid.MaxHeight = double.PositiveInfinity;
         TitleGlyph.Visibility = Visibility.Collapsed;
+        HeaderRow.Margin = new Thickness(0);
+        Grid.SetColumn(TitleText, 0);
+        Grid.SetColumnSpan(TitleText, 2);
         TitleText.Style = (Style)Application.Current.Resources["TitleTextBlockStyle"];
         AutomationProperties.SetAutomationId(TitleText, PageMarkerAutomationId);
         FooterRow.Visibility = Visibility.Collapsed;

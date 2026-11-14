@@ -599,8 +599,7 @@ public sealed partial class WizardPage : Page
                 moreButton.Click += (_, _) =>
                 {
                     // Remove the More button
-                    if (moreButton.Parent is Panel parent)
-                        parent.Children.Remove(moreButton);
+                    StepInputsPanel.Children.Remove(moreButton);
                     if (ReferenceEquals(_moreOptionsButton, moreButton))
                         _moreOptionsButton = null;
 
@@ -621,14 +620,10 @@ public sealed partial class WizardPage : Page
                         }
                     }
                 };
-                // Insert the button after SelectOptions in the parent StackPanel
-                var parentPanel = SelectOptions.Parent as Panel;
-                if (parentPanel != null)
-                {
-                    var idx = parentPanel.Children.IndexOf(SelectOptions);
-                    parentPanel.Children.Insert(idx + 1, moreButton);
-                    _moreOptionsButton = moreButton;
-                }
+                // Parent is unavailable before the page joins WinUI's live tree.
+                var idx = StepInputsPanel.Children.IndexOf(SelectOptions);
+                StepInputsPanel.Children.Insert(idx + 1, moreButton);
+                _moreOptionsButton = moreButton;
             }
 
             var initialValue = WizardAnswerBuilder.ValueKeys(initial).FirstOrDefault();
@@ -711,9 +706,7 @@ public sealed partial class WizardPage : Page
             panel.Children.Add(new TextBlock
             {
                 Text = option.Hint,
-                FontSize = 12,
-                Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
-                TextWrapping = TextWrapping.Wrap,
+                Style = PageTextStyle("SetupFootnoteTextStyle"),
                 TextTrimming = TextTrimming.None
             });
         }
@@ -734,6 +727,11 @@ public sealed partial class WizardPage : Page
     private static bool IsBackOption(WizardOptionValue option) =>
         string.Equals(option.Value, "__back", StringComparison.OrdinalIgnoreCase)
         || string.Equals(option.Value, "back", StringComparison.OrdinalIgnoreCase);
+
+    private static OpenClaw.SetupEngine.UI.Themes.SetupResources? s_setupResources;
+
+    // Styles bind ThemeResource brushes, so code-built text follows the page theme, not the app theme.
+    private static Style PageTextStyle(string key) => (Style)(s_setupResources ??= new())[key];
 
     private static Brush ResourceBrush(string key)
     {
@@ -1098,18 +1096,14 @@ public sealed partial class WizardPage : Page
         stack.Children.Add(new TextBlock
         {
             Text = question,
-            FontSize = 13,
-            Foreground = ResourceBrush("TextFillColorTertiaryBrush"),
-            TextWrapping = TextWrapping.Wrap,
+            Style = PageTextStyle("SetupRowTertiaryTextStyle"),
         });
         if (!string.IsNullOrWhiteSpace(answer))
         {
             stack.Children.Add(new TextBlock
             {
                 Text = answer,
-                FontSize = 13,
-                Foreground = ResourceBrush("TextFillColorSecondaryBrush"),
-                TextWrapping = TextWrapping.Wrap,
+                Style = PageTextStyle("SetupRowDescriptionTextStyle"),
             });
         }
 
@@ -1227,8 +1221,8 @@ public sealed partial class WizardPage : Page
 
     private void ResetInputs()
     {
-        if (_moreOptionsButton?.Parent is Panel morePanel)
-            morePanel.Children.Remove(_moreOptionsButton);
+        if (_moreOptionsButton is not null)
+            StepInputsPanel.Children.Remove(_moreOptionsButton);
         _moreOptionsButton = null;
         SelectOptions.Items.Clear();
         SelectOptions.Visibility = Visibility.Collapsed;

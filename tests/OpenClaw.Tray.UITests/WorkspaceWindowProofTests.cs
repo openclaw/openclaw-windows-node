@@ -13,6 +13,113 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
+    public async Task SidebarResize_KeepsDraftAndWidthAcrossCollapseAndWindowResize_AndLeavesRoomForContent(string theme)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme,
+            initialRoute: "sessions", agentIdentities: true);
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        var scale = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
+        var splitter = Find(root, "WorkspaceSidebarSplitter");
+        var navigation = Find(root, "WorkspaceNavigation");
+        var maximumWidth = Math.Floor(Math.Min(480, navigation.Current.BoundingRectangle.Width / scale - 480) / 8) * 8;
+        Assert.InRange(maximumWidth, 288, 480);
+        double PaneWidth() => (splitter.Current.BoundingRectangle.Right
+            - navigation.Current.BoundingRectangle.Left) / scale;
+        async Task ResizeToAsync(double width)
+        {
+            await FocusForKeyboardAsync(app, root, "WorkspaceSidebarSplitter");
+            while (Math.Abs(PaneWidth() - width) > 1)
+            {
+                var previous = PaneWidth();
+                var next = previous + Math.CopySign(8, width - previous);
+                System.Windows.Forms.SendKeys.SendWait(width > previous ? "{RIGHT}" : "{LEFT}");
+                await WaitUntilAsync(() => Math.Abs(PaneWidth() - next) <= 1,
+                    () => $"Sidebar width: expected {next}, actual {PaneWidth()}. " +
+                        $"Splitter focused: {splitter.Current.HasKeyboardFocus}; " +
+                        $"workspace foreground: {GetForegroundWindow() == app.HubWindowHandle}.");
+            }
+        }
+        async Task AssertWidthStaysAsync(double expected)
+        {
+            const int stableGeometryPolls = 5;
+            var polls = 0;
+            await WaitUntilAsync(() =>
+            {
+                Assert.InRange(PaneWidth(), expected - 1, expected + 1);
+                return ++polls >= stableGeometryPolls;
+            });
+        }
+        Assert.Equal("Resize sidebar", splitter.Current.Name);
+        Assert.True(splitter.Current.IsKeyboardFocusable);
+        Assert.InRange(PaneWidth(), 255, 257);
+        const string draft = "Keep this draft while resizing the sidebar";
+        ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+
+        await ResizeToAsync(288);
+        await ResizeToAsync(192);
+        System.Windows.Forms.SendKeys.SendWait("{LEFT}");
+        await AssertWidthStaysAsync(192);
+        var toggleBounds = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle;
+        var backBounds = Find(root, "WorkspaceBack").Current.BoundingRectangle;
+        var searchBounds = Find(root, "WorkspaceSearch").Current.BoundingRectangle;
+        Assert.True(backBounds.Left >= toggleBounds.Right, "Narrowing must not overlap the pane toggle and Back.");
+        Assert.True(searchBounds.Right <= splitter.Current.BoundingRectangle.Left + 1,
+            "The resize handle must not cover the Search button.");
+        foreach (var id in new[] { "WorkspacePagesCustomize", "WorkspaceSessionsAdd", "WorkspaceNotifications" })
+            Assert.True(Find(root, id).Current.BoundingRectangle.Right <= splitter.Current.BoundingRectangle.Left + 1,
+                $"The resize handle must not cover {id}.");
+        // The owner badge shows only the name, so a narrow sidebar must truncate it rather than wrap it.
+        Assert.True(Find(root, "OwnerName").Current.BoundingRectangle.Height <= 20 * scale + 1,
+            "The narrow sidebar must truncate the owner name rather than wrapping it onto multiple lines.");
+        Capture(app, theme, "sidebar-smaller");
+        await ResizeToAsync(maximumWidth);
+        System.Windows.Forms.SendKeys.SendWait("{RIGHT}");
+        await AssertWidthStaysAsync(maximumWidth);
+        Capture(app, theme, "sidebar-resized");
+
+        Invoke(Find(root, "WorkspaceTogglePane"));
+        await WaitUntilAsync(() => IsVisible(root, "WorkspaceReopenPane") && !IsVisible(root, "WorkspaceSidebarSplitter"));
+        Invoke(Find(root, "WorkspaceReopenPane"));
+        await WaitUntilAsync(() => IsVisible(root, "WorkspaceSidebarSplitter"));
+        Assert.InRange(PaneWidth(), maximumWidth - 1, maximumWidth + 1);
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+
+        Invoke(Find(root, "WorkspacePagesCustomize"));
+        var connectionToggle = await WaitForPopupAsync(root, "WorkspacePagesToggle:connection");
+        ((TogglePattern)connectionToggle.GetCurrentPattern(TogglePattern.Pattern)).Toggle();
+        await WaitUntilAsync(() => IsVisible(root, "WorkspacePinnedPage:connection"));
+        ((SelectionItemPattern)Find(root, "WorkspacePinnedPage:connection")
+            .GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
+        await ResizeToAsync(Math.Min(320, maximumWidth - 8));
+        await WaitUntilAsync(() => Math.Abs(Find(root, "NavView").Current.BoundingRectangle.Left
+            - splitter.Current.BoundingRectangle.Right) <= scale);
+        await ResizeToAsync(200);
+        Assert.True(Find(root, "WorkspaceBack").Current.IsEnabled);
+        System.Windows.Forms.SendKeys.SendWait("%{LEFT}");
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        await ResizeToAsync(maximumWidth);
+
+        var window = (WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern);
+        window.SetWindowVisualState(WindowVisualState.Normal);
+        ((TransformPattern)root.GetCurrentPattern(TransformPattern.Pattern)).Resize(800 * scale, 700 * scale);
+        await WaitUntilAsync(() => Math.Abs(root.Current.BoundingRectangle.Width / scale - 800) <= 2);
+        await WaitUntilAsync(() => Math.Abs(PaneWidth()
+            - Math.Min(maximumWidth, navigation.Current.BoundingRectangle.Width / scale - 480)) <= 1);
+        var available = navigation.Current.BoundingRectangle.Width / scale;
+        Assert.InRange(PaneWidth(), 192, available - 479);
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        Capture(app, theme, "sidebar-resized-narrow", preserveWindowState: true);
+        window.SetWindowVisualState(WindowVisualState.Maximized);
+        await WaitUntilAsync(() => Math.Abs(PaneWidth() - maximumWidth) <= 1);
+        Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
     public async Task OfflineAssistantMenuKeepsConnectionEntryWithoutEnablingSessionCreation(string theme)
     {
         using var app = new AccessibilityAppFixture(
@@ -25,13 +132,7 @@ public sealed class WorkspaceWindowProofTests
         Assert.True(selector.Current.IsEnabled);
         var dropdown = (ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern);
         dropdown.Expand();
-        await WaitUntilAsync(() => ProcessWindows(pid).Cast<AutomationElement>().Any(window =>
-            window.FindFirst(TreeScope.Descendants, new PropertyCondition(
-                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")) is not null));
-        var entry = ProcessWindows(pid).Cast<AutomationElement>()
-            .Select(window => window.FindFirst(TreeScope.Descendants, new PropertyCondition(
-                AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")))
-            .First(item => item is not null)!;
+        var entry = await WaitForPopupAsync(pid, "WorkspaceNewAgent");
         Assert.Equal("New agent", entry.Current.Name);
         Assert.True(entry.Current.IsEnabled);
         dropdown.Collapse();
@@ -53,6 +154,8 @@ public sealed class WorkspaceWindowProofTests
         var scale = Find(root, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
         var home = Find(root, "WorkspaceNavHome").Current.BoundingRectangle;
         var assistant = Find(root, "WorkspaceAssistantSelector").Current.BoundingRectangle;
+        var titleBar = Find(root, "WorkspaceTitleBar").Current.BoundingRectangle;
+        Assert.InRange(titleBar.Left - assistant.Right, -1, 1);
         // Native ComboBox automation bounds extend 4 DIP outside its Background.
         // NavigationViewItem automation bounds already match its inset LayoutRoot.
         Assert.InRange(assistant.Left + 4 * scale - home.Left, -1, 1);
@@ -101,20 +204,20 @@ public sealed class WorkspaceWindowProofTests
         AssertIconCenter(selectorBounds, center, color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145);
         AssertIconCenter(homeBounds, center, color => color.B > color.R + 70 && color.B > color.G + 50);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceAgent:research") is not null);
-        Assert.Equal("Configured assistant, main", FindPopup(root, "WorkspaceAgent:main")!.Current.Name);
-        Assert.Equal("Research assistant, research", FindPopup(root, "WorkspaceAgent:research")!.Current.Name);
-        Assert.Equal("No configured icon, fallback", FindPopup(root, "WorkspaceAgent:fallback")!.Current.Name);
-        Assert.NotNull(FindPopup(root, "WorkspaceNewAgent"));
+        var researchEntry = await WaitForPopupAsync(root, "WorkspaceAgent:research");
+        Assert.Equal("Research assistant, research", researchEntry.Current.Name);
+        Assert.Equal("Configured assistant, main", (await WaitForPopupAsync(root, "WorkspaceAgent:main")).Current.Name);
+        Assert.Equal("No configured icon, fallback", (await WaitForPopupAsync(root, "WorkspaceAgent:fallback")).Current.Name);
+        await WaitForPopupAsync(root, "WorkspaceNewAgent");
         await Task.Delay(500);
         Assert.Equal(selectorBounds, selector.Current.BoundingRectangle);
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         CaptureFlyout(root, theme, "agent-identities");
-        AssertIconCenter(FindPopup(root, "WorkspaceAgent:main")!.Current.BoundingRectangle, center,
+        AssertIconCenter((await WaitForPopupAsync(root, "WorkspaceAgent:main")).Current.BoundingRectangle, center,
             color => color.R < 20 && color.G is > 110 and < 145 && color.B is > 110 and < 145,
             expectedWidth: toggle.Width * 32 / 40);
         // "fallback" has no image or text avatar, so it gets the generated face: pale teal background (D5F6F3).
-        AssertIconCenter(FindPopup(root, "WorkspaceAgent:fallback")!.Current.BoundingRectangle, center,
+        AssertIconCenter((await WaitForPopupAsync(root, "WorkspaceAgent:fallback")).Current.BoundingRectangle, center,
             color => color.R is > 190 and < 235 && color.G > color.R + 20 && color.B > color.R + 15,
             expectedWidth: toggle.Width * 32 / 40);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Collapse();
@@ -123,10 +226,9 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal(homeBounds, Find(root, "WorkspaceNavHome").Current.BoundingRectangle);
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         ((ExpandCollapsePattern)selector.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceNewAgent") is not null);
-        ((SelectionItemPattern)FindPopup(root, "WorkspaceNewAgent")!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
-        await WaitUntilAsync(() => FindPopup(root, "AgentCreationDialog") is not null);
-        var creation = FindPopup(root, "AgentCreationDialog")!;
+        var newAgentEntry = await WaitForPopupAsync(root, "WorkspaceNewAgent");
+        ((SelectionItemPattern)newAgentEntry.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+        var creation = await WaitForPopupAsync(root, "AgentCreationDialog");
         Assert.NotNull(creation.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "AgentCreationName")));
         Assert.Contains("operator.admin", string.Join(" ", creation.FindAll(TreeScope.Descendants,
@@ -175,15 +277,15 @@ public sealed class WorkspaceWindowProofTests
         Assert.Equal("Owner", Find(root, "WorkspaceOwner").Current.Name);
         Assert.Equal("Disconnected", Find(root, "WorkspaceOwner").Current.HelpText);
         // Shorter account menu: profile, Gateway submenu, Settings, Pair a device, Help & about.
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerGateway") is not null);
+        var ownerMenu = await WaitForPopupAsync(root, "WorkspaceOwnerGateway");
         foreach (var id in new[] { "WorkspaceOwnerProfile", "WorkspaceOwnerSettings", "WorkspaceOwnerPairDevice", "WorkspaceOwnerHelp" })
             Assert.NotNull(FindPopup(root, id));
-        Assert.Equal("Disconnected", FindPopup(root, "WorkspaceOwnerGateway")!.Current.HelpText);
-        Assert.False(FindPopup(root, "WorkspaceOwnerProfile")!.Current.IsEnabled);
+        Assert.Equal("Disconnected", ownerMenu.Current.HelpText);
+        Assert.False((await WaitForPopupAsync(root, "WorkspaceOwnerProfile")).Current.IsEnabled);
         Assert.Null(FindPopup(root, "WorkspaceOwnerConnectionStatus"));
         CaptureFlyout(root, theme, "owner-account-menu");
-        await ExpandOwnerGatewayMenuAsync(root);
-        Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
+        var statusFromMenu = await ExpandOwnerGatewayMenuAsync(root);
+        Assert.Equal("Connection Status: Disconnected", statusFromMenu.Current.Name);
         CaptureFlyout(root, theme, "owner-live-status");
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
@@ -226,7 +328,7 @@ public sealed class WorkspaceWindowProofTests
     [Theory]
     [InlineData("Light")]
     [InlineData("Dark")]
-    public async Task SettingsChrome_SearchAndBidirectionalHistory_StayBelowNativeTitle(string theme)
+    public async Task SettingsChrome_SearchAndBidirectionalHistory_ShareTheNativeTitleBarBand(string theme)
     {
         using var app = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "settings");
         var root = AutomationElement.FromHandle(app.HubWindowHandle);
@@ -251,9 +353,9 @@ public sealed class WorkspaceWindowProofTests
                     if (page is null || button is null) return false;
                     var pageInfo = page.Current;
                     var buttonInfo = button.Current;
-                    if (pageInfo.ProcessId != ownedProcessId || pageInfo.IsOffscreen ||
+                    if (!NativeUiOwnership.IsOwnedDescendant(root, page, ownedProcessId) || pageInfo.IsOffscreen ||
                         !HasVisibleBounds(pageInfo.BoundingRectangle) ||
-                        buttonInfo.ProcessId != ownedProcessId || buttonInfo.ControlType != ControlType.Button ||
+                        !NativeUiOwnership.IsOwnedDescendant(root, button, ownedProcessId) || buttonInfo.ControlType != ControlType.Button ||
                         buttonInfo.IsOffscreen || !HasVisibleBounds(buttonInfo.BoundingRectangle) ||
                         buttonInfo.IsEnabled != expectedEnabled)
                         return false;
@@ -276,7 +378,8 @@ public sealed class WorkspaceWindowProofTests
         var search = Find(root, "SettingsSearch").Current.BoundingRectangle;
         var back = Find(root, "SettingsBack").Current.BoundingRectangle;
         var forward = Find(root, "SettingsForward").Current.BoundingRectangle;
-        Assert.True(toggle.Top >= title.Bottom);
+        Assert.True(toggle.Top >= title.Top && toggle.Top < title.Bottom);
+        Assert.True(search.Right <= title.Left + 1, $"Search {search} overlaps native title-bar dragging {title}.");
         Assert.Equal(toggle.Top, search.Top);
         Assert.Equal(toggle.Top, back.Top);
         Assert.Equal(toggle.Top, forward.Top);
@@ -294,15 +397,30 @@ public sealed class WorkspaceWindowProofTests
         var forwardAfterForward = await WaitForSettingsForwardAsync("PermissionsPageMarker", expectedEnabled: false);
         Assert.False(forwardAfterForward.Current.IsEnabled);
 
-        AutomationElement? SearchBox() => ProcessWindows(root.Current.ProcessId).Cast<AutomationElement>()
-            .Select(window => window.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SettingsSearchBox")))
-            .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
-        Invoke(Find(root, "SettingsSearch"));
-        await WaitUntilAsync(() => SearchBox() is not null);
-        var input = SearchBox()!;
-        Assert.Equal(ControlType.Edit, input.Current.ControlType);
-        await WaitUntilAsync(() => input.Current.HasKeyboardFocus);
+        AutomationElement? SearchBox() => FindPopupForPid(root.Current.ProcessId, "SettingsSearchBox");
+
+        // Waits for keyboard focus, not just for the box to appear. Every shortcut that opens search
+        // has to leave the caret in the input, and the Escape each caller sends next only reaches the
+        // flyout while its own input holds focus. Keep the element the successful poll produced: a
+        // separate lookup after the wait races the popup's creation and its transient offscreen
+        // state, and a fresh lookup per poll retries a box that a re-render replaced.
+        async Task<AutomationElement> WaitForFocusedSearchBoxAsync()
+        {
+            AutomationElement? ready = null;
+            await WaitUntilAsync(() =>
+            {
+                try
+                {
+                    return (ready = SearchBox()) is { } found &&
+                        found.Current.ControlType == ControlType.Edit && found.Current.HasKeyboardFocus;
+                }
+                catch (ElementNotAvailableException) { return false; }
+            });
+            return ready!;
+        }
+
+        await InvokeWhenEnabledAsync(root, "SettingsSearch");
+        var input = await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("Go to General");
         await WaitUntilAsync(() => ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == "Go to General");
         System.Windows.Forms.SendKeys.SendWait("{ENTER}");
@@ -320,13 +438,13 @@ public sealed class WorkspaceWindowProofTests
             .All(item => item.Current.BoundingRectangle.Top >= toggle.Bottom));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^e");
-        await WaitUntilAsync(() => SearchBox() is not null);
-        await WaitUntilAsync(() => SearchBox()!.Current.HasKeyboardFocus);
+        await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
+        Assert.True(IsVisible(root, "SettingsPageMarker"));
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitUntilAsync(() => SearchBox() is not null);
+        await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         Invoke(Find(root, "SettingsTogglePane"));
@@ -338,7 +456,7 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
         Find(root, "SettingsTogglePane").SetFocus();
         System.Windows.Forms.SendKeys.SendWait("^f");
-        await WaitUntilAsync(() => SearchBox() is not null);
+        await WaitForFocusedSearchBoxAsync();
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => SearchBox() is null);
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
@@ -380,7 +498,7 @@ public sealed class WorkspaceWindowProofTests
         if (compact)
         {
             var toggle = Find(root, "SettingsTogglePane").Current.BoundingRectangle;
-            Assert.True(owner.Bottom <= dashboard.Top && dashboard.Bottom <= bell.Top, $"Rail footer is not stacked: {owner} {dashboard} {bell}");
+            Assert.True(dashboard.Bottom <= bell.Top && bell.Bottom <= owner.Top, $"Rail footer is not stacked with the account last: {dashboard} {bell} {owner}");
             foreach (var bounds in new[] { owner, dashboard, bell })
             {
                 // Same 40 DIP target as the toggle; allow scaled-DPI rounding like the reopen-button check.
@@ -396,8 +514,8 @@ public sealed class WorkspaceWindowProofTests
 
         // The status pill's card is reached from the account menu's Gateway submenu status row.
         Invoke(Find(root, "SettingsOwner"));
-        await ExpandOwnerGatewayMenuAsync(root);
-        Invoke(FindPopup(root, "WorkspaceOwnerConnectionStatus")!);
+        var settingsStatusRow = await ExpandOwnerGatewayMenuAsync(root);
+        Invoke(settingsStatusRow);
         await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is not null);
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is null);
@@ -407,6 +525,74 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is null);
         Assert.True(Find(root, "SettingsDashboard").Current.IsEnabled);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MouseHistoryButtons_ReturnFromSettingsAndRestoreItWithoutReplacingChat(bool holdLeftButton)
+    {
+        using var app = new AccessibilityAppFixture(initializeAxe: false, initialRoute: null);
+        await app.NavigateAsync("workspace:notifications", "NotificationsPage", "NotificationsPageMarker");
+        await app.NavigateAsync("chat", "ChatPage", "ChatComposerInput");
+        var root = AutomationElement.FromHandle(app.HubWindowHandle);
+        var composer = Find(root, "ChatComposerInput");
+        var identity = composer.GetRuntimeId();
+        const string draft = "Keep this draft through mouse Back and Forward";
+        ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
+
+        await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
+        await PressHistoryButtonAsync(holdLeftButton ? "ConnectionPageMarker" : "SettingsBackToApp", xButton: 1);
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        Assert.False(IsVisible(root, "ConnectionPageMarker"));
+        AssertRetainedChat();
+        Capture(app, "System", $"mouse-back-from-settings-left-held-{holdLeftButton}");
+
+        await PressHistoryButtonAsync("ChatComposerInput", xButton: 2);
+        await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
+        Assert.True(IsVisible(root, "SettingsBackToApp"));
+        Capture(app, "System", $"mouse-forward-to-settings-left-held-{holdLeftButton}");
+
+        // Exercise the same history while pointing at page content instead of shell chrome.
+        await PressHistoryButtonAsync("ConnectionPageMarker", xButton: 1);
+        await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
+        AssertRetainedChat();
+
+        void AssertRetainedChat()
+        {
+            var retained = Find(root, "ChatComposerInput");
+            Assert.Equal(identity, retained.GetRuntimeId());
+            Assert.Equal(draft, ((ValuePattern)retained.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+        }
+
+        async Task PressHistoryButtonAsync(string targetId, uint xButton)
+        {
+            await app.EnsureHubForegroundAsync();
+            var target = Find(root, targetId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(root, target, root.Current.ProcessId));
+            Assert.False(target.Current.IsOffscreen);
+            var bounds = target.Current.BoundingRectangle;
+            Assert.False(bounds.IsEmpty);
+            System.Windows.Forms.Cursor.Position = new System.Drawing.Point(
+                (int)(bounds.Left + bounds.Width / 2), (int)(bounds.Top + bounds.Height / 2));
+            Assert.Equal(app.HubWindowHandle, GetForegroundWindow());
+            const uint xDown = 0x0080;
+            const uint xUp = 0x0100;
+            const uint leftDown = 0x0002;
+            const uint leftUp = 0x0004;
+            if (holdLeftButton)
+                MouseEvent(leftDown, 0, 0, 0, UIntPtr.Zero);
+            try
+            {
+                MouseEvent(xDown, 0, 0, xButton, UIntPtr.Zero);
+            }
+            finally
+            {
+                MouseEvent(xUp, 0, 0, xButton, UIntPtr.Zero);
+                if (holdLeftButton)
+                    MouseEvent(leftUp, 0, 0, 0, UIntPtr.Zero);
+            }
+        }
+    }
+
     [Theory]
     [InlineData("mouse")]
     [InlineData("enter")]
@@ -427,9 +613,10 @@ public sealed class WorkspaceWindowProofTests
         await app.NavigateAsync("connection", "ConnectionPage", "ConnectionPageMarker");
         var settings = AutomationElement.FromHandle(app.HubWindowHandle);
         Assert.Equal(workspaceHandle, app.HubWindowHandle);
-        Assert.NotNull(Find(settings, "ConnectionDashboardButton"));
+        Assert.Null(settings.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionDashboardButton")));
         Assert.NotNull(Find(settings, "SettingsTitle"));
-        Capture(app, "System", "connection-dashboard-card");
+        Capture(app, "System", "connection-page");
         // The compact rail keeps Back to app as an arrow; the title and key hint return with the pane.
         await InvokeWhenEnabledAsync(settings, "SettingsTogglePane");
         await WaitUntilAsync(() => !IsVisible(settings, "SettingsTitle"));
@@ -543,7 +730,10 @@ public sealed class WorkspaceWindowProofTests
             if (element is null) return false;
             var info = element.Current;
             var bounds = info.BoundingRectangle;
-            return info.ProcessId == workspaceProcessId && !info.IsOffscreen && info.IsEnabled &&
+            return (ReferenceEquals(element, workspace)
+                ? info.ProcessId == workspaceProcessId
+                : NativeUiOwnership.IsOwnedDescendant(workspace, element, workspaceProcessId)) &&
+                !info.IsOffscreen && info.IsEnabled &&
                 HasInboxBounds(viewport) && HasInboxBounds(bounds) && viewport.Contains(bounds);
         }
 
@@ -768,21 +958,21 @@ public sealed class WorkspaceWindowProofTests
         System.Windows.Forms.SendKeys.SendWait("{ESC}");
         await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is null);
         Invoke(Find(root, "WorkspaceOwner"));
-        await ExpandOwnerGatewayMenuAsync(root);
-        Assert.Equal("Connection Status: Disconnected", FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.Name);
-        Invoke(FindPopup(root, "WorkspaceOwnerConnectionStatus")!);
-        await WaitUntilAsync(() => FindPopup(root, "GatewayStatusOpenConnection") is not null);
+        var chatStatusRow = await ExpandOwnerGatewayMenuAsync(root);
+        Assert.Equal("Connection Status: Disconnected", chatStatusRow.Current.Name);
+        Invoke(chatStatusRow);
+        await WaitForPopupAsync(root, "GatewayStatusOpenConnection");
         Assert.Equal(composerId, Find(root, "ChatComposerInput").GetRuntimeId());
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         CaptureFlyout(root, theme, "owner-connection-status");
-        Invoke(FindPopup(root, "GatewayStatusOpenConnection")!);
+        Invoke(await WaitForPopupAsync(root, "GatewayStatusOpenConnection"));
         await WaitUntilAsync(() => IsVisible(root, "ConnectionPageMarker"));
         Invoke(Find(root, "SettingsBack"));
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
         Assert.Equal(draft, ((ValuePattern)Find(root, "ChatComposerInput").GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
         Invoke(Find(root, "WorkspaceNotifications"));
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceNotificationsOpenPage") is not null);
-        Invoke(FindPopup(root, "WorkspaceNotificationsOpenPage")!);
+        var notificationsOpenPage = await WaitForPopupAsync(root, "WorkspaceNotificationsOpenPage");
+        Invoke(notificationsOpenPage);
         await WaitUntilAsync(() => IsVisible(root, "NotificationsPageMarker"));
         Invoke(Find(root, "WorkspaceBack"));
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));
@@ -835,7 +1025,10 @@ public sealed class WorkspaceWindowProofTests
         var forwardBounds = Find(workspaceElement, "WorkspaceForward").Current.BoundingRectangle;
         Assert.Equal(backBounds.Top, forwardBounds.Top);
         var toggleBounds = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle;
-        var toggleOffsetY = toggleBounds.Top - Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom;
+        var titleBounds = Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle;
+        var toggleOffsetY = toggleBounds.Top - titleBounds.Top;
+        Assert.True(toggleBounds.Top < titleBounds.Bottom);
+        Assert.True(forwardBounds.Right <= titleBounds.Left + 1);
         Assert.Equal(toggleBounds.Top, backBounds.Top);
         var assistantBounds = Find(workspaceElement, "WorkspaceAssistantSelector").Current.BoundingRectangle;
         Assert.True(assistantBounds.Top >= toggleBounds.Bottom);
@@ -846,10 +1039,7 @@ public sealed class WorkspaceWindowProofTests
         var dropdown = (ExpandCollapsePattern)Find(workspaceElement, "WorkspaceAssistantSelector")
             .GetCurrentPattern(ExpandCollapsePattern.Pattern);
         dropdown.Expand();
-        await WaitUntilAsync(() => ProcessWindows(pid).Cast<AutomationElement>().Any(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewAgent")) is not null));
-        var newAgent = ProcessWindows(pid).Cast<AutomationElement>().Select(window => window.FindFirst(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceNewAgent"))).First(item => item is not null)!;
+        var newAgent = await WaitForPopupAsync(pid, "WorkspaceNewAgent");
         Assert.Equal("New agent", newAgent.Current.Name);
         Assert.True(newAgent.Current.IsEnabled);
         dropdown.Collapse();
@@ -926,10 +1116,26 @@ public sealed class WorkspaceWindowProofTests
         ((WindowPattern)timeline.GetCurrentPattern(WindowPattern.Pattern)).Close();
         Assert.NotNull(Find(AutomationElement.FromHandle(workspace), "WorkspaceOwner"));
 
-        var nativeNavigation = Find(workspaceElement, "WorkspaceNavigation");
+        AutomationElement? observedNavigation = null;
+        // Retain the successful observation while UIA settles after the secondary window closes.
+        await WaitUntilAsync(() =>
+            (observedNavigation = FindOrNull(workspaceElement, "WorkspaceNavigation")) is not null,
+            () => "Workspace navigation did not return after closing the connection timeline.");
+        var nativeNavigation = observedNavigation!;
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
-        var clear = FindPopup(workspaceElement, "WorkspaceNotificationsClear");
+        // The footer link can surface before UIA exposes the header action. Classify the flyout only
+        // once it shows either its dismiss action or its empty state.
+        AutomationElement? clear = null;
+        await WaitUntilAsync(() =>
+        {
+            try
+            {
+                return (clear = FindPopup(workspaceElement, "WorkspaceNotificationsClear")) is not null ||
+                    FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null;
+            }
+            catch (ElementNotAvailableException) { return false; }
+        }, () => "Inbox flyout showed neither its dismiss action nor its empty state.");
         if (clear is not null)
         {
             Invoke(clear);
@@ -939,26 +1145,32 @@ public sealed class WorkspaceWindowProofTests
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is null);
         await Task.Delay(350);
         Invoke(Find(workspaceElement, "WorkspaceNotifications"));
-        await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage") is not null);
+        await WaitForPopupAsync(workspaceElement, "WorkspaceNotificationsOpenPage");
         await WaitUntilAsync(() => FindPopup(workspaceElement, "WorkspaceNotificationsEmpty") is not null);
         Assert.False(IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Invoke(FindPopup(workspaceElement, "WorkspaceNotificationsOpenPage")!);
+        Invoke(await WaitForPopupAsync(workspaceElement, "WorkspaceNotificationsOpenPage"));
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
         Invoke(Find(workspaceElement, "WorkspaceBack"));
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Assert.True(Find(workspaceElement, "WorkspaceForward").Current.IsEnabled);
+        // A page marker does not establish sibling history-button readiness.
+        await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == true,
+            () => "WorkspaceForward did not become enabled after Back.");
         Invoke(Find(workspaceElement, "WorkspaceForward"));
         await WaitUntilAsync(() => IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Assert.False(Find(workspaceElement, "WorkspaceForward").Current.IsEnabled);
+        await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == false,
+            () => "WorkspaceForward did not become disabled after Forward.");
         ((SelectionItemPattern)Find(nativeNavigation, "WorkspaceNavHome").GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "NotificationsPageMarker"));
-        Assert.False(Find(workspaceElement, "WorkspaceForward").Current.IsEnabled);
+        await WaitUntilAsync(() => IsEnabled(workspaceElement, "WorkspaceForward") == false,
+            () => "WorkspaceForward did not stay disabled after selecting Home.");
 
         var collapseTime = Stopwatch.StartNew();
-        // TitleBar keeps its compact height whether or not its RightHeader actions are shown.
+        // TitleBar keeps its 56 DIP height (the 40 DIP pane controls plus 8 DIP insets) whether or not its RightHeader actions are shown.
         var expandedTitleHeight = Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Height;
-        Assert.True(expandedTitleHeight < Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Height,
-            $"Title bar {expandedTitleHeight}px must stay compact (32 DIP), shorter than the 40 DIP pane toggle.");
+        var titleScale = Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Width / 40;
+        Assert.InRange(Math.Abs(expandedTitleHeight - 56 * titleScale), 0, 1.5);
+        Assert.True(expandedTitleHeight > Find(workspaceElement, "WorkspaceTogglePane").Current.BoundingRectangle.Height,
+            $"Title bar {expandedTitleHeight}px must leave the 8 DIP inset around the 40 DIP pane toggle.");
         Invoke(Find(workspaceElement, "WorkspaceTogglePane"));
         await WaitUntilAsync(() => !IsVisible(workspaceElement, "WorkspaceOwner") &&
             !IsVisible(workspaceElement, "WorkspaceNotifications") &&
@@ -996,12 +1208,13 @@ public sealed class WorkspaceWindowProofTests
         Assert.InRange(Math.Abs(reopenBounds.Width - toggleBounds.Width), 0, 1);
         Assert.InRange(Math.Abs(reopenBounds.Height - toggleBounds.Height), 0, 1);
         Assert.InRange(Math.Abs(reopenBounds.Top -
-            Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom - toggleOffsetY), 0, 1);
+            Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Top - toggleOffsetY), 0, 1);
         foreach (var id in new[] { "WorkspaceNavHome", "WorkspaceOwner", "WorkspaceNotifications",
             "WorkspaceSessionsAdd", "WorkspaceAssistantSelector", "WorkspaceTogglePane", "WorkspaceBack", "WorkspaceForward" })
             Assert.False(IsVisible(workspaceElement, id), $"Hidden sidebar control '{id}' is still visible.");
         Assert.False(IsVisible(workspaceElement, "WorkspaceCompactNotifications"));
-        Assert.True(reopenBounds.Top >= Find(workspaceElement, "WorkspaceTitleBar").Current.BoundingRectangle.Bottom);
+        Assert.True(reopenBounds.Top >= titleBounds.Top && reopenBounds.Top < titleBounds.Bottom);
+        Assert.True(reopenBounds.Right <= titleBounds.Left);
         Assert.InRange(reopenBounds.Left - nativeNavigation.Current.BoundingRectangle.Left, 0, 12);
         await app.NavigateAsync("workspace:notifications", "NotificationsPage", "WorkspaceReopenPane");
         Assert.Equal(workspace, app.HubWindowHandle);
@@ -1058,6 +1271,13 @@ public sealed class WorkspaceWindowProofTests
 
     private static bool IsVisible(AutomationElement root, string id) =>
         FindOrNull(root, id) is { } element && !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0;
+
+    /// <summary>Returns null while the control is missing or stale, so callers can wait for its settled state.</summary>
+    private static bool? IsEnabled(AutomationElement root, string id)
+    {
+        try { return FindOrNull(root, id)?.Current.IsEnabled; }
+        catch (ElementNotAvailableException) { return null; }
+    }
 
     private static bool HasVisibleNotificationsFocus(AutomationElement workspace)
     {
@@ -1254,29 +1474,60 @@ public sealed class WorkspaceWindowProofTests
             new PropertyCondition(AutomationElement.ProcessIdProperty, pid));
 
     private static AutomationElement? FindPopup(AutomationElement root, string id) =>
-        ProcessWindows(root.Current.ProcessId).Cast<AutomationElement>()
-            .Select(window => window.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, id)))
-            .FirstOrDefault(element => element is not null && !element.Current.IsOffscreen);
+        FindPopupForPid(root.Current.ProcessId, id);
 
-    /// <summary>Expands the account menu's Gateway submenu, where the connection status row lives.</summary>
-    private static async Task ExpandOwnerGatewayMenuAsync(AutomationElement root)
+    /// <summary>
+    /// Returns a popup control owned by this process, or null while its window is absent, being
+    /// rebuilt, or transiently offscreen. The popup lives in its own HWND, so every probe
+    /// re-enumerates the desktop's top-level windows for the process.
+    /// </summary>
+    private static AutomationElement? FindPopupForPid(int pid, string id)
     {
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerGateway") is not null);
-        ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerGateway")!
-            .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerConnectionStatus") is not null);
-        Assert.Empty(FindPopup(root, "WorkspaceOwnerConnectionStatus")!.Current.AcceleratorKey);
+        foreach (AutomationElement window in ProcessWindows(pid))
+        {
+            try
+            {
+                var element = window.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.AutomationIdProperty, id));
+                if (element is not null && !element.Current.IsOffscreen) return element;
+            }
+            catch (ElementNotAvailableException) { }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Waits for a popup control and returns the element the successful poll observed. Looking the
+    /// control up again after the wait races the popup's own creation and offscreen transition:
+    /// the second lookup returns null instead of retrying, and dereferencing it throws.
+    /// </summary>
+    private static async Task<AutomationElement> WaitForPopupAsync(int pid, string id)
+    {
+        AutomationElement? ready = null;
+        await WaitUntilAsync(() => (ready = FindPopupForPid(pid, id)) is not null);
+        return ready!;
+    }
+
+    private static Task<AutomationElement> WaitForPopupAsync(AutomationElement root, string id) =>
+        WaitForPopupAsync(root.Current.ProcessId, id);
+
+    /// <summary>Expands the account menu's Gateway submenu, where the connection status row lives, and returns that row.</summary>
+    private static async Task<AutomationElement> ExpandOwnerGatewayMenuAsync(AutomationElement root)
+    {
+        var gatewayRow = await WaitForPopupAsync(root, "WorkspaceOwnerGateway");
+        ((ExpandCollapsePattern)gatewayRow.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+        var statusRow = await WaitForPopupAsync(root, "WorkspaceOwnerConnectionStatus");
+        Assert.Empty(statusRow.Current.AcceleratorKey);
+        return statusRow;
     }
 
     /// <summary>Expands the account menu's Help &amp; about submenu (docs, apps, timeline, About).</summary>
     private static async Task ExpandOwnerHelpMenuAsync(AutomationElement root)
     {
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerHelp") is not null);
-        ((ExpandCollapsePattern)FindPopup(root, "WorkspaceOwnerHelp")!
-            .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
-        await WaitUntilAsync(() => FindPopup(root, "WorkspaceOwnerAbout") is not null);
-        Assert.Empty(FindPopup(root, "WorkspaceOwnerAbout")!.Current.AcceleratorKey);
+        var helpRow = await WaitForPopupAsync(root, "WorkspaceOwnerHelp");
+        ((ExpandCollapsePattern)helpRow.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+        var aboutRow = await WaitForPopupAsync(root, "WorkspaceOwnerAbout");
+        Assert.Empty(aboutRow.Current.AcceleratorKey);
     }
 
     private static void CaptureFlyout(AutomationElement root, string theme, string name)
@@ -1310,11 +1561,11 @@ public sealed class WorkspaceWindowProofTests
                 "TestResults", "WorkspaceProof")
             : null);
 
-    private static void Capture(AccessibilityAppFixture app, string theme, string page)
+    private static void Capture(AccessibilityAppFixture app, string theme, string page, bool preserveWindowState = false)
     {
         var directory = ProofDirectory;
         if (string.IsNullOrEmpty(directory)) return;
         using var environment = new EnvironmentScope("OPENCLAW_UI_SCREENSHOT_PATH", Path.Combine(directory, $"{theme}-{page}.png"));
-        app.CaptureHubScreenshotIfRequested();
+        app.CaptureHubScreenshotIfRequested(preserveWindowState);
     }
 }

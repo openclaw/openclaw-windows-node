@@ -30,6 +30,9 @@ public record class SettingsData
     /// </summary>
     public bool HasInjectedFirstRunBootstrap { get; set; }
     public bool ShowNotifications { get; set; } = true;
+    /// <summary>Desktop mascot, enabled by default. Notification text is visible outside the app when enabled.</summary>
+    public bool ShowDesktopCompanion { get; set; } = true;
+    public int DesktopCompanionScalePercent { get; set; } = DesktopCompanionScale.DefaultPercent;
     public string? NotificationSound { get; set; }
     public bool NotifyHealth { get; set; } = true;
     public bool NotifyUrgent { get; set; } = true;

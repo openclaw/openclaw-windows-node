@@ -1,15 +1,18 @@
 using OpenClaw.Connection.NativeGateway;
 using System.Diagnostics;
+using System.Globalization;
 
 namespace OpenClaw.SetupEngine.UI;
 
 internal sealed class NativeGatewaySetupHost(
     SetupLogger logger,
     Action<string>? progress = null,
-    Action<NativeGatewaySetupStage>? stageProgress = null) : INativeGatewaySetupHost
+    Action<NativeGatewaySetupStage>? stageProgress = null,
+    ICommandRunner? commandRunner = null) : INativeGatewaySetupHost
 {
     // Resolved per call so OPENCLAW_SETUP_NATIVE_CLI_TIMEOUT applies without a restart.
     private static TimeSpan CliCommandTimeout => NativeGatewayCliTimeout.ResolveTimeout();
+    private readonly ICommandRunner _commandRunner = commandRunner ?? new CommandRunner(logger);
     private readonly NativeGatewayPackageClient _packageClient =
         new(new SetupOpenClawLogger(logger, prefix: ""));
 
@@ -122,9 +125,15 @@ internal sealed class NativeGatewaySetupHost(
     public Task VerifyHealthAsync(
         NativeGatewayPackage package,
         IReadOnlyDictionary<string, string> environment,
-        CancellationToken cancellationToken) =>
-        RunAsync(package.OpenClawAliasPath, ["gateway", "health", "--json"], environment,
-            CliCommandTimeout, "Checking native Gateway health...", cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        // The CLI has its own RPC timeout in addition to the process deadline.
+        var timeout = CliCommandTimeout;
+        var timeoutMilliseconds = ((long)timeout.TotalMilliseconds).ToString(CultureInfo.InvariantCulture);
+        return RunAsync(package.OpenClawAliasPath,
+            ["gateway", "health", "--json", "--timeout", timeoutMilliseconds], environment,
+            timeout, "Checking native Gateway health...", cancellationToken);
+    }
 
     public Task<IsolatedGatewayConfiguration> CheckIsolatedPairingConfigurationAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken) =>
@@ -156,7 +165,7 @@ internal sealed class NativeGatewaySetupHost(
         TimeSpan timeout, string message, CancellationToken cancellationToken)
     {
         Report(message);
-        var result = await new CommandRunner(logger).RunAsync(
+        var result = await _commandRunner.RunAsync(
             executable, arguments, timeout, environment,
             workingDirectory: environment.TryGetValue("OPENCLAW_STATE_DIR", out var directory)
                 ? directory

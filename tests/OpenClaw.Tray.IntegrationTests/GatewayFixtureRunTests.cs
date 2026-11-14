@@ -10,6 +10,38 @@ public sealed class GatewayFixtureRunTests
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(5);
 
     [Fact]
+    public void AppLaunchError_ReportsTheFirstOnLaunchedFailureRatherThanEarlierErrors()
+    {
+        var log = Path.Combine(Path.GetTempPath(), $"openclaw-fixture-log-{Guid.NewGuid():N}.log");
+        try
+        {
+            File.WriteAllLines(log,
+            [
+                "[2026-11-13 05:46:20.001] [ERROR] Previous session did not exit cleanly (started 2026-11-13T05:46:18Z)",
+                "[2026-11-13 05:46:23.762] [ERROR] OnLaunched failed: System.ArgumentException: Failed to load icon from status.ico (Parameter 'iconPath')",
+                "   at WinUIEx.TrayIcon..ctor(UInt32 trayiconId, String iconPath, String tooltip)",
+                "[2026-11-13 05:46:24.000] [ERROR] OnLaunched failed: later failure",
+            ]);
+
+            Assert.Equal(
+                "OnLaunched failed: System.ArgumentException: Failed to load icon from status.ico (Parameter 'iconPath')",
+                GatewayFixtureRun.FindAppLaunchError(log));
+            Assert.Null(GatewayFixtureRun.FindAppLaunchError(log + ".missing"));
+
+            // A restarted app appends to the same log; an earlier launch's failure is not reported.
+            var relaunchOffset = new FileInfo(log).Length;
+            File.AppendAllLines(log, ["[2026-11-13 05:47:00.000] [INFO] Started"]);
+            Assert.Null(GatewayFixtureRun.FindAppLaunchError(log, relaunchOffset));
+            File.AppendAllLines(log, ["[2026-11-13 05:47:01.000] [ERROR] OnLaunched failed: relaunch failure"]);
+            Assert.Equal("OnLaunched failed: relaunch failure", GatewayFixtureRun.FindAppLaunchError(log, relaunchOffset));
+        }
+        finally
+        {
+            File.Delete(log);
+        }
+    }
+
+    [Fact]
     public void BrowserCleanup_RetainsNestedOwnedChildrenButRejectsForeignAndStaleParents()
     {
         var started = DateTime.UnixEpoch.AddDays(1);
@@ -374,6 +406,31 @@ public sealed class GatewayFixtureRunTests
         Assert.False(disposed);
         Assert.Contains("stop:error:IOException", receipt);
         Assert.Contains("dispose:withheld-live-worker-or-app", receipt);
+    }
+
+    [Fact]
+    public async Task AppExitedBeforeCapture_RethrowsOriginalWithItsThrownStackAndRecordsCaptureError()
+    {
+        static async Task FailingBody()
+        {
+            await Task.Yield();
+            throw new NullReferenceException("Original UI assertion");
+        }
+        var body = FailingBody();
+        var original = await Assert.ThrowsAsync<NullReferenceException>(() => body);
+        var thrownStack = original.StackTrace;
+        IReadOnlyList<string> receipt = [];
+
+        var observed = await Assert.ThrowsAsync<NullReferenceException>(() => Finish(original, body: body,
+            capture: _ => throw new InvalidOperationException("No process is associated with this object."),
+            record: stages => receipt = stages).WaitAsync(FailureDeadline));
+
+        Assert.Same(original, observed);
+        // Containment re-observes the faulted body; that must not append its frames as if it had thrown.
+        Assert.DoesNotContain("ObserveAsync", observed.StackTrace!, StringComparison.Ordinal);
+        Assert.StartsWith(thrownStack!, observed.StackTrace!, StringComparison.Ordinal);
+        Assert.Contains("capture:error:InvalidOperationException", receipt);
+        Assert.Contains("dispose:completed", receipt);
     }
 
     private static Task Finish(Exception original, Task? body = null,

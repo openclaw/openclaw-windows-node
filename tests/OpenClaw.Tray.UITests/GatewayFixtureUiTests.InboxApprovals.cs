@@ -46,9 +46,9 @@ public sealed partial class GatewayFixtureUiTests
                 await RevealInboxTextRangeAsync(run, expectedDisclosure, InboxCriticalSuffix);
                 await CaptureIfRequestedAsync(run, $"inbox-plugin-{context}-critical-suffix.png");
 
-                await RevealInboxDecisionAsync(run, "InboxApprovalAllowOnce");
+                var allowOnce = await RevealInboxDecisionAsync(run, "InboxApprovalAllowOnce");
                 Assert.Null(FindInboxReviewAction(run, "InboxApprovalAllowAlways"));
-                Invoke(FindInboxReviewAction(run, "InboxApprovalAllowOnce")!);
+                Invoke(allowOnce);
                 await AssertInboxDecisionAsync(run, id, "allow-once", title);
             }
 
@@ -90,11 +90,11 @@ public sealed partial class GatewayFixtureUiTests
                 else
                     Assert.Contains("…[truncated]", rendered);
 
-                await RevealInboxDecisionAsync(run, "InboxApprovalDeny");
+                var deny = await RevealInboxDecisionAsync(run, "InboxApprovalDeny");
                 Assert.Null(FindInboxReviewAction(run, "InboxApprovalAllowOnce"));
                 Assert.Null(FindInboxReviewAction(run, "InboxApprovalAllowAlways"));
                 await CaptureIfRequestedAsync(run, $"inbox-plugin-{item.Name}-deny-only.png");
-                Invoke(FindInboxReviewAction(run, "InboxApprovalDeny")!);
+                Invoke(deny);
                 await AssertInboxDecisionAsync(run, id, "deny", title);
             }
             var decisions = run.Gateway.Requests.Where(request => request.Method == "plugin.approval.resolve").ToArray();
@@ -152,10 +152,11 @@ public sealed partial class GatewayFixtureUiTests
 
     private const int InboxAutomationNodeLimit = 4096;
 
-    private static Task RevealInboxTextRangeAsync(GatewayFixtureRun run, string disclosure, string suffix)
+    private static async Task RevealInboxTextRangeAsync(GatewayFixtureRun run, string disclosure, string suffix)
     {
-        var text = FindInboxDisclosure(run, disclosure)!;
-        return RevealInboxTextRangeAsync(run, BindNativeInboxText(run, text.GetRuntimeId()), disclosure, suffix);
+        AutomationElement? text = null;
+        await WaitUiAsync(run, () => (text = FindInboxDisclosure(run, disclosure)) is not null, "mounted Inbox disclosure");
+        await RevealInboxTextRangeAsync(run, BindNativeInboxText(run, text!.GetRuntimeId()), disclosure, suffix);
     }
 
     private static async Task RevealInboxTextRangeAsync(GatewayFixtureRun run,
@@ -293,8 +294,8 @@ public sealed partial class GatewayFixtureUiTests
                 break;
             }
         }
-        if (!contained) return false;
-        var viewport = FindInboxReviewList(run)!.Current.BoundingRectangle;
+        if (!contained || FindInboxReviewList(run) is not { } list) return false;
+        var viewport = list.Current.BoundingRectangle;
         var rectangles = range.GetBoundingRectangles();
         const int coordinatesPerRectangle = 4;
         if (rectangles is null || rectangles.Length == 0 || rectangles.Length % coordinatesPerRectangle != 0 || viewport.IsEmpty ||
@@ -337,7 +338,8 @@ public sealed partial class GatewayFixtureUiTests
             });
         }
         var rectangles = target.GetBoundingRectangles();
-        var viewport = FindInboxReviewList(run)!.Current.BoundingRectangle;
+        // A missing list remains visible in the failure record as an empty viewport.
+        var viewport = FindInboxReviewList(run)?.Current.BoundingRectangle ?? System.Windows.Rect.Empty;
         // Record geometry and comparisons once on failure, never raw approval or credential text.
         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "inbox-range-visibility.json"),
             JsonSerializer.Serialize(new
@@ -358,10 +360,11 @@ public sealed partial class GatewayFixtureUiTests
         FindInboxReviewList(run)?.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, id));
 
-    private static async Task RevealInboxDecisionAsync(GatewayFixtureRun run, string id)
+    private static async Task<AutomationElement> RevealInboxDecisionAsync(GatewayFixtureRun run, string id)
     {
-        var list = FindInboxReviewList(run)!;
-        if (!list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern))
+        AutomationElement? list = null;
+        await WaitUiAsync(run, () => (list = FindInboxReviewList(run)) is not null, "mounted Inbox review list");
+        if (!list!.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern))
         {
             var scroller = list.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true));
@@ -370,8 +373,10 @@ public sealed partial class GatewayFixtureUiTests
         }
         if (pattern is ScrollPattern scroll && scroll.Current.VerticallyScrollable)
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
-        await WaitUiAsync(run, () => FindInboxReviewAction(run, id) is { Current.IsOffscreen: false, Current.IsEnabled: true },
+        AutomationElement? action = null;
+        await WaitUiAsync(run, () => (action = FindInboxReviewAction(run, id)) is { Current.IsOffscreen: false, Current.IsEnabled: true },
             "visible enabled Inbox decision button");
+        return action!;
     }
 
     private static async Task AssertInboxDecisionAsync(GatewayFixtureRun run, string id, string decision, string title)

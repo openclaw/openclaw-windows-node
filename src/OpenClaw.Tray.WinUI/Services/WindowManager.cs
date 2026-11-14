@@ -365,7 +365,8 @@ internal sealed class WindowManager : IWindowManager
             {
                 _readyWindow?.Close();
                 ShowHub("connection");
-            });
+            },
+            gatewayId => _callbacks.GetGatewayRegistry()?.GetById(gatewayId));
         _readyWindow = ready;
         ready.Closed += (_, _) =>
         {
@@ -972,6 +973,29 @@ internal sealed class WindowManager : IWindowManager
         {
             _setupWindow = null;
         }
+
+        var registry = _callbacks.GetGatewayRegistry();
+        if (registry is null)
+            return;
+        var before = registry.GetActive();
+        // The file lease can wait up to its own bound. Keep that wait off the UI thread.
+        // Registry change handlers marshal themselves back to the dispatcher.
+        var adoption = await Task.Run(() => registry.TryAdoptExternalSnapshot());
+        if (adoption == ExternalSnapshotAdoption.UnsavedEdits)
+        {
+            Logger.Warn("Gateway list was not refreshed after setup closed because this session has unsaved Gateway edits.");
+            NotifySetupRegistryRecovery();
+            return;
+        }
+
+        if (adoption != ExternalSnapshotAdoption.Adopted)
+        {
+            Logger.Warn("Gateway list was not refreshed after setup closed because the saved list could not be read.");
+            return;
+        }
+
+        Logger.Info("Gateway list refreshed after setup closed.");
+        await ReconcileSetupConnectionAsync(before, registry.GetActive());
     }
 
     public void CloseSetup()

@@ -1,5 +1,6 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClaw.Shared.Sessions;
 using OpenClawTray.Services;
 using System.Collections.Immutable;
 
@@ -177,6 +178,7 @@ internal static class ChatSnapshotProjector
                 ContinuationMessage = NativeToolProjector.SanitizeToolDisplayValue(review.ContinuationMessage),
             } : null,
             IsBackground = display.IsBackground,
+            IsSubagent = string.Equals(display.Classification, "subagent", StringComparison.OrdinalIgnoreCase),
             IsArchived = session.Archived,
             IsChannelSession = display.Classification.ToLowerInvariant() is "direct" or "group" or "channel" or "thread",
             Status = SessionVisibilityFilter.ToChatThreadStatus(session),
@@ -195,6 +197,7 @@ internal static class ChatSnapshotProjector
             ContextTokens = session.ContextTokens,
             LastRunId = session.LastRunId,
             RunStatus = session.Status,
+            LastRunStopped = SessionRunState.HasStoppedLastRun(session),
             RuntimeMs = session.RuntimeMs,
             EndedAt = session.EndedAt,
             CreatedAt = session.StartedAt is { } started ? ToOffset(started) : null,

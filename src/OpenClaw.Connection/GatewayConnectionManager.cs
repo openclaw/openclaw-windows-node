@@ -365,6 +365,7 @@ public sealed class GatewayConnectionManager :
             // Update snapshot with gateway info
             _stateMachine.Current = _stateMachine.Current with
             {
+                LifecycleGeneration = gen,
                 GatewayId = record.Id,
                 GatewayUrl = record.Url,
                 GatewayName = record.FriendlyName
@@ -870,6 +871,7 @@ public sealed class GatewayConnectionManager :
         _gatewayNeedsV2Signature = record.IsLocal || record.RequiresV2Signature;
         _stateMachine.Current = _stateMachine.Current with
         {
+            LifecycleGeneration = gen,
             GatewayId = record.Id,
             GatewayUrl = record.Url,
             GatewayName = record.FriendlyName
@@ -1079,13 +1081,20 @@ public sealed class GatewayConnectionManager :
         }
     }
 
+    /// <summary>Disconnects only if an observation from CurrentSnapshot still identifies the published connection.</summary>
     public async Task<bool> DisconnectIfCurrentAsync(GatewayConnectionSnapshot expected)
     {
         ThrowIfDisposed();
         await _transitionSemaphore.WaitAsync();
         try
         {
-            if (!ReferenceEquals(CurrentSnapshot, expected)) return false;
+            var current = CurrentSnapshot;
+            // Compare published contexts, not an attempt counter that may have
+            // advanced before teardown failed without publishing a replacement.
+            if (current.LifecycleGeneration != expected.LifecycleGeneration ||
+                !string.Equals(current.GatewayId, expected.GatewayId, StringComparison.Ordinal) ||
+                !string.Equals(current.GatewayUrl, expected.GatewayUrl, StringComparison.Ordinal))
+                return false;
             await DisconnectCoreAsync();
             return true;
         }
@@ -1106,15 +1115,25 @@ public sealed class GatewayConnectionManager :
         }
     }
 
-    public async Task DisconnectByUserAsync()
+    public async Task DisconnectByUserAsync(string? gatewayId = null)
     {
         ThrowIfDisposed();
         await _transitionSemaphore.WaitAsync();
         try
         {
-            var gatewayId = _registry.ActiveGatewayId;
-            if (gatewayId is not null)
-                SetGatewayConnectionIntent(gatewayId, shouldBeConnected: false);
+            var targetGatewayId = gatewayId ?? _registry.ActiveGatewayId;
+            if (targetGatewayId is not null)
+                SetGatewayConnectionIntent(targetGatewayId, shouldBeConnected: false);
+
+            // Saved-row removal has already cleared the registry's active id. Pin teardown
+            // to its live owner so a queued switch cannot disconnect the replacement.
+            // A failed connect/stop can retain runtime or published state without a client.
+            var ownedGatewayId = _activeGatewayRecordId ?? _nativeGatewayRecord?.Id
+                ?? _stateMachine.Current.GatewayId;
+            if (gatewayId is not null &&
+                !string.Equals(ownedGatewayId, gatewayId, StringComparison.Ordinal))
+                return;
+
             await DisconnectCoreAsync(stopNativeGateway: true);
         }
         finally
@@ -1127,7 +1146,7 @@ public sealed class GatewayConnectionManager :
     private async Task DisconnectCoreAsync(bool stopNativeGateway = false)
     {
         CancelOperatorTelemetryAttempt("canceled", ConnectionErrorCategory.Cancelled);
-        Interlocked.Increment(ref _generation);
+        var generation = Interlocked.Increment(ref _generation);
         _nodeConnectionCoordinator.CancelTelemetry(
             "canceled",
             ConnectionErrorCategory.Cancelled);
@@ -1145,6 +1164,7 @@ public sealed class GatewayConnectionManager :
         }
         SyncNodeIntentFromSettings();
         _stateMachine.TryTransition(ConnectionTrigger.DisconnectRequested);
+        _stateMachine.Current = _stateMachine.Current with { LifecycleGeneration = generation };
         _diagnostics.RecordStateChange(prev, _stateMachine.Current.OverallState);
         EmitStateChanged();
     }
@@ -1180,42 +1200,41 @@ public sealed class GatewayConnectionManager :
         await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
-            if (!IsAutomaticReconnectAllowed(gatewayId))
-                return false;
-
-            if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
-                return false;
-
-            cancellationToken.ThrowIfCancellationRequested();
-            await DisconnectCoreAsync();
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Re-validate under the same semaphore hold before connecting: an out-of-band SetActive
-            // (e.g. a UI gateway switch that mutates the registry outside this manager) could have
-            // changed the active gateway while we were disconnecting. Fail closed if so.
-            if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
-                return false;
-            if (!IsAutomaticReconnectAllowed(gatewayId))
-                return false;
-
-            // Connect the PINNED gateway id, not "whatever is active now" — ConnectCoreAsync otherwise
-            // re-reads ActiveGatewayId, which the UI can mutate outside this semaphore, so an
-            // unpinned connect could bring up a different gateway than the one this repair targeted.
-            await ConnectCoreAsync(gatewayId, operation: "reconnect");
-
-            // Report whether a connection was actually LAUNCHED for the pinned gateway. ConnectCoreAsync
-            // bails to the Error state (without creating a client) when the record was removed mid-flight
-            // or credential resolution failed — returning true there would let auto-repair treat a
-            // credential failure as "reconnected, just unverified" and restart WSL, which cannot fix
-            // credentials. Require a non-Error operator state AND the pinned record still active.
-            return _stateMachine.Current.OperatorState is not RoleConnectionState.Error
-                && _registry.GetById(gatewayId) is not null
-                && string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal);
+            return await ReconnectIfCurrentCoreAsync(gatewayId, cancellationToken);
         }
         finally
         {
             _transitionSemaphore.Release();
         }
+    }
+
+    /// <summary>Caller must hold <see cref="_transitionSemaphore"/>.</summary>
+    private async Task<bool> ReconnectIfCurrentCoreAsync(
+        string gatewayId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsAutomaticReconnectAllowed(gatewayId))
+            return false;
+
+        if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
+            return false;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await DisconnectCoreAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Registry writes can occur outside the transition semaphore.
+        if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
+            return false;
+        if (!IsAutomaticReconnectAllowed(gatewayId))
+            return false;
+
+        await ConnectCoreAsync(gatewayId, operation: "reconnect");
+
+        // Credential failure or record removal must not look like a launched reconnect to auto-repair.
+        return _stateMachine.Current.OperatorState is not RoleConnectionState.Error
+            && _registry.GetById(gatewayId) is not null
+            && string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal);
     }
 
     public async Task<bool> RecoverSshTunnelAsync(SshTunnelExit tunnelExit)
@@ -1626,7 +1645,7 @@ public sealed class GatewayConnectionManager :
                 _registry.SetActive(previousActiveId);
                 _logger.Warn($"[ConnMgr] Failed to persist active gateway switch: {ex.Message}");
                 _diagnostics.Record("state", "Switch gateway failed", $"Could not persist active gateway: {ex.Message}");
-                return;
+                throw;
             }
 
             await DisconnectCoreAsync();
@@ -3354,14 +3373,19 @@ public sealed class GatewayConnectionManager :
         try
         {
             await _reconnectDelay(TimeSpan.FromMilliseconds(200)).ConfigureAwait(false);
-            if (_disposed ||
-                !((INodeLifecycleSource)this).IsCurrentLifecycle(request.Attempt) ||
-                request.Attempt.GatewayRecordId is null)
+            if (_disposed || request.Attempt.GatewayRecordId is null)
             {
                 return;
             }
 
-            await ReconnectIfCurrentAsync(request.Attempt.GatewayRecordId)
+            using var lease = await ((IGatewayAttemptLeaseSource)this)
+                .AcquireCurrentAttemptAsync(request.Attempt, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (lease is null)
+                return;
+
+            await ReconnectIfCurrentCoreAsync(
+                    request.Attempt.GatewayRecordId, CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch (ObjectDisposedException)

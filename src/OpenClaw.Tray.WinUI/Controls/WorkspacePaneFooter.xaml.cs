@@ -11,7 +11,7 @@ internal enum WorkspacePaneFooterLayout
 {
     /// <summary>Account, Dashboard and bell in one row of an open pane.</summary>
     Expanded,
-    /// <summary>Account, Dashboard and bell stacked as icons in a compact pane rail.</summary>
+    /// <summary>Dashboard and bell stacked as icons above the account in a compact pane rail.</summary>
     Rail,
     /// <summary>Dashboard and bell only, for the title bar while the Chat pane is hidden.</summary>
     TitleBar,
@@ -25,7 +25,7 @@ internal enum WorkspacePaneFooterLayout
 public sealed partial class WorkspacePaneFooter : UserControl
 {
     private const double ButtonGap = 4;
-    private const double TitleBarButtonHeight = 32;
+    private const double TitleBarButtonHeight = 40;
     private readonly double _paneButtonHeight;
     private readonly FlyoutShowRequest _notificationsShow;
     private WorkspacePaneFooterLayout _layout = WorkspacePaneFooterLayout.Expanded;
@@ -94,9 +94,7 @@ public sealed partial class WorkspacePaneFooter : UserControl
     internal void ApplyConnection(string label, ConnectionStatusAccent accent)
     {
         _connectionLabel = label;
-        OwnerDetail.Text = label;
         var style = BadgeStyle(accent);
-        OwnerStatusDot.Style = style;
         OwnerAvatarStatusDot.Style = style;
         ApplyOwnerHelpText();
         ApplyOwnerToolTip();
@@ -217,9 +215,8 @@ public sealed partial class WorkspacePaneFooter : UserControl
     }
 
     private void ApplyOwnerToolTip() =>
-        ToolTipService.SetToolTip(OwnerButton, _layout == WorkspacePaneFooterLayout.Rail
-            ? string.IsNullOrEmpty(OwnerStatusText) ? _ownerName : $"{_ownerName}\n{OwnerStatusText}"
-            : null);
+        ToolTipService.SetToolTip(OwnerButton,
+            string.IsNullOrEmpty(OwnerStatusText) ? _ownerName : $"{_ownerName}\n{OwnerStatusText}");
 
     private void ApplyLayout()
     {
@@ -232,20 +229,25 @@ public sealed partial class WorkspacePaneFooter : UserControl
 
         OwnerButton.Visibility = titleBar ? Visibility.Collapsed : Visibility.Visible;
         OwnerButton.Width = rail ? 40 : double.NaN;
-        // Leave room for the 24 DIP avatar, status dot and button borders in the 40 DIP rail.
-        OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8);
+        // Leave room for the 24 DIP avatar, status dot and button borders in the 40 DIP rail. The expanded
+        // padding leaves slack too: an exact 24 DIP content box rounds below the avatar at some scales and clips it.
+        OwnerButton.Padding = rail ? new Thickness(4) : new Thickness(8, 4, 8, 4);
         OwnerButton.HorizontalContentAlignment = rail ? HorizontalAlignment.Center : HorizontalAlignment.Stretch;
         OwnerText.Visibility = rail ? Visibility.Collapsed : Visibility.Visible;
         OwnerContent.ColumnSpacing = rail ? 0 : 12;
-        OwnerAvatarStatusDot.Visibility = rail ? Visibility.Visible : Visibility.Collapsed;
 
-        Place(OwnerButton, 0, 0);
-        Place(DashboardButton, rail ? 1 : 0, rail ? 0 : 1);
-        Place(NotificationsButton, rail ? 2 : 0, rail ? 0 : 2);
+        // The rail stacks Dashboard and the bell above the account, which stays at the bottom.
+        Place(DashboardButton, 0, rail ? 0 : 1);
+        Place(NotificationsButton, rail ? 1 : 0, rail ? 0 : 2);
+        Place(OwnerButton, rail ? 2 : 0, 0);
         var gap = rail ? new Thickness(0, ButtonGap, 0, 0) : new Thickness(ButtonGap, 0, 0, 0);
-        DashboardButton.Margin = titleBar ? new Thickness(0) : gap;
+        DashboardButton.Margin = titleBar || rail ? new Thickness(0) : gap;
         NotificationsButton.Margin = gap;
-        // The title bar keeps its 32 DIP compact height, so its buttons must fit inside it.
+        OwnerButton.Margin = rail ? gap : new Thickness(0);
+        // Tab follows the visual order; Grid rows alone keep the XAML order (account first).
+        DashboardButton.TabIndex = rail ? 0 : 1;
+        NotificationsButton.TabIndex = rail ? 1 : 2;
+        OwnerButton.TabIndex = rail ? 2 : 0;
         DashboardButton.Height = titleBar ? TitleBarButtonHeight : _paneButtonHeight;
         NotificationsButton.Height = DashboardButton.Height;
 

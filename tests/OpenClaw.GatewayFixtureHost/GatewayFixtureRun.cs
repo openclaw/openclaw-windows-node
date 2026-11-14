@@ -149,6 +149,7 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         for (var attempt = 0; attempt < 3; attempt++)
         {
             McpPort = FindFreePort();
+            _launchLogOffset = LogLength(Path.Combine(Profile.DataDirectory, "openclaw-tray.log"));
             _process = Process.Start(Profile.CreateStartInfo(_appPath, McpPort, _postSetupLaunch, _postSetupRestart))
                 ?? throw new InvalidOperationException("Failed to start the fixture app.");
             await WriteReportAsync("starting");
@@ -263,8 +264,48 @@ public sealed class GatewayFixtureRun : IAsyncDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException($"Fixture MCP did not become ready. Last error: {lastError?.Message}. Artifacts: {ArtifactsDirectory}");
+            // A launch failure leaves the process running without MCP; name it beside the
+            // last poll result. Only this launch's log lines are considered.
+            var launchError = FindAppLaunchError(Path.Combine(Profile.DataDirectory, "openclaw-tray.log"), _launchLogOffset);
+            var detail = launchError is null
+                ? lastError?.Message
+                : $"{lastError?.Message}; app launch error: {TruncateDiagnostic(Redact(launchError))}";
+            throw new TimeoutException($"Fixture MCP did not become ready. Last error: {detail}. Artifacts: {ArtifactsDirectory}");
         }
+    }
+
+    private long _launchLogOffset;
+
+    private static long LogLength(string path)
+    {
+        try { return File.Exists(path) ? new FileInfo(path).Length : 0; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return 0; }
+    }
+
+    private static string TruncateDiagnostic(string text) => text.Length <= 500 ? text : text[..500];
+
+    /// <summary>
+    /// Returns the first OnLaunched failure line written at or after <paramref name="offset"/>,
+    /// or null when there is none. Diagnostic only: it names a failure, never gates one.
+    /// </summary>
+    internal static string? FindAppLaunchError(string logPath, long offset = 0)
+    {
+        const string Marker = "[ERROR] OnLaunched failed";
+        try
+        {
+            using var stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            if (offset > 0 && offset <= stream.Length)
+                stream.Seek(offset, SeekOrigin.Begin);
+            using var reader = new StreamReader(stream);
+            while (reader.ReadLine() is { } line)
+            {
+                var index = line.IndexOf(Marker, StringComparison.Ordinal);
+                if (index >= 0)
+                    return line[(index + "[ERROR] ".Length)..];
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        return null;
     }
 
     internal static async Task<string> ReadPublishedMcpTokenAsync(string path, CancellationToken cancellationToken)

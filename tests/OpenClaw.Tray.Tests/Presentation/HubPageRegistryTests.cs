@@ -119,6 +119,10 @@ public sealed class HubPageRegistryTests
     [Theory]
     [InlineData("config", true)]
     [InlineData("CONFIG", true)]
+    [InlineData("cron", true)]
+    [InlineData("CRON", true)]
+    [InlineData("agent:main:cron", true)]
+    [InlineData("agent:research:cron", true)]
     [InlineData("dashboards", true)]
     [InlineData("dashboards?session=agent%3Amain%3Amain", true)]
     [InlineData("systems", true)]
@@ -127,7 +131,7 @@ public sealed class HubPageRegistryTests
     [InlineData("systems:node:studio", true)]
     [InlineData("channels", false)]
     [InlineData(null, false)]
-    public void KeepVisibleDuringDisconnect_AppliesToConfigDashboardsAndSystems(string? tag, bool expected)
+    public void KeepVisibleDuringDisconnect_PreservesPagesWithOfflineRecovery(string? tag, bool expected)
     {
         Assert.Equal(expected, HubPageRegistry.ShouldKeepCurrentPageVisibleDuringDisconnect(tag));
     }

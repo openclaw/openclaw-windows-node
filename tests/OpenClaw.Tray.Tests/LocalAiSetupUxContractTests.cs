@@ -145,7 +145,7 @@ public sealed class LocalAiSetupUxContractTests
         Assert.Equal("0", (string?)availability.Attribute("BorderThickness"));
         var heading = availability.Descendants()
             .Single(element => (string?)element.Attribute(names + "Uid") == "Onboarding_Welcome_LocalAiAvailableBadge");
-        Assert.Equal("{StaticResource BodyTextBlockStyle}", (string?)heading.Attribute("Style"));
+        Assert.Equal("{StaticResource SetupRowTitleTextStyle}", (string?)heading.Attribute("Style"));
         Assert.DoesNotContain("LocalAiAvailabilityBadge", xaml);
         Assert.Contains("SetupLocalization.Format(", source);
         Assert.Contains("\"Onboarding_Welcome_LocalAiAvailabilityDetail\"", source);
@@ -552,7 +552,7 @@ public sealed class LocalAiSetupUxContractTests
             xaml,
             "<ScrollViewer VerticalScrollBarVisibility=\"Auto\">",
             "<Grid HorizontalAlignment=\"Stretch\">",
-            "<StackPanel Padding=\"24\" Spacing=\"12\" HorizontalAlignment=\"Stretch\" MaxWidth=\"900\">",
+            "<StackPanel presentation:PageContentLayout.IsEnabled=\"True\" Spacing=\"4\">",
             "x:Uid=\"LocalAiPage_Intro\"",
             "x:Name=\"LocalAiUnavailableInfoBar\"",
             "x:Name=\"LocalAiEngineOption\"");

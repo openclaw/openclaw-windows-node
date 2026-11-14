@@ -27,6 +27,22 @@ public static class ReactorChatHostExtensions
                 System.Diagnostics.Debug.WriteLine("Dropped chat UI update because DispatcherQueue rejected the work item.");
         };
 
+    /// <summary>Runs <paramref name="action"/> once after <paramref name="delay"/>; dispose to cancel.</summary>
+    internal static IDisposable Schedule(this DispatcherQueue dispatcher, TimeSpan delay, Action action)
+    {
+        var timer = dispatcher.CreateTimer();
+        timer.Interval = delay;
+        timer.IsRepeating = false;
+        timer.Tick += (_, _) => action();
+        timer.Start();
+        return new TimerLease(timer);
+    }
+
+    private sealed class TimerLease(DispatcherQueueTimer timer) : IDisposable
+    {
+        public void Dispose() => timer.Stop();
+    }
+
     /// <summary>Builds the reset-confirmation dialog closure and creates one
     /// <see cref="ChatComposerSession"/> from the
     /// resolved <paramref name="composerFactory"/>. Callers pass the returned session
@@ -45,7 +61,8 @@ public static class ReactorChatHostExtensions
         Action onSandboxSettingsClick,
         Action? onSessionNavigationStarting = null,
         Action<string, string?>? onSessionSelected = null,
-        Action<string>? onSpeechTargetChanged = null)
+        Action<string>? onSpeechTargetChanged = null,
+        Func<IDisposable>? beginModal = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);
@@ -75,6 +92,7 @@ public static class ReactorChatHostExtensions
                 XamlRoot = target.XamlRoot,
             };
             dialog.PrimaryButtonStyle = (Style)Application.Current.Resources["AccentButtonStyle"];
+            using var modal = beginModal?.Invoke();
             return await dialog.ShowAsync() == ContentDialogResult.Primary;
         }
 
@@ -91,7 +109,7 @@ public static class ReactorChatHostExtensions
     }
 
     /// <summary>Transfers ownership of the session, including disposal if mounting fails.</summary>
-    public static MountedReactorChat MountReactorChat(
+    internal static MountedReactorChat MountReactorChat(
         this Window window,
         Border target,
         IChatDataProvider provider,
@@ -103,7 +121,9 @@ public static class ReactorChatHostExtensions
         bool initialThreadIsExplicitSelection = true,
         IChatAgentRosterSource? agentRosterSource = null,
         string userDisplayName = "",
-        ImageSource? userProfilePicture = null)
+        ImageSource? userProfilePicture = null,
+        ChatDashboardBinding? dashboards = null,
+        bool compact = false)
     {
         ArgumentNullException.ThrowIfNull(composerSession);
         MountedReactorChat? mounted = null;
@@ -133,7 +153,11 @@ public static class ReactorChatHostExtensions
                 InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
                 AgentRosterSource: agentRosterSource,
                 UserDisplayName: userDisplayName,
-                UserProfilePicture: userProfilePicture);
+                UserProfilePicture: userProfilePicture,
+                Compact: compact)
+            {
+                Dashboards = dashboards,
+            };
             var host = new ReactorHostControl();
             mounted = new MountedReactorChat(target, host, callbacks, props);
             host.Mount(_ => Component<OpenClawReactorChatRoot, OpenClawReactorChatRootProps>(props));
@@ -187,6 +211,8 @@ public sealed class MountedReactorChat(
     internal void CancelVoiceRecording() => session.Controller.CancelVoiceRecording();
 
     internal void SetHostVisible(bool visible) => session.SetHostVisible(visible);
+
+    internal void FocusInput() => session.RequestInputFocus();
 
     public void AttachFiles(IReadOnlyList<ChatAttachment> attachments) =>
         callbacks.AttachFiles?.Invoke(attachments);

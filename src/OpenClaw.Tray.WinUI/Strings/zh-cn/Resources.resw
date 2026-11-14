@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root xmlns:ns1="urn:schemas-microsoft-com:xml-msdata" xmlns:xs="http://www.w3.org/2001/XMLSchema">
   <xs:schema id="root">
     <xs:element name="root" ns1:IsDataSet="true">
@@ -17,6 +17,16 @@
       </xs:complexType>
     </xs:element>
   </xs:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>桌面龙虾</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>在桌面上显示一只动画龙虾。即使 OpenClaw 在后台运行，通知文字也会显示在对话气泡中。拖动可移动位置，右键单击可查看选项。</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw 桌面龙虾</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>关闭气泡</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>打开通知</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>打开 OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>龙虾大小</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>调整龙虾大小，不改变聊天或通知文字的大小。</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龙虾设置</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>无法显示桌面龙虾。请在设置中关闭再打开“桌面龙虾”以重试。你仍然可以在 OpenClaw 中查看通知。</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>连接</value>
   </data>
@@ -1672,33 +1682,6 @@
   <data name="ConversationsPage_TextBlock_37.Text" xml:space="preserve">
     <value>刷新</value>
   </data>
-  <data name="CronPage_TextBlock_10.Text" xml:space="preserve">
-    <value>⏱️ Cron 作业</value>
-  </data>
-  <data name="CronPage_TextBlock_29.Text" xml:space="preserve">
-    <value>计划程序状态</value>
-  </data>
-  <data name="SchedulerStatusText.Text" xml:space="preserve">
-    <value>已启用</value>
-  </data>
-  <data name="StorePathText.Text" xml:space="preserve">
-    <value>Store: ~/.openclaw/cron.db</value>
-  </data>
-  <data name="NextWakeText.Text" xml:space="preserve">
-    <value>下次唤醒：…</value>
-  </data>
-  <data name="CronPage_Button_80.Content" xml:space="preserve">
-    <value>立即运行</value>
-  </data>
-  <data name="CronPage_TextBlock_90.Text" xml:space="preserve">
-    <value>上次运行：</value>
-  </data>
-  <data name="CronPage_TextBlock_104.Text" xml:space="preserve">
-    <value>下次运行：</value>
-  </data>
-  <data name="CronPage_TextBlock_120.Text" xml:space="preserve">
-    <value>未配置 Cron 作业</value>
-  </data>
   <data name="DebugPage_TextBlock_8.Text" xml:space="preserve">
     <value>🐛 调试</value>
   </data>
@@ -1902,24 +1885,6 @@
   </data>
   <data name="PermissionsPage_Button_123.Content" xml:space="preserve">
     <value>打开 Windows 隐私设置</value>
-  </data>
-  <data name="SessionsPage_TextBlock_10.Text" xml:space="preserve">
-    <value>💬 会话</value>
-  </data>
-  <data name="SessionsPage_Button_57.Content" xml:space="preserve">
-    <value>重置</value>
-  </data>
-  <data name="SessionsPage_Button_59.Content" xml:space="preserve">
-    <value>压缩</value>
-  </data>
-  <data name="SessionsPage_Button_61.Content" xml:space="preserve">
-    <value>删除</value>
-  </data>
-  <data name="SessionsPage_TextBlock_73.Text" xml:space="preserve">
-    <value>无活跃会话</value>
-  </data>
-  <data name="SessionsPage_TextBlock_84.Text" xml:space="preserve">
-    <value>🤖 可用模型</value>
   </data>
   <data name="SettingsPage_TextBlock_16.Text" xml:space="preserve">
     <value>⚙️ 设置</value>
@@ -2332,8 +2297,11 @@
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>语音模型</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>语音转文本已禁用。请先在此配置模型，准备好后再在“权限”中启用此功能。</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>语音转文本已禁用</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>请在“权限”中启用后再更改这些设置。</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>打开权限</value>
@@ -2404,8 +2372,11 @@
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>选择朗读响应时使用的语音。</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>文本转语音已禁用。请先在此配置提供程序和语音，准备好后再在“权限”中启用此功能。</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>文本转语音已禁用</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>请在“权限”中启用后再更改本地语音设置。</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>提供商</value>
@@ -2530,13 +2501,13 @@
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
     <value>语音 ID</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>例如 male-qn-qingse</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
     <value>模型</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve">
     <value>speech-2.8-hd</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
@@ -2956,14 +2927,32 @@
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>推理</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>每秒令牌数：本会话中最新模型响应、平均值 (μ) 以及近期模型调用的第 95 百分位数 (p95)。~ 表示流式传输期间的实时估算。</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>打开上下文使用详情</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>上下文窗口使用情况</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>会话上下文使用情况：{1} 中的 {0}（{2}%）</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>给助手发送消息（按 Enter 发送）</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>上下文窗口</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>最近一次运行的令牌</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>输入</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>输出</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>上下文使用详情</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>按 Enter 发送，按 Shift+Enter 换行。</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>给 {0} 发送消息</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>连接中…</value>
@@ -3140,18 +3129,6 @@
   </data>
   <data name="AppNotification_SandboxUnavailable_DefaultReason" xml:space="preserve">
     <value>此计算机上没有可用的 MXC 沙盒基元。</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_Title" xml:space="preserve">
-    <value>Cron 作业未启动</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_DefaultDetail" xml:space="preserve">
-    <value>请求失败。</value>
-  </data>
-  <data name="AppNotification_CronRunRejectedDetail" xml:space="preserve">
-    <value>网关拒绝了 cron.run 请求。</value>
-  </data>
-  <data name="AppNotification_CronRunFailed_MessageFormat" xml:space="preserve">
-    <value>{0}：{1}</value>
   </data>
   <data name="NotificationsPage_MetadataSourceExecApproval" xml:space="preserve">
     <value>执行批准</value>
@@ -3666,7 +3643,7 @@
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>使用网关的 Web 聊天界面</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>显示通知</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3909,10 +3886,10 @@
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>允许代理通过 location.* 命令读取设备位置。</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3936,11 +3913,11 @@
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>未激活</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>查看会话 ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>查看会话</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>查看实例 ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>查看实例</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>节点模式</value>
@@ -3957,8 +3934,11 @@
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>连接</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>管理权限 ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>连接</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>管理权限</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>帮助我们修复此连接:</value>
@@ -4131,180 +4111,6 @@
   <data name="ConnectionPage_Cancel.Content" xml:space="preserve">
     <value>取消</value>
   </data>
-  <data name="CronPage_CronJobs.Text" xml:space="preserve">
-    <value>⏱️ Cron 任务</value>
-  </data>
-  <data name="CronPage_Refresh.Text" xml:space="preserve">
-    <value>刷新</value>
-  </data>
-  <data name="CronPage_NewJob.Text" xml:space="preserve">
-    <value>新建任务</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Title" xml:space="preserve">
-    <value>网关已断开</value>
-  </data>
-  <data name="CronPage_GatewayDisconnected.Message" xml:space="preserve">
-    <value>请连接到网关以加载 cron 任务。</value>
-  </data>
-  <data name="CronPage_OpenConnection.Content" xml:space="preserve">
-    <value>打开连接</value>
-  </data>
-  <data name="CronPage_NewCronJob.Text" xml:space="preserve">
-    <value>新建 Cron 任务</value>
-  </data>
-  <data name="CronPage_NAME.Text" xml:space="preserve">
-    <value>名称</value>
-  </data>
-  <data name="CronPage_MorningBrief.PlaceholderText" xml:space="preserve">
-    <value>晨间简报</value>
-  </data>
-  <data name="CronPage_SCHEDULE.Text" xml:space="preserve">
-    <value>计划</value>
-  </data>
-  <data name="CronPage_ScheduleEveryOption.Content" xml:space="preserve">
-    <value>每</value>
-  </data>
-  <data name="CronPage_ScheduleAtOption.Content" xml:space="preserve">
-    <value>于</value>
-  </data>
-  <data name="CronPage_ScheduleCronOption.Content" xml:space="preserve">
-    <value>Cron</value>
-  </data>
-  <data name="CronPage_QUICKPRESETS.Text" xml:space="preserve">
-    <value>快速预设</value>
-  </data>
-  <data name="CronPage_Hourly.Content" xml:space="preserve">
-    <value>⏰ 每小时</value>
-  </data>
-  <data name="CronPage_Daily9am.Content" xml:space="preserve">
-    <value>🌅 每天上午 9 点</value>
-  </data>
-  <data name="CronPage_Daily6pm.Content" xml:space="preserve">
-    <value>🌆 每天下午 6 点</value>
-  </data>
-  <data name="CronPage_Weekdays.Content" xml:space="preserve">
-    <value>💼 工作日</value>
-  </data>
-  <data name="CronPage_Weekly.Content" xml:space="preserve">
-    <value>📅 每周</value>
-  </data>
-  <data name="CronPage_EXPRESSION.Text" xml:space="preserve">
-    <value>表达式</value>
-  </data>
-  <data name="CronPage_TIMEZONE.Text" xml:space="preserve">
-    <value>时区</value>
-  </data>
-  <data name="CronPage_Optional.PlaceholderText" xml:space="preserve">
-    <value>可选</value>
-  </data>
-  <data name="CronPage_AmericaNewYork.Content" xml:space="preserve">
-    <value>America/New_York</value>
-  </data>
-  <data name="CronPage_AmericaChicago.Content" xml:space="preserve">
-    <value>America/Chicago</value>
-  </data>
-  <data name="CronPage_AmericaDenver.Content" xml:space="preserve">
-    <value>America/Denver</value>
-  </data>
-  <data name="CronPage_AmericaLosAngeles.Content" xml:space="preserve">
-    <value>America/Los_Angeles</value>
-  </data>
-  <data name="CronPage_EuropeLondon.Content" xml:space="preserve">
-    <value>Europe/London</value>
-  </data>
-  <data name="CronPage_EuropeBerlin.Content" xml:space="preserve">
-    <value>Europe/Berlin</value>
-  </data>
-  <data name="CronPage_AsiaTokyo.Content" xml:space="preserve">
-    <value>Asia/Tokyo</value>
-  </data>
-  <data name="CronPage_UTC.Content" xml:space="preserve">
-    <value>UTC</value>
-  </data>
-  <data name="CronPage_EVERY.Text" xml:space="preserve">
-    <value>每</value>
-  </data>
-  <data name="CronPage_UNIT.Text" xml:space="preserve">
-    <value>单位</value>
-  </data>
-  <data name="CronPage_Minutes.Content" xml:space="preserve">
-    <value>分钟</value>
-  </data>
-  <data name="CronPage_Hours.Content" xml:space="preserve">
-    <value>小时</value>
-  </data>
-  <data name="CronPage_Days.Content" xml:space="preserve">
-    <value>天</value>
-  </data>
-  <data name="CronPage_RUNAT.Text" xml:space="preserve">
-    <value>运行时间</value>
-  </data>
-  <data name="CronPage_Date.PlaceholderText" xml:space="preserve">
-    <value>日期</value>
-  </data>
-  <data name="CronPage_330PM.PlaceholderText" xml:space="preserve">
-    <value>15:30</value>
-  </data>
-  <data name="CronPage_DeleteJobAfterIt.Content" xml:space="preserve">
-    <value>运行后删除任务</value>
-  </data>
-  <data name="CronPage_PROMPTPAYLOAD.Text" xml:space="preserve">
-    <value>提示 / 负载</value>
-  </data>
-  <data name="CronPage_WhatShouldTheAgent.PlaceholderText" xml:space="preserve">
-    <value>代理应该做什么?</value>
-  </data>
-  <data name="CronPage_DELIVERY.Text" xml:space="preserve">
-    <value>投递</value>
-  </data>
-  <data name="CronPage_SilentNone.Content" xml:space="preserve">
-    <value>静默(无)</value>
-  </data>
-  <data name="CronPage_NotifyMeAnnounce.Content" xml:space="preserve">
-    <value>通知我(通告)</value>
-  </data>
-  <data name="CronPage_CHANNEL.Text" xml:space="preserve">
-    <value>通道</value>
-  </data>
-  <data name="CronPage_EGWebchat.PlaceholderText" xml:space="preserve">
-    <value>例如 webchat</value>
-  </data>
-  <data name="CronPage_AdvancedOptions.Text" xml:space="preserve">
-    <value>高级选项</value>
-  </data>
-  <data name="CronPage_SESSIONBEHAVIOR.Text" xml:space="preserve">
-    <value>会话行为</value>
-  </data>
-  <data name="CronPage_NewSessionEachRun.Content" xml:space="preserve">
-    <value>每次运行新建会话</value>
-  </data>
-  <data name="CronPage_ResumeMainSession.Content" xml:space="preserve">
-    <value>恢复主会话</value>
-  </data>
-  <data name="CronPage_WAKEMODE.Text" xml:space="preserve">
-    <value>唤醒模式</value>
-  </data>
-  <data name="CronPage_NowImmediate.Content" xml:space="preserve">
-    <value>立即(即时)</value>
-  </data>
-  <data name="CronPage_QueueWaitForIdle.Content" xml:space="preserve">
-    <value>排队(等待空闲)</value>
-  </data>
-  <data name="CronPage_Cancel.Content" xml:space="preserve">
-    <value>取消</value>
-  </data>
-  <data name="CronPage_CreateJob.Content" xml:space="preserve">
-    <value>创建任务</value>
-  </data>
-  <data name="CronPage_LoadingCronJobs.Text" xml:space="preserve">
-    <value>正在加载 cron 任务…</value>
-  </data>
-  <data name="CronPage_NoCronJobsConfigured.Text" xml:space="preserve">
-    <value>未配置 cron 任务</value>
-  </data>
-  <data name="CronPage_CronJobsWillAppear.Text" xml:space="preserve">
-    <value>通过网关配置 cron 任务后,它们将显示在此处。</value>
-  </data>
   <data name="DebugPage_Status.Title" xml:space="preserve">
     <value>状态</value>
   </data>
@@ -4380,7 +4186,7 @@
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>代理在此电脑上运行的程序受到隔离。</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>哪些内容受隔离</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4471,7 +4277,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Windows 运行时文件夹和私有工作区仍可用。出现在 PATH 中不会授予访问权限。重新应用预设可重置文件夹选项。</value>
+    <value>受保护的文件夹仍被阻止。Windows 运行时文件夹仍可用；出现在 PATH 中不会授予访问权限。</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>附加文件夹</value>
@@ -4494,11 +4300,17 @@
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>添加文件夹</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>添加新文件夹</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 剪贴板</value>
+    <value>剪贴板</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>剪贴板访问</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>剪贴板通常包含密码、令牌和私人文本。读取权限可能将这些泄露给代理(若启用,也会泄露到互联网)。</value>
+    <value>剪贴板通常包含密码和私人文本。读取权限会将其暴露给代理。</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>无(默认)</value>
@@ -4513,7 +4325,7 @@
     <value>读取与写入</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 网络</value>
+    <value>网络</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>允许互联网</value>
@@ -4525,7 +4337,7 @@
     <value>本地网络设备和共享尚未包含在内。</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ 限制</value>
+    <value>限制</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>命令超时:30 秒</value>
@@ -4544,15 +4356,6 @@
   </data>
   <data name="SandboxPage_64MiB.Content" xml:space="preserve">
     <value>64 MiB</value>
-  </data>
-  <data name="SessionsPage_Sessions.Text" xml:space="preserve">
-    <value>会话</value>
-  </data>
-  <data name="SessionsPage_Refresh.Text" xml:space="preserve">
-    <value>刷新</value>
-  </data>
-  <data name="SessionsPage_All.Text" xml:space="preserve">
-    <value>全部</value>
   </data>
   <data name="SessionsPage_ShowCompleted.Header" xml:space="preserve">
     <value>显示已完成的会话</value>
@@ -4593,33 +4396,6 @@
   </data>
   <data name="SessionsPage_OpenConnection.Content" xml:space="preserve">
     <value>打开连接</value>
-  </data>
-  <data name="SessionsPage_LoadingSessions.Text" xml:space="preserve">
-    <value>正在加载会话…</value>
-  </data>
-  <data name="SessionsPage_NoActiveSessions.Text" xml:space="preserve">
-    <value>没有会话</value>
-  </data>
-  <data name="SessionsPage_Reset.Text" xml:space="preserve">
-    <value>重置</value>
-  </data>
-  <data name="SessionsPage_Compact.Text" xml:space="preserve">
-    <value>压缩</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.Text" xml:space="preserve">
-    <value>检查点</value>
-  </data>
-  <data name="SessionsPage_Checkpoints.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>查看、分支或还原压缩检查点</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.Text" xml:space="preserve">
-    <value>导出转录</value>
-  </data>
-  <data name="SessionsPage_ExportTranscript.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>将对话转录保存到文本文件</value>
-  </data>
-  <data name="SessionsPage_Delete.Text" xml:space="preserve">
-    <value>删除</value>
   </data>
   <data name="SessionActionPrompt_Reset_Title" xml:space="preserve">
     <value>重置会话？</value>
@@ -4786,8 +4562,11 @@
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>删除 WSL 发行版 (OpenClawGateway)、其磁盘映像、自动启动项,并清除网关凭据。您的 MCP 令牌将被保留。引导将重置。</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>删除本地网关</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>移除</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>已保存</value>
@@ -4945,15 +4724,6 @@
   <data name="DiagnosticsBundleDialog_ReviewBeforeSharingTitle.Text" xml:space="preserve">
     <value>分享前请检查</value>
   </data>
-  <data name="SessionsPage_Subtitle.Text" xml:space="preserve">
-    <value>此网关当前正在处理的对话，按频道分组。</value>
-  </data>
-  <data name="SessionsPage_EmptyHint.Text" xml:space="preserve">
-    <value>当频道已连接且有流量时，会话将显示在此处。</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.Content" xml:space="preserve">
-    <value>打开聊天</value>
-  </data>
   <data name="VoiceSettingsPage_PiperPreview.Text" xml:space="preserve">
     <value>预览</value>
   </data>
@@ -4962,75 +4732,6 @@
   </data>
   <data name="SandboxPage_GatewayCommandsNote.Text" xml:space="preserve">
     <value>代理直接在网关上运行的命令不受此限制。如果网关在此电脑上，它们仍可能访问您的 Windows 文件、剪贴板和网络……请检查网关的配置。</value>
-  </data>
-  <data name="CronPage_CreateJobLabel" xml:space="preserve">
-    <value>创建任务</value>
-  </data>
-  <data name="CronPage_EditJob" xml:space="preserve">
-    <value>编辑任务</value>
-  </data>
-  <data name="CronPage_NewJobTitle" xml:space="preserve">
-    <value>新任务</value>
-  </data>
-  <data name="CronPage_Running" xml:space="preserve">
-    <value>正在运行...</value>
-  </data>
-  <data name="CronPage_CompletedOneTimeJobTooltip" xml:space="preserve">
-    <value>一次性作业已完成</value>
-  </data>
-  <data name="CronPage_EnableJobTooltip" xml:space="preserve">
-    <value>启用作业</value>
-  </data>
-  <data name="CronPage_DisableJobTooltip" xml:space="preserve">
-    <value>禁用作业</value>
-  </data>
-  <data name="CronPage_FullResponse" xml:space="preserve">
-    <value>完整回复</value>
-  </data>
-  <data name="CronPage_OpenChat" xml:space="preserve">
-    <value>打开聊天</value>
-  </data>
-  <data name="CronPage_RunNow" xml:space="preserve">
-    <value>立即运行</value>
-  </data>
-  <data name="CronPage_EditAction" xml:space="preserve">
-    <value>编辑</value>
-  </data>
-  <data name="CronPage_HistoryAction" xml:space="preserve">
-    <value>历史记录</value>
-  </data>
-  <data name="CronPage_RemoveAction" xml:space="preserve">
-    <value>移除</value>
-  </data>
-  <data name="CronPage_RunningBadge" xml:space="preserve">
-    <value>正在运行</value>
-  </data>
-  <data name="CronPage_RunHistory" xml:space="preserve">
-    <value>运行历史记录</value>
-  </data>
-  <data name="CronPage_RunHistoryShowing" xml:space="preserve">
-    <value>运行历史记录 - 正在显示 {0}/{1}</value>
-  </data>
-  <data name="CronPage_RunHistoryCount" xml:space="preserve">
-    <value>运行历史记录 - {0} 次运行</value>
-  </data>
-  <data name="CronPage_LoadingRunHistory" xml:space="preserve">
-    <value>正在加载运行历史记录...</value>
-  </data>
-  <data name="CronPage_NoRunHistoryAvailable" xml:space="preserve">
-    <value>没有可用的运行历史记录。</value>
-  </data>
-  <data name="CronPage_LoadOlderRuns" xml:space="preserve">
-    <value>加载较早的运行（还有 {0} 个）...</value>
-  </data>
-  <data name="CronPage_LoadMoreRuns" xml:space="preserve">
-    <value>加载更多运行...</value>
-  </data>
-  <data name="CronPage_Loading" xml:space="preserve">
-    <value>正在加载...</value>
-  </data>
-  <data name="CronPage_SaveChanges" xml:space="preserve">
-    <value>保存更改</value>
   </data>
   <data name="SchemaConfigEditor_AddItem" xml:space="preserve">
     <value>添加项目</value>
@@ -5163,7 +4864,25 @@
     <value>共享令牌</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>点击以复制共享令牌</value>
+    <value>共享网关凭据。点击以复制。请勿泄露。</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>此电脑访问网关的方式。{0}表示此电脑；{1}表示局域网；Tailscale 和 SSH 表示使用相应连接；{2}表示其他主机。</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} 是运行 Companion 及其 Windows 节点功能的 Windows 电脑，不一定是网关主机。</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>网关报告的已连接客户端。在网页控制台中打开“系统”。</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>就绪频道：{0}/{1}。
+{2}
+
+在网页控制台中打开“频道”。</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>今日（UTC）的网关预估使用费用，以美元计价。在网页控制台中打开“用量”。</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>通过 SSH 隧道</value>
@@ -6068,16 +5787,13 @@
     <value>移除失败</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>移除本地网关</value>
+    <value>移除</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>正在移除发行版…</value>
   </data>
   <data name="SettingsPage_RemovingLocalGatewayMessage" xml:space="preserve">
     <value>正在移除本地网关。这可能需要 10–30 秒…</value>
-  </data>
-  <data name="CronPage_NextWakeFormat" xml:space="preserve">
-    <value>· 下次唤醒：{0}</value>
   </data>
   <data name="CanvasWindow_WebViewInitFailedFormat" xml:space="preserve">
     <value>无法初始化 WebView2：{0}</value>
@@ -6087,21 +5803,6 @@
   </data>
   <data name="ConnectionPage_GatewayHostControlsDescription_Format" xml:space="preserve">
     <value>Open a shell or manage the local gateway service in {0}.</value>
-  </data>
-  <data name="CronPage_JobCompleted" xml:space="preserve">
-    <value>Job completed</value>
-  </data>
-  <data name="CronPage_JobCompletedRanSuccessfully" xml:space="preserve">
-    <value>"{0}" ran successfully and was removed.</value>
-  </data>
-  <data name="CronPage_RunNotStarted" xml:space="preserve">
-    <value>运行未启动</value>
-  </data>
-  <data name="CronPage_RunNotStartedGeneric" xml:space="preserve">
-    <value>{0} 未启动。</value>
-  </data>
-  <data name="CronPage_RunNotStartedWithReason" xml:space="preserve">
-    <value>{0} 未启动：{1}</value>
   </data>
   <data name="GatewayHostAccess_NoTerminalAccess" xml:space="preserve">
     <value>This gateway does not have WSL or SSH terminal access.</value>
@@ -6120,12 +5821,6 @@
   </data>
   <data name="GatewayHostAccess_OpenTerminalLabel" xml:space="preserve">
     <value>Open terminal</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
-    <value>Open in chat</value>
-  </data>
-  <data name="SessionsPage_OpenChatButton.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve">
-    <value>Open this session in Chat</value>
   </data>
   <data name="ConnectionPage_CopyTrustApproval.Content" xml:space="preserve">
     <value>Copy</value>
@@ -6379,6 +6074,12 @@
   <data name="HubWindow_MainNavigation.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>主导航</value>
   </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
+    <value>调整侧边栏大小</value>
+  </data>
+  <data name="WorkspaceSidebarSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.LocalizedControlType" xml:space="preserve">
+    <value>分隔条</value>
+  </data>
   <data name="JsonPreviewSplitter.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve">
     <value>调整 JSON 预览大小</value>
   </data>
@@ -6399,9 +6100,6 @@
   </data>
   <data name="SessionsPage_Status_NeedsAttention" xml:space="preserve">
     <value>需要注意</value>
-  </data>
-  <data name="SessionsPage_LastRunStopped" xml:space="preserve">
-    <value>上次运行已停止</value>
   </data>
   <data name="ConnectionPage_ProtocolGatewayUpdateRequired" xml:space="preserve">
     <value>需要更新 Gateway</value>
@@ -6481,7 +6179,7 @@
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>选择网关使用的模型</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>模型</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>自定义 Hugging Face 模型（可选）</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 链接</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>owner/repo、owner/repo:Q4_K_M 或 huggingface.co 链接</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>仅支持公开的单文件 GGUF 模型。填写后将替代上方的选择。</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>此模型可能无法装入</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>它需要约 {0:F1} GB GPU 内存，而 {1} 只有 {2:F1} GB。它可能无法启动或运行缓慢。</value></data>
@@ -6510,7 +6208,7 @@
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>默认模型</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>使用此模型</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>刷新</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>管理本地 AI</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>管理本地 AI</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>本地 AI：{0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0}（请先登录提供商）</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>默认模型已更新。</value></data>
@@ -6524,7 +6222,7 @@
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>登录方式</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>登录</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>提供商 ID</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>基础 URL</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API 类型</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI 兼容（Chat Completions）</value></data>
@@ -6532,7 +6230,7 @@
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API 密钥（OpenAI 兼容端点可选）</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>模型 ID</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>添加提供商</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0}（已连接）</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>正在加载提供商...</value></data>
@@ -6598,10 +6296,12 @@
   <data name="Chat_Model_Search" xml:space="preserve"><value>搜索模型</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>添加模型提供商...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>移除附件</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>移除附件 {0}</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>正在加载消息...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>复制失败</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>消息文本</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
@@ -6616,7 +6316,7 @@
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>登录时启动 OpenClaw</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>频道、集成和网关设置</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 是帮助你在电脑上完成任务的 AI 助手。</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw 将 AI 助手连接到你电脑上的工具。它能做什么由你决定，并且可以随时更改。</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>设置你的 AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>发现现有提供商对话（可选）</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>正在启动提供商设置…</value></data>
@@ -6716,7 +6416,7 @@
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>此设置主机中无法使用连接编辑器</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>从 Companion 应用打开设置以使用原生连接编辑器。</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>返回</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>电脑功能</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>你的助手可以使用什么？</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>选择代理可在此电脑上使用的功能。这些选择不会授予 Windows 隐私访问权限或执行批准。</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>通过已连接的 Gateway 提供此电脑的功能。</value></data>
@@ -6741,8 +6441,8 @@
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>此替换可能永久删除 WSL 数据</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>仅替换指定名称的 WSL 安装。其他已保存的 Gateway 连接仍然可用。</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>返回检查</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway 设置</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>在安装开始前检查将发生的更改。</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>准备安装</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>以下是将在这台电脑上进行的操作。</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>本地 Gateway 服务</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6753,15 +6453,13 @@
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>检查必需选项</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>安装前请检查所选 Local AI 和 Tailscale 的先决条件，并确认任何 WSL 替换。</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>安装</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>欢迎使用 OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>来认识你的新搭档吧。</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>与您的 AI 聊天</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>在原生 Chat 中使用您选择的 AI 提供商。</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>让代理在此电脑上提供帮助</value></data>
   <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>选择要启用的电脑能力。Windows 权限和执行审批仍然独立管理。</value></data>
   <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>让 Gateway 始终由您掌控</value></data>
-  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>在此运行私有 WSL Gateway，或连接到现有 Gateway。</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>开始之前</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI 智能体功能强大，授予其电脑访问权限也存在风险。它们可能犯错、更改或删除文件，或泄露私人信息。&#x0a;&#x0a;你可以控制并限制 OpenClaw 对电脑的访问。</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>在这台电脑上运行私有 Gateway，或连接到现有 Gateway。</value></data>
   <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>继续</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>重试</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>远程、本地 MCP 或稍后设置</value></data>
@@ -6847,8 +6545,8 @@
   <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>连接 / 设置</value></data>
   <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>提供商徽标不可用（{0}）。仍可设置提供商。</value></data>
   <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>您的代理可以做什么</value></data>
-  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>选择预设。展开“微调”可查看或更改各项能力。</value></data>
-  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>微调</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>从适合你的一组工具开始，随时可以更改。</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>逐个选择工具</value></data>
   <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>能力不可用</value></data>
   <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>开启 Node mode 或 Local MCP Server 即可使用这些能力。您的选择会保留。</value></data>
   <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>自定义：逐项选择能力</value></data>
@@ -6912,10 +6610,7 @@
   <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>已完成 {0} 步，共 {1} 步</value></data>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>已取消</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0}，共 {1}</value></data>
-  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>你的 AI 已就绪</value></data>
-  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>与我的智能体聊天</value></data>
-  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>打开 Chat，与智能体聊天。</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>与我的智能体聊天</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>一切就绪！</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>重新检查就绪状态</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>正在准备 AI 选项</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>正在准备网关</value></data>
@@ -6944,7 +6639,6 @@
   <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>正在完成设置</value></data>
   <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>正在应用您的选项、重新启动 OpenClaw 并检查 AI。这可能需要几分钟。</value></data>
   <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>设置需要处理。不会自动重复任何 AI 操作。请关闭此窗口，在“连接”中检查已保存的网关，然后明确重新打开 AI 设置进行验证。</value></data>
-  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>已验证的模型：{0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>正在重新验证同一 Gateway、智能体和模型...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>正在完成你的 Windows 设置选项...</value></data>
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>正在打开你选择的应用页面...</value></data>
@@ -6965,7 +6659,7 @@
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>重试</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>关闭</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>详细了解风险与安全</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>设置 OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>OpenClaw 应该安装在哪里？</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>Gateway 将你的 AI 助手连接到应用和工具。请选择其运行位置，你可以稍后更改。</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway 设置方式</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>选择一种 Gateway 设置方式。</value></data>
@@ -7380,10 +7074,6 @@
   <data name="WorkspaceShell_SessionPinned" xml:space="preserve"><value>Pinned</value></data>
   <data name="WorkspaceShell_SessionUnread" xml:space="preserve"><value>Unread</value></data>
   <data name="WorkspaceShell_SessionWorking" xml:space="preserve"><value>Working</value></data>
-  <data name="SessionsPage_Archived" xml:space="preserve"><value>已归档</value></data>
-  <data name="SessionsPage_ArchivedEmpty" xml:space="preserve"><value>没有已归档的会话。</value></data>
-  <data name="SessionsPage_ArchivedUnavailable" xml:space="preserve"><value>无法获取此网关的已归档会话。</value></data>
-  <data name="SessionsPage_Unarchive" xml:space="preserve"><value>取消归档会话</value></data>
   <data name="WorkspaceShell_SessionActionFailed" xml:space="preserve"><value>The gateway didn't accept the request. Try again.</value></data>
   <data name="WorkspaceShell_SessionConnectionChanged" xml:space="preserve"><value>The Gateway connection changed. Refresh sessions to check the outcome before trying again.</value></data>
   <data name="WorkspaceShell_SessionActionTimedOut" xml:space="preserve"><value>The Gateway did not respond in time. The outcome is unknown. Refresh the session before trying again.</value></data>
@@ -7450,8 +7140,6 @@
   <data name="WorkspaceShell_Tray" xml:space="preserve"><value>Windows tray menu</value></data>
   <data name="WorkspaceShell_Setup" xml:space="preserve"><value>Setup and onboarding</value></data>
   <data name="WorkspaceShell_Owner.Text" xml:space="preserve"><value>所有者</value></data>
-  <data name="WorkspaceShell_SharedOwner.Text" xml:space="preserve"><value>共享所有者</value></data>
-  <data name="WorkspaceShell_SharedOwnerNamedFormat" xml:space="preserve"><value>{0} · 共享所有者</value></data>
   <data name="WorkspaceShell_PersonalWorkspace.Text" xml:space="preserve"><value>Personal workspace</value></data>
   <data name="WorkspaceShell_Pages.Text" xml:space="preserve"><value>Pages</value></data>
   <data name="WorkspaceShell_SessionsLabel.Text" xml:space="preserve"><value>Sessions</value></data>
@@ -7516,7 +7204,7 @@
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>{0} 的访问权限</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>移除 {0} 的权限</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>文件夹</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作。“禁止访问”会阻止该文件夹，但明确列出的子文件夹保留各自的访问权限。受保护的文件夹仍被阻止。</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>选择智能体在每个文件夹中可以执行的操作；明确列出的子文件夹保留各自的访问权限。</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>禁止访问</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>用户配置文件目录</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7936,7 +7624,7 @@
     <value>沙盒设置</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>可用</value>
+    <value>已开启</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>兼容模式</value>
@@ -8015,7 +7703,6 @@
   <data name="Search_Dashboard_Portals" xml:space="preserve"><value>门户</value></data>
   <data name="Search_Dashboard_Worktrees" xml:space="preserve"><value>工作树</value></data>
   <data name="Search_TargetUnavailable" xml:space="preserve"><value>请求的项目已不可用。</value></data>
-  <data name="Search_Compatibility" xml:space="preserve"><value>此网关版本不支持部分控制面板页面。</value></data>
   <data name="Search_Status_SelectAgent" xml:space="preserve"><value>{0}：请先选择助手。</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Title" xml:space="preserve"><value>上传文件清理受阻</value></data>
   <data name="SandboxPage_UploadCleanupWarning.Message" xml:space="preserve"><value>请检查文件夹访问权限和私有状态数据的权限。恢复清理前，旧上传文件可能会继续保留。请勿自动重试已完成的上传。</value></data>
@@ -8069,11 +7756,36 @@
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新消息。跳到最新消息</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>跳到最新消息</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>聊天消息导航</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>使用向上和向下键在消息之间跳转，或使用 Home 和 End 键跳转到第一条和最新消息。</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} 个子代理，{1} 个正在工作，{2} 个需要关注</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>空闲</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>正在等待子代理</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>正在准备输入</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>失败</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} 个子代理</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} 个子代理</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} 个失败</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>运行中</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} 个文件</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>已读取</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>编辑</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>正在编辑</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>已编辑</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>创建</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>正在创建</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>已创建</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>删除</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>正在删除</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>已删除</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>更改</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>正在更改</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>已更改</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>写入</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>正在写入</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>已写入</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>已搜索</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>已获取</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>已完成</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>需要提供商审核</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>提供商审核警告</value></data>
@@ -8082,6 +7794,17 @@
   <data name="Chat_Review_Denied" xml:space="preserve"><value>提供商未批准该请求</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>未能加载更早的历史记录。请重新加载对话后重试。</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>请先在网页聊天中审核此请求，然后继续。</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>会话已出于预防暂停</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>会话已出于预防停止</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>提供方无法确认代理已理解你的指示。请先查看其审核结果，然后再继续。</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>提供方已暂停此会话。请先在网页聊天中审核此请求，然后继续。</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>提供方停止了此会话，且没有可查看的审核结果。此会话无法继续。</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>提供方停止了此会话。请先查看其审核结果，然后再开始更多工作。</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>查看审核结果</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>提供方审核结果</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>继续消息</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>此会话无法继续，将保持停止状态。</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>关闭</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>提供商审核超时</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>提供商审核已取消</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>添加系统</value></data>
@@ -8109,7 +7832,7 @@
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>连接到 Gateway 后才能使用此操作。</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>已连接的应用</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>设备和 Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>设备和 Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>设备和 Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>问题</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>上次已知状态：离线</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>上次已知状态：在线</value></data>
@@ -8245,6 +7968,836 @@
   <data name="SettingsShell_Title" xml:space="preserve">
     <value>设置</value>
   </data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>快速聊天</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>快速回复</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>无法打开聊天。请重试。</value></data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>子代理</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>当前会话列表中没有子代理。</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>子代理：{0} 个运行中，{1} 个已完成</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>运行中</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>排队中</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>已完成</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>已停止</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>失败</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>文件</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>会话文件：{0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>此会话中尚无文件。</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>正在加载文件...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>此 Gateway 不提供会话文件。</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>无法加载文件。请刷新以重试。</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>刷新文件</value></data>
+  <data name="Automations_AgentScope" xml:space="preserve">
+    <value>代理：{0}</value>
+  </data>
+  <data name="Automations_Cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="Automations_CloneName" xml:space="preserve">
+    <value>{0}（副本）</value>
+  </data>
+  <data name="Automations_ConfirmPause_Body" xml:space="preserve">
+    <value>在你恢复此自动化之前，它将不再按计划运行。其定义和运行历史记录会保留。</value>
+  </data>
+  <data name="Automations_ConfirmPause_Title" xml:space="preserve">
+    <value>暂停“{0}”？</value>
+  </data>
+  <data name="Automations_Default" xml:space="preserve">
+    <value>默认</value>
+  </data>
+  <data name="Automations_Delivery_Delivered" xml:space="preserve">
+    <value>已投递</value>
+  </data>
+  <data name="Automations_Delivery_NotDelivered" xml:space="preserve">
+    <value>未投递</value>
+  </data>
+  <data name="Automations_Delivery_NotRequested" xml:space="preserve">
+    <value>未请求</value>
+  </data>
+  <data name="Automations_Delivery_Unknown" xml:space="preserve">
+    <value>投递状态未知</value>
+  </data>
+  <data name="Automations_DeliveryMode_Announce" xml:space="preserve">
+    <value>通告摘要</value>
+  </data>
+  <data name="Automations_DeliveryMode_Choose" xml:space="preserve">
+    <value>选择投递模式</value>
+  </data>
+  <data name="Automations_DeliveryMode_Legacy" xml:space="preserve">
+    <value>旧版设置</value>
+  </data>
+  <data name="Automations_DeliveryMode_None" xml:space="preserve">
+    <value>无（内部）</value>
+  </data>
+  <data name="Automations_DeliveryMode_Webhook" xml:space="preserve">
+    <value>Webhook POST</value>
+  </data>
+  <data name="Automations_Destination_Owner" xml:space="preserve">
+    <value>所有者私信</value>
+  </data>
+  <data name="Automations_Disconnected_BannerBody" xml:space="preserve">
+    <value>在恢复网关连接之前，自动化不可用。</value>
+  </data>
+  <data name="Automations_Disconnected_BannerTitle" xml:space="preserve">
+    <value>网关已断开</value>
+  </data>
+  <data name="Automations_Duration_Hours" xml:space="preserve">
+    <value>{0} 小时 {1} 分</value>
+  </data>
+  <data name="Automations_Duration_Milliseconds" xml:space="preserve">
+    <value>{0} 毫秒</value>
+  </data>
+  <data name="Automations_Duration_Minutes" xml:space="preserve">
+    <value>{0} 分 {1} 秒</value>
+  </data>
+  <data name="Automations_Duration_Seconds" xml:space="preserve">
+    <value>{0} 秒</value>
+  </data>
+  <data name="Automations_Edit" xml:space="preserve">
+    <value>编辑</value>
+  </data>
+  <data name="Automations_Editor_CantSave" xml:space="preserve">
+    <value>暂时无法保存</value>
+  </data>
+  <data name="Automations_Editor_Create" xml:space="preserve">
+    <value>创建自动化</value>
+  </data>
+  <data name="Automations_Editor_CreateAndRun" xml:space="preserve">
+    <value>创建并立即运行</value>
+  </data>
+  <data name="Automations_Editor_EditTitle" xml:space="preserve">
+    <value>编辑 {0}</value>
+  </data>
+  <data name="Automations_Editor_Save" xml:space="preserve">
+    <value>保存更改</value>
+  </data>
+  <data name="Automations_Editor_SaveFailed" xml:space="preserve">
+    <value>无法保存</value>
+  </data>
+  <data name="Automations_Editor_Saving" xml:space="preserve">
+    <value>正在保存...</value>
+  </data>
+  <data name="Automations_Editor_Subtitle" xml:space="preserve">
+    <value>说明 OpenClaw 应执行的操作，然后选择运行时间。</value>
+  </data>
+  <data name="Automations_Empty_Body" xml:space="preserve">
+    <value>自动化按计划运行代理。在此创建自动化，或在聊天中描述它。</value>
+  </data>
+  <data name="Automations_Empty_ReadOnlyBody" xml:space="preserve">
+    <value>此代理没有自动化。请联系具有管理员权限的操作员创建一个。</value>
+  </data>
+  <data name="Automations_Empty_Title" xml:space="preserve">
+    <value>还没有自动化</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimeInvalid" xml:space="preserve">
+    <value>请输入 HH:MM。仅结束时间允许使用 24:00。</value>
+  </data>
+  <data name="Automations_Error_ActiveHoursTimezoneInvalid" xml:space="preserve">
+    <value>请输入有效的 IANA 时区、local 或 user。</value>
+  </data>
+  <data name="Automations_Error_DeliveryWebManaged" xml:space="preserve">
+    <value>为确保与 Gateway 兼容，发送给所有者的设置由网页应用管理。请使用“在网页中打开”来创建、复制或更改该设置。基本编辑会保留已保存的路由。</value>
+  </data>
+  <data name="Automations_Error_TimingWebManaged" xml:space="preserve">
+    <value>请使用“在网页中打开”来复制或更改活动时段或等待空闲设置。基本编辑会保留已保存的设置。</value>
+  </data>
+  <data name="Automations_Error_AgentMessageRequired" xml:space="preserve">
+    <value>请描述此代理应执行的任务。</value>
+  </data>
+  <data name="Automations_Error_CronExprRequired" xml:space="preserve">
+    <value>Cron 表达式为必填项。</value>
+  </data>
+  <data name="Automations_Error_DeliveryModeRequired" xml:space="preserve">
+    <value>请选择投递模式。</value>
+  </data>
+  <data name="Automations_Error_EventAgentTurnRequired" xml:space="preserve">
+    <value>事件自动化需要助手任务。</value>
+  </data>
+  <data name="Automations_Error_EveryAmountInvalid" xml:space="preserve">
+    <value>间隔必须是大于 0 的数字。</value>
+  </data>
+  <data name="Automations_Error_FailureAlertAfterInvalid" xml:space="preserve">
+    <value>必须至少为 1。</value>
+  </data>
+  <data name="Automations_Error_FailureAlertCooldownInvalid" xml:space="preserve">
+    <value>必须大于或等于 0。</value>
+  </data>
+  <data name="Automations_Error_NameRequired" xml:space="preserve">
+    <value>请输入名称。</value>
+  </data>
+  <data name="Automations_Error_ScheduleAtInvalid" xml:space="preserve">
+    <value>请选择有效的日期和时间。</value>
+  </data>
+  <data name="Automations_Error_StaggerAmountInvalid" xml:space="preserve">
+    <value>错开值必须是大于 0 的数字。</value>
+  </data>
+  <data name="Automations_Error_SystemTextRequired" xml:space="preserve">
+    <value>时间线消息为必填项。</value>
+  </data>
+  <data name="Automations_Error_TimeoutInvalid" xml:space="preserve">
+    <value>超时必须大于或等于 0。</value>
+  </data>
+  <data name="Automations_Error_TimezoneInvalid" xml:space="preserve">
+    <value>请输入有效的 IANA 时区，例如 Europe/Paris。</value>
+  </data>
+  <data name="Automations_Error_TriggerIntervalTooShort" xml:space="preserve">
+    <value>条件触发的自动化运行间隔不得短于 30 秒。</value>
+  </data>
+  <data name="Automations_Error_TriggerScheduleUnsupported" xml:space="preserve">
+    <value>条件触发器需要间隔、cron 或流计划。</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptPayloadUnsupported" xml:space="preserve">
+    <value>脚本操作不能使用条件触发器。</value>
+  </data>
+  <data name="Automations_Error_TriggerScriptRequired" xml:space="preserve">
+    <value>启用条件触发器时，触发脚本为必填项。</value>
+  </data>
+  <data name="Automations_Error_WebhookUrlRequired" xml:space="preserve">
+    <value>请输入 HTTPS Webhook URL。</value>
+  </data>
+  <data name="Automations_Field_ActiveHours" xml:space="preserve">
+    <value>活动时段</value>
+  </data>
+  <data name="Automations_Field_Agent" xml:space="preserve">
+    <value>代理</value>
+  </data>
+  <data name="Automations_Field_Channel" xml:space="preserve">
+    <value>通道</value>
+  </data>
+  <data name="Automations_Field_Command" xml:space="preserve">
+    <value>命令</value>
+  </data>
+  <data name="Automations_Field_Condition" xml:space="preserve">
+    <value>条件触发器</value>
+  </data>
+  <data name="Automations_Field_DeleteAfterRun" xml:space="preserve">
+    <value>运行后删除</value>
+  </data>
+  <data name="Automations_Field_DeliveryMode" xml:space="preserve">
+    <value>模式</value>
+  </data>
+  <data name="Automations_Field_Destination" xml:space="preserve">
+    <value>目标</value>
+  </data>
+  <data name="Automations_Field_Every" xml:space="preserve">
+    <value>每</value>
+  </data>
+  <data name="Automations_Field_Expression" xml:space="preserve">
+    <value>表达式</value>
+  </data>
+  <data name="Automations_Field_FailureAlerts" xml:space="preserve">
+    <value>失败警报</value>
+  </data>
+  <data name="Automations_Field_LastDelivery" xml:space="preserve">
+    <value>上次投递</value>
+  </data>
+  <data name="Automations_Field_Model" xml:space="preserve">
+    <value>模型</value>
+  </data>
+  <data name="Automations_Field_Name" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="Automations_Field_Options" xml:space="preserve">
+    <value>选项</value>
+  </data>
+  <data name="Automations_Field_Prompt" xml:space="preserve">
+    <value>提示</value>
+  </data>
+  <data name="Automations_Field_Payload" xml:space="preserve">
+    <value>负载</value>
+  </data>
+  <data name="Automations_Field_RunDate" xml:space="preserve">
+    <value>日期</value>
+  </data>
+  <data name="Automations_Field_RunTime" xml:space="preserve">
+    <value>时间</value>
+  </data>
+  <data name="Automations_Field_Session" xml:space="preserve">
+    <value>目标会话</value>
+  </data>
+  <data name="Automations_Field_SessionKey" xml:space="preserve">
+    <value>会话键</value>
+  </data>
+  <data name="Automations_Field_Stagger" xml:space="preserve">
+    <value>错开窗口</value>
+  </data>
+  <data name="Automations_Field_Enabled" xml:space="preserve">
+    <value>已启用</value>
+  </data>
+  <data name="Automations_Field_Thinking" xml:space="preserve">
+    <value>思考</value>
+  </data>
+  <data name="Automations_Field_TimelineMessage" xml:space="preserve">
+    <value>主时间线消息</value>
+  </data>
+  <data name="Automations_Field_Timeout" xml:space="preserve">
+    <value>超时</value>
+  </data>
+  <data name="Automations_Field_Timezone" xml:space="preserve">
+    <value>时区</value>
+  </data>
+  <data name="Automations_Field_To" xml:space="preserve">
+    <value>收件人</value>
+  </data>
+  <data name="Automations_Field_Tools" xml:space="preserve">
+    <value>允许的工具</value>
+  </data>
+  <data name="Automations_Field_Unit" xml:space="preserve">
+    <value>单位</value>
+  </data>
+  <data name="Automations_Field_WebhookUrl" xml:space="preserve">
+    <value>Webhook URL</value>
+  </data>
+  <data name="Automations_GatewayTimezone" xml:space="preserve">
+    <value>网关主机时区</value>
+  </data>
+  <data name="Automations_Help_Agent" xml:space="preserve">
+    <value>留空以使用此页面的代理。</value>
+  </data>
+  <data name="Automations_Help_AgentEdit" xml:space="preserve">
+    <value>留空以保留当前所有者，或输入其他代理以移动此自动化。</value>
+  </data>
+  <data name="Automations_Help_Channel" xml:space="preserve">
+    <value>留空则使用代理上次交谈的通道。</value>
+  </data>
+  <data name="Automations_Help_DeleteAfterRun" xml:space="preserve">
+    <value>适用于运行后应自动清理的一次性提醒。</value>
+  </data>
+  <data name="Automations_Help_Delivery" xml:space="preserve">
+    <value>“通告”会将摘要发布到聊天。“无”则将结果保留在内部。</value>
+  </data>
+  <data name="Automations_Help_DeliveryNoAnnounce" xml:space="preserve">
+    <value>“通告”需要助手任务。时间线消息已会发布到主时间线。</value>
+  </data>
+  <data name="Automations_Help_Session" xml:space="preserve">
+    <value>“主会话”发布到代理的时间线。“隔离会话”运行专用的助手轮次。</value>
+  </data>
+  <data name="Automations_Help_Timezone" xml:space="preserve">
+    <value>可选的 IANA 时区。留空则使用网关主机时区。</value>
+  </data>
+  <data name="Automations_Help_Webhook" xml:space="preserve">
+    <value>运行摘要将通过 POST 发送到此 URL。新目标必须使用 HTTPS。</value>
+  </data>
+  <data name="Automations_Kind_At" xml:space="preserve">
+    <value>一次</value>
+  </data>
+  <data name="Automations_Kind_Cron" xml:space="preserve">
+    <value>Cron</value>
+  </data>
+  <data name="Automations_Kind_Every" xml:space="preserve">
+    <value>重复</value>
+  </data>
+  <data name="Automations_List_Count" xml:space="preserve">
+    <value>{0} / {1}</value>
+  </data>
+  <data name="Automations_List_NoMatch" xml:space="preserve">
+    <value>没有与当前筛选器匹配的自动化。</value>
+  </data>
+  <data name="Automations_ListError_Title" xml:space="preserve">
+    <value>无法加载自动化</value>
+  </data>
+  <data name="Automations_Loading" xml:space="preserve">
+    <value>正在加载...</value>
+  </data>
+  <data name="Automations_LoadMore" xml:space="preserve">
+    <value>加载更多</value>
+  </data>
+  <data name="Automations_MoreActionsFor" xml:space="preserve">
+    <value>{0} 的更多操作</value>
+  </data>
+  <data name="Automations_NeverRun" xml:space="preserve">
+    <value>从不</value>
+  </data>
+  <data name="Automations_NewAutomation" xml:space="preserve">
+    <value>新建自动化</value>
+  </data>
+  <data name="Automations_NextRun" xml:space="preserve">
+    <value>下次运行</value>
+  </data>
+  <data name="Automations_Notice_Conflict" xml:space="preserve">
+    <value>已加载最新定义。请先查看，然后再重试。</value>
+  </data>
+  <data name="Automations_Notice_ConflictTitle" xml:space="preserve">
+    <value>自动化已在网关上更改</value>
+  </data>
+  <data name="Automations_Notice_ConflictUnloadable" xml:space="preserve">
+    <value>无法加载最新定义。请刷新后再重试。</value>
+  </data>
+  <data name="Automations_Notice_Created" xml:space="preserve">
+    <value>已创建 {0}。</value>
+  </data>
+  <data name="Automations_Notice_CreatedTitle" xml:space="preserve">
+    <value>已创建</value>
+  </data>
+  <data name="Automations_Notice_FailedTitle" xml:space="preserve">
+    <value>出现问题</value>
+  </data>
+  <data name="Automations_Notice_JobCompleted" xml:space="preserve">
+    <value>{0} 已运行并自行移除。</value>
+  </data>
+  <data name="Automations_Notice_JobCompletedTitle" xml:space="preserve">
+    <value>自动化已完成</value>
+  </data>
+  <data name="Automations_Notice_JobMessage" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="Automations_Notice_MissingRevision" xml:space="preserve">
+    <value>此自动化缺少配置修订版本。请刷新后重试。</value>
+  </data>
+  <data name="Automations_Notice_Paused" xml:space="preserve">
+    <value>{0} 已暂停。</value>
+  </data>
+  <data name="Automations_Notice_PausedTitle" xml:space="preserve">
+    <value>已暂停</value>
+  </data>
+  <data name="Automations_Notice_RemovedTitle" xml:space="preserve">
+    <value>已移除</value>
+  </data>
+  <data name="Automations_Notice_Resumed" xml:space="preserve">
+    <value>{0} 已重新激活。</value>
+  </data>
+  <data name="Automations_Notice_ResumedTitle" xml:space="preserve">
+    <value>已恢复</value>
+  </data>
+  <data name="Automations_Notice_RunFailedTitle" xml:space="preserve">
+    <value>运行启动失败</value>
+  </data>
+  <data name="Automations_Notice_RunNotStartedTitle" xml:space="preserve">
+    <value>未开始运行</value>
+  </data>
+  <data name="Automations_Notice_Saved" xml:space="preserve">
+    <value>已更新 {0}。</value>
+  </data>
+  <data name="Automations_Notice_SavedTitle" xml:space="preserve">
+    <value>已保存</value>
+  </data>
+  <data name="Automations_NotScheduled" xml:space="preserve">
+    <value>未计划</value>
+  </data>
+  <data name="Automations_Off" xml:space="preserve">
+    <value>关</value>
+  </data>
+  <data name="Automations_On" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="Automations_OpenConnection" xml:space="preserve">
+    <value>打开连接</value>
+  </data>
+  <data name="Automations_Pause" xml:space="preserve">
+    <value>暂停</value>
+  </data>
+  <data name="Automations_Payload_AgentTurn" xml:space="preserve">
+    <value>运行助手任务</value>
+  </data>
+  <data name="Automations_Payload_Script" xml:space="preserve">
+    <value>脚本</value>
+  </data>
+  <data name="Automations_Payload_SystemEvent" xml:space="preserve">
+    <value>发布到主时间线</value>
+  </data>
+  <data name="Automations_Payload_Unknown" xml:space="preserve">
+    <value>自定义操作</value>
+  </data>
+  <data name="Automations_Placeholder_ChannelLast" xml:space="preserve">
+    <value>通道 ID</value>
+  </data>
+  <data name="Automations_Placeholder_Timezone" xml:space="preserve">
+    <value>IANA 时区</value>
+  </data>
+  <data name="Automations_Placeholder_To" xml:space="preserve">
+    <value>聊天 ID、电话或用户</value>
+  </data>
+  <data name="Automations_Preset_Daily" xml:space="preserve">
+    <value>每天</value>
+  </data>
+  <data name="Automations_Preset_Weekdays" xml:space="preserve">
+    <value>工作日</value>
+  </data>
+  <data name="Automations_Preset_Weekly" xml:space="preserve">
+    <value>每周</value>
+  </data>
+  <data name="Automations_ReadDenied_Title" xml:space="preserve">
+    <value>此操作员无法查看自动化</value>
+  </data>
+  <data name="Automations_ReadOnly" xml:space="preserve">
+    <value>仅可浏览。更改自动化需要 operator.admin 权限。</value>
+  </data>
+  <data name="Automations_RecentRuns" xml:space="preserve">
+    <value>最近运行</value>
+  </data>
+  <data name="Automations_Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="Automations_Relative_Days" xml:space="preserve">
+    <value>{0} 天</value>
+  </data>
+  <data name="Automations_Relative_Future" xml:space="preserve">
+    <value>{0}后</value>
+  </data>
+  <data name="Automations_Relative_Hours" xml:space="preserve">
+    <value>{0} 小时</value>
+  </data>
+  <data name="Automations_Relative_Minutes" xml:space="preserve">
+    <value>{0} 分钟</value>
+  </data>
+  <data name="Automations_Relative_Now" xml:space="preserve">
+    <value>现在</value>
+  </data>
+  <data name="Automations_Relative_Past" xml:space="preserve">
+    <value>{0}前</value>
+  </data>
+  <data name="Automations_Remove" xml:space="preserve">
+    <value>移除</value>
+  </data>
+  <data name="Automations_Resume" xml:space="preserve">
+    <value>恢复</value>
+  </data>
+  <data name="Automations_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="Automations_RunNotStarted_AlreadyRunning" xml:space="preserve">
+    <value>此自动化已在运行。</value>
+  </data>
+  <data name="Automations_RunNotStarted_InvalidSpec" xml:space="preserve">
+    <value>此自动化的计划或操作无效。</value>
+  </data>
+  <data name="Automations_RunNotStarted_NotDue" xml:space="preserve">
+    <value>此自动化尚未到期。</value>
+  </data>
+  <data name="Automations_RunNotStarted_RecoveryPending" xml:space="preserve">
+    <value>计划程序仍在恢复中。</value>
+  </data>
+  <data name="Automations_RunNotStarted_Stopped" xml:space="preserve">
+    <value>计划程序已停止。</value>
+  </data>
+  <data name="Automations_RunNotStarted_Unknown" xml:space="preserve">
+    <value>无法启动此自动化。</value>
+  </data>
+  <data name="Automations_RunNow" xml:space="preserve">
+    <value>立即运行</value>
+  </data>
+  <data name="Automations_Runs_ConditionChecked" xml:space="preserve">
+    <value>条件已检查 {0} 次，但未匹配。运行历史记录将在操作运行时开始。</value>
+  </data>
+  <data name="Automations_Runs_DeliveryError" xml:space="preserve">
+    <value>投递错误：{0}</value>
+  </data>
+  <data name="Automations_Runs_EmptyHint" xml:space="preserve">
+    <value>自动化触发后，运行将显示在此处。</value>
+  </data>
+  <data name="Automations_Runs_Loading" xml:space="preserve">
+    <value>正在加载运行...</value>
+  </data>
+  <data name="Automations_Runs_NoSummary" xml:space="preserve">
+    <value>无摘要。</value>
+  </data>
+  <data name="Automations_Runs_OpenChat" xml:space="preserve">
+    <value>在聊天中打开</value>
+  </data>
+  <data name="Automations_Runs_ShowLess" xml:space="preserve">
+    <value>收起</value>
+  </data>
+  <data name="Automations_Runs_Suppressed" xml:space="preserve">
+    <value>已抑制投递：{0}</value>
+  </data>
+  <data name="Automations_Runs_Tokens" xml:space="preserve">
+    <value>输入 {0} / 输出 {1}</value>
+  </data>
+  <data name="Automations_Runs_TriggerFired" xml:space="preserve">
+    <value>条件已匹配</value>
+  </data>
+  <data name="Automations_RunStatus_Error" xml:space="preserve">
+    <value>失败</value>
+  </data>
+  <data name="Automations_RunStatus_Ok" xml:space="preserve">
+    <value>成功</value>
+  </data>
+  <data name="Automations_RunStatus_Skipped" xml:space="preserve">
+    <value>已跳过</value>
+  </data>
+  <data name="Automations_Schedule_CronLiteral" xml:space="preserve">
+    <value>Cron 计划 {0}</value>
+  </data>
+  <data name="Automations_Schedule_DailyAt" xml:space="preserve">
+    <value>每天 {0}</value>
+  </data>
+  <data name="Automations_Schedule_DaysAt" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Automations_Schedule_Event" xml:space="preserve">
+    <value>当 {1} 发送 {0} 时</value>
+  </data>
+  <data name="Automations_Schedule_EventSource" xml:space="preserve">
+    <value>事件源：{0}</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyDays" xml:space="preserve">
+    <value>每 {0} 天</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyHours" xml:space="preserve">
+    <value>每 {0} 小时</value>
+  </data>
+  <data name="Automations_Schedule_EveryManyMinutes" xml:space="preserve">
+    <value>每 {0} 分钟</value>
+  </data>
+  <data name="Automations_Schedule_EveryManySeconds" xml:space="preserve">
+    <value>每 {0} 秒</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneDay" xml:space="preserve">
+    <value>每天</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneHour" xml:space="preserve">
+    <value>每小时</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneMinute" xml:space="preserve">
+    <value>每分钟</value>
+  </data>
+  <data name="Automations_Schedule_EveryOneSecond" xml:space="preserve">
+    <value>每秒</value>
+  </data>
+  <data name="Automations_Schedule_HourlyAt" xml:space="preserve">
+    <value>每小时第 {0} 分钟</value>
+  </data>
+  <data name="Automations_Schedule_Incomplete" xml:space="preserve">
+    <value>完成计划设置以查看运行时间。</value>
+  </data>
+  <data name="Automations_Schedule_MonthlyAt" xml:space="preserve">
+    <value>每月 {0} 日 {1}</value>
+  </data>
+  <data name="Automations_Schedule_Once" xml:space="preserve">
+    <value>在 {0} 运行一次</value>
+  </data>
+  <data name="Automations_Schedule_OnExit" xml:space="preserve">
+    <value>当 {0} 退出时</value>
+  </data>
+  <data name="Automations_Schedule_Stream" xml:space="preserve">
+    <value>当 {0} 有输出时</value>
+  </data>
+  <data name="Automations_Schedule_Unknown" xml:space="preserve">
+    <value>自定义计划</value>
+  </data>
+  <data name="Automations_Schedule_WeekdaysAt" xml:space="preserve">
+    <value>工作日 {0}</value>
+  </data>
+  <data name="Automations_Schedule_WeekendsAt" xml:space="preserve">
+    <value>周末 {0}</value>
+  </data>
+  <data name="Automations_Schedule_WithTimezone" xml:space="preserve">
+    <value>{0}（{1}）</value>
+  </data>
+  <data name="Automations_Scheduler_Off" xml:space="preserve">
+    <value>已停止</value>
+  </data>
+  <data name="Automations_SchedulerOff_Body" xml:space="preserve">
+    <value>在网关计划程序开启之前，计划的自动化不会运行。</value>
+  </data>
+  <data name="Automations_SchedulerOff_Title" xml:space="preserve">
+    <value>计划程序已停止</value>
+  </data>
+  <data name="Automations_Search_Placeholder" xml:space="preserve">
+    <value>搜索自动化</value>
+  </data>
+  <data name="Automations_Section_Basics" xml:space="preserve">
+    <value>基本信息</value>
+  </data>
+  <data name="Automations_Section_Delivery" xml:space="preserve">
+    <value>投递</value>
+  </data>
+  <data name="Automations_Section_Schedule" xml:space="preserve">
+    <value>计划</value>
+  </data>
+  <data name="Automations_Session_Current" xml:space="preserve">
+    <value>当前会话</value>
+  </data>
+  <data name="Automations_Session_Isolated" xml:space="preserve">
+    <value>隔离会话</value>
+  </data>
+  <data name="Automations_Session_Main" xml:space="preserve">
+    <value>主会话</value>
+  </data>
+  <data name="Automations_Session_Named" xml:space="preserve">
+    <value>会话 {0}</value>
+  </data>
+  <data name="Automations_State_Active" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="Automations_State_AutoDisabledRuns" xml:space="preserve">
+    <value>运行失败 {0} 次后已自动禁用</value>
+  </data>
+  <data name="Automations_State_AutoDisabledSchedule" xml:space="preserve">
+    <value>计划错误 {0} 次后已自动禁用</value>
+  </data>
+  <data name="Automations_State_Completed" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="Automations_State_Failing" xml:space="preserve">
+    <value>失败中</value>
+  </data>
+  <data name="Automations_State_Paused" xml:space="preserve">
+    <value>已暂停</value>
+  </data>
+  <data name="Automations_State_Running" xml:space="preserve">
+    <value>运行中</value>
+  </data>
+  <data name="Automations_Title" xml:space="preserve">
+    <value>自动化</value>
+  </data>
+  <data name="Automations_Unit_Days" xml:space="preserve">
+    <value>天</value>
+  </data>
+  <data name="Automations_Unit_Hours" xml:space="preserve">
+    <value>小时</value>
+  </data>
+  <data name="Automations_Unit_Minutes" xml:space="preserve">
+    <value>分钟</value>
+  </data>
+  <data name="Automations_Unit_Seconds" xml:space="preserve">
+    <value>秒</value>
+  </data>
+  <data name="Automations_Unknown" xml:space="preserve">
+    <value>未知</value>
+  </data>
+  <data name="Automations_Wake_NextHeartbeat" xml:space="preserve">
+    <value>下次心跳</value>
+  </data>
+  <data name="Automations_Wake_Now" xml:space="preserve">
+    <value>立即</value>
+  </data>
+  <data name="Automations_Selected" xml:space="preserve">
+    <value>已选择</value>
+  </data>
+  <data name="Automations_AgentFilterFor" xml:space="preserve">
+    <value>代理筛选器：{0}</value>
+  </data>
+  <data name="Automations_CopyId" xml:space="preserve">
+    <value>复制自动化 ID</value>
+  </data>
+  <data name="Automations_CopyId_Done" xml:space="preserve">
+    <value>已复制自动化 ID {0}。</value>
+  </data>
+  <data name="Automations_CopyId_Failed" xml:space="preserve">
+    <value>无法复制自动化 ID。你可以在自动化详细信息中选择它。</value>
+  </data>
+  <data name="Automations_DeliveryMode_KeepSaved" xml:space="preserve">
+    <value>保留当前设置</value>
+  </data>
+  <data name="Automations_Editor_PreservedBody" xml:space="preserve">
+    <value>此自动化还使用：{0}。在此保存会按原样保留它们。请在 Web 上更改它们。</value>
+  </data>
+  <data name="Automations_Editor_PreservedTitle" xml:space="preserve">
+    <value>Web 上的更多设置</value>
+  </data>
+  <data name="Automations_Field_DeliveryRouting" xml:space="preserve">
+    <value>投递路由</value>
+  </data>
+  <data name="Automations_Filter_AllAgents" xml:space="preserve">
+    <value>所有代理</value>
+  </data>
+  <data name="Automations_Help_RunAtLocal" xml:space="preserve">
+    <value>按此电脑的时区 ({0}) 在此时间运行。</value>
+  </data>
+  <data name="Automations_Help_ToSaved" xml:space="preserve">
+    <value>输入收件人，或选择其他自动化使用的收件人。</value>
+  </data>
+  <data name="Automations_OpenInWeb" xml:space="preserve">
+    <value>在 Web 中打开</value>
+  </data>
+  <data name="Automations_Payload_WebManaged" xml:space="preserve">
+    <value>此操作在 Web 上管理。在此保存会按原样保留。</value>
+  </data>
+  <data name="Automations_Schedule_WebManaged" xml:space="preserve">
+    <value>此计划在 Web 上管理。在此保存会按原样保留。</value>
+  </data>
+  <data name="Automations_Schedule_CustomCron" xml:space="preserve">
+    <value>此自定义日历规则需在 Web 上编辑。在此保存会保留它，除非你在下方选择一种模式。</value>
+  </data>
+  <data name="Automations_UseLocalTimezone" xml:space="preserve">
+    <value>使用此电脑的时区 ({0})</value>
+  </data>
+  <data name="Automations_Redesign_ReadDenied" xml:space="preserve"><value>此操作员无法读取自动化。请向 Gateway 管理员申请读取权限。</value></data>
+  <data name="Automations_Redesign_LastSeen" xml:space="preserve"><value>自动化，上次查看时间：{0}</value></data>
+  <data name="Automations_Redesign_NeedYou" xml:space="preserve"><value>{0} 个自动化需要您处理</value></data>
+  <data name="Automations_Redesign_OnSchedule" xml:space="preserve"><value>一切按计划进行</value></data>
+  <data name="Automations_Redesign_Next" xml:space="preserve"><value>接下来：{0}，时间为 {1}。</value></data>
+  <data name="Automations_Redesign_RefreshFailed" xml:space="preserve"><value>无法刷新。正在显示上次已知的自动化。</value></data>
+  <data name="Automations_Redesign_AutoDisabled" xml:space="preserve"><value>已被调度器关闭</value></data>
+  <data name="Automations_Redesign_FailureStreak" xml:space="preserve"><value>连续失败 {0} 次</value></data>
+  <data name="Automations_Redesign_SeeRuns" xml:space="preserve"><value>查看运行记录</value></data>
+  <data name="Automations_Redesign_Group_Hour" xml:space="preserve"><value>未来一小时内</value></data>
+  <data name="Automations_Redesign_Group_Today" xml:space="preserve"><value>今天稍后</value></data>
+  <data name="Automations_Redesign_Group_Tomorrow" xml:space="preserve"><value>明天</value></data>
+  <data name="Automations_Redesign_FailedLast" xml:space="preserve"><value>上次运行失败</value></data>
+  <data name="Automations_Redesign_NothingSoon" xml:space="preserve"><value>到明晚前没有其他计划。</value></data>
+  <data name="Automations_Redesign_Repeating" xml:space="preserve"><value>{0} 个重复运行的自动化</value></data>
+  <data name="Automations_Redesign_WaitEvents" xml:space="preserve"><value>{0} 个正在等待事件</value></data>
+  <data name="Automations_Redesign_Earlier" xml:space="preserve"><value>今天早些时候</value></data>
+  <data name="Automations_Redesign_SchedulerUnknown" xml:space="preserve"><value>调度器状态未知</value></data>
+  <data name="Automations_Redesign_Scheduler" xml:space="preserve"><value>调度器</value></data>
+  <data name="Automations_Redesign_ComingUp" xml:space="preserve"><value>即将运行</value></data>
+  <data name="Automations_Redesign_AllCount" xml:space="preserve"><value>全部 ({0})</value></data>
+  <data name="Automations_Redesign_OnCount" xml:space="preserve"><value>已开启 ({0})</value></data>
+  <data name="Automations_Redesign_OffCount" xml:space="preserve"><value>已暂停或关闭 ({0})</value></data>
+  <data name="Automations_Redesign_All" xml:space="preserve"><value>全部</value></data>
+  <data name="Automations_Redesign_On" xml:space="preserve"><value>已开启</value></data>
+  <data name="Automations_Redesign_Off" xml:space="preserve"><value>已暂停或关闭</value></data>
+  <data name="Automations_Redesign_Scheduled" xml:space="preserve"><value>已计划</value></data>
+  <data name="Automations_Redesign_AllAutomations" xml:space="preserve"><value>全部自动化</value></data>
+  <data name="Automations_Redesign_Advanced" xml:space="preserve"><value>高级</value></data>
+  <data name="Automations_Redesign_OpenChatFor" xml:space="preserve"><value>打开聊天：{0}</value></data>
+  <data name="Automations_Redesign_EventNoRuns" xml:space="preserve"><value>正在等待事件。尚无运行记录。</value></data>
+  <data name="Automations_Redesign_SuccessCount" xml:space="preserve"><value>最近 {1} 次运行中有 {0} 次成功</value></data>
+  <data name="Automations_Redesign_AllRunsWeb" xml:space="preserve"><value>在网页中查看全部运行</value></data>
+  <data name="Automations_Redesign_EditWeb" xml:space="preserve"><value>在网页中编辑</value></data>
+  <data name="Automations_Redesign_LastRunChat" xml:space="preserve"><value>在聊天中打开上次运行</value></data>
+  <data name="Automations_Redesign_CopyAsNew" xml:space="preserve"><value>复制为新自动化</value></data>
+  <data name="Automations_Redesign_Weekday" xml:space="preserve"><value>星期几</value></data>
+  <data name="Automations_Redesign_ExactNextOnSave" xml:space="preserve"><value>保存时由 Gateway 确定下次运行的准确时间。</value></data>
+  <data name="Automations_Redesign_NeedYouOne" xml:space="preserve"><value>一个自动化需要您处理</value></data>
+  <data name="Automations_Redesign_Response" xml:space="preserve"><value>摘要</value></data>
+  <data name="Automations_Popup_RemoveTitle" xml:space="preserve"><value>删除“{0}”？</value></data>
+  <data name="Automations_Popup_RemoveBody" xml:space="preserve"><value>它将连同计划和运行历史记录一起从 {0} 删除。此操作无法撤销。</value></data>
+  <data name="Automations_Popup_ConnectedGateway" xml:space="preserve"><value>已连接的 Gateway</value></data>
+  <data name="Automations_Popup_AlertType" xml:space="preserve"><value>警告对话框</value></data>
+  <data name="Automations_Toast_RunQueued" xml:space="preserve"><value>运行已排队</value></data>
+  <data name="Automations_Toast_RunQueuedWithId" xml:space="preserve"><value>运行已排队 · {0}</value></data>
+  <data name="Automations_Toast_AlreadyRunning" xml:space="preserve"><value>未启动：“{0}”已在运行。</value></data>
+  <data name="Automations_Toast_Removed" xml:space="preserve"><value>已删除“{0}”</value></data>
+  <data name="Automations_Review_Today" xml:space="preserve"><value>今天 {0}</value></data>
+  <data name="Automations_Review_SchedulerStopped" xml:space="preserve"><value>调度器已将其停止。</value></data>
+  <data name="Automations_Review_SchedulerOn" xml:space="preserve"><value>调度器已开启</value></data>
+  <data name="Automations_Review_RunningNow" xml:space="preserve"><value>正在运行</value></data>
+  <data name="Automations_Review_OnEvent" xml:space="preserve"><value>事件触发</value></data>
+  <data name="Automations_Review_Error" xml:space="preserve"><value>错误</value></data>
+  <data name="Automations_Review_LastRun" xml:space="preserve"><value>上次运行 {0}</value></data>
+  <data name="Automations_Review_Tomorrow" xml:space="preserve"><value>明天 {0}</value></data>
+  <data name="Automations_Review_OnceOn" xml:space="preserve"><value>在 {0} {1} 运行一次</value></data>
+  <data name="Automations_Review_OnceToday" xml:space="preserve"><value>今天 {0} 运行一次</value></data>
+  <data name="Automations_Review_OnOne" xml:space="preserve"><value>{0} 个已开启</value></data>
+  <data name="Automations_Review_OnMany" xml:space="preserve"><value>{0} 个已开启</value></data>
+  <data name="Automations_Review_PausedOne" xml:space="preserve"><value>{0} 个已暂停或关闭</value></data>
+  <data name="Automations_Review_PausedMany" xml:space="preserve"><value>{0} 个已暂停或关闭</value></data>
+  <data name="Automations_Review_AcrossAgents" xml:space="preserve"><value>分布于 {0} 个智能体</value></data>
+  <data name="Automations_Review_SummaryJoin" xml:space="preserve"><value>{0}，{1}</value></data>
+  <data name="Automations_Review_SummaryEnd" xml:space="preserve"><value>{0}。</value></data>
+  <data name="Automations_Review_NothingScheduled" xml:space="preserve"><value>尚无计划任务</value></data>
+  <data name="Automations_Review_OpenChat" xml:space="preserve"><value>打开聊天</value></data>
+  <data name="Automations_Review_EmptyWebCaption" xml:space="preserve"><value>事件触发器和自定义 cron 计划在网页控制界面中创建。</value></data>
+  <data name="Automations_Review_CopyAsNewTitle" xml:space="preserve"><value>将“{0}”复制为新自动化</value></data>
+  <data name="Automations_Review_Repeats" xml:space="preserve"><value>重复</value></data>
+  <data name="Automations_Review_RunPermissionError" xml:space="preserve"><value>无法启动“{0}”。此连接缺少 operator.admin 权限。</value></data>
+  <data name="Automations_Designer_RequiredField" xml:space="preserve"><value>{0}（必填）</value></data>
+  <data name="Automations_Designer_ValidationSummary" xml:space="preserve"><value>请填写必填字段后再保存。</value></data>
+  <data name="Automations_Designer_ChooseDate" xml:space="preserve"><value>请选择日期。</value></data>
+  <data name="Automations_Error_TimeRequired" xml:space="preserve"><value>请选择时间。</value></data>
+  <data name="Automations_Error_WeekdayRequired" xml:space="preserve"><value>请选择星期几。</value></data>
+  <data name="Automations_Error_ChannelRequired" xml:space="preserve"><value>请输入频道。</value></data>
+  <data name="Automations_Designer_DraftKept" xml:space="preserve"><value>草稿已为本次会话保留。</value></data>
+  <data name="Automations_Designer_DiscardDraft" xml:space="preserve"><value>丢弃草稿</value></data>
+  <data name="Automations_Designer_ShowMore" xml:space="preserve"><value>显示更多</value></data>
+  <data name="Automations_Designer_ShowFewer" xml:space="preserve"><value>显示更少</value></data>
+  <data name="Automations_Designer_ShowAll" xml:space="preserve"><value>显示全部 {0} 项</value></data>
+  <data name="Automations_Designer_Expanded" xml:space="preserve"><value>已展开</value></data>
+  <data name="Automations_Designer_Collapsed" xml:space="preserve"><value>已折叠</value></data>
+  <data name="Automations_Designer_RunOrder" xml:space="preserve"><value>此历史记录中的第 {0} 次运行（未提供时间）</value></data>
+  <data name="Automations_Designer_ScheduleAsOf" xml:space="preserve"><value>截至 {0} 的计划</value></data>
   <data name="Dashboards_Title" xml:space="preserve">
     <value>仪表板</value>
   </data>
@@ -8693,4 +9246,865 @@
   <data name="Usage_Export_Close" xml:space="preserve"><value>关闭</value></data>
   <data name="Usage_Export_Range7d" xml:space="preserve"><value>最近 7 天</value></data>
   <data name="Usage_Export_Range30d" xml:space="preserve"><value>最近 30 天</value></data>
+  <data name="SessionsHub_ActionFailed" xml:space="preserve">
+    <value>操作失败</value>
+  </data>
+  <data name="SessionsHub_AdminOnly" xml:space="preserve">
+    <value>需要管理员权限</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredBody" xml:space="preserve">
+    <value>你可以查看工作树。创建、删除、还原和清理工作树需要此 Gateway 的管理员权限。</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTip" xml:space="preserve">
+    <value>需要此 Gateway 的管理员权限</value>
+  </data>
+  <data name="SessionsHub_AdminRequiredTitle" xml:space="preserve">
+    <value>需要管理员权限</value>
+  </data>
+  <data name="SessionsHub_AgentFilter" xml:space="preserve">
+    <value>智能体</value>
+  </data>
+  <data name="SessionsHub_AllAgents" xml:space="preserve">
+    <value>所有智能体</value>
+  </data>
+  <data name="SessionsHub_Archived" xml:space="preserve">
+    <value>已存档</value>
+  </data>
+  <data name="SessionsHub_ArchivedFormat" xml:space="preserve">
+    <value>已存档“{0}”。</value>
+  </data>
+  <data name="SessionsHub_ArchiveFailed" xml:space="preserve">
+    <value>无法存档会话</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonAge" xml:space="preserve">
+    <value>因一段时间不活动而自动存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonCap" xml:space="preserve">
+    <value>为保持在活动会话数量限制内而自动存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonManual" xml:space="preserve">
+    <value>由用户手动存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonRestart" xml:space="preserve">
+    <value>在 Gateway 重启后的恢复过程中存档</value>
+  </data>
+  <data name="SessionsHub_ArchiveReasonStaleDashboard" xml:space="preserve">
+    <value>因其仪表板已不再使用而存档</value>
+  </data>
+  <data name="SessionsHub_ChannelWebchat" xml:space="preserve">
+    <value>网页聊天</value>
+  </data>
+  <data name="SessionsHub_Checkpoints" xml:space="preserve">
+    <value>检查点</value>
+  </data>
+  <data name="SessionsHub_CleanDone" xml:space="preserve">
+    <value>清理完成。已删除 {0} 个工作树和 {1} 个孤立签出，并清除了 {2} 个快照。</value>
+  </data>
+  <data name="SessionsHub_CleanFailed" xml:space="preserve">
+    <value>清理未完成</value>
+  </data>
+  <data name="SessionsHub_Cleaning" xml:space="preserve">
+    <value>正在清理...</value>
+  </data>
+  <data name="SessionsHub_CleanIssues" xml:space="preserve">
+    <value>已跳过部分项目：{0}</value>
+  </data>
+  <data name="SessionsHub_CleanNow" xml:space="preserve">
+    <value>立即清理</value>
+  </data>
+  <data name="SessionsHub_CleanNowTip" xml:space="preserve">
+    <value>删除空闲的工作树、孤立的签出和过期的快照</value>
+  </data>
+  <data name="SessionsHub_CleanStillRunning" xml:space="preserve">
+    <value>Gateway 上的清理仍在进行。请稍后刷新以查看结果。</value>
+  </data>
+  <data name="SessionsHub_CloseSearch" xml:space="preserve">
+    <value>关闭搜索</value>
+  </data>
+  <data name="SessionsHub_CountMany" xml:space="preserve">
+    <value>{0} 个会话</value>
+  </data>
+  <data name="SessionsHub_CountOne" xml:space="preserve">
+    <value>1 个会话</value>
+  </data>
+  <data name="SessionsHub_Create" xml:space="preserve">
+    <value>创建</value>
+  </data>
+  <data name="SessionsHub_DateNoActivity" xml:space="preserve">
+    <value>无活动</value>
+  </data>
+  <data name="SessionsHub_DateOlder" xml:space="preserve">
+    <value>更早</value>
+  </data>
+  <data name="SessionsHub_DateThisWeek" xml:space="preserve">
+    <value>本周早些时候</value>
+  </data>
+  <data name="SessionsHub_DateToday" xml:space="preserve">
+    <value>今天</value>
+  </data>
+  <data name="SessionsHub_DateYesterday" xml:space="preserve">
+    <value>昨天</value>
+  </data>
+  <data name="SessionsHub_DeleteBlocked" xml:space="preserve">
+    <value>无法删除此会话。</value>
+  </data>
+  <data name="SessionsHub_DeletedOne" xml:space="preserve">
+    <value>已删除 1 个会话。</value>
+  </data>
+  <data name="SessionsHub_DeleteFailed" xml:space="preserve">
+    <value>无法删除</value>
+  </data>
+  <data name="SessionsHub_DeleteNeedsAdmin" xml:space="preserve">
+    <value>删除未存档的会话需要管理员权限。请先将其存档，或联系管理员。</value>
+  </data>
+  <data name="SessionsHub_Details" xml:space="preserve">
+    <value>详细信息</value>
+  </data>
+  <data name="SessionsHub_DetailsFor" xml:space="preserve">
+    <value>{0} 的详细信息</value>
+  </data>
+  <data name="SessionsHub_DisconnectedBody" xml:space="preserve">
+    <value>连接到 Gateway 以查看和管理其会话。</value>
+  </data>
+  <data name="SessionsHub_DisconnectedTitle" xml:space="preserve">
+    <value>未连接</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveBody" xml:space="preserve">
+    <value>当你或某个渠道开始对话时，会话将显示在此处。</value>
+  </data>
+  <data name="SessionsHub_EmptyActiveTitle" xml:space="preserve">
+    <value>没有活动会话</value>
+  </data>
+  <data name="SessionsHub_EmptyAllBody" xml:space="preserve">
+    <value>此 Gateway 还没有任何会话。</value>
+  </data>
+  <data name="SessionsHub_EmptyAllTitle" xml:space="preserve">
+    <value>暂无会话</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedBody" xml:space="preserve">
+    <value>你存档的会话会保留在此处，直到你还原或删除它们。</value>
+  </data>
+  <data name="SessionsHub_EmptyArchivedTitle" xml:space="preserve">
+    <value>没有已存档的会话</value>
+  </data>
+  <data name="SessionsHub_EmptyCompletedMany" xml:space="preserve">
+    <value>已隐藏 {0} 个已完成的会话。</value>
+  </data>
+  <data name="SessionsHub_EmptyCompletedOne" xml:space="preserve">
+    <value>已隐藏 1 个已完成的会话。</value>
+  </data>
+  <data name="SessionsHub_EmptyCompletedTitle" xml:space="preserve">
+    <value>没有进行中的会话</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredBody" xml:space="preserve">
+    <value>请尝试其他搜索或重置筛选器。</value>
+  </data>
+  <data name="SessionsHub_EmptyFilteredTitle" xml:space="preserve">
+    <value>没有与这些筛选器匹配的会话</value>
+  </data>
+  <data name="SessionsHub_EmptyGroup" xml:space="preserve">
+    <value>此组中没有会话</value>
+  </data>
+  <data name="SessionsHub_FactAgent" xml:space="preserve">
+    <value>智能体</value>
+  </data>
+  <data name="SessionsHub_FactArchivedAt" xml:space="preserve">
+    <value>存档时间</value>
+  </data>
+  <data name="SessionsHub_FactArchiveReason" xml:space="preserve">
+    <value>存档原因</value>
+  </data>
+  <data name="SessionsHub_FactChannel" xml:space="preserve">
+    <value>渠道</value>
+  </data>
+  <data name="SessionsHub_FactCreated" xml:space="preserve">
+    <value>创建时间</value>
+  </data>
+  <data name="SessionsHub_FactKey" xml:space="preserve">
+    <value>会话键</value>
+  </data>
+  <data name="SessionsHub_FactModel" xml:space="preserve">
+    <value>模型</value>
+  </data>
+  <data name="SessionsHub_FactPinned" xml:space="preserve">
+    <value>已固定</value>
+  </data>
+  <data name="SessionsHub_FactProvider" xml:space="preserve">
+    <value>提供商</value>
+  </data>
+  <data name="SessionsHub_FactSessionId" xml:space="preserve">
+    <value>会话 ID</value>
+  </data>
+  <data name="SessionsHub_FactTokens" xml:space="preserve">
+    <value>令牌</value>
+  </data>
+  <data name="SessionsHub_FactUpdated" xml:space="preserve">
+    <value>更新</value>
+  </data>
+  <data name="SessionsHub_FactWorktree" xml:space="preserve">
+    <value>工作树</value>
+  </data>
+  <data name="SessionsHub_Fast" xml:space="preserve">
+    <value>快速模式</value>
+  </data>
+  <data name="SessionsHub_Filters" xml:space="preserve">
+    <value>筛选器</value>
+  </data>
+  <data name="SessionsHub_ForceRemove" xml:space="preserve">
+    <value>仍然删除</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveBody" xml:space="preserve">
+    <value>Gateway 无法安全删除“{0}”：{1}&#x0A;&#x0A;仍然删除将丢弃工作树中所有未提交的更改。此操作无法撤消。</value>
+  </data>
+  <data name="SessionsHub_ForceRemoveTitle" xml:space="preserve">
+    <value>仍要删除工作树吗？</value>
+  </data>
+  <data name="SessionsHub_Group" xml:space="preserve">
+    <value>分类</value>
+  </data>
+  <data name="SessionsHub_GroupBy" xml:space="preserve">
+    <value>分组依据</value>
+  </data>
+  <data name="SessionsHub_GroupByAgent" xml:space="preserve">
+    <value>按智能体分组</value>
+  </data>
+  <data name="SessionsHub_GroupByCategory" xml:space="preserve">
+    <value>按自定义组分组</value>
+  </data>
+  <data name="SessionsHub_GroupByChannel" xml:space="preserve">
+    <value>按渠道分组</value>
+  </data>
+  <data name="SessionsHub_GroupByDate" xml:space="preserve">
+    <value>按日期分组</value>
+  </data>
+  <data name="SessionsHub_GroupByKind" xml:space="preserve">
+    <value>按类型分组</value>
+  </data>
+  <data name="SessionsHub_GroupByNone" xml:space="preserve">
+    <value>不分组</value>
+  </data>
+  <data name="SessionsHub_GroupByPerson" xml:space="preserve">
+    <value>按所有者分组</value>
+  </data>
+  <data name="SessionsHub_GroupOther" xml:space="preserve">
+    <value>其他</value>
+  </data>
+  <data name="SessionsHub_IncludeGlobal" xml:space="preserve">
+    <value>包括全局会话</value>
+  </data>
+  <data name="SessionsHub_IncludeUnknown" xml:space="preserve">
+    <value>包括没有路由信息的会话</value>
+  </data>
+  <data name="SessionsHub_Inherit" xml:space="preserve">
+    <value>使用默认值</value>
+  </data>
+  <data name="SessionsHub_KindChannel" xml:space="preserve">
+    <value>渠道对话</value>
+  </data>
+  <data name="SessionsHub_KindCron" xml:space="preserve">
+    <value>计划任务</value>
+  </data>
+  <data name="SessionsHub_KindDirect" xml:space="preserve">
+    <value>直接对话</value>
+  </data>
+  <data name="SessionsHub_KindGlobal" xml:space="preserve">
+    <value>全局会话</value>
+  </data>
+  <data name="SessionsHub_KindGroup" xml:space="preserve">
+    <value>群组对话</value>
+  </data>
+  <data name="SessionsHub_KindMain" xml:space="preserve">
+    <value>主会话</value>
+  </data>
+  <data name="SessionsHub_KindOther" xml:space="preserve">
+    <value>其他会话</value>
+  </data>
+  <data name="SessionsHub_KindSubagent" xml:space="preserve">
+    <value>子智能体</value>
+  </data>
+  <data name="SessionsHub_KindThread" xml:space="preserve">
+    <value>讨论串</value>
+  </data>
+  <data name="SessionsHub_KindUnknown" xml:space="preserve">
+    <value>未路由的会话</value>
+  </data>
+  <data name="SessionsHub_Label" xml:space="preserve">
+    <value>名称</value>
+  </data>
+  <data name="SessionsHub_LabelPlaceholder" xml:space="preserve">
+    <value>使用生成的标题</value>
+  </data>
+  <data name="SessionsHub_LastRunError" xml:space="preserve">
+    <value>上次运行失败</value>
+  </data>
+  <data name="SessionsHub_LevelAuto" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="SessionsHub_LevelFull" xml:space="preserve">
+    <value>完整详细信息</value>
+  </data>
+  <data name="SessionsHub_LevelOff" xml:space="preserve">
+    <value>关</value>
+  </data>
+  <data name="SessionsHub_LevelOn" xml:space="preserve">
+    <value>开</value>
+  </data>
+  <data name="SessionsHub_LevelStream" xml:space="preserve">
+    <value>思考时实时显示</value>
+  </data>
+  <data name="SessionsHub_LevelUltrafast" xml:space="preserve">
+    <value>超快</value>
+  </data>
+  <data name="SessionsHub_ListLabel" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_LoadFailedTitle" xml:space="preserve">
+    <value>无法加载会话</value>
+  </data>
+  <data name="SessionsHub_Loading" xml:space="preserve">
+    <value>正在加载会话...</value>
+  </data>
+  <data name="SessionsHub_LoadMore" xml:space="preserve">
+    <value>加载更多</value>
+  </data>
+  <data name="SessionsHub_MainCannotArchive" xml:space="preserve">
+    <value>无法存档主会话。可改为重置该会话以重新开始。</value>
+  </data>
+  <data name="SessionsHub_MoreNamed" xml:space="preserve">
+    <value>{0} 的更多操作</value>
+  </data>
+  <data name="SessionsHub_Move" xml:space="preserve">
+    <value>移动</value>
+  </data>
+  <data name="SessionsHub_MoveToGroup" xml:space="preserve">
+    <value>移到组</value>
+  </data>
+  <data name="SessionsHub_MoveToGroupNamed" xml:space="preserve">
+    <value>将 {0} 移到组</value>
+  </data>
+  <data name="SessionsHub_NeedsWrite" xml:space="preserve">
+    <value>需要此 Gateway 的写入权限</value>
+  </data>
+  <data name="SessionsHub_NewWorktree" xml:space="preserve">
+    <value>新建工作树</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBase" xml:space="preserve">
+    <value>基础分支</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBasePlaceholder" xml:space="preserve">
+    <value>存储库默认分支</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesLoading" xml:space="preserve">
+    <value>正在加载分支...</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeBranchesUnavailable" xml:space="preserve">
+    <value>此存储库的分支不可用。你可以输入分支名称。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeCreate" xml:space="preserve">
+    <value>创建工作树</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeName" xml:space="preserve">
+    <value>名称（可选）</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNameInvalid" xml:space="preserve">
+    <value>请使用小写字母、数字和连字符，并以字母或数字开头。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNamePlaceholder" xml:space="preserve">
+    <value>留空则自动生成</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeNotGit" xml:space="preserve">
+    <value>此文件夹不是 Git 存储库。</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepo" xml:space="preserve">
+    <value>存储库文件夹</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeRepoPlaceholder" xml:space="preserve">
+    <value>Gateway 主机上 Git 存储库的路径</value>
+  </data>
+  <data name="SessionsHub_NewWorktreeTitle" xml:space="preserve">
+    <value>创建工作树</value>
+  </data>
+  <data name="SessionsHub_NotAvailable" xml:space="preserve">
+    <value>不可用</value>
+  </data>
+  <data name="SessionsHub_OpenInChat" xml:space="preserve">
+    <value>在聊天中打开</value>
+  </data>
+  <data name="SessionsHub_OpenInChatNamed" xml:space="preserve">
+    <value>在聊天中打开 {0}</value>
+  </data>
+  <data name="SessionsHub_Organization" xml:space="preserve">
+    <value>所有权和分组</value>
+  </data>
+  <data name="SessionsHub_Overrides" xml:space="preserve">
+    <value>会话设置</value>
+  </data>
+  <data name="SessionsHub_OwnedBy" xml:space="preserve">
+    <value>所有者：{0}</value>
+  </data>
+  <data name="SessionsHub_Owner" xml:space="preserve">
+    <value>所有者</value>
+  </data>
+  <data name="SessionsHub_CloudWorker" xml:space="preserve">
+    <value>部署位置</value>
+  </data>
+  <data name="SessionsHub_PlacementActive" xml:space="preserve">
+    <value>正在云端工作机上运行</value>
+  </data>
+  <data name="SessionsHub_PlacementFailed" xml:space="preserve">
+    <value>云端工作机出现故障</value>
+  </data>
+  <data name="SessionsHub_PlacementLocal" xml:space="preserve">
+    <value>正在 Gateway 上运行</value>
+  </data>
+  <data name="SessionsHub_PlacementReclaimed" xml:space="preserve">
+    <value>已返回 Gateway</value>
+  </data>
+  <data name="SessionsHub_PlacementStarting" xml:space="preserve">
+    <value>云端工作机正在启动</value>
+  </data>
+  <data name="SessionsHub_PlacementStopping" xml:space="preserve">
+    <value>云端工作机正在停止</value>
+  </data>
+  <data name="SessionsHub_PreservedBusy" xml:space="preserve">
+    <value>仍在使用中</value>
+  </data>
+  <data name="SessionsHub_PreservedCleanupFailed" xml:space="preserve">
+    <value>清理失败</value>
+  </data>
+  <data name="SessionsHub_PreservedLocked" xml:space="preserve">
+    <value>已被其他进程锁定</value>
+  </data>
+  <data name="SessionsHub_PreservedOwnerMismatch" xml:space="preserve">
+    <value>属于其他会话</value>
+  </data>
+  <data name="SessionsHub_PreservedSnapshotFailed" xml:space="preserve">
+    <value>安全快照失败</value>
+  </data>
+  <data name="SessionsHub_PreservedWorktrees" xml:space="preserve">
+    <value>已保留的工作树：{0}。</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyBody" xml:space="preserve">
+    <value>你可以浏览和搜索会话。更改、存档或删除会话需要此 Gateway 的写入权限。</value>
+  </data>
+  <data name="SessionsHub_ReadOnlyTitle" xml:space="preserve">
+    <value>只读访问权限</value>
+  </data>
+  <data name="SessionsHub_Reasoning" xml:space="preserve">
+    <value>推理级别</value>
+  </data>
+  <data name="SessionsHub_Refresh" xml:space="preserve">
+    <value>刷新</value>
+  </data>
+  <data name="SessionsHub_Remove" xml:space="preserve">
+    <value>删除</value>
+  </data>
+  <data name="SessionsHub_RemoveFromGroup" xml:space="preserve">
+    <value>从组中移除</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeBody" xml:space="preserve">
+    <value>要删除工作树“{0}”吗？Gateway 会先创建安全快照，以便你以后还原。</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeFailed" xml:space="preserve">
+    <value>无法删除工作树</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeRefused" xml:space="preserve">
+    <value>Gateway 拒绝删除，因为无法安全执行。</value>
+  </data>
+  <data name="SessionsHub_RemoveWorktreeTitle" xml:space="preserve">
+    <value>删除工作树？</value>
+  </data>
+  <data name="SessionsHub_Restore" xml:space="preserve">
+    <value>还原</value>
+  </data>
+  <data name="SessionsHub_RestoreWorktreeFailed" xml:space="preserve">
+    <value>无法还原工作树</value>
+  </data>
+  <data name="SessionsHub_Retry" xml:space="preserve">
+    <value>重试</value>
+  </data>
+  <data name="SessionsHub_RoleAssistant" xml:space="preserve">
+    <value>助手</value>
+  </data>
+  <data name="SessionsHub_RoleUser" xml:space="preserve">
+    <value>你</value>
+  </data>
+  <data name="SessionsHub_RowHelp" xml:space="preserve">
+    <value>展开或折叠会话的详细信息</value>
+  </data>
+  <data name="SessionsHub_Save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="SessionsHub_Searching" xml:space="preserve">
+    <value>正在搜索对话记录...</value>
+  </data>
+  <data name="SessionsHub_SearchPlaceholder" xml:space="preserve">
+    <value>按名称或键筛选</value>
+  </data>
+  <data name="SessionsHub_ShowAll" xml:space="preserve">
+    <value>显示所有会话</value>
+  </data>
+  <data name="SessionsHub_ShowDetails" xml:space="preserve">
+    <value>显示详细信息</value>
+  </data>
+  <data name="SessionsHub_ShowDetailsNamed" xml:space="preserve">
+    <value>显示 {0} 的详细信息</value>
+  </data>
+  <data name="SessionsHub_Sort" xml:space="preserve">
+    <value>排序</value>
+  </data>
+  <data name="SessionsHub_SortNameAsc" xml:space="preserve">
+    <value>名称，A 到 Z</value>
+  </data>
+  <data name="SessionsHub_SortNewest" xml:space="preserve">
+    <value>最近更新</value>
+  </data>
+  <data name="SessionsHub_StatusActive" xml:space="preserve">
+    <value>当前</value>
+  </data>
+  <data name="SessionsHub_StatusAll" xml:space="preserve">
+    <value>全部</value>
+  </data>
+  <data name="SessionsHub_StatusArchived" xml:space="preserve">
+    <value>已存档</value>
+  </data>
+  <data name="SessionsHub_StatusFilter" xml:space="preserve">
+    <value>会话状态</value>
+  </data>
+  <data name="SessionsHub_StatusQueued" xml:space="preserve">
+    <value>已排队</value>
+  </data>
+  <data name="SessionsHub_TabSessions" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_TabsLabel" xml:space="preserve">
+    <value>会话页面的各个部分</value>
+  </data>
+  <data name="SessionsHub_TabWorktrees" xml:space="preserve">
+    <value>工作树</value>
+  </data>
+  <data name="SessionsHub_Thinking" xml:space="preserve">
+    <value>思考级别</value>
+  </data>
+  <data name="SessionsHub_ThinkingHigh" xml:space="preserve">
+    <value>高</value>
+  </data>
+  <data name="SessionsHub_ThinkingLow" xml:space="preserve">
+    <value>低</value>
+  </data>
+  <data name="SessionsHub_ThinkingMedium" xml:space="preserve">
+    <value>中</value>
+  </data>
+  <data name="SessionsHub_ThinkingMinimal" xml:space="preserve">
+    <value>最低</value>
+  </data>
+  <data name="SessionsHub_ThinkingXHigh" xml:space="preserve">
+    <value>超高</value>
+  </data>
+  <data name="SessionsHub_TimeDays" xml:space="preserve">
+    <value>{0} 天前</value>
+  </data>
+  <data name="SessionsHub_TimeHours" xml:space="preserve">
+    <value>{0} 小时前</value>
+  </data>
+  <data name="SessionsHub_TimeJustNow" xml:space="preserve">
+    <value>刚刚</value>
+  </data>
+  <data name="SessionsHub_TimeMinutes" xml:space="preserve">
+    <value>{0} 分钟前</value>
+  </data>
+  <data name="SessionsHub_Title" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_Subtitle" xml:space="preserve">
+    <value>浏览、整理和清理此 Gateway 上的对话。</value>
+  </data>
+  <data name="SessionsHub_TokensWithContext" xml:space="preserve">
+    <value>已用 {0}，上下文共 {1}</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedMany" xml:space="preserve">
+    <value>还有 {0} 个已存档会话也匹配。选择“全部”或“已存档”以包含它们。</value>
+  </data>
+  <data name="SessionsHub_TranscriptArchivedExcludedOne" xml:space="preserve">
+    <value>还有 1 个已存档会话也匹配。选择“全部”或“已存档”以包含它。</value>
+  </data>
+  <data name="SessionsHub_TranscriptFailed" xml:space="preserve">
+    <value>搜索未完成</value>
+  </data>
+  <data name="SessionsHub_TranscriptHint" xml:space="preserve">
+    <value>在与当前智能体和状态筛选器匹配的会话中搜索消息。</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingBody" xml:space="preserve">
+    <value>Gateway 仍在构建搜索索引，因此可能缺少部分匹配项。请稍后重试。</value>
+  </data>
+  <data name="SessionsHub_TranscriptIndexingTitle" xml:space="preserve">
+    <value>正在为对话记录编制索引</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchMany" xml:space="preserve">
+    <value>{0} 个匹配项</value>
+  </data>
+  <data name="SessionsHub_TranscriptMatchOne" xml:space="preserve">
+    <value>1 个匹配项</value>
+  </data>
+  <data name="SessionsHub_TranscriptNeedsConnection" xml:space="preserve">
+    <value>连接到 Gateway 以搜索对话记录。</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesBody" xml:space="preserve">
+    <value>没有消息包含“{0}”。</value>
+  </data>
+  <data name="SessionsHub_TranscriptNoMatchesTitle" xml:space="preserve">
+    <value>无匹配项</value>
+  </data>
+  <data name="SessionsHub_TranscriptTitle" xml:space="preserve">
+    <value>搜索对话记录</value>
+  </data>
+  <data name="SessionsHub_TranscriptTruncated" xml:space="preserve">
+    <value>仅显示最佳匹配项。请优化搜索以查看其他结果。</value>
+  </data>
+  <data name="SessionsHub_TranscriptUnsupported" xml:space="preserve">
+    <value>此 Gateway 不支持搜索对话记录。请更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_UnarchivedFormat" xml:space="preserve">
+    <value>已将“{0}”还原到活动会话。</value>
+  </data>
+  <data name="SessionsHub_UnarchiveFailed" xml:space="preserve">
+    <value>无法取消存档会话</value>
+  </data>
+  <data name="SessionsHub_UnarchiveNamed" xml:space="preserve">
+    <value>取消存档 {0}</value>
+  </data>
+  <data name="SessionsHub_Unassigned" xml:space="preserve">
+    <value>未分配</value>
+  </data>
+  <data name="SessionsHub_Undo" xml:space="preserve">
+    <value>撤消</value>
+  </data>
+  <data name="SessionsHub_UndoFailed" xml:space="preserve">
+    <value>无法撤消</value>
+  </data>
+  <data name="SessionsHub_Ungrouped" xml:space="preserve">
+    <value>未分组</value>
+  </data>
+  <data name="SessionsHub_Unread" xml:space="preserve">
+    <value>未读</value>
+  </data>
+  <data name="SessionsHub_Unsupported" xml:space="preserve">
+    <value>此 Gateway 不支持此操作。请更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_UnsupportedTitle" xml:space="preserve">
+    <value>会话不可用</value>
+  </data>
+  <data name="SessionsHub_UpdateFailed" xml:space="preserve">
+    <value>无法更新会话</value>
+  </data>
+  <data name="SessionsHub_Verbose" xml:space="preserve">
+    <value>详细级别</value>
+  </data>
+  <data name="SessionsHub_WorktreeActive" xml:space="preserve">
+    <value>活动</value>
+  </data>
+  <data name="SessionsHub_WorktreeColActive" xml:space="preserve">
+    <value>上次活动时间</value>
+  </data>
+  <data name="SessionsHub_WorktreeColOwner" xml:space="preserve">
+    <value>所有者</value>
+  </data>
+  <data name="SessionsHub_WorktreeColRepo" xml:space="preserve">
+    <value>存储库</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreated" xml:space="preserve">
+    <value>已创建工作树。</value>
+  </data>
+  <data name="SessionsHub_WorktreeCreateFailed" xml:space="preserve">
+    <value>无法创建工作树</value>
+  </data>
+  <data name="SessionsHub_WorktreeOpenOwner" xml:space="preserve">
+    <value>在聊天中打开所属会话 {0}</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerManual" xml:space="preserve">
+    <value>手动创建</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerSession" xml:space="preserve">
+    <value>会话</value>
+  </data>
+  <data name="SessionsHub_WorktreeOwnerWorkboard" xml:space="preserve">
+    <value>工作看板</value>
+  </data>
+  <data name="SessionsHub_WorktreeRemoved" xml:space="preserve">
+    <value>已删除“{0}”。你可以从此列表中还原它。</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestorable" xml:space="preserve">
+    <value>可还原</value>
+  </data>
+  <data name="SessionsHub_WorktreeRestored" xml:space="preserve">
+    <value>已还原“{0}”。</value>
+  </data>
+  <data name="SessionsHub_WorktreeRowName" xml:space="preserve">
+    <value>{0}，分支 {1}，所有者 {2}，{3}</value>
+  </data>
+  <data name="SessionsHub_WorktreesDisconnected" xml:space="preserve">
+    <value>连接到 Gateway 以查看其托管的工作树。</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyBody" xml:space="preserve">
+    <value>为会话、工作看板创建或手动创建的工作树将显示在此处。</value>
+  </data>
+  <data name="SessionsHub_WorktreesEmptyTitle" xml:space="preserve">
+    <value>没有工作树</value>
+  </data>
+  <data name="SessionsHub_WorktreesFailed" xml:space="preserve">
+    <value>无法加载工作树</value>
+  </data>
+  <data name="SessionsHub_WorktreesLoading" xml:space="preserve">
+    <value>正在加载工作树...</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupported" xml:space="preserve">
+    <value>此 Gateway 不管理工作树。请更新 Gateway 以使用此功能。</value>
+  </data>
+  <data name="SessionsHub_WorktreesUnsupportedTitle" xml:space="preserve">
+    <value>工作树不可用</value>
+  </data>
+  <data name="SessionsHub_Yes" xml:space="preserve">
+    <value>是</value>
+  </data>
+  <data name="SessionsHub_DeleteRefused" xml:space="preserve">
+    <value>网关未删除此会话。</value>
+  </data>
+  <data name="SessionsHub_DeleteRosterChanged" xml:space="preserve"><value>确认期间列表发生了变化，因此未删除任何内容。请检查此会话后重试。</value></data>
+  <data name="SessionsHub_RosterNotCurrent" xml:space="preserve">
+    <value>会话列表不是最新状态。请等待刷新完成后再更改会话。</value>
+  </data>
+  <data name="SessionsHub_StatAll" xml:space="preserve">
+    <value>所有会话</value>
+  </data>
+  <data name="SessionsHub_StatArchived" xml:space="preserve">
+    <value>已存档会话</value>
+  </data>
+  <data name="SessionsHub_FactPath" xml:space="preserve"><value>路径</value></data>
+  <data name="SessionsHub_ForkCreated" xml:space="preserve"><value>已创建“{0}”。</value></data>
+  <data name="SessionsHub_ForkCreatedTitle" xml:space="preserve"><value>已分叉对话</value></data>
+  <data name="SessionsHub_ForkDefaultName" xml:space="preserve"><value>{0}（分叉）</value></data>
+  <data name="SessionsHub_ForkDialogBody" xml:space="preserve"><value>从当前对话创建新会话。原会话保持不变。</value></data>
+  <data name="SessionsHub_ForkDialogTitle" xml:space="preserve"><value>分叉此对话？</value></data>
+  <data name="SessionsHub_ForkRenameFailed" xml:space="preserve"><value>已创建分叉，但无法保存名称：{0}</value></data>
+  <data name="SessionsHub_MainSessionBody" xml:space="preserve"><value>主会话不能存档或删除。</value></data>
+  <data name="SessionsHub_MainSessionTitle" xml:space="preserve"><value>主会话</value></data>
+  <data name="SessionsHub_MessagesMatching" xml:space="preserve"><value>与“{0}”匹配的消息</value></data>
+  <data name="SessionsHub_NeedsAttentionFallback" xml:space="preserve"><value>上次运行需要关注。</value></data>
+  <data name="SessionsHub_SessionUnavailable" xml:space="preserve"><value>无法显示此会话。请刷新列表后重试。</value></data>
+  <data name="SessionsHub_NewWorktreeDoesNotStartSession" xml:space="preserve"><value>这不会启动会话。</value></data>
+  <data name="SessionsHub_OpenGatewayWeb" xml:space="preserve"><value>在 Web 中打开</value></data>
+  <data name="SessionsHub_ResetDone" xml:space="preserve"><value>已重置“{0}”。</value></data>
+  <data name="SessionsHub_ResetRejected" xml:space="preserve"><value>Gateway 未重置此会话。</value></data>
+  <data name="SessionsHub_SearchMessagesFor" xml:space="preserve"><value>在消息中搜索“{0}”</value></data>
+  <data name="SessionsHub_UntitledSession" xml:space="preserve"><value>未命名会话</value></data>
+  <data name="SessionsHub_WorktreeMastSubtitle" xml:space="preserve"><value>{0} 个活动，{1} 个已移除</value></data>
+  <data name="SessionsHub_WorktreeMastTitle" xml:space="preserve"><value>{0} 上的托管工作树</value></data>
+  <data name="SessionsHub_WorktreesGatewayFallback" xml:space="preserve"><value>此 Gateway</value></data>
+  <data name="SessionsHub_HeroSessionsLoaded" xml:space="preserve"><value>已加载 {1} 个会话，其中 {0} 个正在运行</value></data>
+  <data name="SessionsHub_HeroSessionsLoadingDetail" xml:space="preserve"><value>正在从 Gateway 获取最新会话清单。</value></data>
+  <data name="SessionsHub_HeroSessionsLastSeenAt" xml:space="preserve"><value>会话，上次查看时间为 {0}。</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnected" xml:space="preserve"><value>断开连接时无法查看会话</value></data>
+  <data name="SessionsHub_HeroSessionsDisconnectedDetail" xml:space="preserve"><value>重新连接以加载最新会话清单。</value></data>
+  <data name="SessionsHub_HeroSessionsEmpty" xml:space="preserve"><value>暂无会话</value></data>
+  <data name="SessionsHub_HeroSessionsEmptyDetail" xml:space="preserve"><value>与代理的对话会显示在此处。</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatches" xml:space="preserve"><value>没有会话符合这些筛选条件</value></data>
+  <data name="SessionsHub_HeroSessionsNoMatchesDetail" xml:space="preserve"><value>尝试更改搜索内容或筛选条件以查找其他会话。</value></data>
+  <data name="SessionsHub_StoppedWithError" xml:space="preserve"><value>已停止并出现错误</value></data>
+  <data name="SessionsHub_WorktreesActiveGroup" xml:space="preserve"><value>活动</value></data>
+  <data name="SessionsHub_WorktreesRemovedGroup" xml:space="preserve"><value>已移除</value></data>
+  <data name="SessionsHub_StatusCurrentHelp" xml:space="preserve"><value>未存档</value></data>
+  <data name="SessionsHub_WriteOnlyTitle" xml:space="preserve"><value>部分操作需要管理员权限</value></data>
+  <data name="SessionsHub_WriteOnlyBody" xml:space="preserve"><value>你可以整理和存档会话。重置、压缩和删除当前会话需要管理员权限。</value></data>
+  <data name="SessionsHub_ShowInWorktrees" xml:space="preserve"><value>在工作树中显示</value></data>
+  <data name="SessionsHub_DeleteSessionTitle" xml:space="preserve"><value>删除“{0}”？</value></data>
+  <data name="SessionsHub_DeleteSessionBody" xml:space="preserve"><value>此 Gateway 将删除对话及其记录。此操作无法撤销。</value></data>
+  <data name="SessionsHub_DeleteSessionWorktreeNoteTitle" xml:space="preserve"><value>关于其工作树</value></data>
+  <data name="SessionsHub_DeleteSessionWorktreeNoteBody" xml:space="preserve"><value>Gateway 决定移除还是保留工作树，并报告结果。</value></data>
+  <data name="SessionsHub_ResetSessionTitle" xml:space="preserve"><value>重置“{0}”？</value></data>
+  <data name="SessionsHub_ResetSessionBody" xml:space="preserve"><value>对话历史记录将被清除，会话将重新开始。会话密钥保持不变。</value></data>
+  <data name="SessionsHub_OpenFolder" xml:space="preserve"><value>打开文件夹</value></data>
+  <data name="SessionsHub_Options" xml:space="preserve"><value>选项</value></data>
+  <data name="SessionsHub_FooterLoaded" xml:space="preserve"><value>显示 {0}/{1} · 已加载 {2}</value></data>
+  <data name="SessionsHub_MoreAvailableShort" xml:space="preserve"><value>还有更多</value></data>
+  <data name="SessionsHub_ShowMore" xml:space="preserve"><value>显示更多</value></data>
+  <data name="SessionsHub_WorktreeBranch" xml:space="preserve"><value>分支</value></data>
+  <data name="SessionsHub_WorktreeBranchFrom" xml:space="preserve"><value>{0}，基于 {1}</value></data>
+  <data name="SessionsHub_CurrentSessions" xml:space="preserve"><value>当前会话</value></data>
+  <data name="SessionsHub_ArchivedSessions" xml:space="preserve"><value>已归档会话</value></data>
+  <data name="SessionsHub_MatchingSessions" xml:space="preserve"><value>匹配的会话</value></data>
+  <data name="SessionsHub_ShownOfLoaded" xml:space="preserve"><value>已加载 {1} 个，显示 {0} 个</value></data>
+  <data name="SessionsHub_ViewFilterNote" xml:space="preserve"><value>{0} 个已加载会话符合此视图。{1}，{2}，{3}。可在“选项”中更改。</value></data>
+  <data name="SessionsHub_BackgroundHidden" xml:space="preserve"><value>隐藏后台会话</value></data>
+  <data name="SessionsHub_BackgroundShown" xml:space="preserve"><value>显示后台会话</value></data>
+  <data name="SessionsHub_CompletedHidden" xml:space="preserve"><value>隐藏已完成会话</value></data>
+  <data name="SessionsHub_CompletedShown" xml:space="preserve"><value>显示已完成会话</value></data>
+  <data name="SessionsHub_UnroutedHidden" xml:space="preserve"><value>隐藏未路由会话</value></data>
+  <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>显示未路由会话</value></data>
+  <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>已归档“{0}”（{1}）。</value></data>
+  <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>关闭通知</value></data>
+  <data name="Onboarding_Bubble_Ai" xml:space="preserve"><value>帮我选个大脑吧。</value></data>
+  <data name="Onboarding_Bubble_Capabilities" xml:space="preserve"><value>我能做什么，由你决定。</value></data>
+  <data name="Onboarding_Bubble_Checking" xml:space="preserve"><value>正在和你的 AI 确认。</value></data>
+  <data name="Onboarding_Bubble_Confirm" xml:space="preserve"><value>先确认一件事。</value></data>
+  <data name="Onboarding_Bubble_Connect" xml:space="preserve"><value>告诉我你的 Gateway 在哪儿。</value></data>
+  <data name="Onboarding_Bubble_Done" xml:space="preserve"><value>我们成功啦。</value></data>
+  <data name="Onboarding_Bubble_Failed" xml:space="preserve"><value>没有成功。</value></data>
+  <data name="Onboarding_Bubble_Gateway" xml:space="preserve"><value>给我选个家吧。</value></data>
+  <data name="Onboarding_Bubble_Installed" xml:space="preserve"><value>我的新家准备好了。</value></data>
+  <data name="Onboarding_Bubble_MoreOptions" xml:space="preserve"><value>还有几个选项。</value></data>
+  <data name="Onboarding_Bubble_Plan" xml:space="preserve"><value>计划是这样的。</value></data>
+  <data name="Onboarding_Bubble_Ready" xml:space="preserve"><value>随时待命。</value></data>
+  <data name="Onboarding_Bubble_Restart" xml:space="preserve"><value>马上就好。</value></data>
+  <data name="Onboarding_Bubble_Tools" xml:space="preserve"><value>打开你想用的吧。</value></data>
+  <data name="Onboarding_Bubble_Welcome" xml:space="preserve"><value>你好。我们开始设置吧。</value></data>
+  <data name="Onboarding_Bubble_Working" xml:space="preserve"><value>正在处理…</value></data>
+  <data name="Onboarding_Progress_HideDetails" xml:space="preserve"><value>隐藏详细信息</value></data>
+  <data name="Onboarding_Progress_OpenLog.Content" xml:space="preserve"><value>打开日志文件</value></data>
+  <data name="Onboarding_Progress_ShowDetails" xml:space="preserve"><value>显示详细信息</value></data>
+  <data name="Onboarding_Ready_Prompt" xml:space="preserve"><value>OpenClaw 已准备就绪</value></data>
+  <data name="Onboarding_Ready_OpenChat" xml:space="preserve"><value>打开 Chat</value></data>
+  <data name="Onboarding_Ready_ModelTitle" xml:space="preserve"><value>AI 已就绪</value></data>
+  <data name="Onboarding_Ready_CapabilitiesDescription" xml:space="preserve"><value>可随时在 Companion 设置中编辑</value></data>
+  <data name="Onboarding_Ready_CapabilitiesTitle" xml:space="preserve"><value>已应用功能配置</value></data>
+  <data name="Onboarding_Ready_PairedDescription" xml:space="preserve"><value>此电脑已连接，可以使用</value></data>
+  <data name="Onboarding_Ready_PairedTitle" xml:space="preserve"><value>设备已配对</value></data>
+  <data name="Onboarding_Ready_GatewayDescription" xml:space="preserve"><value>在此电脑上运行</value></data>
+  <data name="Onboarding_Review_HideCommands" xml:space="preserve"><value>隐藏具体命令和文件位置</value></data>
+  <data name="Onboarding_Review_ShowCommands" xml:space="preserve"><value>显示具体命令和文件位置</value></data>
+  <data name="Onboarding_Steps_ChooseTools" xml:space="preserve"><value>选择电脑工具</value></data>
+  <data name="Onboarding_Steps_ChooseToolsDetail" xml:space="preserve"><value>从适合你的访问权限开始。</value></data>
+  <data name="Onboarding_Steps_ConnectAi" xml:space="preserve"><value>连接你的 AI</value></data>
+  <data name="Onboarding_Steps_ConnectAiDetail" xml:space="preserve"><value>使用你选择的提供商或模型。</value></data>
+  <data name="Onboarding_Steps_ItemName" xml:space="preserve"><value>{0}，{1}</value></data>
+  <data name="Onboarding_Steps_SetUp" xml:space="preserve"><value>安装设置</value></data>
+  <data name="Onboarding_Steps_SetUpDetail" xml:space="preserve"><value>OpenClaw 正在安装，你可以继续使用电脑。</value></data>
+  <data name="Onboarding_Steps_StartChatting" xml:space="preserve"><value>开始聊天</value></data>
+  <data name="Onboarding_Steps_StartChattingDetail" xml:space="preserve"><value>打开 Chat，打个招呼。</value></data>
+  <data name="Onboarding_Steps_StateCurrent" xml:space="preserve"><value>当前步骤</value></data>
+  <data name="Onboarding_Steps_StateDone" xml:space="preserve"><value>已完成</value></data>
+  <data name="Onboarding_Steps_StateSkipped" xml:space="preserve"><value>已跳过</value></data>
+  <data name="Onboarding_Steps_StateUpcoming" xml:space="preserve"><value>未开始</value></data>
+  <data name="Onboarding_Tools_OnNow" xml:space="preserve"><value>已开启：{0}</value></data>
+  <data name="Onboarding_Welcome_Safety.Text" xml:space="preserve"><value>AI 智能体功能强大，授予其电脑访问权限也存在风险。它们可能犯错、更改或删除文件，或泄露私人信息。你可以控制并限制 OpenClaw 对电脑的访问。</value></data>
+  <data name="Onboarding_Complete_RestartTitle" xml:space="preserve"><value>重启 Windows 以继续</value></data>
+  <data name="Onboarding_Complete_RestartPrompt" xml:space="preserve"><value>OpenClaw 需要重启 Windows 才能完成安装。请先保存你的工作。</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>开始之前</value></data>
+  <data name="Onboarding_Ready_GatewayNativeTitle" xml:space="preserve"><value>本机 Gateway 正在运行</value></data>
+  <data name="Onboarding_Ready_GatewayWslTitle" xml:space="preserve"><value>WSL Gateway 正在运行</value></data>
+  <data name="Onboarding_Ready_GatewayWslDescription" xml:space="preserve"><value>托管在这台电脑的 WSL 中</value></data>
+  <data name="Onboarding_Ready_GatewayConnectedTitle" xml:space="preserve"><value>Gateway 已连接</value></data>
+  <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>在这台电脑上运行</value></data>
+  <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>远程 Gateway 已连接</value></data>
+  <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>已为此设置验证</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>在聊天旁打开详情</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>工具详情</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>这些详情已不可用。如有需要，请重新连接，然后从当前对话重新打开工具。</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>调整对话面板大小</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>使用左右方向键调整大小。Home 键选择最小宽度；End 键选择最大宽度。</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>返回对话</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>显示面板</value></data>
+  <data name="Chat_Panel_Tabs" xml:space="preserve"><value>对话面板</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>刷新</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>刷新</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>仪表板</value></data>
 </root>

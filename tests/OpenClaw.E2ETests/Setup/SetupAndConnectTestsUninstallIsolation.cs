@@ -1,3 +1,4 @@
+using OpenClaw.SetupEngine;
 using OpenClaw.Shared;
 
 namespace OpenClaw.E2ETests.Setup;
@@ -44,5 +45,89 @@ public sealed class SetupAndConnectTestsUninstallIsolation
         Assert.NotEqual(first[index + 1], second[index + 1]);
         Assert.StartsWith("OpenClawE2E-01234567-", first[index + 1], StringComparison.Ordinal);
         Assert.StartsWith("OpenClawE2E-89abcdef-", second[index + 1], StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(-1)]
+    public async Task RootCleanup_NonzeroUninstallPreservesRoots(int exitCode)
+    {
+        var calls = new List<string>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            E2ESetupFixture.UninstallAndRemoveOwnedRootsAsync(
+                () => { calls.Add("uninstall"); return Task.FromResult(exitCode); },
+                () => { calls.Add("inspect"); return new(WslRegistrationInspectionStatus.NotFound); },
+                () => calls.Add("logs"),
+                () => calls.Add("delete")));
+
+        Assert.Equal(new[] { "uninstall", "logs" }, calls);
+    }
+
+    [Fact]
+    public async Task RootCleanup_ThrownUninstallPreservesRootsAndFailure()
+    {
+        var calls = new List<string>();
+        var failure = new IOException("Synthetic uninstall failure");
+
+        var observed = await Record.ExceptionAsync(() =>
+            E2ESetupFixture.UninstallAndRemoveOwnedRootsAsync(
+                () => { calls.Add("uninstall"); return Task.FromException<int>(failure); },
+                () => { calls.Add("inspect"); return new(WslRegistrationInspectionStatus.NotFound); },
+                () => calls.Add("logs"),
+                () => calls.Add("delete")));
+
+        Assert.Same(failure, observed);
+        Assert.Equal(new[] { "uninstall", "logs" }, calls);
+    }
+
+    [Theory]
+    [InlineData((int)WslRegistrationInspectionStatus.Found)]
+    [InlineData((int)WslRegistrationInspectionStatus.Unavailable)]
+    [InlineData((int)WslRegistrationInspectionStatus.Duplicate)]
+    [InlineData((int)WslRegistrationInspectionStatus.Malformed)]
+    public async Task RootCleanup_UnverifiedAbsencePreservesRoots(int rawStatus)
+    {
+        var calls = new List<string>();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            E2ESetupFixture.UninstallAndRemoveOwnedRootsAsync(
+                () => { calls.Add("uninstall"); return Task.FromResult(0); },
+                () => { calls.Add("inspect"); return new((WslRegistrationInspectionStatus)rawStatus); },
+                () => calls.Add("logs"),
+                () => calls.Add("delete")));
+
+        Assert.Equal(new[] { "uninstall", "logs", "inspect" }, calls);
+    }
+
+    [Fact]
+    public async Task RootCleanup_InspectionFailurePreservesRootsAndFailure()
+    {
+        var calls = new List<string>();
+        var failure = new IOException("Synthetic registration inspection failure");
+
+        var observed = await Record.ExceptionAsync(() =>
+            E2ESetupFixture.UninstallAndRemoveOwnedRootsAsync(
+                () => { calls.Add("uninstall"); return Task.FromResult(0); },
+                () => { calls.Add("inspect"); throw failure; },
+                () => calls.Add("logs"),
+                () => calls.Add("delete")));
+
+        Assert.Same(failure, observed);
+        Assert.Equal(new[] { "uninstall", "logs", "inspect" }, calls);
+    }
+
+    [Fact]
+    public async Task RootCleanup_SuccessAndVerifiedAbsenceDeleteOnlyAfterLogsAndInspection()
+    {
+        var calls = new List<string>();
+
+        await E2ESetupFixture.UninstallAndRemoveOwnedRootsAsync(
+            () => { calls.Add("uninstall"); return Task.FromResult(0); },
+            () => { calls.Add("inspect"); return new(WslRegistrationInspectionStatus.NotFound); },
+            () => calls.Add("logs"),
+            () => calls.Add("delete"));
+
+        Assert.Equal(new[] { "uninstall", "logs", "inspect", "delete" }, calls);
     }
 }

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Text;
@@ -171,17 +172,23 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         {
             rowControls.Current.TryGetValue(id, out var previous);
             rowControls.Current[id] = control;
-            if (control is not Expander expander || rowLoadedHandlers.Current.ContainsKey(control))
+            if (control is not (Microsoft.UI.Xaml.Controls.Expander or SettingsExpander) || rowLoadedHandlers.Current.ContainsKey(control))
                 return;
             if (previous is not null && !ReferenceEquals(previous, control))
                 ForgetRowControl(previous);
             RoutedEventHandler handler = (_, _) => MarkReady(control);
             rowLoadedHandlers.Current[control] = handler;
             control.Loaded += handler;
-            if (expander.IsExpanded && !control.IsLoaded)
+            if (!control.IsLoaded && (control is Expander { IsExpanded: true } or SettingsExpander { IsExpanded: true }))
             {
                 heldRows.Current.Add(id);
-                try { expander.IsExpanded = false; }
+                try
+                {
+                    if (control is Expander expander)
+                        expander.IsExpanded = false;
+                    else if (control is SettingsExpander settingsExpander)
+                        settingsExpander.IsExpanded = false;
+                }
                 finally { heldRows.Current.Remove(id); }
             }
             if (control.IsLoaded)
@@ -287,9 +294,11 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                             }
                             PublishExpandedRows(next);
                         }, rowControls.Current, TrackRow))
+                    .Width(PageResponsiveLayout.ContentWidth(layout.HostWidth))
                     .MaxWidth(PageResponsiveLayout.ContentMaxWidth)
-                    .HAlign(HorizontalAlignment.Stretch).AutomationId("SystemsContentColumn")
-                    .Margin(layout.PagePadding, 20, layout.PagePadding, 32)))
+                    .HAlign(HorizontalAlignment.Center).AutomationId("SystemsContentColumn")
+                    .Margin(layout.PagePadding, PageResponsiveLayout.PaddingTop,
+                        layout.PagePadding, PageResponsiveLayout.PaddingBottom)))
                     with { HorizontalScrollMode = ScrollMode.Disabled, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled })
                     .Margin(0, topInset, 0, 0)
                     .AutomationId("SystemsPageScroll").WithKey("scroll"),
@@ -325,7 +334,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                         ? ProgressRing().IsActive(true).Size(16, 16).AccessibilityView(AccessibilityView.Raw)
                         : Glyph("\uE72C", 16),
                 () => _ = controller.RefreshAsync())
-            .SubtleButton()
+            .SubtleButton().Size(32, 32).Padding(0)
             .VAlign(VerticalAlignment.Center)
             .IsEnabled(state.Connected && !refreshing && state.CanRead)
             .AutomationName(S("Refresh_Name"))
@@ -374,22 +383,45 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 .AccentButton().VAlign(VerticalAlignment.Center)
                 .AutomationName(S("AddSystem")).AutomationId("SystemsAddSystem"))
             .AutomationId("SystemsMastActions");
-        var tiles = PageHero.SummaryTiles("SystemsSummary", S("Title"),
-            [
-                new PageHeroTile(S(state.Connected ? "Status_Online" : "Hero_LastReportedOnline"),
-                    state.HasLoaded && state.CanRead ? F("Hero_OnlineCount", Count(online), Count(machines.Length)) : S("Status_Unknown"),
-                    "\uE73E", "SystemsOnlineTile",
-                    !state.Connected || !state.HasLoaded || machines.Length == 0 ? PageHeroTone.Neutral
-                        : online == machines.Length ? PageHeroTone.Success : PageHeroTone.Caution, StatusDot: true),
-                new PageHeroTile(S("Issues"), state.CanRead && (state.HasLoaded || issues > 0) ? Count(issues) : S("Status_Unknown"),
-                    "\uE7BA", "SystemsIssuesTile",
-                    state.CanRead && issues > 0 ? PageHeroTone.Critical : PageHeroTone.Neutral,
-                    OnInvoked: jumpToIssue, AutomationName: F("Hero_ShowIssues", Count(issues)),
-                    IsEnabled: state.CanRead && issues > 0),
-            ], layout.HostWidth, reducedMotion, highContrast)
+        var onlineBrush = !state.Connected || !state.HasLoaded || machines.Length == 0
+            ? "TextFillColorSecondaryBrush"
+            : online == machines.Length ? "SystemFillColorSuccessBrush" : "SystemFillColorCautionBrush";
+        var onlineLabel = S(state.Connected ? "Status_Online" : "Hero_LastReportedOnline");
+        var onlineCount = state.HasLoaded && state.CanRead
+            ? F("Hero_OnlineCount", Count(online), Count(machines.Length)) : S("Status_Unknown");
+        var onlineStatus = HStack(8,
+                Border(Border(null).Size(10, 10).CornerRadius(5).Background(Theme.Ref(onlineBrush))
+                        .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
+                    .Size(20, 20).AccessibilityView(AccessibilityView.Raw)
+                    .AutomationId("SystemsOnlineTile:IconWell"),
+                TextBlock(onlineLabel)
+                    .FontSize(14).FontWeight(FontWeights.SemiBold).VAlign(VerticalAlignment.Center),
+                TextBlock(onlineCount)
+                    .FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center))
+            .VAlign(VerticalAlignment.Center).AutomationName($"{onlineLabel} {onlineCount}")
+            .AutomationId("SystemsOnlineTile");
+        var issuesStatus = Button(HStack(8,
+                Border(Glyph("\uE7BA", 16)
+                        .Foreground(Theme.Ref(state.CanRead && issues > 0
+                            ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush"))
+                        .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
+                    .Size(20, 20).AccessibilityView(AccessibilityView.Raw)
+                    .AutomationId("SystemsIssuesTile:IconWell"),
+                TextBlock(S("Issues")).FontSize(14).FontWeight(FontWeights.SemiBold).VAlign(VerticalAlignment.Center),
+                TextBlock(state.CanRead && (state.HasLoaded || issues > 0) ? Count(issues) : S("Status_Unknown"))
+                    .FontSize(12).Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Center)),
+                jumpToIssue)
+            .SubtleButton().HorizontalContentAlignment(HorizontalAlignment.Left)
+            .HAlign(HorizontalAlignment.Stretch).VAlign(VerticalAlignment.Center)
+            .AutomationName(F("Hero_ShowIssues", Count(issues)))
+            .IsEnabled(state.CanRead && issues > 0).AutomationId("SystemsIssuesTile");
+        var statuses = PageHero.WithMotion(Grid([GridSize.Star(), GridSize.Star()], [GridSize.Auto],
+                onlineStatus.Margin(0, 0, 6, 0).Grid(column: 0),
+                issuesStatus.Margin(6, 0, 0, 0).Grid(column: 1)), reducedMotion)
+            .AutomationId("SystemsSummary")
             .AutomationName(S("Hero_Summary"));
         return VStack(12, PageHero.Header("SystemsHero", "\uE977", S("Title"), "SystemsPageMarker",
-            answer, null, buttons, layout.CompactHeader, reducedMotion, highContrast, pageTag: "instances"), tiles)
+            answer, null, buttons, layout.CompactHeader, reducedMotion, highContrast, pageTag: "instances"), statuses)
             .AutomationId("SystemsMastGrid");
     }
 
@@ -611,16 +643,36 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         }
 
         return VStack(12, Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
-                TextBlock(F("DevicesAndGatewayCount",
-                        Count(visible.Count(row => row.Kind is SystemKind.Host or SystemKind.Node))))
-                    .FontSize(18).FontWeight(FontWeights.SemiBold)
-                    .HeadingLevel(AutomationHeadingLevel.Level2)
-                    .AutomationId("SystemsDevicesAndGatewayHeading").Grid(column: 0),
+                InventoryHeading(visible.Count(row => row.Kind is SystemKind.Host or SystemKind.Node))
+                    .Grid(column: 0),
                 RefreshButton(state, controller).Grid(column: 1)),
                 list)
             .AutomationName(S("Inventory"))
             .AutomationId("SystemsInventory");
     }
+
+    // Title with a trailing count badge, the same pairing as the Usage Sessions heading.
+    private static Element InventoryHeading(int machineCount)
+    {
+        var count = Count(machineCount);
+        return HStack(8,
+                TextBlock(S("DevicesAndGateway")).FontSize(18).FontWeight(FontWeights.SemiBold)
+                    .VAlign(VerticalAlignment.Center)
+                    .HeadingLevel(AutomationHeadingLevel.Level2)
+                    .AutomationName(F("DevicesAndGatewayCount", count))
+                    .AutomationId("SystemsDevicesAndGatewayHeading"),
+                CountBadge(count, "SystemsDevicesAndGatewayCount"))
+            .VAlign(VerticalAlignment.Center);
+    }
+
+    private static Element CountBadge(string text, string automationId) =>
+        Border(TextBlock(text).FontSize(12).TextWrapping(TextWrapping.NoWrap)
+                .Foreground(Theme.Ref("TextFillColorPrimaryBrush"))
+                .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center))
+            .Padding(8, 2).MinWidth(24).MinHeight(24).CornerRadius(12)
+            .Background(Theme.Ref("UsageCountPillBrush"))
+            .VAlign(VerticalAlignment.Center).AccessibilityView(AccessibilityView.Raw)
+            .AutomationId(automationId);
 
     private static Element InventoryGroup(string title, SystemKind kind, IReadOnlyList<SystemRow> rows,
         SystemsViewState state, SystemsPageActions actions, Action<SystemsDialog?> open,
@@ -629,30 +681,49 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
     {
         var heading = $"{title} ({Count(rows.Count)})";
         var content = PageHero.WithMotion(VStack(PageResponsiveLayout.GapInner, rows.Select(row =>
-                Expander("", Details(row, state, actions, open, now, layout),
+                (row.Kind is SystemKind.Host or SystemKind.Worker
+                    ? (Element)Component<SystemsSettingsExpanderView, SystemsSettingsExpanderProps>(new(
+                        row.Id,
+                        Join(DisplayName(row), StatusLabel(row, state),
+                            string.Join(", ", RowIssues(row, state, actions, now).Select(issue => issue.Label))) ?? DisplayName(row),
+                        S(expandedRows.Contains(row.Id) ? "CollapseSystem" : "ExpandSystem"),
+                        InventoryItem(row, state, actions, layout),
+                        RowCommands(row, state, actions, open, compact: true),
+                        Details(row, state, actions, open, now, layout),
+                        VStack(12, MachineDetails(row, state, actions, now - state.GatewayClockOffset, compactCopy: true),
+                            DiagnosticDeclarations(row)),
+                        expandedRows.Contains(row.Id), expanded => toggleExpanded(row.Id, expanded),
+                        control => trackRow(row.Id, control)))
+                    : Expander("", Details(row, state, actions, open, now, layout),
                         expandedRows.Contains(row.Id), expanded => toggleExpanded(row.Id, expanded))
                     .HAlign(HorizontalAlignment.Stretch).HorizontalContentAlignment(HorizontalAlignment.Stretch)
-                    .HeaderTemplate(InventoryItem(row, state, actions, layout))
+                    .HeaderContent(InventoryItem(row, state, actions, layout))
                     .AutomationName(Join(DisplayName(row), StatusLabel(row, state),
                         string.Join(", ", RowIssues(row, state, actions, now).Select(issue => issue.Label))) ?? DisplayName(row))
                     .Set(control => trackRow(row.Id, control))
                     .HelpText(S(expandedRows.Contains(row.Id) ? "CollapseSystem" : "ExpandSystem"))
-                    .AutomationId("SystemsRow_" + row.Id).WithKey(row.Id)).ToArray()),
+                    .AutomationId("SystemsRow_" + row.Id)).WithKey(row.Id)).ToArray()),
                 !new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
             .AutomationName(heading)
             .AutomationId(automationId);
         if (!showHeading)
             return content.WithKey(automationId);
-        return VStack(4,
+        return VStack(12,
             HStack(8,
                 Border(null).Size(8, 8).CornerRadius(4).Background(Theme.Ref(SystemsHue.ForKind(kind).Brush))
                     .VAlign(VerticalAlignment.Center).AccessibilityView(AccessibilityView.Raw),
-                TextBlock(heading).FontSize(12).FontWeight(FontWeights.SemiBold)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                    .HeadingLevel(AutomationHeadingLevel.Level2))
-                .Margin(4, 0, 0, 0),
+                SectionHeading(heading))
+                .Margin(SectionHeadingInset, GroupHeadingTopMargin, SectionHeadingInset, 0),
             content).WithKey(automationId);
     }
+
+    // Matches the Settings page section headers: BodyStrongTextBlockStyle inset 4px from the card edge.
+    private const double SectionHeadingInset = 4;
+    private const double GroupHeadingTopMargin = 12;
+
+    private static Element SectionHeading(string text) =>
+        TextBlock(text).HeadingLevel(AutomationHeadingLevel.Level2)
+            .Set(native => native.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"]);
 
     private static Element InventoryItem(SystemRow row, SystemsViewState state, SystemsPageActions actions, SystemsLayout layout)
     {
@@ -666,6 +737,14 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 .WithKey(row.Id + ":" + issue.Key)));
         if (row.IsThisDevice && !layout.CompactHeader)
             badges.Add(Tag(S("ThisDevice")));
+        var badgeHost = (FlexRow(badges.ToArray()) with
+        {
+            Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
+            ColumnGap = 6,
+            RowGap = 4,
+            AlignItems = Microsoft.UI.Reactor.Layout.FlexAlign.Center,
+        }).Margin(0, badges.Count > 0 ? 4 : 0, 0, 0)
+            .WithKey("SystemsRowBadges-" + row.Id);
         var statusLabel = StatusLabel(row, state);
         var helpText = row.Platform is { Length: > 0 } platform ? $"{statusLabel}, {platform}" : statusLabel;
         var issue = IssueLine(row, state, DateTimeOffset.UtcNow - state.GatewayClockOffset);
@@ -677,6 +756,27 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .MaxWidth(300)
             .HAlign(layout.CompactHeader ? HorizontalAlignment.Left : HorizontalAlignment.Stretch)
             .AutomationId("SystemsMeta_" + row.Id);
+        if (row.Kind is SystemKind.Host or SystemKind.Worker)
+        {
+            return VStack(0,
+                        TextBlock(name).FontSize(14).TextWrapping(TextWrapping.NoWrap)
+                            .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(name)
+                            .AutomationId(row.Id == state.SelectedId ? "SystemsSelectedName" : "SystemsName_" + row.Id),
+                        HStack(4,
+                            Border(null).Size(10, 10).CornerRadius(5)
+                                .Background(Theme.Ref(StatusBrush(status)))
+                                .VAlign(VerticalAlignment.Center).AccessibilityView(AccessibilityView.Raw),
+                            TextBlock(statusLabel).FontSize(12)
+                                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")))
+                            .AutomationName(F("Status_Name", statusLabel))
+                            .AutomationId("SystemsMeta_" + row.Id),
+                        summary is not null ? TextBlock(summary).FontSize(12).TextWrapping(TextWrapping.Wrap)
+                            .AutomationId("SystemsIssueSummary_" + row.Id).ToolTip(issue ?? summary)
+                            .Foreground(Theme.Ref("TextFillColorSecondaryBrush")) : Empty(),
+                        badgeHost).VAlign(VerticalAlignment.Center)
+                .AutomationName(name).HelpText(Join(helpText, secondary) ?? helpText).ToolTip(name)
+                .AutomationId("SystemsItem_" + row.Id);
+        }
         return Grid([GridSize.Auto, GridSize.Star(), layout.CompactHeader ? GridSize.Auto : GridSize.Px(SystemsLayout.HeaderMetadataWidth)],
                 layout.CompactHeader ? [GridSize.Auto, GridSize.Auto] : [GridSize.Auto],
                 MachineAvatar(row, status, 36, 18).VAlign(VerticalAlignment.Center).Margin(0, 0, 12, 0).Grid(column: 0),
@@ -689,15 +789,7 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                         .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(secondary ?? "")
                         .AutomationId("SystemsSubtitle_" + row.Id)
                         .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-                    (FlexRow(badges.ToArray()) with
-                    {
-                        Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
-                        ColumnGap = 6,
-                        RowGap = 4,
-                        AlignItems = Microsoft.UI.Reactor.Layout.FlexAlign.Center,
-                    })
-                        .Margin(0, badges.Count > 0 ? 4 : 0, 0, 0)
-                        .WithKey("SystemsRowBadges-" + row.Id)).VAlign(VerticalAlignment.Center).Grid(column: 1),
+                    badgeHost).VAlign(VerticalAlignment.Center).Grid(column: 1),
                 meta.VAlign(VerticalAlignment.Center).Margin(layout.CompactHeader ? 0 : 12, layout.CompactHeader ? 8 : 0, 0, 0)
                     .Grid(row: layout.CompactHeader ? 1 : 0, column: layout.CompactHeader ? 1 : 2))
             .Padding(0, PageResponsiveLayout.GapInner)
@@ -746,7 +838,12 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         var gatewayNow = now - state.GatewayClockOffset;
         if (row.Kind == SystemKind.Client)
             return MachineDetails(row, state, actions, gatewayNow).AutomationId("SystemsPresenceDetails");
-        var sections = new List<Element> { DetailsHeader(row, state, actions, open).WithKey("header") };
+        var toolkitRow = row.Kind is SystemKind.Host or SystemKind.Worker;
+        var sections = new List<Element>();
+        if (!toolkitRow)
+            sections.Add(VStack(8, RowCommands(row, state, actions, open), ManagementNote(row, state)).WithKey("header"));
+        else if (row.CanManageNode && (!state.Connected || !state.CanManageNodes))
+            sections.Add(ManagementNote(row, state).WithKey("manage-note"));
         var issues = RowIssues(row, state, actions, now);
         if (issues.Count > 0)
             sections.Add(VStack(8, issues.Select((issue, index) =>
@@ -769,15 +866,17 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                 VStack(PageResponsiveLayout.GapStack, right.ToArray())
                     .Grid(row: layout.Stacked ? 2 : 0, column: layout.Stacked ? 0 : 2))
             .AutomationId("SystemsDetailsGrid").WithKey("details-grid"));
-        sections.Add(Expander(S("Diagnostics"), VStack(12,
-                MachineDetails(row, state, actions, gatewayNow),
-                DiagnosticDeclarations(row),
-                Button(S("CopyDebug"), () => actions.CopyText(DebugSummary(row)))
-                    .AutomationName(S("CopyDebug")).AutomationId("SystemsCopyDebug").HAlign(HorizontalAlignment.Left)), false)
-            .HAlign(HorizontalAlignment.Stretch).AutomationId("SystemsDiagnostics").WithKey("diagnostics"));
+        if (!toolkitRow)
+            sections.Add(Expander(S("Diagnostics"), Diagnostics(row, state, actions, gatewayNow), false)
+                .HAlign(HorizontalAlignment.Stretch).AutomationId("SystemsDiagnostics").WithKey("diagnostics"));
         return VStack(16, sections.ToArray()).WithKey("expanded:" + row.Id)
             .AutomationId("SystemsDetails");
     }
+
+    private static Element Diagnostics(SystemRow row, SystemsViewState state, SystemsPageActions actions, DateTimeOffset now) =>
+        VStack(12, MachineDetails(row, state, actions, now), DiagnosticDeclarations(row),
+            Button(S("CopyDebug"), () => actions.CopyText(DebugSummary(row)))
+                .AutomationName(S("CopyDebug")).AutomationId("SystemsCopyDebug").HAlign(HorizontalAlignment.Left));
 
     private static Element Placeholder(string glyph, SystemsHue hue, string title, string hint, string automationId) =>
         VStack(12,
@@ -788,8 +887,8 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .HAlign(HorizontalAlignment.Center).VAlign(VerticalAlignment.Center)
             .AutomationId(automationId);
 
-    private static Element DetailsHeader(SystemRow row, SystemsViewState state, SystemsPageActions actions,
-        Action<SystemsDialog?> open)
+    private static Element RowCommands(SystemRow row, SystemsViewState state, SystemsPageActions actions,
+        Action<SystemsDialog?> open, bool compact = false)
     {
         var primary = new List<AppBarButtonData>();
         var secondary = new List<AppBarButtonData>
@@ -798,7 +897,6 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
         };
         if (row.IsThisDevice)
             primary.Add(AppBarButton(S("OpenConnection"), () => actions.Navigate("connection"), "\uE713"));
-        Element manageNote = Empty();
         if (row.CanManageNode && row.Node is { } node)
         {
             var canManage = state.Connected && state.CanManageNodes;
@@ -809,29 +907,38 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                     () => open(new ForgetNodeDialog(node,
                         state.Rows.FirstOrDefault(value => value.Id == SystemsProjection.GatewayId) is { } gateway
                             ? DisplayName(gateway) : S("Kind_Host"))), "\uE74D") with { IsEnabled = canManage });
-            if (!canManage)
-            {
-                manageNote = TextBlock(S(state.Connected ? "Manage_PairingRequired" : "ConnectionRequired"))
-                    .FontSize(12).TextWrapping(TextWrapping.WrapWholeWords)
-                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).Margin(0, 8, 0, 0)
-                    .AutomationId("SystemsManageRequiresPairing");
-            }
         }
 
-        return VStack(8,
-            CommandBar(primary.ToArray(), secondary.ToArray())
+        if (compact)
+        {
+            secondary.InsertRange(0, primary);
+            primary.Clear();
+        }
+        return CommandBar(primary.ToArray(), secondary.ToArray())
                 .Set(bar =>
                 {
                     bar.DefaultLabelPosition = CommandBarDefaultLabelPosition.Right;
                     bar.IsDynamicOverflowEnabled = true;
+                    if (compact)
+                    {
+                        bar.ClosedDisplayMode = AppBarClosedDisplayMode.Compact;
+                        bar.OverflowButtonVisibility = CommandBarOverflowButtonVisibility.Visible;
+                    }
                     var priority = 1;
                     foreach (var button in bar.PrimaryCommands.OfType<Microsoft.UI.Xaml.Controls.AppBarButton>().Reverse())
                         button.DynamicOverflowOrder = priority++;
                     NameCommands(bar);
                 })
-                .AutomationId("SystemsCommandBar"),
-            manageNote);
+                .AutomationId("SystemsCommandBar");
     }
+
+    private static Element ManagementNote(SystemRow row, SystemsViewState state) =>
+        row.CanManageNode && (!state.Connected || !state.CanManageNodes)
+            ? TextBlock(S(state.Connected ? "Manage_PairingRequired" : "ConnectionRequired"))
+                .FontSize(12).TextWrapping(TextWrapping.WrapWholeWords)
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).Margin(0, 8, 0, 0)
+                .AutomationId("SystemsManageRequiresPairing")
+            : Empty();
 
     private static void NameCommands(Microsoft.UI.Xaml.Controls.CommandBar bar)
     {
@@ -978,13 +1085,17 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
             .WithKey(metric);
     }
 
-    private static Element MachineDetails(SystemRow row, SystemsViewState state, SystemsPageActions actions, DateTimeOffset now)
+    private static Element MachineDetails(SystemRow row, SystemsViewState state, SystemsPageActions actions, DateTimeOffset now,
+        bool compactCopy = false)
     {
         var rows = new List<(string Label, Element Value)>
         {
             (S("Field_Identifier"), row.Kind == SystemKind.Client
                 ? Value(row.Instance?.IdentityCaption ?? row.Id)
-                : Identifier(row.Node?.NodeId ?? row.Id, actions)),
+                : compactCopy
+                    ? TextBlock(row.Node?.NodeId ?? row.Id).FontFamily("Consolas").IsTextSelectionEnabled(true)
+                        .TextTrimming(TextTrimming.CharacterEllipsis).ToolTip(row.Node?.NodeId ?? row.Id)
+                    : Identifier(row.Node?.NodeId ?? row.Id, actions)),
             (S("Field_Status"), StatusBadge(EffectiveStatus(row, state.Connected), StatusLabel(row, state))),
             (S("Field_Platform"), Value(row.Platform ?? S("Status_Unknown"))),
         };
@@ -1060,7 +1171,12 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
                     .Margin(0, 4, 12, 4).Grid(row: index, column: 0),
                 entry.Value.Margin(0, 4, 0, 4).VAlign(VerticalAlignment.Center).Grid(row: index, column: 1),
             }).ToArray());
-        return Section(S("Details_Title"), grid, null, "SystemsMachineDetails");
+        var copy = compactCopy
+            ? Button(Glyph("\uE8C8", 14), () => actions.CopyText(DebugSummary(row)))
+                .SubtleButton().Size(32, 32).Padding(0)
+                .AutomationName(S("CopyDebug")).ToolTip(S("CopyDebug")).AutomationId("SystemsCopyDebug")
+            : null;
+        return Section(S("Details_Title"), grid, null, "SystemsMachineDetails", copy);
     }
 
     private static Element? RolePills(MergedInstance instance)
@@ -1567,9 +1683,9 @@ internal sealed class SystemsPageView : Component<SystemsPageProps>
     {
         var name = state.HasWebSystemsPage ? S("OpenWeb_Name") : S("OpenWeb_RootName");
         var help = state.HasWebSystemsPage ? S("OpenWeb_Help") : S("OpenWeb_RootHelp");
-        return Button(HStack(6, Glyph(FluentIconCatalog.OpenInBrowser, 14).VAlign(VerticalAlignment.Center),
-                    TextBlock(S("OpenWeb")).TextWrapping(TextWrapping.NoWrap).VAlign(VerticalAlignment.Center)),
+        return Button(Glyph(FluentIconCatalog.OpenInBrowser, 16),
                 () => actions.OpenWeb(WebDestination(state)))
+            .SubtleButton().Size(32, 32).Padding(0)
             .VAlign(VerticalAlignment.Center)
             .AutomationName(name)
             .HelpText(help)

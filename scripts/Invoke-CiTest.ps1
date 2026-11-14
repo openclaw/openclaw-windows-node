@@ -15,9 +15,20 @@ param(
     [switch]$CaptureHostExit,
     [ValidateSet('Unchanged', 'Enabled', 'Disabled')][string]$AnimationPreference = 'Unchanged',
     [switch]$AllowUserAnimationPreferenceChange,
-    [switch]$RequireAllTestsPassed
+    [switch]$RequireAllTestsPassed,
+    [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
+    [ValidateRange(1, 2147483647)][int]$ExpectedTestCount,
+    # The calling workflow step's timeout-minutes. Defaults to OPENCLAW_CI_STEP_TIMEOUT_MINUTES; 0 skips the report.
+    [ValidateRange(0, 360)][int]$StepTimeoutMinutes = 0
 )
 
+$stepBudget = [Diagnostics.Stopwatch]::StartNew()
+if (-not $PSBoundParameters.ContainsKey('StepTimeoutMinutes')) {
+    # CI passes the budget in the step environment so an older candidate's runner, run by alpha
+    # promotion, never receives a parameter it does not declare.
+    . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+    $StepTimeoutMinutes = Get-CiStepTimeoutMinutes
+}
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 if ($AnimationPreference -ne 'Unchanged' -and
@@ -35,7 +46,7 @@ $testArguments = [System.Collections.Generic.List[string]]::new()
     $Project,
     "--no-build",
     "-c",
-    "Debug"
+    $Configuration
 ) | ForEach-Object { $testArguments.Add($_) }
 
 if (-not [string]::IsNullOrWhiteSpace($Runtime)) {
@@ -84,7 +95,7 @@ $runTests = {
         $testArguments.Add((Join-Path $rawRoot 'testplatform.log') + ';tracelevel=info')
         New-Item -ItemType Directory -Path $rawRoot -ErrorAction Stop | Out-Null
         $testExit = $null; $nativeErrorType = $null
-        # Only the existing ordinary-UI CaptureHostExit lane opts in. The invocation
+        # Ordinary UI and steady-resource UI lanes opt in with CaptureHostExit. The invocation
         # owns this curated, content-free file under the already-uploaded TestResults.
         $previousMetadataPath = $env:OPENCLAW_UI_EXCEPTION_METADATA_PATH
         $previousMetadataInvocation = $env:OPENCLAW_UI_EXCEPTION_INVOCATION_ID
@@ -131,16 +142,23 @@ $runTests = {
 $projectPath = [IO.Path]::GetFullPath($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Project))
 $projectName = [IO.Path]::GetFileName($projectPath.TrimEnd([char[]]'\/'))
 $isNativeUiProject = $projectName -in @('OpenClaw.Tray.UITests', 'OpenClaw.Tray.UITests.csproj')
-if ($AnimationPreference -ne 'Unchanged' -or $isNativeUiProject) {
-    . (Join-Path $PSScriptRoot 'NativeAnimationPreference.ps1')
-    # The parent survives a failed/crashed testhost and restores the preference before result admission.
-    if ($AnimationPreference -eq 'Unchanged') {
-        Invoke-WithNativeAnimationPreference -PreservePreference -Action $runTests
+try {
+    if ($AnimationPreference -ne 'Unchanged' -or $isNativeUiProject) {
+        . (Join-Path $PSScriptRoot 'NativeAnimationPreference.ps1')
+        # The parent survives a failed/crashed testhost and restores the preference before result admission.
+        if ($AnimationPreference -eq 'Unchanged') {
+            Invoke-WithNativeAnimationPreference -PreservePreference -Action $runTests
+        } else {
+            Invoke-WithNativeAnimationPreference -Enabled ($AnimationPreference -eq 'Enabled') -Action $runTests
+        }
     } else {
-        Invoke-WithNativeAnimationPreference -Enabled ($AnimationPreference -eq 'Enabled') -Action $runTests
+        & $runTests
     }
-} else {
-    & $runTests
+} finally {
+    if ($StepTimeoutMinutes -gt 0) {
+        . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+        Write-CiStepBudget -Elapsed $stepBudget.Elapsed -StepTimeoutMinutes $StepTimeoutMinutes -Label $TrxFileName
+    }
 }
 
 if ($null -eq $script:testExitCode) { throw 'The test command did not return an exit code.' }
@@ -159,6 +177,9 @@ if ($script:testExitCode -ne 0) {
     exit $script:testExitCode
 }
 $result = Read-TestResultContract -Path $invocation.report -StartedUtc $invocation.startedUtc -ExitCode 0 -AllowSkipped:(-not $RequireAllTestsPassed)
+if ($PSBoundParameters.ContainsKey('ExpectedTestCount') -and $result.discovered -ne $ExpectedTestCount) {
+    throw "Expected $ExpectedTestCount selected tests, but the report contains $($result.discovered)."
+}
 Write-Host ("CI test results: " + ($result | ConvertTo-Json -Compress))
 Write-Host "CI TRX: $($invocation.report)"
 # Ordinary CI retains environment-gated skips. This is not native/custom proof.

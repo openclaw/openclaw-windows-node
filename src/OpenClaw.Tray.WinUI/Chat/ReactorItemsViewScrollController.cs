@@ -21,7 +21,9 @@ file sealed record ItemsViewVerticalScrollControllerElement(
     int JumpRevision,
     string InitialTailRequestKey,
     string? DisplayedTailKey,
-    Action<bool>? TailVisibilityChanged) : Element
+    object ContentRevision,
+    Action<bool>? TailVisibilityChanged,
+    IReadOnlyList<ChatHistoryAnchor> HistoryAnchors) : Element
 {
     static ItemsViewVerticalScrollControllerElement() =>
         ControlRegistry.RegisterDecorator<ItemsViewVerticalScrollControllerElement>(
@@ -51,13 +53,15 @@ file sealed class ItemsViewVerticalScrollControllerHandler
         ReactorBinding<ItemsViewVerticalScrollControllerElement> binding)
     {
         (itemsView.GetValue(PositionerProperty) as InitialTailPositioner)?.Dispose();
+        var positioner = new InitialTailPositioner(itemsView);
+        itemsView.SetValue(PositionerProperty, positioner);
         binding.Reference(
             get: static value => value.ScrollBarRef,
             set: static (value, scrollBar) =>
-                ((WinUIItemsView)value).VerticalScrollController = scrollBar?.ScrollController);
-        var positioner = new InitialTailPositioner(itemsView);
+                (value.GetValue(PositionerProperty) as InitialTailPositioner)?.HistoryNavigation.SetScrollBar(scrollBar));
         positioner.TailVisibilityChanged = element.TailVisibilityChanged;
-        itemsView.SetValue(PositionerProperty, positioner);
+        positioner.HistoryNavigation.Update(element.HistoryAnchors);
+        positioner.UpdateContentRevision(element.ContentRevision);
         positioner.Request(
             element.InitialTailIndex,
             element.ItemCount,
@@ -89,6 +93,8 @@ file sealed class ItemsViewVerticalScrollControllerHandler
         else
         {
             positioner.TailVisibilityChanged = newElement.TailVisibilityChanged;
+            positioner.HistoryNavigation.Update(newElement.HistoryAnchors);
+            positioner.UpdateContentRevision(newElement.ContentRevision);
             if (!string.Equals(oldElement.InitialTailRequestKey, newElement.InitialTailRequestKey, StringComparison.Ordinal))
                 positioner.Request(
                     newElement.InitialTailIndex,
@@ -119,8 +125,10 @@ file sealed class ItemsViewVerticalScrollControllerHandler
 file sealed class InitialTailPositioner : IDisposable
 {
     private const double FollowThreshold = 60;
-    private const double TailVisibilityTolerance = 1;
     private const double OffsetCorrectionAnchorRatio = 0.5;
+    // Exactly 1 selects WinUI's extent-edge mode, which can undo an offset as virtual
+    // rows remeasure. The nearest interior point anchors content at its bottom instead.
+    private static readonly double TailAnchorRatio = Math.BitDecrement(1.0);
 
     private readonly WinUIItemsView itemsView;
     private string? _requestKey;
@@ -140,12 +148,17 @@ file sealed class InitialTailPositioner : IDisposable
     private readonly PointerEventHandler _readerPointerPressed;
     private readonly TypedEventHandler<UIElement, GettingFocusEventArgs> _readerGettingFocus;
     private bool _disclosureAnchored;
+    private bool _readerAnchored;
+    private int? _readerBringCorrelationId;
+    private FrameworkElement? _tailBringTarget;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
+    private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _disclosureAnchorRequested;
     private bool _awaitingIdle;
     private readonly TailReflowCorrection _reflowCorrection = new();
     private Microsoft.UI.Xaml.Controls.Primitives.IScrollController? _inputScrollController;
     private WinUIScrollView? _awaitingScrollView;
     private WinUIScrollView? _scrollView;
+    private double _extentHeight;
     private bool _following;
     private bool _initialPending;
     private bool _explicitJumpPending;
@@ -154,11 +167,14 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _disposed;
     internal Action<bool>? TailVisibilityChanged { get; set; }
     private bool? _reportedAtTail;
+    internal ChatHistoryNavigation HistoryNavigation { get; }
+    private TailNavigationRequest? _historyRequest;
 
     public InitialTailPositioner(WinUIItemsView itemsView)
     {
         this.itemsView = itemsView;
-        _cancelPointerNavigation = (_, _) => CancelPendingNavigation();
+        HistoryNavigation = new ChatHistoryNavigation(itemsView, NavigateHistory);
+        _cancelPointerNavigation = (_, _) => OnReaderInput(null, mayToggleDisclosure: false);
         _readerPointerPressed = (_, args) => OnReaderInput(args.OriginalSource, mayToggleDisclosure: true);
         _readerGettingFocus = OnReaderFocus;
         itemsView.AddHandler(UIElement.PointerPressedEvent, _readerPointerPressed, true);
@@ -180,7 +196,9 @@ file sealed class InitialTailPositioner : IDisposable
         if (_disposed || string.Equals(_requestKey, requestKey, StringComparison.Ordinal))
             return;
 
+        HistoryNavigation.ResetSelection();
         RestoreTailAnchor();
+        _historyRequest = null;
         _requestKey = requestKey;
         _version++;
         _reflowCorrection.Clear();
@@ -243,6 +261,8 @@ file sealed class InitialTailPositioner : IDisposable
             QueueTailRequest(_version, request);
         }
     }
+
+    public void UpdateContentRevision(object revision) => _reflowCorrection.ContentChanged(revision);
 
     private void OnLoaded(object sender, RoutedEventArgs args)
     {
@@ -552,7 +572,9 @@ file sealed class InitialTailPositioner : IDisposable
         _scrollView = nextScrollView;
         if (_scrollView is not null)
         {
-            _scrollView.VerticalAnchorRatio = 1.0;
+            _scrollView.VerticalScrollBarVisibility = ScrollingScrollBarVisibility.Hidden;
+            _extentHeight = _scrollView.ExtentHeight;
+            _scrollView.VerticalAnchorRatio = TailAnchorRatio;
             _scrollView.ViewChanged += OnViewChanged;
             _scrollView.StateChanged += OnScrollStateChanged;
             _scrollView.ExtentChanged += OnExtentChanged;
@@ -562,11 +584,13 @@ file sealed class InitialTailPositioner : IDisposable
             if (_inputScrollController is not null)
                 _inputScrollController.IsScrollingWithMouseChanged += OnControllerMouseChanged;
             ReportTailVisibility(IsAtBottom(_scrollView));
+            HistoryNavigation.Refresh();
         }
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs args)
     {
+        HistoryNavigation.Refresh();
         if (args.PreviousSize.Width <= 0 || args.PreviousSize.Height <= 0
             || (args.NewSize.Width == args.PreviousSize.Width
                 && args.NewSize.Height == args.PreviousSize.Height))
@@ -577,7 +601,17 @@ file sealed class InitialTailPositioner : IDisposable
             ObserveGeometry(scrollView);
     }
 
-    private void OnExtentChanged(WinUIScrollView sender, object args) => ObserveGeometry(sender);
+    private void OnExtentChanged(WinUIScrollView sender, object args)
+    {
+        HistoryNavigation.Refresh();
+        var extentHeight = sender.ExtentHeight;
+        if (extentHeight > _extentHeight)
+            _reflowCorrection.ArmForExtentGrowth(
+                _following, IsAtBottom(sender), _initialPending,
+                _disclosureAnchored || _readerAnchored || _readerBringCorrelationId is not null);
+        _extentHeight = extentHeight;
+        ObserveGeometry(sender);
+    }
 
     private void ObserveGeometry(WinUIScrollView scrollView)
     {
@@ -590,6 +624,38 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
     {
+        var requested = args.RequestEventArgs?.TargetElement;
+        if (requested is not null && ReferenceEquals(requested, _tailBringTarget))
+            _tailBringTarget = null;
+        else if (ReferenceEquals(sender, _scrollView) && !args.Cancel && IsStaleCurrentItemReveal(sender, requested))
+        {
+            // ItemsView re-reveals its last keyboard-current row without focus when it is resized or
+            // shown again (for example when a side panel closes). With focus elsewhere, that would
+            // pull the reader away from their place.
+            args.Cancel = true;
+            return;
+        }
+
+        if (!args.Cancel && _historyRequest is { } history && ReferenceEquals(sender, _scrollView)
+            && requested is FrameworkElement historyTarget
+            && ReferenceEquals(historyTarget.DataContext, GetRequestItem(history)))
+        {
+            _readerBringCorrelationId = args.CorrelationId;
+            _historyRequest = null;
+        }
+
+        if (ReferenceEquals(sender, _scrollView) && !_initialPending && !args.Cancel
+            && args.RequestEventArgs?.TargetElement is Control { FocusState: FocusState.Keyboard }
+            && sender.ScrollableHeight - args.TargetVerticalOffset > FollowThreshold)
+        {
+            // A real reader destination leaves the tail before the native offset can move.
+            // Edge anchoring can otherwise keep remeasuring virtual rows and starve this request.
+            _following = false;
+            _readerAnchored = true;
+            _readerBringCorrelationId = args.CorrelationId;
+            sender.VerticalAnchorRatio = 0;
+        }
+
         if (!_initialPending || !ReferenceEquals(sender, _scrollView)
             || args.RequestEventArgs?.TargetElement is not FrameworkElement target)
             return;
@@ -621,6 +687,17 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
     {
+        if (ReferenceEquals(sender, _scrollView) && _readerBringCorrelationId == args.CorrelationId)
+        {
+            _readerBringCorrelationId = null;
+            if (IsNearBottom(sender))
+            {
+                _following = true;
+                if (!_disclosureAnchored)
+                    RestoreTailAnchor();
+            }
+        }
+
         if (_initialPending && ReferenceEquals(sender, _scrollView))
         {
             var correlationId = args.CorrelationId;
@@ -645,7 +722,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnScrollStateChanged(WinUIScrollView sender, object args)
     {
         if (sender.State == ScrollingInteractionState.Interaction)
-            CancelPendingNavigation();
+            OnReaderInput(null, mayToggleDisclosure: false);
         else if (_awaitingIdle && sender.State == ScrollingInteractionState.Idle)
         {
             _awaitingIdle = false;
@@ -663,40 +740,78 @@ file sealed class InitialTailPositioner : IDisposable
     // transcript, the toggled header stays put and its details grow downward.
     private void OnReaderInput(object? source, bool mayToggleDisclosure)
     {
+        HistoryNavigation.ResetSelection();
         CancelPendingNavigation();
-        if (mayToggleDisclosure && _scrollView is { } scrollView && IsDisclosureHeader(source))
+        if (mayToggleDisclosure && _scrollView is { } scrollView && DisclosureHeader(source) is { } header)
         {
             _disclosureAnchored = true;
             scrollView.VerticalAnchorRatio = 0;
+            // Top anchoring alone lets the native scroller pin the realized row whose top is
+            // nearest the viewport top. For a disclosure inside a tall message that can be the
+            // next row, so the details would still grow upward. Pin the toggled header itself.
+            if (_disclosureAnchorRequested is not null)
+                scrollView.AnchorRequested -= _disclosureAnchorRequested;
+            var repeater = scrollView.Content as Microsoft.UI.Xaml.Controls.ItemsRepeater;
+            var row = RepeaterRow(repeater, header);
+            var rowItem = row?.DataContext;
+            _disclosureAnchorRequested = (sender, args) =>
+            {
+                // A recycled row stays loaded off screen and may later show another message;
+                // only pin the header while it still belongs to the toggled message.
+                if (ReferenceEquals(sender, _scrollView) && header.IsLoaded && header.Visibility == Visibility.Visible
+                    && row is not null && ReferenceEquals(row.DataContext, rowItem)
+                    && ReferenceEquals(RepeaterRow(repeater, header), row))
+                    args.AnchorElement = header;
+            };
+            scrollView.AnchorRequested += _disclosureAnchorRequested;
         }
     }
 
-    private bool IsDisclosureHeader(object? source)
+    private static FrameworkElement? RepeaterRow(Microsoft.UI.Xaml.Controls.ItemsRepeater? repeater, DependencyObject element)
+    {
+        if (repeater is null)
+            return null;
+        for (var parent = VisualTreeHelper.GetParent(element); parent is not null;
+             element = parent, parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (ReferenceEquals(parent, repeater))
+                return element as FrameworkElement;
+        }
+
+        return null;
+    }
+
+    private FrameworkElement? DisclosureHeader(object? source)
     {
         for (var element = source as UIElement;
              element is not null && !ReferenceEquals(element, itemsView);
              element = VisualTreeHelper.GetParent(element) as UIElement)
         {
-            if (element is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton { Name: "ExpanderHeader" })
-                return true;
+            if (element is Microsoft.UI.Xaml.Controls.Primitives.ToggleButton { Name: "ExpanderHeader" } header)
+                return header;
         }
 
-        return false;
+        return null;
     }
 
     private void RestoreTailAnchor()
     {
-        if (!_disclosureAnchored && _offsetCorrectionAnchorRequested is null)
+        _readerBringCorrelationId = null;
+        if (!_disclosureAnchored && !_readerAnchored && _offsetCorrectionAnchorRequested is null)
             return;
 
         _disclosureAnchored = false;
+        _readerAnchored = false;
         if (_scrollView is not null)
         {
             if (_offsetCorrectionAnchorRequested is not null)
                 _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
-            _scrollView.VerticalAnchorRatio = 1.0;
+            if (_disclosureAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _disclosureAnchorRequested;
+            _scrollView.VerticalAnchorRatio = TailAnchorRatio;
         }
         _offsetCorrectionAnchorRequested = null;
+        _disclosureAnchorRequested = null;
     }
 
     private void OnReaderFocus(UIElement sender, GettingFocusEventArgs args)
@@ -715,6 +830,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void CancelPendingNavigation()
     {
         RestoreTailAnchor();
+        _historyRequest = null;
         _version++;
         _initialPending = false;
         _explicitJumpPending = false;
@@ -730,7 +846,8 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnViewChanged(WinUIScrollView sender, object args)
     {
-        _following = IsNearBottom(sender);
+        HistoryNavigation.Refresh();
+        _following = _readerBringCorrelationId is null && IsNearBottom(sender) && _historyRequest is null;
         ReportTailVisibility(IsAtBottom(sender));
         _confirmation.GeometryChanged();
         if (_initialPending && ReferenceEquals(sender, _scrollView))
@@ -773,22 +890,48 @@ file sealed class InitialTailPositioner : IDisposable
         }
     }
 
-    private bool StartTailRequest(TailNavigationRequest request)
+    private void NavigateHistory(ChatHistoryAnchor anchor)
+    {
+        CancelPendingNavigation();
+        if (!HistoryNavigation.IsCurrent(anchor.RowIndex, anchor.Key))
+            return;
+        AttachScrollView();
+        if (_scrollView is null)
+            return;
+        _following = false;
+        _readerAnchored = true;
+        _scrollView.VerticalAnchorRatio = 0;
+        _historyRequest = new TailNavigationRequest(anchor.RowIndex, anchor.Key);
+        if (!StartTailRequest(_historyRequest.Value, history: true))
+        {
+            CancelPendingNavigation();
+            OpenClawTray.Services.Logger.Warn("Chat history navigation could not start.");
+        }
+    }
+
+    private bool StartTailRequest(TailNavigationRequest request, bool history = false)
     {
         if (itemsView.ScrollView is not { IsLoaded: true } scrollView)
             return false;
 
-        if (!TailNavigationPolicy.CanExecute(
+        bool IsCurrent() => history
+            ? HistoryNavigation.IsCurrent(request.Index, request.DisplayedTailKey)
+                && GetRequestItem(request) is not null
+            : TailNavigationPolicy.CanExecute(
                 request,
                 _tailIndex,
                 _displayedTailKey,
-                _itemCount))
+                _itemCount);
+        if (!IsCurrent())
         {
             return false;
         }
 
-        _following = true;
-        RestoreTailAnchor();
+        if (!history)
+        {
+            _following = true;
+            RestoreTailAnchor();
+        }
         if (scrollView.Content is not ItemsRepeater repeater)
             return false;
 
@@ -800,7 +943,7 @@ file sealed class InitialTailPositioner : IDisposable
             return false;
         var version = _version;
         var realizationVersion = _realizationVersion;
-        var requiresFollowing = !_initialPending;
+        var requiresFollowing = !history && !_initialPending;
         var frames = 0;
         var settledFrames = 0;
         (double Extent, double Viewport, double Top, double Height)? previous = null;
@@ -809,14 +952,18 @@ file sealed class InitialTailPositioner : IDisposable
             if (_disposed || version != _version || realizationVersion != _realizationVersion || !itemsView.IsLoaded
                 || !ReferenceEquals(scrollView, itemsView.ScrollView)
                 || !TailNavigationPolicy.CanDispatch(requiresFollowing, _following)
-                || !TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount))
+                || !IsCurrent())
             {
                 DetachRealization();
+                if (history && version == _version)
+                    CancelPendingNavigation();
                 return;
             }
             if (++frames > InitialTailConfirmation.MaxObservedFrames)
             {
                 DetachRealization();
+                if (history)
+                    CancelPendingNavigation();
                 OpenClawTray.Services.Logger.Warn("Chat tail realization did not settle.");
                 return;
             }
@@ -842,17 +989,29 @@ file sealed class InitialTailPositioner : IDisposable
                 if (_disposed || version != _version || realizationVersion != _realizationVersion || !itemsView.IsLoaded
                     || !TailNavigationPolicy.CanDispatch(requiresFollowing, _following)
                     || !ReferenceEquals(scrollView, itemsView.ScrollView)
-                    || !TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
+                    || !IsCurrent()
                     || repeater.GetElementIndex(target) != request.Index
                     || !ReferenceEquals(target.DataContext, GetRequestItem(request)))
+                {
+                    if (history && version == _version)
+                        CancelPendingNavigation();
                     return;
-                target.StartBringIntoView(new BringIntoViewOptions
+                }
+                _tailBringTarget = target;
+                var options = new BringIntoViewOptions
                 {
                     AnimationDesired = false,
                     VerticalAlignmentRatio = 1.0,
-                });
+                };
+                if (history)
+                    options.VerticalAlignmentRatio = 0.0;
+                target.StartBringIntoView(options);
             }))
+            {
+                if (history && version == _version)
+                    CancelPendingNavigation();
                 OpenClawTray.Services.Logger.Warn("Chat tail realization could not be dispatched.");
+            }
         };
         CompositionTarget.Rendering += _realizing;
 
@@ -878,11 +1037,27 @@ file sealed class InitialTailPositioner : IDisposable
             ? items[request.Index]
             : null;
 
+    private bool IsStaleCurrentItemReveal(WinUIScrollView scrollView, UIElement? target) =>
+        target is ItemContainer container
+        && itemsView is { CurrentItemIndex: >= 0 and var currentIndex }
+        && scrollView.Content is ItemsRepeater repeater
+        && repeater.GetElementIndex(container) == currentIndex
+        && !ContainsFocus(itemsView);
+
+    private static bool ContainsFocus(UIElement container)
+    {
+        if (container.XamlRoot is not { } root) return false;
+        for (var element = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as DependencyObject; element is not null;
+             element = VisualTreeHelper.GetParent(element))
+            if (ReferenceEquals(element, container)) return true;
+        return false;
+    }
+
     private static bool IsNearBottom(WinUIScrollView scrollView) =>
         scrollView.ScrollableHeight - scrollView.VerticalOffset <= FollowThreshold;
 
     private static bool IsAtBottom(WinUIScrollView scrollView) =>
-        scrollView.ScrollableHeight - scrollView.VerticalOffset <= TailVisibilityTolerance;
+        TailNavigationPolicy.IsAtBottom(scrollView.VerticalOffset, scrollView.ScrollableHeight);
 
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
@@ -890,6 +1065,7 @@ file sealed class InitialTailPositioner : IDisposable
         _initialPending = false;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
+        _tailBringTarget = null;
         DetachLayout();
         DetachScrollView();
     }
@@ -940,6 +1116,8 @@ file sealed class InitialTailPositioner : IDisposable
         {
             if (_offsetCorrectionAnchorRequested is not null)
                 _scrollView.AnchorRequested -= _offsetCorrectionAnchorRequested;
+            if (_disclosureAnchorRequested is not null)
+                _scrollView.AnchorRequested -= _disclosureAnchorRequested;
             _scrollView.VerticalAnchorRatio = double.NaN;
             _scrollView.ViewChanged -= OnViewChanged;
             _scrollView.StateChanged -= OnScrollStateChanged;
@@ -950,7 +1128,11 @@ file sealed class InitialTailPositioner : IDisposable
 
         _scrollView = null;
         _disclosureAnchored = false;
+        _readerAnchored = false;
+        _readerBringCorrelationId = null;
+        _historyRequest = null;
         _offsetCorrectionAnchorRequested = null;
+        _disclosureAnchorRequested = null;
         _reportedAtTail = null;
     }
 
@@ -960,11 +1142,13 @@ file sealed class InitialTailPositioner : IDisposable
             return;
 
         _disposed = true;
+        HistoryNavigation.Dispose();
         TailVisibilityChanged = null;
         _version++;
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         _explicitJumpPending = false;
+        _tailBringTarget = null;
         DetachLayout();
         DetachScrollView();
         itemsView.Loaded -= OnLoaded;
@@ -987,7 +1171,9 @@ internal static class ItemsViewScrollControllerExtensions
         int jumpRevision,
         string initialTailRequestKey,
         string? displayedTailKey,
-        Action<bool>? tailVisibilityChanged = null) =>
+        object contentRevision,
+        Action<bool>? tailVisibilityChanged = null,
+        IReadOnlyList<ChatHistoryAnchor>? historyAnchors = null) =>
         new ItemsViewVerticalScrollControllerElement(
             itemsView,
             scrollBarRef,
@@ -996,5 +1182,7 @@ internal static class ItemsViewScrollControllerExtensions
             jumpRevision,
             initialTailRequestKey,
             displayedTailKey,
-            tailVisibilityChanged);
+            contentRevision,
+            tailVisibilityChanged,
+            historyAnchors ?? []);
 }

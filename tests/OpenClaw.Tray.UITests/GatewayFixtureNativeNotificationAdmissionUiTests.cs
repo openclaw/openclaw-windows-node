@@ -1,4 +1,4 @@
-// Exercises notification dismissal through the real mounted native destination, not a browser result.
+// Exercises notification retention through the real mounted native destination, not a browser result.
 // Run with the Gateway fixture opt-in and --filter FullyQualifiedName~NotificationAction_NativeConnection.
 using System.Windows.Automation;
 using OpenClaw.TestSupport.Gateway;
@@ -9,7 +9,7 @@ public sealed partial class GatewayFixtureUiTests
 {
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task NotificationAction_NativeConnectionDismissesOnlyItsReminderInTheSameWindow()
+    public async Task NotificationAction_NativeConnectionRetainsReminderUntilExplicitDismissalInTheSameWindow()
     {
         const string inboxRoute = "workspace:notifications";
         const string failureDismissLabel = "Dismiss Dashboard";
@@ -45,7 +45,8 @@ public sealed partial class GatewayFixtureUiTests
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
                 new PropertyCondition(AutomationElement.NameProperty, "Close")))
                 .Cast<AutomationElement>(), button => !button.Current.IsOffscreen && button.Current.IsEnabled);
-            Assert.Equal(run.AppProcessId, close.Current.ProcessId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, close, run.AppProcessId),
+                "The recovery dialog action must belong to its retained native window.");
             Invoke(close);
             await WaitUiAsync(run, () => FindButtons(run, RetryButtonName).Count == 0, "recovery dialog closed without retry");
 
@@ -79,12 +80,18 @@ public sealed partial class GatewayFixtureUiTests
 
             await run.InvokeAsync("app.navigate", new { page = inboxRoute });
             await WaitUiAsync(run, () => window.FindFirst(TreeScope.Descendants, inboxMarker) is { Current.IsOffscreen: false } &&
-                FindButtons(run, failureDismissLabel).Count == 0, "admitted Dashboard reminder removed from the inbox");
+                FindButtons(run, failureDismissLabel).Count == 1, "admitted Dashboard reminder retained in the inbox");
+            await ExpandNotificationReminderAsync(run, "Dashboard", "Connection");
+            await CaptureIfRequestedAsync(run, "native-notification-retained-after-connection.png");
+
+            Invoke(Assert.Single(FindButtons(run, failureDismissLabel)));
+            await WaitUiAsync(run, () => FindButtons(run, failureDismissLabel).Count == 0,
+                "Dashboard reminder explicitly dismissed");
             Assert.Single(FindButtons(run, slackDismissLabel));
             await ExpandNotificationReminderAsync(run, "Slack channel needs attention", "Open Channels");
             Assert.Single(FindButtons(run, "Open Channels"));
             AssertDashboardLaunches(run, DashboardOutcome.SimulatedFailure);
-            await CaptureIfRequestedAsync(run, "native-notification-only-slack-retained.png");
+            await CaptureIfRequestedAsync(run, "native-notification-only-slack-retained-after-dismissal.png");
         }, scenario: GatewayScenario.CreateChannelIssue("Fixture channel authorization failed."));
     }
 }

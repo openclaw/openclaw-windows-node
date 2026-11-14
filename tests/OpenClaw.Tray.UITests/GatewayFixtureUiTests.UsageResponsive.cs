@@ -12,7 +12,7 @@ public sealed partial class GatewayFixtureUiTests
 {
     private static readonly TimeSpan UsageResizeSampleInterval = TimeSpan.FromMilliseconds(300);
 
-    private static void AssertUsagePointOwner(IntPtr window, CronPoint point) =>
+    private static void AssertUsagePointOwner(IntPtr window, FixturePoint point) =>
         Assert.Equal(window, GetAncestor(WindowFromPoint(point), 2));
 
     [DllImport("user32.dll", EntryPoint = "CreateWindowExW", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -46,21 +46,80 @@ public sealed partial class GatewayFixtureUiTests
         Assert.Equal(40, measured.RootElement.GetProperty("Height").GetDouble());
     }
 
+    // Layout-only Grids have no UIA peer. Measure the actual interactive controls.
+    private static readonly string[] UsageRequiredRangeControls = { "UsagePresets", "UsageOptions", "UsageRefresh" };
+    private static readonly string[] UsageOptionalRangeControls = { "UsageFacet_agent", "UsageQuery", "UsageStartDate", "UsageEndDate" };
+
     private static System.Windows.Rect UsageRangeBounds(GatewayFixtureRun run)
     {
-        // Layout-only Grids have no UIA peer. Measure the actual interactive controls.
         var bounds = System.Windows.Rect.Empty;
-        foreach (var id in new[] { "UsagePresets", "UsageOptions", "UsageRefresh" })
+        foreach (var id in UsageRequiredRangeControls)
         {
             var control = FindById(run, id)
                 ?? throw new InvalidOperationException($"Missing Usage range control {id}.");
             Assert.False(control.Current.IsOffscreen);
             bounds.Union(control.Current.BoundingRectangle);
         }
-        foreach (var id in new[] { "UsageFacet_agent", "UsageQuery", "UsageStartDate", "UsageEndDate" })
+        foreach (var id in UsageOptionalRangeControls)
             if (FindById(run, id) is { } control)
                 bounds.Union(control.Current.BoundingRectangle);
         return bounds;
+    }
+
+    private readonly record struct UsageHeroBounds(System.Windows.Rect Page, System.Windows.Rect Hero,
+        System.Windows.Rect Range, System.Windows.Rect OpenWeb, System.Windows.Rect Export);
+
+    private sealed record UsageHeroLayout(UsageHeroBounds Bounds, AutomationElement PageRoot, AutomationElement Marker);
+
+    /// <summary>
+    /// Waits for two identical <see cref="TryReadUsageHeroLayout"/> samples and returns the second.
+    /// Use it after a resize or scroll instead of reading hero peers once.
+    /// </summary>
+    private static async Task<UsageHeroLayout> WaitForSettledUsageHeroLayoutAsync(GatewayFixtureRun run)
+    {
+        UsageHeroLayout? previous = null;
+        UsageHeroLayout? settled = null;
+        await run.WaitForAsync(async () =>
+        {
+            await Task.Delay(UsageResizeSampleInterval);
+            var current = TryReadUsageHeroLayout(run);
+            var stable = current is not null && previous is not null && current.Bounds == previous.Bounds;
+            previous = current;
+            if (stable) settled = current;
+            return stable;
+        }, "stable hero layout with page, hero, actions, visible marker and visible range controls");
+        return settled!;
+    }
+
+    /// <summary>
+    /// Reads every peer the hero proof measures in one pass, or returns null while any is missing,
+    /// offscreen or being replaced. A resize across a width tier and the asynchronous host-warning
+    /// banner can re-render the shell, so a poll must re-acquire these peers instead of asserting them.
+    /// </summary>
+    private static UsageHeroLayout? TryReadUsageHeroLayout(GatewayFixtureRun run)
+    {
+        try
+        {
+            if (FindById(run, "UsagePageRoot") is not { } page || FindById(run, "UsageMast") is not { } hero ||
+                FindById(run, "UsageOpenWeb") is not { } openWeb || FindById(run, "UsageExport") is not { } export ||
+                FindById(run, "UsagePageMarker") is not { Current.IsOffscreen: false } marker)
+                return null;
+            var range = System.Windows.Rect.Empty;
+            foreach (var id in UsageRequiredRangeControls)
+            {
+                if (FindById(run, id) is not { Current.IsOffscreen: false } control) return null;
+                range.Union(control.Current.BoundingRectangle);
+            }
+            foreach (var id in UsageOptionalRangeControls)
+                if (FindById(run, id) is { } control)
+                    range.Union(control.Current.BoundingRectangle);
+            return new(new(page.Current.BoundingRectangle, hero.Current.BoundingRectangle, range,
+                openWeb.Current.BoundingRectangle, export.Current.BoundingRectangle), page, marker);
+        }
+        catch (ElementNotAvailableException)
+        {
+            return null;
+        }
     }
 
     [GatewayFixtureUiFact]
@@ -86,7 +145,7 @@ public sealed partial class GatewayFixtureUiTests
                 await run.InvokeAsync("app.navigate", new { page = "chat" });
                 await WaitUiAsync(run, () => FindById(run, "WorkspacePagesCustomize") is { Current.IsOffscreen: false },
                     "Chat pin customization");
-                var window = FindHub(run);
+                var window = await WaitForHubAsync(run, "pinned Usage chat window");
                 var handle = new IntPtr(window.Current.NativeWindowHandle);
                 await NativeKeyboardProof.ActivateAsync(handle);
                 var scale = UsageGetDpiForWindow(handle) / 96d;
@@ -168,7 +227,7 @@ public sealed partial class GatewayFixtureUiTests
                     Assert.True(button.Current.IsEnabled);
                     // WinAppSDK's bridge can stop a UIA point query above its InputSite child.
                     // The actual center click must change the pane; bridge ancestry alone never passes.
-                    var nativePoint = new CronPoint { X = (int)point.X, Y = (int)point.Y };
+                    var nativePoint = new FixturePoint { X = (int)point.X, Y = (int)point.Y };
                     uint sent;
                     var previousDpi = UsageSetThreadDpiAwarenessContext(new IntPtr(-4));
                     try
@@ -181,11 +240,11 @@ public sealed partial class GatewayFixtureUiTests
                         AssertUsagePointOwner(handle, cursor);
                         var input = new[]
                         {
-                            new CronInput { Mouse = new CronMouse { Flags = 2 } },
-                            new CronInput { Mouse = new CronMouse { Flags = 4 } },
+                            new FixtureInput { Mouse = new FixtureMouse { Flags = 2 } },
+                            new FixtureInput { Mouse = new FixtureMouse { Flags = 4 } },
                         };
-                        sent = SendInput(2, input, Marshal.SizeOf<CronInput>());
-                        if (sent == 1) SendInput(1, [input[1]], Marshal.SizeOf<CronInput>());
+                        sent = SendInput(2, input, Marshal.SizeOf<FixtureInput>());
+                        if (sent == 1) SendInput(1, [input[1]], Marshal.SizeOf<FixtureInput>());
                         Assert.Equal(2u, sent);
                     }
                     finally { UsageSetThreadDpiAwarenessContext(previousDpi); }
@@ -201,14 +260,12 @@ public sealed partial class GatewayFixtureUiTests
                 }
                 async Task StableGeometry(bool collapsed, string stateName)
                 {
-                    System.Windows.Rect Bounds(string id)
+                    System.Windows.Rect? Bounds(string id)
                     {
-                        var peer = FindById(run, id)
-                            ?? throw new InvalidOperationException($"Missing pinned Usage control peer: {id}.");
+                        var peer = FindById(run, id);
+                        if (peer is null) return null;
                         var bounds = peer.Current.BoundingRectangle;
-                        Assert.True(!bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0,
-                            $"Pinned Usage control {id} has no measured bounds: {bounds}.");
-                        return bounds;
+                        return !bounds.IsEmpty && bounds.Width > 0 && bounds.Height > 0 ? bounds : null;
                     }
                     string? previous = null;
                     var consecutive = 0;
@@ -223,10 +280,12 @@ public sealed partial class GatewayFixtureUiTests
                             button = Bounds(collapsed ? "WorkspaceReopenPane" : "WorkspaceTogglePane"),
                             feedback = Bounds("WorkspaceEmbeddedOperationFeedback"),
                         };
+                        var ready = geometry.titleBar.HasValue && geometry.viewport.HasValue &&
+                            geometry.marker.HasValue && geometry.button.HasValue && geometry.feedback.HasValue;
                         var current = JsonSerializer.Serialize(geometry);
-                        consecutive = previous == current ? consecutive + 1 : 0;
-                        previous = current;
-                        samples.Add(new { utc = DateTimeOffset.UtcNow, geometry, consecutive });
+                        consecutive = ready && previous == current ? consecutive + 1 : 0;
+                        previous = ready ? current : null;
+                        samples.Add(new { utc = DateTimeOffset.UtcNow, geometry, ready, consecutive });
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"pane-layout-{stateName}.json"),
                             JsonSerializer.Serialize(samples, new JsonSerializerOptions { WriteIndented = true }));
                         if (consecutive >= 3) return true;
@@ -249,7 +308,7 @@ public sealed partial class GatewayFixtureUiTests
                 var contentIdentity = FindById(run, "UsagePageRoot")!.GetRuntimeId();
                 await NativeKeyboardProof.ActivateAsync(handle);
                 var negativeBounds = FindById(run, "WorkspaceTogglePane")!.Current.BoundingRectangle;
-                var negativePoint = new CronPoint
+                var negativePoint = new FixturePoint
                 {
                     X = (int)(negativeBounds.Left + negativeBounds.Width / 2),
                     Y = (int)(negativeBounds.Top + negativeBounds.Height / 2),
@@ -300,9 +359,9 @@ public sealed partial class GatewayFixtureUiTests
                     var titleBottom = FindById(run, "WorkspaceTitleBar")!.Current.BoundingRectangle.Bottom;
                     // Grids have no UIA peer. The mounted ContentInset test measures the actual
                     // surface against its host; this real-shell test measures the scrolling control
-                    // against native title chrome and keeps the 0/56-DIP integration contract.
-                    Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale
-                        - (collapsed ? 56 : 0)), 0, 2);
+                    // against native title chrome. The 56 DIP title band is the page inset in every
+                    // pane state, so the viewport starts exactly at its bottom edge.
+                    Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
                     var button = FindById(run, buttonId)!;
                     var feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
                     Assert.False(feedback.Current.IsOffscreen);
@@ -425,7 +484,7 @@ public sealed partial class GatewayFixtureUiTests
                             "collapsed error recapture");
                         await StableGeometry(true, "collapsed-retriggered");
                         Assert.Equal(contentIdentity, FindById(run, "UsagePageRoot")!.GetRuntimeId());
-                        Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale - 56), 0, 2);
+                        Assert.InRange(Math.Abs((content.Current.BoundingRectangle.Top - titleBottom) / scale), 0, 2);
                         feedback = FindById(run, "WorkspaceEmbeddedOperationFeedback")!;
                         Assert.False(feedback.Current.IsOffscreen);
                         Assert.True(button.Current.BoundingRectangle.Bottom <= feedback.Current.BoundingRectangle.Top);
@@ -436,7 +495,7 @@ public sealed partial class GatewayFixtureUiTests
                     await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, name + "-layout.json"),
                         JsonSerializer.Serialize(new
                         {
-                            theme, collapsed, scale, expectedInsetDip = collapsed ? 56 : 0,
+                            theme, collapsed, scale, expectedInsetDip = 56,
                             titleBarBottom = titleBottom,
                             viewport = content.Current.BoundingRectangle,
                             button = button.Current.BoundingRectangle,
@@ -463,51 +522,67 @@ public sealed partial class GatewayFixtureUiTests
             var handle = new IntPtr(window.Current.NativeWindowHandle);
             var scale = UsageGetDpiForWindow(handle) / 96d;
             var before = UsageWindowBounds(handle);
-            var beforeHost = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width / scale;
+            var beforeHostWidth = 0d;
+            await WaitUiAsync(run, () => FindById(run, "UsagePageRoot") is { } host &&
+                (beforeHostWidth = host.Current.BoundingRectangle.Width) > 0, "measured Usage host before resize");
+            var beforeHost = beforeHostWidth / scale;
             var expected = ResizeUsageWindow(handle, 1400 + before.Width / scale - beforeHost, scale, capToDisplay: true);
             await WaitUiAsync(run, () => UsageWindowBounds(handle).Width == expected.Width, "wide Usage viewport");
-            var scrollElement = FindById(run, "UsagePageRoot")!;
+            // The resize can re-render the page, so read the scroll host from a settled layout.
+            var scrollElement = (await WaitForSettledUsageHeroLayoutAsync(run)).PageRoot;
             var scroll = (ScrollPattern)scrollElement.GetCurrentPattern(ScrollPattern.Pattern);
             await WaitUiAsync(run, () => scroll.Current.VerticallyScrollable, "scrollable Usage content");
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
             await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
                 FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage at top");
-            var hero = FindById(run, "UsageMast") ?? throw new InvalidOperationException("Missing Usage hero card.");
-            Assert.True(UsageRangeBounds(run).Top >= hero.Current.BoundingRectangle.Bottom);
-            OwnedWindowCapture.Save(run, window, "Usage-Light-hero-top.png", FindById(run, "UsagePageMarker")!);
+            var atTop = await WaitForSettledUsageHeroLayoutAsync(run);
+            // Use the page root from this settled layout so a re-rendered page cannot leave a stale scroll host.
+            scrollElement = atTop.PageRoot;
+            await WaitUiAsync(run, () =>
+                (scroll = (ScrollPattern)scrollElement.GetCurrentPattern(ScrollPattern.Pattern)).Current.VerticalScrollPercent == 0,
+                "settled Usage scroll host at top");
+            Assert.True(atTop.Bounds.Range.Top >= atTop.Bounds.Hero.Bottom);
+            OwnedWindowCapture.Save(run, window, "Usage-Light-hero-top.png", atTop.Marker);
             var top = scrollElement.Current.BoundingRectangle;
-            var previousTitle = FindById(run, "UsagePageMarker")!.Current.BoundingRectangle;
-            void RecordScrollObservation(string phase)
+            var previousTitle = atTop.Marker.Current.BoundingRectangle;
+            void RecordScrollObservation(string phase, AutomationElement? title)
             {
-                var title = FindById(run, "UsagePageMarker")
-                    ?? throw new InvalidOperationException("Missing Usage title during scroll proof.");
+                var card = FindById(run, "UsageMast");
+                var liveRoot = FindById(run, "UsagePageRoot");
                 File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "hero-scroll-" + phase + ".json"),
                     JsonSerializer.Serialize(new
                     {
                         utc = DateTimeOffset.UtcNow, phase, scrollPercent = scroll.Current.VerticalScrollPercent,
                         viewport = UsageBoundsForDiagnostic(scrollElement.Current.BoundingRectangle),
+                        scrollHostRuntimeId = scrollElement.GetRuntimeId(),
+                        livePageRootRuntimeId = liveRoot?.GetRuntimeId(),
                         previousTitle = UsageBoundsForDiagnostic(previousTitle),
-                        title = new { bounds = UsageBoundsForDiagnostic(title.Current.BoundingRectangle), offscreen = title.Current.IsOffscreen, runtimeId = title.GetRuntimeId() },
-                        card = new { bounds = UsageBoundsForDiagnostic(hero.Current.BoundingRectangle), offscreen = hero.Current.IsOffscreen, runtimeId = hero.GetRuntimeId() },
+                        title = title is null ? null : new { bounds = UsageBoundsForDiagnostic(title.Current.BoundingRectangle), offscreen = title.Current.IsOffscreen, runtimeId = title.GetRuntimeId() },
+                        card = card is null ? null : new { bounds = UsageBoundsForDiagnostic(card.Current.BoundingRectangle), offscreen = card.Current.IsOffscreen, runtimeId = card.GetRuntimeId() },
                     }, new JsonSerializerOptions { WriteIndented = true }));
             }
-            RecordScrollObservation("before");
+            RecordScrollObservation("before", atTop.Marker);
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 45);
+            AutomationElement? scrolledTitle = null;
             await WaitUiAsync(run, () =>
                 {
-                    RecordScrollObservation("after");
-                    var title = FindById(run, "UsagePageMarker")!;
+                    // A re-render can briefly remove the title peer. Record that and poll again;
+                    // only a found title that is offscreen or moved up proves the scroll.
+                    var title = FindById(run, "UsagePageMarker");
+                    RecordScrollObservation("after", title);
+                    if (title is null) return false;
                     var bounds = title.Current.BoundingRectangle;
-                    return scroll.Current.VerticalScrollPercent >= 44 &&
+                    var moved = scroll.Current.VerticalScrollPercent >= 44 &&
                         (title.Current.IsOffscreen || (!bounds.IsEmpty && bounds.Height > 0 &&
                             bounds.Top < top.Top && bounds.Top < previousTitle.Top - 100));
+                    if (moved) scrolledTitle = title;
+                    return moved;
                 },
                 "ordinary Usage header scrolled away");
             Assert.Equal(top, scrollElement.Current.BoundingRectangle);
             // Border peers can expose clipped bounds. The mounted HeroContent test asserts the
             // actual card transform; here retain visible title movement and the real-shell capture.
-            var scrolledTitle = FindById(run, "UsagePageMarker")!;
-            Assert.True(scrolledTitle.Current.IsOffscreen ||
+            Assert.True(scrolledTitle!.Current.IsOffscreen ||
                 (!scrolledTitle.Current.BoundingRectangle.IsEmpty && scrolledTitle.Current.BoundingRectangle.Height > 0 &&
                     scrolledTitle.Current.BoundingRectangle.Top < top.Top));
             OwnedWindowCapture.Save(run, window, "Usage-Light-hero-scrolled.png");
@@ -516,7 +591,7 @@ public sealed partial class GatewayFixtureUiTests
                 observedHostWidthDip = top.Width / scale,
                 viewportTopPx = top.Top,
                 observedScrollPercent = scroll.Current.VerticalScrollPercent,
-                headerOffscreen = FindById(run, "UsagePageMarker")!.Current.IsOffscreen,
+                headerOffscreen = scrolledTitle.Current.IsOffscreen,
                 scale,
                 syntheticGateway = true,
                 contract = "The hero card and its accent tint scroll inside an anchored viewport; no sticky header or page-wide wash."
@@ -545,10 +620,21 @@ public sealed partial class GatewayFixtureUiTests
                 foreach (var target in theme == "Light" ? new[] { 1400, 0 } : new[] { 1400 })
                 {
                     var name = $"Usage-{theme}-hero-{(target == 0 ? "shell-minimum" : "1400")}";
+                    var topRestored = target != 1400;
                     try
                     {
+                        AutomationElement? scrollHost = null;
+                        await WaitUiAsync(run, () => (scrollHost = FindById(run, "UsagePageRoot")) is not null,
+                            "Usage page scroll host");
+                        var scroll = (ScrollPattern)scrollHost!.GetCurrentPattern(ScrollPattern.Pattern);
+                        scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
+                        var beforeHostWidth = 0d;
+                        await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
+                            FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false } &&
+                            FindById(run, "UsagePageRoot") is { } topHost &&
+                            (beforeHostWidth = topHost.Current.BoundingRectangle.Width) > 0, "Usage top before hero capture");
                         var before = UsageWindowBounds(handle);
-                        var beforeHost = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width / scale;
+                        var beforeHost = beforeHostWidth / scale;
                         var expected = ResizeUsageWindow(handle, target == 0 ? 1000 : target + before.Width / scale - beforeHost,
                             scale, capToDisplay: target == 1400);
                         await WaitUiAsync(run, () =>
@@ -556,29 +642,22 @@ public sealed partial class GatewayFixtureUiTests
                             var bounds = UsageWindowBounds(handle);
                             return bounds.Width == expected.Width && bounds.Height == expected.Height;
                         }, "exact hero capture window bounds");
-                        double? previous = null;
-                        await run.WaitForAsync(async () =>
-                        {
-                            await Task.Delay(UsageResizeSampleInterval);
-                            var width = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle.Width;
-                            var stable = previous is { } value && Math.Abs(value - width) < 0.01;
-                            previous = width;
-                            return stable;
-                        }, "stable hero capture host width");
+                        var settled = await WaitForSettledUsageHeroLayoutAsync(run);
+                        var layout = settled.Bounds;
                         var frame = UsageWindowBounds(handle);
-                        var page = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle;
+                        var page = layout.Page;
+                        var client = OwnedWindowCapture.ReadOwnedClientBounds(run, window);
+                        var samplingAperture = System.Windows.Rect.Intersect(page, client);
+                        Assert.True(!samplingAperture.IsEmpty && samplingAperture.Width > 0 && samplingAperture.Height > 0);
                         var host = page.Width / scale;
-                        var hero = FindById(run, "UsageMast")!.Current.BoundingRectangle;
-                        var range = UsageRangeBounds(run);
+                        var hero = layout.Hero;
+                        var range = layout.Range;
                         Assert.True(hero.Left >= page.Left && hero.Right <= page.Right);
                         Assert.True(range.Top >= hero.Bottom, "Range controls overlap the Usage hero.");
-                        foreach (var id in new[] { "UsageOpenWeb", "UsageExport" })
-                        {
-                            var action = FindById(run, id)!.Current.BoundingRectangle;
+                        foreach (var action in new[] { layout.OpenWeb, layout.Export })
                             Assert.True(action.Left >= hero.Left && action.Right <= hero.Right);
-                        }
                         var file = name + ".png";
-                        OwnedWindowCapture.Save(run, window, file, FindById(run, "UsagePageMarker")!);
+                        OwnedWindowCapture.Save(run, window, file, settled.Marker);
                         using var capture = JsonDocument.Parse(File.ReadAllText(Path.Combine(run.ArtifactsDirectory, name + ".json")));
                         var manifest = new
                         {
@@ -595,14 +674,54 @@ public sealed partial class GatewayFixtureUiTests
                         Assert.Equal(target == 0 ? PageWidthTier.Medium : PageWidthTier.Wide, PageResponsiveLayout.TierFor(host));
                         if (target == 1400)
                         {
-                            var scroll = (ScrollPattern)FindById(run, "UsagePageRoot")!.GetCurrentPattern(ScrollPattern.Pattern);
-                            scroll.SetScrollPercent(ScrollPattern.NoScroll, 75);
-                            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 74,
-                                "Usage session cards scrolled into view");
+                            // Date-dependent recent activity can put the main session outside
+                            // the ten-row preview. Reveal the fixture's remaining loaded rows first.
+                            scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
+                            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 100,
+                                "end of Usage loaded-session preview");
+                            if (FindById(run, "UsageSessionsShowAll") is { } showMore)
+                            {
+                                await WaitUiAsync(run, () => !showMore.Current.IsOffscreen && showMore.Current.IsEnabled,
+                                    "visible Show more loaded sessions action");
+                                Invoke(showMore);
+                                await WaitUiAsync(run, () => FindById(run, "UsageSessionsShowAll") is null,
+                                    "all fixture sessions revealed");
+                            }
+                            var requestedPercent = 0d;
+                            scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
+                            AutomationElement? expander = null;
+                            System.Windows.Rect collapsedHeader = System.Windows.Rect.Empty;
+                            await run.WaitForAsync(async () =>
+                            {
+                                await Task.Delay(UsageResizeSampleInterval);
+                                var position = scroll.Current;
+                                if (Math.Abs(position.VerticalScrollPercent - requestedPercent) > 0.01)
+                                    return false;
+                                var candidate = FindById(run, "UsageSessionExpander_agent:main:webchat:main");
+                                if (candidate is { Current.IsOffscreen: false })
+                                {
+                                    var bounds = candidate.Current.BoundingRectangle;
+                                    if (!bounds.IsEmpty && double.IsFinite(bounds.Width) && double.IsFinite(bounds.Height) &&
+                                        double.IsFinite(bounds.Top) && double.IsFinite(bounds.Left) &&
+                                        bounds.Width > 0 && bounds.Height > 0 &&
+                                        bounds.Top >= samplingAperture.Top && bounds.Bottom <= samplingAperture.Bottom)
+                                    {
+                                        expander = candidate;
+                                        collapsedHeader = bounds;
+                                        return true;
+                                    }
+                                }
+                                Assert.True(requestedPercent < 100 && position.VerticalViewSize is > 0 and < 100,
+                                    "Main Usage session header has no visible measured geometry at the end of the page.");
+                                // Overlapping half-viewport steps reveal the intended row, not a calendar-dependent offset.
+                                requestedPercent = Math.Min(100, requestedPercent +
+                                    50 * position.VerticalViewSize / (100 - position.VerticalViewSize));
+                                scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
+                                return false;
+                            }, "visible measured main Usage session header");
                             OwnedWindowCapture.Save(run, window, $"Usage-{theme}-separated-session-cards.png");
-                            var expander = FindById(run, "UsageSessionExpander_agent:main:webchat:main")
-                                ?? throw new InvalidOperationException("Missing main Usage session Expander.");
-                            var collapsedHeaderHeight = expander.Current.BoundingRectangle.Height;
+                            Assert.NotNull(expander);
+                            var collapsedHeaderHeight = collapsedHeader.Height;
                             ((ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
                             await WaitUiAsync(run, () => FindById(run, "UsageDetailCostValue") is not null,
                                 "expanded Usage session detail");
@@ -611,32 +730,90 @@ public sealed partial class GatewayFixtureUiTests
                             {
                                 await Task.Delay(UsageResizeSampleInterval);
                                 var expandedBounds = expander.Current.BoundingRectangle;
+                                if (expandedBounds.IsEmpty || !double.IsFinite(expandedBounds.Width) ||
+                                    !double.IsFinite(expandedBounds.Height) || expandedBounds.Width <= 0 ||
+                                    expandedBounds.Height <= 0)
+                                {
+                                    previousDetail = null;
+                                    return false;
+                                }
+                                var cost = FindById(run, "UsageDetailCostValue");
+                                var tokens = FindById(run, "UsageDetailTokensValue");
+                                if (cost is null || tokens is null)
+                                {
+                                    previousDetail = null;
+                                    return false;
+                                }
                                 var current = (Header: new System.Windows.Rect(expandedBounds.Left, expandedBounds.Top,
                                         expandedBounds.Width, collapsedHeaderHeight),
-                                    Cost: FindById(run, "UsageDetailCostValue")!.Current.BoundingRectangle,
-                                    Tokens: FindById(run, "UsageDetailTokensValue")!.Current.BoundingRectangle);
+                                    Cost: cost.Current.BoundingRectangle,
+                                    Tokens: tokens.Current.BoundingRectangle);
                                 var stable = previousDetail == current;
                                 previousDetail = current;
                                 return stable && current.Cost.Top >= current.Header.Bottom
                                     && current.Tokens.Top >= current.Header.Bottom;
                             }, "settled session animation with detail below its header");
-                            var viewport = FindById(run, "UsagePageRoot")!.Current.BoundingRectangle;
+                            OwnedWindowCapture.Save(run, window, $"Usage-{theme}-expanded-before-inspection.png");
+                            await PrepareUsageCaptureAsync(run, window, $"Usage-{theme}-expanded-inspection");
+                            // Keep the unscrolled, client-clipped aperture; UIA aggregate bounds can grow after scrolling.
+                            Assert.Equal(frame, UsageWindowBounds(handle));
+                            Assert.Equal(client, OwnedWindowCapture.ReadOwnedClientBounds(run, window));
+                            var viewport = samplingAperture;
                             var detailBounds = expander.Current.BoundingRectangle;
-                            Assert.True(detailBounds.Height <= viewport.Height, "Expanded session must fit the viewport.");
                             var scrollableHeight = viewport.Height * (100 / scroll.Current.VerticalViewSize - 1);
                             Assert.True(scrollableHeight > 0);
                             var detailPercent = Math.Clamp(scroll.Current.VerticalScrollPercent +
                                 100 * (detailBounds.Top - viewport.Top) / scrollableHeight, 0, 100);
                             scroll.SetScrollPercent(ScrollPattern.NoScroll, detailPercent);
-                            await WaitUiAsync(run, () =>
+                            var detailIds = new[] { "UsageRowTitle_agent:main:webchat:main",
+                                "UsageDetailCostValue", "UsageDetailCostShare", "UsageDetailModelValue",
+                                "UsageDetailTokensValue", "UsageDetailCacheValue", "UsageDetailMessagesValue",
+                                "UsageDetailDurationValue", "UsageDetailToolsValue", "UsageDetailErrorsValue" };
+                            System.Windows.Rect[]? previousAnchors = null;
+                            AutomationElement[]? visibleAnchors = null;
+                            await run.WaitForAsync(async () =>
                             {
-                                var bounds = expander.Current.BoundingRectangle;
-                                return bounds.Top >= viewport.Top - 1 && bounds.Bottom <= viewport.Bottom + 1;
-                            }, "complete expanded session visible without cropping");
-                            OwnedWindowCapture.Save(run, window, $"Usage-{theme}-1400-expanded-session.png", expander);
-                            scroll.SetScrollPercent(ScrollPattern.NoScroll, 0);
-                            await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent == 0 &&
-                                FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage top restored");
+                                await Task.Delay(UsageResizeSampleInterval);
+                                Assert.Equal(frame, UsageWindowBounds(handle));
+                                Assert.Equal(client, OwnedWindowCapture.ReadOwnedClientBounds(run, window));
+                                var anchors = detailIds.Select(id => FindById(run, id)).ToArray();
+                                if (anchors.Any(anchor => anchor is null || anchor.Current.IsOffscreen))
+                                {
+                                    previousAnchors = null;
+                                    return false;
+                                }
+                                var bounds = anchors.Select(anchor => anchor!.Current.BoundingRectangle).ToArray();
+                                if (bounds.Any(box => box.IsEmpty || !double.IsFinite(box.Width) ||
+                                    !double.IsFinite(box.Height) || !double.IsFinite(box.Left) ||
+                                    !double.IsFinite(box.Top) || box.Width <= 0 || box.Height <= 0 ||
+                                    box.Left < viewport.Left - 1 || box.Right > viewport.Right + 1 ||
+                                    box.Top < viewport.Top - 1 || box.Bottom > viewport.Bottom + 1))
+                                {
+                                    previousAnchors = null;
+                                    return false;
+                                }
+                                var stable = previousAnchors is not null && previousAnchors.SequenceEqual(bounds);
+                                previousAnchors = bounds;
+                                visibleAnchors = anchors.Select(anchor => anchor!).ToArray();
+                                return stable;
+                            }, "complete expanded-session header and all detail values fit the owned visible aperture");
+                            Assert.NotNull(visibleAnchors);
+                            Assert.NotNull(previousAnchors);
+                            var contentBounds = previousAnchors.Aggregate(System.Windows.Rect.Union);
+                            Assert.True(contentBounds.Height <= viewport.Height + 1,
+                                $"Expanded content cannot fit the owned viewport: content={contentBounds}; aperture={viewport}.");
+                            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, $"Usage-{theme}-expanded-inspection.json"),
+                                JsonSerializer.Serialize(new
+                                {
+                                    samplingAperture = UsageBoundsForDiagnostic(viewport),
+                                    window = frame, client = UsageBoundsForDiagnostic(client),
+                                    anchors = detailIds.Zip(previousAnchors, (id, bounds) =>
+                                        new { id, bounds = UsageBoundsForDiagnostic(bounds) }),
+                                    automaticExpansionCapture = $"Usage-{theme}-expanded-before-inspection.png",
+                                }));
+                            AssertUsageCaptureUnobstructed(run, name);
+                            OwnedWindowCapture.Save(run, window, $"Usage-{theme}-1400-expanded-session.png", visibleAnchors);
+                            AssertUsageCaptureUnobstructed(run, name);
                         }
                     }
                     catch (Exception error)
@@ -648,9 +825,31 @@ public sealed partial class GatewayFixtureUiTests
                     }
                     finally
                     {
+                        if (target == 1400)
+                        {
+                            try
+                            {
+                                var pageRoot = FindById(run, "UsagePageRoot")
+                                    ?? throw new InvalidOperationException("Missing Usage viewport during top restoration.");
+                                ((ScrollPattern)pageRoot.GetCurrentPattern(ScrollPattern.Pattern))
+                                    .SetScrollPercent(ScrollPattern.NoScroll, 0);
+                                await WaitUiAsync(run, () =>
+                                    FindById(run, "UsagePageRoot") is { } currentPage &&
+                                    ((ScrollPattern)currentPage.GetCurrentPattern(ScrollPattern.Pattern))
+                                        .Current.VerticalScrollPercent == 0 &&
+                                    FindById(run, "UsagePageMarker") is { Current.IsOffscreen: false }, "Usage top restored");
+                                topRestored = true;
+                            }
+                            catch (Exception cleanupError)
+                            {
+                                failures.Add($"{name} top restoration: {cleanupError}");
+                                manifests.Add(new { name, cleanupError = cleanupError.ToString() });
+                            }
+                        }
                         File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "hero-manifest.json"),
                             JsonSerializer.Serialize(manifests, new JsonSerializerOptions { WriteIndented = true }));
                     }
+                    if (!topRestored) break;
                 }
                 Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures));
                 if (FindById(run, "SettingsSearch") is { Current.IsOffscreen: false })

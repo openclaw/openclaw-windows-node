@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.SetupEngine.UI.Pages;
 
 namespace OpenClaw.SetupEngine.UI;
@@ -7,7 +8,8 @@ namespace OpenClaw.SetupEngine.UI;
 /// <summary>Presentation only after publication. No setup lock, staged owner or finalization entry.</summary>
 public sealed class SetupReadyWindow : Window
 {
-    private readonly Frame _frame = new();
+    private readonly SetupShellLayout _shell = new();
+    private readonly Frame _frame;
     private readonly SetupWindowSizingController _windowSizing;
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Func<CancellationToken, Task<SetupVerifiedNativeRoute>> _verify;
@@ -16,6 +18,8 @@ public sealed class SetupReadyWindow : Window
     private IDisposable? _observation;
     private readonly Action _requireLiveModel;
     private readonly Action _returnToConnection;
+    private readonly Func<string, OpenClaw.Connection.GatewayRecord?>? _findGateway;
+    private SetupReadyGateway _gateway = SetupReadyGateway.Unknown;
     private SetupReadyCoordinator? _choice;
     private Task _recovery = Task.CompletedTask;
     private Task<SetupVerifiedNativeRoute>? _verification;
@@ -32,11 +36,16 @@ public sealed class SetupReadyWindow : Window
 
     public SetupReadyWindow(Func<CancellationToken, Task<SetupVerifiedNativeRoute>> verify,
         Func<SetupNativeCompletion, CancellationToken, Task> navigate,
-        Func<SetupNativeReadyBinding, IDisposable> observe, Action requireLiveModel, Action returnToConnection)
+        Func<SetupNativeReadyBinding, IDisposable> observe, Action requireLiveModel, Action returnToConnection,
+        Func<string, OpenClaw.Connection.GatewayRecord?>? findGateway = null)
     {
         (_verify, _navigate, _observe, _requireLiveModel) = (verify, navigate, observe, requireLiveModel);
         _returnToConnection = returnToConnection;
-        Content = _frame;
+        _findGateway = findGateway;
+        _frame = _shell.Frame;
+        _frame.Navigating += Frame_Navigating;
+        Content = _shell;
+        SystemBackdrop = new Microsoft.UI.Xaml.Media.MicaBackdrop();
         Title = SetupLocalization.GetString("Onboarding_Finishing_Heading.Text");
         _windowSizing = new(this, _frame);
         ShowPreparing(SetupLoadingStep.StartCompanion);
@@ -56,6 +65,26 @@ public sealed class SetupReadyWindow : Window
             }
             finally { _lifetime.Dispose(); _cleanup.TrySetResult(); }
         };
+    }
+
+    // The ready window shows the last two steps of the route that reached the verified Gateway.
+    private void Frame_Navigating(object sender, Microsoft.UI.Xaml.Navigation.NavigatingCancelEventArgs e)
+    {
+        if (SetupCompanionPresentation.For(e.SourcePageType) is { } presentation)
+            _shell.Companion.Present(SetupLocalization.GetString(presentation.LineResourceKey), presentation.Mood);
+        _shell.Companion.UpdateSteps(OnboardingFlowPolicy.GetStages(_gateway.Route, new SetupConfig()),
+            e.SourcePageType == typeof(AiReadyPage) ? OnboardingStage.Ready : OnboardingStage.AiSetup);
+    }
+
+    // A missing or unreadable record falls back to a neutral description, never a wrong claim.
+    private SetupReadyGateway DescribeGateway(string gatewayId)
+    {
+        try { return SetupReadyGateway.From(_findGateway?.Invoke(gatewayId)); }
+        catch (Exception error)
+        {
+            System.Diagnostics.Trace.TraceWarning("Ready Gateway description unavailable ({0}).", error.GetType().Name);
+            return SetupReadyGateway.Unknown;
+        }
     }
 
     public Task<SetupVerifiedNativeRoute> VerifyAsync(CancellationToken ct)
@@ -123,8 +152,9 @@ public sealed class SetupReadyWindow : Window
         _observation = await binding.ObserveAndCheckAsync(_observe, ct, _loadingScope);
         ct.ThrowIfCancellationRequested();
         _requireLiveModel();
+        _gateway = DescribeGateway(route.Verification.GatewayId);
         _frame.Navigate(typeof(AiReadyPage), new AiReadyPageArgs(choice, Recover,
-            () => !IsClosed && ReferenceEquals(_choice, choice)));
+            () => !IsClosed && ReferenceEquals(_choice, choice), Gateway: _gateway));
         if (_frame.Content is not FrameworkElement page)
             throw new InvalidOperationException("The Ready page is unavailable.");
         if (!page.IsLoaded)

@@ -1,3 +1,4 @@
+using CommunityToolkit.WinUI.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
@@ -165,7 +166,7 @@ public sealed partial class PermissionsPage : Page
         control.Focus(FocusState.Programmatic);
     }
 
-    private Border BuildCapabilityRow(PermissionsCapabilityKey key, string icon, string labelKey, string descriptionKey)
+    private SettingsCard BuildCapabilityRow(PermissionsCapabilityKey key, string emoji, string labelKey, string descriptionKey)
     {
         var label = LocalizationHelper.GetString(labelKey);
         var toggle = new ToggleSwitch
@@ -186,48 +187,26 @@ public sealed partial class PermissionsPage : Page
         };
         _featureToggles[key] = toggle;
 
-        var grid = new Grid { ColumnSpacing = 14 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(36) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        var iconText = new TextBlock
+        var icon = new FontIcon
         {
-            Text = icon,
-            FontSize = 22,
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalAlignment = HorizontalAlignment.Center,
+            Glyph = emoji,
+            FontFamily = new FontFamily("Segoe UI Emoji"),
         };
-        Grid.SetColumn(iconText, 0);
-        grid.Children.Add(iconText);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAccessibilityView(
+            icon, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
 
-        var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
-        text.Children.Add(new TextBlock
+        return new SettingsCard
         {
-            Text = label,
-            Style = (Style)Application.Current.Resources["BodyTextBlockStyle"],
-        });
-        text.Children.Add(new TextBlock
-        {
-            Text = LocalizationHelper.GetString(descriptionKey),
-            Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
-            Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
-            TextWrapping = TextWrapping.Wrap,
-        });
-        Grid.SetColumn(text, 1);
-        grid.Children.Add(text);
-
-        Grid.SetColumn(toggle, 2);
-        grid.Children.Add(toggle);
-
-        return new Border
-        {
-            Background = (Brush)Application.Current.Resources["CardBackgroundFillColorDefaultBrush"],
-            BorderBrush = (Brush)Application.Current.Resources["CardStrokeColorDefaultBrush"],
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(16, 14, 16, 14),
-            Child = grid,
+            HeaderIcon = icon,
+            Header = label,
+            Description = new TextBlock
+            {
+                Text = LocalizationHelper.GetString(descriptionKey),
+                Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"],
+                Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"],
+                TextWrapping = TextWrapping.Wrap,
+            },
+            Content = toggle,
         };
     }
 
@@ -335,6 +314,7 @@ public sealed partial class PermissionsPage : Page
         McpToggle.IsOn = _viewModel.McpEnabled;
         _suppressMcpToggle = false;
         McpDetailsPanel.Visibility = _viewModel.McpEnabled ? Visibility.Visible : Visibility.Collapsed;
+        McpStatusText.Visibility = McpDetailsPanel.Visibility;
         McpEndpointText.Text = _viewModel.McpEndpoint;
 
         if (!_viewModel.McpEnabled)

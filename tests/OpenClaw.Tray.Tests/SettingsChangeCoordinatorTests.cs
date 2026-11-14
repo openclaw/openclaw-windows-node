@@ -7,6 +7,13 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class SettingsChangeCoordinatorTests
 {
+    private const string ConcurrencyTimeoutVariable = "OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS";
+    // Hang guard for dedicated-thread handoffs. A deadlock never completes, so a generous bound
+    // does not weaken ordering checks; it only absorbs OS scheduling latency on loaded runners.
+    private static readonly TimeSpan ConcurrencyTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ConcurrencyTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(15);
+
     private static SettingsChangeEffects RecordingEffects(
         List<string> calls) =>
         new(
@@ -142,7 +149,7 @@ public sealed class SettingsChangeCoordinatorTests
                     return;
 
                 firstStarted.Set();
-                Assert.True(releaseFirst.Wait(TimeSpan.FromSeconds(5)));
+                Assert.True(releaseFirst.Wait(ConcurrencyTimeout));
             },
             () => { },
             () => { },
@@ -165,7 +172,7 @@ public sealed class SettingsChangeCoordinatorTests
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
-        Assert.True(firstStarted.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(firstStarted.Wait(ConcurrencyTimeout));
         var failing = Task.Run(() =>
             coordinator.Apply(new SettingsData { GatewayUrl = "ws://failing" }));
 
@@ -189,7 +196,8 @@ public sealed class SettingsChangeCoordinatorTests
                     return;
 
                 enabledStarted.Set();
-                Assert.True(releaseEnabled.Wait(TimeSpan.FromSeconds(5)));
+                // Outlasts the test thread's two handoff waits, so a slow handoff fails at its own line.
+                Assert.True(releaseEnabled.Wait(ConcurrencyTimeout * 2));
             },
             _ => { },
             () => { },
@@ -209,13 +217,19 @@ public sealed class SettingsChangeCoordinatorTests
             CancellationToken.None,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
-        Assert.True(enabledStarted.Wait(TimeSpan.FromSeconds(2)));
-        var disable = Task.Run(() =>
-        {
-            disabledCallerStarted.Set();
-            coordinator.Apply(new SettingsData { NodeOllamaInferenceEnabled = false });
-        });
-        Assert.True(disabledCallerStarted.Wait(TimeSpan.FromSeconds(2)));
+        Assert.True(enabledStarted.Wait(ConcurrencyTimeout));
+        // The test thread blocks on this handoff, so the contending caller needs its own thread
+        // rather than a thread-pool slot that a loaded runner may not grant in time.
+        var disable = Task.Factory.StartNew(
+            () =>
+            {
+                disabledCallerStarted.Set();
+                coordinator.Apply(new SettingsData { NodeOllamaInferenceEnabled = false });
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Assert.True(disabledCallerStarted.Wait(ConcurrencyTimeout));
         Assert.False(disable.IsCompleted);
 
         releaseEnabled.Set();

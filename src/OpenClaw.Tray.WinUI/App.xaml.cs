@@ -148,6 +148,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     /// </summary>
     public string? PendingChatSessionKey { get; set; }
 
+    /// <summary>
+    /// Session whose dashboard should open beside chat when ChatPage consumes the
+    /// matching <see cref="PendingChatSessionKey"/>. Set by the Dashboards page.
+    /// </summary>
+    internal string? PendingChatDashboardSessionKey { get; set; }
+
     /// <summary>Exposes the active chat data and speech coordinators to the hosted chat surface.</summary>
     public OpenClawTray.Chat.OpenClawChatDataProvider? ChatProvider => _chatCoordinator?.Provider;
     public OpenClawTray.Chat.OpenClawChatCoordinator? ChatSpeech => _chatCoordinator;
@@ -229,6 +235,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal AppState? AppState => _appState;
     private UpdateCoordinator? _updateCoordinator;
     private GatewayService? _gatewayService;
+    private OpenClaw.Shared.Cron.AutomationsOverviewSource? _automationsOverview;
+    internal OpenClaw.Shared.Cron.AutomationsOverviewSource AutomationsOverview =>
+        _automationsOverview ?? throw new InvalidOperationException("Automations overview is not initialized.");
     private OpenClawTray.Presentation.Usage.UsageProviderReadSource? _usageProviderReads;
     internal OpenClawTray.Presentation.Usage.IUsageProviderReadSource UsageProviderReads =>
         _usageProviderReads ?? throw new InvalidOperationException("Usage provider reads are not initialized.");
@@ -275,6 +284,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ToastService? _toastService;
     private AppNotificationService? _appNotificationService;
     private SettingsPersistenceNotification? _settingsPersistenceNotification;
+    private DesktopCompanionController? _desktopCompanion;
     internal AppNotificationService? AppNotifications => _appNotificationService;
     private InboxGatewaySource? _inboxGatewaySource;
     private OperatorApprovalDecisions? _approvalDecisions;
@@ -556,6 +566,34 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
     }
 
+    private void InitializeDesktopCompanion()
+    {
+        if (SettingsStore is not { } store || _appNotificationService is null || _dispatcherQueue is null)
+        {
+            Logger.Warn("Desktop lobster cannot start because its presentation services are unavailable.");
+            return;
+        }
+        _desktopCompanion = new DesktopCompanionController(
+            store, _appNotificationService, new WinUIDispatcher(_dispatcherQueue),
+            () => new DesktopCompanionWindow(
+                () => _windowManager?.ShowHub("notifications"),
+                () => ShowHub("chat"),
+                () => ShowHub("settings")),
+            exception =>
+            {
+                Logger.Error($"Desktop lobster failed: {exception.GetType().Name}: {exception.Message}");
+                _appNotificationService.Show(new AppNotification
+                {
+                    Title = LocalizationHelper.GetString("DesktopCompanion_Name"),
+                    Message = LocalizationHelper.GetString("DesktopCompanion_Failed"),
+                    Source = "desktop-companion",
+                    Severity = AppNotificationSeverity.Error,
+                    DedupeKey = "desktop-companion-failed",
+                });
+            });
+        _desktopCompanion.Start();
+    }
+
     protected override void OnLaunched(LaunchActivatedEventArgs args) =>
         AsyncEventHandlerGuard.Run(
             () => OnLaunchedAsync(args),
@@ -788,6 +826,13 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             exit: Exit);
         _appState.UpdateInfo = UpdateCoordinator.BuildInitialInfo();
         _gatewayService = new GatewayService(_appState, _dispatcherQueue!);
+        _automationsOverview = new OpenClaw.Shared.Cron.AutomationsOverviewSource(
+            () => GatewayClient,
+            action =>
+            {
+                if (!_dispatcherQueue!.TryEnqueue(() => action()))
+                    Logger.Warn("Failed to dispatch Automations overview update during shutdown.");
+            });
         _usageProviderReads = new OpenClawTray.Presentation.Usage.UsageProviderReadSource(action =>
         {
             if (!_dispatcherQueue!.TryEnqueue(() => action()))
@@ -924,6 +969,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // can never delay or preempt tray initialization. It only needs the
         // dispatcher + settings (created above) and failures are non-fatal.
         InitializeServiceProvider();
+        InitializeDesktopCompanion();
         if (_localAiGatewayLifecycle.CanStartWslAutomatically)
             StartLocalAiRouterInBackground();
 
@@ -1126,6 +1172,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         InitializeGatewayClient();
 
+        // Accept forwarded launches while the startup update dialog is open.
+        await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);
+        if (_settings is not null)
+            ApplyGlobalHotkey(_settings.ToSettingsData());
+
         // Resolve the existing connection-manager-owned client before checking
         // whether its authenticated Gateway channel suppresses an ordinary update.
         if (DataDirOverride is null &&
@@ -1139,18 +1190,6 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 Exit();
                 return;
             }
-        }
-
-        // Start forwarded-activation listener (current-user IPC)
-        await _activationRouter.StartForwardedActivationListenerAsync(this, CancellationToken.None);
-
-        // Register global hotkey if enabled
-        if (_settings?.GlobalHotkeyEnabled == true)
-        {
-            _globalHotkey = new GlobalHotkeyService();
-            _globalHotkey.VoiceHotkeyPressed += OnVoiceHotkeyPressed;
-            _globalHotkey.SettingsHotkeyPressed += OnSettingsHotkeyPressed;
-            _globalHotkey.Register();
         }
 
         // Process startup deep link (command-line, MSIX protocol activation, or post-setup chat)
@@ -2385,6 +2424,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         // Delegate all 27 event subscriptions to GatewayService
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
+        _automationsOverview?.SetConnection(GatewayClient);
         SynchronizeUsageProviderConnection();
         _inboxGatewaySource?.AttachClient(e.NewClient);
 
@@ -2447,6 +2487,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             : null;
         OnUiThread(() =>
         {
+            _automationsOverview?.SetConnection(GatewayClient);
             SynchronizeUsageProviderConnection();
             if (_appState != null) _appState.Status = mapped;
             _windowManager?.UpdateHubTitleBarStatus(snap, mapped);

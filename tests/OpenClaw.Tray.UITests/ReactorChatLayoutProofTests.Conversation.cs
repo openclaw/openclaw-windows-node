@@ -226,7 +226,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 snapshot.Threads[0] with { WaitingForSubagents = true,
                     ProviderReview = new("provider-review", "proof-run", "Synthetic review explanation",
                         "Continue only after reviewing the request.", false) },
-                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof",
+                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof", IsSubagent = true,
                     Activity = ChatActivity.Working, CurrentActivity = "Checking the synthetic change" }] };
             await PublishAsync();
             await ResumeFollowingAsync(surface);
@@ -243,18 +243,45 @@ public sealed partial class ReactorChatLayoutProofTests
                 return bounds.Top >= 0 && bounds.Bottom <= scroll.ActualHeight;
             }, "visible waiting-for-subagents feedback"));
             await CaptureAsync(surface, "Feedback-child-wait");
-            await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatChildActivity").IsExpanded = true);
-            await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatProviderReview").IsExpanded = true);
-            await SettleAsync();
-            await AwaitDisclosureAnimationsAsync(surface);
-            await CaptureAsync(surface, "Feedback-provider-review");
             await ui.RunOnUIAsync(() =>
             {
-                var details = FindControl<ScrollViewer>(surface, "ChatActivityDetails");
-                details.ChangeView(null, details.ScrollableHeight, null, disableAnimation: true);
+                var review = FindControl<Border>(surface, "ChatProviderReview");
+                Assert.Equal("Session stopped as a precaution. " +
+                    "The provider stopped this session. Review its findings before starting more work.",
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(review));
+                Assert.DoesNotContain(FindDescendants<Expander>(surface), expander =>
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(expander) == "ChatProviderReview");
+                var composerBounds = Bounds(FindControl<TextBox>(surface, "ChatComposerInput"), surface);
+                var reviewBounds = Bounds(review, surface);
+                Assert.True(reviewBounds.Bottom <= composerBounds.Top);
+                Assert.InRange(reviewBounds.Width, 0, ChatVisuals.ReadingWidth + 1);
+                Invoke(FindControl<Button>(review, "ChatProviderReviewOpen"));
             });
-            await SettleAsync();
+            ContentDialog? findings = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                findings = VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+                    .SelectMany(popup => popup.Child is ContentDialog direct
+                        ? new[] { direct } : FindDescendants<ContentDialog>(popup.Child)).SingleOrDefault();
+                return findings is { IsLoaded: true };
+            }, "provider findings dialog"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var text = FindDescendants<TextBlock>(findings!).Select(block => block.Text).ToArray();
+                Assert.Contains("Provider findings", text);
+                Assert.Contains("Synthetic review explanation", text);
+                Assert.Contains("This session can't continue. It remains stopped.", text);
+            });
+            await CaptureAsync(surface, "Feedback-provider-review");
+            await ui.RunOnUIAsync(() => findings!.Hide());
+            await UntilAsync(() => !VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+                    .Any(popup => popup.Child is ContentDialog), "provider findings dialog closed");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
+            await UntilAsync(() => FindOptional<Grid>(surface, "ChatSubagent_child") is { IsLoaded: true },
+                "Subagents tab with the waiting child");
             await CaptureAsync(surface, "Feedback-child-details");
+            await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
+            await UntilAsync(() => PanelCollapsed(surface), "Subagents tab closed");
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
                 FindControl<TextBlock>(host, "ChatRunProgressText").Text));
 
@@ -273,123 +300,81 @@ public sealed partial class ReactorChatLayoutProofTests
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             var transcriptScroll = await ui.RunOnUIAsync(() => Task.FromResult(
                 Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView));
-            Task AwaitBottomAsync() => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            string DescribeBottom()
+            {
+                var repeater = transcriptScroll.Content as ItemsRepeater;
+                var count = repeater?.ItemsSourceView.Count ?? 0;
+                var expected = count > 0 ? repeater!.ItemsSourceView.GetAt(count - 1) : null;
+                var tail = count > 0 ? repeater!.TryGetElement(count - 1) as FrameworkElement : null;
+                var bounds = tail?.TransformToVisual(transcriptScroll).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, tail.ActualWidth, tail.ActualHeight));
+                var geometry = $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
+                    $"extent={transcriptScroll.ExtentHeight}; viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
+                    $"anchorRatio={transcriptScroll.VerticalAnchorRatio:R}; nativeAnchorRatio={transcriptScroll.ScrollPresenter?.VerticalAnchorRatio:R}; " +
+                    $"repeaterPresent={repeater is not null}; itemCount={count}; tailLoaded={tail?.IsLoaded}; " +
+                    $"tailTop={bounds?.Top}; tailBottom={bounds?.Bottom}; tailHeight={tail?.ActualHeight}; " +
+                    $"tailMatchesSource={tail is not null && expected is not null && ReferenceEquals(tail.DataContext, expected)}";
+                // Query only after timeout: CurrentAnchor can resolve the native anchor selection.
+                var anchor = transcriptScroll.CurrentAnchor;
+                return geometry + $"; queriedAnchorType={anchor?.GetType().Name}; " +
+                    $"queriedAnchorIndex={(anchor is not null && repeater is not null ? repeater.GetElementIndex(anchor) : -1)}; " +
+                    $"queriedAnchorIsTail={tail is not null && ReferenceEquals(anchor, tail)}";
+            }
+            Task AwaitBottomAsync(string operation = "jump reaches the exact transcript bottom") => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => transcriptScroll.State == ScrollingInteractionState.Idle &&
                     Math.Abs(transcriptScroll.ScrollableHeight - transcriptScroll.VerticalOffset) <= 1,
-                "jump reaches the exact transcript bottom",
-                () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; state={transcriptScroll.State}"));
+                operation,
+                DescribeBottom));
             async Task ScrollAwayAsync()
             {
-                // Temporary hosted-failure evidence. Observe only; native Idle can precede scroll completion.
-                var trace = new List<string>();
-                var clock = System.Diagnostics.Stopwatch.StartNew();
-                var dropped = 0;
-                void Observe(string phase, Func<string>? details = null)
+                // Establish reader intent through the normal transcript keyboard-focus path.
+                await ui.RunOnUIAsync(async () =>
                 {
-                    if (trace.Count >= 64) { dropped++; return; }
+                    var items = Assert.Single(FindDescendants<ItemsView>(surface));
+                    var repeater = Assert.Single(FindDescendants<ItemsRepeater>(transcriptScroll));
+                    // Enter an earlier realized item, not the last physical child, which may be recycled.
+                    var reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
+                        .Select(index => repeater.TryGetElement(index)).OfType<ItemContainer>()
+                        .SelectMany(row => FindDescendants<Button>(row))
+                        .First(button => button.IsLoaded && button.IsEnabled && button.IsTabStop &&
+                            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
+                                .StartsWith("ChatCopy_", StringComparison.Ordinal));
+                    var entered = false;
+                    TypedEventHandler<UIElement, GettingFocusEventArgs> onReaderFocus = (_, args) =>
+                    {
+                        if (args.FocusState == FocusState.Keyboard)
+                            entered = true;
+                    };
+                    items.AddHandler(UIElement.GettingFocusEvent, onReaderFocus, true);
                     try
                     {
-                        trace.Add(FormattableString.Invariant(
-                            $"{clock.Elapsed.TotalMilliseconds:F3}ms {phase}: offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; extent={transcriptScroll.ExtentHeight}; viewport={transcriptScroll.ViewportHeight}; anchor={transcriptScroll.VerticalAnchorRatio}; state={transcriptScroll.State}; {details?.Invoke()}"));
-                    }
-                    catch (Exception error)
-                    {
-                        trace.Add($"{phase}: observationError={error.GetType().Name}; hresult=0x{error.HResult:X8}");
-                    }
-                }
-                string Observations() => $"readerTrace(dropped={dropped}):\n{string.Join("\n", trace)}";
-                void ViewChanged(ScrollView sender, object args) => Observe("view");
-                void ExtentChanged(ScrollView sender, object args) => Observe("extent");
-                void StateChanged(ScrollView sender, object args) => Observe("state");
-                void Completed(ScrollView sender, ScrollingScrollCompletedEventArgs args) =>
-                    Observe("completed", () => $"correlation={args.CorrelationId}");
-                void Bringing(ScrollView sender, ScrollingBringingIntoViewEventArgs args) =>
-                    Observe("bring", () =>
-                    {
-                        var target = args.RequestEventArgs?.TargetElement;
-                        var row = target as ItemContainer ??
-                            (target is null ? null : Ancestors(target).OfType<ItemContainer>().FirstOrDefault());
-                        var index = row is not null && transcriptScroll.Content is ItemsRepeater repeater
-                            ? repeater.GetElementIndex(row) : (int?)null;
-                        return FormattableString.Invariant(
-                            $"correlation={args.CorrelationId}; target={target?.GetType().Name}; index={index}; requestedOffset={args.TargetVerticalOffset}; cancelled={args.Cancel}; animated={args.RequestEventArgs?.AnimationDesired}");
-                    });
-                try
-                {
-                    // Establish reader intent through the normal transcript keyboard-focus path.
-                    await ui.RunOnUIAsync(async () =>
-                    {
-                        transcriptScroll.ViewChanged += ViewChanged;
-                        transcriptScroll.ExtentChanged += ExtentChanged;
-                        transcriptScroll.StateChanged += StateChanged;
-                        transcriptScroll.BringingIntoView += Bringing;
-                        transcriptScroll.ScrollCompleted += Completed;
-                        Observe("start", () => FormattableString.Invariant(
-                            $"scale={surface.XamlRoot.RasterizationScale}; surface={surface.ActualWidth}x{surface.ActualHeight}; client={_captureWindow!.AppWindow.ClientSize.Width}x{_captureWindow.AppWindow.ClientSize.Height}"));
-                        var items = Assert.Single(FindDescendants<ItemsView>(surface));
-                        var repeater = Assert.Single(FindDescendants<ItemsRepeater>(transcriptScroll));
-                        // Enter an earlier realized item, not the last physical child, which may be recycled.
-                        var reader = Enumerable.Range(0, repeater.ItemsSourceView.Count)
-                            .Select(index => repeater.TryGetElement(index)).OfType<ItemContainer>()
-                            .SelectMany(row => FindDescendants<Button>(row))
-                            .First(button => button.IsLoaded && button.IsEnabled && button.IsTabStop &&
-                                Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button)
-                                    .StartsWith("ChatCopy_", StringComparison.Ordinal));
-                        var entered = false;
-                        TypedEventHandler<UIElement, GettingFocusEventArgs> onReaderFocus = (_, args) =>
-                        {
-                            if (args.FocusState == FocusState.Keyboard)
-                                entered = true;
-                            Observe("focus", () => $"state={args.FocusState}");
-                        };
-                        items.AddHandler(UIElement.GettingFocusEvent, onReaderFocus, true);
-                        try
-                        {
-                            // A successful Focus call on the already focused control raises no new reader-input event.
-                            Observe("before-composer-focus");
-                            Assert.True(composer!.Focus(FocusState.Programmatic));
-                            Observe("before-reader-focus");
-                            Assert.True(reader.Focus(FocusState.Keyboard));
-                            Observe("after-reader-focus");
-                            await WaitForRenderedConditionAsync(() => entered,
-                                "transcript keyboard focus reaches the navigation owner", Observations);
-                        }
-                        finally
-                        {
-                            items.RemoveHandler(UIElement.GettingFocusEvent, onReaderFocus);
-                        }
-                    });
-                    await SettleAsync();
-                    // Animated ScrollToTop is a separate, preserved WinUI platform reproducer.
-                    await ui.RunOnUIAsync(() =>
-                    {
-                        Observe("before-composer-refocus");
+                        // A successful Focus call on the already focused control raises no new reader-input event.
                         Assert.True(composer!.Focus(FocusState.Programmatic));
-                        Observe("before-scroll-to-top");
-                        var correlation = transcriptScroll.ScrollTo(0, 0,
-                            new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
-                        Observe("scroll-to-top-returned", () => $"correlation={correlation}");
-                    });
-                    await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                        () => transcriptScroll.State == ScrollingInteractionState.Idle &&
-                            transcriptScroll.VerticalOffset <= 1 &&
-                            FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
-                        "reader at the top with the jump control visible",
-                        () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
-                            $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
-                            $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}\n{Observations()}"));
-                }
-                finally
-                {
-                    await ui.RunOnUIAsync(() =>
+                        Assert.True(reader.Focus(FocusState.Keyboard));
+                        await WaitForRenderedConditionAsync(() => entered,
+                            "transcript keyboard focus reaches the navigation owner");
+                    }
+                    finally
                     {
-                        transcriptScroll.ViewChanged -= ViewChanged;
-                        transcriptScroll.ExtentChanged -= ExtentChanged;
-                        transcriptScroll.StateChanged -= StateChanged;
-                        transcriptScroll.BringingIntoView -= Bringing;
-                        transcriptScroll.ScrollCompleted -= Completed;
-                    });
-                }
+                        items.RemoveHandler(UIElement.GettingFocusEvent, onReaderFocus);
+                    }
+                });
+                await SettleAsync();
+                // Animated ScrollToTop is a separate, preserved WinUI platform reproducer.
+                await ui.RunOnUIAsync(() =>
+                {
+                    Assert.True(composer!.Focus(FocusState.Programmatic));
+                    transcriptScroll.ScrollTo(0, 0,
+                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                });
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => transcriptScroll.State == ScrollingInteractionState.Idle &&
+                        transcriptScroll.VerticalOffset <= 1 &&
+                        FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
+                    "reader at the top with the jump control visible",
+                    () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
+                        $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
+                        $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}"));
             }
             var viewportBeforeJump = await ui.RunOnUIAsync(() => Task.FromResult(
                 transcriptScroll.ViewportHeight));
@@ -436,7 +421,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
                     "\n\n" + string.Join("\n\n", Enumerable.Repeat($"Streamed section {index}.", 5))));
                 await PublishAsync();
-                await AwaitBottomAsync();
+                await AwaitBottomAsync($"streamed section {index} reaches the exact transcript bottom");
             }
             state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
             await PublishAsync();
@@ -464,17 +449,17 @@ public sealed partial class ReactorChatLayoutProofTests
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await AwaitBottomAsync();
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => transcriptScroll.VerticalAnchorRatio == 1,
-                "bottom anchoring restored after the corrected jump"));
+                () => transcriptScroll.VerticalAnchorRatio > 0 && transcriptScroll.VerticalAnchorRatio < 1,
+                "content anchoring restored after the corrected jump"));
             await CaptureAsync(surface, "Feedback-resized-jump-latest");
 
             state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Reply after resized jump.", IsStreaming: true));
             await PublishAsync();
-            await AwaitBottomAsync();
+            await AwaitBottomAsync("streaming reply after resized jump reaches the exact transcript bottom");
             state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
                 "\n\n" + string.Join("\n\n", Enumerable.Repeat("Keep following after the corrected jump.", 20))));
             await PublishAsync();
-            await AwaitBottomAsync();
+            await AwaitBottomAsync("streamed continuation after resized jump reaches the exact transcript bottom");
             state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
             await PublishAsync();
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
@@ -628,11 +613,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 });
                 await SettleAsync();
                 await AwaitInitialTailAsync(surface, key, initial.Timelines[key].Entries.Last().Id);
-                await ui.RunOnUIAsync(() =>
-                    FindControl<Expander>(surface, $"ChatToolActivity_{entry.Id}").IsExpanded = true);
-                await SettleAsync();
+                // The lone recovered call is its own row, so it opens directly.
                 var expander = await ui.RunOnUIAsync(() =>
                 {
+                    Assert.DoesNotContain(FindDescendants<Expander>(surface), control =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control) ==
+                            $"ChatToolActivity_{entry.Id}");
                     var control = FindControl<Expander>(surface, $"ChatToolCall_{entry.Id}");
                     control.IsExpanded = true;
                     return Task.FromResult(control);
@@ -1107,14 +1093,27 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private sealed class ConversationParityBridge(ChatHistoryInfo history, SessionInfo session) : IChatGatewayBridge
     {
+        public SessionInfo[] Children { get; set; } = [];
+        public SessionFileList? Files { get; set; }
+        public async Task<SessionFileList> ListSessionFilesAsync(string sessionKey)
+        {
+            // A real read completes after the render that started it.
+            await Task.Yield();
+            return Files ?? new SessionFileList { Key = sessionKey, IsSupported = false };
+        }
+        public System.Collections.Concurrent.ConcurrentQueue<string> HistoryRequests { get; } = new();
         public bool IsConnected => true;
         public ConnectionStatus CurrentStatus => ConnectionStatus.Connected;
         public string MainSessionKey => history.SessionKey;
         public bool HasHandshakeSnapshot => true;
-        public SessionInfo[] GetSessionList() => [session.Clone()];
+        public SessionInfo[] GetSessionList() => new[] { session }.Concat(Children).Select(row => row.Clone()).ToArray();
         public ModelsListInfo? GetCurrentModelsList() => null;
         public void StartProactiveBootstrap() => SessionsUpdated?.Invoke(this, GetSessionList());
-        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) => Task.FromResult(history);
+        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
+        {
+            HistoryRequests.Enqueue(sessionKey ?? "");
+            return Task.FromResult(history);
+        }
         public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
             Task.FromResult(new CommandCatalog { IsSupported = false });
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId,

@@ -90,6 +90,17 @@ test("publishes only failed-test images, leaving passed captures in the diagnost
   await assert.rejects(readdir(uploads[0].directory), { code: "ENOENT" });
 });
 
+test("names the shard's own diagnostic archive", async (t) => {
+  const root = await fixture(t);
+  await capture(root, failedRun, ["failure.png"], "failed");
+  await trx(root);
+  const report = summary();
+  await publishScreenshots({ root, runUrl, summary: report, archive: "test-results-gateway-fixture-shard",
+    artifactClient: { async uploadArtifact() { return { id: 7 }; } } });
+  assert.ok(report.body.includes("**test-results-gateway-fixture-shard**"));
+  assert.ok(!report.body.includes("**test-results-gateway-fixture**"));
+});
+
 test("successful runs produce no preview summary or uploads, even above the preview budget", async (t) => {
   const root = await fixture(t);
   await capture(root, passedRun, Array.from({ length: 451 }, (_, index) => `${index}.png`));

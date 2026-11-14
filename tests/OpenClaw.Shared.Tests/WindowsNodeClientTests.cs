@@ -18,6 +18,11 @@ namespace OpenClaw.Shared.Tests;
 [Collection(AppVersionInfoTestCollection.Name)]
 public class WindowsNodeClientTests
 {
+    // Hang guard for one event-driven step; only absorbs CI scheduling delay.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
+
     private sealed class CapturingWindowsNodeClient(
         string gatewayUrl,
         string token,
@@ -39,6 +44,16 @@ public class WindowsNodeClientTests
             SentMessages.Enqueue(message);
             return Task.FromResult(true);
         }
+    }
+
+    private sealed class ResetProbeWindowsNodeClient(
+        string gatewayUrl,
+        string token,
+        string dataPath) : WindowsNodeClient(gatewayUrl, token, dataPath)
+    {
+        protected override bool ShouldAutoReconnect() => false;
+        protected override Task ProcessMessageForConnectionAsync(string json, long sourceConnectionGeneration) =>
+            Task.FromException(new InvalidOperationException("synthetic processing failure"));
     }
 
     private sealed class ThrowingWindowsNodeClient(
@@ -1644,16 +1659,18 @@ public class WindowsNodeClientTests
     }
 
     [Theory]
-    [InlineData("OnDisconnected")]
-    [InlineData("OnError")]
-    public async Task EventOnlyPairedState_IsClearedByConnectionResetHooks(string hookName)
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task EventOnlyPairedState_IsClearedByTransportLoss(bool listenError)
     {
         var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
         Directory.CreateDirectory(dataPath);
 
         try
         {
-            using var client = new WindowsNodeClient("ws://localhost:18789", "test-token", dataPath);
+            using var server = new LoopbackWebSocketServer();
+            await server.StartAsync();
+            using var client = new ResetProbeWindowsNodeClient(server.WebSocketUrl, "test-token", dataPath);
 
             await InvokeHandleEventAsync(client, $$"""
                 {
@@ -1668,19 +1685,21 @@ public class WindowsNodeClientTests
 
             Assert.True(client.IsPaired);
 
-            var method = typeof(WindowsNodeClient).GetMethod(
-                hookName,
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            Assert.NotNull(method);
+            var lost = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            client.StatusChanged += (_, status) =>
+            {
+                if (status == (listenError ? ConnectionStatus.Error : ConnectionStatus.Disconnected))
+                    lost.TrySetResult();
+            };
+            await client.ConnectAsync();
+            await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(5));
+            Assert.True(client.IsPaired);
 
-            if (hookName == "OnError")
-            {
-                method!.Invoke(client, [new InvalidOperationException("test")]);
-            }
+            if (listenError)
+                await server.SendTextAsync("trigger processing failure");
             else
-            {
-                method!.Invoke(client, null);
-            }
+                await server.CloseSocketAsync(0);
+            await lost.Task.WaitAsync(StepTimeout);
 
             Assert.False(client.IsPendingApproval);
             Assert.False(client.IsPaired);
@@ -3814,11 +3833,15 @@ public class WindowsNodeClientTests
 
         try
         {
+            using var server = new LoopbackWebSocketServer();
+            await server.StartAsync();
             using var client = new WindowsNodeClient(
-                "ws://localhost:18789",
+                server.WebSocketUrl,
                 "test-token",
                 dataPath);
             client.RegisterCapability(blocking);
+            await client.ConnectAsync();
+            await server.WaitForAcceptedCountAsync(1, TimeSpan.FromSeconds(5));
             var telemetryTcs = new TaskCompletionSource<NodeToolTelemetryCompletion>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             client.ToolTelemetryCompleted += (_, completion) =>
@@ -3829,10 +3852,7 @@ public class WindowsNodeClientTests
                 BuildNodeInvokeRequest("shutdown-cancel", "mock.slow"));
             await blocking.ExpectedEnteredTask.WaitAsync(TimeSpan.FromSeconds(5));
 
-            var onDisconnected = typeof(WindowsNodeClient).GetMethod(
-                "OnDisconnected",
-                BindingFlags.NonPublic | BindingFlags.Instance);
-            onDisconnected!.Invoke(client, null);
+            await server.CloseSocketAsync(0);
 
             await blocking.AllCompletedTask.WaitAsync(TimeSpan.FromSeconds(5));
             var telemetry = await telemetryTcs.Task.WaitAsync(TimeSpan.FromSeconds(5));

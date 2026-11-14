@@ -951,7 +951,7 @@ internal sealed class ChatConversationState
                     StaleRunIdToAbort: staleRunId,
                     BindAcceptedRun: false,
                     RequeueRequired: false,
-                    RetryDeferredSend: false,
+                    ScheduleQueueDrain: false,
                     DeferredRetryDelay: ChatSendQueuePolicy.DrainDelay,
                     OpenedLifecycle: null,
                     CurrentRuntimeGenerationLocked(threadId));
@@ -962,7 +962,7 @@ internal sealed class ChatConversationState
             ChatOpenedLifecycleTransition? openedLifecycle = null;
             var bindAcceptedRun = false;
             var requeueRequired = false;
-            var retryDeferredSend = false;
+            var scheduleQueueDrain = false;
             var deferredRetryDelay = ChatSendQueuePolicy.DrainDelay;
             if (ChatSendQueuePolicy.IsDeferredAdmissionStatus(sendResult.Status))
             {
@@ -1008,7 +1008,7 @@ internal sealed class ChatConversationState
                                 acceptedRunId);
                     }
                     requeuedSnapshot = BuildSnapshotLocked(context);
-                    retryDeferredSend = true;
+                    scheduleQueueDrain = true;
                 }
                 else if (dispatch.StartedDirectly)
                 {
@@ -1029,10 +1029,20 @@ internal sealed class ChatConversationState
                         threadId,
                         acceptedRunId,
                         dispatch.StartedRunStartSequence);
-                if (PromoteQueuedMessageLocked(threadId, request.Id))
-                    acceptedSnapshot = BuildSnapshotLocked(context);
-                else if (runAlreadyStarted)
+                var completedRunId = _lifecycle.IsTerminalRun(threadId, acceptedRunId)
+                    ? acceptedRunId : null;
+                var promoted = PromoteQueuedMessageLocked(
+                    threadId, request.Id, completedRunId: completedRunId);
+                if (completedRunId is not null)
+                {
                     _queue.RemoveRunMappingByMessageId(threadId, request.Id);
+                    ClearLocallyInitiatedIfIdleLocked(threadId);
+                    scheduleQueueDrain = true;
+                }
+                else if (!promoted && runAlreadyStarted)
+                    _queue.RemoveRunMappingByMessageId(threadId, request.Id);
+                if (promoted)
+                    acceptedSnapshot = BuildSnapshotLocked(context);
             }
             else if (_reset.IsAwaitingUserMessage(threadId))
             {
@@ -1062,7 +1072,7 @@ internal sealed class ChatConversationState
                 StaleRunIdToAbort: null,
                 bindAcceptedRun,
                 requeueRequired,
-                retryDeferredSend,
+                scheduleQueueDrain,
                 deferredRetryDelay,
                 openedLifecycle,
                 CurrentRuntimeGenerationLocked(threadId));
@@ -1278,7 +1288,8 @@ internal sealed class ChatConversationState
     private bool PromoteQueuedMessageLocked(
         string threadId,
         string messageId,
-        ChatEntryMetadata? confirmedMeta = null)
+        ChatEntryMetadata? confirmedMeta = null,
+        string? completedRunId = null)
     {
         var request = _queue.FindRequest(threadId, messageId);
         if (!_queue.TryTakeForPromotion(threadId, messageId, out var queued))
@@ -1286,11 +1297,34 @@ internal sealed class ChatConversationState
 
         var current = GetOrCreateTimelineLocked(threadId);
         var entryId = $"e{current.NextId}";
-        _timelines[threadId] = ChatTimelineReducer.AddLocalUser(
+        var promoted = ChatTimelineReducer.AddLocalUser(
             current,
             request?.EffectiveTimelineText ?? queued.Text,
             queued.LocalNonce,
             current.TurnStartedAt ?? DateTimeOffset.UtcNow);
+        if (completedRunId is not null)
+        {
+            var index = current.Entries.Count;
+            var metadata = GetOrCreateThreadMetaLocked(threadId);
+            for (var i = 0; i < current.Entries.Count; i++)
+            {
+                var entry = current.Entries[i];
+                if (entry.ToolRunId == completedRunId ||
+                    metadata.TryGetValue(entry.Id, out var existing) && existing.LiveRunId == completedRunId)
+                {
+                    index = i;
+                    break;
+                }
+            }
+            // A late admission adds the local echo, not a new turn or a boundary in a newer run.
+            promoted = current with
+            {
+                Entries = current.Entries.Insert(index, promoted.Entries[^1]),
+                NextId = promoted.NextId,
+                LocalNonces = promoted.LocalNonces,
+            };
+        }
+        _timelines[threadId] = promoted;
         var meta = confirmedMeta is not null && HasGatewayIdentity(confirmedMeta)
             ? confirmedMeta with
             {
@@ -1867,6 +1901,25 @@ internal sealed class ChatConversationState
         }
     }
 
+    internal ChatDataSnapshot? RetireAssistantStream(
+        string threadId,
+        string runId,
+        ChatProjectionContext context,
+        ChatRuntimeGeneration generation)
+    {
+        lock (_gate)
+        {
+            if (_disposed ||
+                !IsRuntimeGenerationCurrent(threadId, generation) ||
+                _lifecycle.IsThreadSuppressed(threadId) ||
+                !_timelines.TryGetValue(threadId, out var current))
+                return null;
+
+            ApplyEventLocked(threadId, new ChatAssistantStreamRetireEvent(runId), null);
+            return ReferenceEquals(current, _timelines[threadId]) ? null : BuildSnapshotLocked(context);
+        }
+    }
+
     internal ChatAssistantTransition ApplyAssistant(
         ChatMessageInfo message,
         string assistantText,
@@ -1927,7 +1980,11 @@ internal sealed class ChatConversationState
                 message.Ts,
                 message.OpenClawId,
                 message.OpenClawSeq,
-                assistantContent: assistantContent) with { Presentation = message.Presentation };
+                assistantContent: assistantContent) with
+                {
+                    Presentation = message.Presentation,
+                    LiveRunId = message.RunId ?? activeRunId,
+                };
             var hasUsage = message.InputTokens is not null ||
                            message.OutputTokens is not null ||
                            message.ResponseTokens is not null ||
@@ -1979,6 +2036,13 @@ internal sealed class ChatConversationState
         }
     }
 
+    private static bool IsPersistedFinalAnswer(
+        ChatMessageInfo message,
+        ChatMessagePresentation? presentation) =>
+        message.IsTranscriptSnapshot &&
+        !string.IsNullOrWhiteSpace(presentation?.MessageId) &&
+        string.Equals(presentation.Phase, "final_answer", StringComparison.Ordinal);
+
     private void ApplyAssistantContentLocked(
         ChatMessageInfo message,
         string assistantText,
@@ -2018,7 +2082,8 @@ internal sealed class ChatConversationState
                         new ChatMessageEvent(
                             ChatContentFormatting.RepairContentBlockSeams(
                                 ChatContentFormatting.TruncateForChatEntry(part.Text)),
-                            ReconcilePrevious: true, IsStreaming: !message.IsFinal,
+                            ReconcilePrevious: true,
+                            IsStreaming: !message.IsFinal && !IsPersistedFinalAnswer(message, part.Presentation),
                             Presentation: part.Presentation, IsContentPart: true,
                             ReplacesStreamText: message.ReplacesStreamText && part.IsFirstPart,
                             ActivatesTurn: activatesTurn),
@@ -2040,7 +2105,8 @@ internal sealed class ChatConversationState
         else
         {
             ApplyEventLocked(threadId,
-                new ChatMessageEvent(assistantText, ReconcilePrevious: true, IsStreaming: !message.IsFinal,
+                new ChatMessageEvent(assistantText, ReconcilePrevious: true,
+                    IsStreaming: !message.IsFinal && !IsPersistedFinalAnswer(message, message.Presentation),
                     Presentation: message.Presentation, ReplacesStreamText: message.ReplacesStreamText,
                     ActivatesTurn: activatesTurn),
                 metadata);
@@ -2145,7 +2211,7 @@ internal sealed class ChatConversationState
                         ChatContentFormatting.TruncateChatEvent(mapped),
                         BuildLiveMetaLocked(
                             threadId,
-                            evt.Ts > 0 ? (long)evt.Ts : 0));
+                            evt.Ts > 0 ? (long)evt.Ts : 0) with { LiveRunId = evt.RunId });
                     toolMetadata = BuildToolMetadataWriteLocked(
                         threadId,
                         mapped,
@@ -2995,6 +3061,8 @@ internal sealed class ChatConversationState
             return;
         }
         var threadMetadata = GetOrCreateThreadMetaLocked(threadId);
+        var liveAssistantId = metadata.LiveRunId is null ? null :
+            next.Entries.LastOrDefault(entry => entry.Kind == ChatTimelineItemKind.Assistant)?.Id;
         foreach (var entry in next.Entries)
         {
             if (!beforeIds.Contains(entry.Id) && !threadMetadata.ContainsKey(entry.Id))
@@ -3006,6 +3074,11 @@ internal sealed class ChatConversationState
                 (entry.ToolCallId == tool.ToolCallId || entry.ToolCorrelationIds?.Contains(tool.ToolCallId) == true) &&
                 threadMetadata.TryGetValue(entry.Id, out var existing))
                 threadMetadata[entry.Id] = existing with { Presentation = metadata.Presentation };
+            else if (metadata.LiveRunId is not null &&
+                entry.Id == liveAssistantId &&
+                !Equals(current.Entries.FirstOrDefault(previous => previous.Id == entry.Id), entry) &&
+                threadMetadata.TryGetValue(entry.Id, out var existingAssistant))
+                threadMetadata[entry.Id] = existingAssistant with { LiveRunId = metadata.LiveRunId };
         }
 
         // Streaming assistant frames reconcile into the SAME entry id

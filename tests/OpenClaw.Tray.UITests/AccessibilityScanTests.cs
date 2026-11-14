@@ -76,44 +76,45 @@ public sealed class AccessibilityScanTests
             context: pageName);
     }
 
-    [Fact]
+    [Theory]
     [Trait("Category", "Accessibility")]
-    public async Task SandboxExpanders_ExposeNamesWhenExpandedAndCollapsed()
+    [InlineData("sandbox", "SandboxPage", "SandboxPageMarker", "ScopeExpander", "What gets contained")]
+    [InlineData("settings", "SettingsPage", "SettingsPageMarker", "GeneralNotificationsCard", "Show notifications")]
+    public async Task SettingsExpanders_ExposeNamesWhenExpandedAndCollapsed(
+        string pageTag,
+        string pageName,
+        string pageMarkerAutomationId,
+        string automationId,
+        string expectedName)
     {
-        await _app.NavigateAsync("sandbox", "SandboxPage", "SandboxPageMarker");
+        await _app.NavigateAsync(pageTag, pageName, pageMarkerAutomationId);
         var hub = AutomationElement.FromHandle(_app.HubWindowHandle);
-        foreach (var automationId in new[]
-        {
-            "SandboxFoldersExpander",
-            "SandboxClipboardExpander",
-            "SandboxNetworkExpander",
-            "SandboxLimitsExpander",
-        })
-        {
-            var expander = hub.FindFirst(
-                TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
-            Assert.NotNull(expander);
+        var group = hub.FindFirst(
+            TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
+        Assert.NotNull(group);
 
-            var label = Assert.IsAssignableFrom<AutomationElement>(
-                expander.GetCurrentPropertyValue(AutomationElement.LabeledByProperty));
-            var pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(
-                ExpandCollapsePattern.Pattern);
-            var originalState = pattern.Current.ExpandCollapseState;
-            try
-            {
+        // The Toolkit expander names its focusable disclosure from a string Header only.
+        var disclosure = Assert.Single(group.FindAll(
+            TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+            .Cast<AutomationElement>());
+        var pattern = (ExpandCollapsePattern)disclosure.GetCurrentPattern(
+            ExpandCollapsePattern.Pattern);
+        var originalState = pattern.Current.ExpandCollapseState;
+        try
+        {
+            pattern.Collapse();
+            Assert.Equal(expectedName, disclosure.Current.Name);
+            pattern.Expand();
+            Assert.Equal(expectedName, disclosure.Current.Name);
+        }
+        finally
+        {
+            if (originalState == ExpandCollapseState.Collapsed)
                 pattern.Collapse();
-                Assert.Equal(label.Current.Name, expander.Current.Name);
+            else
                 pattern.Expand();
-                Assert.Equal(label.Current.Name, expander.Current.Name);
-            }
-            finally
-            {
-                if (originalState == ExpandCollapseState.Collapsed)
-                    pattern.Collapse();
-                else
-                    pattern.Expand();
-            }
         }
     }
 
@@ -131,7 +132,6 @@ public sealed class AccessibilityScanTests
             "ChatComposerInput",
             "ChatComposerAttach",
             "ChatComposerModelPicker",
-            "ChatComposerReasoningPicker",
             "ChatComposerVoice",
             "ChatComposerPrimaryAction",
         })
@@ -143,6 +143,21 @@ public sealed class AccessibilityScanTests
         }
         Assert.Null(hub.FindFirst(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "ChatComposerSessionPicker")));
+    }
+
+    [Theory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    [Trait("Category", "Accessibility")]
+    public async Task AutomationsDisconnected_PassesAccessibilityInBothThemes(string theme)
+    {
+        using var fixture = new AccessibilityAppFixture(initializeAxe: false, theme: theme, initialRoute: "cron");
+        await fixture.NavigateAsync("cron", "CronPage", "CronPageMarker");
+        var hub = AutomationElement.FromHandle(fixture.HubWindowHandle);
+        Assert.NotNull(hub.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.AutomationIdProperty, "AutomationsOpenConnection")));
+        AxeHelper.AssertNoAccessibilityErrors(hub.Current.ProcessId, fixture.HubWindowHandle,
+            context: $"Disconnected Automations {theme}");
     }
 
     private static async Task<AutomationElement> WaitForOnscreenLayoutAsync(

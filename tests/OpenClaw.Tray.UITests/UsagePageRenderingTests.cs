@@ -448,7 +448,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     [InlineData(ElementTheme.Dark, 520)]
     [InlineData(ElementTheme.Dark, 720)]
     [InlineData(ElementTheme.Dark, 1300)]
-    public async Task SessionExpanders_OwnTheirChromeAndKeepActionsOutOfHeaders(ElementTheme theme, double width)
+    public async Task SessionExpanders_OwnTheirChromeAndHostOpenChatInTheHeader(ElementTheme theme, double width)
     {
         var commands = new RecordingCommands();
         await WithUsagePageAsync(Report(true), commands, async (host, gateway) =>
@@ -461,14 +461,14 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 {
                     var expander = Get<Expander>(host, "UsageSessionExpander_" + row.Key);
                     var header = Get<Grid>(expander, "UsageSession_" + row.Key);
-                    Assert.Empty(FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>(header));
+                    var chat = Get<Button>(header, "UsageChat_" + row.Key);
+                    Assert.Same(chat, Assert.Single(FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ButtonBase>(header)));
                     Assert.Equal(row.Label, AutomationProperties.GetName(expander));
                     Assert.Equal(LocalizationHelper.GetString(expander.IsExpanded ? "Usage_Selected" : "Usage_Sessions_SelectHint"),
                         AutomationProperties.GetItemStatus(expander));
-                    var chat = Get<Button>(list, "UsageChat_" + row.Key);
                     Assert.True(chat.IsEnabled);
-                    Assert.Same(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(expander),
-                        Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(chat));
+                    Assert.Equal(LocalizationHelper.GetString("Usage_OpenChatForFormat").Replace("{0}", row.Label),
+                        AutomationProperties.GetName(chat));
                     var textBounds = FindDescendants<TextBlock>(header).Where(text => text.ActualHeight > 0)
                         .Select(text => text.TransformToVisual(header).TransformBounds(
                             new Windows.Foundation.Rect(0, 0, text.ActualWidth, text.ActualHeight))).ToArray();
@@ -476,12 +476,10 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     Assert.True(textBounds.Min(bounds => bounds.Top) >= 7, "Header text needs a top inset.");
                     Assert.True(header.ActualHeight - textBounds.Max(bounds => bounds.Bottom) >= 7,
                         "Header text needs a bottom inset.");
-                    if (!expander.IsExpanded)
-                    {
-                        var chatBounds = chat.TransformToVisual(expander).TransformBounds(
-                            new Windows.Foundation.Rect(0, 0, chat.ActualWidth, chat.ActualHeight));
-                        Assert.InRange(Math.Abs(chatBounds.Top + chatBounds.Height / 2 - expander.ActualHeight / 2), 0, 1);
-                    }
+                    var chatBounds = chat.TransformToVisual(header).TransformBounds(
+                        new Windows.Foundation.Rect(0, 0, chat.ActualWidth, chat.ActualHeight));
+                    Assert.InRange(Math.Abs(chatBounds.Top + chatBounds.Height / 2 - header.ActualHeight / 2), 0, 1);
+                    Assert.True(chatBounds.Right <= header.ActualWidth + 1, "Open chat must stay inside the header.");
                     var ancestor = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(expander);
                     while (!ReferenceEquals(ancestor, list))
                     {
@@ -1004,6 +1002,19 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             {
                 await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= observeExportFrame);
             }
+            // The restored label is button content, which Reactor presents on a later layout pass;
+            // measure the mast only once its children stop moving.
+            string? previousMast = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var mast = Get<Grid>(host, "UsageMastGrid");
+                var layout = string.Join("|", mast.Children.OfType<FrameworkElement>().Select(child =>
+                    $"{child.Visibility}:{child.TransformToVisual(mast).TransformBounds(new Windows.Foundation.Rect(0, 0, child.ActualWidth, child.ActualHeight))}"))
+                    + $"|{mast.ActualWidth}";
+                var stable = layout == previousMast && UsageActionSettled(host, "UsageExport");
+                previousMast = layout;
+                return stable;
+            }, "Usage mast layout settled after the export label is restored", () => $"mast={previousMast}"));
             await ui.RunOnUIAsync(async () =>
             {
                 foreach (var id in new[] { "UsageStage", "UsageContributorLayout", "UsageDetailLayout" })
@@ -1208,16 +1219,25 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                         $"metricRowPresent={Find<Grid>(host, "UsageDailyMetricRow") is not null}; " +
                         $"renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}"));
             }
-            await ui.YieldToRenderAsync();
+            var metricLabel = LocalizationHelper.GetString("Usage_Summary_EstimatedCost");
+            var viewLabel = LocalizationHelper.GetString("Usage_Chart");
+            // The compact and wide headers host different metric SelectorBars, so the replacement's item labels
+            // exist only after the layout pass that applies its template, which can follow Reactor's commit.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                    SelectorLabels(host, "UsageMetric", metricLabel).SingleOrDefault() is { ActualHeight: > 0 } &&
+                    SelectorLabels(host, "UsageChartView", viewLabel).SingleOrDefault() is { ActualHeight: > 0 },
+                "daily header selector labels laid out", () =>
+                    $"metricLabels={SelectorLabels(host, "UsageMetric", metricLabel).Count()}; " +
+                    $"viewLabels={SelectorLabels(host, "UsageChartView", viewLabel).Count()}; " +
+                    $"metricHeight={Find<SelectorBar>(host, "UsageMetric")?.ActualHeight:R}; " +
+                    $"renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}"));
             await ui.RunOnUIAsync(() =>
             {
                 var header = Get<Grid>(host, "UsageDailyControls");
                 var metric = Get<SelectorBar>(host, "UsageMetric");
                 var view = Get<SelectorBar>(host, "UsageChartView");
-                var metricText = Assert.Single(FindDescendants<TextBlock>(metric),
-                    text => text.Text == LocalizationHelper.GetString("Usage_Summary_EstimatedCost"));
-                var viewText = Assert.Single(FindDescendants<TextBlock>(view),
-                    text => text.Text == LocalizationHelper.GetString("Usage_Chart"));
+                var metricText = Assert.Single(FindDescendants<TextBlock>(metric), text => text.Text == metricLabel);
+                var viewText = Assert.Single(FindDescendants<TextBlock>(view), text => text.Text == viewLabel);
                 var title = Get<TextBlock>(host, "UsagePerDayTitle");
                 double Centre(FrameworkElement element) =>
                     element.TransformToVisual(header).TransformPoint(new()).Y + element.ActualHeight / 2;
@@ -1237,7 +1257,8 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
     [InlineData(1000)]
     [InlineData(760)]
     [InlineData(520)]
-    public async Task CardLists_KeepEightDipGapsBeforeAndAfterSessionExpansion(double width)
+    // Session cards follow the Settings-card rhythm (4 DIP); provider cards keep the 8 DIP inner gap.
+    public async Task CardLists_KeepTheirGapsBeforeAndAfterSessionExpansion(double width)
     {
         await WithUsagePageAsync(Report(serverOverview: false), new RecordingCommands(), async (host, _) =>
         {
@@ -1290,7 +1311,7 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             .OrderBy(item => item.Top).ToArray();
         Assert.True(bounds.Length >= 3);
         for (var index = 1; index < bounds.Length; index++)
-            Assert.InRange(Math.Abs(bounds[index].Top - bounds[index - 1].Bottom - 8), 0, 0.1);
+            Assert.InRange(Math.Abs(bounds[index].Top - bounds[index - 1].Bottom - 4), 0, 0.1);
     }
 
     // WinUI lays elements out on whole physical pixels, so compare widths at the raster scale instead of in DIPs.
@@ -2251,6 +2272,11 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
 
     private static T Get<T>(DependencyObject root, string automationId) where T : DependencyObject =>
         Assert.IsType<T>(Find<T>(root, automationId), exactMatch: false);
+
+    private static IEnumerable<TextBlock> SelectorLabels(DependencyObject root, string automationId, string text) =>
+        Find<SelectorBar>(root, automationId) is { } selector
+            ? FindDescendants<TextBlock>(selector).Where(label => label.Text == text)
+            : [];
 
     private static void Invoke(Button button) =>
         ((IInvokeProvider)new ButtonAutomationPeer(button).GetPattern(PatternInterface.Invoke)).Invoke();

@@ -28,9 +28,10 @@ internal static class ChatEventMapper
         if (string.IsNullOrEmpty(stream))
             return new(null);
 
+        // Live assistant text is rendered from chat frames only. Older Gateways also
+        // send it as agent assistant deltas; rendering both duplicates the reply.
         return stream switch
         {
-            "assistant" => new(MapAssistant(evt)),
             "reasoning" => new(MapReasoning(evt)),
             "thinking" => new(MapThinking(evt)),
             "lifecycle" => new(MapLifecycle(evt, getString)),
@@ -202,19 +203,6 @@ internal static class ChatEventMapper
                     NativeToolProjector.ClassifyHistoryIdentityStrength(kind),
                 RunId: runId),
             new ChatToolOutputEvent(text, RunId: runId));
-    }
-
-    private static ChatEvent? MapAssistant(AgentEventInfo evt)
-    {
-        if (evt.Data.ValueKind != JsonValueKind.Object)
-            return null;
-        if (evt.Data.TryGetProperty("delta", out var deltaProperty) &&
-            deltaProperty.ValueKind == JsonValueKind.String &&
-            deltaProperty.GetString() is { Length: > 0 } delta)
-        {
-            return new ChatMessageDeltaEvent(delta, AssistantPresentation(evt));
-        }
-        return null;
     }
 
     private static ChatEvent? MapReasoning(AgentEventInfo evt)

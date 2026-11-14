@@ -45,6 +45,101 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task ConnectionGlancePills_ExplainTheirStateAndOpenTheMatchingDashboardViews()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "connection" });
+            await WaitUiAsync(run, () => FindById(run, "ConnectionPageMarker") is { Current.IsOffscreen: false },
+                "Connection page ready");
+
+            Task PublishHealthAsync(string status, string? error = null, int clients = 2) =>
+                run.Gateway.PublishHealthAsync(new
+                {
+                    channels = new
+                    {
+                        telegram = new { configured = true, running = true },
+                        slack = new { configured = true, status, lastError = error },
+                    },
+                    presence = Enumerable.Range(1, clients).Select(index => new { host = $"fixture-client-{index}" }).ToArray(),
+                });
+
+            await PublishHealthAsync("stopped");
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels") is
+                { Current.Name: "1/2 channels" } && FindById(run, "ConnectionGlanceUsage") is not null,
+                "partial channel readiness and usage pills");
+            Assert.Contains("How this PC reaches the Gateway", FindById(run, "ConnectionGlanceTopology")!.Current.HelpText);
+            Assert.Contains("Windows PC running Companion", FindById(run, "ConnectionGlanceHostname")!.Current.HelpText);
+            var channels = FindById(run, "ConnectionGlanceChannels")!;
+            Assert.Contains("Ready channels: 1/2.", channels.Current.HelpText);
+            Assert.Contains("telegram: running", channels.Current.HelpText);
+            Assert.Contains("slack: stopped", channels.Current.HelpText);
+            channels.SetFocus();
+            await WaitUiAsync(run, () => channels.Current.HasKeyboardFocus, "channel pill focused before refresh");
+
+            const string error = "Sign in again";
+            await PublishHealthAsync("error", error);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels")?.Current.HelpText
+                .Contains($"slack: error ({error})", StringComparison.Ordinal) == true,
+                "channel details updated without changing the ready count");
+            Assert.Equal("1/2 channels", FindById(run, "ConnectionGlanceChannels")!.Current.Name);
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus,
+                "Channel readiness updates must keep keyboard focus on the channel pill.");
+            await PublishHealthAsync("error", error, clients: 0);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceClients") is null,
+                "client pill removed while channels retains focus");
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus);
+            await PublishHealthAsync("running");
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels") is
+                { Current.Name: "2/2 channels" } && FindById(run, "ConnectionGlanceClients") is not null,
+                "healthy channel label and restored client pill");
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus);
+            await PublishHealthAsync("error", error);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels") is
+                { Current.Name: "1/2 channels" }, "partial readiness restored");
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus);
+
+            var copy = FindById(run, "ConnectionGlanceSharedToken")!;
+            Assert.Equal(ControlType.Button, copy.Current.ControlType);
+            Assert.True(copy.Current.IsKeyboardFocusable);
+            Assert.Contains("Keep it private", copy.Current.HelpText);
+            Assert.Contains("UTC", FindById(run, "ConnectionGlanceUsage")!.Current.HelpText);
+            var window = AppWindows(run).Single(candidate => candidate.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionPageMarker")) is not null);
+            AxeHelper.AssertNoAccessibilityErrors(
+                new IntPtr(window.Current.NativeWindowHandle), context: "Connection glance pills",
+                targetProcessId: run.AppProcessId);
+            await CaptureIfRequestedAsync(run, "connection-glance-details.png");
+
+            var expected = new List<(DashboardOutcome Outcome, string Route)>();
+            foreach (var (id, route) in new[]
+            {
+                ("ConnectionGlanceChannels", "channels"),
+                ("ConnectionGlanceClients", "systems"),
+                ("ConnectionGlanceUsage", "usage"),
+            })
+            {
+                var button = FindById(run, id)!;
+                Assert.Equal(ControlType.Button, button.Current.ControlType);
+                Assert.True(button.Current.IsKeyboardFocusable);
+                Assert.Contains("web dashboard", button.Current.HelpText);
+                Invoke(button);
+                expected.Add((DashboardOutcome.Opened, route));
+                await WaitForDashboardLaunchesAsync(run, expected.Count, $"{route} pill opening the Dashboard");
+            }
+            AssertDashboardLaunchRoutes(run, expected.ToArray());
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "connection-glance-help.json"),
+                JsonSerializer.Serialize(new[]
+                {
+                    "ConnectionGlanceTopology", "ConnectionGlanceHostname", "ConnectionGlanceChannels",
+                    "ConnectionGlanceClients", "ConnectionGlanceUsage", "ConnectionGlanceSharedToken",
+                }.Select(id => new { id, help = FindById(run, id)!.Current.HelpText })));
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task LegacyChannelsReceipt_OpensTheGatewayDashboardChannelsView()
     {
         await WithAppAsync(async run =>

@@ -34,6 +34,7 @@ public sealed partial class ChatPage : Page
     private string? _pendingSessionKey;
     private readonly PendingVoiceActivation _pendingVoice = new();
     private MountedReactorChat? _reactorHost;
+    private ChatDashboardBinding? _dashboards;
     private string _userDisplayName = "";
     private Microsoft.UI.Xaml.Media.ImageSource? _userProfilePicture;
     private IChatDataProvider? _mountedProvider;
@@ -189,6 +190,7 @@ public sealed partial class ChatPage : Page
             app.SettingsChanged -= OnSettingsSaved;
             app.ChatProviderChanged -= OnAppChatProviderChanged;
         }
+        _dashboards?.Detach();
 
         if (App.Current is App app2)
             app2.SpeakerMuteChanged -= OnSpeakerMuteChanged;
@@ -234,6 +236,7 @@ public sealed partial class ChatPage : Page
             app.ChatProviderChanged += OnAppChatProviderChanged;
             app.SpeakerMuteChanged -= OnSpeakerMuteChanged;
             app.SpeakerMuteChanged += OnSpeakerMuteChanged;
+            (_dashboards ??= new ChatDashboardBinding(DispatcherQueue)).Attach(app);
         }
 
         // Also react to Workspace's diagnostic renderer override.
@@ -321,6 +324,9 @@ public sealed partial class ChatPage : Page
         _pendingWebViewSessionKey = null;
         if (CurrentApp.PendingChatSessionKey == key)
             CurrentApp.PendingChatSessionKey = null;
+        if (CurrentApp.PendingChatDashboardSessionKey == key)
+            CurrentApp.PendingChatDashboardSessionKey = null;
+        _dashboards?.CancelPendingOpen();
         InvalidateNativeSetupForNavigation();
         _pendingVoice.Cancel();
         _navigationCts?.Cancel();
@@ -499,7 +505,15 @@ public sealed partial class ChatPage : Page
         if (!string.IsNullOrEmpty(pendingSessionKey))
         {
             _pendingSessionKey = null;
-            if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
+            if (App.Current is App currentApp)
+            {
+                currentApp.PendingChatSessionKey = null;
+                if (currentApp.PendingChatDashboardSessionKey == pendingSessionKey)
+                    _dashboards?.RequestOpen(pendingSessionKey);
+                else
+                    _dashboards?.CancelPendingOpen();
+                currentApp.PendingChatDashboardSessionKey = null;
+            }
         }
         var threadIdToMount = pendingSessionKey ?? _mountedThreadId;
         var forceRemount = !string.IsNullOrEmpty(pendingSessionKey);
@@ -582,7 +596,8 @@ public sealed partial class ChatPage : Page
             initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey),
             userDisplayName: _userDisplayName,
             userProfilePicture: _userProfilePicture,
-            agentRosterSource: app?.AppState);
+            agentRosterSource: app?.AppState,
+            dashboards: _dashboards);
         _reactorHost = mountedHost;
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
@@ -865,7 +880,12 @@ public sealed partial class ChatPage : Page
         if (!string.IsNullOrEmpty(pendingSessionKey))
         {
             _pendingSessionKey = null;
-            if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
+            if (App.Current is App currentApp)
+            {
+                currentApp.PendingChatSessionKey = null;
+                currentApp.PendingChatDashboardSessionKey = null;
+            }
+            _dashboards?.CancelPendingOpen();
             _pendingWebViewSessionKey = pendingSessionKey;
         }
         else

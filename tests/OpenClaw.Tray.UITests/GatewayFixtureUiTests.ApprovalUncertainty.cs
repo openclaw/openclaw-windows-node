@@ -24,8 +24,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindButton(run, "Allow once") is not null, "canonical approval in native chat");
             await OpenInboxReviewAsync(run, flyout: false);
             await ExpandInboxReviewAsync(run, command);
-            await RevealInboxDecisionAsync(run, "InboxApprovalAllowOnce");
-            var staleAction = (InvokePattern)FindInboxReviewAction(run, "InboxApprovalAllowOnce")!.GetCurrentPattern(InvokePattern.Pattern);
+            var staleAction = (InvokePattern)(await RevealInboxDecisionAsync(run, "InboxApprovalAllowOnce"))
+                .GetCurrentPattern(InvokePattern.Pattern);
             var connects = run.Gateway.Requests.Count(request => request.Method == "connect");
             run.Gateway.DropInboxApprovalAcknowledgement();
             staleAction.Invoke();
@@ -43,7 +43,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindTimeline(run) is not null, "native chat timeline after lost acknowledgement");
             await WaitUiAsync(run, () =>
             {
-                var timeline = FindTimeline(run)!;
+                if (FindTimeline(run) is not { } timeline) return false;
                 return timeline.FindAll(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>()
                     .Any(text => IsVisibleInTimeline(timeline, text) &&

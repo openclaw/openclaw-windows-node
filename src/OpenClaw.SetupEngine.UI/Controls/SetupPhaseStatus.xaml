@@ -1,24 +1,78 @@
 <UserControl x:Class="OpenClaw.SetupEngine.UI.Controls.SetupPhaseStatus"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:icons="using:OpenClawTray.Helpers">
-    <StackPanel Orientation="Horizontal" Spacing="8">
-        <TextBlock x:Name="StatusText" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap"
-                   MaxWidth="160" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"
-                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-        <ProgressRing x:Name="RunningIcon" Width="20" Height="20" MinWidth="20" MinHeight="20"
-                      IsActive="False" Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw" />
-        <FontIcon x:Name="CompleteIcon" Glyph="{x:Bind icons:FluentIconCatalog.StatusOk}"
-                  FontFamily="{ThemeResource SymbolThemeFontFamily}" IsTextScaleFactorEnabled="False"
-                  Foreground="{ThemeResource SystemFillColorSuccessBrush}" Visibility="Collapsed"
-                  AutomationProperties.AccessibilityView="Raw" />
-        <FontIcon x:Name="FailedIcon" Glyph="{x:Bind icons:FluentIconCatalog.StatusErr}"
-                  FontFamily="{ThemeResource SymbolThemeFontFamily}" IsTextScaleFactorEnabled="False"
-                  Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed"
-                  AutomationProperties.AccessibilityView="Raw" />
-        <FontIcon x:Name="CancelledIcon" Glyph="{x:Bind icons:FluentIconCatalog.Exit}"
-                  FontFamily="{ThemeResource SymbolThemeFontFamily}" IsTextScaleFactorEnabled="False"
-                  Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed"
-                  AutomationProperties.AccessibilityView="Raw" />
-    </StackPanel>
+             xmlns:icons="using:OpenClawTray.Helpers"
+             xmlns:themes="using:OpenClaw.SetupEngine.UI.Themes"
+             IsTabStop="False">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <themes:SetupResources />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <!-- One installation phase: leading state glyph, title, live activity, trailing status. -->
+    <Grid x:Name="Row" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" MinHeight="56" Padding="0,8"
+          BorderThickness="0,0,0,1" BorderBrush="{ThemeResource SetupHairlineBrush}">
+        <VisualStateManager.VisualStateGroups>
+            <VisualStateGroup x:Name="PhaseStates">
+                <VisualState x:Name="Pending" />
+                <VisualState x:Name="Running">
+                    <VisualState.Setters>
+                        <Setter Target="PendingIcon.Visibility" Value="Collapsed" />
+                        <Setter Target="RunningIcon.Visibility" Value="Visible" />
+                        <Setter Target="StatusText.Foreground" Value="{ThemeResource SetupAccentBrush}" />
+                        <Setter Target="TitleText.FontWeight" Value="SemiBold" />
+                        <Setter Target="TitleText.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Complete">
+                    <VisualState.Setters>
+                        <Setter Target="PendingIcon.Visibility" Value="Collapsed" />
+                        <Setter Target="CompleteIcon.Visibility" Value="Visible" />
+                        <Setter Target="StatusText.Foreground" Value="{ThemeResource SystemFillColorSuccessBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Failed">
+                    <VisualState.Setters>
+                        <Setter Target="PendingIcon.Visibility" Value="Collapsed" />
+                        <Setter Target="FailedIcon.Visibility" Value="Visible" />
+                        <Setter Target="StatusText.Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                        <Setter Target="TitleText.FontWeight" Value="SemiBold" />
+                        <Setter Target="TitleText.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                    </VisualState.Setters>
+                </VisualState>
+                <VisualState x:Name="Cancelled">
+                    <VisualState.Setters>
+                        <Setter Target="PendingIcon.Visibility" Value="Collapsed" />
+                        <Setter Target="CancelledIcon.Visibility" Value="Visible" />
+                    </VisualState.Setters>
+                </VisualState>
+            </VisualStateGroup>
+        </VisualStateManager.VisualStateGroups>
+        <Grid Width="18" Height="22" VerticalAlignment="Center" AutomationProperties.AccessibilityView="Raw">
+            <Ellipse x:Name="PendingIcon" Width="9" Height="9" StrokeThickness="1"
+                     Stroke="{ThemeResource TextFillColorTertiaryBrush}" />
+            <ProgressRing x:Name="RunningIcon" Width="18" Height="18" IsActive="False" Visibility="Collapsed"
+                          Foreground="{ThemeResource SetupAccentBrush}" />
+            <FontIcon x:Name="CompleteIcon" Glyph="{x:Bind icons:FluentIconCatalog.StatusOk}" FontSize="16"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}" IsTextScaleFactorEnabled="False"
+                      Foreground="{ThemeResource SystemFillColorSuccessBrush}" Visibility="Collapsed" />
+            <FontIcon x:Name="FailedIcon" Glyph="{x:Bind icons:FluentIconCatalog.StatusErr}" FontSize="16"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}" IsTextScaleFactorEnabled="False"
+                      Foreground="{ThemeResource SystemFillColorCriticalBrush}" Visibility="Collapsed" />
+            <FontIcon x:Name="CancelledIcon" Glyph="{x:Bind icons:FluentIconCatalog.Exit}" FontSize="16"
+                      FontFamily="{ThemeResource SymbolThemeFontFamily}" IsTextScaleFactorEnabled="False"
+                      Foreground="{ThemeResource TextFillColorSecondaryBrush}" Visibility="Collapsed" />
+        </Grid>
+        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+            <TextBlock x:Name="TitleText" FontSize="15" LineHeight="22" TextWrapping="Wrap"
+                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            <TextBlock x:Name="ActivityText" Style="{StaticResource SetupRowDescriptionTextStyle}"
+                       Visibility="Collapsed" AutomationProperties.LiveSetting="Polite" />
+        </StackPanel>
+        <TextBlock x:Name="StatusText" Grid.Column="2" Style="{StaticResource SetupRowStatusTextStyle}"
+                   TextWrapping="Wrap" MaxWidth="160" VerticalAlignment="Center" TextAlignment="Right"
+                   AutomationProperties.LiveSetting="Polite" />
+    </Grid>
 </UserControl>
