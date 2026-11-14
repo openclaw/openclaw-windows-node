@@ -1,3 +1,4 @@
+extern alias TrayRuntime;
 using System.Reflection;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -18,6 +19,7 @@ using OpenClawTray.Chat;
 using OpenClawTray.Services;
 using Windows.Foundation;
 using static OpenClaw.Tray.UITests.TestSupport;
+using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -163,8 +165,7 @@ public sealed partial class ReactorChatLayoutProofTests
             state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("proof-run", "reason",
                 "I will inspect the supplied files before editing.", 1000));
             await PublishAsync();
-            await ui.RunOnUIAsync(() =>
-                Assert.Contains("I will inspect the supplied files before editing.", ReadToolText(surface)));
+            await OpenReasoningAsync(surface, "I will inspect the supplied files before editing.");
             await CaptureAsync(surface, "Feedback-supplied-thinking");
             await ui.RunOnUIAsync(() => Assert.Contains("Thinking",
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(FindControl<Grid>(host, "ChatRunProgress"))));
@@ -176,7 +177,7 @@ public sealed partial class ReactorChatLayoutProofTests
             state = ChatTimelineReducer.Apply(state, new ChatProgressEvent(
                 "Retrying the model request", DateTimeOffset.UtcNow.AddSeconds(5).ToUnixTimeMilliseconds()));
             await PublishAsync();
-            await ui.RunOnUIAsync(() => Assert.Contains("Retrying in", FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+            await ui.RunOnUIAsync(() => Assert.Contains("Retrying in", FindControl<TextBlock>(host, "ChatRunProgressStatus").Text));
             await CaptureAsync(surface, "Feedback-retry");
 
             void Tool(string data, int sequence) => state = ChatTimelineReducer.Apply(state,
@@ -234,7 +235,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
                 var progress = FindDescendants<TextBlock>(surface).SingleOrDefault(text =>
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatRunProgressText");
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatRunProgressStatus");
                 if (progress is null || !progress.Text.Contains("Waiting for subagents", StringComparison.Ordinal))
                     return false;
                 var scroll = Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView;
@@ -283,7 +284,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
             await UntilAsync(() => PanelCollapsed(surface), "Subagents tab closed");
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
-                FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+                FindControl<TextBlock>(host, "ChatRunProgressStatus").Text));
 
             RecordPhase("append transcript");
             snapshot = snapshot with { Threads = [snapshot.Threads[0] with
@@ -795,11 +796,11 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await SettleAsync();
             await AwaitInitialTailAsync(surface, key, snapshot.Timelines[key].Entries.Last().Id);
+            await OpenReasoningAsync(surface, "PARITY THINKING");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Single(FindDescendants<TextBlock>(surface),
                     block => block.Text.StartsWith("Assistant ·", StringComparison.Ordinal));
-                Assert.Contains("PARITY THINKING", ReadToolText(surface));
                 var group = Assert.Single(FindDescendants<Expander>(surface), control =>
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control).StartsWith("ChatToolActivity_"));
                 Assert.False(group.IsExpanded);
@@ -1077,6 +1078,30 @@ public sealed partial class ReactorChatLayoutProofTests
             Assert.True(top >= 0 && top <= surface.ActualHeight - 40,
                 $"Header top={top}; requested={targetOffset}; scroll offset={scroll!.VerticalOffset}; maximum={scroll.ScrollableHeight}; request={requestId}");
         });
+    }
+
+    // Thinking starts collapsed behind a tool-row disclosure whose leading chevron tracks its state;
+    // open it and wait for its Markdown before reading.
+    private async Task OpenReasoningAsync(DependencyObject root, string expectedText)
+    {
+        static bool IsReasoning(Expander row) =>
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(row) == "ChatReasoning";
+        static string LeadingGlyph(Expander row) => FindDescendants<TextBlock>(
+            FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>(row)
+                .First(button => button.Name == "ExpanderHeader")).First().Text;
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () => FindDescendants<Expander>(root).Any(IsReasoning), "the collapsed reasoning disclosure"));
+        await ui.RunOnUIAsync(() =>
+        {
+            var reasoning = Assert.Single(FindDescendants<Expander>(root), IsReasoning);
+            Assert.False(reasoning.IsExpanded);
+            Assert.Equal(FluentIconCatalog.ChevronR, LeadingGlyph(reasoning));
+            reasoning.IsExpanded = true;
+        });
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () => ReadToolText(root).Contains(expectedText, StringComparison.Ordinal) &&
+                LeadingGlyph(Assert.Single(FindDescendants<Expander>(root), IsReasoning)) == FluentIconCatalog.ChevronDown,
+            "the opened reasoning text and its down chevron"));
     }
 
     private static string ReadToolText(DependencyObject root) => string.Join("\n",

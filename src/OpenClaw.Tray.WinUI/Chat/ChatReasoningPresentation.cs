@@ -34,6 +34,17 @@ internal static class ChatReasoningPresentation
             entry.Kind is ChatTimelineItemKind.Assistant or ChatTimelineItemKind.Reasoning) &&
         facts.RunId == receipt.RunId && facts.MessageId == receipt.MessageId;
 
+    private const string PreviewPrefix = "thinking:";
+
+    /// <summary>
+    /// Only the current thought is thinking: the stream's active item for live previews, and the
+    /// reducer's active reasoning row for saved thoughts, which stay streaming until the turn ends.
+    /// </summary>
+    internal static bool IsActive(ChatTimelineItem entry, ChatReasoningStream? stream, string? activeReasoningId) =>
+        entry.Id.StartsWith(PreviewPrefix, StringComparison.Ordinal)
+            ? stream?.ActiveItemId is { } active && entry.Presentation?.BlockId == active
+            : entry.IsStreaming && entry.Id == activeReasoningId;
+
     /// <summary>Selects saved thoughts or live previews, handing ownership to exact accepted receipts.</summary>
     internal static IReadOnlyList<ChatTimelineItem> Project(
         IReadOnlyList<ChatTimelineItem> entries,
@@ -73,7 +84,7 @@ internal static class ChatReasoningPresentation
                 if (anchor >= 0)
                     index = anchor + 1;
             }
-            var id = "thinking:" + System.Text.Json.JsonSerializer.Serialize(new[] { stream.RunId, item.ItemId });
+            var id = PreviewPrefix + System.Text.Json.JsonSerializer.Serialize(new[] { stream.RunId, item.ItemId });
             rows.Insert(index >= 0 ? index : rows.Count,
                 new(id, ChatTimelineItemKind.Reasoning, item.Text, IsStreaming: true,
                     Presentation: new(RunId: stream.RunId, BlockId: item.ItemId)));

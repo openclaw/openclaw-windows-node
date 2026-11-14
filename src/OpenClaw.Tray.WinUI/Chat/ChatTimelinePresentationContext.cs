@@ -50,4 +50,6 @@ public sealed record ChatTimelinePresentationContext(
     Action<string>? OnOpenWorkspaceFile = null,
     Func<string, bool>? CanOpenSession = null,
     Action<string>? OnOpenSession = null,
-    Action<ChatAssistantMediaPresentation>? OnOpenAssistantFile = null);
+    Action<ChatAssistantMediaPresentation>? OnOpenAssistantFile = null,
+    // The saved reasoning row the current thought is still writing, if any.
+    string? ActiveReasoningId = null);

@@ -542,11 +542,7 @@ internal static class ToolCallCardRenderer
                     : LocalizedOrDefault("Chat_Activity_ToolCallsMany", "{0} tool calls"),
                 summary.ToolCount)
             : summaryText;
-        var headline = TextBlock(headlineText)
-            .FontSize(ChatVisuals.ToolRowFontSize)
-            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-            .TextWrapping(TextWrapping.Wrap)
-            .WithTextShimmer(summary.IsRunning)
+        var headline = ChatVisuals.ActivityText(headlineText, summary.IsRunning)
             .WithKey($"activity-headline:{summary.NewestRunningTool?.Id ?? "settled"}");
         if (!reducedMotion && summary.IsRunning)
             headline = headline.Transition(
@@ -649,18 +645,13 @@ internal static class ToolCallCardRenderer
     {
         Element text = link is not null && entryId is not null
             ? BuildRowLink(title, link, entryId, running)
-            : TextBlock(title)
-                .FontSize(ChatVisuals.ToolRowFontSize)
-                .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                .TextWrapping(TextWrapping.NoWrap)
-                .TextTrimming(TextTrimming.CharacterEllipsis)
-                .WithTextShimmer(running);
+            : ChatVisuals.ActivityText(title, running);
         if (string.IsNullOrWhiteSpace(detail))
             return text.WithKey("preview");
         return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                 text.Grid(column: 0).VAlign(VerticalAlignment.Center),
                 TextBlock(detail)
-                    .FontSize(ChatVisuals.ToolRowFontSize)
+                    .FontSize(ChatVisuals.ActivityTextFontSize)
                     .Foreground(Theme.Ref("TextFillColorTertiaryBrush"))
                     .TextWrapping(TextWrapping.NoWrap)
                     .TextTrimming(TextTrimming.CharacterEllipsis)
@@ -713,7 +704,7 @@ internal static class ToolCallCardRenderer
 
     private static Element BuildRowLink(string title, RowLink link, string entryId, bool running) =>
         Button(TextBlock(title)
-                .FontSize(ChatVisuals.ToolRowFontSize)
+                .FontSize(ChatVisuals.ActivityTextFontSize)
                 .Foreground(Theme.Ref("AccentTextFillColorPrimaryBrush"))
                 .TextWrapping(TextWrapping.NoWrap)
                 .TextTrimming(TextTrimming.CharacterEllipsis)
@@ -797,6 +788,10 @@ internal static class ToolCallCardRenderer
             .OnPointerEntered((_, _) => onHover?.Invoke(true))
             .OnPointerExited((_, _) => onHover?.Invoke(false));
     }
+
+    /// <summary>A disclosure-only row header (no category icon): an always-visible leading chevron and the title.</summary>
+    internal static Element BuildDisclosureHeader(bool isExpanded, Element title) =>
+        BuildRowHeader(FluentIconCatalog.ChevronR, showChevron: true, isExpanded, title, null, null);
 
     // GotFocus bubbles from nested rows and detail controls; only this Expander's own header counts.
     private static bool IsOwnHeader(object sender, RoutedEventArgs args)

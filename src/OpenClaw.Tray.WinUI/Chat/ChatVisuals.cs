@@ -13,8 +13,8 @@ namespace OpenClawTray.Chat;
 /// <summary>Shared native chat geometry. See docs/CHAT_VISUAL_DESIGN.md.</summary>
 internal static class ChatVisuals
 {
-    private const double TextShimmerDurationMilliseconds = 2400;
-    private const double TextShimmerContrastBoost = 0.2;
+    private const double TextShimmerSweepMilliseconds = 900;
+    private const double TextShimmerCycleMilliseconds = 1300;
     private sealed record ShimmerState(Storyboard Storyboard, object OriginalLocal, LinearGradientBrush Shimmer);
     private static readonly ConditionalWeakTable<TextBlock, ShimmerState> s_shimmers = new();
 
@@ -109,7 +109,11 @@ internal static class ChatVisuals
         foreach (var offset in new[] { 0, 0, 0, 0.15, 1 })
             brush.GradientStops.Add(new GradientStop { Offset = offset });
 
-        var storyboard = new Storyboard { RepeatBehavior = RepeatBehavior.Forever };
+        var storyboard = new Storyboard
+        {
+            Duration = TimeSpan.FromMilliseconds(TextShimmerCycleMilliseconds),
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
         foreach (var (index, end) in new[] { (1, 0.85), (2, 1.0), (3, 1.0) })
         {
             var stop = brush.GradientStops[index];
@@ -117,8 +121,7 @@ internal static class ChatVisuals
             {
                 From = stop.Offset,
                 To = end,
-                Duration = TimeSpan.FromMilliseconds(TextShimmerDurationMilliseconds),
-                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut },
+                Duration = TimeSpan.FromMilliseconds(TextShimmerSweepMilliseconds),
                 EnableDependentAnimation = true,
             };
             Storyboard.SetTarget(sweep, stop);
@@ -168,12 +171,9 @@ internal static class ChatVisuals
             else
                 text.SetValue(TextBlock.ForegroundProperty, originalForeground);
         }
-        secondary.A = (byte)Math.Round(secondary.A - (ink.A - secondary.A) * TextShimmerContrastBoost);
-        var dark = text.ActualTheme == ElementTheme.Dark;
         foreach (var stop in state.Shimmer.GradientStops)
-            stop.Color = dark ? secondary : ink;
-        var flare = dark ? ink : secondary;
-        state.Shimmer.GradientStops[2].Color = flare;
+            stop.Color = secondary;
+        state.Shimmer.GradientStops[2].Color = ink;
     }
 
     private static void OnShimmerLoaded(object sender, RoutedEventArgs args)
@@ -292,8 +292,12 @@ internal static class ChatVisuals
     internal const double DetailVerticalInset = 8;
     internal const double ActionIconSize = 14;
     internal const double ToolRowMinHeight = 32;
+    // A tool row's 16px leading icon column plus its 8px gap; disclosure content aligns with the title.
+    internal const double ToolRowTitleInset = 24;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
+    // Quieter activity titles (tool, thinking and run status) and their dimmed details.
+    internal const double ActivityTextFontSize = 12;
     // A tool row's dimmed directory or search scope never takes more than this; it trims with "…".
     internal const double ToolRowDetailMaxWidth = 240;
     internal const double ActivityDetailsMaxHeight = 160;
@@ -381,6 +385,13 @@ internal static class ChatVisuals
         foreach (var key in s_transparentToolRowBrushKeys)
             resources.Set(key, Theme.Ref("SubtleFillColorTransparentBrush"));
     }
+
+    /// <summary>Quiet 12px activity title; it shimmers only while its work is active.</summary>
+    internal static TextBlockElement ActivityText(string label, bool active) =>
+        Factories.TextBlock(label).FontSize(ActivityTextFontSize).TextWrapping(TextWrapping.NoWrap)
+            .TextTrimming(TextTrimming.CharacterEllipsis)
+            .Set(StyleSecondaryText)
+            .WithTextShimmer(active);
 
     /// <summary>
     /// Aligns the stock Expander template with prose without replacing its interaction states.

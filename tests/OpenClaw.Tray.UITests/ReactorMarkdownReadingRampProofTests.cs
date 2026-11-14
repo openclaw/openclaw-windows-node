@@ -42,6 +42,13 @@ public sealed partial class ReactorChatLayoutProofTests
 
             await WithChatAsync(800, async (surface, _, _, _) =>
             {
+                // Thinking starts collapsed; open the disclosure to inspect its Markdown.
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => FindDescendants<Expander>(surface).Any(row =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(row) == "ChatReasoning"),
+                    "the collapsed reasoning disclosure"));
+                await ui.RunOnUIAsync(() => Assert.Single(FindDescendants<Expander>(surface), row =>
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(row) == "ChatReasoning").IsExpanded = true);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                     () => FindDescendants<RichTextBlock>(surface).Any(text =>
                         CollectText(text).Contains("Thinking paragraph.", StringComparison.Ordinal)),
