@@ -48,6 +48,43 @@ exit 0
     & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, [string]($idleSeconds + 3)) -IdleTimeoutSeconds $idleSeconds -OutputPath $output
     if ($LASTEXITCODE -ne 0) { throw 'A progressing fixture exceeded its output-idle deadline.' }
 
+    # A fixture that keeps printing never trips the idle deadline; only the wall deadline ends it,
+    # so the caller can still report before its workflow step limit.
+    [IO.File]::WriteAllText($child, @'
+param([string]$Receipt, [int]$Seconds)
+[IO.File]::WriteAllText($Receipt, [string]$PID)
+$elapsed = [Diagnostics.Stopwatch]::StartNew()
+while ($elapsed.ElapsedMilliseconds -lt $Seconds * 1000) {
+    [Console]::Out.Write('fixture still progressing ')
+    [Threading.Thread]::Sleep(100)
+}
+exit 0
+'@)
+    $wallReceipt = Join-Path $root 'wall.pid'
+    $wallStarted = [Diagnostics.Stopwatch]::StartNew()
+    $wallEnded = $false
+    try {
+        & $runner -FilePath $shell -ArgumentList @('-NoProfile', '-File', $child, $wallReceipt, [string]$holdSeconds) `
+            -IdleTimeoutSeconds $idleSeconds -WallTimeoutSeconds $idleSeconds -OutputPath $output
+    } catch {
+        if ($_.Exception.Message -notmatch 'exceeded its wall deadline') { throw }
+        $wallEnded = $true
+    }
+    if (-not $wallEnded -or $wallStarted.Elapsed.TotalSeconds -ge $promptSeconds) {
+        throw 'A continuously progressing fixture was not ended promptly by its wall deadline.'
+    }
+    $wallLog = [IO.File]::ReadAllText($output)
+    if (-not (Test-Path $wallReceipt)) { throw 'Wall-deadline fixture never started.' }
+    $wallChildId = [int][IO.File]::ReadAllText($wallReceipt)
+    if ($wallLog -notmatch 'fixture still progressing[\s\S]*exceeded its wall deadline' -or
+        $wallLog -notmatch "Processes started since the CI process began[\s\S]*PID $wallChildId ") {
+        throw 'Wall deadline did not retain progress, the failure reason and a snapshot naming the running fixture.'
+    }
+    $wallChild = Get-Process -Id $wallChildId -ErrorAction SilentlyContinue
+    if ($null -ne $wallChild -and -not $wallChild.WaitForExit(5000)) {
+        throw 'Wall deadline left its CI child alive.'
+    }
+
     [IO.File]::WriteAllText($child, @'
 param([string]$Receipt, [int]$HoldSeconds)
 [IO.File]::WriteAllText("$Receipt.entered", [string][Diagnostics.Stopwatch]::GetTimestamp())
@@ -148,4 +185,4 @@ exit 0
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 $global:LASTEXITCODE = 0
-Write-Host 'CI output-idle process tests passed: exit/output fidelity, progressing fixture, silent fixture termination, tree termination, inherited-pipe deadline.'
+Write-Host 'CI output-idle process tests passed: exit/output fidelity, progressing fixture, wall deadline, silent fixture termination, tree termination, inherited-pipe deadline.'

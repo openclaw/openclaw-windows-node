@@ -483,6 +483,15 @@ public sealed class SessionFileContent
     /// <summary>True when the gateway reported the file as missing.</summary>
     public bool Missing { get; set; }
 
+    /// <summary>"utf8" or "base64" (images); null when the Gateway sent no content.</summary>
+    public string? ContentEncoding { get; set; }
+
+    /// <summary>"text", "image" or "unsupported"; null when the file was too large to preview.</summary>
+    public string? PreviewKind { get; set; }
+
+    /// <summary>Why the read was refused, for example <c>outside_session_boundary</c>.</summary>
+    public string? Reason { get; set; }
+
     /// <summary>True when readable content was returned.</summary>
     public bool Found => !Missing && Content is not null;
 

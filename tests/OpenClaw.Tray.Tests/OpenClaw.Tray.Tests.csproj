@@ -87,6 +87,9 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatConversationPanelState.cs" Link="Chat\ChatConversationPanelState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSessionFilesState.cs" Link="Chat\ChatSessionFilesState.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSubagentPresentation.cs" Link="Chat\ChatSubagentPresentation.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolDiffStats.cs" Link="Chat\ChatToolDiffStats.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatToolRowLinks.cs" Link="Chat\ChatToolRowLinks.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatWorkspaceFile.cs" Link="Chat\ChatWorkspaceFile.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\TailNavigationPolicy.cs" Link="Chat\TailNavigationPolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ReactorSlashCommandController.cs" Link="Chat\ReactorSlashCommandController.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\NativeToolProjector.cs" Link="Chat\NativeToolProjector.cs" />

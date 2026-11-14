@@ -281,7 +281,8 @@ internal static class ChatEventMapper
                     ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId))
                 : new ChatToolOutputEvent(output, tool.CallId, RunId: runId,
                     HandoffReceipt: tool.HandoffReceipt,
-                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId));
+                    ResultReference: NativeToolProjector.ProjectResultReference(tool, sessionId),
+                    DiffFacts: tool.ResultDiffFacts);
         }
     }
 
@@ -358,7 +359,9 @@ internal static class ChatEventMapper
                 ToolCallId: toolCallId,
                 RunId: evt.RunId,
                 HandoffReceipt: evt.Data.TryGetProperty("result", out var result)
-                    ? ChatToolHandoff.ReadReceipt(result) : null),
+                    ? ChatToolHandoff.ReadReceipt(result) : null,
+                DiffFacts: evt.Data.TryGetProperty("result", out var diffResult)
+                    ? ChatToolResultDiffFacts.Read(diffResult) : null),
             "error" => new ChatToolErrorEvent(
                 NativeToolProjector.ExtractToolErrorText(evt.Data, label),
                 ToolCallId: toolCallId,

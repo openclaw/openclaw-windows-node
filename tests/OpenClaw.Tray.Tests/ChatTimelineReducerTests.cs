@@ -68,6 +68,40 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void CumulativeStrip_KeepsReplyThatRepeatsAnotherRunInCurrentTurn()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatUserMessageEvent("status?"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("All services are healthy.", Presentation: new(RunId: "queued")));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("All services are healthy. Backups finished.", Presentation: new(RunId: "r")));
+        Assert.Equal(["status?", "All services are healthy.", "All services are healthy. Backups finished."],
+            state.Entries.Select(entry => entry.Text));
+    }
+
+    [Fact]
+    public void CumulativeStrip_LaterTurnAfterToolDoesNotRepeatPreamble()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatUserMessageEvent("first"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Earlier reply.", Presentation: new(RunId: "previous")));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+        state = ChatTimelineReducer.Apply(state, new ChatUserMessageEvent("second"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Let me check.", ReconcilePrevious: true, Presentation: new(RunId: "current")));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolStartEvent("read", "read", ToolCallId: "current-tool", RunId: "current"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatToolOutputEvent("fixture-only", ToolCallId: "current-tool", RunId: "current"));
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("Let me check.\n\nThe result is ready.", ReconcilePrevious: true,
+                Presentation: new(RunId: "current")));
+
+        Assert.Equal(["Earlier reply.", "Let me check.", "The result is ready."],
+            state.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).Select(entry => entry.Text));
+    }
+
+    [Fact]
     public void StreamRetirement_RemovesUnpersistedPreviewAcrossToolButKeepsSavedRow()
     {
         var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(),

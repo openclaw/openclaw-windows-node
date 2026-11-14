@@ -13,9 +13,12 @@ public static class ExecApprovalCommandDisplaySanitizer
 {
     private const int MaxInput = 256 * 1024;
     private const int MaxOutput = 16 * 1024;
-    private const string TruncationMarker = "…[truncated]";
+    /// <summary>Suffix appended when display text is cut at its length limit.</summary>
+    public const string TruncationMarker = "…[truncated]";
     private const string OversizedMarker = "[exec approval command exceeds display size limit; full text suppressed]";
-    private const string WarningOversizedMarker = "[exec approval warning exceeds display size limit; full text suppressed]";
+    /// <summary>Whole replacement for warning text that exceeds the input limit.</summary>
+    public const string WarningOversizedMarker = "[exec approval warning exceeds display size limit; full text suppressed]";
+    private const string DocumentOversizedMarker = "[file exceeds display size limit; content suppressed]";
     private const string BypassMask = "***";
 
     public static string Sanitize(string text)
@@ -44,7 +47,10 @@ public static class ExecApprovalCommandDisplaySanitizer
 
     public static string SanitizeWarningText(string text) => SanitizeWarningTextWithStatus(text).Text;
 
-    /// <summary>Preserves multiline review text and reports whether any required content was concealed or lost.</summary>
+    /// <summary>
+    /// Preserves multiline review text and reports whether any required content was concealed or lost,
+    /// so callers can tell when the visible text no longer matches the original.
+    /// </summary>
     public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
         SanitizeWarningTextWithStatus(string text)
     {
@@ -81,11 +87,46 @@ public static class ExecApprovalCommandDisplaySanitizer
         return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
+    /// <summary>
+    /// Read-only file text for display: secrets are redacted and invisible characters escaped as in command
+    /// review, checked across the whole text so a key split from its value by an invisible character or a
+    /// line break is still caught. The detection view preserves line breaks but strips tabs that can
+    /// hide secret names; displayed layout is unchanged. Output is bounded by <paramref name="maxOutputChars"/>.
+    /// </summary>
+    public static string SanitizeDocumentText(string text, int maxOutputChars)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var cut = normalized.Length > MaxInput;
+        if (cut)
+            normalized = SafeDocumentPrefix(normalized, MaxInput);
+        var result = SanitizeInternal(normalized, preserveLineBreaks: true, oversizedMarker: DocumentOversizedMarker,
+            commandReviewLayout: true, maxOutput: Math.Max(1, maxOutputChars), keepLineBreaksForDetection: true);
+        return cut && !result.Truncated ? result.Text + TruncationMarker : result.Text;
+    }
+
+    // Whole lines only, and never the start of a PEM block whose end was cut off: the redactor needs both
+    // markers to recognize the key, so a partial block would show its lines.
+    private static string SafeDocumentPrefix(string text, int maxChars)
+    {
+        var prefix = TruncateUtf16Safe(text, maxChars);
+        var lastBreak = prefix.LastIndexOf('\n');
+        if (lastBreak > 0)
+            prefix = prefix[..lastBreak];
+        var begin = prefix.LastIndexOf("-----BEGIN", StringComparison.Ordinal);
+        if (begin >= 0 && prefix.IndexOf("-----END", begin, StringComparison.Ordinal) < 0)
+            prefix = prefix[..begin];
+        return prefix;
+    }
+
     private static SanitizedDisplayText SanitizeInternal(
         string text,
         bool preserveLineBreaks = false,
         string? oversizedMarker = null,
-        bool commandReviewLayout = false)
+        bool commandReviewLayout = false,
+        int maxOutput = MaxOutput,
+        bool keepLineBreaksForDetection = false)
     {
         if (text.Length > MaxInput)
         {
@@ -98,7 +139,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         }
 
         var rawRedacted = ExecApprovalSecretRedactor.Redact(text);
-        var strippedView = BuildStrippedView(text);
+        var strippedView = BuildStrippedView(text, keepLineBreaksForDetection);
         var strippedRedacted = ExecApprovalSecretRedactor.Redact(strippedView.Text);
         var redacted =
             !string.Equals(rawRedacted, text, StringComparison.Ordinal)
@@ -126,7 +167,7 @@ public static class ExecApprovalCommandDisplaySanitizer
             return TruncateForDisplay(
                 EscapeInvisibles(rawRedacted, preserveLineBreaks, commandReviewLayout),
                 redacted,
-                unsafeConcealment);
+                unsafeConcealment, maxOutput);
 
         var bypassDetected = false;
         for (var i = 0; i < strippedMask.Length; i++)
@@ -142,7 +183,7 @@ public static class ExecApprovalCommandDisplaySanitizer
             return TruncateForDisplay(
                 EscapeInvisibles(rawRedacted, preserveLineBreaks, commandReviewLayout),
                 redacted,
-                unsafeConcealment);
+                unsafeConcealment, maxOutput);
 
         var unionMask = (bool[])rawMask.Clone();
         for (var i = 0; i < strippedMask.Length; i++)
@@ -154,7 +195,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         return TruncateForDisplay(
             RenderUnionMask(text, unionMask, preserveLineBreaks, commandReviewLayout),
             redacted: true,
-            unsafeConcealment);
+            unsafeConcealment, maxOutput);
     }
 
     private static string NormalizeDisplayLineBreaks(string text)
@@ -197,7 +238,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         return sanitized.ToString();
     }
 
-    private static StrippedView BuildStrippedView(string original)
+    private static StrippedView BuildStrippedView(string original, bool keepLineBreaks = false)
     {
         var stripped = new StringBuilder(original.Length);
         var strippedToOriginal = new List<int>(original.Length);
@@ -207,7 +248,8 @@ public static class ExecApprovalCommandDisplaySanitizer
             var codePoint = ReadCodePoint(original, i, out var codeUnitLength);
             // Private-use glyphs can also split a credential key. Strip them for detection
             // in every mode, without changing legacy inline/warning glyph presentation.
-            if (!IsInvisible(codePoint, commandReviewLayout: true))
+            // Document detection keeps LF so it never joins separate lines.
+            if (!IsInvisible(codePoint, commandReviewLayout: true) || keepLineBreaks && codePoint == '\n')
             {
                 stripped.Append(original, i, codeUnitLength);
                 for (var k = 0; k < codeUnitLength; k++)
@@ -259,9 +301,10 @@ public static class ExecApprovalCommandDisplaySanitizer
     private static SanitizedDisplayText TruncateForDisplay(
         string text,
         bool redacted = false,
-        bool unsafeConcealment = false)
+        bool unsafeConcealment = false,
+        int maxOutput = MaxOutput)
     {
-        if (text.Length <= MaxOutput)
+        if (text.Length <= maxOutput)
         {
             // Gateway plugin details may arrive already bounded. Rendering them again
             // must not turn a truncation or suppression marker into complete consent.
@@ -274,7 +317,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         }
 
         return new SanitizedDisplayText(
-            TruncateUtf16Safe(text, MaxOutput) + TruncationMarker,
+            TruncateUtf16Safe(text, maxOutput) + TruncationMarker,
             Truncated: true,
             Oversized: false,
             Redacted: redacted,

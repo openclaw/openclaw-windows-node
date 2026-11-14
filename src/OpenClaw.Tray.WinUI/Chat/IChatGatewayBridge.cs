@@ -111,6 +111,13 @@ public interface IChatGatewayBridge : IDisposable
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantMediaResolutionResult.Unavailable);
     /// <summary>
+    /// Reads one session workspace file (<c>sessions.files.get</c>) on the given connection epoch. The client
+    /// bounds the whole call, including queueing and sending, and honors cancellation; there is no retry.
+    /// </summary>
+    Task<SessionFileContent> GetSessionFileAsync(
+        string sessionKey, string path, long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        Task.FromResult(new SessionFileContent { Key = sessionKey, Path = path, IsSupported = false });
+    /// <summary>
     /// Downloads a structured file attachment through the default browser. The bridge
     /// resolves the ticketed Gateway URL and launches it itself; callers only receive the
     /// typed outcome, never the URL or ticket.
@@ -374,6 +381,10 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         _client.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
+
+    public Task<SessionFileContent> GetSessionFileAsync(
+        string sessionKey, string path, long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        _client.ReadSessionFileAsync(sessionKey, path, expectedConnectionEpoch, cancellationToken);
 
 #if OPENCLAW_TRAY_TESTS
     // The test host has no WinRT launcher; tests inject one through the constructor.

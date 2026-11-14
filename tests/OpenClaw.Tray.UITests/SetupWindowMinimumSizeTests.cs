@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.SetupEngine.UI.Pages;
 using OpenClaw.TestSupport;
 using Xunit.Abstractions;
@@ -181,7 +182,7 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
     }
 
     [Fact]
-    public async Task MinimumViewport_KeepsEveryFinishingRecoveryActionInsideThePageColumn()
+    public async Task MinimumViewport_KeepsFinishingRecoveryInOneBottomRow()
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         using var temp = new TempDirectory("setup-minimum-recovery-");
@@ -206,14 +207,24 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => frame.Content is AiCompletionPage { IsLoaded: true }, "finishing recovery");
                 var page = Assert.IsType<AiCompletionPage>(frame.Content);
-                // A retryable finishing failure that can also return offers all three actions at once.
-                page.ShowFailure(retry: () => { }, back: () => { }, error: new IOException("Synthetic finishing failure"),
-                    close: () => { });
+                page.ShowFailure(retry: () => { }, back: () => { }, error: new IOException("Synthetic finishing failure"));
+                page.ConfigureRecovery(() => { }, _ => Task.CompletedTask);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => Assert.IsType<Button>(page.FindName("RetryButton")).ActualHeight >= 39.5,
+                    "recovery actions appear without resizing after initially collapsed layout",
+                    diagnostics: () =>
+                    {
+                        var footer = Assert.IsType<SetupFooterPanel>(page.FindName("RecoveryActions"));
+                        var readiness = Assert.IsType<Button>(page.FindName("RetryButton"));
+                        return $"Page loaded={page.IsLoaded} size={page.ActualWidth}x{page.ActualHeight}; " +
+                            $"footer desired={footer.DesiredSize} actual={footer.ActualWidth}x{footer.ActualHeight}; " +
+                            $"readiness visibility={readiness.Visibility} desired={readiness.DesiredSize} actual={readiness.ActualWidth}x{readiness.ActualHeight}.";
+                    });
                 await ResizeBelowMinimumAsync(window, ui, output, "finishing-recovery");
                 root.UpdateLayout();
                 await ui.YieldToRenderAsync();
 
-                var actions = new[] { "BackButton", "RetryButton", "CloseButton" }
+                var actions = new[] { "BackButton", "RetryButton", "CollectLogsButton" }
                     .Select(name => Assert.IsType<Button>(page.FindName(name))).ToArray();
                 var bounds = actions.Select(action => action.TransformToVisual(page).TransformBounds(
                     new Windows.Foundation.Rect(0, 0, action.ActualWidth, action.ActualHeight))).ToArray();
@@ -221,7 +232,8 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                 {
                     Assert.Equal(Visibility.Visible, actions[i].Visibility);
                     Assert.True(bounds[i].Left >= -0.5 && bounds[i].Right <= page.ActualWidth + 0.5 &&
-                        bounds[i].Width >= actions[i].MinWidth - 0.5,
+                        bounds[i].Width >= actions[i].MinWidth - 0.5 && bounds[i].Height >= 39.5 &&
+                        bounds[i].Top >= -0.5 && bounds[i].Bottom <= page.ActualHeight + 0.5,
                         $"{actions[i].Name} must keep its width inside the page column. Bounds: {bounds[i]}; page width: {page.ActualWidth}.");
                     for (var j = 0; j < i; j++)
                     {
@@ -230,6 +242,16 @@ public sealed class SetupWindowMinimumSizeTests(UIThreadFixture ui, ITestOutputH
                         Assert.True(overlapWidth < 0.5 || overlapHeight < 0.5,
                             $"{actions[i].Name} overlaps {actions[j].Name}: {bounds[i]} / {bounds[j]}.");
                     }
+                    Assert.True(Math.Abs(bounds[0].Top - bounds[1].Top) <= 0.5,
+                        "Back and Check readiness again must remain horizontally aligned.");
+                    Assert.True(bounds[0].Right <= bounds[1].Left + 0.5,
+                        "Back must precede Check readiness again.");
+                    Assert.True(bounds[1].Bottom >= page.ActualHeight - 40.5,
+                        "Recovery actions must stay at the bottom with the standard page padding.");
+                    Assert.True(Math.Abs(bounds[2].Left) <= 0.5,
+                        "Collect logs must align with the left edge of the page content.");
+                    Assert.Null(page.FindName("CloseButton"));
+                    Assert.Null(page.FindName("RefreshButton"));
                 }
                 if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                     await OnboardingArtworkRenderingTests.SaveProofAsync(root, "setup-minimum-finishing-recovery", output);

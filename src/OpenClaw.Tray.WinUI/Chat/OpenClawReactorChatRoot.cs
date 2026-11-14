@@ -422,7 +422,14 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             UserDisplayName: props.UserDisplayName,
             UserProfilePicture: props.UserProfilePicture,
             OnOpenToolDetails: _panels.IsReady ? request => _panels.Open(request, panelRevision) : null,
-            ChildThreads: subagentChildren);
+            ChildThreads: subagentChildren,
+            OnOpenWorkspaceFile: nativeProvider is not null && _panels.AreSubagentsReady && panelSession is { } fileSession
+                ? path => _panels.OpenFile(new(fileSession, path), panelRevision) : null,
+            CanOpenSession: isGatewayConnected && panelSession is { } parentSession
+                ? key => ChatToolRowLinks.IsOpenableSubagent(snapshot.Threads, parentSession, key)
+                : null,
+            OnOpenSession: isGatewayConnected
+                ? key => props.ComposerSession.Controller.TrySelectSession(key) : null);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
@@ -663,7 +670,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var files = Component<ReactorChatFiles, ReactorChatFilesProps>(new(_files, _files.Version));
         return Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(
             new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents,
-                dashboardView, files));
+                dashboardView, files,
+                nativeProvider is null ? null : nativeProvider.LoadWorkspaceFileAsync));
     }
 
     private static Element RenderLoading() =>

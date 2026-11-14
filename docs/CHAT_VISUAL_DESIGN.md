@@ -285,6 +285,15 @@ status line instead of inventing files, and a failed refresh keeps the last
 list. An unsupported Gateway is asked again only by refresh or after
 reconnecting. Disconnect or another chat closes the tab, like Subagents.
 
+File targets in read, edit and write tool rows open a separate read-only file
+preview tab without toggling the row's disclosure. Only safe workspace-relative
+paths are linked; a patch links only one surviving, unmoved file. The preview
+uses the Gateway's existing `sessions.files.get` authorization, redacts secrets,
+escapes hidden characters and bounds displayed text. Missing, unsupported,
+non-text and unavailable reads have distinct states; retry is explicit.
+Reopening the same target reads it again. The preview survives history reloads,
+but disconnecting or changing chats closes it. The Files list remains separate.
+
 `ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
 resizing, 440-DIP initial width and compact layout below 652 DIPs. There is no
 second subagent split/focus owner. Compact presentation retains the hidden main
@@ -348,6 +357,11 @@ their target, a shell tool's own title or `$ command` with leading `cd`, `set`,
 `export` and `unset` stages removed, and a labeled `sessions_spawn` as its label
 with the subagent's state (running, failed, stopped or elapsed time), classified
 by the same `ChatSubagentPresentation` as the Subagents pill so both always agree.
+Known, unarchived direct-child subagent labels open their session independently
+of the row's expand/collapse action. Edit, write and patch rows show live or
+successful final `+N -M` line counts when exact facts are available. History
+reloads retain result-derived counts; redacted or incomplete input never
+supplies guessed counts.
 An unknown or stale subagent outcome shows no state rather than a duration. Only
 read, search and fetch rows add their dimmed directory or scope, capped at
 `ChatVisuals.ToolRowDetailMaxWidth`; long titles trim with an ellipsis. A patch

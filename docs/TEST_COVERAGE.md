@@ -217,7 +217,10 @@ file and digest at this build boundary. Actual MSIX archive inventory and
 embedded-manifest checks remain a separate packaging acceptance boundary.
 Release worker EXE/DLL signatures are verified before manifest hashing.
 `FileWorkerManifestTests.ReleaseManifestRejectsUnsignedWorkerBeforeWritingDigests`
-checks rejection for both RIDs; workflow contracts verify the signed input reaches
+checks rejection for both RIDs through the production MSBuild target launched
+from PowerShell 7, retaining its inherited module environment. It must reach
+the unsigned-worker rejection rather than fail loading the Authenticode module.
+Workflow contracts verify the signed input reaches
 portable/Inno and MSIX builds without republishing the worker. These checks do
 not prove Azure signing or installed-package acceptance.
 Companion packages each worker payload in a manifest-addressed RID slot, and its
@@ -916,6 +919,19 @@ Two checks enforce the riskiest patterns:
   `scripts\test-ci-workflow-contract.ps1` rejects a value that differs from the
   step's `timeout-minutes`, and requires a multi-command runner step to be listed
   as an explicit exception. A step stopped by its timeout cannot report.
+- `Invoke-CiE2e.ps1` therefore tries to end a WSL E2E shard before its step
+  limit, so a hang fails the step with its TRX and console log, and the
+  `always()` upload runs within the 30-minute job limit. With a step budget,
+  VSTest aborts the session (`RunConfiguration.TestSessionTimeout`) at the
+  budget minus a reserve. The runner's wall deadline, at least 60 seconds before
+  the step limit, then lists the processes started since the test run began
+  (names and start times, no command lines) and ends the run if the abort did
+  not. Either deadline records `wsl.exe --list --verbose`.
+  `OPENCLAW_CI_E2E_STOP_RESERVE_SECONDS` sets the reserve (180 by default, 120
+  to 1800). A job cancelled at its limit with no log at all is most likely a hosted-runner
+  worker freeze during WSL work
+  ([actions/runner-images#14938](https://github.com/actions/runner-images/issues/14938)):
+  no step timeout fires, and no in-job deadline can report it.
 - Alpha promotion runs the current workflow against an older candidate's
   checkout and its own scripts, which reject parameters they do not declare.
   This applies to every repository script that a candidate-checkout job calls

@@ -396,6 +396,113 @@ public class OpenClawGatewayClientTests
         await probe.WaitAsync(StepTimeout);
     }
 
+    private sealed class BlockedFileSendClient(string url, string identityPath, IOpenClawLogger logger)
+        : OpenClawGatewayClient(url, "test-token", logger, identityPath: identityPath)
+    {
+        public TaskCompletionSource SendStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override async Task<bool> SendRawAsync(string message, long generation, CancellationToken cancellationToken)
+        {
+            if (message.Contains("\"sessions.files.get\"", StringComparison.Ordinal))
+            {
+                SendStarted.TrySetResult();
+                // A send stuck behind the shared socket: only the caller's deadline can end the wait.
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            return await base.SendRawAsync(message, generation, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task SessionFileRead_DeadlineCoversABlockedSend()
+    {
+        using var timeout = new EnvironmentScope("OPENCLAW_SESSION_FILE_READ_TIMEOUT_MS", "200");
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-file-read-");
+        await server.StartAsync();
+        using var client = new BlockedFileSendClient(server.WebSocketUrl, identity.Path, new OpenClaw.Shared.Tests.TestLogger());
+        var helper = new GatewayClientTestHelper(client);
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        var read = client.ReadSessionFileAsync("main", "a.txt", client.SessionMutationConnectionEpoch!.Value);
+        await client.SendStarted.Task.WaitAsync(StepTimeout);
+        await Assert.ThrowsAsync<TimeoutException>(() => read.WaitAsync(StepTimeout));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+        await AssertChatMessageReadConnectionUsable(client, server);
+    }
+
+    [Fact]
+    public async Task SessionFileRead_CancellationBeforeDispatchSendsNothing()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-file-read-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.ReadSessionFileAsync(
+            "main", "a.txt", client.SessionMutationConnectionEpoch!.Value, cancellation.Token));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+        // The first frame the Gateway sees is the probe, so the cancelled read was never sent.
+        await AssertChatMessageReadConnectionUsable(client, server);
+    }
+
+    [Theory]
+    [InlineData("session_file_not_found", "session file not found", true)]
+    [InlineData("artifact_file_expired", "scratch file expired", true)]
+    [InlineData("session_file_too_large", "session file is too large to preview", false)]
+    public async Task SessionFileRead_GatewayFileErrorsAreSettledAnswers(string type, string message, bool missing)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-file-read-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        var read = client.ReadSessionFileAsync("main", "gone.txt", client.SessionMutationConnectionEpoch!.Value);
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        await server.SendTextAsync($$$$"""{"type":"res","id":"{{{{ReadRequestId(frame)}}}}","ok":false,"error":{"code":"INVALID_REQUEST","message":"{{{{message}}}}","details":{"type":"{{{{type}}}}","path":"gone.txt"}}}""");
+        var file = await read.WaitAsync(StepTimeout);
+        Assert.True(file.IsSupported);
+        Assert.Equal(missing, file.Missing);
+        Assert.Null(file.Content);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task SessionFileRead_OtherGatewayErrorsStillFail()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-file-read-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        var read = client.ReadSessionFileAsync("main", "a.txt", client.SessionMutationConnectionEpoch!.Value);
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        await server.SendTextAsync($$$$"""{"type":"res","id":"{{{{ReadRequestId(frame)}}}}","ok":false,"error":{"code":"FORBIDDEN","message":"not allowed","details":{"type":"host_read_denied"}}}""");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => read.WaitAsync(StepTimeout));
+    }
+
+    [Fact]
+    public async Task SessionFileRead_PendingHandshakeIsAFailureNotAnUnsupportedGateway()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-file-read-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadSessionFileAsync(
+            "main", "a.txt", client.SessionMutationConnectionEpoch ?? 0));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
     [Fact]
     public void ReasoningHistory_PreservesOnlySuppliedAssistantThinkingAndSessionGates()
     {
@@ -478,12 +585,15 @@ public class OpenClawGatewayClientTests
         Assert.Equal("Public review", session.ProviderReview!.Explanation);
         Apply("""{"status":"idle"}""");
         Assert.NotNull(session.ProviderReview);
+        Assert.True(session.HasActiveSubagentRun);
         Apply("""{"hasActiveSubagentRun":false,"providerReview":null}""");
         Assert.False(session.HasActiveSubagentRun);
         Assert.Null(session.ProviderReview);
         Apply("""{"providerReview":{"id":"again","runId":"run","canContinue":false}}""");
+        Apply("""{"hasActiveSubagentRun":true}""");
         Apply("""{"status":"idle"}""", fullList: true);
         Assert.Null(session.ProviderReview);
+        Assert.Null(session.HasActiveSubagentRun);
     }
 
     [Fact]
@@ -687,6 +797,28 @@ public class OpenClawGatewayClientTests
             """);
         Assert.Equal("legacy response", Assert.Single(messages).Text);
         Assert.Empty(notices);
+    }
+
+    [Fact]
+    public void SessionToolEvent_ReachesAgentConsumersWithItsParentCall()
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var events = new List<AgentEventInfo>();
+        client.AgentEventReceived += (_, evt) => events.Add(evt);
+
+        helper.ProcessRawMessage("""
+            {"type":"event","event":"session.tool","payload":{"runId":"client-run","seq":7,"stream":"tool",
+             "ts":1700000000000,"sessionKey":"agent:main:main","agentId":"main",
+             "data":{"phase":"start","name":"session_status","toolCallId":"child","parentToolCallId":"parent","args":{}},
+             "session":{"key":"agent:main:main","sessionId":"s1"},"sessionId":"s1","kind":"direct",
+             "status":"running","updatedAt":1700000000000,"subagentRunState":null}}
+            """);
+
+        var evt = Assert.Single(events);
+        Assert.Equal(("client-run", 7, "tool", "agent:main:main"), (evt.RunId, evt.Seq, evt.Stream, evt.SessionKey));
+        Assert.Equal("child", evt.Data.GetProperty("toolCallId").GetString());
+        Assert.Equal("parent", evt.Data.GetProperty("parentToolCallId").GetString());
     }
 
     [Fact]
@@ -5609,6 +5741,27 @@ public class OpenClawGatewayClientTests
         Assert.True(sessions["agent:main:idle"].HasActiveRun == false);
         Assert.Null(sessions["agent:main:unknown"].HasActiveRun);
         Assert.Equal("unknown", sessions["agent:main:unknown"].Status);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ParseSessions_CompletedChildrenClearOmittedActiveSubagentFlag(bool mapRows)
+    {
+        var helper = new GatewayClientTestHelper();
+        helper.ParseSessionsPayload("""
+            [{"key":"agent:main:parent","hasActiveRun":false,"hasActiveSubagentRun":true}]
+            """);
+        Assert.True(Assert.Single(helper.GetSessionList()).HasActiveSubagentRun);
+
+        // The Gateway only emits hasActiveSubagentRun when true; omission in the next roster clears it.
+        helper.ParseSessionsPayload(mapRows
+            ? """{"agent:main:parent":{"status":"done","hasActiveRun":false}}"""
+            : """[{"key":"agent:main:parent","status":"done","hasActiveRun":false}]""");
+
+        var parent = Assert.Single(helper.GetSessionList());
+        Assert.Null(parent.HasActiveSubagentRun);
+        Assert.False(parent.HasActiveRun);
     }
 
     [Fact]

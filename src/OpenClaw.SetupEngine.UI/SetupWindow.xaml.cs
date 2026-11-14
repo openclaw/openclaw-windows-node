@@ -49,6 +49,8 @@ public sealed partial class SetupWindow : Window
     private LocalAiInstallAndUseIntent? _localAiInstallAndUse;
     private Task _aiPageCleanupTask = Task.CompletedTask;
     private SetupCompletionPreparation? _completionPreparation;
+    private Exception? _completionFailure;
+    private readonly Func<FrameworkElement, Task>? _collectLogs;
     private Task _preparationTask = Task.CompletedTask;
     private readonly SetupLoadingProgress _loadingProgress = new();
     private SetupLoadingProgress.Scope? _finishingLoading;
@@ -159,7 +161,8 @@ public sealed partial class SetupWindow : Window
         bool startupRegistrationAllowed = true,
         Action<TraySettingsConfig, bool?, bool>? persistChoices = null,
         GatewayConnectionManager? connectionManager = null,
-        Func<SetupNativePreparation, CancellationToken, Task>? publishNativePreparation = null)
+        Func<SetupNativePreparation, CancellationToken, Task>? publishNativePreparation = null,
+        Func<FrameworkElement, Task>? collectLogs = null)
     {
         _startupRegistrationAllowed = startupRegistrationAllowed;
         _dataDir = dataDir ?? SetupContext.ResolveDataDir();
@@ -171,6 +174,7 @@ public sealed partial class SetupWindow : Window
         _publishNativePreparation = publishNativePreparation;
         _applyNativeStartup = applyNativeStartup;
         _persistChoices = persistChoices;
+        _collectLogs = collectLogs;
         _startAtLocalAiRecoveryReview = startAtLocalAiRecoveryReview;
         InitializeComponent();
         _windowSizing = new(this, RootFrame);
@@ -809,13 +813,28 @@ public sealed partial class SetupWindow : Window
         catch (Exception error)
         {
             _finishingLoading?.Dispose();
+            _completionFailure = error;
+            NativeSetupLog.Error("Setup completion failed.", new
+            {
+                stage = owner.Stage.ToString(),
+                exception_type = error.GetType().Name,
+                phase = (error as SetupNativeCompletionTimeoutException)?.Phase.ToString(),
+                exception = error.ToString(),
+            });
             System.Diagnostics.Trace.TraceWarning("Setup completion failed ({0}; phase: {1}).",
                 error.GetType().Name, (error as SetupNativeCompletionTimeoutException)?.Phase.ToString() ?? "none");
-            if (!_isClosed && RootFrame.Content is AiCompletionPage page)
-                page.ShowFailure(
-                    owner.CanRetry ? () => _preparationTask = ObservePreparationAsync(owner, retry: true) : null,
-                    CanReturnFromFinishing ? ReturnFromFinishing : null, error, Close);
+            RefreshCompletionRecovery();
         }
+    }
+
+    private void RefreshCompletionRecovery()
+    {
+        if (_isClosed || RootFrame.Content is not AiCompletionPage page || _completionPreparation is not { } owner)
+            return;
+        page.ShowFailure(
+            owner.CanRetry ? () => _preparationTask = ObservePreparationAsync(owner, retry: true) : null,
+            CanReturnFromFinishing ? ReturnFromFinishing : null, _completionFailure);
+        page.ConfigureRecovery(RefreshCompletionRecovery, _collectLogs);
     }
 
     private bool CanReturnFromFinishing => _completionPreparation?.HasPendingWork != true &&
@@ -849,7 +868,11 @@ public sealed partial class SetupWindow : Window
         catch (Exception error)
         {
             System.Diagnostics.Trace.TraceWarning("Returning from setup completion failed ({0}).", error.GetType().Name);
-            if (!_isClosed && RootFrame.Content is AiCompletionPage page) page.ShowFailure(error: error, close: Close);
+            if (!_isClosed && RootFrame.Content is AiCompletionPage page)
+            {
+                page.ShowFailure(error: error);
+                page.ConfigureRecovery(refresh: null, collectLogs: _collectLogs);
+            }
         }
     }
     private void RequireVerifiedGateway(GatewayAiSetupCompletion completion)

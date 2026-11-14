@@ -215,6 +215,17 @@ internal sealed class ChatHistoryState
             ? generation
             : 0;
 
+    /// <summary>
+    /// The same successful call seen live and in history keeps whichever copy carried result details,
+    /// so a reload never turns exact line counts into argument-derived ones.
+    /// </summary>
+    internal static ChatTimelineItem KeepToolResultFacts(ChatTimelineItem target, ChatTimelineItem source) =>
+        target is { Kind: ChatTimelineItemKind.ToolCall, ToolResult: ChatToolCallStatus.Success, ToolResultDiffFacts: null } &&
+        source is { Kind: ChatTimelineItemKind.ToolCall, ToolResult: ChatToolCallStatus.Success, ToolResultDiffFacts: { } facts } &&
+        target.ToolCallId is { Length: > 0 } callId && callId == source.ToolCallId
+            ? target with { ToolResultDiffFacts = facts }
+            : target;
+
     internal static (ChatTimelineState Timeline, Dictionary<string, ChatEntryMetadata> Metadata)
         PrependOlderPage(ChatHistoryRebuildPlan plan, ChatTimelineState prior,
             IReadOnlyDictionary<string, ChatEntryMetadata> priorMetadata)
@@ -241,7 +252,7 @@ internal sealed class ChatHistoryState
                         IdentityStrength: entry.ToolIdentityStrength, RunId: runId,
                         HandoffInput: entry.HandoffInput, InputDetails: entry.ToolInputDetails,
                         ParentCallId: entry.ToolParentCallId));
-                entries.Add(enriched.Entries.Single());
+                entries.Add(KeepToolResultFacts(enriched.Entries.Single(), entry));
                 reunitedTools.Add(current.Id);
                 continue;
             }
@@ -377,6 +388,12 @@ internal sealed class ChatHistoryState
                 rebuiltTools.TryAdd((callId, runId), index);
             }
         }
+        void PreserveToolResultFacts(ChatTimelineItem historyEntry, ChatTimelineItem liveEntry)
+        {
+            if (KeepToolResultFacts(historyEntry, liveEntry) is { } merged && !ReferenceEquals(merged, historyEntry) &&
+                entries.FindIndex(candidate => candidate.Id == historyEntry.Id) is >= 0 and var index)
+                entries[index] = merged;
+        }
         foreach (var entry in prior.Entries)
         {
             priorMetadata.TryGetValue(entry.Id, out var metadata);
@@ -399,6 +416,10 @@ internal sealed class ChatHistoryState
                 {
                     entries[toolIndex] = entry with { Id = persisted.Id };
                 }
+                else
+                {
+                    entries[toolIndex] = KeepToolResultFacts(entries[toolIndex], entry);
+                }
                 // Live tool rows carry timestamps, so a same-label sibling must not content-match this row.
                 if (contentTimestamps.TryGetValue(ContentKey(persisted.Kind, persisted.Text), out var persistedTimes))
                     persistedTimes.RemoveAll(value => value.Entry.Id == persisted.Id);
@@ -409,6 +430,7 @@ internal sealed class ChatHistoryState
             {
                 remappedEntryIds[entry.Id] = matchingId.Id;
                 PreserveMatchedUsage(matchingId, entry.Kind, metadata);
+                PreserveToolResultFacts(matchingId, entry);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
                     ContentKey(entry.Kind, entry.Text));
@@ -422,6 +444,7 @@ internal sealed class ChatHistoryState
             {
                 remappedEntryIds[entry.Id] = sequenceEntryId.Id;
                 PreserveMatchedUsage(sequenceEntryId, entry.Kind, metadata);
+                PreserveToolResultFacts(sequenceEntryId, entry);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
                     ContentKey(entry.Kind, entry.Text));
@@ -449,6 +472,7 @@ internal sealed class ChatHistoryState
                 {
                     remappedEntryIds[entry.Id] = rebuiltTimes[match].Entry.Id;
                     PreserveMatchedUsage(rebuiltTimes[match].Entry, entry.Kind, metadata);
+                    PreserveToolResultFacts(rebuiltTimes[match].Entry, entry);
                     rebuiltTimes.RemoveAt(match);
                     continue;
                 }

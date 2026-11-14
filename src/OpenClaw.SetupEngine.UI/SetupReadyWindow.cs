@@ -18,6 +18,7 @@ public sealed class SetupReadyWindow : Window
     private IDisposable? _observation;
     private readonly Action _requireLiveModel;
     private readonly Action _returnToConnection;
+    private readonly Func<FrameworkElement, Task>? _collectLogs;
     private readonly Func<string, OpenClaw.Connection.GatewayRecord?>? _findGateway;
     private SetupReadyGateway _gateway = SetupReadyGateway.Unknown;
     private SetupReadyCoordinator? _choice;
@@ -37,11 +38,13 @@ public sealed class SetupReadyWindow : Window
     public SetupReadyWindow(Func<CancellationToken, Task<SetupVerifiedNativeRoute>> verify,
         Func<SetupNativeCompletion, CancellationToken, Task> navigate,
         Func<SetupNativeReadyBinding, IDisposable> observe, Action requireLiveModel, Action returnToConnection,
-        Func<string, OpenClaw.Connection.GatewayRecord?>? findGateway = null)
+        Func<string, OpenClaw.Connection.GatewayRecord?>? findGateway = null,
+        Func<FrameworkElement, Task>? collectLogs = null)
     {
         (_verify, _navigate, _observe, _requireLiveModel) = (verify, navigate, observe, requireLiveModel);
         _returnToConnection = returnToConnection;
         _findGateway = findGateway;
+        _collectLogs = collectLogs;
         _frame = _shell.Frame;
         _frame.Navigating += Frame_Navigating;
         Content = _shell;
@@ -190,7 +193,10 @@ public sealed class SetupReadyWindow : Window
         if (_frame.Content is not AiCompletionPage)
             _frame.Navigate(typeof(AiCompletionPage));
         if (_frame.Content is AiCompletionPage page)
+        {
             page.ShowFailure(_presentation.ReceiptConsumed ? Recover : retryReceipt, _returnToConnection);
+            page.ConfigureRecovery(() => ShowFailure(retryReceipt), _collectLogs);
+        }
     }
 
     public void CommitPresentation()

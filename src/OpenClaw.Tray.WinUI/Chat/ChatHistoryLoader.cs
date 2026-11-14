@@ -1046,7 +1046,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                             resolvedCallId,
                             RunId: resultRunId,
                             HandoffReceipt: hasVerifiedCallId ? toolBlock.HandoffReceipt : null,
-                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId)),
+                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId),
+                            DiffFacts: toolBlock.ResultDiffFacts),
                     entryMetadata);
             }
         }

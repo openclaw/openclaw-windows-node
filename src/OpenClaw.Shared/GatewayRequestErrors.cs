@@ -19,7 +19,13 @@ public static class GatewayRequestErrors
     {
         "AUTHENTICATED_PROFILE_UNAVAILABLE", "MISSING_SCOPE",
         Cron.CronProtocol.JobChangedCode, Cron.CronProtocol.JobNotFoundCode,
+        SessionFileNotFound, SessionFileExpired, SessionFileTooLarge,
     };
+
+    /// <summary><c>sessions.files.get</c> error kinds (Gateway <c>error.details.type</c>).</summary>
+    public const string SessionFileNotFound = "session_file_not_found";
+    public const string SessionFileExpired = "artifact_file_expired";
+    public const string SessionFileTooLarge = "session_file_too_large";
 
     private const string CodeKey = "openclaw.gateway.error.code";
     private const string DetailCodeKey = "openclaw.gateway.error.detailCode";
