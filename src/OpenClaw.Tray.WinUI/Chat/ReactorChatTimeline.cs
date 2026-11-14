@@ -881,12 +881,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             OrderedList = (_, items) => ChatMarkdownPresentation.List(items, compactSecondaryReading),
             ListItem = row => ChatMarkdownPresentation.ListItem(row, compactSecondaryReading),
             ThematicBreak = ChatMarkdownPresentation.ThematicBreak,
+            BlockQuote = ChatMarkdownPresentation.BlockQuote,
+            Table = ChatMarkdownPresentation.Table,
+            TableHeaderBackground = null,
+            TableCellPadding = new Thickness(ChatVisuals.TableCellHorizontalInset, ChatVisuals.TableCellVerticalInset,
+                ChatVisuals.TableCellHorizontalInset, ChatVisuals.TableCellVerticalInset),
             TextSelection = selectionOptions,
             CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(
                 code, language, tryCopy: tryCopy, selectionOptions: selectionOptions),
             CodeFontFamily = ChatVisuals.CodeFontFamily,
-            ParserFlags = MarkdownParserFlags.Tables | MarkdownParserFlags.NoHtml |
-                MarkdownParserFlags.PermissiveUrlAutolinks | MarkdownParserFlags.PermissiveWwwAutolinks,
+            // GitHub dialect (tables, strikethrough, task lists, URL/www/email autolinks)
+            // without HTML, plus the web chat's `breaks: true` single-newline line breaks.
+            ParserFlags = MarkdownParserFlags.DialectGitHub | MarkdownParserFlags.NoHtml |
+                MarkdownParserFlags.HardSoftBreaks,
             Image = (alt, _) =>
             {
                 var label = string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]";
