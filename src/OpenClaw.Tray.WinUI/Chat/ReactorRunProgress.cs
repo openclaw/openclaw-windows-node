@@ -15,7 +15,7 @@ internal sealed record ReactorRunProgressProps(ChatRunProgressPresentation Progr
 
 internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
 {
-    private const int StatusSwapMilliseconds = 220;
+    private const int StatusSwapMilliseconds = ChatRunProgressProjection.StatusSwapMilliseconds;
 
     public override Element Render()
     {
@@ -55,16 +55,29 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         var shown = UseRef<(string Phase, string Line)?>(null);
         var outgoingLine = UseRef("");
         var swapPending = UseRef(false);
+        var swapContinues = UseRef(false);
+        var swapStartedAt = UseRef<long?>(null);
         if (shown.Current is { } last && last.Phase != progress.Label && !reducedMotion)
         {
-            outgoingLine.Current = last.Line;
+            // A phase change during a swap keeps the leaving line and its text going, and moves the
+            // arriving line on from where it is, so neither snaps back nor flashes the skipped label.
+            var inFlight = ChatRunProgressProjection.IsStatusSwapInFlight(swapStartedAt.Current, Environment.TickCount64);
+            if (!inFlight)
+                outgoingLine.Current = last.Line;
+            swapContinues.Current = inFlight;
             swapPending.Current = true;
         }
         shown.Current = (progress.Label, line);
         UseEffect((Func<Action>)(() =>
         {
             if (swapPending.Current && incomingRef.Current is { } incoming && outgoingRef.Current is { } outgoing)
-                AnimateStatusSwap(incoming, outgoing);
+            {
+                if (swapContinues.Current)
+                    ContinueStatusSwap(incoming);
+                else
+                    AnimateStatusSwap(incoming, outgoing);
+                swapStartedAt.Current = Environment.TickCount64;
+            }
             swapPending.Current = false;
             return static () => { };
         }), progress.Label);
@@ -93,6 +106,9 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
                         .TextTrimming(TextTrimming.CharacterEllipsis)
                         .IsHitTestVisible(false)
                         .AccessibilityView(AccessibilityView.Raw)
+                        // The leaving line rests hidden, so a new label never shows over its predecessor.
+                        .OnMount(element => Microsoft.UI.Xaml.Hosting.ElementCompositionPreview
+                            .GetElementVisual(element).Opacity = 0)
                         .Ref(outgoingRef))
                 .Set(ClipToBounds)
                 .OnUnmount(ResetStatusSwap)
@@ -142,26 +158,38 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
     /// </summary>
     private static void AnimateStatusSwap(FrameworkElement incoming, FrameworkElement outgoing)
     {
-        var compositor = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(incoming).Compositor;
-        var easing = compositor.CreateCubicBezierEasingFunction(new(.215f, .61f), new(.355f, 1f));
         var distance = (float)Math.Max(incoming.ActualHeight, 16);
-        void Animate(FrameworkElement element, float fromY, float toY, float fromOpacity, float toOpacity)
-        {
-            Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(element, true);
-            var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
-            var move = compositor.CreateVector3KeyFrameAnimation();
-            move.InsertKeyFrame(0, new(0, fromY, 0));
-            move.InsertKeyFrame(1, new(0, toY, 0), easing);
-            move.Duration = TimeSpan.FromMilliseconds(StatusSwapMilliseconds);
-            var fade = compositor.CreateScalarKeyFrameAnimation();
-            fade.InsertKeyFrame(0, fromOpacity);
-            fade.InsertKeyFrame(1, toOpacity, easing);
-            fade.Duration = move.Duration;
-            visual.StartAnimation("Translation", move);
-            visual.StartAnimation("Opacity", fade);
-        }
-        Animate(incoming, distance, 0, 0, 1);
-        Animate(outgoing, 0, -distance, 1, 0);
+        AnimateStatusLine(incoming, distance, 0, 0, 1);
+        AnimateStatusLine(outgoing, 0, -distance, 1, 0);
+    }
+
+    // A null start uses this.StartingValue, so the property continues from its current, possibly mid-swap, value.
+    private static void ContinueStatusSwap(FrameworkElement incoming) =>
+        AnimateStatusLine(incoming, null, 0, null, 1);
+
+    private static void AnimateStatusLine(
+        FrameworkElement element, float? fromY, float toY, float? fromOpacity, float toOpacity)
+    {
+        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+        var visual = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(element);
+        var compositor = visual.Compositor;
+        var easing = compositor.CreateCubicBezierEasingFunction(new(.215f, .61f), new(.355f, 1f));
+        var move = compositor.CreateVector3KeyFrameAnimation();
+        if (fromY is { } startY)
+            move.InsertKeyFrame(0, new(0, startY, 0));
+        else
+            move.InsertExpressionKeyFrame(0, "this.StartingValue");
+        move.InsertKeyFrame(1, new(0, toY, 0), easing);
+        move.Duration = TimeSpan.FromMilliseconds(StatusSwapMilliseconds);
+        var fade = compositor.CreateScalarKeyFrameAnimation();
+        if (fromOpacity is { } startOpacity)
+            fade.InsertKeyFrame(0, startOpacity);
+        else
+            fade.InsertExpressionKeyFrame(0, "this.StartingValue");
+        fade.InsertKeyFrame(1, toOpacity, easing);
+        fade.Duration = move.Duration;
+        visual.StartAnimation("Translation", move);
+        visual.StartAnimation("Opacity", fade);
     }
 
     private static Storyboard AnimateEntrance(FrameworkElement row)

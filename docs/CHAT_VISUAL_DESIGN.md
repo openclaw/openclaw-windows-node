@@ -98,8 +98,8 @@ Text/media stacks use that same gap. The transcript has an 8-pixel lead-in.
 Assistant turns use 4-pixel outer spacing without extra body padding. User
 bubbles use 16-pixel horizontal and 12-pixel vertical insets, with an 8-pixel
 stack gap plus a 2-pixel top margin before their action footer. Tool details
-keep 12-pixel horizontal and 8-pixel vertical insets; opened thinking text is
-indented 16 pixels under its disclosure header.
+keep 12-pixel horizontal and 8-pixel vertical insets; opened thinking text
+aligns with its disclosure title, 24 pixels in.
 Related tool labels, details and action footers keep one 4-pixel gap. Comparisons
 normalize the released web header separately rather than adding fake app chrome.
 Code remains literal and selectable, with native horizontal and vertical
@@ -491,11 +491,14 @@ Conflicting unidentified text remains visible rather than being guessed away. Pi
 requires current-build visible proof in addition to the offscreen control tests.
 
 Supplied assistant `thinking` blocks render as native Markdown inside a
-**Thinking** disclosure that starts collapsed. Its header reuses the tool-row
-Expander styling with the native chevron visible, and the 12px title shimmers
-only while that thought is the stream's active item. The opened text uses the
-web thinking block's 12/18 secondary tone in a scroller capped at 240 pixels,
-and its lists and headings share that ramp. Session
+**Thinking** disclosure that starts collapsed. Its header is a tool row with an
+always-visible leading chevron (right while closed, down while open) and the
+native Expander chevron hidden, like the nested **Tool input** row. The open
+choice lives in the tool-row expansion store, so a recycled row never inherits
+another thought's state and collapse-all also closes thinking. The 12px title
+shimmers only while that thought is the stream's active item. The opened text
+aligns with the title and uses the web thinking block's 12/18 secondary tone in
+a scroller capped at 240 pixels, and its lists and headings share that ramp. Session
 `reasoningLevel` falls back to
 `reasoningDefault`: `on` shows saved reasoning and live previews; `stream`
 shows previews only; other or absent values hide both. The client default
@@ -525,7 +528,11 @@ running tools. The footer shows the status and elapsed time on one line; the
 status trims before the elapsed time. When the phase changes, the old line rises
 one line height and fades out while the new line rises in from below, in 220 ms,
 on composition visuals clipped to the row, so layout, focus and the XAML tree do
-not move. Windows animation off skips the swap, and unmount resets the
+not move. The leaving line rests hidden between swaps. A phase change during a
+swap does not restart it: the leaving line continues out with its original text,
+and the arriving line moves on from its current position and opacity
+(`this.StartingValue`) with the newest label, so it never snaps back down or
+flashes the skipped label. Windows animation off skips the swap, and unmount resets the
 composition opacity, translation and clip before Reactor can reuse the controls.
 These changes do not alter send
 admission, terminal-run classification or the panel's typed detail action.

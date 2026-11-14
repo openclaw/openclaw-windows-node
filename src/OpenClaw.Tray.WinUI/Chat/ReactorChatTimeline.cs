@@ -674,8 +674,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 toggleSpeechAsync,
                 includeAvatar),
             ChatTimelineItemKind.ToolCall => ToolCallCardRenderer.BuildStandalone(row.Props.Timeline, entry),
-            ChatTimelineItemKind.Reasoning => BuildReasoning(
-                entry, ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream)),
+            ChatTimelineItemKind.Reasoning => Component<ReactorReasoningDisclosure, ReactorReasoningDisclosureProps>(new(
+                    row.Props.Timeline, entry,
+                    ChatReasoningPresentation.IsActive(entry, row.Props.Timeline.ReasoningStream)))
+                .WithKey($"reasoning:{entry.Id}"),
             ChatTimelineItemKind.PermissionRequest => BuildPermission(row, entry),
             ChatTimelineItemKind.Status => BuildStatus(row, entry),
             _ => BuildGenericStatus(entry),
@@ -1163,21 +1165,23 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
     }
 
-    private static Element BuildReasoning(ChatTimelineItem entry, bool active)
+    internal static Element BuildReasoning(ChatTimelineItem entry, bool active, bool expanded, Action<bool> onExpanded)
     {
         var header = LocalizedOrDefault("Chat_Run_Thinking", "Thinking");
         return Expander(
                 header,
                 ScrollViewer(BuildSafeMarkdown(entry.Text, compactSecondaryReading: true))
-                    .MaxHeight(240).Margin(16, 4, 0, 8)
-                    .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled))
-            .HeaderContent(ChatVisuals.ActivityText(header, active))
+                    .MaxHeight(240).Margin(ChatVisuals.ToolRowTitleInset, 4, 0, 8)
+                    .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled),
+                (Optional<bool>)expanded,
+                onExpanded)
+            .HeaderContent(ToolCallCardRenderer.BuildDisclosureHeader(expanded, ChatVisuals.ActivityText(header, active)))
             .OnUnmount(ChatVisuals.StopToolRowShimmers)
             .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
-            .Resources(ChatVisuals.DisclosureRowExpanderResources)
+            .Resources(ChatVisuals.ToolRowExpanderResources)
             .Set(ChatVisuals.FlushToolRowExpander)
             .HAlign(HorizontalAlignment.Stretch)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
@@ -1512,4 +1516,29 @@ internal enum ReactorTimelineRowKind
     LoadEarlier,
     Loading,
     HistoryUnavailable,
+}
+
+internal sealed record ReactorReasoningDisclosureProps(
+    ChatTimelinePresentationContext Timeline, ChatTimelineItem Entry, bool Active);
+
+/// <summary>
+/// Thinking disclosure styled like a tool row: a leading chevron that reflects the open state.
+/// The choice lives in the tool-row expansion store, so a recycled row never inherits another
+/// thought's state and collapse-all closes thinking with the tool rows.
+/// </summary>
+internal sealed class ReactorReasoningDisclosure : Component<ReactorReasoningDisclosureProps>
+{
+    public override Element Render()
+    {
+        var (localExpanded, setLocalExpanded) = UseState(false, threadSafe: true);
+        var timeline = Props.Timeline;
+        var key = "reasoning|" + ChatToolActivityPresentation.ToolRowKey(
+            timeline.SessionId, timeline.TimelineGeneration, Props.Entry.Id);
+        var expanded = timeline.ToolExpansionState?.IsExpanded(key, timeline.ToolCallsCollapseVersion) ?? localExpanded;
+        return ReactorChatTimeline.BuildReasoning(Props.Entry, Props.Active, expanded, value =>
+        {
+            timeline.ToolExpansionState?.SetExplicit(key, value, timeline.ToolCallsCollapseVersion);
+            setLocalExpanded(value);
+        });
+    }
 }

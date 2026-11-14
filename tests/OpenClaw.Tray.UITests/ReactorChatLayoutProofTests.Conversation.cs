@@ -1,3 +1,4 @@
+extern alias TrayRuntime;
 using System.Reflection;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -18,6 +19,7 @@ using OpenClawTray.Chat;
 using OpenClawTray.Services;
 using Windows.Foundation;
 using static OpenClaw.Tray.UITests.TestSupport;
+using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -1078,21 +1080,28 @@ public sealed partial class ReactorChatLayoutProofTests
         });
     }
 
-    // Thinking starts collapsed behind its disclosure; open it and wait for its Markdown before reading.
+    // Thinking starts collapsed behind a tool-row disclosure whose leading chevron tracks its state;
+    // open it and wait for its Markdown before reading.
     private async Task OpenReasoningAsync(DependencyObject root, string expectedText)
     {
         static bool IsReasoning(Expander row) =>
             Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(row) == "ChatReasoning";
+        static string LeadingGlyph(Expander row) => FindDescendants<TextBlock>(
+            FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>(row)
+                .First(button => button.Name == "ExpanderHeader")).First().Text;
         await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
             () => FindDescendants<Expander>(root).Any(IsReasoning), "the collapsed reasoning disclosure"));
         await ui.RunOnUIAsync(() =>
         {
             var reasoning = Assert.Single(FindDescendants<Expander>(root), IsReasoning);
             Assert.False(reasoning.IsExpanded);
+            Assert.Equal(FluentIconCatalog.ChevronR, LeadingGlyph(reasoning));
             reasoning.IsExpanded = true;
         });
         await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-            () => ReadToolText(root).Contains(expectedText, StringComparison.Ordinal), "the opened reasoning text"));
+            () => ReadToolText(root).Contains(expectedText, StringComparison.Ordinal) &&
+                LeadingGlyph(Assert.Single(FindDescendants<Expander>(root), IsReasoning)) == FluentIconCatalog.ChevronDown,
+            "the opened reasoning text and its down chevron"));
     }
 
     private static string ReadToolText(DependencyObject root) => string.Join("\n",

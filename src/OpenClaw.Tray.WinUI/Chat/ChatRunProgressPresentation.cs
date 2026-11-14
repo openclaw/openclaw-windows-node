@@ -16,6 +16,14 @@ public sealed record ChatRunProgressPresentation(
 internal static class ChatRunProgressProjection
 {
     internal const string RetryLabel = "Retrying the model request";
+    internal const int StatusSwapMilliseconds = 220;
+
+    /// <summary>
+    /// True while a status swap started at <paramref name="startedAtMs"/> is still moving, so a newer
+    /// phase continues it instead of restarting. No swap has started before the first phase change.
+    /// </summary>
+    internal static bool IsStatusSwapInFlight(long? startedAtMs, long nowMs) =>
+        startedAtMs is { } started && nowMs - started < StatusSwapMilliseconds;
 
     internal static ChatRunProgressPresentation? Project(ChatTimelineState timeline, bool awaitingQuestion = false,
         bool awaitingSubagents = false)

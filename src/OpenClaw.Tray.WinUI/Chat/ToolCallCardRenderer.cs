@@ -789,6 +789,10 @@ internal static class ToolCallCardRenderer
             .OnPointerExited((_, _) => onHover?.Invoke(false));
     }
 
+    /// <summary>A disclosure-only row header (no category icon): an always-visible leading chevron and the title.</summary>
+    internal static Element BuildDisclosureHeader(bool isExpanded, Element title) =>
+        BuildRowHeader(FluentIconCatalog.ChevronR, showChevron: true, isExpanded, title, null, null);
+
     // GotFocus bubbles from nested rows and detail controls; only this Expander's own header counts.
     private static bool IsOwnHeader(object sender, RoutedEventArgs args)
     {

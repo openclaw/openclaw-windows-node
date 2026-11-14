@@ -292,6 +292,8 @@ internal static class ChatVisuals
     internal const double DetailVerticalInset = 8;
     internal const double ActionIconSize = 14;
     internal const double ToolRowMinHeight = 32;
+    // A tool row's 16px leading icon column plus its 8px gap; disclosure content aligns with the title.
+    internal const double ToolRowTitleInset = 24;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
     // Quieter activity titles (tool, thinking and run status) and their dimmed details.
@@ -375,21 +377,13 @@ internal static class ChatVisuals
     /// Transparent, borderless (in every header state) tool-row Expander header whose built-in
     /// chevron is hidden; the row's leading icon swaps to a chevron on hover or keyboard focus instead.
     /// </summary>
-    internal static void ToolRowExpanderResources(ResourceBuilder resources) =>
-        RowExpanderResources(resources, showChevron: false);
-
-    /// <summary>The tool-row header with the native trailing chevron left visible.</summary>
-    internal static void DisclosureRowExpanderResources(ResourceBuilder resources) =>
-        RowExpanderResources(resources, showChevron: true);
-
-    private static void RowExpanderResources(ResourceBuilder resources, bool showChevron)
+    internal static void ToolRowExpanderResources(ResourceBuilder resources)
     {
         resources
             .Set("ExpanderHeaderBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
-            .Set("ExpanderChevronButtonSize", showChevron ? 24d : 0d);
+            .Set("ExpanderChevronButtonSize", 0d);
         foreach (var key in s_transparentToolRowBrushKeys)
-            resources.Set(key, Theme.Ref(showChevron && key.EndsWith("Foreground", StringComparison.Ordinal)
-                ? "TextFillColorSecondaryBrush" : "SubtleFillColorTransparentBrush"));
+            resources.Set(key, Theme.Ref("SubtleFillColorTransparentBrush"));
     }
 
     /// <summary>Quiet 12px activity title; it shimmers only while its work is active.</summary>

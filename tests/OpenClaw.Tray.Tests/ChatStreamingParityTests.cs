@@ -257,6 +257,16 @@ public sealed class ChatStreamingParityTests
         Assert.Null(ChatRunProgressProjection.Project(state));
     }
 
+    [Fact]
+    public void StatusSwapContinuesOnlyWhileAnEarlierSwapIsMoving()
+    {
+        var now = Environment.TickCount64;
+        // The first phase change after mount must animate, not continue a swap that never started.
+        Assert.False(ChatRunProgressProjection.IsStatusSwapInFlight(null, now));
+        Assert.True(ChatRunProgressProjection.IsStatusSwapInFlight(now - 100, now));
+        Assert.False(ChatRunProgressProjection.IsStatusSwapInFlight(now - 220, now));
+    }
+
     [Theory]
     [InlineData("""{"delta":"not cumulative","itemId":"i"}""")]
     [InlineData("""{"text":"missing identity"}""")]
