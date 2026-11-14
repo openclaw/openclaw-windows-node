@@ -478,13 +478,15 @@ try {
         $job = [regex]::Match($workflow, "(?ms)^  ${name}:\r?`n.*?(?=^  [a-z][a-z-]+:|\z)").Value
         if (-not $job.Contains('ref: ${{ inputs.promotion_source_sha || github.sha }}') -or
             -not $job.Contains('persist-credentials: false') -or
-            -not ($job.Contains('&promotion-version-tag') -or $job.Contains('*promotion-version-tag'))) { throw "Source job $name is not SHA-bound." }
+            -not ($job.Contains('&promotion-version-tag') -or $job.Contains('*promotion-version-tag')) -or
+            -not ($job.Contains('&tag-version-source') -or $job.Contains('*tag-version-source'))) { throw "Source job $name is not SHA-bound." }
     }
     foreach ($text in @('name: stable-release', 'artifact-ids: ${{ needs.release.outputs.promotion_artifact_id }}',
-        "if: inputs.promotion_alpha == ''", 'disableNormalization: ${{ inputs.promotion_alpha != '''' }}',
+        "if: inputs.promotion_alpha == ''", 'disableNormalization: ${{ inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'') }}',
         'group: openclaw-windows-node-release', 'candidate-source\installer.iss',
-        'GitVersion_NoNormalizeEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}',
-        'GitVersion_NoFetchEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}')) {
+        'GitVersion_NoNormalizeEnabled: ${{ (inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'')) && ''true'' || ''false'' }}',
+        'GitVersion_NoFetchEnabled: ${{ (inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'')) && ''true'' || ''false'' }}',
+        "if: inputs.promotion_alpha == '' && startsWith(github.ref, 'refs/tags/v')")) {
         if (-not $workflow.Contains($text)) { throw "Missing promotion contract: $text" }
     }
     foreach ($name in @('prepare-release-assets', 'release')) {

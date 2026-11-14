@@ -36,9 +36,10 @@ env:
   OPENCLAW_RELEASE_SOURCE_SHA: ${{ inputs.promotion_source_sha || github.sha }}
   OPENCLAW_RELEASE_REF: ${{ inputs.promotion_stable_tag && format('refs/tags/{0}', inputs.promotion_stable_tag) || github.ref }}
   OPENCLAW_RELEASE_TAG: ${{ inputs.promotion_stable_tag || github.ref_name }}
-  # GitVersion.MsBuild must not normalize a candidate checkout to the caller's main ref.
-  GitVersion_NoNormalizeEnabled: ${{ inputs.promotion_alpha != '' && 'true' || 'false' }}
-  GitVersion_NoFetchEnabled: ${{ inputs.promotion_alpha != '' && 'true' || 'false' }}
+  # Release sources are already selected. Normalization can confuse release and MSIX reservation tags.
+  # Keep normalization for branch/PR builds, including synthetic merge refs.
+  GitVersion_NoNormalizeEnabled: ${{ (inputs.promotion_alpha != '' || startsWith(github.ref, 'refs/tags/v')) && 'true' || 'false' }}
+  GitVersion_NoFetchEnabled: ${{ (inputs.promotion_alpha != '' || startsWith(github.ref, 'refs/tags/v')) && 'true' || 'false' }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('{0}-{1}', github.ref, github.sha) }}
@@ -355,6 +356,23 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - &tag-version-source
+      name: Bind tagged versioning to the checked-out release
+      if: inputs.promotion_alpha == '' && startsWith(github.ref, 'refs/tags/v')
+      shell: pwsh
+      run: |
+        $head = git rev-parse HEAD
+        if ($LASTEXITCODE -ne 0 -or $head -cne $env:OPENCLAW_RELEASE_SOURCE_SHA) {
+          throw 'Release checkout does not match the selected source SHA.'
+        }
+        $tagSource = git rev-parse --verify "$($env:OPENCLAW_RELEASE_REF)^{commit}"
+        if ($LASTEXITCODE -ne 0 -or $tagSource -cne $head) {
+          throw 'Release tag does not match the selected source SHA.'
+        }
+        # A local release branch removes detached-HEAD ancestry ambiguity without moving any remote ref.
+        git switch --create "release/$($env:OPENCLAW_RELEASE_TAG)" $head
+        if ($LASTEXITCODE -ne 0) { throw 'Could not bind the checkout-only release branch.' }
+
     - &promotion-version-tag
       name: Create checkout-only stable tag for candidate versioning
       if: inputs.promotion_alpha != ''
@@ -382,7 +400,7 @@ jobs:
       id: gitversion
       uses: gittools/actions/gitversion/execute@v4
       with:
-        disableNormalization: ${{ inputs.promotion_alpha != '' }}
+        disableNormalization: ${{ inputs.promotion_alpha != '' || startsWith(github.ref, 'refs/tags/v') }}
 
     - name: Resolve release version
       id: release_version
@@ -498,6 +516,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -619,6 +638,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -720,6 +740,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -976,6 +997,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -1094,6 +1116,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -1314,6 +1337,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -1433,6 +1457,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Select added and changed tests
@@ -1526,6 +1551,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Record exact Gateway baseline
@@ -1605,6 +1631,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Record exact Gateway baseline
@@ -1684,6 +1711,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Record exact Gateway baseline
@@ -1765,6 +1793,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - uses: actions/setup-dotnet@v6
@@ -1867,6 +1896,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -1958,6 +1988,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET 10
@@ -2064,6 +2095,7 @@ jobs:
         ref: ${{ inputs.promotion_source_sha || github.sha }}
         persist-credentials: false
 
+    - *tag-version-source
     - *promotion-version-tag
 
     - name: Setup .NET from global.json
