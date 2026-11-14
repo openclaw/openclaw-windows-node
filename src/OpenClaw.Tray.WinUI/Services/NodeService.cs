@@ -701,6 +701,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly object _mxcAvailabilityLock = new();
 
     /// <summary>
+    /// True when file commands run inside the Node Sandbox and false when they run uncontained (positively
+    /// unsupported Windows). Null after a probe error: a later probe may still find Windows unsupported, so
+    /// callers must not treat it as enforced. Blocks while probing, so call off the UI thread.
+    /// </summary>
+    public bool? FileCommandsEnforceSandbox() =>
+        GetOrProbeMxcAvailability() is { ProbeErrored: false } availability ? !availability.IsWindowsUnsupported : null;
+
+    /// <summary>
     /// Minimum interval before re-probing after a transient probe error. Bounds the
     /// cost of retrying the native SDK probe while a load/probe error persists,
     /// while still letting a momentary glitch self-heal quickly.

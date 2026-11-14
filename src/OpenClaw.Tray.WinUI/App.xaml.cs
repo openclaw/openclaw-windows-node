@@ -71,6 +71,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private ILocalAiModelSwitcher? _localAiModelSwitcher;
     private DefaultModelGatewayService? _defaultModelGateway;
     private ModelProviderGatewayService? _modelProviderGateway;
+    private GatewayFileAccessPolicySync? _gatewayFileAccessSync;
 
     /// <summary>
     /// Root DI composition root, built once during startup and disposed during
@@ -136,6 +137,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     internal IReadOnlyCollection<string> OwnNodeIds => BuildOwnNodeIds();
     /// <summary>Live node service instance used by settings surfaces for MCP status.</summary>
     internal NodeService? ActiveNodeService => _nodeService;
+    /// <summary>Gateway file-transfer policy sync for this node's Sandbox folders.</summary>
     internal ExecApprovalsStore ExecApprovalsStore =>
         _execApprovalsStore ??= new ExecApprovalsStore(
             AppIdentity.ResolveRoamingDataDirectory(),
@@ -1037,6 +1039,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             nativeGatewayRuntime: nativeGatewayRuntime);
         _connectionManager.OperatorClientChanged += OnOperatorClientChanged;
         _connectionManager.StateChanged += OnManagerStateChanged;
+        var fileAccessConnection = _connectionManager;
+        _gatewayFileAccessSync = new GatewayFileAccessPolicySync(
+            () => GatewayClient,
+            () => fileAccessConnection.CurrentSnapshot,
+            () => _nodeService?.FileCommandsEnforceSandbox(),
+            appLogger);
         _localAiGatewayLifecycle.Attach(_connectionManager, _localAiRuntime);
         _gatewayDirectConnectService = new GatewayDirectConnectService(
             _connectionManager,
@@ -2455,6 +2463,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private void OnManagerStateChanged(object? sender, GatewayConnectionSnapshot snap)
     {
         _openTelemetryConnection?.SendConnectionState(snap);
+        _gatewayFileAccessSync?.RequestSync();
         var mapped = ConnectionStatusPresenter.ToLegacyStatus(snap);
         var connectedSideEffectsKey = snap.OperatorState == RoleConnectionState.Connected
             ? $"{snap.GatewayId ?? snap.GatewayUrl ?? "unknown"}|{snap.OperatorDeviceId ?? "unknown"}"
