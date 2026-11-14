@@ -37,10 +37,23 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         // The native drag handler is attached once at mount; it must reach the current state.
         var latestState = UseRef(state);
         latestState.Current = state;
+        // A native drag removes the moved tab and reinserts it; removing the selected tab makes the strip
+        // select a neighbor, possibly after the reinsert. Selection events from the move start until its
+        // order is adopted are not the user's.
+        var movePending = UseRef(false);
+        var renderedTabCount = UseRef(state.Tabs.Count);
+        renderedTabCount.Current = state.Tabs.Count;
         // One delegate for the mount's lifetime, so unmount removes exactly what mount added.
         var adoptNativeOrderRef = UseRef<TypedEventHandler<TabView, global::Windows.Foundation.Collections.IVectorChangedEventArgs>?>(null);
         var adoptNativeOrder = adoptNativeOrderRef.Current ??= (view, args) =>
         {
+            // Reactor removes a closed tab after state already dropped it; a native move removes a rendered one.
+            if (args.CollectionChange == global::Windows.Foundation.Collections.CollectionChange.ItemRemoved &&
+                view.TabItems.Count == renderedTabCount.Current - 1)
+            {
+                movePending.Current = true;
+                return;
+            }
             // A drag ends with an insert; Reactor's own inserts already match state order, so Reorder ignores them.
             if (args.CollectionChange != global::Windows.Foundation.Collections.CollectionChange.ItemInserted) return;
             var order = view.TabItems.Select(SlotOf).ToArray();
@@ -50,6 +63,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             // Applied later: reject it if the view unmounted or the conversation was rebound meanwhile.
             view.DispatcherQueue.TryEnqueue(() =>
             {
+                movePending.Current = false;
                 if (ReferenceEquals(tabView.Current, view) && ReferenceEquals(latestState.Current, target) &&
                     target.Revision == revision)
                     target.Reorder(order!);
@@ -101,6 +115,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 : index >= 0 && index < tabs.Length ? tabs[index] : null;
         var tabStrip = TabView((int?)Array.IndexOf(tabs, selected), index =>
             {
+                if (movePending.Current || tabView.Current is { } view && view.TabItems.Count < tabs.Length) return;
                 if (SlotAt(index) is { } slot) state.Select(slot);
             }, tabs.Select(tab => Tab(TabTitle(tab, state),
                     Border(null).IsVisible(false).Set(marker => marker.Tag = tab)) with { IsClosable = true }).ToArray())

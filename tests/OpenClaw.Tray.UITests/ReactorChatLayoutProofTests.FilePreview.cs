@@ -214,10 +214,18 @@ public sealed partial class ReactorChatLayoutProofTests
                 var dragged = view.TabItems[1];
                 view.TabItems.RemoveAt(1);
                 view.TabItems.Insert(0, dragged);
+                // Removing the selected tab makes the native strip select its neighbor, which can arrive after
+                // the reinsert (as on CI). Send that late selection deterministically.
+                view.SelectedIndex = 1;
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => panels.Tabs.SequenceEqual(["files", "file"]) && panels.Selected == "files",
-                "the moved selected tab keeps its selection"));
+                () => panels.Tabs.SequenceEqual(["files", "file"]) && panels.Selected == "files" &&
+                    FindControl<TabView>(surface!, "ConversationPanelTabs").SelectedIndex == 0,
+                "the moved selected tab keeps its selection",
+                () => $"state=[{string.Join(",", panels.Tabs)}] selected={panels.Selected} native=[" +
+                    string.Join(",", FindControl<TabView>(surface!, "ConversationPanelTabs").TabItems
+                        .Cast<TabViewItem>().Select(item => item.Header)) + "] nativeSelected=" +
+                    FindControl<TabView>(surface!, "ConversationPanelTabs").SelectedIndex));
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => FindControl<TabView>(surface!, "ConversationPanelTabs").TabItems.Cast<TabViewItem>()
                     .FirstOrDefault(item => item.Header as string == "Files") is { } item &&
