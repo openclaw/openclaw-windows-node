@@ -210,6 +210,14 @@ jobs:
       shell: pwsh
       run: ./scripts/test-gateway-packaged-release.ps1
 
+    - name: Test Gateway theme table release resolution
+      shell: pwsh
+      run: ./scripts/test-gateway-theme-upstream.ps1
+
+    - name: Test Gateway theme table sync publishing
+      shell: pwsh
+      run: ./scripts/test-gateway-theme-sync-publish.ps1
+
     - name: Validate CI change classifier
       shell: pwsh
       run: ./scripts/test-ci-change-classifier.ps1

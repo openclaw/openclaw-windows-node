@@ -6,7 +6,8 @@ namespace OpenClaw.Shared.Themes;
 /// Companion-owned palettes for the Gateway's built-in themes. <c>themes.list</c> returns built-ins as
 /// descriptors only; their colors live in the Control UI's stylesheets, so the generated half of this
 /// class (<c>BuiltinGatewayThemes.g.cs</c>) captures them from a pinned upstream ref. Regenerate with
-/// <c>scripts/Update-GatewayThemeTable.ps1 -UpstreamRef &lt;sha&gt;</c>.
+/// <c>scripts/Update-GatewayThemeTable.ps1 -UpstreamRef &lt;sha&gt;</c>; the daily
+/// <c>gateway-theme-sync.yml</c> workflow does this when the latest stable packaged Gateway ships a new openclaw release.
 /// <example><code>
 /// if (BuiltinGatewayThemes.TryGet("tide", out var tide)) Apply(tide.PaletteFor(ThemeColorMode.Dark));
 /// </code></example>
