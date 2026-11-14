@@ -1,11 +1,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidatePattern('^[1-9][0-9]*$')][string]$RunId,
+    [ValidateSet('auto', 'production', 'development')][string]$Channel = 'production',
     [scriptblock]$ApiInvoker,
     [scriptblock]$DownloadInvoker
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$Channel = $Channel.ToLowerInvariant()
 $repository = 'openclaw/openclaw-windows-node'
 if ($null -eq $ApiInvoker) {
     $ApiInvoker = {
@@ -24,9 +26,14 @@ if ($null -eq $DownloadInvoker) {
 }
 $run = @(& $ApiInvoker "actions/runs/$RunId")[0]
 
+$alphaPattern = '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.(?:0|[1-9][0-9]*)$'
+$stablePattern = '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?$'
+$isAlpha = $run.head_branch -cmatch $alphaPattern
+$selectedChannel = if ($isAlpha) { 'development' } else { 'production' }
+if ($Channel -cne 'auto' -and $Channel -cne $selectedChannel) { return $null }
 $tagRun = $run.path -ceq '.github/workflows/ci.yml' -and
     $run.event -cin @('push', 'workflow_dispatch') -and
-    $run.head_branch -cmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?$'
+    ($run.head_branch -cmatch $stablePattern -or $isAlpha)
 $promotionRun = $run.path -ceq '.github/workflows/promote-alpha-release.yml' -and
     $run.event -ceq 'workflow_dispatch' -and $run.head_branch -ceq 'main'
 if (-not ($tagRun -or $promotionRun)) { return $null }
@@ -50,7 +57,7 @@ try {
     & $DownloadInvoker $witnessName $directory | Out-Null
     $witness = Get-Content (Join-Path $directory 'store-source.json') -Raw | ConvertFrom-Json
     if ([string]$witness.runId -cne $RunId -or [int]$witness.runAttempt -ne [int]$run.run_attempt -or
-        $witness.releaseTag -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?$' -or
+        ($witness.releaseTag -cnotmatch $(if ($isAlpha) { $alphaPattern } else { $stablePattern })) -or
         $witness.sourceSha -cnotmatch '^[0-9a-f]{40}$' -or
         $witness.bundleSha256 -cnotmatch '^[0-9a-f]{64}$') {
         throw 'Store release witness does not match this run and attempt.'
@@ -60,15 +67,16 @@ try {
     }
     $release = @(& $ApiInvoker "releases/tags/$($witness.releaseTag)")[0]
     $commit = @(& $ApiInvoker "commits/$($witness.releaseTag)")[0]
-    if ($release.draft -or $release.prerelease -or -not $release.published_at -or
+    if ($release.draft -or [bool]$release.prerelease -ne $isAlpha -or -not $release.published_at -or
         $release.tag_name -cne $witness.releaseTag -or $commit.sha -cne $witness.sourceSha) {
-        throw 'Store source is not the published stable release commit.'
+        throw 'Store source is not the published stable release or alpha prerelease commit.'
     }
     $bundleName = 'OpenClaw.msixbundle'
     $bundleSha256 = [string]$witness.bundleSha256
 } finally { Remove-Item $directory -Recurse -Force }
 
 [pscustomobject]@{
+    channel = $selectedChannel
     artifactId = [string]$selected[0].id
     bundleName = $bundleName
     bundleSha256 = $bundleSha256

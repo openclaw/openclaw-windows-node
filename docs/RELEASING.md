@@ -1118,4 +1118,9 @@ only receive a stable tag through the controlled promotion workflow above.
 
 ## Automated Store submission
 
-See [Microsoft Store submission](MICROSOFT_STORE.md) for protected OIDC setup, manual submission from an existing release run, automatic activation, and recovery. Automatic submission remains off until the repository variable `MSSTORE_ENABLED` is `true`; the existing release and artifact handoffs are unchanged.
+See [Microsoft Store submission](MICROSOFT_STORE.md) for protected OIDC setup,
+manual submission, Development-flight enrollment, automatic activation, and
+recovery. Production uses `MSSTORE_ENABLED`; alpha releases use the separate
+`MSSTORE_DEVELOPMENT_ENABLED` flag and `MSSTORE_DEVELOPMENT_FLIGHT_ID` destination.
+Both automatic paths remain off until their manual submission and Store
+install/upgrade acceptance succeed.

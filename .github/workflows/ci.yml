@@ -261,6 +261,7 @@ jobs:
       shell: pwsh
       run: |
         ./scripts/test-microsoft-store-submission.ps1
+        ./scripts/Test-StoreFlightSubmission.Tests.ps1
         ./scripts/Test-StoreSubmissionSource.Tests.ps1
 
     - name: Validate Store MSIX bundle construction
@@ -2970,7 +2971,7 @@ jobs:
     name: Record authorized Store release source
     needs: [metadata, release, publish-promotion, build-msix-bundle]
     if: >-
-      ${{ !cancelled() && needs.metadata.outputs.isPrerelease == 'false' &&
+      ${{ !cancelled() &&
           needs.release.result == 'success' && needs.build-msix-bundle.result == 'success' &&
           (needs.publish-promotion.result == 'success' || needs.publish-promotion.result == 'skipped') }}
     runs-on: ubuntu-latest

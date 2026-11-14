@@ -31,8 +31,8 @@ $api = {
     switch -Wildcard ($Path) {
         'actions/runs/123' { return $global:StoreSourceTest_run }
         'actions/runs/123/artifacts*' { return [pscustomobject]@{ artifacts = $global:StoreSourceTest_artifacts } }
-        'releases/tags/v2026.10.21' { return $global:StoreSourceTest_release }
-        'commits/v2026.10.21' { return $global:StoreSourceTest_commit }
+        'releases/tags/*' { return $global:StoreSourceTest_release }
+        'commits/*' { return $global:StoreSourceTest_commit }
         default { throw "Unexpected API path: $Path" }
     }
 }
@@ -41,7 +41,7 @@ $download = {
     if ($Name -cne 'store-release-source-2') { throw 'Wrong release witness downloaded.' }
     $global:StoreSourceTest_witness | ConvertTo-Json | Set-Content (Join-Path $Directory 'store-source.json') -Encoding utf8
 }
-function Invoke-Source { & $scriptPath -RunId 123 -ApiInvoker $api -DownloadInvoker $download }
+function Invoke-Source([string]$Channel = 'production') { & $scriptPath -RunId 123 -Channel $Channel -ApiInvoker $api -DownloadInvoker $download }
 Reset-Fixture
 $result = Invoke-Source
 if ($result.artifactId -cne '456') { throw 'Authorized release selected the wrong artifact.' }
@@ -103,6 +103,38 @@ Assert-Fails { Invoke-Source } 'published stable release'
 Reset-Fixture
 $global:StoreSourceTest_run.head_sha = ('d' * 40)
 Assert-Fails { Invoke-Source } 'release tag run'
+
+
+foreach ($channel in @('auto', 'development', 'Auto', 'AUTO', 'Development', 'DEVELOPMENT')) {
+    Reset-Fixture
+    $global:StoreSourceTest_run.head_branch = 'v2026.10.21-alpha.12'
+    $global:StoreSourceTest_witness.releaseTag = 'v2026.10.21-alpha.12'
+    $global:StoreSourceTest_release.tag_name = 'v2026.10.21-alpha.12'
+    $global:StoreSourceTest_release.prerelease = $true
+    $result = Invoke-Source -Channel $channel
+    if ($result.channel -cne 'development' -or $result.bundleSha256 -cne ('b' * 64)) {
+        throw 'Alpha did not route to the development flight with its verified bundle.'
+    }
+    $script:checks++
+    $global:StoreSourceTest_release.prerelease = $false
+    Assert-Fails { Invoke-Source -Channel $channel } 'published stable release'
+}
+Reset-Fixture
+if ($null -ne (Invoke-Source -Channel development)) { throw 'Stable release was eligible for development.' }
+$script:checks++
+Reset-Fixture
+$global:StoreSourceTest_run.head_branch = 'v2026.10.21-alpha.0'
+$global:StoreSourceTest_witness.releaseTag = 'v2026.10.21-alpha.0'
+$global:StoreSourceTest_release.tag_name = 'v2026.10.21-alpha.0'
+$global:StoreSourceTest_release.prerelease = $true
+if ((Invoke-Source -Channel auto).channel -cne 'development') { throw 'Canonical alpha.0 was not eligible.' }
+$script:checks++
+foreach ($tag in @('v2026.10.21-beta.1', 'v2026.10.21-alpha.01', 'main')) {
+    Reset-Fixture
+    $global:StoreSourceTest_run.head_branch = $tag
+    if ($null -ne (Invoke-Source -Channel auto)) { throw 'Non-alpha input entered the development flight.' }
+    $script:checks++
+}
 
 Write-Host "Store source authorization: $script:checks scenarios passed."
 

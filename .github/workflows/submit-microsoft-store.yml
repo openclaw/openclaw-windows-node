@@ -7,6 +7,12 @@ on:
         description: Successful release workflow run containing the authorized Store bundle
         type: string
         required: true
+      channel:
+        description: Store destination (must match the release type)
+        type: choice
+        options: [production, development]
+        default: production
+        required: true
   workflow_run:
     workflows: [Build and Test, Promote alpha to stable]
     types: [completed]
@@ -25,10 +31,11 @@ jobs:
       github.repository == 'openclaw/openclaw-windows-node' &&
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||
-       (vars.MSSTORE_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success'))
+       ((vars.MSSTORE_ENABLED == 'true' || vars.MSSTORE_DEVELOPMENT_ENABLED == 'true') && github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     outputs:
       eligible: ${{ steps.source.outputs.eligible }}
+      channel: ${{ steps.source.outputs.channel }}
       artifact_id: ${{ steps.source.outputs.artifact_id }}
       bundle_name: ${{ steps.source.outputs.bundle_name }}
       bundle_sha256: ${{ steps.source.outputs.bundle_sha256 }}
@@ -41,14 +48,23 @@ jobs:
       shell: pwsh
       env:
         GH_TOKEN: ${{ github.token }}
+        REQUESTED_CHANNEL: ${{ inputs.channel || 'auto' }}
+        PRODUCTION_ENABLED: ${{ vars.MSSTORE_ENABLED }}
+        DEVELOPMENT_ENABLED: ${{ vars.MSSTORE_DEVELOPMENT_ENABLED }}
         SOURCE_RUN_ID: ${{ inputs.run_id || github.event.workflow_run.id }}
       run: |
-        $source = ./scripts/Get-StoreSubmissionSource.ps1 -RunId $env:SOURCE_RUN_ID
+        $source = ./scripts/Get-StoreSubmissionSource.ps1 -RunId $env:SOURCE_RUN_ID -Channel $env:REQUESTED_CHANNEL
         if ($null -eq $source) {
           if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { throw 'The selected run is not an eligible Store release.' }
           'eligible=false' >> $env:GITHUB_OUTPUT
           exit 0
         }
+        $enabled = if ($source.channel -ceq 'development') { $env:DEVELOPMENT_ENABLED } else { $env:PRODUCTION_ENABLED }
+        if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch' -and $enabled -cne 'true') {
+          'eligible=false' >> $env:GITHUB_OUTPUT
+          exit 0
+        }
+        "channel=$($source.channel)" >> $env:GITHUB_OUTPUT
         'eligible=true' >> $env:GITHUB_OUTPUT
         "artifact_id=$($source.artifactId)" >> $env:GITHUB_OUTPUT
         "bundle_name=$($source.bundleName)" >> $env:GITHUB_OUTPUT
@@ -85,7 +101,15 @@ jobs:
         MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}
         MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}
         MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}
+        STORE_CHANNEL: ${{ needs.source.outputs.channel }}
+        MSSTORE_DEVELOPMENT_FLIGHT_ID: ${{ vars.MSSTORE_DEVELOPMENT_FLIGHT_ID }}
       run: |
+        if ($env:STORE_CHANNEL -ceq 'development') {
+          $flightId = [guid]::Empty
+          if (-not [guid]::TryParse($env:MSSTORE_DEVELOPMENT_FLIGHT_ID, [ref]$flightId)) {
+            throw 'The microsoft-store environment is missing a valid MSSTORE_DEVELOPMENT_FLIGHT_ID.'
+          }
+        }
         foreach ($name in @(
             'MSSTORE_TENANT_ID'
             'MSSTORE_CLIENT_ID'
@@ -139,6 +163,8 @@ jobs:
         MSSTORE_TENANT_ID: ${{ vars.MSSTORE_TENANT_ID }}
         MSSTORE_CLIENT_ID: ${{ vars.MSSTORE_CLIENT_ID }}
         MSSTORE_APPLICATION_ID: ${{ vars.MSSTORE_APPLICATION_ID }}
+        STORE_CHANNEL: ${{ needs.source.outputs.channel }}
+        MSSTORE_DEVELOPMENT_FLIGHT_ID: ${{ vars.MSSTORE_DEVELOPMENT_FLIGHT_ID }}
         MSSTORE_ASSERTION_FILE: ${{ steps.oidc.outputs.assertion_path }}
         EXPECTED_BUNDLE_NAME: ${{ needs.source.outputs.bundle_name }}
         EXPECTED_BUNDLE_SHA256: ${{ needs.source.outputs.bundle_sha256 }}
@@ -154,7 +180,9 @@ jobs:
             (Get-FileHash $bundle[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant() -cne $env:EXPECTED_BUNDLE_SHA256) {
           throw 'Store bundle does not match the release witness.'
         }
-        .\scripts\Submit-MicrosoftStore.ps1 `
+        $destination = @{ Channel = $env:STORE_CHANNEL }
+        if ($env:STORE_CHANNEL -ceq 'development') { $destination.FlightId = $env:MSSTORE_DEVELOPMENT_FLIGHT_ID }
+        .\scripts\Submit-MicrosoftStore.ps1 @destination `
           -BundlePath $bundle[0].FullName `
           -ApplicationId $env:MSSTORE_APPLICATION_ID `
           -PackageIdentityName $identityName -Publisher $publisher `
