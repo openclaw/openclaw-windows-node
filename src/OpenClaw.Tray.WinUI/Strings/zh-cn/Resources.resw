@@ -10098,4 +10098,13 @@
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>刷新</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>刷新</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>仪表板</value></data>
+  <data name="WorkspaceShell_SidePanelShow" xml:space="preserve"><value>显示侧面板</value></data>
+  <data name="WorkspaceShell_SidePanelMinimize" xml:space="preserve"><value>最小化侧面板</value></data>
+  <data name="WorkspaceShell_SidePanelExpand" xml:space="preserve"><value>展开侧面板</value></data>
+  <data name="WorkspaceShell_SidePanelRestore" xml:space="preserve"><value>恢复拆分视图</value></data>
+  <data name="Chat_Panel_Launcher" xml:space="preserve"><value>浏览面板</value></data>
+  <data name="Chat_Panel_LauncherFiles" xml:space="preserve"><value>此会话编辑或读取的文件。</value></data>
+  <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>跟踪此对话中委派的工作。</value></data>
+  <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此会话发布的小组件和选项卡。</value></data>
+  <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此对话暂无可用的面板。</value></data>
 </root>

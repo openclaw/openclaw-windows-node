@@ -10099,4 +10099,13 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Vernieuwen</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Vernieuwen</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="WorkspaceShell_SidePanelShow" xml:space="preserve"><value>Zijpaneel weergeven</value></data>
+  <data name="WorkspaceShell_SidePanelMinimize" xml:space="preserve"><value>Zijpaneel minimaliseren</value></data>
+  <data name="WorkspaceShell_SidePanelExpand" xml:space="preserve"><value>Zijpaneel uitvouwen</value></data>
+  <data name="WorkspaceShell_SidePanelRestore" xml:space="preserve"><value>Gesplitste weergave herstellen</value></data>
+  <data name="Chat_Panel_Launcher" xml:space="preserve"><value>Panelen verkennen</value></data>
+  <data name="Chat_Panel_LauncherFiles" xml:space="preserve"><value>Bestanden die deze sessie heeft bewerkt of gelezen.</value></data>
+  <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Volg gedelegeerd werk vanuit dit gesprek.</value></data>
+  <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets en tabbladen die deze sessie heeft gepubliceerd.</value></data>
+  <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Er zijn nog geen panelen beschikbaar voor dit gesprek.</value></data>
 </root>

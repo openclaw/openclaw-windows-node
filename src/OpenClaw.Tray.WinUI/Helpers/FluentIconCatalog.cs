@@ -52,6 +52,8 @@ static class FluentIconCatalog
     public const string Dashboard = "\uE774";      // Globe
     public const string OpenInBrowser = "\uE8A7";  // OpenInNewWindow — top-right dashboard launcher icon
     public const string OpenPane = "\uE8A0";       // OpenPane - open content beside the conversation
+    public const string FullScreen = "\uE740";     // FullScreen - expand the chat side panel over the conversation
+    public const string BackToWindow = "\uE73F";   // BackToWindow - restore the chat side panel beside the conversation
     public const string Chat = "\uE8BD";           // Message
     public const string CanvasAct = "\uE790";      // Color (palette) - matches Canvas permission glyph
     public const string VoiceAct = "\uE720";       // Microphone

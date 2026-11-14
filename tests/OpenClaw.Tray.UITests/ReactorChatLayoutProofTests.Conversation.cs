@@ -803,7 +803,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 var group = Assert.Single(FindDescendants<Expander>(surface), control =>
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control).StartsWith("ChatToolActivity_"));
                 Assert.False(group.IsExpanded);
-                Assert.InRange(group.ActualHeight, 32, 40);
+                Assert.InRange(Math.Round(group.ActualHeight, 3), 32, 40);
             });
             await CaptureAsync(surface, $"ConversationParity-{width}-collapsed");
             await ui.RunOnUIAsync(() =>

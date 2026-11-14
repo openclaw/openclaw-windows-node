@@ -36,6 +36,10 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly WorkspaceNavigationHistory _navigation = new();
     private readonly WorkspaceSessionOrder _sessionOrder = new();
     private readonly ChatPage _chat = new();
+    // Side-panel state of the mounted chat, mirrored by the title-bar toggle and Expand buttons.
+    private OpenClawTray.Chat.ChatConversationPanelState? _sidePanel;
+    private readonly WorkspaceTitleRow _titleRow;
+    private bool _titleRowLayoutQueued;
     private readonly GatewayStatusContent _gatewayStatusContent = new();
     private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
     private readonly FlyoutShowRequest _workspaceSearchShow;
@@ -117,6 +121,16 @@ public sealed partial class WorkspaceWindow : WindowEx
         ExtendsContentIntoTitleBar = true;
         this.SetIcon("Assets\\openclaw.ico");
         SetTitleBar(WorkspaceTitleBar);
+        // The default Transparent brush is hit-testable and would take clicks meant for the side panel's
+        // tabs under the bar; null paints nothing over Mica and lets those clicks through.
+        WorkspaceTitleBar.Background = null;
+        // Tall caption buttons share one row with the side panel's tabs and toggle, as in the web Control UI.
+        AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
+        WorkspaceTitleBar.SizeChanged += (_, _) => QueueTitleRowLayout();
+        _titleRow = new WorkspaceTitleRow(AppWindow, WorkspaceTitleBar, TitleBarRightActions,
+            TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
+        // A joined side panel would cover the operation banner above chat, so the row is withdrawn while it shows.
+        OperationInfo.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) => QueueTitleRowLayout());
         NewAgentLabel.Text = LocalizationHelper.GetString("AgentCreation_Title");
         AutomationProperties.SetName(NewAgentOption, NewAgentLabel.Text);
         // ComboBox temporarily removes its selected presentation while the popup is open.
@@ -136,6 +150,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             if (Destination.Page == WorkspacePageId.Home) _chat.Initialize(this);
         };
         _chat.SessionSelected += OnChatSessionSelected;
+        _chat.ConversationPanelsChanged += OnChatPanelsChanged;
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
         // Additional mouse-button presses arrive as moves while another button is held.
@@ -405,6 +420,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             QueueChatApply();
             UpdateNavigationSelection();
             UpdateHistoryButtons();
+            UpdateTitleBarActions();
             return;
         }
         ContentHost.Children.Clear();
@@ -422,6 +438,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
         UpdateNavigationSelection();
         UpdateHistoryButtons();
+        UpdateTitleBarActions();
         if (ContentHost.Children.FirstOrDefault() is FrameworkElement content)
             SignalContentReady(content);
     }
@@ -1443,17 +1460,85 @@ public sealed partial class WorkspaceWindow : WindowEx
         var visibility = WorkspaceFooterPlacement.ShowTitleBarActions(
             settingsFooterVisible: settingsFooterVisible,
             chatPaneOpen: NavView.IsPaneOpen) ? Visibility.Visible : Visibility.Collapsed;
-        if (TitleBarFooter.Visibility == visibility) return;
-        if (visibility == Visibility.Collapsed) TitleBarFooter.HideFlyouts();
-        TitleBarFooter.Visibility = visibility;
-        // TitleBar refreshes its pointer pass-through regions only on its own size or template
-        // changes, not when RightHeader content shows or hides. Recompute after the new layout so
-        // real clicks reach Dashboard and the bell instead of dragging the window.
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        UpdateSidePanelButtons();
+        if (TitleBarFooter.Visibility != visibility)
         {
-            if (!IsClosed) WorkspaceTitleBar.RecomputeDragRegions();
+            if (visibility == Visibility.Collapsed) TitleBarFooter.HideFlyouts();
+            TitleBarFooter.Visibility = visibility;
+        }
+        QueueTitleRowLayout();
+    }
+
+    private void OnTitleBarRightActionsSizeChanged(object sender, SizeChangedEventArgs e) => QueueTitleRowLayout();
+
+    // Coalesces geometry updates after the triggering layout pass.
+    private void QueueTitleRowLayout()
+    {
+        if (_titleRowLayoutQueued || IsClosed) return;
+        _titleRowLayoutQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _titleRowLayoutQueued = false;
+            if (!IsClosed) UpdateTitleRowLayout();
         });
     }
+
+    private void UpdateTitleRowLayout() =>
+        _titleRow.Update(_sidePanel, IsChatSurfaceShown() && !OperationInfo.IsOpen && !_chat.HasBannerAboveChat,
+            // Expanded, the panel starts at the leading edge under the reopen-sidebar button.
+            NavView.IsPaneOpen ? 0 : PaneToggleChrome.ActualWidth);
+
+    private void OnChatPanelsChanged()
+    {
+        if (IsClosed) return;
+        var next = _chat.ConversationPanels;
+        if (!ReferenceEquals(next, _sidePanel))
+        {
+            if (_sidePanel is not null) _sidePanel.Changed -= OnSidePanelChanged;
+            _sidePanel = next;
+            if (next is not null) next.Changed += OnSidePanelChanged;
+        }
+        UpdateTitleBarActions();
+    }
+
+    private void OnSidePanelChanged()
+    {
+        if (IsClosed) return;
+        UpdateTitleBarActions();
+        QueueTitleRowLayout();
+    }
+
+    private bool IsChatSurfaceShown() =>
+        _sidePanel is not null && Destination.Page == WorkspacePageId.Home
+        && SettingsSection.Visibility != Visibility.Visible
+        && ContentHost.Visibility == Visibility.Visible && ContentHost.Children.Contains(_chat);
+
+    /// <summary>Mirrors the chat side panel in the title bar.</summary>
+    private void UpdateSidePanelButtons()
+    {
+        var panel = _sidePanel;
+        var chatVisible = IsChatSurfaceShown();
+        var toggle = chatVisible ? Visibility.Visible : Visibility.Collapsed;
+        var expand = chatVisible && panel!.CanExpand ? Visibility.Visible : Visibility.Collapsed;
+        if (panel is not null)
+        {
+            var split = panel.Presented && !panel.IsExpanded;
+            SetTitleBarLabel(ToggleSidePanelButton, Text(split ? "SidePanelMinimize" : "SidePanelShow"));
+            SetTitleBarLabel(ExpandSidePanelButton, Text(panel.IsExpanded ? "SidePanelRestore" : "SidePanelExpand"));
+            ExpandSidePanelIcon.Glyph = panel.IsExpanded ? FluentIconCatalog.BackToWindow : FluentIconCatalog.FullScreen;
+        }
+        ToggleSidePanelButton.Visibility = toggle;
+        ExpandSidePanelButton.Visibility = expand;
+    }
+
+    private static void SetTitleBarLabel(Button button, string label)
+    {
+        AutomationProperties.SetName(button, label);
+        ToolTipService.SetToolTip(button, label);
+    }
+
+    private void OnToggleSidePanel(object sender, RoutedEventArgs e) => _sidePanel?.ToggleOpen();
+
+    private void OnExpandSidePanel(object sender, RoutedEventArgs e) => _sidePanel?.ToggleExpanded();
     private void OnPaneClosed(NavigationView sender, object args)
     {
         if (NavView.IsPaneOpen || IsClosed) return;
@@ -1828,5 +1913,9 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chatFocus = null;
         _chat.CloseSurface();
         _chat.SessionSelected -= OnChatSessionSelected;
+        _chat.ConversationPanelsChanged -= OnChatPanelsChanged;
+        if (_sidePanel is not null) _sidePanel.Changed -= OnSidePanelChanged;
+        _sidePanel = null;
+        _titleRow.Dispose();
     }
 }

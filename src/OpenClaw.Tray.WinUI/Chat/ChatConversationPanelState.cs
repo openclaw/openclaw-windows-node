@@ -14,6 +14,8 @@ internal sealed class ChatConversationPanelState
     internal const double MinimumConversationWidth = 360;
     internal const double ResizeStep = 16;
     internal const double DividerWidth = 12;
+    /// <summary>Tab width that must remain beside window controls before the header joins the caption row.</summary>
+    internal const double MinimumTitleRowTabsWidth = 160;
     internal const string DetailsSlot = "details";
     internal const string SubagentsSlot = "subagents";
     internal const string DashboardSlot = "dashboard";
@@ -45,6 +47,39 @@ internal sealed class ChatConversationPanelState
     internal double Width { get; private set; } = 440;
     internal long Revision { get; private set; }
     internal long OpenVersion { get; private set; }
+    /// <summary>The user minimized the panel. Tabs are kept; an explicit open shows it again, automatic reveals do not.</summary>
+    internal bool Hidden { get; private set; }
+    /// <summary>The panel was opened with no tabs and shows the panel launcher.</summary>
+    internal bool LauncherOpen { get; private set; }
+    /// <summary>The user asked the panel to fill the conversation area.</summary>
+    internal bool Expanded { get; private set; }
+    /// <summary>Host-reported: the panel is on screen.</summary>
+    internal bool Presented { get; private set; }
+    /// <summary>Host-reported: the panel cannot sit beside the conversation, so it already fills the area.</summary>
+    internal bool Narrow { get; private set; }
+    internal bool IsOpen => !Hidden && (_tabs.Count > 0 || LauncherOpen);
+    internal bool CanExpand => Presented && !Narrow;
+    internal bool IsExpanded => Expanded && CanExpand;
+    /// <summary>Height of the window chrome the joined panel header covers, or 0 when the host offers none.</summary>
+    internal double TitleRowHeight { get; private set; }
+    /// <summary>Top band of <see cref="TitleRowHeight"/> shared with the caption buttons, where tabs are centered.</summary>
+    internal double TitleRowCaptionHeight { get; private set; }
+    /// <summary>Width at the end of the caption row taken by window controls, which the panel header must leave clear.</summary>
+    internal double TitleRowEndInset { get; private set; }
+    /// <summary>Width at the start of the caption row taken by window controls; applies while the panel fills the area.</summary>
+    internal double TitleRowStartInset { get; private set; }
+    /// <summary>
+    /// The mounted tab strip, published so window chrome can keep its tabs clickable under a title bar
+    /// without searching the chat's visual tree. Opaque here so this state stays free of UI types.
+    /// </summary>
+    internal object? TabStrip { get; private set; }
+    /// <summary>Host-reported: the panel header shares the window's caption row and the panel reaches the window top.</summary>
+    internal bool JoinsTitleRow { get; private set; }
+
+    /// <summary>Whether a header of <paramref name="panelWidth"/> keeps usable tab space beside the caption-row controls.</summary>
+    internal bool CanJoinTitleRow(double panelWidth, bool fillsArea = false) =>
+        TitleRowHeight > 0 &&
+        panelWidth - TitleRowEndInset - (fillsArea ? TitleRowStartInset : 0) >= MinimumTitleRowTabsWidth;
     internal bool IsReady => _session is not null && _isCurrent();
     internal bool AreSubagentsReady => _session is not null && _subagentsCurrent();
 
@@ -163,6 +198,7 @@ internal sealed class ChatConversationPanelState
         _tabs.Add(DashboardSlot);
         Dashboard = target;
         _dashboardUnseen = true;
+        LauncherOpen = false;
         if (Selected is null)
         {
             Selected = DashboardSlot;
@@ -202,6 +238,88 @@ internal sealed class ChatConversationPanelState
     }
 
     /// <summary>
+    /// Side-panel toggle: minimizes a panel shown beside the conversation, otherwise shows it,
+    /// restoring the split when expanded. With no tabs it shows the panel launcher.
+    /// </summary>
+    internal void ToggleOpen()
+    {
+        if (Presented && !IsExpanded)
+        {
+            Hide();
+            return;
+        }
+        Hidden = false;
+        Expanded = false;
+        LauncherOpen = _tabs.Count == 0;
+        Passive = false;
+        if (Selected == DashboardSlot) _dashboardUnseen = false;
+        OpenVersion++;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Minimizes the panel, keeping its tabs, and ends any expansion or launcher.</summary>
+    internal void Hide()
+    {
+        if (Hidden && !Expanded && !LauncherOpen) return;
+        Hidden = true;
+        Expanded = false;
+        LauncherOpen = false;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Switches an open panel between beside the conversation and filling its area.</summary>
+    internal void ToggleExpanded()
+    {
+        if (!IsOpen) return;
+        Expanded = !Expanded;
+        Passive = false;
+        if (Selected == DashboardSlot) _dashboardUnseen = false;
+        Changed?.Invoke();
+    }
+
+    /// <summary>The panel host reports what it shows so window chrome can mirror it.</summary>
+    internal void SetPresentation(bool presented, bool narrow, bool joinsTitleRow = false)
+    {
+        if (Presented == presented && Narrow == narrow && JoinsTitleRow == joinsTitleRow) return;
+        Presented = presented;
+        Narrow = narrow;
+        JoinsTitleRow = joinsTitleRow;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// Window chrome offers its caption row to the panel header. Pass 0 height to keep the
+    /// header inside the conversation area (hosts without a custom title bar never call this).
+    /// A <paramref name="captionHeight"/> of 0 means the whole <paramref name="height"/>.
+    /// </summary>
+    internal void SetTitleRow(double height, double endInset, double startInset = 0, double captionHeight = 0)
+    {
+        if (!double.IsFinite(height) || !double.IsFinite(endInset) ||
+            !double.IsFinite(startInset) || !double.IsFinite(captionHeight)) return;
+        height = Math.Max(0, height);
+        endInset = Math.Max(0, endInset);
+        startInset = Math.Max(0, startInset);
+        captionHeight = captionHeight > 0 ? Math.Min(captionHeight, height) : height;
+        // Sub-DIP layout jitter must not re-render the chat.
+        if (Math.Abs(TitleRowHeight - height) < 0.5 && Math.Abs(TitleRowEndInset - endInset) < 0.5 &&
+            Math.Abs(TitleRowStartInset - startInset) < 0.5 && Math.Abs(TitleRowCaptionHeight - captionHeight) < 0.5)
+            return;
+        TitleRowHeight = height;
+        TitleRowEndInset = endInset;
+        TitleRowStartInset = startInset;
+        TitleRowCaptionHeight = captionHeight;
+        Changed?.Invoke();
+    }
+
+    /// <summary>The panel host publishes or withdraws its mounted tab strip.</summary>
+    internal void SetTabStrip(object? tabStrip)
+    {
+        if (ReferenceEquals(TabStrip, tabStrip)) return;
+        TabStrip = tabStrip;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
     /// Adopts a user drag order from the native tab strip. Only a permutation of the open tabs is
     /// accepted, so a stale order from before an open or close cannot add, drop or resurrect a tab.
     /// </summary>
@@ -232,6 +350,8 @@ internal sealed class ChatConversationPanelState
         if (!_tabs.Contains(slot)) _tabs.Add(slot);
         Selected = slot;
         Passive = false;
+        Hidden = false;
+        LauncherOpen = false;
         if (slot == DashboardSlot) _dashboardUnseen = false;
         OpenVersion++;
         Changed?.Invoke();
@@ -255,6 +375,7 @@ internal sealed class ChatConversationPanelState
             // Falling back onto a dashboard the user never opened keeps it passive.
             Passive = Selected == DashboardSlot && _dashboardUnseen;
         }
+        if (_tabs.Count == 0) Expanded = false;
         return true;
     }
 
@@ -267,6 +388,8 @@ internal sealed class ChatConversationPanelState
         Dashboard = null;
         Passive = false;
         _dashboardUnseen = false;
+        LauncherOpen = false;
+        Expanded = false;
     }
 
     internal static double MaximumWidthForViewport(double viewportWidth) =>

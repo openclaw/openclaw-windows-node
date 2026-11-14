@@ -37,6 +37,9 @@ public sealed record OpenClawReactorChatRootProps(
 {
     /// <summary>Optional session dashboard source for the conversation side panel.</summary>
     internal ChatDashboardBinding? Dashboards { get; init; }
+
+    /// <summary>Side-panel state for this mount, shared with window chrome such as the title-bar toggle.</summary>
+    internal ChatConversationPanelState Panels { get; init; } = new();
 }
 
 /// <summary>
@@ -52,7 +55,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
     private string? _pendingSelectedThreadId;
     private bool _initialSelectionApplied;
-    private readonly ChatConversationPanelState _panels = new();
+    private ChatConversationPanelState _panels => Props.Panels;
     private readonly ChatSessionFilesState _files = new();
 
     public static void SetToolCallsVisible(bool visible)
@@ -674,10 +677,12 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var subagents = Component<ReactorChatSubagents, ReactorChatSubagentsProps>(new(subagentChildren, _panels));
         var files = Component<ReactorChatFiles, ReactorChatFilesProps>(
             new(_files, _files.Version, timelineProps.OnOpenWorkspaceFile));
+        var launcher = ReactorChatPanelLauncher.Render(_panels, panelRevision,
+            dashboardView is null ? null : explicitDashboardTarget);
         return Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(
             new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents,
                 dashboardView, files,
-                nativeProvider is null ? null : nativeProvider.LoadWorkspaceFileAsync));
+                nativeProvider is null ? null : nativeProvider.LoadWorkspaceFileAsync, launcher));
     }
 
     private static Element RenderLoading() =>

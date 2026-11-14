@@ -10098,4 +10098,13 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Actualiser</value></data>
   <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Actualiser</value></data>
   <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Tableau de bord</value></data>
+  <data name="WorkspaceShell_SidePanelShow" xml:space="preserve"><value>Afficher le panneau latéral</value></data>
+  <data name="WorkspaceShell_SidePanelMinimize" xml:space="preserve"><value>Réduire le panneau latéral</value></data>
+  <data name="WorkspaceShell_SidePanelExpand" xml:space="preserve"><value>Agrandir le panneau latéral</value></data>
+  <data name="WorkspaceShell_SidePanelRestore" xml:space="preserve"><value>Restaurer la vue partagée</value></data>
+  <data name="Chat_Panel_Launcher" xml:space="preserve"><value>Explorer les panneaux</value></data>
+  <data name="Chat_Panel_LauncherFiles" xml:space="preserve"><value>Fichiers modifiés ou lus par cette session.</value></data>
+  <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Suivez le travail délégué depuis cette conversation.</value></data>
+  <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets et onglets publiés par cette session.</value></data>
+  <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Aucun panneau n'est encore disponible pour cette conversation.</value></data>
 </root>
