@@ -104,6 +104,17 @@ An ordinary lifecycle event on the same socket bounds observation even when
 the mirror is dropped. This proves the live provider boundary, not mounted UI
 nesting or a real Gateway.
 
+### Saved replies followed by final events
+
+The transport-only
+`InteractiveGatewayChatTests.FinalAfterPersistedReplyInLaterTurnRendersOnceWithoutHistoryReload`
+case drives two consecutive turns through the real client and provider.
+`PublishPersistedAssistantAsync` emits an identified `session.message` reply
+with a `final_answer` text signature before lifecycle end and the unsigned
+`chat` final. The test waits for the final to reach the provider, then checks
+one reply per turn, no streaming rows and no history requests. It does not
+reconnect or reconstruct the timeline to hide a duplicate.
+
 ### Assistant continuity capture
 
 The opt-in UI case

@@ -1581,9 +1581,12 @@ public static class ChatTimelineReducer
         if (presentation is { Phase: not null } or { BlockId: not null } or { StreamItemId: not null } ||
             presentation?.TurnBoundary == true || presentation?.IsIndependent == true)
             return text;
+        // Only the current turn can be peeled. Earlier turns' runs must not disable
+        // the duplicate-resend no-op for this turn's own saved reply.
         if (presentation?.RunId is not null &&
-            entries.Any(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
-                entry.Presentation?.RunId is { } run && run != presentation.RunId))
+            entries.Skip(entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User) + 1)
+                .Any(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                    entry.Presentation?.RunId is { } run && run != presentation.RunId))
             return text;
         return StripCumulativeTurnPrefix(entries, text, excludeIndex);
     }
