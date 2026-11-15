@@ -2528,19 +2528,11 @@ public class DiscoveredGateway
         if (!TryFormatHost(host, out var authorityHost))
             return false;
 
-        try
-        {
-            // UriBuilder accepts the host and brackets IPv6. Its string form omits
-            // a scheme's default port, and a link-local zone, so the returned
-            // endpoint keeps the discovered port and zone after that check.
-            _ = new UriBuilder(scheme, authorityHost, port).Uri;
-            url = $"{scheme}://{authorityHost}:{port}";
-            return true;
-        }
-        catch (UriFormatException)
-        {
-            return false;
-        }
+        // Keep a numeric zone as %12. Percent-encoding it to %2512 makes
+        // Uri.IdnHost report interface 2512, so ClientWebSocket selects the
+        // wrong adapter. UriBuilder's escaped host has that effect.
+        url = $"{scheme}://{authorityHost}:{port}";
+        return Uri.TryCreate(url, UriKind.Absolute, out var parsed) && parsed.Port == port;
     }
 
     private static bool TryFormatHost(string host, out string authorityHost)
@@ -2583,7 +2575,7 @@ public class DiscoveredGateway
         if (percent >= 0)
             literal = literal[..percent];
         if (!string.IsNullOrEmpty(zone))
-            literal += "%25" + zone;
+            literal += "%" + zone;
         return "[" + literal + "]";
     }
 

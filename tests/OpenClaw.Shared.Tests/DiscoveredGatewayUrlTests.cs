@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using OpenClaw.Shared;
 
 namespace OpenClaw.Shared.Tests;
@@ -68,10 +70,14 @@ public class DiscoveredGatewayUrlTests
     }
 
     [Fact]
-    public void ConnectionUrl_PreservesAnIpv6Zone()
+    public void ConnectionUrl_PreservesTheNumericInterfaceScope()
     {
         var gateway = new DiscoveredGateway { Host = "fe80::1%12", Port = 18789 };
 
-        Assert.Equal("ws://[fe80::1%2512]:18789", gateway.ConnectionUrl);
+        Assert.Equal("ws://[fe80::1%12]:18789", gateway.ConnectionUrl);
+        var uri = new Uri(gateway.ConnectionUrl);
+        Assert.True(IPAddress.TryParse(uri.IdnHost, out var address));
+        Assert.Equal(AddressFamily.InterNetworkV6, address!.AddressFamily);
+        Assert.Equal(12, address.ScopeId);
     }
 }
