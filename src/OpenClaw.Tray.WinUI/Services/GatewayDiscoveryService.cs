@@ -184,7 +184,7 @@ public sealed class GatewayDiscoveryService : IDisposable
 
         // Routing uses resolved SRV data only — TXT is for display metadata
 
-        return new DiscoveredGateway
+        var gateway = new DiscoveredGateway
         {
             Id = $"{resolvedHost}:{resolvedPort}",
             DisplayName = PrettifyName(displayName ?? host.DisplayName ?? resolvedHost),
@@ -195,6 +195,7 @@ public sealed class GatewayDiscoveryService : IDisposable
             TlsEnabled = tlsFlag == "1",
             TlsFingerprint = tlsFingerprint
         };
+        return string.IsNullOrEmpty(gateway.ConnectionUrl) ? null : gateway;
     }
 
     private static string PrettifyName(string name)

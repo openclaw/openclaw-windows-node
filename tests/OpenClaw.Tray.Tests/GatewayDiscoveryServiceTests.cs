@@ -53,6 +53,43 @@ public class GatewayDiscoveryServiceTests
 
         Assert.NotNull(gateway);
         Assert.Equal("gateway.local", gateway!.Host);
+        Assert.Equal("ws://gateway.local:18789", gateway.ConnectionUrl);
+    }
+
+    [Fact]
+    public void ParseHost_BracketsIpv6Address()
+    {
+        var host = new TestZeroconfHost
+        {
+            DisplayName = "Kitchen Gateway",
+            IPAddress = "::1",
+            Services = new Dictionary<string, IService>
+            {
+                ["_openclaw-gw._tcp.local."] = new TestService { Port = 18789 }
+            }
+        };
+
+        var gateway = GatewayDiscoveryService.ParseHost(host);
+
+        Assert.NotNull(gateway);
+        Assert.Equal("::1", gateway!.Host);
+        Assert.Equal("ws://[::1]:18789", gateway.ConnectionUrl);
+    }
+
+    [Fact]
+    public void ParseHost_DropsADisplayNameThatIsNotAHost()
+    {
+        var host = new TestZeroconfHost
+        {
+            DisplayName = "Kitchen Gateway",
+            IPAddress = "",
+            Services = new Dictionary<string, IService>
+            {
+                ["_openclaw-gw._tcp.local."] = new TestService { Port = 18789 }
+            }
+        };
+
+        Assert.Null(GatewayDiscoveryService.ParseHost(host));
     }
 
     private sealed class TestZeroconfHost : IZeroconfHost
