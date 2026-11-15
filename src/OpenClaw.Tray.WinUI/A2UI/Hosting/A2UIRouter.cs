@@ -26,7 +26,7 @@ public sealed class A2UIRouter
     /// related surfaces per window; this bound keeps an adversarial agent from
     /// driving the host to OOM by creating unique surface IDs in a loop.
     /// </summary>
-    internal const int MaxSurfaces = 64;
+    internal const int MaxSurfaces = DataModelStore.MaxSurfaces;
 
     private readonly DispatcherQueue _dispatcher;
     private readonly DataModelStore _dataModel;
@@ -144,6 +144,12 @@ public sealed class A2UIRouter
 
             case DataModelUpdateMessage dmu:
             {
+                // Data-only ids are not hosts, so the host count is not the cap.
+                if (!_dataModel.TryEnsureSurface(dmu.SurfaceId))
+                {
+                    _logger.Warn($"[A2UI] surface cap ({MaxSurfaces}) reached; dropping dataModelUpdate for new surface '{LogSafe(dmu.SurfaceId)}'");
+                    break;
+                }
                 _dataModel.ApplyDataModelUpdate(dmu.SurfaceId, dmu.Path, dmu.Contents);
                 _logger.Debug($"[A2UI] dataModelUpdate '{LogSafe(dmu.SurfaceId)}' path='{LogSafe(dmu.Path ?? "/")}' ({dmu.Contents.Count} entry(ies))");
                 _telemetry.Push(dmu.SurfaceId, "dataModelUpdate", dmu.Contents.Count);
@@ -152,15 +158,18 @@ public sealed class A2UIRouter
 
             case DeleteSurfaceMessage ds:
             {
-                if (_surfaces.TryGetValue(ds.SurfaceId, out var existing))
+                var hadHost = _surfaces.TryGetValue(ds.SurfaceId, out var existing);
+                if (hadHost)
                 {
-                    existing.Dispose();
+                    existing!.Dispose();
                     _surfaces.Remove(ds.SurfaceId);
-                    _dataModel.Remove(ds.SurfaceId);
                     SurfaceDeleted?.Invoke(this, ds.SurfaceId);
-                    _logger.Info($"[A2UI] deleteSurface '{LogSafe(ds.SurfaceId)}'");
-                    _telemetry.Push(ds.SurfaceId, "deleteSurface", 1);
                 }
+                var removedData = _dataModel.Remove(ds.SurfaceId);
+                if (!hadHost && !removedData)
+                    break;
+                _logger.Info($"[A2UI] deleteSurface '{LogSafe(ds.SurfaceId)}'");
+                _telemetry.Push(ds.SurfaceId, "deleteSurface", 1);
                 break;
             }
 
@@ -173,7 +182,7 @@ public sealed class A2UIRouter
     private SurfaceHost? GetOrCreateSurface(string surfaceId)
     {
         if (_surfaces.TryGetValue(surfaceId, out var existing)) return existing;
-        if (_surfaces.Count >= MaxSurfaces)
+        if (_surfaces.Count >= MaxSurfaces || !_dataModel.TryEnsureSurface(surfaceId))
         {
             // Cap reached. The previous "degraded fallback" returned the first
             // existing surface, which corrupted unrelated surface state — a
