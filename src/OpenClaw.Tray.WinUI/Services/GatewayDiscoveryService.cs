@@ -88,10 +88,18 @@ public sealed class GatewayDiscoveryService : IDisposable
     {
         try
         {
+            // ResolveAsync queries every adapter when this list is omitted, and
+            // one GetIPv4Properties failure fails the whole query. An empty
+            // list means the same thing, so skip the call when none qualify.
+            var adapters = AdaptersForMdnsQuery();
+            if (adapters.Length == 0)
+                return new();
+
             var results = await ZeroconfResolver.ResolveAsync(
                 ServiceType,
                 scanTime: TimeSpan.FromSeconds(5),
-                cancellationToken: ct);
+                cancellationToken: ct,
+                netInterfacesToSendRequestOn: adapters);
 
             return results
                 .Select(ParseHost)
@@ -159,6 +167,35 @@ public sealed class GatewayDiscoveryService : IDisposable
         // slopwatch-ignore: SW003 Optional persisted state fallback is intentional; caller continues with defaults or prior state.
         catch { /* best effort */ }
         return results;
+    }
+
+    internal static bool CanQueryAdapter(
+        bool supportsMulticast,
+        OperationalStatus status,
+        NetworkInterfaceType type,
+        Func<bool> hasIPv4Properties)
+    {
+        if (!supportsMulticast || status != OperationalStatus.Up || type == NetworkInterfaceType.Loopback)
+            return false;
+        try
+        {
+            return hasIPv4Properties();
+        }
+        catch (NetworkInformationException)
+        {
+            return false;
+        }
+    }
+
+    private static NetworkInterface[] AdaptersForMdnsQuery()
+    {
+        return NetworkInterface.GetAllNetworkInterfaces()
+            .Where(adapter => CanQueryAdapter(
+                adapter.SupportsMulticast,
+                adapter.OperationalStatus,
+                adapter.NetworkInterfaceType,
+                () => adapter.GetIPProperties().GetIPv4Properties() != null))
+            .ToArray();
     }
 
     internal static DiscoveredGateway? ParseHost(IZeroconfHost host)

@@ -1,3 +1,4 @@
+using System.Net.NetworkInformation;
 using OpenClawTray.Services;
 using Zeroconf;
 
@@ -90,6 +91,42 @@ public class GatewayDiscoveryServiceTests
         };
 
         Assert.Null(GatewayDiscoveryService.ParseHost(host));
+    }
+
+    [Fact]
+    public void CanQueryAdapter_SkipsAnAdapterWhoseIPv4PropertiesThrow()
+    {
+        Assert.False(GatewayDiscoveryService.CanQueryAdapter(
+            supportsMulticast: true,
+            status: OperationalStatus.Up,
+            type: NetworkInterfaceType.Ethernet,
+            hasIPv4Properties: () => throw new NetworkInformationException(10043)));
+    }
+
+    [Fact]
+    public void CanQueryAdapter_AcceptsAnUpMulticastAdapterWithIPv4()
+    {
+        Assert.True(GatewayDiscoveryService.CanQueryAdapter(
+            supportsMulticast: true,
+            status: OperationalStatus.Up,
+            type: NetworkInterfaceType.Wireless80211,
+            hasIPv4Properties: () => true));
+    }
+
+    [Theory]
+    [InlineData(false, OperationalStatus.Up, NetworkInterfaceType.Ethernet)]
+    [InlineData(true, OperationalStatus.Down, NetworkInterfaceType.Ethernet)]
+    [InlineData(true, OperationalStatus.Up, NetworkInterfaceType.Loopback)]
+    public void CanQueryAdapter_RejectsAdaptersTheResolverWouldSkip(
+        bool supportsMulticast,
+        OperationalStatus status,
+        NetworkInterfaceType type)
+    {
+        Assert.False(GatewayDiscoveryService.CanQueryAdapter(
+            supportsMulticast,
+            status,
+            type,
+            hasIPv4Properties: () => true));
     }
 
     private sealed class TestZeroconfHost : IZeroconfHost
