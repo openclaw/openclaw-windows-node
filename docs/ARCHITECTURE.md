@@ -729,7 +729,16 @@ open the isolated agent's process handle: Windows denies that cross-account
 query. Windows 11 build 26100.4770 or newer is required for that
 process-sequence API; unsupported builds fail closed with update guidance.
 A port alone, a stale process ID, an unrelated listener, or a
-replaced listener is denied. Its
+replaced listener is denied. When several session-owned listeners leave the
+package unable to name the Gateway port, such as OpenClaw's MCP App sandbox
+host beside it, status omits `gateway.port` but still attests every listener.
+Companion then requires its saved port among them and a live, credential-free
+`connect.challenge` from that port (connected directly, never through a proxy)
+before treating it as the Gateway, so an attested sandbox listener on that
+port is denied. A running status with no listener attestation (older packages
+with a second listener, or Windows without process sequences), or a listener
+that does not answer that check in time, names that cause, and Companion keeps
+a start it requested instead of rolling it back on every retry. Its
 synchronous browser credential callback uses the last attributed identity
 plus fresh OS snapshots; it never starts a Gateway on the UI thread.
 

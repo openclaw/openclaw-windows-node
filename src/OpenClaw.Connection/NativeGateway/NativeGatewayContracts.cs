@@ -18,7 +18,15 @@ public enum NativeGatewayContract
 }
 
 /// <summary>A safe-to-display failure of the qualified Gateway integration contract.</summary>
-public sealed class NativeGatewayContractException(string message) : InvalidOperationException(message);
+public class NativeGatewayContractException(string message) : InvalidOperationException(message);
+
+/// <summary>
+/// The package reports its Gateway running, but Companion could not verify which listener is its
+/// endpoint: the package does not attest its listeners, or the attested listener on Companion's
+/// port did not answer the Gateway protocol check. Credentials are never sent; the running
+/// service itself is kept.
+/// </summary>
+public sealed class NativeGatewayEndpointUnverifiedException(string message) : NativeGatewayContractException(message);
 
 public sealed record IsolatedGatewayConfiguration(int Port, string Token);
 
@@ -42,6 +50,17 @@ public sealed record IsolatedGatewayStatus(
 {
     public bool SupportsLaunchReceipts { get; init; }
     public IsolatedGatewayLaunch? Launch { get; init; }
+
+    /// <summary>
+    /// Whether the package reports the Gateway running on <paramref name="port"/>. A package that
+    /// cannot name one endpoint among several owned listeners (for example the MCP App sandbox
+    /// beside the Gateway port) omits <see cref="Port"/>; <paramref name="port"/> must then be one
+    /// of the attested listeners, and the caller must still confirm it is the Gateway endpoint.
+    /// Live listener identity is verified separately.
+    /// </summary>
+    public bool IsRunningOn(int port) =>
+        State == "running" &&
+        (Port is int reported ? reported == port : Listeners.Any(listener => listener.Port == port));
 
     /// <summary>Display-safe summary: lifecycle states are validated sets; a reason is kept only when it is a token-shaped code.</summary>
     public string Describe()
