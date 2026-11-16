@@ -1,7 +1,7 @@
 // <summary>
-// Owns how Mica windows and dialogs render the Companion appearance: the active Gateway theme's opaque canvas and
-// UI font, and Windows High Contrast. Under a Gateway theme a window paints the theme's opaque canvas, as the
-// dashboard does. A window or dialog calls Apply once; App calls
+// Owns how Mica windows and dialogs render the Companion appearance: the user's Mica setting, the active Gateway
+// theme's UI font, and Windows High Contrast. Mica belongs to the Windows default look; under a Gateway theme a
+// window paints the theme's opaque canvas, as the dashboard does. A window or dialog calls Apply once; App calls
 // Configure whenever the appearance, theme or High Contrast state changes, after the theme's resources are
 // applied, and every tracked open window follows. The window keeps its own backdrop throughout: the opaque look
 // paints the root over it, because swapping backdrops across App's theme refresh faults inside WinUI. Standalone
@@ -9,10 +9,10 @@
 // mode, or a one-palette theme's pinned mode) and re-resolve their theme resources when the theme changes.
 // UI thread only.
 // Usage:
-//   BackdropPolicy.Configure(applicator.Current);                       // App, on every appearance change
-//   BackdropPolicy.ConfigureWindowTheme(preference, themeChanged);      // App, right after
-//   BackdropPolicy.Apply(this);                                         // a dialog, after SystemBackdrop is set
-//   BackdropPolicy.Apply(window, themedByApp: true);                    // App's own windows
+//   BackdropPolicy.Configure(settings.Appearance.UseMica, applicator.Current); // App, on every appearance change
+//   BackdropPolicy.ConfigureWindowTheme(preference, themeChanged);             // App, right after
+//   BackdropPolicy.Apply(this);                                                  // a dialog, after SystemBackdrop is set
+//   BackdropPolicy.Apply(window, themedByApp: true);                             // App's own windows
 // </summary>
 
 using System.Runtime.CompilerServices;
@@ -26,8 +26,8 @@ using Windows.UI.ViewManagement;
 namespace OpenClawTray.Theming;
 
 /// <summary>
-/// Applies the appearance to windows that own a Mica or acrylic backdrop. An active Gateway theme outside High
-/// Contrast paints the opaque canvas (SolidBackgroundFillColorBaseBrush, or the High Contrast window
+/// Applies the Mica setting to windows that own a Mica or acrylic backdrop. Mica off, or an active Gateway theme
+/// outside High Contrast, paints the opaque canvas (SolidBackgroundFillColorBaseBrush, or the High Contrast window
 /// color) over the backdrop; otherwise the window's own Mica or acrylic shows through.
 /// </summary>
 internal static class BackdropPolicy
@@ -43,13 +43,15 @@ internal static class BackdropPolicy
     }
 
     private static readonly ConditionalWeakTable<Window, State> s_states = new();
+    private static bool s_useMica = true;
     private static ResolvedTheme? s_theme;
     private static string? s_windowTheme;
     private static bool s_refreshResources;
 
     /// <summary>Records the appearance and re-applies it to every tracked open window.</summary>
-    public static void Configure(ResolvedTheme? theme)
+    public static void Configure(bool useMica, ResolvedTheme? theme)
     {
+        s_useMica = useMica;
         s_theme = theme;
         foreach (var (window, _) in s_states.ToList())
             Apply(window);
@@ -132,7 +134,7 @@ internal static class BackdropPolicy
         else
             Helpers.ThemeHelper.ApplyWindowFont(root);
         var highContrast = new AccessibilitySettings().HighContrast;
-        var mode = ThemeBackdropPolicy.Choose(s_theme is not null, highContrast);
+        var mode = ThemeBackdropPolicy.Choose(s_useMica, s_theme is not null, highContrast);
         if (mode == ThemeBackdrop.Opaque)
         {
             if (state.Applied != ThemeBackdrop.Opaque)
@@ -155,7 +157,7 @@ internal static class BackdropPolicy
         if (state.Applied != mode || !state.Logged)
         {
             state.Logged = true;
-            Logger.Info($"[Themes] Backdrop {window.GetType().Name}: {mode} (" +
+            Logger.Info($"[Themes] Backdrop {window.GetType().Name}: {mode} (Mica setting {(s_useMica ? "on" : "off")}, " +
                 $"theme {s_theme?.Id ?? "Windows default"}, High Contrast {highContrast}); " +
                 $"system backdrop {window.SystemBackdrop?.GetType().Name ?? "none"}, root {Describe(GetBackground(root))}");
         }

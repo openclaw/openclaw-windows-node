@@ -45,13 +45,17 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(ThemeColor.Black, canvas);
     }
 
-    // A Gateway theme is opaque like the dashboard, except under High Contrast.
+    // Mica belongs to Windows default; a Gateway theme is opaque like the dashboard, except under High Contrast.
     [Theory]
-    [InlineData(false, false, "System")]
-    [InlineData(true, false, "Opaque")]
-    [InlineData(true, true, "System")]
-    public void GatewayThemeIsOpaqueOutsideHighContrast(bool themeActive, bool highContrast, string expected) =>
-        Assert.Equal(expected, ThemeBackdropPolicy.Choose(themeActive, highContrast).ToString());
+    [InlineData(true, false, false, "System")]
+    [InlineData(true, true, false, "Opaque")]
+    [InlineData(true, true, true, "System")]
+    [InlineData(false, false, false, "Opaque")]
+    [InlineData(false, true, false, "Opaque")]
+    [InlineData(false, false, true, "Opaque")]
+    public void MicaShowsOnlyForWindowsDefaultWithTheSettingOn(
+        bool useMica, bool themeActive, bool highContrast, string expected) =>
+        Assert.Equal(expected, ThemeBackdropPolicy.Choose(useMica, themeActive, highContrast).ToString());
 
     [Fact]
     public void FontMapperKeepsBundledFacesAndEndsInInstalledWindowsFonts()
@@ -86,7 +90,7 @@ public sealed class GatewayThemeSettingsTests
     }
 
     [Fact]
-    public void PickerPersistsTheCompanionTheme()
+    public void PickerPersistsCompanionThemeAndMicaWithoutTouchingTheOtherChoice()
     {
         using var temp = new TempDir();
         var settings = new SettingsManager(temp.Path);
@@ -96,13 +100,16 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal("", vm.ThemeChoices[0].Key);
 
         vm.SelectedThemeKey = "tide";
+        vm.UseMica = false;
 
         Assert.Equal("tide", settings.Appearance.Theme?.Id);
         Assert.Equal("builtin", settings.Appearance.Theme?.Source);
+        Assert.False(settings.Appearance.UseMica);
         Assert.Equal("tide", AppearanceResolver.ResolveTheme(new SettingsManager(temp.Path).Appearance)?.Id);
 
         vm.SelectedThemeKey = "";
         Assert.Null(settings.Appearance.Theme);
+        Assert.False(settings.Appearance.UseMica);
     }
 
     [Fact]

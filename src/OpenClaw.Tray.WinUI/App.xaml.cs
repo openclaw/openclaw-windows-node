@@ -945,7 +945,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // async boundary so onboarding failures are logged instead of escaping
         // before the tray ever initializes.
         // Apply the saved Gateway theme before any window is themed, then follow system color and
-        // contrast changes so an opaque themed canvas switches to High Contrast colors too.
+        // contrast changes so an opaque (Mica-off) canvas switches to High Contrast colors too.
         ApplyGatewayTheme();
         _themeColorSettings = new global::Windows.UI.ViewManagement.UISettings();
         _themeColorSettings.ColorValuesChanged += (_, _) => OnUiThread(ApplyThemePreferenceToOpenWindows);
@@ -1327,8 +1327,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             changed = false;
             Logger.Error($"[Themes] Applying the theme failed: {ex}");
         }
-        // Mica windows and dialogs follow the theme and High Contrast.
-        Theming.BackdropPolicy.Configure(_themeApplicator.Current);
+        // Mica windows and dialogs follow the Mica setting (Windows default only), the theme and High Contrast.
+        Theming.BackdropPolicy.Configure(_settings.Appearance.UseMica, _themeApplicator.Current);
         // Standalone dialogs resolve some brushes in code from the app's own (Windows) mode, so they stay in that mode
         // unless a one-palette theme pins one: both modes then hold its only palette. They refresh after a theme change.
         Theming.BackdropPolicy.ConfigureWindowTheme(

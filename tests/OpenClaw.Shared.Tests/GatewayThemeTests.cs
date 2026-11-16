@@ -186,16 +186,17 @@ public class GatewayThemeTests
     }
 
     [Theory]
-    [InlineData("""{ "Theme": { "Id": "", "Source": "remote", "Definition": 42 } }""")]
-    [InlineData("""{ "Theme": { "Id": 7, "Name": ["x"] } }""")]
-    [InlineData("""{ "Theme": [ "tide" ] }""")]
-    [InlineData("""[ 1, 2 ]""")]
-    public void MalformedAppearanceNeitherDiscardsSettingsNorAppliesATheme(string appearance)
+    [InlineData("""{ "Theme": { "Id": "", "Source": "remote", "Definition": 42 }, "UseMica": false }""", false)]
+    [InlineData("""{ "Theme": { "Id": 7, "Name": ["x"] }, "UseMica": null }""", true)]
+    [InlineData("""{ "Theme": [ "tide" ], "UseMica": "no" }""", true)]
+    [InlineData("""[ 1, 2 ]""", true)]
+    public void MalformedAppearanceNeitherDiscardsSettingsNorAppliesATheme(string appearance, bool useMica)
     {
         var settings = SettingsData.FromJson($$"""{ "AppTheme": "Dark", "Appearance": {{appearance}} }""");
 
         Assert.NotNull(settings);
         Assert.Equal("Dark", settings.AppTheme);
+        Assert.Equal(useMica, settings.Appearance!.UseMica);
         Assert.Null(AppearanceResolver.ResolveTheme(settings.Appearance));
         Assert.Null(AppearanceResolver.ResolveTheme(SettingsData.FromJson("""{ "AppTheme": "Light" }""")!.Appearance));
     }
