@@ -6,7 +6,7 @@ Regenerates the Companion's built-in Gateway theme table from a pinned openclaw/
 The Gateway's themes.list returns built-in themes as descriptors only; their colors are a CSS
 cascade in the Control UI (ui/src/styles/base.css plus ui/public/themes/<id>.css, with
 color-mix() derivations). This script fetches those stylesheets at -UpstreamRef, resolves every
-token the Companion uses (colors plus the --font-body, --font-chat and --mono stacks) in headless
+token the Companion uses (colors, the --font-body, --font-chat and --mono stacks, and the corner radii) in headless
 Microsoft Edge for each theme and mode, and writes src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs.
 The script fails when any token does not resolve.
 
@@ -66,6 +66,9 @@ if (($builtinIds -join ',') -ne ($descriptorIds -join ',')) {
 # Theme ids map to data-theme aliases exactly as ui/src/app/theme.ts resolveTheme() does.
 $css = [System.Text.StringBuilder]::new()
 [void]$css.AppendLine((Get-UpstreamText 'ui/src/styles/base.css'))
+# Engines that draw superellipse corners scale radii by 1.25 to look like the circular ones WinUI draws, so the
+# probe reads the circular geometry. A theme's own scale (CRT's near-square 0.25) outranks this :root rule.
+[void]$css.AppendLine('@supports (corner-shape: superellipse(1.5)) { :root { --openclaw-corner-radius-scale: 1; } }')
 foreach ($theme in $themes) {
     if ($theme.Id -eq 'claw') { continue }
     [void]$css.AppendLine((Get-UpstreamText "ui/public/themes/$($theme.Id).css"))
@@ -143,6 +146,11 @@ for (const id of themes) {
       if (!value) failures.push(id + '/' + mode + '/' + variable + '=' + raw);
       palette[name] = value;
     }
+    for (const [name, variable] of [['RadiusSm', 'radius-sm'], ['RadiusMd', 'radius-md'], ['CornerScale', 'openclaw-corner-radius-scale']]) {
+      const value = parseFloat(getComputedStyle(root).getPropertyValue('--' + variable));
+      if (!Number.isFinite(value) || value < 0) failures.push(id + '/' + mode + '/' + variable);
+      palette[name] = value;
+    }
     for (const [name, variable] of [['Body', 'font-body'], ['Chat', 'font-chat'], ['Mono', 'mono']]) {
       palette[name] = getComputedStyle(root).getPropertyValue('--' + variable).trim().replace(/\s+/g, ' ');
       if (!palette[name]) failures.push(id + '/' + mode + '/' + variable);
@@ -200,6 +208,7 @@ foreach ($theme in $themes) {
         $palette = $parsed.result.($theme.Id).$mode
         $label = if ($mode -eq 'light') { 'Light' } else { 'Dark' }
         $values = @($tokens.Keys | ForEach-Object { "$($_): $(ConvertTo-CSharpString $palette.$_)" })
+        $values += @('RadiusSm', 'RadiusMd', 'CornerScale' | ForEach-Object { "$($_): $(([double]$palette.$_).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture))" })
         $values += @('Body', 'Chat', 'Mono' | ForEach-Object { "$($_): $(ConvertTo-CSharpString $palette.$_)" })
         $terminator = if ($mode -eq 'light') { ',' } else { '),' }
         [void]$out.AppendLine("            $($label): new(")

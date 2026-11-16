@@ -612,7 +612,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Padding(12, 8)
             .Margin(ChatVisuals.Gutter(viewportWidth) + ChatVisuals.ProseInset, 8)
             .MaxWidth(ChatVisuals.ReadingWidth)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId("ChatHistoryFailedStatus")
@@ -729,7 +729,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
         var bubble = Border(VStack(8, content.ToArray()))
             .Background(Theme.Ref("ChatUserBrush"))
-            .CornerRadius(ChatVisuals.SurfaceRadius)
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius)
             .Padding(16, 12)
             .MaxWidth(720)
             .HAlign(HorizontalAlignment.Right);
@@ -1100,7 +1100,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             return Viewbox(Border(Empty())
                     .Background(new ImageBrush { ImageSource = bitmap, Stretch = Stretch.Uniform })
                     .Size(pixelWidth * scale, pixelHeight * scale)
-                    .CornerRadius(8))
+                    .ThemedCorner(8))
                 .Set(viewbox =>
                 {
                     viewbox.Stretch = Stretch.Uniform;
@@ -1121,7 +1121,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Center();
         var glyphBackground = Border(glyph)
             .Size(32, 32)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"));
         var name = Text(
                 attachment.DisplayFileName,
@@ -1148,7 +1148,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 glyphBackground.Margin(0, 0, 8, 0).Grid(column: 0),
                 VStack(4, name, mimeType).Grid(column: 1)))
             .Padding(8)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .BorderThickness(1)
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .Background(Theme.Ref("ChatCardBrush"))
@@ -1264,7 +1264,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 "ControlStrokeColorDefaultBrush",
                 Color.FromArgb(0x40, 0x80, 0x80, 0x80)))
             .BorderThickness(1)
-            .CornerRadius(12);
+            .ThemedCorner(12);
     }
 
     private static void AddPermissionDetails(List<Element> children, string detail)
@@ -1280,7 +1280,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .FontFamily(new FontFamily("Cascadia Code, Consolas"))
             .IsTextSelectionEnabled(true))
             .Padding(10, 8)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .Background(BrushFor(
                 "SubtleFillColorSecondaryBrush",
                 Color.FromArgb(0x24, 0x80, 0x80, 0x80)))
@@ -1318,7 +1318,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Margin(0, 8)
             .Padding(12, 8)
             .HAlign(HorizontalAlignment.Center)
-            .CornerRadius(12)
+            .ThemedCorner(12)
             .Background(Theme.Ref(isError ? "SystemFillColorCriticalBackgroundBrush" : "SubtleFillColorTertiaryBrush"));
     }
 
@@ -1350,7 +1350,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Margin(36, 8, 24, 8)
             .Padding(16, 10)
             .HAlign(HorizontalAlignment.Stretch)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
             .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
             .BorderThickness(1)

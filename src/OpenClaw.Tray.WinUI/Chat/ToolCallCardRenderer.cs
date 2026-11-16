@@ -171,7 +171,7 @@ internal static class ToolCallCardRenderer
         return Border(VStack(4, [expander, .. reviews]))
             .Padding(0)
             .BorderThickness(0)
-            .CornerRadius(ChatVisuals.SurfaceRadius)
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"));
     }
 
@@ -400,7 +400,7 @@ internal static class ToolCallCardRenderer
 
     private static BorderElement BuildDetailsCard(Element content) =>
         Border(content)
-                .CornerRadius(ChatVisuals.SurfaceRadius)
+                .ThemedCorner(() => ChatVisuals.SurfaceRadius)
                 .BorderThickness(1)
                 .BorderBrush(Theme.Ref("ChatStrokeBrush"))
                 .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -589,7 +589,7 @@ internal static class ToolCallCardRenderer
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderThickness(0)
-            .CornerRadius(ChatVisuals.SurfaceRadius);
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius);
         return activity.IsCompletedWork && animateEntrance && !reducedMotion
             ? card.Transition(Transition.Enter(Transition.Fade), Curve.Ease(WorkSettleMilliseconds, Easing.EaseOut))
             : card;

@@ -1331,8 +1331,11 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         {
             // Turning on "Follow Gateway theme" records the Gateway's current theme before it is resolved.
             SyncFollowedGatewayTheme();
-            changed = _themeApplicator.Apply(
-                OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_settings.Appearance), EffectiveColorMode());
+            var theme = OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_settings.Appearance);
+            var mode = EffectiveColorMode();
+            // The first call runs at startup, before any window: controls keep that theme's corner radii all session.
+            _themeApplicator.DecideControlGeometry(theme, mode);
+            changed = _themeApplicator.Apply(theme, mode);
         }
         catch (Exception ex)
         {

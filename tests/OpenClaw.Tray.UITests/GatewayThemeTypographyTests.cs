@@ -225,6 +225,68 @@ public sealed class GatewayThemeTypographyTests(UIThreadFixture ui)
         });
     }
 
+    // A Markdown message whose props did not change does not render again on a theme switch; its code block and table
+    // still take the theme's corner scale, and High Contrast or Windows default give Fluent's radii back.
+    [Fact]
+    public async Task MountedChatCornersFollowEveryThemeSwitch()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var resources = new ChatThemeProofScope("Dark");
+            var applicator = new AppThemeApplicator();
+            var highContrast = ChatThemeChanges.IsHighContrast;
+            ReactorHostControl? host = null;
+            try
+            {
+                ChatThemeChanges.IsHighContrast = static () => false;
+                ChatVisuals.SetCornerScale(1);
+                var entry = new ChatTimelineItem("corner-proof", ChatTimelineItemKind.Assistant,
+                    "```\nnpm test\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |");
+                host = new ReactorHostControl();
+                host.Mount(_ => Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(ReactorChatTimelineMode.Timeline,
+                    new ChatTimelinePresentationContext("corner-proof", [entry], false, null))));
+                ui.Container.Children.Add(new Border { Child = host, Width = 480, Height = 320 });
+                Border? code = null, table = null;
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                    (code = TestSupport.FindDescendants<Border>(host).FirstOrDefault(border =>
+                        border.CornerRadius.TopLeft == ChatVisuals.CodeRadius && TestSupport.FindDescendants<RichTextBlock>(border).Any())) is not null &&
+                    (table = TestSupport.FindDescendants<Border>(host).FirstOrDefault(border =>
+                        border.CornerRadius.TopLeft == ChatVisuals.TableRadius && border.Child is Grid { ColumnDefinitions.Count: 2 })) is not null,
+                    "Code block and table rendered with Fluent radii");
+                var codeRadius = code!.CornerRadius.TopLeft;
+                var tableRadius = table!.CornerRadius.TopLeft;
+
+                var crt = BuiltinGatewayThemes.All.Single(theme => theme.Id == "crt");
+                Assert.True(applicator.Apply(crt));
+                var scale = crt.Light!.Radii.Scale;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => code.CornerRadius.TopLeft == codeRadius * scale && table.CornerRadius.TopLeft == tableRadius * scale,
+                    "Mounted code block and table take CRT's corner scale");
+
+                ChatThemeChanges.IsHighContrast = static () => true;
+                Assert.True(applicator.Apply(crt));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => code.CornerRadius.TopLeft == codeRadius && table.CornerRadius.TopLeft == tableRadius,
+                    "High Contrast keeps Fluent's radii");
+
+                ChatThemeChanges.IsHighContrast = static () => false;
+                Assert.True(applicator.Apply(crt));
+                Assert.True(applicator.Apply(null));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => code.CornerRadius.TopLeft == codeRadius && table.CornerRadius.TopLeft == tableRadius,
+                    "Windows default gives Fluent's radii back");
+            }
+            finally
+            {
+                ChatThemeChanges.IsHighContrast = highContrast;
+                applicator.Apply(null);
+                host?.Dispose();
+                ui.Container.Children.Clear();
+            }
+        });
+    }
+
     // A plugin or imported theme may give prose and code the same font stack. Markdown first rendered under it must
     // still take the body font for prose, and the code font for code, once a later theme separates them again;
     // elements are found by content, not by font.

@@ -474,13 +474,16 @@ internal static class ChatMarkdownPresentation
         if (columns == 0)
             return VStack(0, rows);
         var stroke = Theme.Ref("ChatStrokeBrush");
-        var inner = ChatVisuals.TableRadius - 1;
         var children = new List<Element>
         {
             // GFM tables always start with exactly one header row.
             Border(Empty())
                 .Background(Theme.Ref("SubtleFillColorSecondaryBrush"))
-                .CornerRadius(inner, inner, 0, 0)
+                .ThemedCorner(() =>
+                {
+                    var inner = Math.Max(0, ChatVisuals.TableRadius - 1);
+                    return new CornerRadius(inner, inner, 0, 0);
+                })
                 .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                 .Grid(row: 0, column: 0, columnSpan: columns),
         };
@@ -499,7 +502,7 @@ internal static class ChatMarkdownPresentation
                 Enumerable.Repeat(GridSize.Star(), columns).ToArray(),
                 Enumerable.Repeat(GridSize.Auto, cellRows.Length).ToArray(),
                 children.ToArray()))
-            .CornerRadius(ChatVisuals.TableRadius)
+            .ThemedCorner(() => ChatVisuals.TableRadius)
             .BorderThickness(1)
             .BorderBrush(stroke)
             .Background(Theme.Ref("ChatCardBrush"));
@@ -592,7 +595,7 @@ internal static class ChatMarkdownPresentation
                         scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
                         scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
                     })))
-            .CornerRadius(ChatVisuals.CodeRadius)
+            .ThemedCorner(() => ChatVisuals.CodeRadius)
             .BorderThickness(1)
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .Background(Theme.Ref("ChatCardBrush"))
