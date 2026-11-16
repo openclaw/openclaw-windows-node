@@ -4,3 +4,5 @@
 docs/diagrams/*.svg text eol=lf
 # Vendored provider artwork is verified byte-for-byte against pinned upstream files.
 src/OpenClaw.Tray.WinUI/Assets/Setup/ProviderIcons/*.svg text eol=lf
+# Lobster visit goldens are regenerated and checked byte-for-byte by scripts/Update-LobsterVisitGoldens.ps1.
+tests/OpenClaw.Tray.Tests/LobsterVisitGoldens.g.cs text eol=lf linguist-generated=true
