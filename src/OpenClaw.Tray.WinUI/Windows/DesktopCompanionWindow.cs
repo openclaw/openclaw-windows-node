@@ -101,10 +101,15 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         AppWindow.Show(activateWindow: false);
     }
 
-    public void ApplyTheme(string theme)
+    public void ApplyTheme(string theme, bool refreshThemeResources = false)
     {
-        ThemeHelper.ApplyTheme(this, theme);
-        _bubbleHost.RequestedTheme = ThemeHelper.GetRequestedTheme(theme);
+        ThemeHelper.ApplyTheme(this, theme, refreshThemeResources);
+        // The bubble lives in a windowed popup outside the window content, so it takes the theme and font itself.
+        var requested = ThemeHelper.GetRequestedTheme(theme);
+        if (refreshThemeResources)
+            _bubbleHost.RequestedTheme = _bubbleHost.ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+        _bubbleHost.RequestedTheme = requested;
+        ThemeHelper.ApplyWindowFont(_bubbleHost);
     }
 
     public void ApplyScale(int percent)

@@ -145,6 +145,12 @@ public class SettingsManager
     public bool UseLegacyWebChat { get => _data.UseLegacyWebChat; set => _data = _data with { UseLegacyWebChat = value }; }
     public bool ShowCompletedSessions { get => _data.ShowCompletedSessions; set => _data = _data with { ShowCompletedSessions = value }; }
     public string AppTheme { get => NormalizeAppTheme(_data.AppTheme); set => _data = _data with { AppTheme = NormalizeAppTheme(value) }; }
+    /// <summary>Gateway theme and backdrop; the default value is persisted as absent so legacy files stay unchanged.</summary>
+    public OpenClaw.Shared.Themes.AppearanceSettings Appearance
+    {
+        get => _data.Appearance ?? OpenClaw.Shared.Themes.AppearanceSettings.Default;
+        set => _data = _data with { Appearance = value is null || value == OpenClaw.Shared.Themes.AppearanceSettings.Default ? null : value };
+    }
     public bool? ShowDiagnosticsOverride { get => _data.ShowDiagnostics; set => _data = _data with { ShowDiagnostics = value }; }
     public bool ShowDiagnosticsEffective => _data.ShowDiagnostics ?? OpenClawTray.Helpers.DiagnosticsGate.BuildDefault;
     public string OpenTelemetryEndpoint { get => _data.OpenTelemetryEndpoint ?? ""; set => _data = _data with { OpenTelemetryEndpoint = NormalizeOptionalString(value) }; }
