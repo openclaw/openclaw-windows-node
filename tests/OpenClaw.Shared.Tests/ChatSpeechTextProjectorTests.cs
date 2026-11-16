@@ -120,6 +120,8 @@ public class ChatSpeechTextProjectorTests
     [InlineData("Payload `{\"api_key\":\"FAKE-SECRET-1234\"}` here.", "Payload here.")]
     [InlineData("Bare `Bearer FAKE-TOKEN` here.", "Bare here.")]
     [InlineData("Prefixed `auth_token: FAKE-TOKEN` here.", "Prefixed here.")]
+    [InlineData("Use `--token FAKESECRET123` now.", "Use now.")]
+    [InlineData("Run `--api-key FAKE-KEY` first.", "Run first.")]
     public void InlineCodeCredentialAssignment_IsDroppedWhole(string markdown, string expected)
     {
         var spoken = Project(markdown);

@@ -62,6 +62,18 @@ public sealed class ChatSpeechTextProjectionTests
     }
 
     [Fact]
+    public async Task CredentialArgument_NeverReachesTheEngine()
+    {
+        using var run = new CoordinatorRun();
+
+        await run.Coordinator.SpeakResponseAsync("Use `--token FAKESECRET123` now.");
+
+        var text = Assert.Single(run.Spoken);
+        Assert.Equal("Use now.", text);
+        Assert.DoesNotContain("FAKESECRET", text);
+    }
+
+    [Fact]
     public async Task UrlWithUnderscoreInItsQuery_NeverReachesTheEngine()
     {
         using var run = new CoordinatorRun();

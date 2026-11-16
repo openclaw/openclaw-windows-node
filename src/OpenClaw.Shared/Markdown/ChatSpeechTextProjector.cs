@@ -34,8 +34,9 @@ namespace OpenClaw.Shared.Markdown;
 ///         <c>www.</c> or e-mail addresses reliably.</item>
 ///   <item>Inline code that assigns or carries a credential is dropped whole, as
 ///         the previous auto-read path dropped code spans: <c>token=…</c>,
-///         <c>api_key: …</c>, <c>{"api_key":"…"}</c>, <c>Authorization: Bearer …</c>
-///         and a bare <c>Bearer …</c> value. The same rule removes such a code
+///         <c>api_key: …</c>, <c>{"api_key":"…"}</c>, <c>Authorization: Bearer …</c>,
+///         a bare <c>Bearer …</c> value and a <c>--token …</c> argument. The same
+///         rule removes such a code
 ///         span from a link label before the label is flattened, and drops an
 ///         image whose alt carries a credential. A secret must never reach a
 ///         cloud provider.</item>
@@ -104,19 +105,27 @@ public static class ChatSpeechTextProjector
         RegexOptions.Compiled);
 
     /// <summary>
-    /// Text that assigns or carries a credential is not spoken at all. Both the
-    /// plain shapes (<c>api_key=…</c>, <c>Authorization: Bearer …</c>) and the
-    /// ordinary serialized ones (<c>{"api_key":"…"}</c>, a bare
-    /// <c>Bearer …</c> value) must match, because a secret that reaches this
-    /// text reaches the configured cloud provider. A quoted name is admitted by
-    /// the optional quote, and a prefixed name (<c>auth_token</c>,
-    /// <c>x-api-key</c>) by the leading run.
+    /// Names that identify the value beside them as a credential. The leading
+    /// run admits prefixed names (<c>auth_token</c>, <c>x-api-key</c>).
+    /// </summary>
+    private const string CredentialName =
+        @"[A-Za-z0-9_\-]*(?:token|secret|password|passwd|credential"
+        + @"|api[_-]?key|access[_-]?key|client[_-]?secret|authorization)";
+
+    /// <summary>
+    /// Text that assigns or carries a credential is not spoken at all. It has to
+    /// match every ordinary shape, because a secret that reaches this text
+    /// reaches the configured cloud provider: an assignment
+    /// (<c>api_key=…</c>), a serialized field (<c>{"api_key":"…"}</c>), an
+    /// authorization header or bare bearer value (<c>Authorization: Bearer …</c>,
+    /// <c>Bearer …</c>), and a command-line argument
+    /// (<c>--token …</c>, <c>--api-key …</c>), which separates the name from the
+    /// value with whitespace instead of punctuation.
     /// </summary>
     private static readonly Regex CredentialAssignment = new(
-        @"(?i)\b[A-Za-z0-9_\-]*(?:token|secret|password|passwd|credential"
-        + @"|api[_-]?key|access[_-]?key|client[_-]?secret|authorization)"
-        + @"[""']?\s*[:=]"
-        + @"|\bbearer\s+\S",
+        @"(?i)\b" + CredentialName + @"[""']?\s*[:=]"
+        + @"|\bbearer\s+\S"
+        + @"|-{1,2}" + CredentialName + @"[A-Za-z0-9_\-]*\s+\S",
         RegexOptions.Compiled);
 
     /// <summary>
