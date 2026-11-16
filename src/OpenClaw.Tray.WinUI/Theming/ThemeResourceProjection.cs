@@ -133,16 +133,17 @@ internal enum ThemeBackdrop
 }
 
 /// <summary>
-/// Decides the backdrop for the active Gateway theme and Windows High Contrast: a Gateway theme paints its own opaque
-/// surfaces, as the dashboard does, and High Contrast keeps the system backdrop.
+/// Decides the backdrop for the Mica setting, the active Gateway theme and Windows High Contrast. Mica belongs to
+/// the Windows default look: a Gateway theme paints its own opaque surfaces, as the dashboard does, and High
+/// Contrast keeps the system backdrop unless Mica is off.
 /// <example><code>
-/// var mode = ThemeBackdropPolicy.Choose(theme is not null, highContrast);
+/// var mode = ThemeBackdropPolicy.Choose(useMica, theme is not null, highContrast);
 /// </code></example>
 /// </summary>
 internal static class ThemeBackdropPolicy
 {
-    public static ThemeBackdrop Choose(bool themeActive, bool highContrast) =>
-        themeActive && !highContrast ? ThemeBackdrop.Opaque : ThemeBackdrop.System;
+    public static ThemeBackdrop Choose(bool useMica, bool themeActive, bool highContrast) =>
+        !useMica || (themeActive && !highContrast) ? ThemeBackdrop.Opaque : ThemeBackdrop.System;
 }
 
 /// <summary>

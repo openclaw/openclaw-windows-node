@@ -1,7 +1,7 @@
-// Proves that an open Mica dialog follows the Companion appearance live: system Mica for Windows default and the
-// opaque canvas under any Gateway theme, without swapping the window's own backdrop, and that switching themes raises
-// no framework fault. With OPENCLAW_UI_PROOF_DIR set on an interactive desktop, it also saves a screen capture of each
-// state for visual proof.
+// Proves that an open Mica dialog follows the Companion appearance live: system Mica for Windows default with the
+// Mica setting on, the opaque canvas with it off, and the opaque canvas under any Gateway theme, all without
+// swapping the window's own backdrop, and that switching themes raises no framework fault. With
+// OPENCLAW_UI_PROOF_DIR set on an interactive desktop, it also saves a screen capture of each state for visual proof.
 // Run with dotnet test tests\OpenClaw.Tray.UITests -r win-x64 --filter FullyQualifiedName~GatewayThemeBackdropTests.
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -24,7 +24,7 @@ namespace OpenClaw.Tray.UITests;
 public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
 {
     [Fact]
-    public Task OpenDialogFollowsTheGatewayTheme() => ui.RunOnUIAsync(async () =>
+    public Task OpenDialogFollowsMicaSettingAndGatewayTheme() => ui.RunOnUIAsync(async () =>
     {
         var theme = BuiltinGatewayThemes.All.First(entry => entry.Id == "tide");
         var highContrast = new AccessibilitySettings().HighContrast;
@@ -36,27 +36,85 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
             var originalBackground = root.Background;
             await ShowForProofAsync(dialog);
 
-            BackdropPolicy.Configure(null);
+            BackdropPolicy.Configure(useMica: true, null);
             Assert.Same(originalBackground, root.Background);
-            await CaptureAsync(dialog, "pairing-dialog-windows-default");
+            await CaptureAsync(dialog, "pairing-dialog-windows-default-mica-on");
 
-            BackdropPolicy.Configure(theme);
+            BackdropPolicy.Configure(useMica: false, null);
+            AssertOpaque(root.Background);
+            await CaptureAsync(dialog, "pairing-dialog-windows-default-mica-off");
+
+            BackdropPolicy.Configure(useMica: true, theme);
             if (highContrast)
                 Assert.Same(originalBackground, root.Background);
             else
                 AssertOpaque(root.Background);
             await CaptureAsync(dialog, "pairing-dialog-tide");
 
-            BackdropPolicy.Configure(null);
+            BackdropPolicy.Configure(useMica: true, null);
             Assert.Same(originalBackground, root.Background);
             Assert.Same(original, dialog.SystemBackdrop);
         }
         finally
         {
-            BackdropPolicy.Configure(null);
+            BackdropPolicy.Configure(useMica: true, null);
             dialog.Close();
         }
     });
+
+    // The node opens canvas windows itself, outside WindowManager's refresh. Whether a canvas opens before or after
+    // Mica is turned off, it paints the opaque canvas while Mica is off and shows Mica again when it's turned back on.
+    [Fact]
+    public Task NodeCanvasWindowsFollowTheMicaSettingWhenOpenedBeforeOrAfterIt() => ui.RunOnUIAsync(async () =>
+    {
+        // Under High Contrast the system backdrop always wins (OpenDialogFollowsMicaSettingAndGatewayTheme).
+        if (new AccessibilitySettings().HighContrast)
+            return;
+        var media = new OpenClawTray.A2UI.Rendering.MediaResolver(NullLogger.Instance);
+        var windows = new List<Microsoft.UI.Xaml.Window>();
+        Microsoft.UI.Xaml.Window Open(bool web)
+        {
+            Microsoft.UI.Xaml.Window window = web
+                ? new OpenClawTray.Windows.CanvasWindow()
+                : new OpenClawTray.Windows.A2UICanvasWindow(new RecordingActionSink(), media, NullLogger.Instance);
+            windows.Add(window);
+            return window;
+        }
+        try
+        {
+            BackdropPolicy.Configure(useMica: true, null);
+            var before = new[] { Open(web: true), Open(web: false) };
+            var originals = before.Select(Background).ToList();
+
+            BackdropPolicy.Configure(useMica: false, null);
+            var after = new[] { Open(web: true), Open(web: false) };
+            Assert.All(windows, window => AssertOpaque(Background(window)));
+            foreach (var (window, name) in new[] { (before[0], "canvas-opened-before-mica-off"), (after[1], "a2ui-canvas-opened-after-mica-off") })
+            {
+                await ShowForProofAsync(window);
+                await CaptureAsync(window, name);
+            }
+
+            BackdropPolicy.Configure(useMica: true, null);
+            for (var index = 0; index < before.Length; index++)
+                Assert.Same(originals[index], Background(before[index]));
+            Assert.All(windows, window => Assert.IsType<MicaBackdrop>(window.SystemBackdrop));
+        }
+        finally
+        {
+            BackdropPolicy.Configure(useMica: true, null);
+            foreach (var window in windows)
+                window.Close();
+        }
+    });
+
+    private static Microsoft.UI.Xaml.Media.Brush? Background(Microsoft.UI.Xaml.Window window) => window.Content switch
+    {
+        Panel panel => panel.Background,
+        Control control => control.Background,
+        Border border => border.Background,
+        _ => throw new InvalidOperationException($"Unexpected window root {window.Content?.GetType().Name}"),
+    };
 
     private static void AssertOpaque(Microsoft.UI.Xaml.Media.Brush? background) =>
         Assert.Equal(255, Assert.IsType<SolidColorBrush>(background).Color.A);
@@ -82,14 +140,14 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
             Assert.Equal(windowsFont, heading.FontFamily.Source);
 
             Assert.True(applicator.Apply(BuiltinGatewayThemes.All.First(entry => entry.Id == "manuscript")));
-            BackdropPolicy.Configure(applicator.Current);
+            BackdropPolicy.Configure(useMica: true, applicator.Current);
             BackdropPolicy.ConfigureWindowTheme("Dark", refreshResources: true);
             Assert.NotEqual(windowsFont, ThemeFont());
             Assert.Equal(ThemeFont(), HostFont(root).Source);
             Assert.Equal(ThemeFont(), heading.FontFamily.Source);
 
             Assert.True(applicator.Apply(null));
-            BackdropPolicy.Configure(null);
+            BackdropPolicy.Configure(useMica: true, null);
             BackdropPolicy.ConfigureWindowTheme("Dark", refreshResources: true);
             Assert.Equal(windowsFont, HostFont(root).Source);
             Assert.Equal(windowsFont, heading.FontFamily.Source);
@@ -97,7 +155,7 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
         finally
         {
             applicator.Apply(null);
-            BackdropPolicy.Configure(null);
+            BackdropPolicy.Configure(useMica: true, null);
             BackdropPolicy.ConfigureWindowTheme(null, refreshResources: false);
             dialog.Close();
         }
@@ -140,7 +198,7 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
             Assert.Equal(ThemeColorMode.Dark, ink.PinnedMode);
 
             Assert.True(applicator.Apply(ink, ThemeColorMode.Dark));
-            BackdropPolicy.Configure(applicator.Current);
+            BackdropPolicy.Configure(useMica: true, applicator.Current);
             BackdropPolicy.ConfigureWindowTheme("Dark", refreshResources: true);
             Assert.Equal(ElementTheme.Dark, root.ActualTheme);
             var card = TestSupport.FindDescendants<Border>(root).First(border =>
@@ -157,7 +215,7 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
         finally
         {
             applicator.Apply(null);
-            BackdropPolicy.Configure(null);
+            BackdropPolicy.Configure(useMica: true, null);
             BackdropPolicy.ConfigureWindowTheme(null, refreshResources: false);
             dialog.Close();
         }
@@ -177,10 +235,10 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
 
     // Swapping a window's backdrop while App refreshes theme resources by flipping the window's RequestedTheme made
     // WinUI raise ArgumentException("target") from a framework callback: an unhandled crash on every later restore.
-    // Theme changes therefore keep the window's own backdrop. The fault needs an active window on a host
+    // Theme and Mica changes therefore keep the window's own backdrop. The fault needs an active window on a host
     // where Mica is supported and High Contrast is off.
     [Fact]
-    public Task SwitchingThemesKeepsTheWindowsBackdropAndRaisesNoFrameworkFault() => ui.RunOnUIAsync(async () =>
+    public Task SwitchingThemesAndMicaKeepsTheWindowsBackdropAndRaisesNoFrameworkFault() => ui.RunOnUIAsync(async () =>
     {
         var crt = BuiltinGatewayThemes.All.First(entry => entry.Id == "crt");
         var manuscript = BuiltinGatewayThemes.All.First(entry => entry.Id == "manuscript");
@@ -204,9 +262,9 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
             await OnboardingNativeProof.NextCompositionAsync();
             BackdropPolicy.Apply(window);
             ResolvedTheme?[] cycle = [crt, null, manuscript, null, crt, manuscript, null];
-            foreach (var theme in cycle.Concat(cycle))
+            foreach (var (theme, index) in cycle.Concat(cycle).Select((theme, index) => (theme, index)))
             {
-                BackdropPolicy.Configure(theme);
+                BackdropPolicy.Configure(useMica: index % 3 != 2, theme);
                 ThemeHelper.ApplyTheme(window, "Dark", refreshThemeResources: true);
                 await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromMilliseconds(300));
             }
@@ -218,7 +276,7 @@ public sealed class GatewayThemeBackdropTests(UIThreadFixture ui)
         }
         finally
         {
-            BackdropPolicy.Configure(null);
+            BackdropPolicy.Configure(useMica: true, null);
             window.Close();
             Microsoft.UI.Xaml.Application.Current.UnhandledException -= OnUnhandled;
         }
