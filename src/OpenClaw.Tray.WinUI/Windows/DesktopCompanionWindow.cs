@@ -1,3 +1,4 @@
+using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -7,11 +8,14 @@ using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32;
 using OpenClaw.SetupEngine.UI.Controls;
+using OpenClaw.Shared.Themes;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
+using OpenClawTray.Theming;
 using Windows.Graphics;
 using Windows.System;
+using Windows.UI.ViewManagement;
 using WinUIEx;
 using static Microsoft.UI.Reactor.Factories;
 
@@ -28,12 +32,10 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private readonly ReactorHostControl _host = new();
     private readonly ReactorHostControl _bubbleHost = new();
     // A windowed popup is the only XAML surface that can own a system backdrop, so the
-    // bubble gets real acrylic while the overlay window itself stays transparent.
-    private readonly Popup _bubblePopup = new()
-    {
-        ShouldConstrainToRootBounds = false,
-        SystemBackdrop = new DesktopAcrylicBackdrop(),
-    };
+    // bubble gets real acrylic while the overlay window itself stays transparent. The Mica
+    // checkbox removes it (see ApplyBubbleSurface); the same instance is restored after.
+    private readonly PopoverAcrylicBackdrop _bubbleAcrylic = new();
+    private readonly Popup _bubblePopup = new() { ShouldConstrainToRootBounds = false };
     private readonly DesktopCompanionChatHost _chat;
     private readonly IntPtr _hwnd;
     private readonly WinUIEx.Messaging.WindowMessageMonitor _frameMonitor;
@@ -45,7 +47,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private PointInt32 _windowStart;
     private string? _notificationGatewayId;
     private (int Width, int Height, double Dpi, double MascotSize, bool Modal)? _regionLayout;
-    private bool _closed, _positioning, _dragged, _bubbleHovered, _closeRequested, _nudge;
+    private bool _closed, _positioning, _dragged, _bubbleHovered, _closeRequested, _nudge, _applyingTheme;
 
     public event EventHandler? HideRequested;
 
@@ -88,7 +90,11 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
             _presentation, DismissBubble, OnOpenNotifications, OnReply, _chat.Content, OnBubbleMounted);
         _bubbleHost.Mount(_ => Component<DesktopCompanionBubble, DesktopCompanionBubbleProps>(bubbleProps));
         _bubblePopup.Child = _bubbleHost;
+        _bubblePopup.SystemBackdrop = _bubbleAcrylic;
         _presentation.Changed += OnPresentationChanged;
+        _bubbleHost.ActualThemeChanged += OnBubbleThemeChanged;
+        BackdropPolicy.Configured += OnAppearanceConfigured;
+        ApplyBubbleSurface();
         Content = _host;
         DesktopCompanionNative.ConfigureOverlay(_hwnd);
         Closed += OnClosed;
@@ -106,10 +112,70 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         ThemeHelper.ApplyTheme(this, theme, refreshThemeResources);
         // The bubble lives in a windowed popup outside the window content, so it takes the theme and font itself.
         var requested = ThemeHelper.GetRequestedTheme(theme);
-        if (refreshThemeResources)
-            _bubbleHost.RequestedTheme = _bubbleHost.ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
-        _bubbleHost.RequestedTheme = requested;
+        _applyingTheme = true;
+        try
+        {
+            if (refreshThemeResources)
+                _bubbleHost.RequestedTheme = _bubbleHost.ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+            _bubbleHost.RequestedTheme = requested;
+        }
+        finally { _applyingTheme = false; }
         ThemeHelper.ApplyWindowFont(_bubbleHost);
+        ApplyBubbleSurface();
+    }
+
+    /// <summary>
+    /// Gives the bubble the Companion appearance: its acrylic follows the Mica checkbox, a Gateway theme paints the
+    /// dashboard's popover colors, and High Contrast and the Windows look keep Fluent's acrylic resources.
+    /// </summary>
+    private void ApplyBubbleSurface()
+    {
+        if (_closed) return;
+        var theme = _bubbleHost.ActualTheme;
+        var mode = theme == ElementTheme.Light ? ThemeColorMode.Light : ThemeColorMode.Dark;
+        var highContrast = new AccessibilitySettings().HighContrast;
+        var surface = PopoverSurfacePolicy.Choose(BackdropPolicy.UseMica, BackdropPolicy.Theme,
+            highContrast, DesktopAcrylicController.IsSupported(), mode);
+        // The Windows look paints Fluent's fill and stroke for the bubble's own mode as plain colors, like a theme's.
+        // In the running Companion, the {ThemeResource} style behind Theme.Ref kept the windowed popup's frame on the
+        // app mode's fill: a dark Companion on light Windows that cleared a theme with Mica off showed a white bubble
+        // under its white text.
+        if (surface.Fill is null && !highContrast)
+            surface = surface with
+            {
+                Fill = FluentColor(surface.FillResource, theme),
+                Stroke = FluentColor(PopoverSurfacePolicy.StrokeResource, theme),
+            };
+        // The acrylic renders in the bubble's theme, not the Windows app mode the application theme follows.
+        _bubbleAcrylic.Theme = theme;
+        Microsoft.UI.Xaml.Media.SystemBackdrop? backdrop = surface.Acrylic ? _bubbleAcrylic : null;
+        if (!ReferenceEquals(_bubblePopup.SystemBackdrop, backdrop))
+            _bubblePopup.SystemBackdrop = backdrop;
+        _presentation.SetBubbleSurface(surface);
+    }
+
+    // App reconfigures the backdrop policy on every appearance, theme and High Contrast change.
+    private void OnAppearanceConfigured(object? sender, EventArgs args)
+    {
+        try { ApplyBubbleSurface(); }
+        catch (Exception ex)
+        {
+            Logger.Warn($"Desktop lobster could not follow the appearance: {ex.GetType().Name} 0x{ex.HResult:X8} {ex.Message}");
+        }
+    }
+
+    // Light and dark palettes differ; a System app theme can flip without an appearance change.
+    private void OnBubbleThemeChanged(FrameworkElement sender, object args)
+    {
+        if (!_applyingTheme) ApplyBubbleSurface();
+    }
+
+    // Color tokens, not their brushes: a brush in WinUI's dictionary for the mode the app isn't running in can be bound
+    // to the app mode's colors until that mode renders.
+    private static ThemeColor FluentColor(string brushKey, ElementTheme theme)
+    {
+        var color = OpenClawTray.FunctionalUI.Core.Theme.ResolveColor(brushKey[..^"Brush".Length], theme);
+        return new ThemeColor(color.A, color.R, color.G, color.B);
     }
 
     public void ApplyScale(int percent)
@@ -468,6 +534,8 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _bubbleHost.RemoveHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnBubblePressed));
         _bubbleHost.SizeChanged -= OnBubbleSizeChanged;
         _presentation.Changed -= OnPresentationChanged;
+        _bubbleHost.ActualThemeChanged -= OnBubbleThemeChanged;
+        BackdropPolicy.Configured -= OnAppearanceConfigured;
         _bubblePopup.IsOpen = false;
         _bubblePopup.Child = null;
         _host.OnRenderComplete = null;

@@ -372,6 +372,78 @@ public sealed class GatewayThemeSettingsTests
         bool useMica, bool themeActive, bool highContrast, string expected) =>
         Assert.Equal(expected, ThemeBackdropPolicy.Choose(useMica, themeActive, highContrast).ToString());
 
+    // The desktop lobster's bubble paints the dashboard toast (--popover fill, --border stroke) for a theme, opaque with
+    // no acrylic whatever the Mica setting, like Gateway-themed windows. High Contrast keeps Fluent's resources.
+    [Theory]
+    [InlineData(true, false, true, ThemeColorMode.Dark, false, "#26233a", "#29263c")]
+    [InlineData(true, false, true, ThemeColorMode.Light, false, "#fffaf3", "#e3d9cb")]
+    [InlineData(false, false, true, ThemeColorMode.Dark, false, "#26233a", "#29263c")]
+    [InlineData(true, false, false, ThemeColorMode.Dark, false, "#26233a", "#29263c")]
+    [InlineData(true, true, true, ThemeColorMode.Dark, true, null, null)]
+    [InlineData(false, true, true, ThemeColorMode.Dark, false, null, null)]
+    public void LobsterBubbleTakesTheOpaqueThemePopoverAndYieldsToHighContrast(
+        bool useMica, bool highContrast, bool acrylicSupported, ThemeColorMode mode,
+        bool acrylic, string? fill, string? stroke)
+    {
+        var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+
+        var surface = PopoverSurfacePolicy.Choose(useMica, rose, highContrast, acrylicSupported, mode);
+
+        Assert.Equal(acrylic, surface.Acrylic);
+        Assert.Equal(fill, surface.Fill?.ToHex());
+        Assert.Equal(stroke, surface.Stroke?.ToHex());
+        if (fill is null)
+            Assert.Equal(acrylic ? "LayerOnAcrylicFillColorDefaultBrush" : "SolidBackgroundFillColorQuarternaryBrush",
+                surface.FillResource);
+    }
+
+    [Fact]
+    public void LobsterBubbleKeepsTheWindowsLookExactlyWithoutATheme() =>
+        Assert.Equal(new PopoverSurface(true, null, "LayerOnAcrylicFillColorDefaultBrush", null),
+            PopoverSurfacePolicy.Choose(useMica: true, null, highContrast: false, acrylicSupported: true, ThemeColorMode.Dark));
+
+    // Without a backdrop behind it, a translucent plugin popover token would let the desktop show through.
+    [Fact]
+    public void OpaqueLobsterBubbleCompositesATranslucentPopoverOntoTheCanvas()
+    {
+        var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+        var plugin = rose with
+        {
+            Dark = rose.Dark! with { Popover = ThemeColor.FromHex("#ff000080"), Canvas = ThemeColor.FromHex("#000000") },
+        };
+
+        var surface = PopoverSurfacePolicy.Choose(useMica: false, plugin, highContrast: false, acrylicSupported: true,
+            ThemeColorMode.Dark);
+
+        Assert.Equal("#800000", surface.Fill?.ToHex());
+    }
+
+    // The bubble draws the theme's body and muted text, not the dashboard's --popover-foreground: an imported theme whose
+    // popover only suits its own popover foreground falls back to the card, which the legibility floor checks.
+    [Fact]
+    public void LobsterBubbleKeepsItsTextReadableWhenAThemesPopoverExpectsAnotherForeground()
+    {
+        var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+        var imported = rose with
+        {
+            Dark = rose.Dark! with
+            {
+                Canvas = ThemeColor.FromHex("#000000"),
+                Card = ThemeColor.FromHex("#000000"),
+                Popover = ThemeColor.FromHex("#aaaaaa"),
+                Text = ThemeColor.FromHex("#ffffff"),
+                Muted = ThemeColor.FromHex("#cccccc"),
+            },
+        };
+        Assert.True(ThemeLegibility.IsReadable(imported));
+
+        var surface = PopoverSurfacePolicy.Choose(useMica: false, imported, highContrast: false, acrylicSupported: true,
+            ThemeColorMode.Dark);
+
+        Assert.Equal("#000000", surface.Fill?.ToHex());
+        Assert.True(ThemeLegibility.Contrast(ThemeColor.FromHex("#cccccc"), surface.Fill!.Value) >= ThemeLegibility.MinimumContrast);
+    }
+
     [Fact]
     public void FontMapperKeepsBundledFacesAndEndsInInstalledWindowsFonts()
     {
