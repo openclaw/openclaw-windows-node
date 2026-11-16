@@ -190,6 +190,9 @@ public class GatewayThemeTests
     [InlineData("""{ "Theme": { "Id": 7, "Name": ["x"] }, "UseMica": null }""", true)]
     [InlineData("""{ "Theme": [ "tide" ], "UseMica": "no" }""", true)]
     [InlineData("""[ 1, 2 ]""", true)]
+    // Only a literal true follows the Gateway, and a malformed followed theme is ignored.
+    [InlineData("""{ "FollowGatewayTheme": "true", "FollowedTheme": { "Id": "crt" } }""", true)]
+    [InlineData("""{ "FollowGatewayTheme": true, "FollowedTheme": [ "crt" ] }""", true)]
     public void MalformedAppearanceNeitherDiscardsSettingsNorAppliesATheme(string appearance, bool useMica)
     {
         var settings = SettingsData.FromJson($$"""{ "AppTheme": "Dark", "Appearance": {{appearance}} }""");
@@ -208,7 +211,12 @@ public class GatewayThemeTests
         var descriptor = new GatewayThemeDescriptor("acme/ink", "Ink", "", GatewayThemeSource.Plugin, [ThemeColorMode.Dark], "acme");
         var data = new SettingsData
         {
-            Appearance = new AppearanceSettings { Theme = AppearanceResolver.Select(descriptor, definition, "gw-1") },
+            Appearance = new AppearanceSettings
+            {
+                Theme = new ThemeSelection { Id = "tide", Name = "Tide" },
+                FollowGatewayTheme = true,
+                FollowedTheme = AppearanceResolver.Select(descriptor, definition, "gw-1"),
+            },
         };
 
         var reloaded = SettingsData.FromJson(data.ToJson())!;
@@ -217,6 +225,35 @@ public class GatewayThemeTests
         var theme = AppearanceResolver.ResolveTheme(reloaded.Appearance);
         Assert.Equal("acme/ink", theme?.Id);
         Assert.Equal(ThemeColorMode.Dark, theme?.PinnedMode);
+    }
+
+    [Fact]
+    public void FollowingShowsTheGatewayThemeAndKeepsTheLastRenderableOne()
+    {
+        var manual = new AppearanceSettings { Theme = new ThemeSelection { Id = "tide", Name = "Tide" } };
+        var crt = Descriptor("crt", GatewayThemeSource.Builtin);
+        Assert.Same(manual, AppearanceResolver.Follow(manual, crt, null, "gw-1"));
+
+        var following = manual with { FollowGatewayTheme = true };
+        Assert.Equal("tide", AppearanceResolver.ResolveTheme(following)?.Id);
+        following = AppearanceResolver.Follow(following, crt, null, "gw-1");
+        Assert.Equal("crt", AppearanceResolver.ResolveTheme(following)?.Id);
+
+        // A built-in newer than the Companion's table, a plugin theme without a readable definition and a
+        // disconnected Gateway all keep the last followed theme instead of blanking the look.
+        Assert.Same(following, AppearanceResolver.Follow(following, Descriptor("nebula", GatewayThemeSource.Builtin), null, "gw-1"));
+        var neon = Descriptor("acme/neon", GatewayThemeSource.Plugin);
+        Assert.Same(following, AppearanceResolver.Follow(following, neon, null, "gw-1"));
+        Assert.Same(following, AppearanceResolver.Follow(following, null, null, null));
+
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: Palette("#05010a")), out var definition, out _));
+        var plugin = AppearanceResolver.Follow(following, neon, definition, "gw-1");
+        Assert.Equal("acme/neon", AppearanceResolver.ResolveTheme(plugin)?.Id);
+        Assert.Equal("gw-1", plugin.FollowedTheme!.OriginGatewayId);
+
+        // Turning following off restores the manual choice; with neither, the Windows default applies.
+        Assert.Equal("tide", AppearanceResolver.ResolveTheme(plugin with { FollowGatewayTheme = false })?.Id);
+        Assert.Null(AppearanceResolver.ResolveTheme(new AppearanceSettings { FollowGatewayTheme = true }));
     }
 
     private static GatewayThemeDescriptor Descriptor(string id, GatewayThemeSource source) =>
@@ -237,6 +274,8 @@ public class GatewayThemeTests
         var manual = new AppearanceSettings { Theme = AppearanceResolver.Select(descriptor, definition, "gw-1") };
 
         Assert.Null(AppearanceResolver.ResolveTheme(manual));
+        var following = new AppearanceSettings { Theme = new ThemeSelection { Id = "tide" }, FollowGatewayTheme = true };
+        Assert.Same(following, AppearanceResolver.Follow(following, descriptor, definition, "gw-1"));
         Assert.All(BuiltinGatewayThemes.All, theme => Assert.True(ThemeLegibility.IsReadable(theme), theme.Id));
     }
 

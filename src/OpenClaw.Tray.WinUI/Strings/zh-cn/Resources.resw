@@ -4466,6 +4466,12 @@
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>使用 Windows 默认主题时，让桌面透过窗口背景显示。Gateway 主题始终使用纯色。</value>
   </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>跟随网关主题</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>使用在 OpenClaw 仪表板中选择的主题，并在其更改时同步更新。</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>系统</value>
   </data>
