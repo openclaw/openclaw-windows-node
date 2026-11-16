@@ -74,6 +74,8 @@ function Reset-Fixture {
     $global:OpenClawStoreTest_published = New-Submission 'published-1'
     $global:OpenClawStoreTest_draft = $null
     $global:OpenClawStoreTest_pendingId = $null
+    $global:OpenClawStoreTest_omitEmptyPending = $false
+    $global:OpenClawStoreTest_omitOwnedPending = $false
     $global:OpenClawStoreTest_tokenLifetime = 3600
     $global:OpenClawStoreTest_commitStatus = 'CommitStarted'
     $global:OpenClawStoreTest_commitThrows = $false
@@ -104,13 +106,18 @@ $httpInvoker = {
 
     $applicationPath = "$apiBase/v1.0/my/applications/$applicationId"
     if ($Method -eq 'Get' -and $Uri -ceq $applicationPath) {
-        return [pscustomobject]@{
+        $application = [pscustomobject]@{
             Id = $applicationId
             PackageIdentityName = if ($global:OpenClawStoreTest_wrongIdentity) { 'Other.Product' } else { 'Test.OpenClaw' }
             PublisherName = 'CN=Test'
             PendingApplicationSubmission = if ($null -eq $global:OpenClawStoreTest_pendingId) { $null } else { [pscustomobject]@{ Id = $global:OpenClawStoreTest_pendingId } }
             LastPublishedApplicationSubmission = [pscustomobject]@{ Id = 'published-1' }
         }
+        if (($global:OpenClawStoreTest_omitEmptyPending -and $null -eq $global:OpenClawStoreTest_pendingId) -or
+            ($global:OpenClawStoreTest_omitOwnedPending -and $global:OpenClawStoreTest_pendingId -ceq 'draft-2')) {
+            $application.PSObject.Properties.Remove('PendingApplicationSubmission')
+        }
+        return $application
     }
     if ($Method -eq 'Get' -and $Uri -ceq "$applicationPath/submissions/published-1") {
         return Copy-Object $global:OpenClawStoreTest_published
@@ -242,6 +249,29 @@ try {
         [string]$evidence.publishedMetadataSha256 -cne [string]$evidence.draftMetadataSha256 -or
         [string]$evidence.preparedMutationSha256 -cne [string]$evidence.verifiedMutationSha256) {
         throw 'Store evidence did not bind the verified and committed draft.'
+    }
+
+    # Partner Center can omit pendingApplicationSubmission when no draft exists.
+    Reset-Fixture
+    $global:OpenClawStoreTest_omitEmptyPending = $true
+    $omittedEvidencePath = Join-Path $testRoot 'omitted-pending-evidence.json'
+    Invoke-Submission -EvidencePath $omittedEvidencePath
+    $omittedEvidence = Get-Content $omittedEvidencePath -Raw | ConvertFrom-Json
+    if ($omittedEvidence.commitStatus -cne 'CommitStarted' -or
+        $omittedEvidence.draftSubmissionId -cne 'draft-2' -or
+        @($global:OpenClawStoreTest_calls | Where-Object { $_ -match '/Commit$' }).Count -ne 1 -or
+        $global:OpenClawStoreTest_uploadedEntries.Count -ne 1 -or
+        $global:OpenClawStoreTest_uploadedEntries[0] -cne 'OpenClaw.msixbundle') {
+        throw 'An omitted empty pending submission prevented the verified bundle commit.'
+    }
+
+    # Absence is allowed only before creation, never as proof of draft ownership.
+    Reset-Fixture
+    $global:OpenClawStoreTest_omitOwnedPending = $true
+    Assert-Fails -MessagePattern "Store response is missing 'PendingApplicationSubmission'" -Action { Invoke-Submission }
+    if ($global:OpenClawStoreTest_calls -match 'Put |/Commit$' -or
+        $null -ne $global:OpenClawStoreTest_uploadHash) {
+        throw 'Missing draft ownership allowed an update, upload or commit.'
     }
 
     Reset-Fixture

@@ -236,7 +236,10 @@ try {
         [string](Get-RequiredProperty $application 'PublisherName') -cne $Publisher) {
         throw 'Microsoft Store product does not match the approved package identity.'
     }
-    if ($null -ne (Get-RequiredProperty $application 'PendingApplicationSubmission')) {
+    # Partner Center can omit this property when there is no pending draft.
+    # After creation, Assert-OwnedDraft still requires an explicit matching ID.
+    $pendingProperty = $application.PSObject.Properties['PendingApplicationSubmission']
+    if ($null -ne $pendingProperty -and $null -ne $pendingProperty.Value) {
         throw 'Partner Center already has a pending submission; automation will not replace it.'
     }
     $publishedInfo = Get-RequiredProperty $application 'LastPublishedApplicationSubmission'
