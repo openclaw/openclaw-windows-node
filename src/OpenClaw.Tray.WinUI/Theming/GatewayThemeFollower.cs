@@ -4,9 +4,10 @@ using OpenClawTray.Services;
 namespace OpenClawTray.Theming;
 
 /// <summary>
-/// Keeps <see cref="AppearanceSettings.FollowedTheme"/> in step with the connected Gateway's selected dashboard
-/// theme while "Follow Gateway theme" is on. It only reads the catalog: the Gateway selection is never written.
-/// A Gateway theme the Companion can't render leaves the last followed theme in place.
+/// Keeps <see cref="AppearanceSettings.FollowedTheme"/> and <see cref="AppearanceSettings.FollowedAccent"/> in step
+/// with the connected Gateway's selected dashboard theme and the person's dashboard accent while "Follow Gateway theme"
+/// is on. It only reads the catalog: the Gateway selection is never written. A Gateway theme the Companion can't
+/// render, or preferences it can't read, leave the last followed values in place.
 /// <example><code>
 /// var follower = new GatewayThemeFollower(catalog, () => settings.Appearance, Persist, ApplyThemeToOpenWindows);
 /// follower.Sync(); // also after the setting is turned on
@@ -39,14 +40,14 @@ internal sealed class GatewayThemeFollower : IDisposable
             return false;
         var current = _catalog.GatewayCurrent;
         var next = AppearanceResolver.Follow(appearance, current?.Descriptor, current?.Definition, current?.GatewayId);
+        if (current is not null && next.FollowedTheme?.Id != current.Id)
+            Logger.Info($"[Themes] The Gateway theme {current.Id} can't be rendered here; keeping the last followed theme.");
+        next = AppearanceResolver.FollowAccent(next, _catalog.GatewayPreferences);
         if (next == appearance)
-        {
-            if (current is not null && next.FollowedTheme?.Id != current.Id)
-                Logger.Info($"[Themes] The Gateway theme {current.Id} can't be rendered here; keeping the last followed theme.");
             return false;
-        }
         _write(next);
-        Logger.Info($"[Themes] Following the Gateway theme {next.FollowedTheme?.Id}.");
+        Logger.Info($"[Themes] Following the Gateway theme {next.FollowedTheme?.Id} with " +
+            $"{(next.FollowedAccent is null ? "its own accent" : "the dashboard accent")}.");
         return true;
     }
 

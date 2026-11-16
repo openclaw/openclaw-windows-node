@@ -141,7 +141,7 @@ internal static class Program
             else if (scenario.Themes is { } themes)
             {
                 await run.InvokeAsync("app.navigate", new { page = "settings" });
-                Console.WriteLine("Synthetic theme catalog. Enter 'reveal' to add a plugin theme and publish plugins.changed. 'stop' ends this run.");
+                Console.WriteLine("Synthetic theme catalog. Enter 'select <id>' or 'accent <#hex|theme|none>' to change the dashboard choice, or 'reveal' to add a plugin theme. 'stop' ends this run.");
                 controls = Task.Run(() => ReadThemeControlsAsync(run, themes, stop));
             }
             if (durationSeconds is { } seconds)
@@ -255,6 +255,13 @@ internal static class Program
                     themes.SelectTheme(id);
                     await run.Gateway.PublishUserPrefsChangedAsync();
                     Console.WriteLine($"Selected {id} and published users.prefs.changed.");
+                    continue;
+                }
+                if (command.StartsWith("accent ", StringComparison.Ordinal) && command[7..].Trim() is { Length: > 0 } accent)
+                {
+                    themes.SetAccent(accent == "none" ? null : accent);
+                    await run.Gateway.PublishUserPrefsChangedAsync();
+                    Console.WriteLine($"Set the dashboard accent to {accent} and published users.prefs.changed.");
                     continue;
                 }
                 if (command != "reveal")
