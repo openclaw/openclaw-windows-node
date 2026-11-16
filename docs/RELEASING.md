@@ -512,6 +512,11 @@ For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
 
+Publication explicitly checks `!cancelled()` and successful release preparation
+so an intentionally skipped ancestor, such as the pull-request-only test soak,
+does not suppress the approval job through GitHub's implicit `success()` check.
+Failed preparation and cancelled runs still cannot publish.
+
 Promotion publication uses only `GITHUB_TOKEN` with **Contents: write**. No PAT,
 GitHub App key, or separate release-token secret is required by the workflow.
 The approved alpha SHA and pipeline SHA are pinned in `promotion.json`; moving

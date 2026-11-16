@@ -506,6 +506,10 @@ try {
         if (-not $reservation.Contains($text)) { throw "MSIX promotion reservation must retain policy validation: $text" }
     }
     $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*?(?=^  [a-z][a-z0-9-]*:|\z)').Value
+    $publicationCondition = [regex]::Match($publication, '(?m)^    if: (.+)\r?$').Groups[1].Value.Trim()
+    if ($publicationCondition -cne '${{ !cancelled() && inputs.promotion_alpha != '''' && needs.release.result == ''success'' }}') {
+        throw 'Promotion publication must explicitly handle skipped ancestors without allowing cancellation, non-promotion runs, or unsuccessful release preparation.'
+    }
     foreach ($text in @('name: stable-release', 'Publish-AlphaPromotion',
         'contents: write', 'GH_TOKEN: ${{ github.token }}')) {
         if (-not $publication.Contains($text)) { throw "Missing approval-gated workflow token contract: $text" }

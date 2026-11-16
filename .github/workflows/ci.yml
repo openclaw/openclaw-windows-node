@@ -2969,7 +2969,7 @@ jobs:
 
   publish-promotion:
     needs: [change-classification, release]
-    if: inputs.promotion_alpha != '' && needs.release.result == 'success'
+    if: ${{ !cancelled() && inputs.promotion_alpha != '' && needs.release.result == 'success' }}
     runs-on: windows-latest
     environment:
       name: stable-release
