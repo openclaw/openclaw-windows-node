@@ -1,0 +1,8 @@
+{
+  "name": "lobster-visit-goldens",
+  "private": true,
+  "description": "Bundles the lobster visit golden harness. Run scripts/Update-LobsterVisitGoldens.ps1 instead of using this directly.",
+  "devDependencies": {
+    "esbuild": "0.25.12"
+  }
+}

@@ -159,6 +159,29 @@ and [palette](https://github.com/openclaw/openclaw/blob/db2d951fd047a9e6a03b73d4
 to native WinUI controls. No web script is executed at runtime. The OpenClaw MIT
 notice below applies to these adaptations.
 
+## Composer lobster visits
+
+`Chat/LobsterVisits/LobsterLooks.cs`, `LobsterComposerScene.cs`,
+`LobsterVisitPlans.cs` and `LobsterVisitOwner.cs` port the seeded identity,
+palettes, names, collision lanes, visit schedule, acts and interaction state
+machine from OpenClaw commit `4cffd43ee043275f6a4c693aaacee8d8e5a61288`:
+
+- [Identity and random stream](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-identity.ts),
+  [palettes](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-palettes.ts)
+  and [names](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-lore.ts)
+- [Collision lanes](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-scene.ts)
+- [Plans](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-plans.ts),
+  [modes and outcomes](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-contract.ts),
+  [run state](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/src/shared/session-run-state.ts)
+  and [familiarity](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-dex.ts)
+- [Visit owner](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-owner.ts),
+  [interactions](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-interactions.ts)
+  and [named timers](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-timers.ts)
+- [Offline grace window](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/app/gateway-store.availability.ts)
+
+No web script is executed at runtime. The OpenClaw MIT notice below applies to
+these adaptations.
+
 ### OpenClaw (MIT)
 
 Copyright (c) 2026 OpenClaw Foundation
