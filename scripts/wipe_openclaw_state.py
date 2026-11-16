@@ -139,17 +139,6 @@ _kernel32.QueryFullProcessImageNameW.argtypes = [
     wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD),
 ]
 _kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
-_kernel32.CreateFileW.argtypes = [
-    wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, wintypes.LPVOID,
-    wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
-]
-_kernel32.CreateFileW.restype = wintypes.HANDLE
-_kernel32.DeviceIoControl.argtypes = [
-    wintypes.HANDLE, wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
-    wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
-]
-_kernel32.DeviceIoControl.restype = wintypes.BOOL
-_INVALID_HANDLE = wintypes.HANDLE(-1).value
 
 appdata = Path(os.environ["APPDATA"])
 localappdata = Path(os.environ["LOCALAPPDATA"])
@@ -750,43 +739,19 @@ def find_paths() -> list[Path]:
     return sorted((p for p in found.values() if not is_excluded(p)), key=lambda p: str(p).lower())
 
 
-_FILE_READ_ATTRIBUTES = 0x80
-_FILE_SHARE_ALL = 0x7
-_OPEN_EXISTING = 3
-_FILE_FLAG_BACKUP_SEMANTICS = 0x02000000
-_FILE_FLAG_OPEN_REPARSE_POINT = 0x00200000
-_FSCTL_GET_REPARSE_POINT = 0x000900A8
-_IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003
-_ERROR_FILE_NOT_FOUND = 2
-_ERROR_PATH_NOT_FOUND = 3
-_ERROR_NOT_A_REPARSE_POINT = 4390
-
-
 def _is_mount_point(path: Path) -> bool:
-    """Directory junction test for interpreters without Path.is_junction (before 3.12)."""
-    handle = _kernel32.CreateFileW(
-        str(path), _FILE_READ_ATTRIBUTES, _FILE_SHARE_ALL, None, _OPEN_EXISTING,
-        _FILE_FLAG_BACKUP_SEMANTICS | _FILE_FLAG_OPEN_REPARSE_POINT, None)
-    if not handle or handle == _INVALID_HANDLE:
-        error = ctypes.get_last_error()
-        if error in (_ERROR_FILE_NOT_FOUND, _ERROR_PATH_NOT_FOUND):
-            return False
-        raise InventoryError(f"could not tell whether {path} is a junction: Win32 {error}")
+    """Directory junction test for interpreters without Path.is_junction (before 3.12).
+
+    os.lstat already returns the reparse tag. A missing path is not a junction.
+    Any other inspection failure aborts the inventory.
+    """
     try:
-        buf = ctypes.create_string_buffer(16 * 1024)
-        returned = wintypes.DWORD()
-        ok = _kernel32.DeviceIoControl(
-            handle, _FSCTL_GET_REPARSE_POINT, None, 0,
-            buf, ctypes.sizeof(buf), ctypes.byref(returned), None)
-        if not ok:
-            error = ctypes.get_last_error()
-            if error == _ERROR_NOT_A_REPARSE_POINT:
-                return False
-            raise InventoryError(f"could not read the reparse point at {path}: Win32 {error}")
-        tag = int.from_bytes(buf.raw[:4], "little")
-        return tag == _IO_REPARSE_TAG_MOUNT_POINT
-    finally:
-        _kernel32.CloseHandle(handle)
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise InventoryError(f"could not tell whether {path} is a junction: {exc}") from exc
+    return getattr(info, "st_reparse_tag", 0) == stat.IO_REPARSE_TAG_MOUNT_POINT
 
 
 def is_junction(path: Path) -> bool:

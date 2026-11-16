@@ -240,8 +240,8 @@ with tempfile.TemporaryDirectory() as tree:
     check("non-model removed", (root / "OpenClawTray" / "settings.json").exists(), False)
     check("kept list records model", kept, [root / "OpenClawTray" / "LocalAI" / "models" / "keep.gguf"])
 
-# Junctions are not walked and rmdir removes only the link. The mount-point
-# helper is the Python 3.11 path; 3.12+ also has Path.is_junction.
+# Junctions are not walked and rmdir removes only the link. The lstat helper
+# is the Python 3.11 path; 3.12+ also has Path.is_junction.
 junction_root = Path(wipe.temp) / "junction-proof"
 target = junction_root / "target"
 parent = junction_root / "OpenClawTray"
