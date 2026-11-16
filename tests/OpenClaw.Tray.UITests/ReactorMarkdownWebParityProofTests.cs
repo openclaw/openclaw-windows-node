@@ -172,12 +172,26 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 // Switching theme re-resolves the syntax palette.
                 host.RequestedTheme = dark ? ElementTheme.Light : ElementTheme.Dark;
             });
-            await ui.YieldToRenderAsync();
+            // ActualTheme flips synchronously, but the code block re-resolves its palette from
+            // ActualThemeChanged, which WinUI raises later. Wait for the switched palette.
+            var switchedToDark = !dark;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => SwitchedCode() is { } code && SyntaxPalette.All(entry =>
+                    TryInk(code, entry.Token) == (switchedToDark ? entry.Dark : entry.Light)),
+                "syntax palette re-resolved for the switched theme",
+                () => SwitchedCode() is { } code
+                    ? $"ActualTheme: {code.ActualTheme}; " + string.Join(", ", SyntaxPalette.Select(entry =>
+                        $"{entry.Token}={TryInk(code, entry.Token)?.ToString("X8") ?? "none"}"))
+                    : "code block absent"));
             await ui.RunOnUIAsync(() =>
             {
                 var code = Assert.Single(FindDescendants<RichTextBlock>(root!), text => Text(text) == TypeScript);
-                Assert.Equal(dark ? 0xFFB81B27u : 0xFFFF8A80u, Ink(code, "type"));
+                Assert.All(SyntaxPalette, entry =>
+                    Assert.Equal(switchedToDark ? entry.Dark : entry.Light, Ink(code, entry.Token)));
             });
+
+            RichTextBlock? SwitchedCode() =>
+                FindDescendants<RichTextBlock>(root!).SingleOrDefault(text => Text(text) == TypeScript);
 
             // A High Contrast transition (which need not change ActualTheme) drops and then
             // restores syntax, bold and inline-code highlighters on mounted Markdown.
@@ -297,6 +311,27 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 return false;
             await Task.Delay(50);
         }
+    }
+
+    // The web palette for each highlighted token in the TypeScript sample.
+    private static readonly (string Token, uint Dark, uint Light)[] SyntaxPalette =
+    [
+        ("type", 0xFFFF8A80u, 0xFFB81B27u),
+        ("SharedFolder", 0xFFD2A8FFu, 0xFF7040D0u),
+        ("path", 0xFF7EE787u, 0xFF116329u),
+        ("string", 0xFFFFA657u, 0xFF953800u),
+        ("\"read\"", 0xFFA5D6FFu, 0xFF0A3069u),
+    ];
+
+    // Like Ink, but returns null instead of failing so a rendered-condition wait can poll it.
+    private static uint? TryInk(RichTextBlock code, string token)
+    {
+        var start = TypeScript.IndexOf(token, StringComparison.Ordinal);
+        var matches = code.TextHighlighters.Where(highlighter =>
+            highlighter.Ranges.Any(range => range.StartIndex == start && range.Length == token.Length)).ToArray();
+        return matches is [{ Foreground: SolidColorBrush { Color: var color } }]
+            ? (uint)color.A << 24 | (uint)color.R << 16 | (uint)color.G << 8 | color.B
+            : null;
     }
 
     // ARGB of the syntax highlighter that colors exactly this token's first occurrence.

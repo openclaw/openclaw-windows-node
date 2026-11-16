@@ -123,7 +123,14 @@ backoff, so each step is bounded by `OPENCLAW_TRAY_TEST_WIZARD_TAIL_TIMEOUT_SECO
 (default 30 s). The chat-readiness loopback regressions bound each exchange with
 `OPENCLAW_TRAY_TEST_CHAT_READINESS_TIMEOUT_SECONDS` (default 30 s) rather than the
 product's 3 s per-probe client timeout, because their fake server runs on the
-shared thread pool.
+shared thread pool. The onboarding bootstrap regressions raise the run completion as
+soon as the fake client reports the hatching send, not after a fixed delay, and bound
+the completion with `OPENCLAW_TRAY_TEST_ONBOARDING_BOOTSTRAP_TIMEOUT_SECONDS` (default
+30 s), because a loaded runner can hold a test continuation past a short deadline.
+The direct-connect late-terminal-state regressions hold the deadline's resumption on a
+queued synchronization context instead of loading the scheduler (the native-setup cases
+advance a manual clock), and bound those waits with
+`OPENCLAW_TRAY_TEST_DIRECT_CONNECT_HELD_RESUME_GUARD_SECONDS` (default 30 s).
 
 - **Tray UI and state** - app state, menu display/position/sizing, tray tooltip formatting, activity streams, async list loading, diagnostics contracts, markup regressions, and chat timeline/markdown handling.
 - **Connection and pairing** - connection manager node connector tests, connection page approval/channel metrics/row state, operator and Windows tray node pairing approval, and gateway action transport.
@@ -668,6 +675,7 @@ reaches main, where one passing run in its own pull request proves little.
   | `OPENCLAW_CI_SOAK_MAX_TESTS` | 30 | Selected Shared or Tray tests per project; the rest are reported as not soaked |
   | `OPENCLAW_CI_SOAK_MAX_UI_TESTS` | 8 | Selected Tray UI tests |
   | `OPENCLAW_CI_SOAK_HANG_SECONDS` | 300 | Blame-hang timeout for one test; no dump is collected |
+  | `OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT` | 0 (CI sets 1) | Lets fixture UI tests inject native input, as the fixture lanes' `-NativeInputProof` does |
 
 - The step keeps a 40-minute budget shared by every project. A build or run that
   would not finish within 90% of it (estimated at 1.5 times the slowest
@@ -675,11 +683,22 @@ reaches main, where one passing run in its own pull request proves little.
   its share of the time left, so a slow project cannot take the first runs of
   the projects after it. A warning annotation and the summary say how many runs
   completed. A budget-limited soak still passes.
+- Tray UI tests run as two subsets per run, each with its CI lane's
+  environment. Fixture UI tests (`Category=GatewayFixture`) get
+  `OPENCLAW_RUN_GATEWAY_FIXTURE_UI=1` and native input, because the fixture
+  lanes run them with `-NativeInputProof`. Some fixture tests always inject
+  native input and fail closed without the opt-in, so without it the soak would
+  fail them instead of soaking them. As in the fixture lanes, the opt-in is set
+  only for that test process, never step-wide. The other UI tests run with
+  neither variable, as in the UI lane, so a fixture-gated test without the
+  `Category=GatewayFixture` trait skips here as it does there.
 - Tests that need their own lane environment (production resources, animation
   preference, native onboarding, accessibility and native keyboard proof) are
-  excluded here and still run in their lanes. After the first run, the soak
-  warns about each selected test that did not run. A selection that runs no
-  test passes.
+  excluded here and still run in their lanes. Native keyboard proof
+  (`KeyboardProof=Required`) stays excluded: the fixture lanes exclude it too,
+  and the only CI step that runs it is the production-resources one.
+  After the first run, the soak warns about each selected test that did not run.
+  A selection that runs no test passes.
 - The soak does not see changes it cannot map to tests: helpers in other files,
   partial classes split across files, non-C# fixture data, product code, and
   test projects outside Shared, Tray and Tray UI.

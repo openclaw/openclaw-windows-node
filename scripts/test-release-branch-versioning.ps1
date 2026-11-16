@@ -2,7 +2,8 @@
 .SYNOPSIS
     Proves exact alpha and stable tags on a selective release branch while
     newer main changes remain excluded, and a stable version for merge queue
-    group branches. Uses the pinned GitVersion tool.
+    group branches. Also exercises GitVersion.MsBuild on release retries after
+    an annotated MSIX reservation exists. Uses the repository's GitVersion pins.
 #>
 [CmdletBinding()]
 param()
@@ -11,7 +12,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $fixtures = Join-Path ([IO.Path]::GetTempPath()) "openclaw-release-version-$([guid]::NewGuid().ToString('N'))"
-$environmentNames = @('GITHUB_ACTIONS', 'GITHUB_REF', 'GITHUB_SHA', 'GITHUB_HEAD_REF', 'GITHUB_BASE_REF')
+$environmentNames = @('GITHUB_ACTIONS', 'GITHUB_REF', 'GITHUB_REF_TYPE', 'GITHUB_SHA',
+    'GITHUB_HEAD_REF', 'GITHUB_BASE_REF', 'GITHUB_ENV',
+    'GitVersion_NoNormalizeEnabled', 'GitVersion_NoFetchEnabled',
+    'OPENCLAW_RELEASE_SOURCE_SHA', 'OPENCLAW_RELEASE_REF', 'OPENCLAW_RELEASE_TAG')
 $savedEnvironment = @{}
 foreach ($name in $environmentNames) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
@@ -147,7 +151,132 @@ try {
     $withNext = & $readQueueVersion
     if ($withNext -cne $alone) { throw "A later merge group changed this group's version from '$alone' to '$withNext'." }
     Write-Host "Passed merge queue group versioning: $alone, unchanged by later groups."
+
+    $buildProps = [xml](Get-Content (Join-Path $root 'src\Directory.Build.props') -Raw)
+    $packageVersion = $buildProps.SelectSingleNode('//PackageReference[@Include="GitVersion.MsBuild"]').Version
+    $workflow = Get-Content (Join-Path $root '.github\workflows\ci.yml') -Raw
+    $sourceStep = [regex]::Match($workflow,
+        '(?ms)      name: Bind tagged versioning to the checked-out release\r?\n.*?      run: \|\r?\n(?<script>(?:        [^\r\n]*\r?\n)+)')
+    if (-not $sourceStep.Success) { throw 'Missing tagged release source binding step.' }
+    $sourceScript = [scriptblock]::Create(($sourceStep.Groups['script'].Value -replace '(?m)^        ', ''))
+    foreach ($case in @(
+        @{ Name = 'alpha-retry'; Version = '2026.11.3-alpha.90'; Annotated = $false },
+        @{ Name = 'stable-retry'; Version = '2026.11.3'; Annotated = $true }
+    )) {
+        $source = Join-Path $fixtures $case.Name
+        New-Item -ItemType Directory -Path $source | Out-Null
+        Invoke-FixtureGit $source init --quiet --initial-branch=main
+        Invoke-FixtureGit $source config user.name 'Release retry fixture'
+        Invoke-FixtureGit $source config user.email 'release@example.invalid'
+        Invoke-FixtureGit $source config commit.gpgsign false
+        Invoke-FixtureGit $source config tag.gpgsign false
+        Copy-Item -LiteralPath (Join-Path $root 'GitVersion.yml') -Destination $source
+        @"
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <ItemGroup><PackageReference Include="GitVersion.MsBuild" Version="$packageVersion" PrivateAssets="all" /></ItemGroup>
+</Project>
+"@ | Set-Content (Join-Path $source 'VersionProbe.csproj')
+        Invoke-FixtureGit $source add GitVersion.yml VersionProbe.csproj
+        Invoke-FixtureGit $source commit --quiet -m 'Stable baseline'
+        Invoke-FixtureGit $source tag v2026.11.2
+        Invoke-FixtureGit $source commit --quiet --allow-empty -m 'Release candidate'
+        $candidate = (Invoke-FixtureGit $source rev-parse HEAD).Trim()
+        $tag = "v$($case.Version)"
+        if ($case.Annotated) {
+            Invoke-FixtureGit $source tag -a $tag -m 'Release'
+        } else {
+            Invoke-FixtureGit $source tag $tag
+        }
+        $main = $candidate
+        $reservation = 'msix-package/2026.11.3/305'
+
+        foreach ($attempt in @('initial', 'retry-negative', 'retry')) {
+            if ($attempt -eq 'retry-negative') {
+                Invoke-FixtureGit $source tag -a $reservation $candidate -m 'MSIX reservation'
+                Invoke-FixtureGit $source commit --quiet --allow-empty -m 'Main moved beyond the release'
+                $main = (Invoke-FixtureGit $source rev-parse HEAD).Trim()
+                Invoke-FixtureGit $source branch feature/after-release
+            }
+            $checkout = Join-Path $fixtures "$($case.Name)-$attempt"
+            New-Item -ItemType Directory -Path $checkout | Out-Null
+            # Match actions/checkout at a SHA: remote branches and tags, no local main or origin/HEAD.
+            Invoke-FixtureGit $checkout init --quiet
+            Invoke-FixtureGit $checkout remote add origin $source
+            Invoke-FixtureGit $checkout fetch --quiet --tags origin '+refs/heads/*:refs/remotes/origin/*'
+            Invoke-FixtureGit $checkout checkout --quiet --detach $candidate
+            $project = Join-Path $checkout 'VersionProbe.csproj'
+            & dotnet restore $project --verbosity quiet
+            if ($LASTEXITCODE -ne 0) { throw 'Could not restore the pinned GitVersion.MsBuild fixture.' }
+            $env:GITHUB_ACTIONS = 'true'
+            $env:GITHUB_REF = "refs/tags/$tag"
+            $env:GITHUB_REF_TYPE = 'tag'
+            $env:GITHUB_SHA = $candidate
+            $env:GITHUB_ENV = Join-Path $fixtures "$($case.Name)-$attempt.env"
+            $env:GitVersion_NoNormalizeEnabled = ($attempt -eq 'retry').ToString().ToLowerInvariant()
+            $env:GitVersion_NoFetchEnabled = $env:GitVersion_NoNormalizeEnabled
+            $arguments = @($project, '--no-restore', '-nologo', '-verbosity:minimal',
+                '-property:GitVersion_NoCacheEnabled=true')
+            try {
+                if ($attempt -eq 'retry') {
+                    $env:OPENCLAW_RELEASE_SOURCE_SHA = $main
+                    $env:OPENCLAW_RELEASE_REF = "refs/tags/$tag"
+                    $env:OPENCLAW_RELEASE_TAG = $tag
+                    Push-Location $checkout
+                    try {
+                        try {
+                            & $sourceScript
+                            throw 'Mismatched checkout source was accepted.'
+                        } catch {
+                            if (-not $_.Exception.Message.Contains('Release checkout does not match')) { throw }
+                        }
+                        $env:OPENCLAW_RELEASE_SOURCE_SHA = $candidate
+                        $env:OPENCLAW_RELEASE_REF = 'refs/tags/v2026.11.2'
+                        try {
+                            & $sourceScript
+                            throw 'Mismatched release tag was accepted.'
+                        } catch {
+                            if (-not $_.Exception.Message.Contains('Release tag does not match')) { throw }
+                        }
+                        $env:OPENCLAW_RELEASE_REF = "refs/tags/$tag"
+                        & $sourceScript
+                    } finally { Pop-Location }
+                }
+                $output = & dotnet build @arguments 2>&1
+                if ($attempt -eq 'retry-negative') {
+                    if ($LASTEXITCODE -eq 0 -or "$output" -notlike '*Found more than one remote tip*' -or
+                        "$output" -notlike "*refs/tags/$reservation^{}*" -or "$output" -notlike "*refs/tags/$tag*") {
+                        throw "Negative control did not reproduce the two-tag normalization failure: $output"
+                    }
+                    Write-Host "Reproduced $($case.Name): normalization rejects release and annotated reservation tips."
+                    continue
+                }
+                if ($LASTEXITCODE -ne 0) { throw "Release $attempt versioning failed: $output" }
+                if ($attempt -eq 'retry') {
+                    # The metadata action must use the same no-normalization policy.
+                    Assert-FixtureVersion $checkout $case.Version $candidate
+                    if ((Invoke-FixtureGit $checkout cat-file -t "refs/tags/$reservation").Trim() -cne 'tag' -or
+                        (Invoke-FixtureGit $checkout rev-parse "$reservation^{commit}").Trim() -cne $candidate) {
+                        throw 'Versioning changed the annotated reservation.'
+                    }
+                }
+                $version = Get-Content (Join-Path $checkout 'obj\gitversion.json') -Raw | ConvertFrom-Json
+                $assembly = Join-Path $checkout 'bin\Debug\net10.0\VersionProbe.dll'
+                $productVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($assembly).ProductVersion.Split('+')[0]
+                if ($version.SemVer -cne $case.Version -or $version.Sha -cne $candidate -or
+                    $productVersion -cne $case.Version -or
+                    (Invoke-FixtureGit $checkout rev-parse HEAD).Trim() -cne $candidate -or
+                    (Invoke-FixtureGit $checkout rev-parse refs/remotes/origin/main).Trim() -cne $main) {
+                    throw "Release $attempt selected the wrong version or source: $output"
+                }
+            } finally {
+                foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }
+            }
+        }
+        Write-Host "Passed $($case.Name): initial and retry MSBuild versions match $($case.Version) at $candidate."
+    }
     Write-Host 'Passed real GitVersion regression: 4 release-branch fixtures (12 version/source checks) and 1 merge queue fixture (2 checks).'
+    Write-Host 'Passed 2 release-retry fixtures: 4 MSBuild version/source/assembly checks, 2 expected normalization failures, 2 metadata tool checks, 4 source/tag rejection checks.'
 } finally {
     foreach ($name in $environmentNames) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])

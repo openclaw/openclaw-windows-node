@@ -54,6 +54,16 @@ public sealed partial class ChatPage : Page
 
     internal string? CurrentSessionKey => _reactorHost?.CurrentThreadId ?? _mountedThreadId;
 
+    /// <summary>Side-panel state of the visible native chat, or null while none is mounted or shown.</summary>
+    internal ChatConversationPanelState? ConversationPanels =>
+        ChatHost.Visibility == Visibility.Visible ? _reactorHost?.ConversationPanels : null;
+
+    /// <summary>A banner shows above the native chat, which a side panel joined to the caption row would cover.</summary>
+    internal bool HasBannerAboveChat => SpeechStatusBar.IsOpen;
+
+    /// <summary>Raised on the UI thread when <see cref="ConversationPanels"/> or <see cref="HasBannerAboveChat"/> may have changed.</summary>
+    internal event Action? ConversationPanelsChanged;
+
     internal void ApplyUserIdentity(string displayName, Microsoft.UI.Xaml.Media.ImageSource? profilePicture)
     {
         _userDisplayName = displayName;
@@ -149,6 +159,9 @@ public sealed partial class ChatPage : Page
                 ApplyChatSurface(source);
             },
             outcome => Logger.Debug($"[SetupChat] {outcome}"));
+        // Setup and placeholder states hide a retained chat host; window chrome must stop mirroring it.
+        ChatHost.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => ConversationPanelsChanged?.Invoke());
+        SpeechStatusBar.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) => ConversationPanelsChanged?.Invoke());
         Unloaded += OnUnloaded;
     }
 
@@ -601,6 +614,7 @@ public sealed partial class ChatPage : Page
         _reactorHost = mountedHost;
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
+        ConversationPanelsChanged?.Invoke();
         CurrentApp.ChatSpeech?.SetSpeechTarget(_reactorHost?.CurrentThreadId ?? threadIdToMount);
 
         ConsumePendingVoice();
@@ -976,6 +990,7 @@ public sealed partial class ChatPage : Page
         _mountedThreadId = null;
         try { host?.Dispose(); }
         catch (Exception ex) { Logger.Debug($"ChatPage: Reactor host dispose tear-down race: {ex.Message}"); }
+        if (host is not null) ConversationPanelsChanged?.Invoke();
     }
 
     private async Task InitializeWebViewAsync(InteractiveGatewayCredential credential, int generation)

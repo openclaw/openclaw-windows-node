@@ -246,7 +246,9 @@ public record ChatTimelineState(
     string? ProgressText = null,
     ChatRunUsage? RunUsage = null,
     ChatReasoningStream? ReasoningStream = null,
-    long? ProgressRetryAtMs = null)
+    long? ProgressRetryAtMs = null,
+    string? ReconcilableAssistantId = null,
+    System.Collections.Immutable.ImmutableDictionary<(string RunId, string ItemId), int>? PreambleSequences = null)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
@@ -264,7 +266,8 @@ public sealed record ChatReasoningReceipt(string RunId, string MessageId, bool P
 public sealed record ChatReasoningStreamItem(
     string ItemId, string Text, double StartedAtMs, string? AfterEntryId = null, ChatReasoningReceipt? Receipt = null);
 public sealed record ChatReasoningStream(
-    string RunId, System.Collections.Immutable.ImmutableList<ChatReasoningStreamItem> Items);
+    string RunId, System.Collections.Immutable.ImmutableList<ChatReasoningStreamItem> Items,
+    string? ActiveItemId = null);
 
 public record ChatPendingToolPresentation(
     string ToolName,
@@ -323,6 +326,8 @@ public record ChatMessageEvent(string Text, string? ReasoningText = null, bool R
     bool ReplacesStreamText = false, bool ActivatesTurn = true) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
 public record ChatAssistantStreamRetireEvent(string RunId) : ChatEvent;
+/// <summary>Public progress commentary, separate from reasoning and the accumulated answer stream.</summary>
+public record ChatPreambleEvent(string RunId, string? ItemId, string Text, int Sequence, bool Complete) : ChatEvent;
 public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;

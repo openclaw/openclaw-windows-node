@@ -1003,18 +1003,37 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= observeExportFrame);
             }
             // The restored label is button content, which Reactor presents on a later layout pass;
-            // measure the mast only once its children stop moving.
+            // measure the mast only once its children stop moving. Two mechanisms are needed:
+            // - each reading first completes pending layout, so it never sees a half-updated grid (an Auto
+            //   actions column still sized for older content);
+            // - readings are compared only across rendered frames, so queued UI work runs between them.
+            // The mast is asserted in the same callback as the reading proven stable.
             string? previousMast = null;
-            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            long mastFrame = 0;
+            long previousMastFrame = -1;
+            EventHandler<object> countMastFrame = (_, _) => mastFrame++;
+            await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += countMastFrame);
+            try
             {
-                var mast = Get<Grid>(host, "UsageMastGrid");
-                var layout = string.Join("|", mast.Children.OfType<FrameworkElement>().Select(child =>
-                    $"{child.Visibility}:{child.TransformToVisual(mast).TransformBounds(new Windows.Foundation.Rect(0, 0, child.ActualWidth, child.ActualHeight))}"))
-                    + $"|{mast.ActualWidth}";
-                var stable = layout == previousMast && UsageActionSettled(host, "UsageExport");
-                previousMast = layout;
-                return stable;
-            }, "Usage mast layout settled after the export label is restored", () => $"mast={previousMast}"));
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                {
+                    if (mastFrame == previousMastFrame) return false;
+                    host.UpdateLayout();
+                    var mast = Get<Grid>(host, "UsageMastGrid");
+                    var layout = string.Join("|", mast.Children.OfType<FrameworkElement>().Select(child =>
+                        $"{child.Visibility}:{child.TransformToVisual(mast).TransformBounds(new Windows.Foundation.Rect(0, 0, child.ActualWidth, child.ActualHeight))}"))
+                        + $"|{mast.ActualWidth}";
+                    var stable = layout == previousMast && UsageActionSettled(host, "UsageExport");
+                    previousMast = layout;
+                    previousMastFrame = mastFrame;
+                    if (stable) AssertSeparatedChildren(mast);
+                    return stable;
+                }, "Usage mast layout settled after the export label is restored", () => $"mast={previousMast}"));
+            }
+            finally
+            {
+                await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= countMastFrame);
+            }
             await ui.RunOnUIAsync(async () =>
             {
                 foreach (var id in new[] { "UsageStage", "UsageContributorLayout", "UsageDetailLayout" })
@@ -1034,7 +1053,6 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.Equal(TextTrimming.CharacterEllipsis, title.TextTrimming);
                 Assert.True(title.IsTextTrimmed);
                 Assert.Equal(longTitle, ToolTipService.GetToolTip(title));
-                AssertSeparatedChildren(Get<Grid>(host, "UsageMastGrid"));
                 AssertDailyFacts(host, width == 520 ? 2 : 3);
                 foreach (var id in new[] { "UsageFilterRow", "UsageStage",
                     "UsageDailyControls", "UsageDailyFacts", "UsageActivity", "UsageContributorLayout", "UsageDetailLayout" })
@@ -1343,7 +1361,8 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
         foreach (var child in children)
         {
             Assert.True(child.Rect.Left >= -1 && child.Rect.Right <= grid.ActualWidth + 1,
-                $"{AutomationProperties.GetAutomationId(grid)} clips {AutomationProperties.GetAutomationId(child.Child)}: {child.Rect} in {grid.ActualWidth}.");
+                $"{AutomationProperties.GetAutomationId(grid)} clips {AutomationProperties.GetAutomationId(child.Child)}: {child.Rect} in {grid.ActualWidth}; " +
+                $"columns {string.Join(",", grid.ColumnDefinitions.Select(column => column.ActualWidth))}, child desired {child.Child.DesiredSize}.");
             foreach (var other in children.Where(other => !ReferenceEquals(other.Child, child.Child)))
                 Assert.False(Math.Min(child.Rect.Right, other.Rect.Right) - Math.Max(child.Rect.Left, other.Rect.Left) > 1 &&
                     Math.Min(child.Rect.Bottom, other.Rect.Bottom) - Math.Max(child.Rect.Top, other.Rect.Top) > 1,

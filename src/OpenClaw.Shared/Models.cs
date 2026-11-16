@@ -1870,6 +1870,15 @@ public class ChatMessageInfo
     /// <summary>True when the message represents a final (non-streaming) state.</summary>
     public bool IsFinal => string.Equals(State, "final", StringComparison.OrdinalIgnoreCase);
 
+    public bool IsTerminal => IsFinal ||
+        string.Equals(State, "error", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(State, "aborted", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A supplied display override replaces the live tail, including when it is empty.</summary>
+    public bool HasDisplayContentOverride { get; set; }
+    public bool Yielded { get; set; }
+    public string? ErrorMessage { get; set; }
+
     /// <summary>Unix epoch milliseconds when the gateway logged this message (0 if unknown).</summary>
     public long Ts { get; set; }
 
@@ -2118,7 +2127,11 @@ public class ChatHistoryInfo
     /// can show its working state, partial answer, and recent progress.
     /// </summary>
     public ChatInFlightRunInfo? InFlightRun { get; set; }
+    public ChatHistoryTerminalRun? TerminalRun { get; set; }
 }
+
+/// <summary>Explicit same-session idle run observation from a history response, not a cached session row.</summary>
+public sealed record ChatHistoryTerminalRun(string RunId, string State, string? ErrorMessage = null);
 
 /// <summary>Gateway cursor or canonical message boundary, fenced to the loaded session instance.</summary>
 public sealed record ChatHistoryPageRequest(string? Cursor, string SessionId, string? MessageId = null);

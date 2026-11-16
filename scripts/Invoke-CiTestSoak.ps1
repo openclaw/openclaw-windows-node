@@ -11,13 +11,17 @@ Settings come from the environment so older checkouts never receive unknown para
 - OPENCLAW_CI_SOAK_CONTENTION_ITERATIONS: how many of those runs start CPU burners (default 3).
 - OPENCLAW_CI_SOAK_CONTENTION_WORKERS: burner processes (default half the logical processors).
 - OPENCLAW_CI_SOAK_HANG_SECONDS: blame-hang timeout for one test (default 300).
+- OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT: 1 lets fixture UI tests inject native input, as the fixture
+  lane's -NativeInputProof does; 0 or unset keeps it off (default).
 - OPENCLAW_CI_STEP_TIMEOUT_MINUTES: the step budget. Builds and runs that would not finish inside 90%
   of it (estimated at 1.5 times the slowest comparable work) are not started. Repeat runs also stop at
   the project's share of the time left, so every selected project gets its first run.
 Each run gets its own product data folders under the job's OPENCLAW_TRAY_* roots, and hang dumps are
-off. Tests in lanes with their own environment (production resources, animation preference, native
-onboarding, accessibility and native keyboard proof) are excluded; the lanes still run them, and the
-soak lists any selected test that did not run.
+off. Tray UI tests run as two subsets per run, each with its CI lane's environment: fixture UI tests
+(Category=GatewayFixture) with OPENCLAW_RUN_GATEWAY_FIXTURE_UI=1 and the native-input setting above,
+and the other UI tests with neither. Tests in lanes with their own environment (production resources,
+animation preference, native onboarding, accessibility and native keyboard proof) are excluded; the
+lanes still run them, and the soak lists any selected test that did not run.
 .EXAMPLE
 .\scripts\Invoke-CiTestSoak.ps1 -SelectionPath $env:RUNNER_TEMP\soak-selection.json
 #>
@@ -46,7 +50,32 @@ $iterations = Get-SoakSetting 'OPENCLAW_CI_SOAK_ITERATIONS' 10 1 100
 $contentionIterations = Get-SoakSetting 'OPENCLAW_CI_SOAK_CONTENTION_ITERATIONS' 3 0 $iterations
 $workers = Get-SoakSetting 'OPENCLAW_CI_SOAK_CONTENTION_WORKERS' ([Math]::Max(1, [int][Math]::Ceiling([Environment]::ProcessorCount / 2))) 1 256
 $hangSeconds = Get-SoakSetting 'OPENCLAW_CI_SOAK_HANG_SECONDS' 300 30 3600
+$fixtureNativeInput = Get-SoakSetting 'OPENCLAW_CI_SOAK_FIXTURE_NATIVE_INPUT' 0 0 1
 $laneExclusions = 'Category!=ProductionResources&Category!=AnimationPreferenceEnabled&Category!=AnimationPreferenceDisabled&Category!=NativeOnboardingProof&Category!=Accessibility&KeyboardProof!=Required'
+
+# Sets a variable for child processes; $null removes it (SetEnvironmentVariable would keep it empty).
+function Set-SoakVariable([string]$Name, $Value) {
+    if ($null -eq $Value) { Remove-Item -LiteralPath "Env:\$Name" -ErrorAction SilentlyContinue }
+    else { [Environment]::SetEnvironmentVariable($Name, [string]$Value) }
+}
+
+# The test subsets of one run, each with the child environment of the CI lane that normally runs it.
+# A $null value removes the variable. Fixture UI tests get native input only through the soak setting,
+# never from an inherited step value, as scripts\test-gateway-fixture.ps1 does for -NativeInputProof.
+function Get-SoakSubsets([bool]$Ui) {
+    if (-not $Ui) { return , @([pscustomobject]@{ Name = 'tests'; Filter = ''; Environment = @{} }) }
+    return , @(
+        [pscustomobject]@{ Name = 'fixture-ui'; Filter = '&Category=GatewayFixture'; Environment = @{
+                OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+                OPENCLAW_RUN_KEYBOARD_PROOF = $(if ($fixtureNativeInput -eq 1) { '1' } else { '0' })
+            }
+        },
+        [pscustomobject]@{ Name = 'ui'; Filter = '&Category!=GatewayFixture'; Environment = @{
+                OPENCLAW_RUN_GATEWAY_FIXTURE_UI = $null
+                OPENCLAW_RUN_KEYBOARD_PROOF = $null
+            }
+        })
+}
 
 # Spreads the contended runs evenly from the start, for example runs 2, 5 and 8 of 10.
 function Test-ContendedIteration([int]$Iteration) {
@@ -119,7 +148,7 @@ $summary.Add('|---|---|---|---|')
 $failure = $null
 $slowestBuild = 0d
 $limit = $stepTimeoutMinutes * 60 * 0.9
-# Every run gets fresh product data folders, as each CI lane does, so leftover state cannot fail a later run.
+# Every run and subset gets fresh product data folders, as each CI lane does, so leftover state cannot fail later tests.
 $dataVariables = @('OPENCLAW_TRAY_DATA_DIR', 'OPENCLAW_TRAY_APPDATA_DIR', 'OPENCLAW_TRAY_LOCALAPPDATA_DIR')
 $dataRoots = @{}
 foreach ($name in $dataVariables) { $dataRoots[$name] = [Environment]::GetEnvironmentVariable($name) }
@@ -149,6 +178,7 @@ try {
         Write-Host ("Built {0} in {1:0.0} s." -f $project.project, $build.Elapsed.TotalSeconds)
         $names = @($project.tests | ForEach-Object fullyQualifiedName)
         $filter = '(' + (($names | ForEach-Object { "FullyQualifiedName=$_" }) -join '|') + ')&' + $laneExclusions
+        $subsets = Get-SoakSubsets ([bool]$project.ui)
         $completed = 0
         $result = 'passed'
         for ($iteration = 1; $iteration -le $iterations; $iteration++) {
@@ -159,27 +189,51 @@ try {
             }
             $contended = Test-ContendedIteration $iteration
             $runName = 'run-{0:00}' -f $iteration
-            $directory = Join-Path $ResultsDirectory (Join-Path $project.name $runName)
-            New-Item -ItemType Directory -Force -Path $directory | Out-Null
-            foreach ($name in $dataVariables) {
-                if ($dataRoots[$name]) { [Environment]::SetEnvironmentVariable($name, (Join-Path $dataRoots[$name] (Join-Path $project.name $runName))) }
-            }
+            $run = [pscustomobject]@{ Executed = 0; Passed = 0; Failed = [Collections.Generic.List[string]]::new(); Ran = [Collections.Generic.List[string]]::new() }
+            $exitCode = 0
+            $failedSubset = $null
             $timer = [Diagnostics.Stopwatch]::StartNew()
             try {
                 if ($contended) { Start-CpuBurners $burners }
-                # Hang dumps can hold user data and are large; the hang itself fails the run.
-                & dotnet test $project.project --no-build -c Debug @runtimeArguments --filter $filter `
-                    --results-directory $directory --logger 'trx;LogFileName=soak.trx' `
-                    --blame-hang --blame-hang-timeout "$($hangSeconds)s" --blame-hang-dump-type none | Out-Host
-                $exitCode = $LASTEXITCODE
+                foreach ($subset in $subsets) {
+                    $runPath = Join-Path $project.name (Join-Path $runName $subset.Name)
+                    $directory = Join-Path $ResultsDirectory $runPath
+                    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+                    # Each subset of each run gets fresh product data folders, as each CI lane does.
+                    foreach ($name in $dataVariables) {
+                        if ($dataRoots[$name]) { Set-SoakVariable $name (Join-Path $dataRoots[$name] $runPath) }
+                    }
+                    $saved = @{}
+                    foreach ($variable in $subset.Environment.Keys) {
+                        $saved[$variable] = [Environment]::GetEnvironmentVariable($variable)
+                        Set-SoakVariable $variable $subset.Environment[$variable]
+                    }
+                    try {
+                        # Hang dumps can hold user data and are large; the hang itself fails the run.
+                        & dotnet test $project.project --no-build -c Debug @runtimeArguments --filter ($filter + $subset.Filter) `
+                            --results-directory $directory --logger 'trx;LogFileName=soak.trx' `
+                            --blame-hang --blame-hang-timeout "$($hangSeconds)s" --blame-hang-dump-type none | Out-Host
+                        $subsetExit = $LASTEXITCODE
+                    } finally {
+                        foreach ($variable in $saved.Keys) { Set-SoakVariable $variable $saved[$variable] }
+                    }
+                    $part = Read-SoakResult $directory
+                    $run.Executed += $part.Executed
+                    $run.Passed += $part.Passed
+                    foreach ($failed in $part.Failed) { $run.Failed.Add($failed) }
+                    foreach ($ran in $part.Ran) { $run.Ran.Add($ran) }
+                    if ($subsetExit -ne 0) { $exitCode = $subsetExit }
+                    $subset | Add-Member -NotePropertyName Executed -NotePropertyValue $part.Executed -Force
+                    if ($exitCode -ne 0 -or $run.Failed.Count) { $failedSubset = $subset.Name; break }
+                }
             } finally {
                 Stop-CpuBurners $burners
             }
             $slowestRun = [Math]::Max($slowestRun, $timer.Elapsed.TotalSeconds)
             $label = 'run {0} of {1}{2}' -f $iteration, $iterations, $(if ($contended) { ' under CPU contention' } else { '' })
-            $run = Read-SoakResult $directory
             if ($exitCode -ne 0 -or $run.Failed.Count) {
-                $failure = "$($project.name) $label failed: $(@($run.Failed) -join ', ')"
+                $where = if ($subsets.Count -gt 1) { " ($failedSubset tests)" } else { '' }
+                $failure = "$($project.name) $label$where failed: $(@($run.Failed) -join ', ')"
                 if (-not $run.Failed.Count) { $failure += "(exit $exitCode, no failed result recorded)" }
                 $result = 'failed'
                 break
@@ -191,6 +245,9 @@ try {
                 if ($notRun.Count) {
                     Write-Host ("::warning title=New-test soak::{0}: {1} selected test(s) did not run here (skipped, gated, or in a lane with its own environment): {2}" -f $project.name, $notRun.Count, (Format-CiCommandData ($notRun -join ', ')))
                 }
+                # A subset that ran nothing in the first run would run nothing later; skip its startup cost.
+                $kept = @($subsets | Where-Object { $_.Executed -gt 0 })
+                if ($kept.Count) { $subsets = $kept }
             }
             if ($run.Executed -eq 0) {
                 $result = 'not executed'
@@ -202,7 +259,7 @@ try {
     }
 } finally {
     Stop-CpuBurners $burners
-    foreach ($name in $dataVariables) { [Environment]::SetEnvironmentVariable($name, $dataRoots[$name]) }
+    foreach ($name in $dataVariables) { Set-SoakVariable $name $dataRoots[$name] }
     if ($env:GITHUB_STEP_SUMMARY) { $summary | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY }
     $summary | ForEach-Object { Write-Host $_ }
     if ($stepTimeoutMinutes -gt 0) {

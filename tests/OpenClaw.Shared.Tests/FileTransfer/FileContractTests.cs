@@ -208,6 +208,15 @@ public sealed class FileContractTests
         Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\scratch\file", true));
         admission.DataAccess!.Demand(@"C:\read\file", false);
         Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\read\file", true));
+        // The agent sees why the Sandbox refused and what the user can change.
+        Assert.Equal(FileDataAccess.OutsideMessage,
+            Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\elsewhere\file", false)).Message);
+        Assert.Equal(FileDataAccess.OutsideMessage,
+            Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\write\deny\file", false)).Message);
+        Assert.Equal(FileDataAccess.ReadOnlyMessage,
+            Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\read\file", true)).Message);
+        Assert.Equal(FileDataAccess.ProtectedMessage,
+            Assert.Throws<FileCommandException>(() => admission.DataAccess!.Demand(@"C:\protected\file", false)).Message);
         var host = FileOperations.CreateAdmission(io with { ExecutionMode = NodeToolExecutionMode.Host, Resources = null }, null);
         Assert.Null(host.DataAccess);
         Assert.Equal("windows_unsupported", host.Reason);

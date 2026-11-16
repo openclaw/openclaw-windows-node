@@ -9,6 +9,8 @@ public partial class OpenClawGatewayClient
 {
     internal const int MaximumAssistantImageBytes = 12 * 1024 * 1024;
     internal const int MaximumAssistantPlaybackBytes = 16 * 1024 * 1024;
+    internal const int MaximumAssistantFilePreviewBytes = 1024 * 1024;
+    private const int AssistantFilePreviewTimeoutMs = 20000;
     private const int MaximumAssistantMediaMetadataBytes = 64 * 1024;
     private const string ManagedMediaPathPrefix = "/api/chat/media/outgoing/";
     private readonly Guid _mediaClientId = Guid.NewGuid();
@@ -20,7 +22,8 @@ public partial class OpenClawGatewayClient
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(sessionKey)
-            || media.Kind is ChatMediaContentKind.File or ChatMediaContentKind.Unknown
+            || media.Kind == ChatMediaContentKind.Unknown
+            || media.Kind == ChatMediaContentKind.File && media.Source != ChatMediaContentSource.Structured
             || !TryCaptureMediaLease(out var lease))
         {
             return AssistantMediaResolutionResult.Unavailable;
@@ -29,6 +32,8 @@ public partial class OpenClawGatewayClient
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             CancellationToken);
+        if (media.Kind == ChatMediaContentKind.File)
+            linkedCancellation.CancelAfter(AssistantFilePreviewTimeoutMs);
         try
         {
             var result = media.Source switch
@@ -138,6 +143,12 @@ public partial class OpenClawGatewayClient
         {
             return AssistantMediaResolutionResult.Unavailable;
         }
+        if (media.Kind == ChatMediaContentKind.File &&
+            (!payload.GetProperty("artifact").TryGetProperty("id", out var artifactId) ||
+             artifactId.ValueKind != JsonValueKind.String || artifactId.GetString() != media.ArtifactId))
+        {
+            return AssistantMediaResolutionResult.Unavailable;
+        }
 
         var maximumBytes = MaximumBytes(media.Kind);
         if (sizeBytes is > 0 && sizeBytes > maximumBytes)
@@ -153,6 +164,8 @@ public partial class OpenClawGatewayClient
                 return AssistantMediaResolutionResult.Unavailable;
             }
 
+            if (media.Kind == ChatMediaContentKind.File && dataElement.GetString() == string.Empty)
+                return new(AssistantMediaResolutionStatus.Ready, [], mimeType);
             return TryDecodeBoundedBase64(dataElement.GetString(), maximumBytes, out var bytes)
                 ? new AssistantMediaResolutionResult(
                     AssistantMediaResolutionStatus.Ready,
@@ -249,7 +262,7 @@ public partial class OpenClawGatewayClient
         int maximumBytes,
         CancellationToken cancellationToken)
     {
-        using var request = CreateAuthenticatedMediaRequest(uri, $"{MimePrefix(kind)}/*");
+        using var request = CreateAuthenticatedMediaRequest(uri, kind == ChatMediaContentKind.File ? "*/*" : $"{MimePrefix(kind)}/*");
         using var response = await _assistantMediaHttpClient.SendAsync(
             request,
             HttpCompletionOption.ResponseHeadersRead,
@@ -486,10 +499,12 @@ public partial class OpenClawGatewayClient
         return true;
     }
 
-    private static int MaximumBytes(ChatMediaContentKind kind) =>
-        kind == ChatMediaContentKind.Image
-            ? MaximumAssistantImageBytes
-            : MaximumAssistantPlaybackBytes;
+    private static int MaximumBytes(ChatMediaContentKind kind) => kind switch
+    {
+        ChatMediaContentKind.Image => MaximumAssistantImageBytes,
+        ChatMediaContentKind.File => MaximumAssistantFilePreviewBytes,
+        _ => MaximumAssistantPlaybackBytes,
+    };
 
     private static string MimePrefix(ChatMediaContentKind kind) => kind switch
     {

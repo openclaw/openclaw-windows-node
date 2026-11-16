@@ -11,7 +11,10 @@ internal sealed record ChatHistoryLoadResult(
     ChatHistoryCommitToken Token,
     bool PublishSnapshot,
     ChatProviderNotification? Notification = null,
-    ChatInFlightRunInfo? InFlightRun = null);
+    ChatInFlightRunInfo? InFlightRun = null,
+    ChatHistoryRunLease? RunLease = null,
+    string? SessionId = null,
+    ChatHistoryTerminalRun? TerminalRun = null);
 
 /// <summary>
 /// Owns history request lifetime, in-flight coalescing, cancellation, retries,
@@ -371,6 +374,7 @@ internal sealed class ChatHistoryLoader : IDisposable
         var requiresReload = false;
         try
         {
+            var runLease = olderPage is null ? _state.CaptureHistoryRun(threadId) : null;
             request = olderPage is null ? _bridge.RequestChatHistoryAsync(threadId)
                 : _bridge.RequestOlderChatHistoryAsync(threadId, olderPage);
             var history = await request
@@ -407,7 +411,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                 commitToken,
                 plan,
                 requestStartedAt,
-                authoritative);
+                authoritative,
+                runLease);
             if (!committed)
             {
                 outcome = ChatTelemetryOutcome.Canceled;
@@ -420,7 +425,9 @@ internal sealed class ChatHistoryLoader : IDisposable
                 new ChatHistoryLoadResult(
                     commitToken,
                     PublishSnapshot: true,
-                    InFlightRun: olderPage is null ? history.InFlightRun : null));
+                    InFlightRun: olderPage is null ? history.InFlightRun : null,
+                    RunLease: runLease, SessionId: history.SessionId,
+                    TerminalRun: olderPage is null ? history.TerminalRun : null));
         }
         catch (OperationCanceledException)
         {

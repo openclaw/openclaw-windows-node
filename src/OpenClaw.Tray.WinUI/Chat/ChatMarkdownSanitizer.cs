@@ -33,6 +33,12 @@ namespace OpenClawTray.Chat;
 /// </remarks>
 internal static class ChatMarkdownSanitizer
 {
+    private static readonly System.Text.RegularExpressions.Regex s_deliveryDirective = new(
+        @"^\[\[\s*(?:audio_as_voice|reply_to_current|reply_to\s*:\s*[^\]\r\n]{1,256})\s*\]\]",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant |
+        System.Text.RegularExpressions.RegexOptions.NonBacktracking);
+
     public readonly record struct TextSegment(string Text, bool IsStrong);
 
     /// <summary>
@@ -80,7 +86,13 @@ internal static class ChatMarkdownSanitizer
     /// text is still sanitized (nested images/links flatten) and every other
     /// destination is flattened to inert text as before.
     /// </param>
-    public static string Sanitize(string? text, bool preserveWebLinks = false)
+    public static string Sanitize(string? text, bool preserveWebLinks = false) =>
+        Transform(text, preserveWebLinks, stripDeliveryDirectives: false);
+
+    internal static string StripDeliveryDirectives(string text) =>
+        Transform(text, preserveWebLinks: true, stripDeliveryDirectives: true);
+
+    private static string Transform(string? text, bool preserveWebLinks, bool stripDeliveryDirectives)
     {
         if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
         if (text.IndexOf('[') < 0 && text.IndexOf('!') < 0) return text;
@@ -167,6 +179,23 @@ internal static class ChatMarkdownSanitizer
                 sb.Append(text, i, end - i);
                 i = end;
                 atLineStart = false;
+                continue;
+            }
+
+            if (stripDeliveryDirectives)
+            {
+                var directiveLength = 0;
+                if (c == '[' && i + 1 < n && text[i + 1] == '[')
+                    foreach (var match in s_deliveryDirective.EnumerateMatches(text.AsSpan(i)))
+                        directiveLength = match.Length;
+                if (directiveLength > 0)
+                    i += directiveLength;
+                else
+                {
+                    sb.Append(c);
+                    i++;
+                    atLineStart = c == '\n';
+                }
                 continue;
             }
 

@@ -478,13 +478,15 @@ try {
         $job = [regex]::Match($workflow, "(?ms)^  ${name}:\r?`n.*?(?=^  [a-z][a-z-]+:|\z)").Value
         if (-not $job.Contains('ref: ${{ inputs.promotion_source_sha || github.sha }}') -or
             -not $job.Contains('persist-credentials: false') -or
-            -not ($job.Contains('&promotion-version-tag') -or $job.Contains('*promotion-version-tag'))) { throw "Source job $name is not SHA-bound." }
+            -not ($job.Contains('&promotion-version-tag') -or $job.Contains('*promotion-version-tag')) -or
+            -not ($job.Contains('&tag-version-source') -or $job.Contains('*tag-version-source'))) { throw "Source job $name is not SHA-bound." }
     }
     foreach ($text in @('name: stable-release', 'artifact-ids: ${{ needs.release.outputs.promotion_artifact_id }}',
-        "if: inputs.promotion_alpha == ''", 'disableNormalization: ${{ inputs.promotion_alpha != '''' }}',
+        "if: inputs.promotion_alpha == ''", 'disableNormalization: ${{ inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'') }}',
         'group: openclaw-windows-node-release', 'candidate-source\installer.iss',
-        'GitVersion_NoNormalizeEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}',
-        'GitVersion_NoFetchEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}')) {
+        'GitVersion_NoNormalizeEnabled: ${{ (inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'')) && ''true'' || ''false'' }}',
+        'GitVersion_NoFetchEnabled: ${{ (inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'')) && ''true'' || ''false'' }}',
+        "if: inputs.promotion_alpha == '' && startsWith(github.ref, 'refs/tags/v')")) {
         if (-not $workflow.Contains($text)) { throw "Missing promotion contract: $text" }
     }
     foreach ($name in @('prepare-release-assets', 'release')) {
@@ -504,6 +506,10 @@ try {
         if (-not $reservation.Contains($text)) { throw "MSIX promotion reservation must retain policy validation: $text" }
     }
     $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*?(?=^  [a-z][a-z0-9-]*:|\z)').Value
+    $publicationCondition = [regex]::Match($publication, '(?m)^    if: (.+)\r?$').Groups[1].Value.Trim()
+    if ($publicationCondition -cne '${{ !cancelled() && inputs.promotion_alpha != '''' && needs.release.result == ''success'' }}') {
+        throw 'Promotion publication must explicitly handle skipped ancestors without allowing cancellation, non-promotion runs, or unsuccessful release preparation.'
+    }
     foreach ($text in @('name: stable-release', 'Publish-AlphaPromotion',
         'contents: write', 'GH_TOKEN: ${{ github.token }}')) {
         if (-not $publication.Contains($text)) { throw "Missing approval-gated workflow token contract: $text" }
