@@ -27,6 +27,18 @@ internal sealed record ThemeProjection(
 /// </summary>
 internal static class ThemeResourceProjection
 {
+    /// <summary>
+    /// WinUI corner-radius keys for a theme's geometry: controls take the Control UI's small radius and flyouts,
+    /// menus and dialogs its medium one. The Control UI's 10px control radius is not used for WinUI controls, where
+    /// it would turn a 20px CheckBox into a circle.
+    /// </summary>
+    public static IReadOnlyDictionary<string, double> CornerRadii(ThemeRadii radii) =>
+        new Dictionary<string, double>(StringComparer.Ordinal)
+        {
+            ["ControlCornerRadius"] = radii.Small,
+            ["OverlayCornerRadius"] = radii.Medium,
+        };
+
     public static ThemeProjection Project(ResolvedThemePalette p)
     {
         var brushes = new Dictionary<string, ThemeColor>(StringComparer.Ordinal)

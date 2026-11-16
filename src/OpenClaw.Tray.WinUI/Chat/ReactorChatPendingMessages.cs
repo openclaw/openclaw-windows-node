@@ -39,7 +39,7 @@ internal static class ReactorChatPendingMessages
                     }))
             .Background(Theme.Ref("ChatCardBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush")).BorderThickness(1)
-            .CornerRadius(ChatVisuals.ComposerRadius)
+            .ThemedCorner(() => ChatVisuals.ComposerRadius)
             .MaxWidth(ChatVisuals.ReadingWidth)
             .Margin(ChatVisuals.Gutter(width), 0, ChatVisuals.Gutter(width), ChatVisuals.CompactGap)
             .HAlign(HorizontalAlignment.Stretch)

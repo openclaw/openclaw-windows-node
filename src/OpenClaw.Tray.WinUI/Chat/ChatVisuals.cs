@@ -211,7 +211,109 @@ internal static class ChatVisuals
     }
     internal const double ReadingWidth = 768;
     internal const double ProseInset = 16;
-    internal const double ComposerRadius = 20;
+    /// <summary>The active Gateway theme's corner scale (CRT's near-square 0.25), or 1. Chat surfaces read it on render.</summary>
+    internal static double CornerScale { get; private set; } = 1;
+
+    // Mounted surfaces drawn with ThemedCorner and how to compute their radius. Memoized views (a Markdown message
+    // whose props did not change) do not re-render on a theme switch, so a new scale reshapes them here instead.
+    // Weak, because disposing a Reactor host does not unmount its tree; unmount removes an entry so a pooled element
+    // reused without ThemedCorner is left alone.
+    private static readonly ConditionalWeakTable<FrameworkElement, Func<CornerRadius>> s_cornerRadii = new();
+    private static readonly List<WeakReference<FrameworkElement>> s_cornerElements = [];
+
+    /// <summary>
+    /// Sets the corner scale (values outside (0, 4] fall back to 1) and reshapes every mounted
+    /// <see cref="ThemedCorner{T}(T, double)"/> surface on its own UI thread.
+    /// </summary>
+    internal static void SetCornerScale(double scale)
+    {
+        var next = scale is > 0 and <= 4 ? scale : 1;
+        if (next == CornerScale)
+            return;
+        CornerScale = next;
+        List<(FrameworkElement Element, Func<CornerRadius> Radius)> mounted = [];
+        lock (s_cornerElements)
+        {
+            s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
+            foreach (var reference in s_cornerElements)
+            {
+                if (reference.TryGetTarget(out var element) && s_cornerRadii.TryGetValue(element, out var radius))
+                    mounted.Add((element, radius));
+            }
+        }
+        foreach (var (element, radius) in mounted)
+        {
+            if (element.DispatcherQueue is not { } queue)
+                continue;
+            if (queue.HasThreadAccess)
+                SetCornerRadius(element, radius());
+            else
+                queue.TryEnqueue(() => SetCornerRadius(element, radius()));
+        }
+    }
+
+    /// <summary>A chat surface's corner radius under the active theme's corner scale.</summary>
+    internal static double Corner(double radius) => radius * CornerScale;
+
+    /// <summary>Rounds the element by <paramref name="radius"/> under the theme's corner scale, following later switches.</summary>
+    internal static T ThemedCorner<T>(this T element, double radius) where T : Element =>
+        element.ThemedCorner(() => new CornerRadius(Corner(radius)));
+
+    /// <summary>Rounds the element by a radius derived from the scaled chat radii, following later switches.</summary>
+    internal static T ThemedCorner<T>(this T element, Func<double> radius) where T : Element =>
+        element.ThemedCorner(() => new CornerRadius(radius()));
+
+    /// <summary>Applies <paramref name="radius"/> now and again whenever the theme's corner scale changes while mounted.</summary>
+    internal static T ThemedCorner<T>(this T element, Func<CornerRadius> radius) where T : Element =>
+        element.CornerRadius(radius())
+            .OnMountAdd(control =>
+            {
+                if (control is not FrameworkElement mounted)
+                    return;
+                lock (s_cornerElements)
+                {
+                    if (!s_cornerRadii.TryGetValue(mounted, out _))
+                    {
+                        s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
+                        s_cornerElements.Add(new(mounted));
+                    }
+                    s_cornerRadii.AddOrUpdate(mounted, radius);
+                }
+            })
+            .OnUnmountAdd(control =>
+            {
+                if (control is not FrameworkElement mounted)
+                    return;
+                lock (s_cornerElements)
+                {
+                    s_cornerRadii.Remove(mounted);
+                    s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, mounted));
+                }
+            });
+
+    private static void SetCornerRadius(FrameworkElement element, CornerRadius radius)
+    {
+        switch (element)
+        {
+            case Border border:
+                border.CornerRadius = radius;
+                break;
+            case Control control:
+                control.CornerRadius = radius;
+                break;
+            case Grid grid:
+                grid.CornerRadius = radius;
+                break;
+            case StackPanel stack:
+                stack.CornerRadius = radius;
+                break;
+            case ContentPresenter presenter:
+                presenter.CornerRadius = radius;
+                break;
+        }
+    }
+
+    internal static double ComposerRadius => Corner(20);
     internal const double ComposerMinHeight = 96;
     // Desktop reference composer: 14px editor text, a 14px "+", and a compact 24px Send/Stop
     // disc inside a 32px hit target with a 12px arrow or a filled 10px Stop square.
@@ -248,7 +350,7 @@ internal static class ChatVisuals
     // Space between the writing surface and the window's bottom edge. Matches the workspace pane
     // footer's bottom margin so the composer and account row share a baseline.
     internal const double ComposerBottomInset = 12;
-    internal const double SurfaceRadius = 12;
+    internal static double SurfaceRadius => Corner(12);
     internal const double BodySize = 14;
     /// <summary>Fluent chat body font when no Gateway theme supplies one.</summary>
     internal const string DefaultBodyFontFamily = "Segoe UI Variable Text";
@@ -371,7 +473,7 @@ internal static class ChatVisuals
     internal const double HeadingTopInset = MessageBlockGap / 2;
     // Web .code-block-wrapper: 10px corners, 36px header (8/8/4/14 insets) and pre insets that
     // place code 14 pixels from the side and bottom edges.
-    internal const double CodeRadius = 10;
+    internal static double CodeRadius => Corner(10);
     internal const double CodeInset = 14;
     internal const double CodeHeaderTopInset = 8;
     internal const double CodeHeaderTrailingInset = 8;
@@ -388,7 +490,7 @@ internal static class ChatVisuals
     internal const double QuoteVerticalInset = 8;
     internal const double QuoteHorizontalInset = 12;
     // Web table: rounded 1px frame, 8px 12px cells separated by 1px rules, tinted header row.
-    internal const double TableRadius = 8;
+    internal static double TableRadius => Corner(8);
     internal const double TableCellHorizontalInset = 12;
     internal const double TableCellVerticalInset = 8;
     internal const double CompactGap = 4;
@@ -446,7 +548,7 @@ internal static class ChatVisuals
     internal const double ReviewIconSize = 16;
     internal const double ReviewGap = 10;
     internal const double ReviewVerticalInset = 10;
-    internal const double ReviewRadius = 16;
+    internal static double ReviewRadius => Corner(16);
     internal const double ReviewMinHeight = 52;
     internal const double ReviewDialogMaxHeight = 420;
 

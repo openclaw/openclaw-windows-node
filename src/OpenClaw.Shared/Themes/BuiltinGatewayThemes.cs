@@ -61,6 +61,7 @@ public static partial class BuiltinGatewayThemes
         BodyFont = ThemeFontStack.Parse(palette.Body),
         ChatFont = ThemeFontStack.Parse(palette.Chat),
         MonoFont = ThemeFontStack.Parse(palette.Mono),
+        Radii = new ThemeRadii(palette.RadiusSm, palette.RadiusMd, palette.CornerScale),
         Mode = mode,
     };
 
@@ -99,6 +100,9 @@ public static partial class BuiltinGatewayThemes
         string Elevated,
         string Panel,
         string AccentSubtle,
+        double RadiusSm,
+        double RadiusMd,
+        double CornerScale,
         string Body,
         string Chat,
         string Mono);
