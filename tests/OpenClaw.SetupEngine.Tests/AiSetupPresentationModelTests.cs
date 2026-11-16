@@ -38,12 +38,12 @@ public sealed class AiSetupPresentationModelTests
     }
 
     [Fact]
-    public void NoUsableCandidates_ExposesReturnedWebsitesAndInlineManualForm()
+    public void NoUsableCandidates_ExposesReturnedWebsitesButKeepsKeysCollapsed()
     {
         var detection = Detection(withCandidates: false);
         var view = AiSetupPresentationModel.Create(detection, AllChoices);
         Assert.True(view.NoUsableCandidates);
-        Assert.True(view.ShowApiKeyForm);
+        Assert.False(view.ShowApiKeyForm);
         Assert.Equal(["website"], view.RecommendedInstalls.Select(option => option.Id));
         Assert.Single(view.UnavailableCandidates);
         Assert.Single(view.PrepareOptions);
@@ -61,10 +61,10 @@ public sealed class AiSetupPresentationModelTests
     }
 
     [Theory]
-    [InlineData(false, false, true)]
+    [InlineData(false, false, false)]
     [InlineData(true, false, false)]
     [InlineData(true, true, true)]
-    public void LocalChoice_IsTheSamePresentationTierAsDetectedModels(bool localVisible, bool requested, bool expanded)
+    public void LocalChoice_NeverAutomaticallyExpandsCredentials(bool localVisible, bool requested, bool expanded)
     {
         var view = AiSetupPresentationModel.Create(Detection(false), AllChoices,
             apiKeyFormRequested: requested, hasLocalChoice: localVisible);
@@ -141,6 +141,64 @@ public sealed class AiSetupPresentationModelTests
         Assert.Equal(2, detection.Candidates.Length);
         // The Gateway classifies candidates and unavailable discoveries, not Windows.
         Assert.False(detection.Candidates[1].Credentials);
+    }
+
+    [Theory]
+    [InlineData("ollama/model", true)]
+    [InlineData("lmstudio/model", true)]
+    [InlineData("llama-cpp/model", true)]
+    [InlineData("llamacpp/model", true)]
+    [InlineData("ollama-cloud/model", false)]
+    [InlineData("custom/model", false)]
+    [InlineData("openai/model", false)]
+    public void ModelServices_AreSeparatedWithoutInferringLocalityFromLabels(string modelRef, bool local)
+    {
+        var detection = new GatewayAiSetupDetection
+        {
+            Candidates = [new("existing-model", "Ollama on this PC", "Gateway supplied", modelRef, true)],
+            ManualProviders = [], Workspace = "workspace", SetupComplete = false,
+        };
+        var account = AiSetupPresentationModel.Create(detection, AllChoices, path: AiSetupConnectionPath.Account);
+        var service = AiSetupPresentationModel.Create(detection, AllChoices, path: AiSetupConnectionPath.LocalModel);
+        Assert.Equal(local ? 0 : 1, account.Candidates.Count);
+        Assert.Equal(local ? 1 : 0, service.Candidates.Count);
+        Assert.Equal(modelRef, Assert.Single(account.Candidates.Concat(service.Candidates)).ModelRef);
+    }
+
+    [Fact]
+    public void Paths_PreserveEveryProviderKindAndOrderingWithoutMutatingDetection()
+    {
+        var detection = new GatewayAiSetupDetection
+        {
+            Candidates = [], Workspace = "workspace", SetupComplete = false,
+            AuthOptions = [new("featured", "Featured", Featured: true),
+                new("ollama-login", "A service", BrandId: "ollama", Featured: true),
+                new("custom", "Custom endpoint", Kind: "custom"), new("other", "Other")],
+            ManualProviders = [new("openai", "Cloud key"), new("lmstudio", "Service key")],
+            PrepareOptions = [new("llama-cpp", "Managed service"), new("future", "Unknown option")],
+            UnavailableCandidates = [new("unready-service", "Service", "Missing", "missing", AuthOptionId: "ollama-login"),
+                new("unready-account", "Account", "Missing", "missing")],
+            RecommendedInstalls = [new("ollama", "Service", Website: "https://example.com/service"),
+                new("cli", "Account CLI", Website: "https://example.com/cli")],
+        };
+        var account = AiSetupPresentationModel.Create(detection, AllChoices, hasLocalChoice: true, path: AiSetupConnectionPath.Account);
+        var local = AiSetupPresentationModel.Create(detection, AllChoices, hasLocalChoice: true, path: AiSetupConnectionPath.LocalModel);
+        Assert.Equal(["featured"], account.FeaturedSignIn.Select(p => p.Id));
+        Assert.Equal(["custom", "other"], account.MoreSignIn.Select(p => p.Id));
+        Assert.Equal(["ollama-login"], local.FeaturedSignIn.Select(p => p.Id));
+        Assert.Equal(["openai"], account.ManualProviders.Select(p => p.Id));
+        Assert.Equal(["lmstudio"], local.ManualProviders.Select(p => p.Id));
+        Assert.Equal(["future"], account.PrepareOptions.Select(p => p.Id));
+        Assert.Equal(["llama-cpp"], local.PrepareOptions.Select(p => p.Id));
+        Assert.Equal(["unready-account"], account.UnavailableCandidates.Select(p => p.Id));
+        Assert.Equal(["unready-service"], local.UnavailableCandidates.Select(p => p.Id));
+        Assert.Equal(["cli"], account.RecommendedInstalls.Select(p => p.Id));
+        Assert.Equal(["ollama"], local.RecommendedInstalls.Select(p => p.Id));
+        Assert.False(account.HasLocalChoice);
+        Assert.True(local.HasLocalChoice);
+        Assert.False(account.ShowApiKeyForm);
+        Assert.False(local.ShowApiKeyForm);
+        Assert.Equal(4, detection.AuthOptions.Length);
     }
 
     private static GatewayAiSetupDetection Detection(bool withCandidates) => new()
