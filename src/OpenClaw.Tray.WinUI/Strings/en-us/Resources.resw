@@ -4501,6 +4501,15 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Choose light, dark, or use your Windows setting.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Gateway theme</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use the colors and fonts of an OpenClaw dashboard theme. Windows High Contrast always takes priority.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Windows default</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>System</value>
   </data>

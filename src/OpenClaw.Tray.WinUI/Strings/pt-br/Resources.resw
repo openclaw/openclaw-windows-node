@@ -4470,6 +4470,15 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Escolha claro, escuro, ou use a configuração do Windows.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Tema do Gateway</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use as cores e as fontes de um tema do painel do OpenClaw. O Alto Contraste do Windows sempre tem prioridade.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Padrão do Windows</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Sistema</value>
   </data>

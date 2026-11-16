@@ -429,6 +429,8 @@ internal sealed class AutomationsRoot : Component<AutomationsRootProps>
                             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(menu, label);
                             menu.MenuFlyoutPresenterStyle = new Style(typeof(MenuFlyoutPresenter))
                             {
+                                BasedOn = Application.Current.Resources.TryGetValue("ThemedMenuFlyoutPresenterStyle", out var themed)
+                                    ? themed as Style : null,
                                 Setters = { new Setter(Microsoft.UI.Xaml.Automation.AutomationProperties.NameProperty, label) },
                             };
                             foreach (var item in menu.Items.OfType<MenuFlyoutItem>()) item.IsEnabled = state.Connected;

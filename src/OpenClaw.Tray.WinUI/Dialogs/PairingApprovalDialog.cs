@@ -177,6 +177,7 @@ public sealed class PairingApprovalDialog : WindowEx
         Grid.SetRow(root, 1);
         outerGrid.Children.Add(root);
         Content = outerGrid;
+        Theming.BackdropPolicy.Apply(this);
 
         _coordinator.ApprovalsChanged += OnApprovalsChanged;
         Closed += OnWindowClosed;

@@ -131,6 +131,7 @@ internal sealed class SettingsStore : ISettingsStore
         public int DesktopCompanionScalePercent { set => _settings.DesktopCompanionScalePercent = value; }
         public string NotificationSound { set => _settings.NotificationSound = value; }
         public string AppTheme { set => _settings.AppTheme = value; }
+        public OpenClaw.Shared.Themes.AppearanceSettings Appearance { set => _settings.Appearance = value; }
         public bool? ShowDiagnosticsOverride { set => _settings.ShowDiagnosticsOverride = value; }
         public bool NotifyHealth { set => _settings.NotifyHealth = value; }
         public bool NotifyUrgent { set => _settings.NotifyUrgent = value; }
