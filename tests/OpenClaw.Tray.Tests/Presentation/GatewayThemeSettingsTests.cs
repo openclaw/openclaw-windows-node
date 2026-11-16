@@ -292,14 +292,18 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(0, applied);
     }
 
-    // The dashboard accent follows live through users.prefs.changed, survives a read that can't see the person's
-    // profile, and gives way to the theme's own accent when the person picks it again. Nothing is written back.
+    // The dashboard accent and background follow live through users.prefs.changed, survive a read that can't see the
+    // person's profile, and give way to the theme's own accent and the dashboard's default artwork when the person
+    // clears them. Nothing is written back.
     [Fact]
-    public Task FollowingTracksTheDashboardAccentLiveAndKeepsItWhenPreferencesAreUnknown() => Task.Run(() =>
+    public Task FollowingTracksTheDashboardAccentAndBackgroundLiveAndKeepsThemWhenPreferencesAreUnknown() => Task.Run(() =>
     {
         var (client, proxy) = Gateway();
         proxy.Methods = ["themes.list", "themes.get", "users.prefs.get"];
-        var preferences = """{ "status": "ok", "entries": { "ui.accent": "#3A9B9B" } }""";
+        var preferences = """
+            { "status": "ok", "entries": { "ui.accent": "#3A9B9B", "ui.background": {
+              "source": { "kind": "theme" }, "presentation": "full-bleed", "showOnNewSession": true, "showInSessions": false, "visibility": 0.8 } } }
+            """;
         proxy.Reply = (method, _) => method switch
         {
             "themes.list" => Json("""
@@ -323,6 +327,10 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(dashboardAccent, followed.Dark!.Accent);
         Assert.Equal(dashboardAccent.WithAlpha(0.16), followed.Dark.AccentSubtle);
         Assert.Equal(manuscript.Dark!.Canvas, followed.Dark.Canvas);
+        var background = AppearanceResolver.ActiveBackground(appearance)!;
+        Assert.Equal(BackgroundPresentation.FullBleed, background.Presentation);
+        Assert.Equal(0, ThemeBackgrounds.Opacity(background, ThemeBackgroundSurface.Conversation));
+        Assert.Equal(0.56, ThemeBackgrounds.Opacity(background, ThemeBackgroundSurface.NewSession), 6);
         // Turning following off shows the manual choice with its own accent.
         var manual = appearance with { FollowGatewayTheme = false, Theme = new ThemeSelection { Id = "manuscript" } };
         Assert.Equal(manuscript.Dark.Accent, AppearanceResolver.ResolveTheme(manual)!.Dark!.Accent);
@@ -330,10 +338,12 @@ public sealed class GatewayThemeSettingsTests
         preferences = """{ "status": "no_durable_identity" }""";
         proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
         Assert.Equal("#3a9b9b", appearance.FollowedAccent);
+        Assert.Equal(background, appearance.FollowedBackground);
 
         preferences = """{ "status": "ok", "entries": { "ui.accent": "theme" } }""";
         proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
         Assert.Null(appearance.FollowedAccent);
+        Assert.Equal(1, ThemeBackgrounds.Opacity(AppearanceResolver.ActiveBackground(appearance), ThemeBackgroundSurface.Conversation));
         Assert.Equal(manuscript.Dark.Accent, AppearanceResolver.ResolveTheme(appearance)!.Dark!.Accent);
         // Unknown preferences applied nothing; returning to the theme's accent applied once.
         Assert.Equal(appliedOnConnect + 1, applied);
