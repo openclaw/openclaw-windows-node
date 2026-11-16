@@ -52,6 +52,8 @@ static class FluentIconCatalog
     public const string Dashboard = "\uE774";      // Globe
     public const string OpenInBrowser = "\uE8A7";  // OpenInNewWindow — top-right dashboard launcher icon
     public const string OpenPane = "\uE8A0";       // OpenPane - open content beside the conversation
+    public const string FullScreen = "\uE740";     // FullScreen - expand the chat side panel over the conversation
+    public const string BackToWindow = "\uE73F";   // BackToWindow - restore the chat side panel beside the conversation
     public const string Chat = "\uE8BD";           // Message
     public const string CanvasAct = "\uE790";      // Color (palette) - matches Canvas permission glyph
     public const string VoiceAct = "\uE720";       // Microphone
@@ -102,6 +104,7 @@ static class FluentIconCatalog
     public const string Copy = "\uE8C8";           // Copy — copy-to-clipboard affordance
     public const string Document = "\uE8A5";       // Document — recent log / log file
     public const string Refresh = "\uE72C";        // Refresh — re-read a snapshot (distinct from Sync E895)
+    public const string Download = "\uE896";       // Download — save a chat file attachment
     // Reset aliases Refresh (U+E72C). Both share the "restart from scratch"
     // metaphor; the named constant keeps Reconfigure call sites semantically
     // distinct from data-refresh call sites even though the glyph is the same.

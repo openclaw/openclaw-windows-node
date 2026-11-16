@@ -994,7 +994,10 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("1", (string?)title.Attribute("Grid.Column"));
         var homeIcon = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "HomeIcon");
         Assert.Null(homeIcon.Parent!.Attribute("Margin"));
-        Assert.DoesNotContain(title.Descendants(), element => element.Name.LocalName == "Button");
+        // Navigation stays in the pane toolbar; the title bar hosts only the chat side-panel controls.
+        Assert.Equal(["ExpandSidePanelButton", "ToggleSidePanelButton"], title.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Select(element => (string?)element.Attribute(x + "Name")));
         Assert.DoesNotContain(title.Descendants(), element => element.Name.LocalName == "TextBlock");
         foreach (var name in new[] { "BackButton", "ForwardButton" })
         {
@@ -1304,8 +1307,18 @@ public sealed class WorkspaceNavigationTests
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         var update = code[code.IndexOf("private void UpdateTitleBarActions()", StringComparison.Ordinal)..];
         update = update[..update.IndexOf("\n    }", StringComparison.Ordinal)];
-        Assert.Contains("WorkspaceTitleBar.RecomputeDragRegions();", update);
+        Assert.Contains("QueueTitleRowLayout();", update);
         Assert.Contains("TitleBarFooter.HideFlyouts();", update);
+        // Title-row placement owns the pass-through refresh after every show/hide or panel geometry change,
+        // and withdraws the row while a banner above chat would sit under a joined panel.
+        var layoutPass = code[code.IndexOf("private void UpdateTitleRowLayout()", StringComparison.Ordinal)..];
+        layoutPass = layoutPass[..layoutPass.IndexOf(";", StringComparison.Ordinal)];
+        Assert.Contains("!OperationInfo.IsOpen && !_chat.HasBannerAboveChat", layoutPass);
+        var titleRow = File.ReadAllText(Source("Windows", "WorkspaceTitleRow.cs"));
+        var rowUpdate = titleRow[titleRow.IndexOf("internal void Update(", StringComparison.Ordinal)..];
+        rowUpdate = rowUpdate[..rowUpdate.IndexOf("\n    }", StringComparison.Ordinal)];
+        Assert.Contains("PlaceTabsPassthrough();", rowUpdate);
+        Assert.Contains("_titleBar.RecomputeDragRegions();", rowUpdate);
         var footer = File.ReadAllText(Source("Controls", "WorkspacePaneFooter.xaml.cs"));
         Assert.Contains("private const double TitleBarButtonHeight = 40;", footer);
         Assert.Contains("DashboardButton.Height = titleBar ? TitleBarButtonHeight : _paneButtonHeight;", footer);
@@ -1322,7 +1335,7 @@ public sealed class WorkspaceNavigationTests
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
         var titleBarFooter = doc.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "TitleBarFooter");
         Assert.Equal("WorkspacePaneFooter", titleBarFooter.Name.LocalName);
-        Assert.Equal("TitleBar.RightHeader", titleBarFooter.Parent!.Name.LocalName);
+        Assert.Contains(titleBarFooter.Ancestors(), ancestor => ancestor.Name.LocalName == "TitleBar.RightHeader");
         Assert.Equal("Collapsed", (string?)titleBarFooter.Attribute("Visibility"));
         var code = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
         Assert.Contains("TitleBarFooter.Layout = WorkspacePaneFooterLayout.TitleBar;", code);

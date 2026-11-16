@@ -7,6 +7,175 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatStreamingParityTests
 {
+    [Theory]
+    [InlineData("[[reply_to_current]]\nChecking.", "Checking.")]
+    [InlineData("[[ audio_as_voice ]] **no_reply**", "")]
+    [InlineData("** _ ` no_reply ` _ **", "")]
+    [InlineData("Use `[[reply_to_current]]` literally.", "Use `[[reply_to_current]]` literally.")]
+    [InlineData("```\n[[reply_to: example]]\n```", "```\n[[reply_to: example]]\n```")]
+    [InlineData("    [[reply_to_current]]", "    [[reply_to_current]]")]
+    public void Preamble_NormalizesOnlyPublicDeliveryText(string text, string expected)
+    {
+        var mapped = Assert.IsType<ChatPreambleEvent>(ChatEventMapper.Map(Event("item",
+            JsonSerializer.Serialize(new { kind = "preamble", phase = "end", itemId = "p", progressText = text }))).Event);
+        Assert.Equal(expected, mapped.Text);
+    }
+
+    [Theory]
+    [InlineData("r", 1)]
+    [InlineData("other", 2)]
+    public void Preamble_HistoryUsesRunAndItemIdentityNotTextOrTiming(string savedRun, int expectedCount)
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent("", "r"));
+        state = ChatTimelineReducer.Apply(state, new ChatPreambleEvent("r", "p", "Live progress", 3, true));
+        var live = Assert.Single(state.Entries);
+        var saved = live with { Id = "saved", Text = "Durable progress",
+            Presentation = new(Phase: "commentary", RunId: savedRun, MessageId: "m", StreamItemId: "p") };
+        var plan = new ChatHistoryRebuildPlan(null, ChatTimelineState.Initial() with { Entries = [saved] },
+            new Dictionary<string, ChatEntryMetadata> { ["saved"] = new(Start.AddHours(-1), null, GatewayMessageId: "m") }, 0);
+        var (merged, _) = ChatHistoryState.MergeWithLiveEntries(plan, state,
+            new Dictionary<string, ChatEntryMetadata> { [live.Id] = new(Start, null) }, Start, authoritative: true);
+        Assert.Equal(expectedCount, merged.Entries.Count);
+        Assert.Equal("Durable progress", merged.Entries[0].Text);
+        merged = ChatTimelineReducer.Apply(merged, new ChatPreambleEvent("r", "p", "Older replay", 2, true));
+        Assert.DoesNotContain(merged.Entries, entry => entry.Text == "Older replay");
+    }
+
+    [Fact]
+    public void Preamble_UnkeyedEmptyEventFencesOlderReplayWithoutErasingAnotherItem()
+    {
+        ChatEvent Map(string text, int sequence) => ChatEventMapper.Map(Event("item",
+            JsonSerializer.Serialize(new { kind = "preamble", phase = "end", progressText = text }), sequence)).Event!;
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), Map("First progress", 1));
+        state = ChatTimelineReducer.Apply(state, Map("", 3));
+        state = ChatTimelineReducer.Apply(state, Map("Stale progress", 2));
+        Assert.Equal("First progress", Assert.Single(state.Entries).Text);
+        state = ChatTimelineReducer.Apply(state, Map("Next progress", 4));
+        state = ChatTimelineReducer.Apply(state, Map("Next progress", 4));
+        Assert.Equal(["First progress", "Next progress"], state.Entries.Select(entry => entry.Text));
+    }
+
+    [Theory]
+    [InlineData(1, true, false)]
+    [InlineData(1, true, true)]
+    [InlineData(1, false, false)]
+    [InlineData(1, false, true)]
+    [InlineData(2, true, false)]
+    [InlineData(2, true, true)]
+    [InlineData(2, false, false)]
+    [InlineData(2, false, true)]
+    public void Preamble_HistoryPreservesProgressOrderAcrossToolsAndNewerTurns(
+        int progressCount, bool followingTool, bool newerTurn)
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "q");
+        var user = Assert.Single(state.Entries);
+        var startTool = new ChatToolStartEvent("Read", "read", ToolCallId: "t", RunId: "r");
+        if (!followingTool)
+            state = ChatTimelineReducer.Apply(state, startTool);
+        for (var index = 1; index <= progressCount; index++)
+            state = ChatTimelineReducer.Apply(state, new ChatPreambleEvent("r", $"p{index}", $"Progress {index}", index, true));
+        if (followingTool)
+            state = ChatTimelineReducer.Apply(state, startTool);
+        var tool = Assert.Single(state.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall)
+            with { Id = "saved-tool", ToolResult = ChatToolCallStatus.Success };
+        var answer = new ChatTimelineItem("saved-answer", ChatTimelineItemKind.Assistant, "Answer",
+            Presentation: new(RunId: "r", MessageId: "answer", Phase: "final_answer"));
+        var saved = ChatTimelineState.Initial() with { Entries = [user with { Id = "saved-user" }, tool, answer] };
+        var liveMetadata = new Dictionary<string, ChatEntryMetadata> { [user.Id] = new(Start, null, GatewayMessageId: "user") };
+        var savedMetadata = new Dictionary<string, ChatEntryMetadata> { ["saved-user"] = liveMetadata[user.Id] };
+        if (newerTurn)
+        {
+            state = ChatTimelineReducer.AddLocalUser(state, "Next question", "next");
+            var next = state.Entries[^1];
+            saved = saved with { Entries = saved.Entries.Add(next with { Id = "saved-next" }) };
+            liveMetadata[next.Id] = new(Start, null, GatewayMessageId: "next");
+            savedMetadata["saved-next"] = liveMetadata[next.Id];
+        }
+        var plan = new ChatHistoryRebuildPlan(null, saved, savedMetadata, 0);
+        var (merged, _) = ChatHistoryState.MergeWithLiveEntries(plan, state,
+            liveMetadata, Start, authoritative: true);
+        var expected = new List<string> { "Question" };
+        if (!followingTool)
+            expected.Add("Read");
+        expected.Add("Progress 1");
+        if (progressCount == 2)
+            expected.Add("Progress 2");
+        if (followingTool)
+            expected.Add("Read");
+        expected.Add("Answer");
+        if (newerTurn)
+            expected.Add("Next question");
+        Assert.Equal(expected, merged.Entries.Select(entry => entry.Text));
+    }
+
+    [Fact]
+    public void Preamble_RemainsInCompletedWorkWhenTheAnswerStreamIsRetired()
+    {
+        var mapped = ChatEventMapper.Map(Event("item", """
+            {"kind":"preamble","phase":"end","itemId":"p","progressText":"Checking the digit equation."}
+            """, 3)).Event;
+        Assert.NotNull(mapped);
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent("", "r"));
+        state = ChatTimelineReducer.Apply(state, mapped);
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Answer preview", IsStreaming: true,
+            Presentation: new(RunId: "r")));
+        state = ChatTimelineReducer.Apply(state, new ChatAssistantStreamRetireEvent("r"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("12, 24, 36, 48",
+            Presentation: new(RunId: "r", MessageId: "answer", Phase: "final_answer")));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
+
+        var rows = ChatToolActivityPresentation.Project(state.Entries, "agent:a:dashboard:d", 0);
+        Assert.Equal("Checking the digit equation.", Assert.Single(rows[0].Work!).Text);
+        Assert.Equal("12, 24, 36, 48", rows[1].Entry!.Text);
+        Assert.DoesNotContain(state.Entries, entry => entry.IsStreaming);
+        Assert.DoesNotContain(state.Entries, entry => entry.Text == "Answer preview");
+    }
+
+    [Fact]
+    public void Preamble_UsesSequenceAndRetirementWithoutExposingPartialDrafts()
+    {
+        ChatEvent Map(string phase, string text, int seq) => ChatEventMapper.Map(Event("item",
+            JsonSerializer.Serialize(new { kind = "preamble", phase, itemId = "p", progressText = text }), seq)).Event!;
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent("", "r"));
+        state = ChatTimelineReducer.Apply(state, Map("start", "Checking", 1));
+        Assert.Empty(state.Entries);
+        state = ChatTimelineReducer.Apply(state, Map("end", "Checking the equation.", 3));
+        var id = Assert.Single(state.Entries).Id;
+        state = ChatTimelineReducer.Apply(state, Map("update", "Stale draft", 2));
+        Assert.Equal("Checking the equation.", Assert.Single(state.Entries).Text);
+        state = ChatTimelineReducer.Apply(state, Map("end", "Checking valid digits.", 4));
+        Assert.Equal(id, Assert.Single(state.Entries).Id);
+        state = ChatTimelineReducer.Apply(state, Map("update", "", 5));
+        state = ChatTimelineReducer.Apply(state, Map("end", "Late old text", 4));
+        Assert.Empty(state.Entries);
+        Assert.True(state.TurnActive);
+    }
+
+    [Fact]
+    public void Preamble_DurableItemReplacesLiveCopyAcrossToolsAndIgnoresLaterLiveEdits()
+    {
+        var mapped = ChatEventMapper.Map(Event("item", """
+            {"kind":"preamble","phase":"end","itemId":"p","progressText":"Live progress"}
+            """, 1)).Event;
+        Assert.NotNull(mapped);
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent("", "r"));
+        state = ChatTimelineReducer.Apply(state, mapped);
+        var id = Assert.Single(state.Entries).Id;
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("read", "read", ToolCallId: "t", RunId: "r"));
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Saved progress",
+            Presentation: new(Phase: "commentary", RunId: "r", MessageId: "m",
+                BlockId: "content:0", StreamItemId: "p"), IsContentPart: true, ActivatesTurn: false));
+        state = ChatTimelineReducer.Apply(state, ChatEventMapper.Map(Event("item", """
+            {"kind":"preamble","phase":"end","itemId":"p","progressText":"Obsolete live progress"}
+            """, 2)).Event!);
+        state = ChatTimelineReducer.Apply(state, new ChatAssistantStreamRetireEvent("r"));
+
+        var saved = Assert.Single(state.Entries, entry => entry.Kind == ChatTimelineItemKind.Assistant);
+        Assert.Equal(id, saved.Id);
+        Assert.Equal("Saved progress", saved.Text);
+        Assert.Equal("m", saved.Presentation!.MessageId);
+    }
+
     [Fact]
     public void InputPreparation_UpdatesOneCorrelatedRowAndStopsAtTerminal()
     {
@@ -86,6 +255,16 @@ public sealed class ChatStreamingParityTests
             ChatWorkingClawMotion.At(0, progress.IsInProgress, reducedMotion: false),
             ChatWorkingClawMotion.At(.24, progress.IsInProgress, reducedMotion: false));
         Assert.Null(ChatRunProgressProjection.Project(state));
+    }
+
+    [Fact]
+    public void StatusSwapContinuesOnlyWhileAnEarlierSwapIsMoving()
+    {
+        var now = Environment.TickCount64;
+        // The first phase change after mount must animate, not continue a swap that never started.
+        Assert.False(ChatRunProgressProjection.IsStatusSwapInFlight(null, now));
+        Assert.True(ChatRunProgressProjection.IsStatusSwapInFlight(now - 100, now));
+        Assert.False(ChatRunProgressProjection.IsStatusSwapInFlight(now - 220, now));
     }
 
     [Theory]
@@ -436,6 +615,78 @@ public sealed class ChatStreamingParityTests
         Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
         state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("Answer"), Start);
         Assert.Equal("Responding", ChatRunProgressProjection.Project(state)!.Label);
+    }
+
+    [Fact]
+    public void RunLabel_TracksTheCurrentPhaseAcrossThinkingToolsAndReply()
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("I will check"));
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "first", "Planning", 1));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+
+        // A replayed snapshot of unchanged reply text does not end the thought.
+        state = ChatTimelineReducer.Apply(state,
+            new ChatMessageEvent("I will check", ReconcilePrevious: true, IsStreaming: true));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Read file", "read", ToolCallId: "tool", RunId: "r"));
+        Assert.Equal("Running read", ChatRunProgressProjection.Project(state)!.Label);
+        // Neither the finished thought nor the earlier preamble names the phase between tools.
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("Done", "tool", "r"));
+        Assert.Equal("Working", ChatRunProgressProjection.Project(state)!.Label);
+
+        state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("Here is what I found."));
+        Assert.Equal("Responding", ChatRunProgressProjection.Project(state)!.Label);
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "second", "Rechecking", 2));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+    }
+
+    [Fact]
+    public void RunLabel_GatewayReasoningEndStopsTheLiveThought()
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "i", "Planning", 1));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+        // The pause before the next tool call or reply is not thinking.
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningEndEvent());
+        Assert.Null(state.ReasoningStream!.ActiveItemId);
+        Assert.Equal("Working", ChatRunProgressProjection.Project(state)!.Label);
+    }
+
+    [Fact]
+    public void SavedThought_StopsBeingActiveWhenAToolStartsWhileTheTurnRuns()
+    {
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningDeltaEvent("Planning"));
+        var thought = state.Entries.Single(entry => entry.Kind == ChatTimelineItemKind.Reasoning);
+        Assert.True(ChatReasoningPresentation.IsActive(thought, state.ReasoningStream, state.ActiveReasoningId));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Read file", "read", ToolCallId: "tool", RunId: "r"));
+        thought = state.Entries.Single(entry => entry.Id == thought.Id);
+        // Saved thoughts stay streaming until the turn ends, but this one is no longer being written.
+        Assert.True(thought.IsStreaming);
+        Assert.False(ChatReasoningPresentation.IsActive(thought, state.ReasoningStream, state.ActiveReasoningId));
+    }
+
+    [Fact]
+    public void RunLabel_ChangedTextOnAnEarlierReplyEndsTheThought()
+    {
+        var reply = new ChatMessagePresentation(RunId: "r", MessageId: "m", SourceRole: "assistant");
+        var state = ChatTimelineReducer.AddLocalUser(ChatTimelineState.Initial(), "Question", "nonce", Start);
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("I will check",
+            ReconcilePrevious: true, IsStreaming: true, Presentation: reply, ActivatesTurn: true));
+        var replyId = state.Entries.Last().Id;
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Read file", "read", ToolCallId: "tool", RunId: "r"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("Done", "tool", "r"));
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("r", "i", "Rechecking", 1));
+        Assert.Equal("Thinking", ChatRunProgressProjection.Project(state)!.Label);
+        // A snapshot updates the reply that sits behind the finished tool row.
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("I will check the file",
+            ReconcilePrevious: true, IsStreaming: true, Presentation: reply, ActivatesTurn: true));
+        Assert.Equal("I will check the file", state.Entries.Single(entry => entry.Id == replyId).Text);
+        Assert.NotEqual(ChatTimelineItemKind.Assistant, state.Entries.Last().Kind);
+        Assert.Null(state.ReasoningStream!.ActiveItemId);
+        Assert.NotEqual("Thinking", ChatRunProgressProjection.Project(state)!.Label);
     }
 
     [Fact]

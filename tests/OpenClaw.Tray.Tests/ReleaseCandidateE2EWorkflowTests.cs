@@ -98,6 +98,29 @@ public sealed class ReleaseCandidateE2EWorkflowTests
     }
 
     [Fact]
+    public void Workflow_InitializesMainAppDependenciesFromDeclaredSource()
+    {
+        var workflow = ReadWorkflow().Replace("\r\n", "\n", StringComparison.Ordinal);
+        const string stepName = "      - name: Build declared Windows-node main app";
+        var stepStart = workflow.IndexOf(stepName, StringComparison.Ordinal);
+        Assert.True(stepStart >= 0);
+        var stepEnd = workflow.IndexOf("\n      - name:", stepStart + stepName.Length, StringComparison.Ordinal);
+        Assert.True(stepEnd > stepStart);
+        var step = workflow[stepStart..stepEnd];
+
+        Assert.Contains("if: inputs.windows_node_source == 'main'", step);
+        Assert.Contains("working-directory: app-under-test", step);
+        Assert.Contains("$ErrorActionPreference = 'Stop'", step);
+        const string initialize = "& ./scripts/Initialize-ReactorPackages.ps1 -DestinationDirectory (Join-Path (Get-Location) 'artifacts/reactor-packages')";
+        const string restore = "dotnet restore src/OpenClaw.Tray.WinUI -r win-x64";
+        var initializeIndex = step.IndexOf(initialize, StringComparison.Ordinal);
+        var restoreIndex = step.IndexOf(restore, StringComparison.Ordinal);
+        Assert.True(initializeIndex >= 0);
+        Assert.True(restoreIndex > initializeIndex);
+        Assert.DoesNotContain("$env:GITHUB_WORKSPACE/scripts/Initialize-ReactorPackages.ps1", step);
+    }
+
+    [Fact]
     public void Workflow_RecordsOnlyExplicitProtocolMismatchOutcome()
     {
         var workflow = ReadWorkflow();

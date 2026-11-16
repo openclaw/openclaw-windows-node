@@ -18,6 +18,278 @@ namespace OpenClaw.Tray.Tests;
 [Collection("Chat telemetry")]
 public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 {
+    [Fact]
+    public async Task PreambleBeforeAcknowledgment_FollowsItsUserAndCannotReopenACompletedRun()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var acknowledgment = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.SendBehavior = (_, _, _) => acknowledgment.Task;
+        var send = provider.SendMessageAsync("main", "Check the digits");
+        var run = Assert.Single(bridge.SentIdempotencyKeys)!;
+        AgentEventInfo Progress(string runId) => MakeAgentEvent("item",
+            """{"kind":"preamble","phase":"end","itemId":"p","progressText":"Checking the equation."}""", runId: runId);
+        try
+        {
+            bridge.SendResults.Enqueue(new ChatSendResult { RunId = run, Status = "started" });
+            bridge.RaiseAgent(Progress("foreign"));
+            Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, entry => entry.Text == "Checking the equation.");
+            bridge.RaiseAgent(Progress(run));
+            Assert.Equal(["Check the digits", "Checking the equation."],
+                snapshots[^1].Timelines["main"].Entries.Select(entry => entry.Text));
+        }
+        finally
+        {
+            acknowledgment.TrySetResult();
+            await send;
+        }
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: run));
+        bridge.RaiseChat(new ChatMessageInfo { SessionKey = "main", RunId = run, Role = "assistant", State = "final" });
+        var completed = snapshots[^1].Timelines["main"];
+        bridge.RaiseAgent(Progress(run));
+        Assert.Equal(completed, snapshots[^1].Timelines["main"]);
+        Assert.False(completed.TurnActive);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new"));
+        bridge.RaiseAgent(Progress("foreign"));
+        Assert.Single(snapshots[^1].Timelines["main"].Entries, entry => entry.Text == "Checking the equation.");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task IdleSessionHint_RequiresAnIndependentHistoryObservation(bool confirmsTerminal)
+    {
+        var session = MainSession();
+        session.SessionId = "session";
+        var (bridge, provider, snapshots, _) = CreateProvider([session]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.IsConnected = true;
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseSessions([session]);
+        var reads = 0;
+        bridge.HistoryBehavior = _ =>
+        {
+            reads++;
+            using var json = JsonDocument.Parse(JsonSerializer.Serialize(new
+            {
+                sessionId = "session", messages = Array.Empty<object>(),
+                sessionInfo = new { sessionId = "session", lastRunId = "r",
+                    hasActiveRun = !confirmsTerminal, status = confirmsTerminal ? "done" : "running" },
+            }));
+            return Task.FromResult(ParseHistoryPayload(json.RootElement));
+        };
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+        bridge.RaiseChat(AssistantDelta("Partial", "r"));
+        var before = reads;
+        var idle = new SessionInfo { Key = "main", SessionId = "session", Status = "done",
+            HasActiveRun = false, LastRunId = "r" };
+        bridge.RaiseSessions([idle], hasAuthoritativeUsage: false);
+        Assert.Equal(before, reads);
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+        bridge.RaiseSessions([idle]);
+        Assert.True(reads > before);
+        Assert.Equal(!confirmsTerminal, snapshots[^1].Timelines["main"].TurnActive);
+    }
+
+    [Fact]
+    public async Task MessageLessTerminalBeforeAcknowledgment_MustMatchThePendingSend()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        var acknowledgment = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        bridge.SendBehavior = (_, _, _) => acknowledgment.Task;
+        var send = provider.SendMessageAsync("main", "Pending question");
+        try
+        {
+            var run = Assert.Single(bridge.SentIdempotencyKeys)!;
+            bridge.SendResults.Enqueue(new ChatSendResult { RunId = run, Status = "started" });
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", RunId = "foreign", Role = "assistant", State = "final",
+            });
+            Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", RunId = run, Role = "assistant", State = "final",
+            });
+            Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        }
+        finally
+        {
+            acknowledgment.TrySetResult();
+            await send;
+        }
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MessageLessFinal_LateReplyRepairsContentWithoutRepeatingCompletion(bool newerTurn)
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+        bridge.RaiseChat(AssistantDelta("Partial", "r"));
+        var originalId = Assert.Single(snapshots[^1].Timelines["main"].Entries).Id;
+        bridge.RaiseChat(new ChatMessageInfo { SessionKey = "main", RunId = "r", Role = "assistant", State = "final" });
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        if (newerTurn)
+        {
+            bridge.RaiseChat(new ChatMessageInfo { SessionKey = "main", Role = "user", Text = "Next question" });
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new"));
+            bridge.RaiseChat(AssistantDelta("Current response", "new"));
+        }
+        var final = new ChatMessageInfo
+        {
+            SessionKey = "main", RunId = "r", Role = "assistant", State = "final", Text = "Completed answer",
+            Presentation = new(RunId: "r"),
+        };
+        bridge.RaiseChat(final);
+        var timeline = snapshots[^1].Timelines["main"];
+        var repaired = Assert.Single(timeline.Entries, entry => entry.Text == "Completed answer");
+        if (!newerTurn)
+            Assert.Equal(originalId, repaired.Id);
+        else
+            Assert.Contains(timeline.Entries, entry => entry.Text == "Current response" && entry.IsStreaming);
+        Assert.Equal("Completed answer", repaired.Text);
+        Assert.False(repaired.IsStreaming);
+        Assert.Equal(newerTurn, timeline.TurnActive);
+        bridge.RaiseChat(final);
+        Assert.Equal(timeline, snapshots[^1].Timelines["main"]);
+        Assert.Empty(notifications);
+    }
+
+    [Fact]
+    public async Task YieldedTerminal_StopsParentWithoutDeclaringChildrenComplete()
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "parent"));
+        bridge.RaiseSessions([new SessionInfo { Key = "main", HasActiveRun = false,
+            HasActiveSubagentRun = true, LastRunId = "parent", Status = "done" }]);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", RunId = "parent", Role = "assistant", State = "final", Yielded = true,
+        });
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.True(Assert.Single(snapshots[^1].Threads).WaitingForSubagents);
+        Assert.Empty(notifications);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "announcement"));
+        bridge.RaiseChat(AssistantDelta("Children finished", "announcement"));
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+    }
+
+    [Theory]
+    [InlineData("final", false)]
+    [InlineData("final", true)]
+    [InlineData("error", false)]
+    [InlineData("error", true)]
+    [InlineData("aborted", false)]
+    [InlineData("aborted", true)]
+    public async Task WireTerminal_SettlesWithoutRequiringVisibleContent(string state, bool hasContent)
+    {
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "fixture-token", identityPath: identity.Path);
+        var (bridge, provider, snapshots, notifications) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var process = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        void Send(object payload) => process.Invoke(client,
+            [JsonSerializer.Serialize(new { type = "event", @event = "chat", payload })]);
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+        Send(new { sessionKey = "main", runId = "r", state = "delta", seq = 1, deltaText = "Partial",
+            message = new { role = "assistant", content = "Partial" } });
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+        var terminal = new Dictionary<string, object?>
+        {
+            ["sessionKey"] = "main", ["runId"] = "r", ["state"] = state, ["seq"] = 2,
+        };
+        if (state == "error")
+            terminal["errorMessage"] = "Fixture failure";
+        if (hasContent)
+            terminal["message"] = new { role = "assistant", content = "Complete" };
+        Send(terminal);
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, entry => entry.IsStreaming);
+        if (state == "error")
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries, entry => entry.Text == "Fixture failure");
+        var notificationCount = notifications.Count;
+        Send(terminal);
+        Assert.Equal(notificationCount, notifications.Count);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new"));
+        bridge.RaiseChat(AssistantDelta("New run", "new"));
+        var newer = snapshots[^1].Timelines["main"];
+        Send(terminal);
+        Assert.Equal(newer, snapshots[^1].Timelines["main"]);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TerminalDisplayOverride_RetiresPreviewWithoutErasingSavedReply(bool empty)
+    {
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "fixture-token", identityPath: identity.Path);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var process = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+        bridge.RaiseChat(AssistantDelta("Retired preview", "r"));
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", RunId = "r", Role = "assistant", Text = "Saved answer",
+            OpenClawId = "saved", IsTranscriptSnapshot = true,
+            Presentation = new(RunId: "r", MessageId: "saved", Phase: "final_answer"),
+        });
+        process.Invoke(client, [JsonSerializer.Serialize(new
+        {
+            type = "event", @event = "chat",
+            payload = new { sessionKey = "main", runId = "r", state = "final", seq = 3,
+                message = new { role = "assistant",
+                    content = new[] { new { type = "text", text = "Retired preview" } },
+                    openclawDisplayContent = empty ? [] : new[] { new { type = "text", text = "Visible tail" } } } },
+        })]);
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.False(timeline.TurnActive);
+        Assert.Equal(empty ? ["Saved answer"] : ["Saved answer", "Visible tail"],
+            timeline.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).Select(entry => entry.Text));
+        Assert.DoesNotContain(timeline.Entries, entry => entry.IsStreaming);
+    }
+
+    [Theory]
+    [InlineData("error")]
+    [InlineData("aborted")]
+    public async Task ConfirmedFailure_LateFinalCannotBecomeSuccessfulOrOverwritePartial(string state)
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "r"));
+        bridge.RaiseChat(AssistantDelta("Partial", "r"));
+        bridge.RaiseChat(new ChatMessageInfo { SessionKey = "main", RunId = "r", Role = "assistant", State = state });
+        var terminal = snapshots[^1].Timelines["main"];
+        notifications.Clear();
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", RunId = "r", Role = "assistant", State = "final", Text = "Late success",
+        });
+        Assert.Equal(terminal, snapshots[^1].Timelines["main"]);
+        Assert.Empty(notifications);
+    }
+
     private static ChatHistoryInfo RecoveryHistory(bool truncated, string text, string messageId = "result-message",
         string callId = "call", string runId = "r")
     {
@@ -411,6 +683,81 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             new SessionFileContent { Key = "main", Path = "big.log", Size = 50_000_000 }).Status);
     }
 
+    [Theory]
+    [InlineData("text/plain", "Hello", "Loaded")]
+    [InlineData("application/json", "{\"ok\":true}", "Loaded")]
+    [InlineData("application/zip", "PK", "NotPreviewable")]
+    [InlineData("text/plain", "binary\0data", "NotPreviewable")]
+    [InlineData("text/plain", "", "Loaded")]
+    public void ArtifactPreview_ClassifiesTextWithoutTreatingBinaryAsText(string mime, string content, string expected)
+    {
+        var result = OpenClawChatDataProvider.ClassifyAssistantFile(
+            new(AssistantMediaResolutionStatus.Ready, System.Text.Encoding.UTF8.GetBytes(content), mime));
+        Assert.Equal(expected, result.Status.ToString());
+        if (expected == "Loaded")
+            Assert.Equal(content, result.Content);
+        Assert.Equal(ChatWorkspaceFileStatus.NotPreviewable,
+            OpenClawChatDataProvider.ClassifyAssistantFile(new(AssistantMediaResolutionStatus.Ready, [0xff], "text/plain")).Status);
+    }
+
+    [Theory]
+    [InlineData("application/zip", 64690236L)]
+    [InlineData("image/png", 2048L)]
+    [InlineData("text/plain", 1048577L)]
+    public async Task ArtifactPreview_KnownBinaryOrOversizedAttachmentIsNotPreviewableWithoutAGatewayRead(
+        string mime, long size)
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.IsConnected = true;
+            var reads = 0;
+            bridge.MediaBehavior = (_, _, _) =>
+            {
+                reads++;
+                return Task.FromResult(AssistantMediaResolutionResult.Unavailable);
+            };
+            var result = await provider.LoadWorkspaceFileAsync(
+                new ChatWorkspaceFileRequest("main", "agent-images.zip", "artifact-2", null, mime, size),
+                CancellationToken.None);
+            Assert.Equal(ChatWorkspaceFileStatus.NotPreviewable, result.Status);
+            Assert.Equal(0, reads);
+        }
+    }
+
+    [Fact]
+    public async Task ArtifactPreview_PreservesArtifactScopeRedactsTextAndDiscardsReconnectResult()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.IsConnected = true;
+            var response = new TaskCompletionSource<AssistantMediaResolutionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            bridge.MediaBehavior = (session, media, _) =>
+            {
+                Assert.Equal("main", session);
+                Assert.Equal("artifact-1", media.ArtifactId);
+                Assert.Equal("agent-1", media.AgentId);
+                Assert.Null(media.FileName);
+                return response.Task;
+            };
+            var request = new ChatWorkspaceFileRequest("main", "hello.txt", "artifact-1", "agent-1");
+            var pending = provider.LoadWorkspaceFileAsync(request, CancellationToken.None);
+            response.SetResult(new(AssistantMediaResolutionStatus.Ready,
+                System.Text.Encoding.UTF8.GetBytes("api_key=sk-secret-value"), "text/plain"));
+            var loaded = await pending;
+            Assert.Equal(ChatWorkspaceFileStatus.Loaded, loaded.Status);
+            Assert.DoesNotContain("sk-secret-value", loaded.Content);
+            Assert.Empty(bridge.SessionFileReads);
+
+            response = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            pending = provider.LoadWorkspaceFileAsync(request, CancellationToken.None);
+            bridge.ChatMessageReadConnectionEpoch = 2;
+            response.SetResult(new(AssistantMediaResolutionStatus.Ready, [65], "text/plain"));
+            Assert.Equal(ChatWorkspaceFileStatus.Stale, (await pending).Status);
+        }
+    }
+
     [Fact]
     public void WorkspaceFile_RedactsSecretsAndEscapesHiddenCharacters()
     {
@@ -596,6 +943,10 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         public Func<ChatHistoryPageRequest, Task<ChatHistoryInfo>>? OlderHistoryBehavior { get; set; }
         public List<ChatHistoryPageRequest> OlderHistoryRequests { get; } = [];
         public long? ChatMessageReadConnectionEpoch { get; set; } = 1;
+        public Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantMediaResolutionResult>>? MediaBehavior { get; set; }
+        public Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
+            string sessionKey, ChatMediaContentInfo media, CancellationToken cancellationToken = default) =>
+            MediaBehavior?.Invoke(sessionKey, media, cancellationToken) ?? Task.FromResult(AssistantMediaResolutionResult.Unavailable);
         public Func<string, string, CancellationToken, Task<SessionFileContent>>? SessionFileBehavior { get; set; }
         public List<(string Key, string Path, long Epoch)> SessionFileReads { get; } = [];
         public Task<SessionFileContent> GetSessionFileAsync(

@@ -9,6 +9,74 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ChatConversationStateTests
 {
     [Fact]
+    public void HistoryRecovery_ChangedSessionCannotBeRestoredByTheOldResponse()
+    {
+        var state = new ChatConversationState(ConnectionStatus.Connected, null, null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.ApplySessions([new SessionInfo { Key = "main", SessionId = "old-session" }], context);
+        state.ProcessAgentEvent(new AgentEventInfo
+        {
+            SessionKey = "main", RunId = "r", Stream = "lifecycle",
+            Data = JsonSerializer.SerializeToElement(new { phase = "start" }),
+        }, "main", context);
+        var token = state.CaptureHistoryToken("main");
+        var lease = Assert.IsType<ChatHistoryRunLease>(state.CaptureHistoryRun("main"));
+        state.ApplySessions([new SessionInfo { Key = "main", SessionId = "new-session" }], context);
+        var plan = new ChatHistoryRebuildPlan("old-session", ChatTimelineState.Initial(),
+            new Dictionary<string, ChatEntryMetadata>(), 0);
+
+        Assert.False(state.CommitHistory(token, plan, DateTimeOffset.UtcNow, false, lease));
+        Assert.Equal("new-session", state.GetSessionId("main"));
+        Assert.Null(state.CaptureHistoryRun("main"));
+    }
+
+    [Theory]
+    [InlineData("same", false)]
+    [InlineData("different-session", true)]
+    [InlineData("different-run", true)]
+    [InlineData("same-run-restarted", true)]
+    [InlineData("replacement", true)]
+    public void HistoryTerminalRecovery_RequiresCurrentRequestRunAndSession(string change, bool stillActive)
+    {
+        var state = new ChatConversationState(ConnectionStatus.Connected, null, null);
+        var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
+        state.ApplySessions([new SessionInfo { Key = "main", SessionId = "session", Status = "running",
+            HasActiveRun = true, LastRunId = "r" }], context);
+        AgentEventInfo Start(string run) => new()
+        {
+            SessionKey = "main", RunId = run, Stream = "lifecycle",
+            Data = JsonSerializer.SerializeToElement(new { phase = "start" }),
+        };
+        state.ProcessAgentEvent(Start("r"), "main", context);
+        var token = state.CaptureHistoryToken("main");
+        var lease = Assert.IsType<ChatHistoryRunLease>(state.CaptureHistoryRun("main"));
+        // Cached republication is never terminal authority.
+        state.ApplySessions([new SessionInfo { Key = "main", SessionId = "session", Status = "done",
+            HasActiveRun = false, LastRunId = "r" }], context);
+        Assert.True(state.Snapshot(context).Timelines["main"].TurnActive);
+        if (change == "different-run")
+            state.ProcessAgentEvent(Start("new"), "main", context);
+        if (change == "same-run-restarted")
+            state.ProcessAgentEvent(Start("r"), "main", context);
+        if (change == "replacement")
+            state.BeginHistoryReplacement("main", context);
+        var before = state.Snapshot(context).Timelines["main"];
+        var result = state.ReconcileHistoryRun(token, lease,
+            change == "different-session" ? "other-session" : "session",
+            new ChatMessageInfo { SessionKey = "main", RunId = "r", Role = "assistant", State = "final" }, context);
+        if (stillActive)
+        {
+            Assert.Null(result);
+            Assert.Equal(before, state.Snapshot(context).Timelines["main"]);
+        }
+        else
+        {
+            Assert.False(state.Snapshot(context).Timelines["main"].TurnActive);
+            Assert.True(result!.TurnComplete);
+        }
+    }
+
+    [Fact]
     public void ResetThread_ClearsQueueAndAdvancesGenerationAtomically()
     {
         var state = new ChatConversationState(

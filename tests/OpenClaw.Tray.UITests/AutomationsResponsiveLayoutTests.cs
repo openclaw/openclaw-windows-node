@@ -569,9 +569,10 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     {
                         await WaitForRenderedConditionAsync(() =>
                             Math.Abs(Find(surface!, "AutomationsRoot").ActualWidth - reusedWidth) < 1
-                            && Math.Abs(Find(surface!, "AutomationsMast").ActualWidth - PageResponsiveLayout.ContentWidth(reusedWidth)) < 1,
+                            && Math.Abs(Find(surface!, "AutomationsMast").ActualWidth - PageResponsiveLayout.ContentWidth(reusedWidth)) < 1
+                            && NewButtonArranged(surface!, "AutomationsNew"),
                             "same mounted page resized without replacing its element pool",
-                            () => RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "resize-timeout"));
+                            () => $"{RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "resize-timeout")} {NewButtonState(surface!, "AutomationsNew")}");
                         RecordViewportGeometry(proofWindow!, surface!, requestedClient, requestedScale, artifacts, "resize-ready");
                     });
                     await ui.YieldToRenderAsync();
@@ -588,22 +589,14 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     });
                 }
                 await ui.RunOnUIAsync(() => store!.SetAgentFilter("research"));
-                Button? emptyNew = null;
-                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                {
-                    emptyNew = Controls(surface!).OfType<Button>().SingleOrDefault(element =>
-                        AutomationProperties.GetAutomationId(element) == "AutomationsEmptyNew");
-                    return emptyNew is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0,
-                        Content: FrameworkElement { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } }
-                        && Controls(emptyNew).OfType<TextBlock>().Any(text => text.IsLoaded && text.ActualWidth > 0);
-                }, "same populated page enters the empty state with arranged button content",
-                    () => emptyNew is null ? "Empty-state button absent."
-                        : $"button loaded={emptyNew.IsLoaded}, size={emptyNew.ActualWidth}x{emptyNew.ActualHeight}; "
-                            + $"content={emptyNew.Content?.GetType().Name}; "
-                            + $"text visuals={Controls(emptyNew).OfType<TextBlock>().Count()}; "
-                            + $"add glyphs={Controls(emptyNew).OfType<TextBlock>().Count(text => text.Text == "\uE710")}"));
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => NewButtonArranged(surface!, "AutomationsEmptyNew") && NewButtonArranged(surface!, "AutomationsNew"),
+                    "same populated page enters the empty state with arranged button content",
+                    () => $"{NewButtonState(surface!, "AutomationsEmptyNew")} {NewButtonState(surface!, "AutomationsNew")}"));
                 await ui.RunOnUIAsync(() =>
                 {
+                    // The overview load can re-render after the empty list; attach any replaced content first.
+                    surface!.UpdateLayout();
                     Assert.Empty(store!.State.Jobs);
                     var empty = Find(surface!, "AutomationsEmpty");
                     Assert.Equal(2, Controls(empty).OfType<Button>().Count());
@@ -617,9 +610,15 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
                     store!.SetAgentFilter("main");
                 });
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                    Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationExpander:morning-brief"),
-                    "same page returns from empty to populated"));
-                await ui.RunOnUIAsync(() => AssertNewButton(surface!, artifacts, 937));
+                    Controls(surface!).Any(element => AutomationProperties.GetAutomationId(element) == "AutomationExpander:morning-brief")
+                    && NewButtonArranged(surface!, "AutomationsNew"),
+                    "same page returns from empty to populated with arranged New button content",
+                    () => NewButtonState(surface!, "AutomationsNew")));
+                await ui.RunOnUIAsync(() =>
+                {
+                    surface!.UpdateLayout();
+                    AssertNewButton(surface!, artifacts, 937);
+                });
             }
         }
         catch (Exception failure)
@@ -955,6 +954,22 @@ public sealed class AutomationsResponsiveLayoutTests(UIThreadFixture ui, ITestOu
         }
         Assert.Same(list, ancestor);
     }
+
+    // A re-render (filter change, remount or resize) can replace a New button's content before a later
+    // layout pass attaches it; wait for this before inspecting the button's glyph.
+    private static bool NewButtonArranged(Border surface, string id) =>
+        Controls(surface).OfType<Button>().SingleOrDefault(element => AutomationProperties.GetAutomationId(element) == id) is
+            { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0,
+                Content: FrameworkElement { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } } button
+        && Controls(button).OfType<TextBlock>().Any(text => text.Text == "\uE710" && text.IsLoaded && text.ActualWidth > 0);
+
+    private static string NewButtonState(Border surface, string id) =>
+        Controls(surface).OfType<Button>().SingleOrDefault(element => AutomationProperties.GetAutomationId(element) == id) is not { } button
+            ? $"{id} absent."
+            : $"{id} loaded={button.IsLoaded}, size={button.ActualWidth}x{button.ActualHeight}; "
+                + $"content={button.Content?.GetType().Name}; "
+                + $"text visuals={Controls(button).OfType<TextBlock>().Count()}; "
+                + $"add glyphs={Controls(button).OfType<TextBlock>().Count(text => text.Text == "\uE710")}";
 
     private static void AssertNewButton(Border surface, string artifacts, double width, string id = "AutomationsNew")
     {

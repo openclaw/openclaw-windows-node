@@ -375,7 +375,12 @@ internal sealed class ChatHistoryState
         var nextId = Math.Max(rebuilt.NextId, maxSuffix + 1);
         var entries = rebuilt.Entries.ToBuilder();
         var remappedEntryIds = new Dictionary<string, string>(StringComparer.Ordinal);
+        var retainedPreambles = new HashSet<string>(StringComparer.Ordinal);
         var rebuiltTools = new Dictionary<(string CallId, string RunId), int>();
+        var rebuiltPreambles = rebuilt.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation is { RunId: not null, StreamItemId: not null, IsImported: false })
+            .GroupBy(entry => (entry.Presentation!.RunId!, entry.Presentation.StreamItemId!))
+            .ToDictionary(group => group.Key, group => group.First());
         for (var index = 0; index < rebuilt.Entries.Count; index++)
         {
             if (rebuilt.Entries[index] is
@@ -397,6 +402,17 @@ internal sealed class ChatHistoryState
         foreach (var entry in prior.Entries)
         {
             priorMetadata.TryGetValue(entry.Id, out var metadata);
+            if (entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation is { RunId: not null, StreamItemId: not null, MessageId: null, IsImported: false } progress &&
+                metadata?.GatewayMessageId is null && metadata?.OpenClawSeq is null &&
+                rebuiltPreambles.TryGetValue((progress.RunId, progress.StreamItemId), out var savedProgress))
+            {
+                remappedEntryIds[entry.Id] = savedProgress.Id;
+                if (savedProgress.Presentation?.MessageId is null &&
+                    rebuiltMetadata.GetValueOrDefault(savedProgress.Id)?.OpenClawSeq is null)
+                    entries[entries.FindIndex(candidate => candidate.Id == savedProgress.Id)] = entry with { Id = savedProgress.Id };
+                continue;
+            }
             // A live tool row and its persisted call share a call ID within one run; IDs can
             // repeat across runs. Match these first so a still-running call keeps its live
             // state after it takes the persisted row's identity.
@@ -458,7 +474,8 @@ internal sealed class ChatHistoryState
             {
                 continue;
             }
-            if (metadata?.Timestamp is { } timestamp &&
+            if (entry.Presentation?.StreamItemId is null &&
+                metadata?.Timestamp is { } timestamp &&
                 timestamp != default &&
                 contentTimestamps.TryGetValue(
                     ContentKey(entry.Kind, entry.Text),
@@ -467,6 +484,7 @@ internal sealed class ChatHistoryState
                 var priorSeconds = timestamp.ToUnixTimeSeconds();
                 var match = rebuiltTimes.FindIndex(value =>
                     Math.Abs(value.Timestamp - priorSeconds) <= 2 &&
+                    value.Entry.Presentation?.StreamItemId is null &&
                     !HasConflictingToolIdentity(entry, value.Entry));
                 if (match >= 0)
                 {
@@ -487,6 +505,10 @@ internal sealed class ChatHistoryState
                      suffix >= nextId)
                 nextId = suffix + 1;
             entries.Add(entryToAdd);
+            if (entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation is { StreamItemId: not null, MessageId: null } &&
+                metadata?.OpenClawSeq is null)
+                retainedPreambles.Add(entry.Id);
             remappedEntryIds[entry.Id] = entryToAdd.Id;
             existingIds.Add(entryToAdd.Id);
             if (metadata?.Timestamp is { } addedTimestamp &&
@@ -513,6 +535,34 @@ internal sealed class ChatHistoryState
                 rebuiltMetadata[entryToAdd.Id] = metadata;
         }
 
+        // Unsaved commentary keeps its observed place between surviving rows,
+        // rather than moving below a final answer introduced by history.
+        for (var index = 0; index < prior.Entries.Count; index++)
+        {
+            if (!retainedPreambles.Contains(prior.Entries[index].Id))
+                continue;
+            var id = remappedEntryIds[prior.Entries[index].Id];
+            var current = entries.FindIndex(entry => entry.Id == id);
+            // Later retained items are not stable anchors, and a newer turn cannot
+            // anchor this turn's progress behind a history-supplied answer.
+            var following = prior.Entries.Skip(index + 1)
+                .TakeWhile(entry => entry.Kind != ChatTimelineItemKind.User && !entry.IsBackgroundFinal &&
+                    entry.Presentation is not { TurnBoundary: true } and not { IsIndependent: true })
+                .Where(entry => !retainedPreambles.Contains(entry.Id))
+                .Select(entry => remappedEntryIds.GetValueOrDefault(entry.Id))
+                .FirstOrDefault(candidate => candidate is not null);
+            var preceding = prior.Entries.Take(index).Select(entry => remappedEntryIds.GetValueOrDefault(entry.Id))
+                .LastOrDefault(candidate => candidate is not null);
+            var target = following is not null ? entries.FindIndex(entry => entry.Id == following)
+                : preceding is not null ? entries.FindIndex(entry => entry.Id == preceding) + 1 : current;
+            if (target >= 0 && current > target)
+            {
+                var entry = entries[current];
+                entries.RemoveAt(current);
+                entries.Insert(target, entry);
+            }
+        }
+
         var merged = rebuilt with
             {
                 Entries = entries.ToImmutable(),
@@ -522,7 +572,12 @@ internal sealed class ChatHistoryState
                 TurnEndedAt = prior.TurnEndedAt,
                 ProgressText = prior.ProgressText,
                 ProgressRetryAtMs = prior.ProgressRetryAtMs,
+                ReconcilableAssistantId = prior.ReconcilableAssistantId is { } pending
+                    ? remappedEntryIds.TryGetValue(pending, out var mapped) ? mapped
+                        : entries.Any(entry => entry.Id == pending) ? pending : null
+                    : null,
                 RunUsage = prior.RunUsage,
+                PreambleSequences = prior.PreambleSequences,
                 ReasoningStream = prior.TurnActive && prior.ReasoningStream is { } reasoning
                     ? reasoning with
                     {

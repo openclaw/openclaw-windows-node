@@ -204,6 +204,8 @@ public sealed class MountedReactorChat(
 
     internal string? CurrentThreadId => session.ViewModel.Inputs?.CurrentThread.Id;
 
+    internal ChatConversationPanelState ConversationPanels => props.Panels;
+
     internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectSession(sessionKey);
 
     internal void InvalidatePendingSessionNavigation() => session.Controller.InvalidatePendingSessionNavigation();

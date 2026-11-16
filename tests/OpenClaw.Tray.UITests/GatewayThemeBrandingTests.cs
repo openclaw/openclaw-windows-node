@@ -91,14 +91,13 @@ public sealed class GatewayThemeBrandingTests(UIThreadFixture ui, ITestOutputHel
 
                 Assert.True(applicator.Apply(Branded("none")));
                 await WaitForIndicatorAsync(host, null);
-                // Without a glyph the status words stay visible instead of only the elapsed time.
-                Assert.StartsWith("Working", StatusText(host).Text);
+                // Without a glyph the status line still says what is happening.
+                Assert.StartsWith("Working", StatusLabel(host).Text);
                 await OnboardingArtworkRenderingTests.SaveProofAsync(panel, "branding-plugin-no-indicator", output);
 
                 Assert.True(applicator.Apply(null));
                 await WaitForIndicatorAsync(host, "ChatRunProgressClaw");
                 Assert.False(mark.ShowsThemeMark);
-                Assert.DoesNotContain("Working", StatusText(host).Text);
                 await OnboardingArtworkRenderingTests.SaveProofAsync(panel, "branding-windows-default", output);
             }
             finally
@@ -131,7 +130,7 @@ public sealed class GatewayThemeBrandingTests(UIThreadFixture ui, ITestOutputHel
     private static bool Present(FrameworkElement host, string automationId) =>
         TestSupport.FindDescendants<FrameworkElement>(host).Any(element => AutomationProperties.GetAutomationId(element) == automationId);
 
-    private static TextBlock StatusText(FrameworkElement host) =>
+    private static TextBlock StatusLabel(FrameworkElement host) =>
         Assert.Single(TestSupport.FindDescendants<TextBlock>(host),
-            text => AutomationProperties.GetAutomationId(text) == "ChatRunProgressText");
+            text => AutomationProperties.GetAutomationId(text) == "ChatRunProgressStatus");
 }

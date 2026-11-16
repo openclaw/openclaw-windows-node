@@ -15,11 +15,13 @@ extern alias TrayRuntime;
 
 using System.Collections.Immutable;
 using System.Text.Json.Nodes;
+using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
+using OpenClawTray.Chat;
 using Windows.Foundation;
 using static OpenClaw.Tray.UITests.TestSupport;
 using AutomationProperties = Microsoft.UI.Xaml.Automation.AutomationProperties;
@@ -41,10 +43,12 @@ public sealed partial class ReactorChatLayoutProofTests
     private const double WorkStatusGap = 6;
     private const double WorkCategoryGlyphSize = 14;
     private const double WorkDisclosureGlyphSize = 12;
-    private const double WorkHeaderTextSize = 13;
+    private const double WorkActivityTitleSize = 12;
+    private const double WorkInlineTextSize = 13;
     private const double WorkHeaderMinimum = 31.5;
     private const double WorkHeaderMaximum = 40;
     private const double WorkDetailMaxHeight = 240;
+    private const double WorkDetailMaxWidth = 240;
     private const double WorkDetailInsetX = 12;
     private const double WorkDetailInsetY = 8;
     private const double WorkCommandInputRightInset = 58;
@@ -163,6 +167,11 @@ public sealed partial class ReactorChatLayoutProofTests
                     var footer = FindControl<FrameworkElement>(surface, $"ChatMessageFooter_{id}");
                     Assert.Equal(0, footer.Opacity);
                     Assert.False(footer.IsHitTestVisible);
+                    var transition = Assert.IsType<ScalarTransition>(footer.OpacityTransition);
+                    if (new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+                        Assert.InRange(transition.Duration.TotalMilliseconds, 120, 200);
+                    else
+                        Assert.Equal(TimeSpan.Zero, transition.Duration);
                     Assert.True(footer.ActualHeight > 0);
                     measured[id] = Bounds(footer, surface);
                 }
@@ -189,16 +198,20 @@ public sealed partial class ReactorChatLayoutProofTests
                         Assert.Equal(bounds[candidate], Bounds(footer, surface));
                         Assert.All(FindDescendants<TextBlock>(footer),
                             text => Assert.IsNotType<LinearGradientBrush>(text.Foreground));
-                        var metadata = Assert.Single(FindDescendants<TextBlock>(footer),
+                        Assert.DoesNotContain(FindDescendants<TextBlock>(footer),
                             text => text.Text.Contains("private-model", StringComparison.Ordinal));
                         var copy = Assert.Single(FindDescendants<Button>(footer), button =>
                             AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_", StringComparison.Ordinal));
                         var glyph = Assert.Single(FindDescendants<TextBlock>(copy));
+                        Assert.Equal(32, copy.ActualWidth, NativeLayoutPrecision);
+                        Assert.Equal(32, copy.ActualHeight, NativeLayoutPrecision);
+                        if (candidate == "hover-user")
+                            continue;
+                        var metadata = Assert.Single(FindDescendants<TextBlock>(footer),
+                            text => text.Text == "Assistant");
                         var metadataBounds = Bounds(metadata, surface);
                         var glyphBounds = Bounds(glyph, surface);
                         Assert.InRange(metadataBounds.Height, 17.5, 18.5);
-                        Assert.Equal(32, copy.ActualWidth);
-                        Assert.Equal(32, copy.ActualHeight);
                         AssertWorkAligned($"{candidate} footer text and copy glyph vertical center",
                             metadataBounds.Top + metadataBounds.Height / 2,
                             glyphBounds.Top + glyphBounds.Height / 2, WorkCenterTolerance);
@@ -215,6 +228,68 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.Equal(0, FindControl<FrameworkElement>(surface, $"ChatMessageFooter_{id}").Opacity);
             });
         }, initialThreadId: ExpandedWorkKey, renderProvider: provider);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MessageFooters_KeepRecordedTimeWithoutModelOrUsageDetails(bool showTools)
+    {
+        await WithChatAsync(1100, async (surface, rootHost, _, _) =>
+        {
+            var localTime = new DateTime(2026, 11, 14, 12, 34, 0);
+            var timestamp = new DateTimeOffset(localTime, TimeZoneInfo.Local.GetUtcOffset(localTime));
+            var expectedTime = localTime.ToString("h:mm tt");
+            var ids = new[] { "footer-user", "footer-assistant" };
+            var timeline = new ChatTimelinePresentationContext("footer-proof",
+                [new(ids[0], ChatTimelineItemKind.User, "A sent message."),
+                 new(ids[1], ChatTimelineItemKind.Assistant, "A completed answer.")],
+                false, null,
+                EntryMetadata: ids.ToDictionary(id => id, _ => new ChatEntryMetadata(timestamp, "recorded-model")),
+                AssistantSenderLabel: "Echo",
+                DefaultModel: "private-model",
+                DefaultUsageSummary: "29.9K/936.0K (3%)",
+                ShowToolCalls: showTools,
+                OnReadAloud: _ => Task.CompletedTask);
+            ReactorHostControl? host = null;
+            try
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    host = new ReactorHostControl();
+                    host.Mount(_ => Microsoft.UI.Reactor.Factories.Component<ReactorChatTimeline, ReactorChatTimelineProps>(
+                        new(ReactorChatTimelineMode.Timeline, timeline)));
+                    surface.Child = host;
+                });
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => ids.All(id => FindDescendants<FrameworkElement>(surface).Any(element =>
+                        AutomationProperties.GetAutomationId(element) == $"ChatMessageFooter_{id}")),
+                    "both timestamp footers render"));
+                await ui.RunOnUIAsync(() =>
+                {
+                    foreach (var id in ids)
+                    {
+                        var footer = FindControl<FrameworkElement>(surface, $"ChatMessageFooter_{id}");
+                        var labels = FindDescendants<TextBlock>(footer).Select(text => text.Text).ToArray();
+                        var recordedTime = Assert.Single(FindDescendants<TextBlock>(footer),
+                            text => text.Text.Contains(expectedTime, StringComparison.Ordinal));
+                        Assert.Equal(1, recordedTime.Opacity);
+                        Assert.All(Ancestors(recordedTime).OfType<UIElement>().TakeWhile(element => element != footer),
+                            element => Assert.Equal(1, element.Opacity));
+                        Assert.DoesNotContain(labels, text =>
+                            text.Contains("model", StringComparison.Ordinal) || text.Contains("936.0K", StringComparison.Ordinal));
+                        Assert.Equal(id == ids[0] ? 1 : 2, FindDescendants<Button>(footer).Count());
+                        if (id == ids[1])
+                            Assert.Contains(labels, text => text.StartsWith("Echo", StringComparison.Ordinal));
+                    }
+                });
+            }
+            finally
+            {
+                if (host is not null)
+                    await ui.RunOnUIAsync(() => { surface.Child = rootHost; host.Dispose(); });
+            }
+        });
     }
 
     [Theory]
@@ -279,7 +354,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.InRange(Math.Abs(iconBounds.Left - finalBounds.Left), 0, 1);
                     Assert.InRange(statusBounds.Right, finalBounds.Left, finalBounds.Right + 1);
                     Assert.True(title.IsTextTrimmed, "A long command must ellipsize without displacing its status.");
-                    Assert.InRange(tool.ActualHeight, 32, 40);
+                    Assert.InRange(Math.Round(tool.ActualHeight, NativeLayoutPrecision), 32, 40);
                     AssertComposerBounds(surface);
                 });
             }
@@ -802,8 +877,15 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} icon left", Bounds(icon, surface).Left, rowBounds.Left, WorkEdgeTolerance);
         AssertWorkAligned($"{label} title left", Bounds(title, surface).Left, rowBounds.Left + WorkIconColumn,
             WorkEdgeTolerance);
-        foreach (var text in texts.Skip(1))
-            AssertWorkAligned($"{label} header text font size", text.FontSize, WorkHeaderTextSize, 0.1);
+        AssertWorkAligned($"{label} title font size", title.FontSize,
+            title.Text == WorkToolInput ? WorkInlineTextSize : WorkActivityTitleSize, 0.1);
+        // A dimmed detail is width-capped and takes the quieter title size; a trailing status keeps the inline size.
+        foreach (var text in texts.Skip(2))
+        {
+            var detail = text.MaxWidth == WorkDetailMaxWidth;
+            AssertWorkAligned($"{label} {(detail ? "detail" : "status")} font size", text.FontSize,
+                detail ? WorkActivityTitleSize : WorkInlineTextSize, 0.1);
+        }
         var headerCenter = headerBounds.Top + headerBounds.Height / 2;
         for (var index = 0; index < texts.Count; index++)
         {
@@ -938,7 +1020,7 @@ public sealed partial class ReactorChatLayoutProofTests
             element => AutomationProperties.GetAutomationId(element) == id);
         var row = Bounds(Part<Grid>("ChatRunProgress"), surface);
         var claw = Bounds(Part<Grid>("ChatRunProgressClaw"), surface);
-        var text = Bounds(Part<TextBlock>("ChatRunProgressText"), surface);
+        var text = Bounds(Part<TextBlock>("ChatRunProgressStatus"), surface);
         AssertWorkAligned("progress left", row.Left, column.Left, WorkEdgeTolerance);
         AssertWorkAligned("progress right", row.Right, column.Right, WorkEdgeTolerance);
         Assert.True(row.Height >= 27.5, $"progress row height: expected at least 28, measured {row.Height:0.##}.");

@@ -24,10 +24,10 @@ public sealed partial class GatewayFixtureUiTests
             await run.Gateway.WaitForRequestAsync("chat.history", ContextUsageFixture.SessionKey,
                 cancellationToken: deadline.Token);
 
-            await SendUsagePromptAsync(run, ContextUsageFixture.FirstPrompt, ContextUsageFixture.FirstReply, 1, "1.0K/5.0K (20%)");
-            CaptureUsageFooter(run, "01-first-request.png", "1.0K/5.0K (20%)");
-            await SendUsagePromptAsync(run, ContextUsageFixture.SecondPrompt, ContextUsageFixture.FinalReply, 2, "1.5K/5.0K (30%)");
-            CaptureUsageFooter(run, "02-repeated-request-and-undated-replay.png", "1.5K/5.0K (30%)");
+            await SendUsagePromptAsync(run, ContextUsageFixture.FirstPrompt, ContextUsageFixture.FirstReply, 1, "1.0K of 5.0K (20%)");
+            CaptureUsageFooter(run, "01-first-request.png", "1.0K of 5.0K (20%)");
+            await SendUsagePromptAsync(run, ContextUsageFixture.SecondPrompt, ContextUsageFixture.FinalReply, 2, "1.5K of 5.0K (30%)");
+            CaptureUsageFooter(run, "02-repeated-request-and-undated-replay.png", "1.5K of 5.0K (30%)");
 
             // The server has sent both finals and the undated duplicate before this
             // older response. The fixture render acknowledgement proves consumption.
@@ -40,12 +40,12 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Equal(2, assistants.Length);
             Assert.Equal(ContextUsageFixture.FirstReply, assistants[0].GetProperty("Text").GetString());
             Assert.Equal(ContextUsageFixture.FinalReply, assistants[1].GetProperty("Text").GetString());
-            CaptureUsageFooter(run, "03-older-history-preserves-live-measurement.png", "1.5K/5.0K (30%)");
+            CaptureUsageFooter(run, "03-older-history-preserves-live-measurement.png", "1.5K of 5.0K (30%)");
 
             await RefreshUsageListingAsync(run, usage, ContextUsageListing.MissingTotal,
-                "04-missing-total-does-not-rewind.png", "1.5K/5.0K (30%)");
+                "04-missing-total-does-not-rewind.png", "1.5K of 5.0K (30%)");
             await RefreshUsageListingAsync(run, usage, ContextUsageListing.Lower800,
-                "05-valid-total-before-ignored-envelope.png", "800/5.0K (16%)");
+                "05-valid-total-before-ignored-envelope.png", "800 of 5.0K (16%)");
 
             usage.SelectListing(ContextUsageListing.Delayed1200);
             var captured = run.Gateway.HoldNextSessionList();
@@ -54,21 +54,21 @@ public sealed partial class GatewayFixtureUiTests
             usage.SelectListing(ContextUsageListing.Lower600);
             await run.Gateway.NotifySessionsChangedAsync(deadline.Token);
             await WaitUsageListingRenderedAsync(run, ContextUsageListing.Lower600);
-            await WaitUiAsync(run, () => FindUsageFooter(run, "600/5.0K (12%)") is not null, "newer lower usage rendered");
-            CaptureUsageFooter(run, "06-newer-total-lowers-to-600.png", "600/5.0K (12%)");
+            await WaitUiAsync(run, () => FindUsageFooter(run, "600 of 5.0K (12%)") is not null, "newer lower usage rendered");
+            CaptureUsageFooter(run, "06-newer-total-lowers-to-600.png", "600 of 5.0K (12%)");
             var completedListings = run.Gateway.Requests.Count(request => request.Method == "sessions.list");
             run.Gateway.ReleaseSessionList();
             await run.Gateway.WaitForCompletedRequestAsync("sessions.list",
                 occurrence: completedListings, cancellationToken: deadline.Token);
             await CaptureSettledUsageListingAsync(run, ContextUsageListing.Delayed1200,
-                "07-delayed-listing-cannot-rewind.png", "600/5.0K (12%)");
+                "07-delayed-listing-cannot-rewind.png", "600 of 5.0K (12%)");
 
             Assert.Equal(2, run.Gateway.Requests.Count(request => request.Method == "chat.send" && request.Outcome == "ok"));
             await File.WriteAllTextAsync(Path.Combine(run.ArtifactsDirectory, "context-usage-proof.json"),
                 JsonSerializer.Serialize(new
                 {
                     scenario = scenario.Name, scenario.Sha256,
-                    proof = "Synthetic Gateway WebSocket, real client/provider/history loader, mounted native footer",
+                    proof = "Synthetic Gateway WebSocket, real client/provider/history loader, mounted composer context indicator",
                     timestamp = ContextUsageFixture.MeasurementTimestamp,
                     olderHistory = new { offset = -1, totalTokens = 1_000, contextPercent = 20 },
                     missingTotal = new { offset = 10, inputTokens = 12, outputTokens = 480, totalTokensFresh = false },
@@ -94,7 +94,7 @@ public sealed partial class GatewayFixtureUiTests
         await WaitUiAsync(run, () => IsVisibleInTimeline(run, reply)
             && FindUsageFooter(run, expectedFooter) is not null
             && ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern))
-                .Current.Value.Length == 0, "completed send, latest request footer and reply");
+                .Current.Value.Length == 0, "completed send, latest composer usage and reply");
     }
 
     private static async Task RefreshUsageListingAsync(GatewayFixtureRun run, ContextUsageFixture usage,
@@ -137,24 +137,20 @@ public sealed partial class GatewayFixtureUiTests
 
     private static AutomationElement? FindUsageFooter(GatewayFixtureRun run, string expected)
     {
-        var timeline = FindTimeline(run);
-        if (timeline is null) return null;
-        return timeline.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
-            .Cast<AutomationElement>().SingleOrDefault(element =>
-                !element.Current.IsOffscreen && element.Current.Name.EndsWith(expected, StringComparison.Ordinal)
-                && element.Current.Name.Contains("browse", StringComparison.OrdinalIgnoreCase));
+        var indicator = FindById(run, "ChatContextUsage");
+        return indicator is not null && !indicator.Current.IsOffscreen &&
+            indicator.Current.Name.EndsWith(expected, StringComparison.Ordinal) ? indicator : null;
     }
 
     private static void CaptureUsageFooter(GatewayFixtureRun run, string name, string expected)
     {
         var footer = FindUsageFooter(run, expected);
         Assert.NotNull(footer);
-        var viewport = FindTimeline(run)!.Current.BoundingRectangle;
+        var viewport = FindById(run, "ChatComposerArea")!.Current.BoundingRectangle;
         var bounds = footer.Current.BoundingRectangle;
         Assert.True(bounds.Width > 0 && bounds.Height > 0 && bounds.Top >= viewport.Top &&
             bounds.Bottom <= viewport.Bottom && bounds.Left >= viewport.Left && bounds.Right <= viewport.Right,
-            "The asserted usage footer must be visible inside the mounted transcript.");
+            "The asserted usage indicator must be visible inside the mounted composer.");
         Marshal.ThrowExceptionForHR(DwmFlush());
         OwnedWindowCapture.Save(run, FindHub(run), name, footer, FindById(run, "ChatComposerInput")!);
         Assert.NotNull(FindUsageFooter(run, expected));

@@ -32,6 +32,8 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 {
+    // Native float layout can differ by a few millionths of a DIP.
+    private const int NativeLayoutPrecision = 4;
     private Window? _captureWindow;
     private const string Draft = "Turn this into a schedule for tomorrow.";
     private const string UserMessage = "Help me plan a focused workday.";
@@ -211,7 +213,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(TextAlignment.Center, FindControl<TextBlock>(surface, "ChatWelcomeHint").TextAlignment);
                 var avatarBounds = Bounds(avatar, surface);
                 Assert.InRange(avatarBounds.Left + avatarBounds.Width / 2, width / 2d - 1, width / 2d + 1);
-                Assert.Equal(ChatVisuals.WelcomeAvatarSize(width), avatarBounds.Width);
+                Assert.Equal(ChatVisuals.WelcomeAvatarSize(width), avatarBounds.Width, precision: 3);
                 Assert.True(avatarBounds.Bottom < Bounds(header, surface).Top);
                 Assert.Equal("Pick where this session works, then say what to do.",
                     FindControl<TextBlock>(surface, "ChatWelcomeHint").Text);
@@ -277,7 +279,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 picture = Assert.Single(FindDescendants<PersonPicture>(badge));
                 Assert.Equal("Configured proof assistant", picture.DisplayName);
                 Assert.Equal(emoji ?? "", picture.Initials);
-                Assert.Equal(96, picture.ActualWidth);
+                Assert.Equal(96, picture.ActualWidth, precision: 3);
                 var face = Assert.Single(FindDescendants<Viewbox>(badge));
                 Assert.Equal(emoji is null && avatarUrl is null ? Visibility.Visible : Visibility.Collapsed,
                     face.Visibility);
@@ -303,7 +305,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 Assert.Same(picture, Assert.Single(FindDescendants<PersonPicture>(
                     FindControl<NativeChatWelcomeAvatar>(surface, "ChatWelcomeAvatar"))));
-                Assert.Equal(64, picture!.ActualWidth);
+                Assert.Equal(64, picture!.ActualWidth, precision: 3);
                 if (avatarUrl is not null) Assert.NotNull(picture.ProfilePicture);
             });
         }, "empty", placementGateway: new PlacementProofGateway(emoji, avatarUrl),
@@ -332,7 +334,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(0, picture.Opacity);
                 var face = Assert.Single(FindDescendants<Viewbox>(badge));
                 Assert.Equal(Visibility.Visible, face.Visibility);
-                Assert.Equal(96, face.ActualWidth);
+                Assert.Equal(96, face.ActualWidth, precision: 3);
             });
             await CaptureAsync(surface, "UnconfiguredDefaultAgentFace");
             Assert.Contains("main", provider.AgentIdentityRequests);
@@ -434,9 +436,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 var face = Assert.Single(FindDescendants<Viewbox>(avatar!));
                 Assert.Equal(Visibility.Visible, face.Visibility);
-                Assert.Equal(36, avatar!.ActualWidth);
-                Assert.Equal(36, avatar.ActualHeight);
+                Assert.Equal(36, avatar!.ActualWidth, NativeLayoutPrecision);
+                Assert.Equal(36, avatar.ActualHeight, NativeLayoutPrecision);
                 AssertAvatarFitsSlot(face, avatar);
+                var message = Assert.Single(
+                    Assert.IsType<Grid>(VisualTreeHelper.GetParent(avatar)).Children.OfType<StackPanel>());
+                Assert.InRange(Bounds(message, surface).Left - Bounds(avatar, surface).Right, 9.5, 10.5);
             });
         });
     }
@@ -3097,7 +3102,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                         item => item.Name == "ContentPresenter");
                     Assert.Equal(0, Assert.IsType<SolidColorBrush>(presenter.Background).Color.A);
                     Assert.True(button.ActualWidth > 32);
-                    Assert.Equal(32, button.ActualHeight);
+                    Assert.Equal(32, button.ActualHeight, precision: 3);
                     Assert.Equal(new CornerRadius(4), button.CornerRadius);
                     Assert.Empty(FindDescendants<Viewbox>(button));
                     var chevron = Assert.Single(FindDescendants<TextBlock>(button),

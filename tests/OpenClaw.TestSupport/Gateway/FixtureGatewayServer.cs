@@ -448,6 +448,32 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    /// <summary>Publishes the producer's optional terminal content and authoritative display-tail override.</summary>
+    public Task PublishChatTerminalAsync(string sessionKey, string runId, string state,
+        string? text = null, IReadOnlyList<object>? displayContent = null, bool yielded = false,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        if (state is not ("final" or "error" or "aborted"))
+            throw new ArgumentException("Expected a terminal chat state.", nameof(state));
+        var payload = new Dictionary<string, object?>
+        {
+            ["sessionKey"] = sessionKey, ["runId"] = runId, ["state"] = state,
+            ["seq"] = Interlocked.Increment(ref _chatEventSequence),
+        };
+        if (yielded)
+            payload["yielded"] = true;
+        if (text is not null)
+        {
+            var message = new Dictionary<string, object?> { ["role"] = "assistant",
+                ["content"] = new[] { new { type = "text", text } } };
+            if (displayContent is not null)
+                message["openclawDisplayContent"] = displayContent;
+            payload["message"] = message;
+        }
+        return PublishEventAsync(new { type = "event", @event = "chat", payload }, cancellationToken);
+    }
+
     public Task PublishChatSnapshotAsync(string sessionKey, string runId, string text,
         bool includeRunId, CancellationToken cancellationToken = default)
     {
