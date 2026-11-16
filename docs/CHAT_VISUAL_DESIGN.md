@@ -783,6 +783,31 @@ remain in timeline state, and late usage updates do not bring the row back.
 Pending questions or approvals keep their waiting indicator until resolved.
 OS reduced motion disables the moving presentation.
 
+Lobster visits port the Control UI's composer lobster (openclaw/openclaw@4cffd43,
+`ui/src/components/lobster-pet*.ts(x)` and `ui/src/styles/lobster-pet.css`). Now and then
+a seeded visitor perches on the top edge of the new-session composer, in the widest free
+stretch clear of the placement pickers. Upstream's 88-pixel headroom clips it, and nothing
+paints below the composer's top edge. It is drawn natively at 16x14 pixels times its rolled
+scale from upstream's 120x105 artwork, with palette paint, accessories, eyes and claws.
+Upstream's keyframes drive entrances, acts, walks, breathing and blinking, and the visit
+schedule, familiarity, acts, status visits and reactions reproduce upstream traces.
+Hover shows its name. A click startles it and press-and-hold pets it. Right-click opens a
+native menu with Dismiss and Dismiss and don't show again, which returns focus to whatever
+held it. The second choice turns the device-local Settings > Chat > Lobster visits toggle
+off. Visitors pace worriedly while the Gateway is disconnected and keep a quiet vigil during
+runs over ten minutes. The visitor stays with an empty session through disconnects even
+though the new-session chrome hides.
+
+It is decorative and pointer-only, as upstream's aria-hidden sprite is. It never takes focus,
+and its automation peer sits only in the Raw view. It is hidden in High Contrast. With
+Windows animation effects off, it still visits but never moves. Acts and loops stop while
+the window is minimized or hidden, and everything stops when the composer unmounts.
+The Hub draws only the top lane. Ledge passers, bottles, molts, twins, the Elder,
+sounds, theme critters and palette pattern loops are not ported. `LobsterVisitOwner` owns
+the visit state, and `NativeLobsterVisitor` owns rendering, input and Windows settings.
+Isolated runs may pin the cast with `OPENCLAW_LOBSTER_VISITS_SEED` (the fixture host's
+`--lobster-seed`).
+
 Queued submissions leave the textbox and appear in a single compact panel directly
 above the composer, separate from the virtualized transcript. `ReactorChatPendingMessages`
 owns this presentation; the provider still owns ordering, dispatch, cancellation and promotion.

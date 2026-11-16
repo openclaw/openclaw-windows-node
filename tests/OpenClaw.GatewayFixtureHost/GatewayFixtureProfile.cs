@@ -29,6 +29,12 @@ public sealed class GatewayFixtureProfile : IDisposable
     public bool NodeBrowserProxyEnabled { get; }
     public bool ConnectGateway { get; }
 
+    /// <summary>
+    /// Pins the composer lobster visitor's seed for this isolated app (OPENCLAW_LOBSTER_VISITS_SEED), so UI proof gets
+    /// a known cast and visit schedule. Null leaves visits random.
+    /// </summary>
+    public uint? LobsterVisitSeed { get; set; }
+
     public GatewayFixtureProfile(Uri endpoint, string token, bool enableNodeBrowserProxy = false,
         string appTheme = "Light", bool connectGateway = true)
     {
@@ -122,6 +128,8 @@ public sealed class GatewayFixtureProfile : IDisposable
         start.Environment["OPENCLAW_SKIP_UPDATE_CHECK"] = "1";
         start.Environment["OPENCLAW_SUPPRESS_EXTERNAL_BROWSER"] = "1";
         start.Environment["OPENCLAW_LANGUAGE"] = "en-US";
+        if (LobsterVisitSeed is { } lobsterSeed)
+            start.Environment["OPENCLAW_LOBSTER_VISITS_SEED"] = lobsterSeed.ToString(CultureInfo.InvariantCulture);
         if (postSetupLaunch is not null)
         {
             if (postSetupRestart)

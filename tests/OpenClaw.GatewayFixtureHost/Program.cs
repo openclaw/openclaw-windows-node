@@ -14,7 +14,7 @@ internal static class Program
             return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|sessions-hub|sessions-hub-readonly|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|sessions-hub|sessions-hub-readonly|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--lobster-seed <uint>] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -25,6 +25,7 @@ internal static class Program
         string? interaction = null;
         UsageAnalyticsMode? usageMode = null;
         var theme = "Light";
+        uint? lobsterSeed = null;
         var enableNodeBrowserProxy = false;
         var foreignBrowserControl = false;
         for (var index = 0; index < args.Length; index++)
@@ -40,7 +41,7 @@ internal static class Program
                 foreignBrowserControl = true;
                 continue;
             }
-            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction" or "--usage-mode" or "--theme"))
+            if (index + 1 >= args.Length || args[index] is not ("--app" or "--artifacts" or "--duration-seconds" or "--scenario" or "--interaction" or "--usage-mode" or "--theme" or "--lobster-seed"))
             {
                 Console.Error.WriteLine($"Unknown or incomplete option: {args[index]}");
                 return 2;
@@ -49,6 +50,15 @@ internal static class Program
             else if (args[index] == "--artifacts") artifacts = args[++index];
             else if (args[index] == "--scenario") scenarioName = args[++index];
             else if (args[index] == "--interaction") interaction = args[++index];
+            else if (args[index] == "--lobster-seed")
+            {
+                if (!uint.TryParse(args[++index], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var seed))
+                {
+                    Console.Error.WriteLine("--lobster-seed must be an unsigned integer.");
+                    return 2;
+                }
+                lobsterSeed = seed;
+            }
             else if (args[index] == "--usage-mode")
             {
                 if (!Enum.TryParse<UsageAnalyticsMode>(args[++index], ignoreCase: true, out var mode) || !Enum.IsDefined(mode))
@@ -105,7 +115,8 @@ internal static class Program
                 enableNodeBrowserProxy: enableNodeBrowserProxy,
                 foreignBrowserControl: foreignBrowserControl,
                 scenario: scenario,
-                appTheme: theme);
+                appTheme: theme,
+                configureProfile: profile => profile.LobsterVisitSeed = lobsterSeed);
             if (interaction is not null) run.Gateway.Interactive!.Playback.Select(interaction);
             await run.InvokeAsync("app.navigate", new { page = scenario.Boards is null ? "chat" : "dashboards" });
             Console.WriteLine($"Fixture ready. App PID: {run.AppProcessId}");

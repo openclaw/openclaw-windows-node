@@ -103,6 +103,11 @@ public record class SettingsData
     public bool ShowChatToolCalls { get; set; } = true;
     /// <summary>Show supplied assistant reasoning in the chat timeline (web <c>chatShowThinking</c>).</summary>
     public bool ShowChatThinking { get; set; } = true;
+    /// <summary>
+    /// Let a lobster occasionally visit the new-chat composer (Control UI "Lobster visits"). Device-local, like the
+    /// web setting, which is stored per browser rather than synced through the Gateway.
+    /// </summary>
+    public bool ShowLobsterVisits { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;

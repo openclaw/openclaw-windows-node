@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClawTray.Chat.LobsterVisits;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using System;
@@ -952,7 +953,30 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         {
             surfaces.Add(Empty());
         }
-        surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
+        if (props.Compact)
+        {
+            surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
+        }
+        else
+        {
+            // The writing surface always sits in this host grid, so the first send never reparents the editor. The
+            // lobster visitor overlays the same cell on the new-session composer.
+            var visitor = vm.ShowsLobsterVisitor
+                ? NativeLobsterVisitorElement.NativeLobsterVisitor()
+                    .Set(native => native.Update(new LobsterVisitorInputs(
+                        inputs.CurrentThread.Id,
+                        string.Equals(inputs.ConnectionState, "connected", StringComparison.Ordinal),
+                        LobsterComposerVisits.Runs(props.InputSnapshot.Threads),
+                        vm.LobsterVisitsEnabled,
+                        props.Session.DisableLobsterVisits)))
+                    .AutomationId("ChatLobsterVisitor")
+                : Empty();
+            surfaces.Add(Grid([GridSize.Star()], [GridSize.Auto],
+                    writingSurface.WithKey("chat-writing-surface").Grid(row: 0, column: 0),
+                    visitor.WithKey("chat-lobster-visitor").Grid(row: 0, column: 0))
+                .HAlign(HorizontalAlignment.Stretch)
+                .WithKey("chat-writing-surface-host"));
+        }
         return Border(VStack(8, surfaces.ToArray())
                 .MaxWidth(ChatVisuals.ReadingWidth)
                 .Margin(props.Compact
