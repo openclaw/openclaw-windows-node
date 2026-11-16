@@ -115,6 +115,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     public GatewayRegistry? Registry => _gatewayRegistry;
     public GatewayConnectionManager? ConnectionManager => _connectionManager;
     private readonly Theming.AppThemeApplicator _themeApplicator = new();
+    private Theming.GatewayThemeCatalog? _themeCatalog;
+    private Theming.GatewayThemeFollower? _themeFollower;
+    private SettingsWriteOrigin? _themeFollowerOrigin;
     private global::Windows.UI.ViewManagement.UISettings? _themeColorSettings;
     private bool _themeResourcesChanged;
     private ProfileAutoFillCoordinator? _profileAutoFill;
@@ -554,6 +557,12 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         }
 
         var dispatcher = new WinUIDispatcher(_dispatcherQueue);
+        _themeCatalog = new Theming.GatewayThemeCatalog(dispatcher);
+        _themeFollower = new Theming.GatewayThemeFollower(
+            _themeCatalog,
+            () => _settings?.Appearance,
+            PersistFollowedAppearance,
+            ApplyThemePreferenceToOpenWindows);
         var context = new AppServiceContext(
             dispatcher,
             this,
@@ -567,6 +576,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         var services = new ServiceCollection();
         services.AddOpenClawTrayCore(context);
+        services.AddSingleton<Theming.IGatewayThemeCatalog>(_themeCatalog);
 
         // WinUI-bound registrations are added here (not in the pure core) so the core
         // stays testable in a pure net10 project.
@@ -1320,6 +1330,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var changed = true;
         try
         {
+            // Turning on "Follow Gateway theme" records the Gateway's current theme before it is resolved.
+            SyncFollowedGatewayTheme();
             changed = _themeApplicator.Apply(
                 OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_settings.Appearance), EffectiveColorMode());
         }
@@ -1346,6 +1358,31 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _ => ThemeHelper.IsDarkMode() ? OpenClaw.Shared.Themes.ThemeColorMode.Dark : OpenClaw.Shared.Themes.ThemeColorMode.Light,
         };
 
+    // A failed save of the followed theme must not stop the theme from applying.
+    private void SyncFollowedGatewayTheme()
+    {
+        try
+        {
+            _themeFollower?.Sync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Warn($"[Themes] Recording the followed Gateway theme failed: {ex.GetType().Name} {ex.Message}");
+        }
+    }
+
+    private void PersistFollowedAppearance(OpenClaw.Shared.Themes.AppearanceSettings appearance)
+    {
+        if (SettingsStore is { } store)
+        {
+            store.Update(GetOrCreateSettingsWriteOrigin(ref _themeFollowerOrigin, store), edit => edit.Appearance = appearance);
+            return;
+        }
+        if (_settings is null)
+            return;
+        _settings.Appearance = appearance;
+        _settings.Save();
+    }
 
     private void ApplyThemePreference(Window? window)
     {
@@ -2515,6 +2552,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _gatewayService?.AttachClient(e.NewClient, e.OldClient);
         _automationsOverview?.SetConnection(GatewayClient);
         SynchronizeUsageProviderConnection();
+        _themeCatalog?.SetConnection(GatewayClient, _connectionManager?.CurrentSnapshot.GatewayId);
         _inboxGatewaySource?.AttachClient(e.NewClient);
 
         // Configure new client
@@ -2579,6 +2617,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         {
             _automationsOverview?.SetConnection(GatewayClient);
             SynchronizeUsageProviderConnection();
+            _themeCatalog?.SetConnection(GatewayClient, snap.GatewayId);
             if (_appState != null) _appState.Status = mapped;
             _windowManager?.UpdateHubTitleBarStatus(snap, mapped);
             _trayController?.ApplyConnectionState(mapped, snap.OverallState);

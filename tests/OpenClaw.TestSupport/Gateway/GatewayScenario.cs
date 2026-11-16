@@ -65,6 +65,7 @@ public sealed partial class GatewayScenario
     private readonly ContextUsageFixture? _contextUsage;
     private readonly FixtureBoards? _boards;
     private readonly SystemsFixture? _systems;
+    private readonly ThemesFixture? _themes;
     private readonly Dictionary<string, JsonObject?> _sessionChanges = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Session> _createdSessions = new(StringComparer.Ordinal);
     private readonly List<object> _createdAgents = [];
@@ -75,7 +76,11 @@ public sealed partial class GatewayScenario
 
     public FixtureBoards? Boards => _boards;
 
+    /// <summary>The synthetic theme catalog, for <see cref="ThemesFixture.ScenarioName"/>.</summary>
+    public ThemesFixture? Themes => _themes;
+
     public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
+        : _themes is not null ? ThemesFixture.ScenarioName
         : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(MarkdownSelectionSessionKey) ? "markdown-selection"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
@@ -93,8 +98,10 @@ public sealed partial class GatewayScenario
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
         bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
         UsageAnalyticsFixture? usageAnalytics = null, bool accessibilityBaseline = false,
-        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false)
+        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false,
+        ThemesFixture? themes = null)
     {
+        _themes = themes;
         _inboxFeed = inboxFeed;
         _accessibilityBaseline = accessibilityBaseline;
         _hubMethods = hubMethods;
@@ -136,6 +143,7 @@ public sealed partial class GatewayScenario
             .Concat(hubMethods ?? [])
             .Concat(boards is null ? [] : FixtureBoards.Methods)
             .Concat(systems is null ? [] : SystemsFixture.Methods)
+            .Concat(themes is null ? [] : ThemesFixture.Methods)
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal).ToArray());
         var source = JsonSerializer.Serialize(new
@@ -159,6 +167,7 @@ public sealed partial class GatewayScenario
         UsageAnalyticsFixture.Name => CreateUsageAnalytics(),
         SystemsFixture.InventoryName => CreateSystems(empty: false),
         SystemsFixture.EmptyName => CreateSystems(empty: true),
+        ThemesFixture.ScenarioName => CreateThemes(),
         "accessibility-baseline" => CreateAccessibilityBaseline(),
         _ => throw new ArgumentException("Unknown fixture scenario.", nameof(name))
     };
@@ -191,6 +200,13 @@ public sealed partial class GatewayScenario
         var reads = browse._reads.Where(read => !SystemsFixture.Methods.Contains(read.Key, StringComparer.Ordinal))
             .ToDictionary(read => read.Key, read => read.Value, StringComparer.Ordinal);
         return new(sessions, reads, systems: new SystemsFixture(empty));
+    }
+
+    /// <summary>Read-only Gateway theme catalog with plugin and imported themes. Selection is never written.</summary>
+    public static GatewayScenario CreateThemes()
+    {
+        var browse = CreateBrowse();
+        return new(browse._sessions, browse._reads, themes: new ThemesFixture());
     }
 
     public static GatewayScenario CreateInteractive()
@@ -512,6 +528,7 @@ public sealed partial class GatewayScenario
                     ? new[] { "connect.challenge", "sessions.changed", "agent", "chat", "question.requested", "question.resolved", "exec.approval.requested", "exec.approval.resolved" }
                     : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
                     : _systems is not null ? new[] { "connect.challenge", "sessions.changed", "agent" }.Concat(SystemsFixture.Events).ToArray()
+                    : _themes is not null ? new[] { "connect.challenge", "sessions.changed", "agent" }.Concat(ThemesFixture.Events).ToArray()
                     : new[] { "connect.challenge", "sessions.changed", "agent" },
                 capabilities = _publishedModelCatalog
                     ? new[] { "session-scoped-model-catalog", "published-model-catalog" }
@@ -535,6 +552,7 @@ public sealed partial class GatewayScenario
                         : _hubMethods is not null ? (_hubReadOnly ? new[] { "operator.read" } : new[] { "operator.admin", "operator.write", "operator.read" })
                         : _contextUsage is not null || _accessibilityBaseline ? new[] { "operator.read", "operator.write" }
                         : _systems is not null ? new[] { "operator.admin", "operator.read", "operator.pairing" }
+                        : _themes is not null ? new[] { "operator.read", "operator.sessions.read" }
                         : _allowAgentCreation || _allowSessionMutations || (_cronJobs is not null && !CronReadOnly)
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
@@ -620,6 +638,8 @@ public sealed partial class GatewayScenario
             return ResolveApproval(parameters);
         if (_systems is not null && _systems.Handles(method))
             return _systems.Respond(method, parameters);
+        if (_themes is not null && _themes.Handles(method))
+            return _themes.Respond(method, parameters);
         if (_allowSessionMutations && method == "sessions.create")
             return CreateConversation(parameters);
         if (_allowSessionMutations && method is "sessions.patch" or "sessions.delete")
