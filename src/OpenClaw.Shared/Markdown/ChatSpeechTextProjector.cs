@@ -27,15 +27,17 @@ namespace OpenClaw.Shared.Markdown;
 ///   <item>User punctuation is otherwise preserved. Only gaps the projector
 ///         created (by dropping a link, code span or URL) are tidied, and never
 ///         before a dot that starts a word, so <c>.NET</c> and <c>./build</c>
-///         survive.</item>
+///         survive; a leading ellipsis (<c>... still waiting.</c>) is kept.</item>
 ///   <item>No URL is ever spoken: autolinks are dropped by the builder, and
 ///         URL-shaped tokens are removed from every prose and code run, because
 ///         md4c does not autolink ports, <c>localhost</c>, <c>ws://</c>,
 ///         <c>www.</c> or e-mail addresses reliably.</item>
-///   <item>Inline code that looks like a credential assignment (<c>token=…</c>,
-///         <c>api_key: …</c>, a bearer header) is dropped whole, as the previous
-///         auto-read path dropped code spans. It must never reach a cloud
-///         provider.</item>
+///   <item>Inline code that assigns or carries a credential is dropped whole, as
+///         the previous auto-read path dropped code spans: <c>token=…</c>,
+///         <c>api_key: …</c>, <c>{"api_key":"…"}</c>, <c>Authorization: Bearer …</c>
+///         and a bare <c>Bearer …</c> value. The same rule removes such a code
+///         span from a link label before the label is flattened. A secret must
+///         never reach a cloud provider.</item>
 ///   <item>Fenced code blocks are silent but still end a sentence. Other inline
 ///         code is spoken, with <c>_</c>, <c>/</c> and non-decimal dots read as
 ///         word separators.</item>
@@ -100,11 +102,31 @@ public static class ChatSpeechTextProjector
         + @"|[\p{L}\p{N}._%+\-]+@[\p{L}\p{N}\-]+(?:\.[\p{L}\p{N}\-]+)+",
         RegexOptions.Compiled);
 
-    /// <summary>Inline code that assigns a credential is not spoken at all.</summary>
+    /// <summary>
+    /// Text that assigns or carries a credential is not spoken at all. Both the
+    /// plain shapes (<c>api_key=…</c>, <c>Authorization: Bearer …</c>) and the
+    /// ordinary serialized ones (<c>{"api_key":"…"}</c>, a bare
+    /// <c>Bearer …</c> value) must match, because a secret that reaches this
+    /// text reaches the configured cloud provider. A quoted name is admitted by
+    /// the optional quote, and a prefixed name (<c>auth_token</c>,
+    /// <c>x-api-key</c>) by the leading run.
+    /// </summary>
     private static readonly Regex CredentialAssignment = new(
-        @"(?i)\b(?:token|secret|password|passwd|api[_-]?key|access[_-]?key"
-        + @"|client[_-]?secret|authorization|bearer)\b\s*[:=]",
+        @"(?i)\b[A-Za-z0-9_\-]*(?:token|secret|password|passwd|credential"
+        + @"|api[_-]?key|access[_-]?key|client[_-]?secret|authorization)"
+        + @"[""']?\s*[:=]"
+        + @"|\bbearer\s+\S",
         RegexOptions.Compiled);
+
+    /// <summary>
+    /// True when <paramref name="text"/> assigns or carries a credential, so
+    /// speech must never contain it. Shared with
+    /// <see cref="ChatMarkdownAstBuilder"/>: a link label is buffered as plain
+    /// text, so a credential-shaped code span has to go before the label is
+    /// flattened and the code flag is lost.
+    /// </summary>
+    internal static bool IsCredentialAssignment(string text) =>
+        !string.IsNullOrEmpty(text) && CredentialAssignment.IsMatch(text);
 
     /// <summary>
     /// Speakable plain text for <paramref name="markdown"/>. Returns an empty
@@ -231,7 +253,7 @@ public static class ChatSpeechTextProjector
     {
         if (text.IsCode)
         {
-            if (CredentialAssignment.IsMatch(text.Text))
+            if (IsCredentialAssignment(text.Text))
                 return string.Empty;
 
             // Strip here as well as on the joined block: splitting an identifier
@@ -242,9 +264,12 @@ public static class ChatSpeechTextProjector
         var value = text.Text;
         if (value.Contains("[Image", StringComparison.Ordinal))
         {
+            // Alt text is spoken, which the previous sanitizer never did, so a
+            // credential there would be a new disclosure.
             value = ImagePlaceholder.Replace(
                 value,
                 match => match.Groups["alt"].Success
+                         && !IsCredentialAssignment(match.Groups["alt"].Value)
                     ? " " + match.Groups["alt"].Value + " "
                     : " ");
         }
@@ -360,17 +385,24 @@ public static class ChatSpeechTextProjector
     private static string TrimOrphanedSeparators(string text)
     {
         var trimmed = text.Trim().TrimEnd(',', ';', ':').TrimEnd();
-        if (trimmed.Length == 0)
+        if (trimmed.Length == 0 || !IsSeparator(trimmed[0]))
             return trimmed;
 
-        if (trimmed[0] is '.' or ',' or ';' or ':'
-            && (trimmed.Length == 1 || !char.IsLetterOrDigit(trimmed[1])))
-        {
-            trimmed = trimmed.TrimStart(',', ';', ':', '.');
-        }
+        var run = 0;
+        while (run < trimmed.Length && IsSeparator(trimmed[run]))
+            run++;
 
-        return trimmed;
+        // Authored punctuation stays: a run of two or more dots is an ellipsis
+        // ("... still waiting."), and a separator followed by a word starts
+        // that word (".NET", "./build"). Only a separator the projector
+        // orphaned at the block start - by dropping a leading URL or code span
+        // - is removed.
+        var isEllipsis = run > 1 && !trimmed.AsSpan(0, run).ContainsAnyExcept('.');
+        var startsWord = run < trimmed.Length && char.IsLetterOrDigit(trimmed[run]);
+        return isEllipsis || startsWord ? trimmed : trimmed[run..].TrimStart();
     }
+
+    private static bool IsSeparator(char value) => value is '.' or ',' or ';' or ':';
 
     private static string Collapse(string text) =>
         WhitespaceRuns.Replace(text, " ").Trim();

@@ -87,6 +87,13 @@ public sealed class ChatMarkdownAstBuilder
     private int _linkDepth;
     private StringBuilder? _linkDisplay;
     private string? _pendingLinkHref;
+
+    // A link label is buffered as plain text, so a code span inside it loses
+    // its code flag before the label is flattened. Under
+    // MdLinkFlattening.DisplayOnly that would let a credential-shaped span
+    // reach speech as ordinary prose, so remember where each label code span
+    // started and drop a credential instead of appending it.
+    private readonly Stack<(StringBuilder? Buffer, int Start)> _linkCodeSpans = new();
     private readonly Stack<StringBuilder> _imageStack = new();
     private int _imageDepth;
     private StringBuilder? _imageAlt;
@@ -156,6 +163,7 @@ public sealed class ChatMarkdownAstBuilder
         _underlineDepth = 0;
         _codeSpanDepth = 0;
         _linkStack.Clear();
+        _linkCodeSpans.Clear();
         _linkDepth = 0;
         _linkDisplay = null;
         _pendingLinkHref = null;
@@ -432,8 +440,16 @@ public sealed class ChatMarkdownAstBuilder
                 _strongDepth++;
                 return 0;
             case MarkdownSpanType.Code:
+            {
                 _codeSpanDepth++;
+                // Only a label buffered as plain text needs this: its code
+                // spans are gone by the time the label is emitted.
+                var label = _linkFlattening == MdLinkFlattening.DisplayOnly && _linkDepth > 0
+                    ? _linkDisplay
+                    : null;
+                _linkCodeSpans.Push((label, label?.Length ?? -1));
                 return 0;
+            }
             case MarkdownSpanType.Del:
                 _strikeDepth++;
                 return 0;
@@ -476,6 +492,7 @@ public sealed class ChatMarkdownAstBuilder
                 return 0;
             case MarkdownSpanType.Code:
                 if (_codeSpanDepth > 0) _codeSpanDepth--;
+                DropCredentialLabelCodeSpan();
                 return 0;
             case MarkdownSpanType.Del:
                 if (_strikeDepth > 0) _strikeDepth--;
@@ -532,6 +549,33 @@ public sealed class ChatMarkdownAstBuilder
             }
             default:
                 return 0;
+        }
+    }
+
+    /// <summary>
+    /// Removes the code span that just closed from the link label holding it
+    /// when that span assigns a credential. The label is buffered as plain
+    /// text, so this is the last point where the span is distinguishable;
+    /// keeping it would hand a secret to speech as ordinary prose.
+    /// </summary>
+    private void DropCredentialLabelCodeSpan()
+    {
+        if (_linkCodeSpans.Count == 0)
+            return;
+
+        var (buffer, start) = _linkCodeSpans.Pop();
+        if (buffer is null
+            || start < 0
+            || start >= buffer.Length
+            || !ReferenceEquals(buffer, _linkDisplay))
+        {
+            return;
+        }
+
+        if (ChatSpeechTextProjector.IsCredentialAssignment(
+                buffer.ToString(start, buffer.Length - start)))
+        {
+            buffer.Length = start;
         }
     }
 

@@ -116,6 +116,9 @@ public class ChatSpeechTextProjectorTests
     [InlineData("Secret `api_key=FAKE-SECRET-1234` here.", "Secret here.")]
     [InlineData("Header `Authorization: Bearer FAKE-TOKEN` here.", "Header here.")]
     [InlineData("Value `password: hunter2` here.", "Value here.")]
+    [InlineData("Payload `{\"api_key\":\"FAKE-SECRET-1234\"}` here.", "Payload here.")]
+    [InlineData("Bare `Bearer FAKE-TOKEN` here.", "Bare here.")]
+    [InlineData("Prefixed `auth_token: FAKE-TOKEN` here.", "Prefixed here.")]
     public void InlineCodeCredentialAssignment_IsDroppedWhole(string markdown, string expected)
     {
         var spoken = Project(markdown);
@@ -126,12 +129,28 @@ public class ChatSpeechTextProjectorTests
     }
 
     [Theory]
+    [InlineData("[`api_key=FAKE-SECRET-1234`](https://example.com)", "")]
+    [InlineData("See [`Bearer FAKE-TOKEN`](https://example.com) now.", "See now.")]
+    [InlineData("Docs [`token=FAKE-TOKEN`](https://example.com) here.", "Docs here.")]
+    public void CredentialInsideLinkLabel_IsNotSpoken(string markdown, string expected)
+    {
+        // A link label is buffered as plain text, so the code span inside it
+        // has lost its code flag by the time the label is flattened. The
+        // builder must drop the credential before that happens.
+        var spoken = Project(markdown);
+
+        Assert.Equal(expected, spoken);
+        Assert.DoesNotContain("FAKE", spoken);
+    }
+
+    [Theory]
     [InlineData("Install the .NET SDK.", "Install the .NET SDK.")]
     [InlineData("The app targets .NET 10.", "The app targets .NET 10.")]
     [InlineData("Use C#, .NET, or F# here.", "Use C#, .NET, or F# here.")]
     [InlineData(".NET is installed.", ".NET is installed.")]
     [InlineData("Run ./build now.", "Run ./build now.")]
     [InlineData("It costs .50 today.", "It costs .50 today.")]
+    [InlineData("... still waiting.", "... still waiting.")]
     public void DotsThatStartOrJoinAWord_SurviveCleanup(string markdown, string expected)
     {
         Assert.Equal(expected, Project(markdown));
@@ -141,6 +160,17 @@ public class ChatSpeechTextProjectorTests
     public void Image_SpeaksAltText()
     {
         Assert.Equal("A puppy. Done.", Project("![A puppy](https://example.com/p.png)\n\nDone."));
+    }
+
+    [Theory]
+    [InlineData("Before ![api_key=FAKE-SECRET-1234](https://example.com/p.png) after.", "Before after.")]
+    [InlineData("![Bearer FAKE-TOKEN](https://example.com/p.png)", "")]
+    public void CredentialInsideImageAlt_IsNotSpoken(string markdown, string expected)
+    {
+        var spoken = Project(markdown);
+
+        Assert.Equal(expected, spoken);
+        Assert.DoesNotContain("FAKE", spoken);
     }
 
     [Fact]

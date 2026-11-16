@@ -1,6 +1,7 @@
 using OpenClaw.Shared;
 using OpenClaw.Shared.Markdown;
 using OpenClawTray.Chat;
+using OpenClawTray.Services;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -45,6 +46,32 @@ public sealed class ChatSpeechTextProjectionTests
         Assert.DoesNotContain("FAKE", text);
         Assert.DoesNotContain("http", text);
         Assert.DoesNotContain("openclaw start", text);
+    }
+
+    [Fact]
+    public async Task SerializedAndBearerCredentials_NeverReachTheEngine()
+    {
+        using var run = new CoordinatorRun();
+
+        await run.Coordinator.SpeakResponseAsync(
+            "Rotate `{\"api_key\":\"FAKE-SECRET\"}` and `Bearer FAKE-TOKEN` first.");
+
+        var text = Assert.Single(run.Spoken);
+        Assert.Equal("Rotate and first.", text);
+        Assert.DoesNotContain("FAKE", text);
+    }
+
+    [Fact]
+    public async Task CredentialInALinkLabel_NeverReachesTheEngine()
+    {
+        using var run = new CoordinatorRun();
+
+        await run.Coordinator.SpeakResponseAsync(
+            "See [`api_key=FAKE-SECRET`](https://example.com) now.");
+
+        var text = Assert.Single(run.Spoken);
+        Assert.Equal("See now.", text);
+        Assert.DoesNotContain("FAKE", text);
     }
 
     [Fact]
