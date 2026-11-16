@@ -1348,6 +1348,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // unless a one-palette theme pins one: both modes then hold its only palette. They refresh after a theme change.
         Theming.BackdropPolicy.ConfigureWindowTheme(
             _themeApplicator.Current?.PinnedMode is null ? SettingsManager.AppThemeSystem : EffectiveThemePreference(), changed);
+        Chat.ChatBackgroundArtwork.Set(_themeApplicator.Current,
+            OpenClaw.Shared.Themes.AppearanceResolver.ActiveBackground(_settings.Appearance));
         return changed;
     }
 

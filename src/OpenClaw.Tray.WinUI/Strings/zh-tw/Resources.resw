@@ -4466,6 +4466,24 @@
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>使用 Windows 預設主題時，讓桌面透過視窗背景顯示。Gateway 主題一律使用純色。</value>
   </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>背景圖案</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>在新聊天和對話後方顯示主題圖案。跟隨 Gateway 主題時，會使用你在儀表板中的選擇。</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>無</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>淡化</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>滿版</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>圖案強度</value>
+  </data>
   <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
     <value>跟隨閘道主題</value>
   </data>

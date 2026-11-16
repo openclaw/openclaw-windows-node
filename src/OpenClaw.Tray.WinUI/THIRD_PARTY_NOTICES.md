@@ -198,6 +198,16 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
+## Gateway theme background artwork
+
+`Assets/ThemeBackgrounds/` bundles the light and dark background artwork the
+OpenClaw Control UI pairs with each built-in theme, plus its neutral pair for
+imported and plugin themes. `scripts/Update-ThemeBackgrounds.ps1` re-encodes the
+lossless WebP exports from OpenClaw commit
+`4ffdd2047d192dd65554de3c8c46c0e0197c6e2a`
+([ui/src/assets/themes](https://github.com/openclaw/openclaw/tree/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/assets/themes))
+as PNG without other changes. The OpenClaw MIT notice above applies.
+
 ## Gateway theme typefaces
 
 `Assets/Fonts/` bundles the typefaces that the OpenClaw Gateway's built-in

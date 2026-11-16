@@ -4467,6 +4467,24 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>Laat bij het Windows-standaardthema het bureaublad door vensterachtergronden heen schijnen. Gateway-thema's gebruiken altijd effen kleuren.</value>
   </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>Achtergrondillustratie</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>Thema-illustratie achter nieuwe chats en gesprekken. Wanneer je het Gateway-thema volgt, wordt je keuze uit het dashboard gebruikt.</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>Geen</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>Vervaagd</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>Volledig</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>Sterkte van de illustratie</value>
+  </data>
   <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
     <value>Gateway-thema volgen</value>
   </data>

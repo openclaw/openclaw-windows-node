@@ -248,6 +248,56 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     public bool IsManualThemeEnabled => !_followGatewayTheme;
 
+    /// <summary>Background artwork style: 0 none, 1 faded, 2 full bleed. While following, the dashboard's choice applies.</summary>
+    public int BackgroundStyleIndex
+    {
+        get => Background.Source != OpenClaw.Shared.Themes.BackgroundSourceKind.Theme ? 0
+            : Background.Presentation == OpenClaw.Shared.Themes.BackgroundPresentation.FullBleed ? 2 : 1;
+        set
+        {
+            if (_loading || _followGatewayTheme || value is < 0 or > 2 || value == BackgroundStyleIndex)
+                return;
+            var next = Background with
+            {
+                Source = value == 0 ? OpenClaw.Shared.Themes.BackgroundSourceKind.None : OpenClaw.Shared.Themes.BackgroundSourceKind.Theme,
+                AssetId = null,
+                Presentation = value == 2
+                    ? OpenClaw.Shared.Themes.BackgroundPresentation.FullBleed
+                    : OpenClaw.Shared.Themes.BackgroundPresentation.Faded,
+            };
+            PersistAppearance(appearance => appearance with { Background = next });
+            RaiseBackgroundState();
+        }
+    }
+
+    /// <summary>Background artwork strength, 0 to 100.</summary>
+    public double BackgroundVisibility
+    {
+        get => Math.Round(Background.Visibility * 100);
+        set
+        {
+            var visibility = Math.Clamp(value, 0, 100) / 100;
+            if (_loading || _followGatewayTheme || double.IsNaN(value) || Math.Abs(visibility - Background.Visibility) < 0.005)
+                return;
+            PersistAppearance(appearance => appearance with { Background = Background with { Visibility = visibility } });
+            RaiseBackgroundState();
+        }
+    }
+
+    public bool IsBackgroundEnabled => !_followGatewayTheme;
+
+    public bool IsBackgroundVisibilityEnabled => !_followGatewayTheme && BackgroundStyleIndex != 0;
+
+    private OpenClaw.Shared.Themes.BackgroundPreference Background =>
+        _appearance.Background ?? OpenClaw.Shared.Themes.BackgroundPreference.Default;
+
+    private void RaiseBackgroundState()
+    {
+        foreach (var name in new[] { nameof(BackgroundStyleIndex), nameof(BackgroundVisibility), nameof(IsBackgroundEnabled),
+            nameof(IsBackgroundVisibilityEnabled) })
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
+
     // Edits the stored appearance rather than this page's copy: App records followed Gateway themes in the
     // same object, and a stale copy would overwrite them.
     private void PersistAppearance(Func<OpenClaw.Shared.Themes.AppearanceSettings, OpenClaw.Shared.Themes.AppearanceSettings> change)
@@ -261,6 +311,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     {
         RebuildThemeChoices();
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsManualThemeEnabled)));
+        RaiseBackgroundState();
     }
 
     private OpenClaw.Shared.Themes.ThemeSelection? SelectionFor(string key)
@@ -511,6 +562,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _selectedThemeKey,
                 OpenClaw.Shared.Themes.AppearanceResolver.Resolve(s.Appearance.Theme) is null ? "" : s.Appearance.Theme!.Id,
                 nameof(SelectedThemeKey));
+            RaiseBackgroundState();
             SetField(ref _showDiagnostics, s.ShowDiagnosticsEffective, nameof(ShowDiagnostics));
             SetField(ref _notifyHealth, s.NotifyHealth, nameof(NotifyHealth));
             SetField(ref _notifyUrgent, s.NotifyUrgent, nameof(NotifyUrgent));
