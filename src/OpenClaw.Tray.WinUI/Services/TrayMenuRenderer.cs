@@ -96,12 +96,9 @@ internal sealed class TrayMenuRenderer
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new Image
+                new OpenClawTray.Controls.BrandMark
                 {
-                    Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(
-                        new Uri("ms-appx:///Assets/Square44x44Logo.targetsize-48_altform-unplated.png")),
-                    Width = 28,
-                    Height = 28,
+                    MarkSize = 28,
                     VerticalAlignment = VerticalAlignment.Center,
                 },
                 new TextBlock

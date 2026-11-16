@@ -23,6 +23,15 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         var entrance = UseRef<Storyboard?>(null);
         var reducedMotion = UseReducedMotion();
         var (now, setNow) = UseState(DateTimeOffset.UtcNow);
+        // The indicator follows the applied theme's branding, including live theme switches.
+        var (indicator, setIndicator) = UseState(Theming.ThemeBrandingState.Current.WorkingIndicator);
+        UseEffect((Func<Action>)(() =>
+        {
+            EventHandler changed = (_, _) => setIndicator(Theming.ThemeBrandingState.Current.WorkingIndicator);
+            Theming.ThemeBrandingState.Changed += changed;
+            setIndicator(Theming.ThemeBrandingState.Current.WorkingIndicator);
+            return () => Theming.ThemeBrandingState.Changed -= changed;
+        }), Array.Empty<object>());
         UseEffect((Func<Action>)(() =>
         {
             if (!progress.IsInProgress)
@@ -82,12 +91,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             return static () => { };
         }), progress.Label);
         return Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
-            Grid([GridSize.Star()], [GridSize.Star()],
-                NativeWorkingClawElement.NativeWorkingClaw()
-                    .Set(claw => claw.Update(progress.IsInProgress, progress.Waiting, progress.StartedAt?.ToString("O") ?? "idle"))
-                    .Size(18, 18).Opacity(1))
-                .Size(18, 18).Grid(column: 0).VAlign(VerticalAlignment.Center)
-                .AccessibilityView(AccessibilityView.Raw).AutomationId("ChatRunProgressClaw"),
+            WorkingGlyph(indicator, progress),
             Grid([GridSize.Star()], [GridSize.Auto],
                     // Star then Auto on a left-aligned grid: the status trims before the elapsed time.
                     Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
@@ -112,7 +116,9 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
                         .Ref(outgoingRef))
                 .Set(ClipToBounds)
                 .OnUnmount(ResetStatusSwap)
-                .Grid(column: 1).Margin(8, 0, 0, 0).VAlign(VerticalAlignment.Center))
+                // Without a glyph the status line starts at the edge; it always carries the working label.
+                .Grid(column: 1).Margin(indicator == OpenClaw.Shared.Themes.ThemeWorkingIndicator.None ? 0 : 8, 0, 0, 0)
+                .VAlign(VerticalAlignment.Center))
             .MinHeight(28).Margin(0, 4, 0, 2).Opacity(1).AutomationId("ChatRunProgress").AutomationName(text)
             .OnMount(row =>
             {
@@ -122,6 +128,35 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             })
             .OnUnmount(_ => entrance.Current?.Stop())
             .LiveRegion(AutomationLiveSetting.Off);
+    }
+
+    /// <summary>The theme's working indicator: the claw (Windows default), dots, the brand icon, or nothing.</summary>
+    private static Element WorkingGlyph(OpenClaw.Shared.Themes.ThemeWorkingIndicator indicator, ChatRunProgressPresentation progress)
+    {
+        Element glyph;
+        string automationId;
+        switch (indicator)
+        {
+            case OpenClaw.Shared.Themes.ThemeWorkingIndicator.Dots:
+                glyph = NativeWorkingDotsElement.NativeWorkingDots().Set(dots => dots.Update(progress.IsInProgress)).Size(18, 18);
+                automationId = "ChatRunProgressDots";
+                break;
+            case OpenClaw.Shared.Themes.ThemeWorkingIndicator.Brand:
+                glyph = NativeWorkingBrandElement.NativeWorkingBrand().Set(brand => brand.Update(progress.IsInProgress)).Size(18, 18);
+                automationId = "ChatRunProgressBrand";
+                break;
+            case OpenClaw.Shared.Themes.ThemeWorkingIndicator.None:
+                return Border(null).Size(0, 0).Grid(column: 0).AccessibilityView(AccessibilityView.Raw);
+            default:
+                glyph = NativeWorkingClawElement.NativeWorkingClaw()
+                    .Set(claw => claw.Update(progress.IsInProgress, progress.Waiting, progress.StartedAt?.ToString("O") ?? "idle"))
+                    .Size(18, 18).Opacity(1);
+                automationId = "ChatRunProgressClaw";
+                break;
+        }
+        return Grid([GridSize.Star()], [GridSize.Star()], glyph)
+            .Size(18, 18).Grid(column: 0).VAlign(VerticalAlignment.Center)
+            .AccessibilityView(AccessibilityView.Raw).AutomationId(automationId);
     }
 
     private static void ClipToBounds(FrameworkElement host)
