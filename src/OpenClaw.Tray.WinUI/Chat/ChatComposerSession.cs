@@ -46,6 +46,7 @@ public sealed class ChatComposerSession : IDisposable
         _settingsStore.Changed += OnSettingsChanged;
         _sandboxStatus.Changed += OnSandboxStatusChanged;
         ViewModel.ApplySandboxSettings(_settingsStore.Current);
+        ViewModel.ApplyLobsterVisitsSetting(_settingsStore.Current.ShowLobsterVisits);
         ViewModel.ApplySandboxStatus(_sandboxStatus.Current);
     }
 
@@ -56,8 +57,18 @@ public sealed class ChatComposerSession : IDisposable
     internal ChatComposerHostActions HostActions { get; }
     internal ChatPlacementController? Placement { get; }
 
-    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs args) =>
+    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs args)
+    {
         ViewModel.ApplySandboxSettings(args.Snapshot);
+        ViewModel.ApplyLobsterVisitsSetting(args.Snapshot.ShowLobsterVisits);
+    }
+
+    /// <summary>The visitor's "Dismiss and don't show again": turns the device-local Lobster visits setting off.</summary>
+    internal void DisableLobsterVisits()
+    {
+        if (Volatile.Read(ref _disposed) != 0) return;
+        _settingsStore.Update(null, edit => edit.ShowLobsterVisits = false);
+    }
 
     private void OnSandboxStatusChanged(object? sender, SandboxStatusSnapshot snapshot) =>
         ViewModel.ApplySandboxStatus(snapshot);
@@ -74,6 +85,7 @@ public sealed class ChatComposerSession : IDisposable
         {
             Revision = Interlocked.Increment(ref _inputRevision),
         });
+        ViewModel.ApplyLobsterVisitorInputs(inputs);
         Placement?.ApplyInputs(inputs);
         if (!string.Equals(previousThread, inputs.CurrentThread.Id, StringComparison.Ordinal))
             HostActions.SpeechTargetChanged?.Invoke(inputs.CurrentThread.Id);

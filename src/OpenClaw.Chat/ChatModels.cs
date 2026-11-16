@@ -148,6 +148,8 @@ public record ChatThread
     public string DisplayTitle => Title;
     public string? LastRunId { get; init; }
     public string? RunStatus { get; init; }
+    /// <summary>The Gateway's live-run flag for this session, when reported; it can outlive a terminal status.</summary>
+    public bool? HasActiveRun { get; init; }
     /// <summary>The latest run was stopped or aborted, even when its recorded status reads as done.</summary>
     public bool LastRunStopped { get; init; }
     public double? RuntimeMs { get; init; }

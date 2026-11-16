@@ -263,6 +263,10 @@ internal static class LobsterLooks
             look.Glint);
     }
 
+    /// <summary>Upstream <c>--lob-breathe-delay</c>: a negative per-palette offset (0 to -3.3s) so casts breathe out of step.</summary>
+    internal static double BreatheDelaySeconds(LobsterLook look) =>
+        -(((LobsterRandom.Fnv1a(look.Palette.Id) >> 8) % 34) / 10.0);
+
     // A crusher side grows mighty while the other stays dainty; otherwise both follow the rolled claw size.
     private static double ClawScale(LobsterLook look, LobsterSide side) => look.CrusherSide switch
     {

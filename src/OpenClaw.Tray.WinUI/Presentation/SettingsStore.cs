@@ -158,6 +158,7 @@ internal sealed class SettingsStore : ISettingsStore
         public bool VoiceTtsEnabled { set => _settings.VoiceTtsEnabled = value; }
         public bool ShowChatToolCalls { set => _settings.ShowChatToolCalls = value; }
         public bool ShowChatThinking { set => _settings.ShowChatThinking = value; }
+        public bool ShowLobsterVisits { set => _settings.ShowLobsterVisits = value; }
         public void SetPagePinned(string scopeKey, string tag, bool pinned) => _settings.TogglePinnedPage(scopeKey, tag, pinned);
     }
 }

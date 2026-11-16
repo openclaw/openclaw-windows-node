@@ -4479,6 +4479,14 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
     <value>De door de assistent geleverde redenering in het gesprek weergeven.</value>
   </data>
+  <data name="SettingsRow_ShowLobsterVisits_Header.Text" xml:space="preserve">
+    <value>Kreeftenbezoek</value>
+  </data>
+  <data name="SettingsRow_ShowLobsterVisits_Description.Text" xml:space="preserve">
+    <value>Soms komt er een kreeft langs wanneer je een nieuwe sessie start. Klik er met de rechtermuisknop op om hem weg te sturen.</value>
+  </data>
+  <data name="ChatLobster_Dismiss" xml:space="preserve"><value>Sluiten</value></data>
+  <data name="ChatLobster_DismissForever" xml:space="preserve"><value>Sluiten en niet meer tonen</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacybeheer</value>
   </data>

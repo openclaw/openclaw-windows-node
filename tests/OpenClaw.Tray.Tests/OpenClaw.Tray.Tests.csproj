@@ -61,6 +61,13 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterComposerScene.cs" Link="Chat\LobsterVisits\LobsterComposerScene.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterVisitPlans.cs" Link="Chat\LobsterVisits\LobsterVisitPlans.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterVisitOwner.cs" Link="Chat\LobsterVisits\LobsterVisitOwner.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterSvg.cs" Link="Chat\LobsterVisits\LobsterSvg.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterPaint.cs" Link="Chat\LobsterVisits\LobsterPaint.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterSprites.cs" Link="Chat\LobsterVisits\LobsterSprites.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterArtwork.cs" Link="Chat\LobsterVisits\LobsterArtwork.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterMotion.cs" Link="Chat\LobsterVisits\LobsterMotion.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterComposerVisits.cs" Link="Chat\LobsterVisits\LobsterComposerVisits.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterVisitJournalFile.cs" Link="Chat\LobsterVisits\LobsterVisitJournalFile.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\AssistantFileDownloadLauncher.cs" Link="Chat\AssistantFileDownloadLauncher.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\ChatSurfaceResolver.cs" Link="Chat\ChatSurfaceResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\GatewayFixtureRenderObservation.cs" Link="Chat\GatewayFixtureRenderObservation.cs" />

@@ -4478,6 +4478,14 @@
   <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
     <value>在對話中顯示助理提供的推理內容。</value>
   </data>
+  <data name="SettingsRow_ShowLobsterVisits_Header.Text" xml:space="preserve">
+    <value>龍蝦來訪</value>
+  </data>
+  <data name="SettingsRow_ShowLobsterVisits_Description.Text" xml:space="preserve">
+    <value>開始新工作階段時，偶爾會有一隻龍蝦來訪。以滑鼠右鍵按一下即可關閉。</value>
+  </data>
+  <data name="ChatLobster_Dismiss" xml:space="preserve"><value>關閉</value></data>
+  <data name="ChatLobster_DismissForever" xml:space="preserve"><value>關閉且不再顯示</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>隱私</value>
   </data>
