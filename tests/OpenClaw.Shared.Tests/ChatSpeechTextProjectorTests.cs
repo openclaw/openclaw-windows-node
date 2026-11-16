@@ -92,6 +92,7 @@ public class ChatSpeechTextProjectorTests
     [InlineData("Path https://example.com/a%20b here.", "Path here.")]
     [InlineData("Query https://example.com/x?a=1&amp;b=2 here.", "Query here.")]
     [InlineData("Read https://example.com/changelog for details.", "Read for details.")]
+    [InlineData("Connect to http://localhost:18789/?token=FAKE_SECRET now.", "Connect to now.")]
     public void UrlShapes_AreNeverSpoken(string markdown, string expected)
     {
         var spoken = Project(markdown);
@@ -160,6 +161,16 @@ public class ChatSpeechTextProjectorTests
     public void Image_SpeaksAltText()
     {
         Assert.Equal("A puppy. Done.", Project("![A puppy](https://example.com/p.png)\n\nDone."));
+    }
+
+    [Fact]
+    public void CredentialInALongerImageAlt_IsNotSpoken()
+    {
+        // The alt is longer than any placeholder filter cap, so the builder has
+        // to decide on the complete alt before it emits the inert placeholder.
+        var markdown = "![api_key=" + new string('A', 260) + "](https://example.com/p.png)";
+
+        Assert.Equal(string.Empty, Project(markdown));
     }
 
     [Theory]

@@ -62,6 +62,19 @@ public sealed class ChatSpeechTextProjectionTests
     }
 
     [Fact]
+    public async Task UrlWithUnderscoreInItsQuery_NeverReachesTheEngine()
+    {
+        using var run = new CoordinatorRun();
+
+        await run.Coordinator.SpeakResponseAsync(
+            "Connect to http://localhost:18789/?token=FAKE_SECRET now.");
+
+        var text = Assert.Single(run.Spoken);
+        Assert.Equal("Connect to now.", text);
+        Assert.DoesNotContain("SECRET", text);
+    }
+
+    [Fact]
     public async Task CredentialInALinkLabel_NeverReachesTheEngine()
     {
         using var run = new CoordinatorRun();

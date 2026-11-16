@@ -36,8 +36,9 @@ namespace OpenClaw.Shared.Markdown;
 ///         the previous auto-read path dropped code spans: <c>token=…</c>,
 ///         <c>api_key: …</c>, <c>{"api_key":"…"}</c>, <c>Authorization: Bearer …</c>
 ///         and a bare <c>Bearer …</c> value. The same rule removes such a code
-///         span from a link label before the label is flattened. A secret must
-///         never reach a cloud provider.</item>
+///         span from a link label before the label is flattened, and drops an
+///         image whose alt carries a credential. A secret must never reach a
+///         cloud provider.</item>
 ///   <item>Fenced code blocks are silent but still end a sentence. Other inline
 ///         code is spoken, with <c>_</c>, <c>/</c> and non-decimal dots read as
 ///         word separators.</item>
@@ -89,7 +90,7 @@ public static class ChatSpeechTextProjector
         new(@"([,;:])\s*([.!?…])(?=$|\s)", RegexOptions.Compiled);
 
     private static readonly Regex ImagePlaceholder =
-        new(@"\[Image(?::\s*(?<alt>[^\]]{0,256}))?\]", RegexOptions.Compiled);
+        new(@"\[Image(?::\s*(?<alt>[^\]]*))?\]", RegexOptions.Compiled);
 
     /// <summary>
     /// URL-shaped tokens: any scheme (<c>ws://</c>, <c>file://</c>), the shapes
@@ -202,7 +203,7 @@ public static class ChatSpeechTextProjector
                     AppendRow(output, row);
                 return;
             case MdRawTextBlock raw:
-                AppendSentence(output, StripUrls(StripUnspeakable(raw.Text)));
+                AppendSentence(output, StripUnspeakable(StripUrls(raw.Text)));
                 return;
             case MdCodeBlock:
             case MdThematicBreak:
@@ -217,7 +218,7 @@ public static class ChatSpeechTextProjector
         var text = new StringBuilder();
         foreach (var cell in row.Cells)
         {
-            var cellText = StripUnspeakable(BuildBlockText(cell.Inlines)).Trim();
+            var cellText = BuildBlockText(cell.Inlines).Trim();
             if (cellText.Length == 0)
                 continue;
             if (text.Length > 0)
@@ -236,15 +237,19 @@ public static class ChatSpeechTextProjector
     {
         var builder = new StringBuilder();
         AppendInlines(builder, inlines);
+        var joined = builder.ToString();
 
-        // URLs are removed after the runs are joined: the parser splits a run at
-        // every decoded entity, so `…?a=1&amp;b=2` arrives as several runs and a
-        // per-run filter would leave the tail of the URL behind.
-        return StripUrls(builder.ToString());
+        // Order matters twice over. The runs are joined before the URL filter,
+        // because the parser splits a run at every decoded entity, so
+        // `…?a=1&amp;b=2` arrives as several runs and a per-run filter would
+        // leave the tail behind. The URL filter then runs on the intact text,
+        // before speech normalization turns `?token=FAKE_SECRET` into two
+        // words, which would stop the match at `FAKE` and speak the rest.
+        return StripUnspeakable(StripUrls(joined));
     }
 
     /// <summary>
-    /// Speakable form of one inline run: the builder's inert
+    /// One inline run, still unnormalized: the builder's inert
     /// <c>[Image: alt]</c> placeholder becomes its alt text, and credential
     /// assignments inside code spans are dropped whole. URLs are removed later,
     /// on the joined block text.
@@ -297,7 +302,7 @@ public static class ChatSpeechTextProjector
             switch (inline)
             {
                 case MdInlineText text:
-                    AppendSpeakable(builder, SpeakInline(text));
+                    builder.Append(SpeakInline(text));
                     break;
                 case MdInlineLineBreak:
                     AppendLineBreak(builder);

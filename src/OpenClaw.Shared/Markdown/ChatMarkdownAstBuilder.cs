@@ -543,6 +543,15 @@ public sealed class ChatMarkdownAstBuilder
                     alt = _imageStack.Pop().ToString();
                 }
                 _imageAlt = _imageStack.Count > 0 ? _imageStack.Peek() : null;
+                // Speech projection: an alt that carries a credential must not
+                // become speech. The projector only sees the inert placeholder,
+                // whose alt can be truncated by a later filter, so the decision
+                // belongs here, where the complete alt is known.
+                if (_linkFlattening == MdLinkFlattening.DisplayOnly
+                    && ChatSpeechTextProjector.IsCredentialAssignment(alt))
+                {
+                    return 0;
+                }
                 var flattened = string.IsNullOrEmpty(alt) ? "[Image]" : "[Image: " + alt + "]";
                 EmitInlineText(flattened);
                 return 0;
