@@ -1,14 +1,25 @@
 // Describes authoring options, not a renderer allowlist or a detected Windows feature set.
 // Usage: getWidgetCapabilities() returns a detached, offline catalog for windows_widgets discovery.
 const capabilities = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   nativeRenderingVerified: false,
-  scope: "Adaptive Card authoring for Windows widgets. Tracking remains the fixed Mercury API.",
+  scope: "Bot-pushed Adaptive Card snapshots, timestamped history graphs and explicit lighting controls using the existing C# provider. Existing polling and Mercury routes remain compatible.",
+  collection: {
+    modes: ["json", "nightscout", "manual"],
+    recommended: "publish with id and snapshot, then publish again for updates. No fetching or polling. Supply value/observedAt or series.points with explicit units.",
+    series: "1-96 actual ISO x/numeric y points; derives latest value/time, native text and gap-aware PNG. No unit conversion. Series reserves content.source and source-series artwork.",
+    consent: "Exact administrator-approved allowedSourceUrls for polling; public-address-pinned HTTPS, no redirects, 15 seconds, 256 KiB.",
+    routing: "Use id for each new widget. Omit id only for legacy Mercury. Up to 19 reusable new ids plus Mercury on one configured Windows node.",
+    privacy: "New tracker tool responses contain metadata, not readings or artwork. Source observations persist locally and appear on an ambient Windows surface.",
+  },
   sources: [
     "https://adaptivecards.microsoft.com/designer",
     "https://learn.microsoft.com/en-us/windows/apps/develop/widgets/widgets-create-a-template",
+    "https://learn.microsoft.com/en-us/windows/apps/develop/widgets/implement-widget-provider-cs",
+    "https://learn.microsoft.com/en-us/windows/apps/develop/feeds/feed-providers",
   ],
   reference: "skills/windows-widgets/references/adaptive-card-toolbox.md",
+  providerGuidance: "skills/windows-widgets/references/microsoft-widget-guidance.md",
   publication: {
     versions: "1.0-1.6",
     nativeProperties: "Pass through unchanged, subject to resource, action and size policy. This catalog is not an allowlist.",
@@ -64,7 +75,7 @@ const capabilities = {
         "Chart.VerticalBar.Grouped": ["legend", "color", "values", "x", "y"],
         "Chart.Gauge": ["segments", "legend", "color", "size"],
       },
-      use: "Designer extensions requiring real chart data and native proof. Use TextBlock/FactSet fallback. The Mercury boolean source supplies no history or percentage.",
+      use: "Designer extensions requiring real chart data and native proof. Use TextBlock/FactSet fallback. A boolean status alone supplies no history or percentage.",
     },
     advancedLayouts: {
       types: ["Layout.Stack", "Layout.Flow", "Layout.AreaGrid", "GridArea"],
@@ -80,17 +91,17 @@ const capabilities = {
   actions: {
     accepted: ["Action.OpenUrl", "Action.Execute", "Action.ShowCard", "Action.ToggleVisibility"],
     rejected: ["Action.Submit", "Action.ResetInputs", "Action.Popover", "Action.Overflow", "Action.RunCommands", "Action.InsertImage", "Action.OpenUrlDialog"],
-    executeVerbs: ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh"],
-    guidance: "Map Submit to Execute/widget.set and ResetInputs to Execute/widget.reset when appropriate; do not send them unchanged. Only OpenUrl is supported in unauthenticated Windows contexts. ShowCard/ToggleVisibility still need host proof. No arbitrary commands, cloud/bot integrations or authentication.",
+    executeVerbs: ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh", "widget.lighting"],
+    guidance: "Map Submit to Execute/widget.set and ResetInputs to Execute/widget.reset. Only widget.refresh may run automatically. widget.lighting requires local consent, associatedInputs none and admitted literal status/release/color/preset data. It targets the driver's first device; acknowledgments are not physical proof. Only OpenUrl works in unauthenticated contexts. Other host actions need proof. No arbitrary commands.",
   },
   bindings: {
     source: ["title", "value", "detail", "observedAt", "freshness", "sourceUrl"],
-    authored: "presentation.data is available as content; scalar initialState is per-instance state.",
+    authored: "presentation.data is content; scalar initialState is per-instance state. Series and polling adapters reserve content.source and source-series artwork. lighting.message is provider-owned feedback, never source telemetry.",
     template: ["$when", "$data", "$root", "$index"],
     host: ["$host.widgetSize", "$host.hostTheme", "$host.isSettingsPayload", "$host.isHeaderSupported", "$host.isHeader", "$host.isWebSupported", "$host.isUserContextAuthenticated"],
     resources: "Literal public HTTPS or direct ${$root.content.path} bindings only; no computed or loop-relative resource URLs.",
   },
-  examples: ["examples/responsive-status.json", "examples/mercury-demo.json", "examples/fluent-mystic.json"],
+  examples: ["examples/responsive-status.json", "examples/artwork-status.json", "examples/lighting-controls.json"],
   workflow: "Read the reference, inspect status, author a full presentation, then style without fetching or changing observations. Reserve the provider-owned timestamp/source footer. Verify actual size/theme/rendering in Widgets Board before claiming visual support.",
 };
 

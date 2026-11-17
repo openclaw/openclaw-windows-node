@@ -49,7 +49,17 @@ multi-PR refactor plan for the reasoning behind each boundary.
 These are the canonical homes. Do not reintroduce private copies elsewhere.
 
 The opt-in [Windows widget proof of concept](../plugins/windows-widgets/README.md)
-keeps tracking/source collection in the OpenClaw plugin. `WidgetCapability` and
+keeps tracking/source collection in the OpenClaw plugin. `bridge.mjs` owns
+independent keyed tracker lifecycles, bot-pushed snapshots, existing opt-in
+schedules and deployment; `sources.mjs` owns explicitly approved JSON
+collection and normalized sample facts, including caller-supplied timestamped
+series with no collection. Bot publication never starts polling or hardware
+actions. Series derives latest value/time and retains graph facts across style
+changes; the native snapshot contract remains unchanged.
+`series-artwork.mjs` plots real time coordinates without connecting missing
+intervals; source data never becomes executable card definitions.
+The original Mercury store/route remains separate for compatibility.
+`WidgetCapability` and
 `WidgetSnapshotStore` own bounded data-only publication and atomic local state;
 `WidgetPresentation` enforces bounded native Adaptive Card publication and
 public-resource policy without inventing a second element/property schema.
@@ -69,6 +79,14 @@ and restart. `WidgetInstanceState` owns pure, bounded local interaction policy
 and versioned per-instance state. `NativeWidgetProvider` owns Windows lifecycle,
 customization callbacks, action dispatch and per-instance rendering. It never
 runs generated code or invokes Gateway commands from card callbacks.
+`WidgetLightingAction` owns the literal side-effect contract and current-card
+admission checks. `WidgetLightingDriver` owns profile-local consent, the bounded
+external line protocol and only its own long-lived driver process. The provider
+dispatches hardware controls only from admitted native user clicks, never
+publication, rendering or automatic refresh. Driver feedback is versioned
+per-instance state, separate from observations and authored `initialState`.
+The separately installed driver is not vendored or installed by this bridge;
+ACK is not physical proof. No general shell, node or script callback is exposed.
 `Program` routes COM widget activation to `WidgetProviderHost` before WinUI
 startup. `App` retains ordinary composition/startup and must not absorb widget
 polling, website collection, or provider activation. Windows, not the agent,

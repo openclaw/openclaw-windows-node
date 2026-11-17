@@ -10116,4 +10116,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="WidgetStale" xml:space="preserve"><value>Verouderd. Laatste waarneming:</value></data>
   <data name="WidgetSource" xml:space="preserve"><value>Bron openen</value></data>
   <data name="WidgetError" xml:space="preserve"><value>Widgetgegevens zijn niet beschikbaar. Controleer de diagnostiek in Companion.</value></data>
+  <data name="WidgetLightingDisabled" xml:space="preserve"><value>Verlichtingsbediening vereist lokale toestemming. Bij controleren of wijzigen kan het stuurprogrammavenster verschijnen.</value></data>
+  <data name="WidgetLightingReady" xml:space="preserve"><value>Laatste stuurprogrammacontrole: {0} apparaten. De bediening richt zich op het eerste apparaat.</value></data>
+  <data name="WidgetLightingNoDevices" xml:space="preserve"><value>Geen compatibele verlichtingsapparaten gemeld.</value></data>
+  <data name="WidgetLightingAcknowledged" xml:space="preserve"><value>Het stuurprogramma heeft het verzoek bevestigd. De fysieke verlichting is niet geverifieerd.</value></data>
+  <data name="WidgetLightingReleased" xml:space="preserve"><value>Deze widgetprovider heeft zijn stuurprogramma vrijgegeven.</value></data>
+  <data name="WidgetLightingUnavailable" xml:space="preserve"><value>Verlichtingsstuurprogramma niet beschikbaar. Installeer en autoriseer het lokaal.</value></data>
+  <data name="WidgetLightingBusy" xml:space="preserve"><value>Een andere widgetprovider beheert het verlichtingsstuurprogramma van dit profiel.</value></data>
+  <data name="WidgetLightingFailed" xml:space="preserve"><value>Verlichtingsverzoek mislukt. Controleer het stuurprogramma en de beschikbaarheid van apparaten.</value></data>
 </root>

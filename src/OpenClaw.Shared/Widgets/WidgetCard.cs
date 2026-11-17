@@ -22,7 +22,8 @@ public static class WidgetCard
         IReadOnlyList<WidgetSnapshot> snapshots,
         WidgetCopy copy,
         DateTimeOffset now,
-        JsonObject? state = null)
+        JsonObject? state = null,
+        string? lightingMessage = null)
     {
         snapshot?.Presentation?.Validate();
         var stale = snapshot is not null &&
@@ -38,6 +39,7 @@ public static class WidgetCard
             ["sourceUrl"] = snapshot?.SourceUrl,
             ["content"] = snapshot?.Presentation?.Data,
             ["state"] = state ?? WidgetInstanceState.Initial(snapshot?.Presentation),
+            ["lighting"] = new { message = lightingMessage ?? "" },
             ["trackers"] = snapshots.Select(s => new { id = s.Id, title = s.Title }).ToArray()
         };
         var card = snapshot?.Presentation?.CreateCard() ?? JsonNode.Parse("""
@@ -79,6 +81,9 @@ public static class WidgetCard
             select["$when"] = "${$host.isUserContextAuthenticated}";
             actions.Add(select);
         }
+        if (WidgetLightingAction.Contains(snapshot?.Presentation))
+            body.Add(new JsonObject { ["type"] = "TextBlock", ["text"] = "${lighting.message}",
+                ["wrap"] = true, ["size"] = "Small", ["id"] = "openclaw-lighting-feedback" });
         if (actions.Count > 0)
             body.Add(new JsonObject { ["type"] = "ActionSet", ["actions"] = actions });
         if (snapshot is not null)

@@ -245,6 +245,15 @@ bindings. Presentation data lives under `content`, native instance state under
 Execute verbs: `widget.set` (input IDs match declared state keys),
 `widget.increment` (`data.key`, optional `amount`), `widget.toggle` (`data.key`),
 `widget.reset`, `widget.refresh` (cached rendering, no source fetch).
+`widget.lighting` is a separately opted-in native click contract, not a node
+command: literal `status`/`release`, `color` plus `#RRGGBB`, or fixed
+`preset`/`color`/optional `accentColor`, with `associatedInputs: "none"`.
+Only actions declared in the selected current card may reach the separately
+installed DynamicLightingDriver. It requires Windows-local `widget-lighting.json`
+consent. Publication, polling and rendering never apply lighting effects.
+Controls target the driver's first discovered device. Provider-owned
+`lighting.message` reports the last check or acknowledgment, not verified
+physical state. See the [experiment guide](../../../plugins/windows-widgets/README.md#manual-snapshots-and-lighting-controls).
 Automatic card refresh may only use `widget.refresh`. Execute actions are
 gated on authenticated host context. OpenUrl uses public HTTPS;
 ShowCard/ToggleVisibility support depends on the Widgets Board version.

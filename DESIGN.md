@@ -1629,6 +1629,23 @@ with readable fallbacks; unsupported layout properties must retain a usable
 ordinary container/column structure. Chart/progress visuals require real
 underlying data, not fabricated history or percentages from a boolean.
 
+Timestamped source graphs may use a bounded, locally rendered PNG when native
+chart support is unknown. The plot is deliberately monochrome data artwork,
+not app chrome: `PLOT_SURFACE` is white, `PLOT_INK` is near-black (32/255) and
+`PLOT_GRID` is light gray (208/255), independent of the host theme. This opaque
+paper plot preserves its own contrast in either theme; it does not claim
+forced-color adaptation. Keep latest value, units and range in native text and
+provide image alternative text. Use actual timestamps, do not connect declared
+gaps or invent equal spacing, and do not paint labels or clinical target bands
+into the image. Small retains the value and footer without the optional graph.
+Current-head native decoding, clipping and accessibility remain required proof.
+
+Lighting action colors are literal hardware request data, not UI theme tokens.
+Keep controls as host-native actions, split into short rows rather than assuming
+the host wraps a wide action strip. The provider appends localized trusted
+feedback before the source footer; never present a driver acknowledgment or old
+device check as current physical-effect telemetry.
+
 The provider-owned source action is a centered text hyperlink after the content,
 not a standard bordered button. Use a host-rendered `RichTextBlock`/`TextRun`
 with `selectAction` and semantic `Small` text and spacing; the host owns link
@@ -1647,13 +1664,13 @@ For prompt-authored glanceable trackers, follow the Weather widget's hierarchy:
 one recognizable illustration beside a concise status, restrained supporting
 copy and no invented forecast/dashboard rows. Use a native auto/stretch
 `ColumnSet`, semantic type/spacing and the host-owned frame rather than stacked
-headings, decorative accent text or nested cards. A requested mystic treatment
-is atmospheric artwork, not a new theme-color token or preset catalog. Confine
+headings, decorative accent text or nested cards. A requested illustrated treatment
+uses artwork, not a new theme-color token or preset catalog. Confine
 dark artwork and semantic `Light` text to the hero container by default, leaving
 the provider-owned observation/source footer on the plain host surface. Shrink
 the illustration and omit optional supporting copy on small cards; never hide
 source/freshness to make the art fit. Contrast and size parity still need native
-proof. The plugin's [adaptable example](plugins/windows-widgets/examples/fluent-mystic.json)
+proof. The plugin's [adaptable example](plugins/windows-widgets/examples/artwork-status.json)
 contains no bundled artwork and does not change existing designs automatically.
 
 Reuse [component patterns](.agents/design/components.jsonc); these describe design intent, not shipping code.

@@ -21,6 +21,7 @@ internal sealed class NativeWidgetProvider : IWidgetProvider, IWidgetProvider2, 
     private readonly HashSet<string> _active = new(StringComparer.Ordinal);
     private Timer? _timer;
     private readonly AppLogger _logger = new();
+    private WidgetLightingDriver? _lighting;
 
     internal void Start()
     {
@@ -103,7 +104,15 @@ internal sealed class NativeWidgetProvider : IWidgetProvider, IWidgetProvider2, 
             {
                 var snapshot = snapshots.SingleOrDefault(s => s.Id == state.TrackerId)
                     ?? throw new ArgumentException("The selected tracker no longer exists.");
-                state = state.Apply(snapshot.Presentation, args.Verb, data.RootElement);
+                if (args.Verb == WidgetLightingAction.Verb)
+                {
+                    var request = WidgetLightingAction.Parse(data.RootElement);
+                    if (!WidgetLightingAction.IsDeclared(snapshot.Presentation, request))
+                        throw new ArgumentException("Lighting request is not declared in the selected widget.");
+                    _lighting ??= new(AppIdentity.ResolveRoamingDataDirectory(), _logger);
+                    state = state with { Lighting = _lighting.Execute(request) };
+                }
+                else state = state.Apply(snapshot.Presentation, args.Verb, data.RootElement);
             }
             Render(args.WidgetContext.Id, state.Serialize(), snapshots, saveBinding: true);
         }
@@ -113,9 +122,15 @@ internal sealed class NativeWidgetProvider : IWidgetProvider, IWidgetProvider2, 
     {
         lock (UpdateGate)
         {
+            _lighting?.ReconcileConsent();
+            var snapshots = Store().List();
+            if (!snapshots.Any(snapshot => WidgetLightingAction.Contains(snapshot.Presentation)))
+            {
+                _lighting?.Dispose();
+                _lighting = null;
+            }
             if (_active.Count == 0)
                 return;
-            var snapshots = Store().List();
             foreach (var widget in GetWidgets())
                 if (_active.Contains(widget.WidgetContext.Id) && widget.WidgetContext.DefinitionId == WidgetCard.DefinitionId)
                     Render(widget.WidgetContext.Id, widget.CustomState, snapshots);
@@ -148,7 +163,11 @@ internal sealed class NativeWidgetProvider : IWidgetProvider, IWidgetProvider2, 
             LocalizationHelper.GetString("WidgetShow"),
             LocalizationHelper.GetString("WidgetStale"),
             LocalizationHelper.GetString("WidgetSource"));
-        var payload = WidgetCard.Render(snapshot, snapshots, copy, DateTimeOffset.UtcNow, instance.Values);
+        var outcome = instance.Lighting?.Outcome ?? WidgetLightingOutcome.Disabled;
+        var lightingMessage = LocalizationHelper.GetString("WidgetLighting" + outcome);
+        if (outcome == WidgetLightingOutcome.Ready)
+            lightingMessage = string.Format(System.Globalization.CultureInfo.CurrentCulture, lightingMessage, instance.Lighting!.DeviceCount);
+        var payload = WidgetCard.Render(snapshot, snapshots, copy, DateTimeOffset.UtcNow, instance.Values, lightingMessage);
         var update = new WidgetUpdateRequestOptions(instanceId)
         {
             Template = payload.Template,
@@ -165,11 +184,16 @@ internal sealed class NativeWidgetProvider : IWidgetProvider, IWidgetProvider2, 
     {
         try { action(); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or
-            ArgumentException or InvalidOperationException or COMException or KeyNotFoundException)
+            ArgumentException or InvalidOperationException or COMException or KeyNotFoundException or
+            System.ComponentModel.Win32Exception or TimeoutException or OperationCanceledException)
         {
             _logger.Error("Windows widget provider failed to update content.", ex);
         }
     }
 
-    public void Dispose() => _timer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public void Dispose()
+    {
+        _timer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+        _lighting?.Dispose();
+    }
 }

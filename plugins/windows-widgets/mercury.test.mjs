@@ -35,8 +35,8 @@ test("the responsive toolbox example publishes native fallbacks without changing
   assert.equal(h.sent.length, 2, "Fallbacks must not bypass action policy or replace the accepted design.");
 });
 
-test("the shipped Fluent example admits supplied artwork and preserves real observations during styling", async () => {
-  const presentation = JSON.parse(await readFile(new URL("./examples/fluent-mystic.json", import.meta.url), "utf8"));
+test("the shipped artwork example admits supplied artwork and preserves real observations during styling", async () => {
+  const presentation = JSON.parse(await readFile(new URL("./examples/artwork-status.json", import.meta.url), "utf8"));
   const hero = presentation.card.body[0];
   assert.equal(presentation.card.backgroundImage, undefined, "The provider footer must stay on the host surface.");
   assert.equal(hero.backgroundImage.url, "openclaw-asset:backdrop");
@@ -44,18 +44,13 @@ test("the shipped Fluent example admits supplied artwork and preserves real obse
   const [illustration, text] = hero.items[0].columns;
   assert.equal(illustration.width, "auto");
   assert.equal(text.width, "stretch");
-  for (const [value, name] of [["Yes", "planet-muted"], ["No", "planet-lit"]]) {
-    const images = illustration.items.filter(item => item.url === `openclaw-asset:${name}`);
-    assert.deepEqual(images.map(item => [item.size, item.$when]), [
-      ["Small", `\${value == '${value}' && $host.widgetSize == 'small'}`],
-      ["Medium", `\${value == '${value}' && $host.widgetSize != 'small'}`],
-    ]);
-  }
-  assert.equal(text.items[0].text, "In retrograde");
-  assert.equal(text.items[0].$when, "${value == 'Yes'}");
-  assert.equal(text.items[1].text, "Not in retrograde");
-  assert.equal(text.items[1].$when, "${value == 'No'}");
-  assert.equal(text.items[2].$when, "${value == 'No' && $host.widgetSize != 'small'}");
+  assert.deepEqual(illustration.items.map(item => [item.url, item.size, item.$when]), [
+    ["openclaw-asset:illustration", "Small", "${$host.widgetSize == 'small'}"],
+    ["openclaw-asset:illustration", "Medium", "${$host.widgetSize != 'small'}"],
+  ]);
+  assert.equal(text.items[0].text, "${value}");
+  assert.equal(text.items[1].text, "${detail}");
+  assert.equal(text.items[1].$when, "${$host.widgetSize != 'small'}");
   const directory = await mkdtemp(join(tmpdir(), "openclaw-widget-fluent-"));
   try {
     const path = join(directory, "selected.png");
@@ -65,15 +60,14 @@ test("the shipped Fluent example admits supplied artwork and preserves real obse
       await h.tracker.execute("create");
       h.advance(60_000);
       await h.tracker.execute("style", {
-        presentation, artworkFiles: { backdrop: path, "planet-lit": path, "planet-muted": path },
+        presentation, artworkFiles: { backdrop: path, illustration: path },
       });
       const snapshot = h.sent.at(-1).params;
       assert.equal(snapshot.value, retrograde ? "Yes" : "No");
       assert.equal(snapshot.sourceUrl, "https://mercuryretrogradeapi.com/");
       assert.equal(snapshot.observedAt, "2026-01-01T12:00:00.000Z");
       assert.equal(snapshot.presentation.assets.backdrop.base64, pixelPng);
-      assert.equal(snapshot.presentation.assets["planet-lit"].base64, pixelPng);
-      assert.equal(snapshot.presentation.assets["planet-muted"].base64, pixelPng);
+      assert.equal(snapshot.presentation.assets.illustration.base64, pixelPng);
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
@@ -435,6 +429,10 @@ test("plugin registration wires the documented async store and service scheduler
       state: {
         openKeyedStore(options) {
           opened++;
+          if (options.namespace === "widget-bridge") {
+            assert.equal(options.maxEntries, 20);
+            return { lookup: async () => undefined };
+          }
           assert.deepEqual(options, { namespace: "trackers", maxEntries: 1 });
           return { lookup: async () => ({
             enabled: false,
@@ -464,8 +462,8 @@ test("plugin registration wires the documented async store and service scheduler
     await assert.rejects(tools[0].execute("invalid-discovery", { action: "capabilities", ...extra }), /does not accept/);
   assert.equal(opened, 0);
   config.nodeId = "configured-node";
-  assert.match(tools[0].description, /Fluent weather-widget/);
-  assert.match(tools[0].description, /examples\/fluent-mystic\.json/);
+  assert.match(tools[0].description, /snapshot\.series/);
+  assert.match(tools[0].description, /references\/microsoft-widget-guidance\.md/);
   assert.deepEqual(tools[0].parameters.properties.presentation.required, ["card"]);
   assert.equal(tools[0].parameters.properties.presentation.properties.theme, undefined);
   assert.equal(tools[0].parameters.properties.presentation.properties.card.additionalProperties, true);
@@ -487,5 +485,5 @@ test("plugin registration wires the documented async store and service scheduler
   assert.equal(job.everyMs, 60_000);
   await job.run();
   await services[0].stop();
-  assert.equal(opened, 1);
+  assert.equal(opened, 2);
 });

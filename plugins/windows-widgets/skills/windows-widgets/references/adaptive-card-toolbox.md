@@ -85,11 +85,11 @@ Widgets Board. Retain essential information in a standard `fallback`.
 | --- | --- | --- |
 | Icons and inline graphics | `Icon`, `IconRun`, `ImageRun` | Named icon/style/size or image content. Use ordinary text or Image fallback; inline run extensions may require falling back the containing RichTextBlock |
 | Labels and buttons | `Badge`, `CompoundButton` | Badge text/icon/style or button title/description/selectAction. Fall back to TextBlock or columns with an allowed ActionSet |
-| Ratings | `Rating`, `Input.Rating` | Real supplied values, not a derived Mercury rating. Fall back to text or a labeled ChoiceSet |
-| Progress | `ProgressBar`, `ProgressRing` | Real `value`/`max` data. Fall back to text; the Mercury boolean is not a completion percentage |
+| Ratings | `Rating`, `Input.Rating` | Real supplied values, not a rating invented from an unrelated status. Fall back to text or a labeled ChoiceSet |
+| Progress | `ProgressBar`, `ProgressRing` | Real `value`/`max` data. Fall back to text; a boolean is not a completion percentage |
 | Code | `CodeBlock` | Display content only, never executable code. Fall back to a wrapping TextBlock |
 | Paging | `Carousel`/`CarouselPage`, `TabSet`/`TabPage`, `Accordion`/`AccordionPage` | Optional organized detail. Fall back to a plain Container and keep status visible without interaction |
-| Charts | `Chart.Line`, `Chart.Donut`, `Chart.Pie`, `Chart.Gauge`, `Chart.HorizontalBar`, `Chart.HorizontalBar.Stacked`, `Chart.VerticalBar`, `Chart.VerticalBar.Grouped` | Follow each chart's schema and use real data. Fall back to TextBlock/FactSet. The current source provides no historical series |
+| Charts | `Chart.Line`, `Chart.Donut`, `Chart.Pie`, `Chart.Gauge`, `Chart.HorizontalBar`, `Chart.HorizontalBar.Stacked`, `Chart.VerticalBar`, `Chart.VerticalBar.Grouped` | Follow each chart's schema and use real data. Native chart support is unverified. Pushed series supplies timestamped points and a bounded PNG Image with native text fallback; a scalar alone does not supply history |
 | Layout objects | `Layout.Stack`, `Layout.Flow`, `Layout.AreaGrid`, nested `GridArea` | These belong in layout properties, not the body. Preserve an ordinary items/columns layout because unsupported properties may simply be ignored |
 
 The bundle also includes service-backed types such as `LoopComponent` and
@@ -123,7 +123,7 @@ or invent a `$host` support flag for charts, High Contrast or advanced layouts.
 | Designer action | Plugin contract |
 | --- | --- |
 | `Action.OpenUrl` | Public HTTPS navigation; no files, credentials, computed URLs or custom protocols |
-| `Action.Execute` | Only `widget.set`, `widget.increment`, `widget.toggle`, `widget.reset`, `widget.refresh`; local per-instance state only |
+| `Action.Execute` | `widget.set`, `widget.increment`, `widget.toggle`, `widget.reset`, `widget.refresh` for local state/cached rendering; separately opted-in `widget.lighting` for admitted literal user-click controls, never arbitrary commands |
 | `Action.ShowCard`, `Action.ToggleVisibility` | Transported; actual behavior is host-dependent. Toggle targets must be literal and cannot target provider IDs |
 | `Action.Submit` | Rejected. Adapt a preference form to Execute with `widget.set` |
 | `Action.ResetInputs` | Rejected. Use Execute with `widget.reset` to restore declared instance defaults; this is not identical to resetting unsaved form controls |
@@ -156,10 +156,9 @@ throughout the complete template. Automatic `refresh.action` may only use
 Read [the responsive composition](../../../examples/responsive-status.json)
 for a full presentation with columns, semantic type hierarchy, a Badge
 fallback, rich text, repeated large-card notes and local customization.
-It preserves the real Mercury observation and does not add fake chart data.
+It preserves the real observation and does not add fake chart data.
 It is a starting point, not an automatic restyle or a guaranteed native
-rendering of every element. The existing
-[plain demo](../../../examples/mercury-demo.json) remains unchanged.
+rendering of every element.
 
 ## Publication and proof boundary
 

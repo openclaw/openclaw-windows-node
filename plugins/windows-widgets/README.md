@@ -3,15 +3,100 @@
 This is an **OpenClaw Gateway plugin**, backed by a C# Windows widget provider
 in Companion. It is not a PWA or a Windows DLL plugin.
 
-The initial tracker answers this prompt:
+The bridge separates source collection, normalized observations, card authoring
+and native deployment. New widgets should use independent IDs and bot-pushed
+snapshots; autonomous polling is not needed for this workflow. The
+original Mercury tracker remains available without an ID for compatibility.
+
+## Recommended: bot-pushed widgets
+
+Use the existing Windows provider as a publishing target, not a new app or
+custom renderer for each request. The bot collects authorized observations
+using its available tools, authors an Adaptive Card, then calls:
+
+```json
+{
+  "action": "publish",
+  "id": "project-status",
+  "snapshot": {
+    "title": "Project status",
+    "value": "Ready",
+    "sourceUrl": "https://example.com/project",
+    "observedAt": "2026-01-01T12:00:00Z",
+    "presentation": {
+      "card": {
+        "type": "AdaptiveCard",
+        "version": "1.6",
+        "body": [{ "type": "TextBlock", "text": "${value}", "wrap": true }]
+      }
+    }
+  }
+}
+```
+
+The timestamp and values above illustrate the format, not a live observation.
+Repeat `publish` with the same ID and a complete new snapshot for updates.
+Publication never fetches a source, starts a schedule or invokes lighting.
+Without new pushes, Windows retains the last cached observation and marks it
+stale according to its age. A bot job may publish with separate authorization;
+neither bot scheduling nor Windows-side polling is created here.
+
+For collected history, supply `snapshot.series` instead of `value`/`observedAt`:
+
+```json
+{
+  "action": "publish",
+  "id": "sensor-history",
+  "snapshot": {
+    "title": "Synthetic sensor history",
+    "sourceUrl": "https://example.com/observations.json",
+    "detail": "Synthetic example. Not for treatment decisions.",
+    "series": {
+      "units": "mg/dL",
+      "points": [
+        { "x": "2026-01-01T11:55:00Z", "y": 90 },
+        { "x": "2026-01-01T12:00:00Z", "y": 108 }
+      ],
+      "windowMinutes": 240,
+      "gapMinutes": 15
+    }
+  }
+}
+```
+
+Supply 1-96 actual points already in the declared units. The bridge sorts and
+deduplicates timestamps, rejects conflicts, derives latest value/time and
+generates the existing gap-aware PNG plus native text fallback. The window
+ends at the newest sample; older points outside it are omitted. Optional
+`value`/`observedAt` must match the derived facts. No source collection, unit
+conversion or medical interpretation occurs. For authorized Nightscout SGV
+data, map `date` milliseconds to ISO `x` and `sgv` to numeric `y` in `mg/dL`.
+No personal endpoint is bundled or fetched by this example.
+
+Custom cards bind `content.source.graphUrl`, `graphAlt` and `rangeLabel`;
+series reserves `content.source` and asset `source-series`. Restyling retains
+the graph and observation time. For other artwork, top-level `artworkFiles`
+works with `publish` and `snapshot.presentation`, as well as `create`/`style`.
+Publication replaces the snapshot, so include needed data, presentation and
+assets on each push.
+
+Read the [publishing skill](skills/windows-widgets/SKILL.md) and
+[Microsoft Learn adaptation](skills/windows-widgets/references/microsoft-widget-guidance.md)
+for responsive layouts, authenticated actions, provider lifecycle, packaging
+and honest Board verification. Feed providers are a separate EEA-only preview
+web-dashboard feature, not a replacement JSON collector for pinned cards.
+
+## Existing Mercury compatibility
+
+The original tracker answers this prompt:
 
 > Create a widget that tells me if Mercury is in retrograde.
 > Use https://mercuryretrogradeapi.com/.
 
 The JSON API is polled, not streamed. Its `is_retrograde` field must be a
 boolean; `true` displays Yes and `false` displays No. No API response text is
-sent to a model or executed as instructions. The source is fixed for this proof
-of concept. An HTTP rejection, malformed JSON, missing/non-boolean status,
+sent to a model or executed as instructions. This legacy route's source is fixed.
+An HTTP rejection, malformed JSON, missing/non-boolean status,
 timeout, or node failure is an error, never a negative Mercury result.
 Requests reject redirects, require `application/json`, and retain the
 15-second timeout and 256 KiB response limit. The public endpoint requires no
@@ -35,6 +120,22 @@ widget-provider installation after that package is installed or updated.
 Installing only the OpenClaw plugin cannot register a Windows widget provider.
 These commands do not update an installed Companion, install certificates,
 enable Developer Mode, change Gateway policy, or pin widgets.
+
+### Keep private configuration local
+
+Source endpoints, credentials, collected readings, personal cards, screenshots
+and deployment profiles do not belong in this repository or its examples.
+Keep them in the selected Gateway/Companion profile or outside the checkout.
+If checkout-local configuration is necessary, use the ignored `local/`
+directory or `*.local.json` files in this plugin directory. Ignore rules are
+an accident-prevention measure, not a privacy boundary or permission to force-add
+private files.
+
+The package uses an explicit file list for runtime modules, guidance and
+reusable examples. Local configuration and capture output must never be added
+to that list. Check `npm pack --dry-run --json --ignore-scripts` from this plugin
+directory before distributing it. Custom-feed examples use reserved
+`example.com` addresses and synthetic observations, not personal endpoints.
 
 ## Install and configure the plugin
 
@@ -62,7 +163,8 @@ display name or the first connected device.
         "enabled": true,
         "config": {
           "nodeId": "<paired-windows-node-id>",
-          "refreshMinutes": 60
+          "refreshMinutes": 60,
+          "allowedSourceUrls": []
         }
       }
     }
@@ -84,17 +186,182 @@ Inspect registration, then exercise the tool in an actual conversation:
 openclaw plugins inspect windows-widgets --runtime --json
 ```
 
-Ask the prompt above. The agent should select `windows_widgets` with
+For the bot-pushed workflow, ask the agent to read the skill and use `publish`
+with a complete snapshot. If it only discovers Mercury actions or no `publish`,
+the deployed plugin is stale: updating this checkout does not update a running
+Gateway. Refresh only the authorized deployment and verify live tool discovery.
+
+For Mercury compatibility, ask its prompt above. The agent should select `windows_widgets` with
 `{"action":"create"}`. This enables refresh, fetches the source, persists its
 observation, and invokes `widgets.upsert` on the configured Windows node.
 
 Open **Win+W**, use the Windows widget picker to add **OpenClaw Tracker**, and
-select **Mercury retrograde** if needed. If exactly one tracker exists, a newly
+select the intended tracker if needed. If exactly one tracker exists, a newly
 pinned instance binds automatically. Additional instances can select different
-cached trackers; arbitrary source integrations are not part of this PoC.
+cached trackers, including the independent source integrations described below.
 
 **Windows owns pinning.** A successful tool call is not a claim that the card
 was pinned or displayed. `host.supported: false` means cache-only.
+
+## Create another source-backed widget
+
+The existing opt-in polling route uses `id`, `title` and a declarative `source`.
+It is not needed for bot-pushed widgets and must not be enabled implicitly.
+An administrator must first add the **exact, credential-free public HTTPS URL**
+to `plugins.entries.windows-widgets.config.allowedSourceUrls`. This is separate
+from agent arguments and Windows display consent. Do not approve sources you
+are not authorized to collect or show to other people. Query strings and
+subdomains may themselves identify a person or contain secrets.
+
+For example, after approving `https://example.com/observations.json`, a source
+returning `{"active":false,"sampledAt":"2026-01-01T12:00:00Z"}` can use:
+
+```json
+{
+  "action": "create",
+  "id": "source-status",
+  "title": "Source status",
+  "refreshMinutes": 5,
+  "staleAfterMinutes": 15,
+  "source": {
+    "kind": "json",
+    "url": "https://example.com/observations.json",
+    "valuePointer": "/active",
+    "observedAtPointer": "/sampledAt",
+    "valueMap": { "true": "Active", "false": "Inactive" }
+  }
+}
+```
+
+`valuePointer` selects a non-null scalar. Optional `valueMap` maps every
+permitted raw value to literal display copy; unmapped values fail rather than
+guessing. Optional `fields` maps up to 16 simple names to scalar JSON Pointers
+under `${content.source.name}`. No response text is executed, merged into card
+definitions or treated as model instructions. Observed timestamps come from
+`observedAtPointer`, or collection time when it is omitted.
+
+New polling intervals accept 1-1440 minutes and default to five. Staleness
+defaults to twice that interval, with a five-minute minimum. Source adapters
+reject redirects, non-JSON responses, private/reserved DNS answers, oversized
+bodies and deadlines. TLS connects to a checked public address, preventing a
+second DNS lookup from redirecting collection into the local network.
+Removing approval prevents subsequent collection.
+
+Use `{"action":"list"}` for metadata, then `status`, `style`, `refresh` or `stop`
+with that widget's `id`. New responses do not include readings, source URLs or
+PNG bytes. This does not make the feature a privacy boundary: observations
+persist in Gateway plugin state, Windows snapshots and rendered cards.
+The existing raw `widgets.list` node/MCP command returns cached snapshots.
+Restrict access accordingly. Failed collection retains last-good observations
+and records an error; styling does not erase source errors or advance freshness.
+Stopped IDs can be reused. The bounded registry retains 19 new ID slots, plus
+the legacy Mercury slot; it does not invent an unsupported keyed-store delete API.
+
+### Timestamped sensor history
+
+Use `source.kind: "nightscout"` for a Nightscout-style entries endpoint you are
+authorized to display. No live endpoint or personal readings are bundled:
+
+```json
+{
+  "action": "create",
+  "id": "sensor-history",
+  "title": "Sensor history",
+  "refreshMinutes": 5,
+  "source": {
+    "kind": "nightscout",
+    "url": "https://example.com/api/v1/entries.json",
+    "units": "mg/dL",
+    "windowMinutes": 240,
+    "maxPoints": 96,
+    "gapMinutes": 15
+  }
+}
+```
+
+The exact URL also needs administrator approval. Entries with `type: "sgv"`
+require a positive finite numeric `sgv` in mg/dL and a millisecond Unix `date`.
+Other entry types are ignored. Sorting uses timestamps, not response order;
+conflicting duplicates, invalid samples and empty sensor responses fail.
+Choose `mg/dL` or `mmol/L` explicitly. The latter divides by 18 and rounds to
+one decimal. The newest sample, not the polling clock, owns freshness.
+
+The adapter exposes at most 96 real `{x: ISO timestamp, y: value}` points in
+`content.source.points`. The default window is four hours ending at the latest
+sample; up to 24 hours is configurable. If the point limit truncates a busy
+window, only the newest samples are shown. A locally generated PNG uses actual
+time coordinates and leaves gaps longer than `gapMinutes` unconnected. Its
+monochrome plot has native value/unit/range text and image alternative text.
+It is a data graphic, not a medical monitor, alert system or treatment tool.
+There are no clinical target bands, dosing advice or health-to-light automations.
+Native `Chart.Line` support is still unverified; this path uses an ordinary
+`Image` instead. Small shows the current value without the graph.
+
+The source adapter owns `content.source`, `source-series` artwork and actual
+observation facts. Custom presentations can bind
+`${$root.content.source.graphUrl}` and `${content.source.graphAlt}` while keeping
+their own data elsewhere. Styling preserves the same observation and series.
+Windows image decoding, size/theme parity and accessibility still need current
+native proof.
+
+### Manual snapshots and lighting controls
+
+`publish` with an `id` and `snapshot` deploys an actual observation collected
+elsewhere without starting a source schedule. Snapshot fields are `title`,
+`value`, optional `detail`, public `sourceUrl`, actual ISO `observedAt`, optional
+`staleAfterMinutes` and optional complete `presentation`. Alternatively, use the
+`series` history payload described above to derive value/time and artwork. Stop an active polling
+ID before switching it to manual mode. Later updates require another `publish`,
+not a fabricated observation or `refresh`.
+
+The [lighting presentation](examples/lighting-controls.json) is a manual control
+panel, not effect telemetry. Its publication time describes the panel definition;
+the protected native feedback describes the last driver interaction separately.
+It reuses the separately installed C# driver from
+[windows-personalization-skill](https://github.com/samanthamsong/windows-personalization-skill),
+whose protocol was inspected at revision
+`fc3e07adb0c3cf0f583d9aa8cfbc1cad02b5edcc`. The driver is not vendored, downloaded,
+installed, registered or upgraded by this plugin. Follow its installation and
+hardware requirements with separate permission. Its expected executable is
+`%LOCALAPPDATA%\DynamicLightingDriver\DynamicLightingDriver.exe`.
+
+On the Windows profile used by the provider, explicitly create
+`widget-lighting.json` containing `{"enabled":true}` beside the `widgets`
+directory, normally under `%APPDATA%\OpenClawTray`. A side-by-side packaged
+profile can use a different data root. Neither a prompt, card nor source can
+enable this consent. The driver window can appear even for device discovery;
+foreground/background lighting priority can affect actual results.
+
+Only a native click can invoke `widget.lighting`, with `associatedInputs: "none"`
+and literal data:
+
+| Operation | Literal fields | Effect |
+| --- | --- | --- |
+| `status` | `operation` only | Starts/reuses the driver and reads device layout, not `DIAGNOSE`. |
+| `color` | `color: "#RRGGBB"` | Requests a solid color on the first discovered device. |
+| `preset` | `preset`, `color`, optional `accentColor` | Requests solid, wave, breathe, twinkle, gradient or rainbow on the first device. |
+| `release` | `operation` only | Quits only this provider's driver and releases its effects. |
+
+Generated commands, shell, Python effects, layers, arbitrary executable paths
+and bound/submitted inputs are rejected. The callback also verifies that the
+requested action is present in the current selected card. Publication, polling,
+styling, cached refresh and provider activation never apply an effect.
+The provider keeps its own driver's stdin alive, drains output with bounds and
+serializes exchanges. A per-profile file lease prevents duplicate provider
+drivers; other profiles or unrelated lighting apps can still compete.
+ACK means **driver acknowledged**, never verified physical lights or verified
+current-effect telemetry. Feedback is localized, provider-owned and isolated
+from source observations and `initialState`.
+
+Use Release before unpinning or reconfiguring controls. Revoking the consent
+file, removing all lighting snapshots or disposing the provider releases its
+owned process. No process search or broad termination is used. Consent
+revocation is checked on the provider timer even with no active tile.
+The default protocol deadline is ten seconds;
+`OPENCLAW_WIDGET_LIGHTING_TIMEOUT_SECONDS` accepts 2-30 in the provider process.
+Unsupported hardware, missing installation or protocol failures remain visible
+errors. No real lighting driver or hardware has been exercised by the synthetic
+protocol tests.
 
 ## Prompt-designed native cards
 
@@ -104,68 +371,24 @@ Both Companion and the plugin must be updated. New requests reject the former
 `theme`/`body` contract. Old saved PoC compositions migrate to native templates;
 existing snapshots without presentation retain the simple title/status fallback.
 
-For example:
+Adapt the [responsive status example](examples/responsive-status.json) for a
+text-first card, or the [artwork status example](examples/artwork-status.json)
+for an illustration beside the actual `value` and optional `detail`. Both are
+complete presentations, not tool preset names or scenario-specific defaults.
+Use `publish` for a new snapshot and `style` to preserve an existing observation.
+Neither example changes a widget until explicitly published.
 
-> Restyle my Mercury widget using the Weather widget's Fluent hierarchy.
-> Put a planet beside simple status text on a restrained dark mystic backdrop.
-> Dim Mercury during actual retrograde and brighten it otherwise. On larger
-> cards, show "Something else must be bumming you out" when not in retrograde.
-> Keep the timestamp and source, and preserve the hourly refresh.
+The artwork example uses caller-selected PNGs named `backdrop` and
+`illustration`, plus meaningful `data.imageAlt`. It bundles no images. Keep a
+dark background and semantic `Light` text inside the hero `Container`, leaving
+the provider's footer on the plain host surface. Use native auto/stretch columns,
+semantic typography and smaller illustrations on Small. Do not add fabricated
+metrics, decorative frames or text baked into images.
 
-The shipped [mystic composition example](examples/fluent-mystic.json) is a
-complete `presentation`, not a theme parameter. The agent can adapt it and use
-`create` for a new tracker or `style` for an existing one. Supply selected or
-generated PNGs through `artworkFiles` named `backdrop`, `planet-lit` and
-`planet-muted`, or change those names to reuse saved artwork. The example
-contains no bundled image files, generated-art claims or fixed asset inventory.
-
-### Reuse the Mercury demo template
-
-The [Mercury demo template](examples/mercury-demo.json) preserves the approved
-plain Windows layout: **Is Mercury in Retrograde?** in the native header and
-a large, centered status. The provider keeps the timestamp and centered
-**Open source** hyperlink together at the bottom, without a divider. It needs
-no artwork or dark background. Choose **Small** in the Widgets Board for the
-compact demo; the template does not resize a pinned tile.
-
-For the demo, ask:
-
-> Use the bundled Mercury demo template for my widget. Keep the large centered
-> status, bottom timestamp and source link, and hourly refresh.
-
-The agent reads the file as a complete `presentation` and supplies it to
-`windows_widgets`: use `style` for an existing tracker to preserve its source
-observation, or `create` for a new tracker. This is a reusable example, not a
-new template-name tool parameter or the default for unrelated designs. Do not
-copy the provider-owned footer into the template.
-
-The status follows the real Yes/No observation. The playful supporting sentence
-appears only outside Small when the answer is No. Windows still owns typography
-and header support; other sizes, themes and the negative state require their
-own native visual checks.
-
-### Fluent, weather-inspired composition
-
-The Weather reference informs hierarchy, not a forecast feature: one
-recognizable illustration beside a concise status, generous space and optional
-supporting copy. Use an auto/stretch `ColumnSet` and native semantic typography
-and spacing. Avoid stacked oversized headings, nested cards, decorative Accent
-text, neon glows and invented forecast rows.
-
-The example confines its dark atmospheric background to the hero `Container`
-and uses semantic `Light` text there. The provider-owned observation/source
-footer stays on the plain Windows surface, with the host's own text palette.
-A root-level dark background would also sit behind that footer and can make
-its default text unreadable in light mode. Keep copy in native `TextBlock`
-elements instead of baking it into the artwork.
-
-Small cards use the smaller planet and omit the longer supporting sentence.
-Other sizes retain the same simple layout, rather than filling space with
-extra metrics. The bright/dim artwork and status copy use actual `value`
-bindings. Existing designs do not change automatically, and their source
-observations and collection schedule are unchanged by a style request.
-Native image loading, contrast, clipping, light/dark and accessibility behavior
-still need Widgets Board proof; JSON admission is not visual validation.
+Reserve space for the provider-owned footer at every size. Use Small in the
+Board for a shorter tile; a template cannot resize a pinned tile. Native image
+loading, contrast, clipping, light/dark and accessibility still need Widgets
+Board proof. JSON admission is not visual validation.
 
 ### Native design surface and host limits
 
@@ -229,26 +452,22 @@ node. Supply `artworkFiles` with `create` or `style`, alongside the full card:
 ```json
 {
   "action": "style",
+  "id": "project-status",
   "artworkFiles": {
-    "backdrop": "C:\\path\\to\\generated-space.png",
-    "planet-lit": "C:\\path\\to\\mercury-bright.png",
-    "planet-muted": "C:\\path\\to\\mercury-dim.png"
+    "illustration": "C:\\path\\to\\selected-status.png"
   },
   "presentation": {
     "card": {
       "type": "AdaptiveCard",
       "version": "1.5",
-      "backgroundImage": "openclaw-asset:backdrop",
       "body": [
         {
-          "type": "Image", "url": "openclaw-asset:planet-muted",
-          "altText": "Mercury, dimmed to indicate retrograde",
-          "$when": "${value == 'Yes'}"
+          "type": "Image", "url": "openclaw-asset:illustration",
+          "altText": "Illustration accompanying the project status",
+          "size": "Small"
         },
         {
-          "type": "Image", "url": "openclaw-asset:planet-lit",
-          "altText": "Mercury, bright to indicate no retrograde",
-          "$when": "${value == 'No'}"
+          "type": "TextBlock", "text": "${value}", "wrap": true
         }
       ]
     }
@@ -260,7 +479,7 @@ Paths must be absolute on the Gateway host, not on the Windows node unless
 they are the same host. The plugin reads only explicitly supplied regular PNG
 files and encodes them as `presentation.assets[name].base64`. Advanced callers
 can supply that assets map directly. Names are chosen for each design: there is
-no built-in Mercury or space asset inventory. The native provider validates the
+no built-in asset inventory. The native provider validates the
 bytes and expands `openclaw-asset:<name>` in image/background/icon fields.
 Direct content bindings to those references work too. Missing/invalid images
 fail before plugin state changes or node delivery. Artwork persists with the
@@ -283,12 +502,11 @@ but actual native Board rendering still requires proof.
 
 The preceding snippet demonstrates resource transfer and conditions, not the
 recommended complete layout. Use the
-[Fluent composition example](examples/fluent-mystic.json) for side-by-side
-planet/status placement. Compose images and text using native card elements and data-driven conditions.
+[artwork composition example](examples/artwork-status.json) for side-by-side
+illustration/status placement. Compose images and text using native card elements and data-driven conditions.
 Adaptive Cards Image has no opacity property. For a fade effect, create two
-versions of the same artwork and switch between them with `$when`, as above.
-Do not fabricate observations to obtain the desired appearance. Mercury
-brightness would be a symbolic retrograde indicator, not a physical phase.
+versions of the same artwork and switch between them with `$when`.
+Do not fabricate observations to obtain the desired appearance.
 
 The provider appends the observed title/value/timestamp and source action
 outside the authored body. IDs beginning `openclaw-` are reserved, including
@@ -327,6 +545,7 @@ The provider implements these verbs:
 | `widget.toggle` | `{"key":"showDetail"}` toggles a declared boolean. |
 | `widget.reset` | Restores this instance's declared initial values. |
 | `widget.refresh` | Renders cached data. It does not fetch the API or advance freshness. Automatic card `refresh.action` may use only this non-mutating verb. |
+| `widget.lighting` | The separately opted-in, literal user-click controls described above. Never an automatic refresh verb or general command. |
 
 For example, add this to the authored card's `actions` array:
 
@@ -346,7 +565,7 @@ The manifest declares customization support and the provider implements
 native inputs/actions; Windows owns entry/exit of its customization surface.
 Native callback and rendering proof are separate from pure state-policy tests.
 
-Styling preserves `observedAt` and the collection schedule. A failed styling
+On the original Mercury route, styling preserves `observedAt` and the collection schedule. A failed styling
 delivery keeps the previous design and reports `presentationError`, separately
 from source `error`. Successful source collection/delivery clears both errors.
 Scheduled refresh and Gateway restart retain the design. Create without
@@ -364,9 +583,10 @@ card design, not every Windows App SDK API or arbitrary custom C# callbacks.
 
 ## Runtime and recovery
 
-The Gateway owns the tracker and recurring API collection. A host-owned
+The Gateway owns trackers and recurring API collection. A host-owned
 service scheduler checks due work once per minute; the default fetch interval
-is 60 minutes and configuration accepts 15-1440 minutes. No recurring model
+is 60 minutes for legacy Mercury, with configuration accepting 15-1440 minutes.
+New independent collectors use the intervals described above. No recurring model
 call is needed. The tracker survives Gateway restarts in plugin-scoped keyed
 state. Refreshes are serialized, failed attempts retain the last successful
 snapshot, and the next scheduled attempt retries.
@@ -384,10 +604,11 @@ startup. The provider reads snapshots, restores per-instance custom-state
 bindings, handles resizing and selection actions, and checks active cards every
 15 seconds. `OPENCLAW_WIDGET_POLL_SECONDS` accepts 5-300 seconds when present
 in the provider process environment. No API fetch occurs in a rendering
-callback. Closed/inactive cards do not trigger provider polling work.
+callback. Closed/inactive cards do not trigger source collection. The provider
+still checks lighting consent and ownership while it remains alive.
 
 The card always includes its observation timestamp and becomes visibly stale
-after twice the configured refresh interval. Sleep, offline devices, a closed
+after its configured stale interval (twice the refresh interval by default). Sleep, offline devices, a closed
 Gateway, or a disconnected node do not guarantee timely refresh. Reopening the
 board uses cached data and the next successful refresh replaces it.
 
@@ -402,7 +623,7 @@ blocks new commands but does not erase already cached/displayed content.
 Run the repository-required build, Shared tests and Tray tests, plus:
 
 ```powershell
-node --test .\plugins\windows-widgets\mercury.test.mjs
+node --test .\plugins\windows-widgets\*.test.mjs
 dotnet test .\tests\OpenClaw.WinNode.Cli.Tests\OpenClaw.WinNode.Cli.Tests.csproj
 ```
 
@@ -457,10 +678,20 @@ The picker PNG is a generated illustration, not a runtime screenshot.
 ## Scope and distribution limits
 
 This is opt-in proof-of-concept code, not a published plugin or verified Store
-release. It supports one Mercury tracker per plugin installation and a single
-explicit Windows target. It does not expose arbitrary HTML, C#, scripts,
-tracking source URLs, or general-purpose action execution. Public card artwork
-and navigation URLs are separate from tracking integrations. Production work should add
+release. It supports one legacy Mercury tracker plus 19 reusable independent
+widget IDs and a single explicit Windows target. It does not expose arbitrary
+HTML, C#, scripts or general-purpose action execution. Source URLs require
+administrator approval; artwork and navigation URLs remain separate.
+The generalized JSON/sensor and lighting additions have synthetic automated
+coverage. Current-build isolated local MCP publication and Widgets Board
+rendering were checked with a synthetic history graph (including a deliberate
+gap) and the two-row lighting panel in Large. The disabled-consent message
+remained visible after clicking Check devices; no driver was enabled or started.
+Use Large for these multi-tracker demos: the selector can push lower controls
+outside Medium's available height. Small/Medium layout parity, live source
+collection, the generalized Gateway/agent flow and physical lighting remain
+unverified.
+Production work should add
 a reviewed permissions/settings surface and Gateway-scoped tracker ownership
 before multi-Gateway or multi-user deployment.
 

@@ -20,7 +20,7 @@ public sealed partial record WidgetPresentation(
     public const int MaxStateBytes = 4_096;
     public const string ReservedPrefix = "openclaw-";
     public static readonly string[] Verbs =
-        ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh"];
+        ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh", WidgetLightingAction.Verb];
 
     [GeneratedRegex(@"^\$\{\$root\.content(?:\.[A-Za-z_][A-Za-z0-9_]*)+\}$", RegexOptions.CultureInvariant)]
     private static partial Regex ContentBinding();
@@ -155,7 +155,14 @@ public sealed partial record WidgetPresentation(
         if (type == "Action.Execute" &&
             (!action.TryGetProperty("verb", out var verb) || verb.ValueKind != JsonValueKind.String ||
              !Verbs.Contains(verb.GetString(), StringComparer.Ordinal)))
-            throw new ArgumentException("Widget Execute verb must be widget.set, widget.increment, widget.toggle, widget.reset or widget.refresh.");
+            throw new ArgumentException("Unknown widget Execute verb.");
+        if (type == "Action.Execute" && action.GetProperty("verb").GetString() == WidgetLightingAction.Verb)
+        {
+            if (!action.TryGetProperty("associatedInputs", out var inputs) || inputs.ValueKind != JsonValueKind.String ||
+                inputs.GetString() != "none" || !action.TryGetProperty("data", out var data))
+                throw new ArgumentException("Lighting actions require literal data and associatedInputs none.");
+            _ = WidgetLightingAction.Parse(data);
+        }
     }
 
     internal static void ValidateState(JsonElement? state)

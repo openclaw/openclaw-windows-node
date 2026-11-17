@@ -2,7 +2,7 @@
   "card": {
     "type": "AdaptiveCard",
     "version": "1.6",
-    "header": "Is Mercury in Retrograde?",
+    "header": "Status",
     "body": [
       {
         "type": "Container",
@@ -17,7 +17,7 @@
                 "items": [
                   {
                     "type": "TextBlock",
-                    "text": "${if(value == 'Yes', 'In retrograde', 'Not in retrograde')}",
+                    "text": "${value}",
                     "size": "${if($host.widgetSize == 'small', 'Medium', 'ExtraLarge')}",
                     "weight": "Bolder",
                     "wrap": true
@@ -93,7 +93,7 @@
   },
   "data": {
     "notes": [
-      { "text": "A failed refresh keeps the last successful observation." },
+      { "text": "Without new updates, the last observation becomes stale." },
       { "text": "Display preferences do not change the tracked source." }
     ]
   },

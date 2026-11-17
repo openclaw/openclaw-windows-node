@@ -4,7 +4,7 @@ import { open, lstat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { MAX_ARTWORK_BYTES, validatePresentation } from "./presentation.mjs";
 
-/** Encodes supplied artwork files for create/style. Missing or invalid artwork fails before publication. */
+/** Encodes selected artwork for publication or styling. Invalid files fail before deployment. */
 export async function loadArtworkFiles(presentation, files) {
   if (files === undefined) return presentation;
   if (files === null || typeof files !== "object" || Array.isArray(files) ||

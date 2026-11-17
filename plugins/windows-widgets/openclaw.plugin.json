@@ -1,7 +1,7 @@
 {
   "id": "windows-widgets",
   "name": "Windows Widgets",
-  "description": "Create a native Windows Mercury retrograde tracker from a prompt.",
+  "description": "Author and publish native Windows Adaptive Card widgets from bot-pushed snapshots, timestamped history and explicit lighting controls.",
   "categories": ["other"],
   "skills": ["./skills"],
   "contracts": {
@@ -19,6 +19,14 @@
         "type": "string",
         "minLength": 1,
         "description": "Exact paired Windows node ID. Never inferred from the first connected device."
+      },
+      "allowedSourceUrls": {
+        "type": "array",
+        "maxItems": 19,
+        "uniqueItems": true,
+        "items": { "type": "string", "maxLength": 2048 },
+        "default": [],
+        "description": "Administrator-approved exact public HTTPS JSON URLs for new source adapters. Not agent-editable consent. Responses stay in local widget state; use only sources you are authorized to display."
       },
       "refreshMinutes": {
         "type": "integer",

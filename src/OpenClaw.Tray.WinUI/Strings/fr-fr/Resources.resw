@@ -10115,4 +10115,12 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="WidgetStale" xml:space="preserve"><value>Données périmées. Dernière observation :</value></data>
   <data name="WidgetSource" xml:space="preserve"><value>Ouvrir la source</value></data>
   <data name="WidgetError" xml:space="preserve"><value>Les données du widget sont indisponibles. Consultez les diagnostics de Companion.</value></data>
+  <data name="WidgetLightingDisabled" xml:space="preserve"><value>Les commandes d’éclairage nécessitent un consentement local. La vérification ou la modification peut afficher la fenêtre du pilote.</value></data>
+  <data name="WidgetLightingReady" xml:space="preserve"><value>Dernière vérification du pilote : {0} appareils. Les commandes ciblent le premier appareil.</value></data>
+  <data name="WidgetLightingNoDevices" xml:space="preserve"><value>Aucun appareil d’éclairage compatible signalé.</value></data>
+  <data name="WidgetLightingAcknowledged" xml:space="preserve"><value>Le pilote a confirmé la demande. L’éclairage physique n’est pas vérifié.</value></data>
+  <data name="WidgetLightingReleased" xml:space="preserve"><value>Ce fournisseur de widgets a libéré son pilote.</value></data>
+  <data name="WidgetLightingUnavailable" xml:space="preserve"><value>Pilote d’éclairage indisponible. Installez-le et autorisez-le localement.</value></data>
+  <data name="WidgetLightingBusy" xml:space="preserve"><value>Un autre fournisseur de widgets contrôle le pilote d’éclairage de ce profil.</value></data>
+  <data name="WidgetLightingFailed" xml:space="preserve"><value>La demande d’éclairage a échoué. Vérifiez le pilote et la disponibilité des appareils.</value></data>
 </root>

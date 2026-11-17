@@ -1,11 +1,11 @@
 // Native Adaptive Card transport, not a second element/property vocabulary.
 // Use validatePresentation before a new request, migratePresentation only for persisted PoC state.
-const verbs = ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh"];
+const verbs = ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh", "widget.lighting"];
 export const MAX_ARTWORK_BYTES = 262144;
 const MAX_IMAGE_DIMENSION = 4096;
 export const presentationSchema = {
   type: "object", additionalProperties: false, required: ["card"],
-  description: "Design a complete native Adaptive Card, not a preset. Native elements/properties, backgroundImage, rich text, columns, images, inputs, actions, header and Adaptive Card templating ($when, $data, $host.widgetSize, $host.hostTheme, $host.isSettingsPayload) pass to Windows, which decides host support. Version 1.0-1.6. Source facts are read-only bindings ${title}, ${value}, ${detail}, ${observedAt}, ${freshness}, ${sourceUrl}. Separate data is content; scalar initialState keys are per-instance state. Execute verbs: widget.set (input IDs match keys), widget.increment (data.key, amount), widget.toggle (data.key), widget.reset, widget.refresh (cached render). No arbitrary commands, credentials or HTML. Images/backgrounds/icons can use public HTTPS or openclaw-asset:<name> for PNG artwork supplied in assets, with any valid name, not built-in designs. Prefer artworkFiles on the plugin tool for locally generated or selected PNG files; the plugin encodes them so you never need to paste base64. Resource bindings must be direct ${$root.content.path}; use separate conditional images to switch artwork with data. Navigation remains HTTPS-only. Provider appends observation/source. Layout/data/state max 65536 UTF-8 bytes; artwork max 262144 decoded bytes total, 4096 pixels per side, PNG only; 256 objects, JSON depth 24, state 4096 bytes. Snapshot max 524288 bytes, expanded native template max 1048576 bytes. {} does not reset: use a new minimal card.",
+  description: "Design a complete native Adaptive Card, not a preset. Native elements/properties, backgroundImage, rich text, columns, images, inputs, actions, header and Adaptive Card templating ($when, $data, $host.widgetSize, $host.hostTheme, $host.isSettingsPayload) pass to Windows, which decides host support. Version 1.0-1.6. Source facts are read-only bindings ${title}, ${value}, ${detail}, ${observedAt}, ${freshness}, ${sourceUrl}. Separate data is content; polling adapters reserve content.source and source-series artwork. Scalar initialState keys are per-instance state. Execute verbs: widget.set (input IDs match keys), widget.increment (data.key, amount), widget.toggle (data.key), widget.reset, widget.refresh (cached render). Separately opted-in widget.lighting accepts literal status/release/color/preset data with associatedInputs none, only on user click. It never accepts commands or bound inputs; driver ACK is not physical proof. Only widget.refresh may run automatically. No arbitrary commands, credentials or HTML. Images/backgrounds/icons can use public HTTPS or openclaw-asset:<name> for PNG artwork supplied in assets, with any valid name, not built-in designs. Prefer artworkFiles on the plugin tool for locally generated or selected PNG files; the plugin encodes them so you never need to paste base64. Resource bindings must be direct ${$root.content.path}; use separate conditional images to switch artwork with data. Navigation remains HTTPS-only. Provider appends observation/source. Layout/data/state max 65536 UTF-8 bytes; artwork max 262144 decoded bytes total, 4096 pixels per side, PNG only; 256 objects, JSON depth 24, state 4096 bytes. Snapshot max 524288 bytes, expanded native template max 1048576 bytes. {} does not reset: use a new minimal card.",
   properties: {
     card: {
       type: "object", additionalProperties: true, required: ["type", "version", "body"],
@@ -32,7 +32,7 @@ export const presentationSchema = {
 };
 
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
-function publicUrl(value) {
+export function validatePublicUrl(value) {
   if (typeof value !== "string" || value.length > 2048 || value.includes("${"))
     throw new Error("Widget resource requires a literal public HTTPS URL or a direct content binding.");
   const url = new URL(value);
@@ -41,6 +41,22 @@ function publicUrl(value) {
     !host.includes(".") || /^[\d.]+$/.test(host) || host.includes(":") ||
     /\.(localhost|local|internal|home|lan)$/i.test(host))
     throw new Error("Widget resources require public HTTPS URLs without credentials, custom ports or local hosts.");
+}
+
+function validateLightingAction(action) {
+  const data = action.data;
+  if (action.associatedInputs !== "none" || !object(data) ||
+    Object.entries(data).some(([key, value]) => !["operation", "color", "preset", "accentColor"].includes(key) ||
+      typeof value !== "string"))
+    throw new Error("Lighting actions require literal data and associatedInputs none.");
+  const color = value => typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value);
+  const count = Object.keys(data).length;
+  const valid = ["status", "release"].includes(data.operation) ? count === 1
+    : data.operation === "color" ? count === 2 && color(data.color)
+    : data.operation === "preset" && ["solid", "wave", "breathe", "twinkle", "gradient", "rainbow"].includes(data.preset) &&
+      color(data.color) && (data.accentColor === undefined || color(data.accentColor)) &&
+      count === (data.accentColor === undefined ? 3 : 4);
+  if (!valid) throw new Error("Lighting requires status, release, a #RRGGBB color, or a fixed preset and colors.");
 }
 
 /** Enforces the same bounded publication policy as C#; Windows owns final card schema/rendering support. */
@@ -110,7 +126,7 @@ export function validatePresentation(value) {
         throw new Error("Expanded widget artwork exceeds the native template limit. Use fewer repeated image resources.");
       return;
     }
-    publicUrl(input);
+    validatePublicUrl(input);
   }
   function visit(node, depth, template) {
     if (depth > 24) throw new Error("Widget JSON exceeds depth 24.");
@@ -137,6 +153,7 @@ export function validatePresentation(value) {
             throw new Error("Widget OpenUrl requires a URL.");
           if (input === "Action.Execute" && !verbs.includes(node.verb))
             throw new Error("Unknown widget Execute verb.");
+          if (input === "Action.Execute" && node.verb === "widget.lighting") validateLightingAction(node);
         }
         if (key === "targetElements") {
           if (!Array.isArray(input)) throw new Error("Widget targetElements must be an array.");

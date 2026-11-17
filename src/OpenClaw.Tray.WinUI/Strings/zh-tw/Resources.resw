@@ -10115,4 +10115,12 @@
   <data name="WidgetStale" xml:space="preserve"><value>已過期。上次觀測時間：</value></data>
   <data name="WidgetSource" xml:space="preserve"><value>開啟來源</value></data>
   <data name="WidgetError" xml:space="preserve"><value>小工具資料無法使用。請查看 Companion 診斷資訊。</value></data>
+  <data name="WidgetLightingDisabled" xml:space="preserve"><value>燈光控制需要本機授權。檢查或變更燈光可能會顯示驅動程式視窗。</value></data>
+  <data name="WidgetLightingReady" xml:space="preserve"><value>上次驅動程式檢查：{0} 個裝置。控制項僅針對第一個裝置。</value></data>
+  <data name="WidgetLightingNoDevices" xml:space="preserve"><value>未回報相容的燈光裝置。</value></data>
+  <data name="WidgetLightingAcknowledged" xml:space="preserve"><value>驅動程式已確認要求。尚未驗證實際燈光效果。</value></data>
+  <data name="WidgetLightingReleased" xml:space="preserve"><value>此小工具提供者已釋放其驅動程式。</value></data>
+  <data name="WidgetLightingUnavailable" xml:space="preserve"><value>燈光驅動程式無法使用。請在本機安裝並授權。</value></data>
+  <data name="WidgetLightingBusy" xml:space="preserve"><value>另一個小工具提供者正在控制此設定檔的燈光驅動程式。</value></data>
+  <data name="WidgetLightingFailed" xml:space="preserve"><value>燈光要求失敗。請檢查驅動程式及裝置是否可用。</value></data>
 </root>

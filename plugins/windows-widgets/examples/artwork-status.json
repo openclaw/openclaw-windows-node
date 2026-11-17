@@ -1,0 +1,74 @@
+{
+  "card": {
+    "type": "AdaptiveCard",
+    "version": "1.5",
+    "header": "Status",
+    "body": [
+      {
+        "type": "Container",
+        "backgroundImage": {
+          "url": "openclaw-asset:backdrop",
+          "fillMode": "Cover"
+        },
+        "items": [
+          {
+            "type": "ColumnSet",
+            "columns": [
+              {
+                "type": "Column",
+                "width": "auto",
+                "verticalContentAlignment": "Center",
+                "items": [
+                  {
+                    "type": "Image",
+                    "url": "openclaw-asset:illustration",
+                    "altText": "${$root.content.imageAlt}",
+                    "size": "Small",
+                    "$when": "${$host.widgetSize == 'small'}"
+                  },
+                  {
+                    "type": "Image",
+                    "url": "openclaw-asset:illustration",
+                    "altText": "${$root.content.imageAlt}",
+                    "size": "Medium",
+                    "$when": "${$host.widgetSize != 'small'}"
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "width": "stretch",
+                "spacing": "Medium",
+                "verticalContentAlignment": "Center",
+                "items": [
+                  {
+                    "type": "TextBlock",
+                    "text": "${value}",
+                    "size": "Medium",
+                    "weight": "Bolder",
+                    "color": "Light",
+                    "wrap": true,
+                    "maxLines": 2
+                  },
+                  {
+                    "type": "TextBlock",
+                    "text": "${detail}",
+                    "size": "Small",
+                    "color": "Light",
+                    "spacing": "Small",
+                    "wrap": true,
+                    "maxLines": 2,
+                    "$when": "${$host.widgetSize != 'small'}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "data": {
+    "imageAlt": "Illustration accompanying the status"
+  }
+}

@@ -6,7 +6,7 @@ using System.Text.Json.Nodes;
 namespace OpenClaw.Shared.Widgets;
 
 /// <summary>Pure native interaction policy. No generated action can invoke a node command or source fetch.</summary>
-public sealed record WidgetInstanceState(string? TrackerId, JsonObject Values)
+public sealed record WidgetInstanceState(string? TrackerId, JsonObject Values, WidgetLightingFeedback? Lighting = null)
 {
     private const string Prefix = "v2:";
 
@@ -24,7 +24,15 @@ public sealed record WidgetInstanceState(string? TrackerId, JsonObject Values)
             var id = saved["trackerId"]!.GetValue<string>();
             WidgetSnapshotStore.ValidateId(id);
             WidgetPresentation.ValidateState(JsonSerializer.SerializeToElement(values));
-            return new(id, Reconcile(snapshots.FirstOrDefault(s => s.Id == id)?.Presentation, values));
+            WidgetLightingFeedback? lighting = null;
+            if (saved["lighting"] is JsonObject feedback)
+            {
+                if (!Enum.TryParse<WidgetLightingOutcome>(feedback["outcome"]?.GetValue<string>(), out var outcome) ||
+                    !Enum.IsDefined(outcome) || feedback["deviceCount"]?.GetValue<int>() is not (>= 0 and <= 256))
+                    throw new ArgumentException("Invalid widget lighting feedback.");
+                lighting = new(outcome, feedback["deviceCount"]!.GetValue<int>());
+            }
+            return new(id, Reconcile(snapshots.FirstOrDefault(s => s.Id == id)?.Presentation, values), lighting);
         }
         var trackerId = customState?.StartsWith(WidgetCard.StatePrefix, StringComparison.Ordinal) == true
             ? customState[WidgetCard.StatePrefix.Length..] : snapshots.Count == 1 ? snapshots[0].Id : null;
@@ -53,13 +61,15 @@ public sealed record WidgetInstanceState(string? TrackerId, JsonObject Values)
     /// <summary>Encodes the binding and values for Windows-owned per-instance CustomState persistence.</summary>
     public string Serialize() => TrackerId is null ? "" : Prefix + new JsonObject
     {
-        ["trackerId"] = TrackerId, ["values"] = Values.DeepClone()
+        ["trackerId"] = TrackerId, ["values"] = Values.DeepClone(),
+        ["lighting"] = Lighting is null ? null : new JsonObject
+        { ["outcome"] = Lighting.Outcome.ToString(), ["deviceCount"] = Lighting.DeviceCount }
     }.ToJsonString();
 
     /// <summary>Applies only declared scalar state keys; source facts and other pinned instances stay unchanged.</summary>
     public WidgetInstanceState Apply(WidgetPresentation? presentation, string verb, JsonElement input)
     {
-        if (!WidgetPresentation.Verbs.Contains(verb, StringComparer.Ordinal))
+        if (verb == WidgetLightingAction.Verb || !WidgetPresentation.Verbs.Contains(verb, StringComparer.Ordinal))
             throw new ArgumentException("Unknown widget interaction.");
         if (input.ValueKind != JsonValueKind.Object)
             throw new ArgumentException("Widget action input must be an object.");
@@ -105,6 +115,6 @@ public sealed record WidgetInstanceState(string? TrackerId, JsonObject Values)
             }
         }
         WidgetPresentation.ValidateState(JsonSerializer.SerializeToElement(values));
-        return new(TrackerId, values);
+        return new(TrackerId, values, Lighting);
     }
 }
