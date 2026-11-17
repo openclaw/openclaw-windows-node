@@ -7,8 +7,15 @@ using Xunit.Abstractions;
 
 namespace OpenClaw.Shared.Tests;
 
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class MarkdownParserTimingCollection
+{
+    public const string Name = "Markdown parser timing";
+}
+
 // #5 fuzz probe: the node parses untrusted gateway chat markdown via ChatMarkdownAstBuilder.
 // Pathological (not merely large) inputs must not crash or blow up super-linearly (CPU DoS).
+[Collection(MarkdownParserTimingCollection.Name)]
 public class MarkdownParserFuzzTests
 {
     private readonly ITestOutputHelper _out;
@@ -36,14 +43,26 @@ public class MarkdownParserFuzzTests
     [Fact]
     public void Build_ManyListItems_ScalingCurve()
     {
+        using var process = Process.GetCurrentProcess();
         string ListMd(int items) => string.Concat(Enumerable.Repeat("  - x\n", items));
         long Time(int items)
         {
             var md = ListMd(items);
             new ChatMarkdownAstBuilder().Build(md); // warm
+            var cpuBefore = process.TotalProcessorTime;
+            var gcPauseBefore = GC.GetTotalPauseDuration();
+            var allocatedBefore = GC.GetTotalAllocatedBytes(precise: true);
             var sw = Stopwatch.StartNew();
-            new ChatMarkdownAstBuilder().Build(md);
+            var document = new ChatMarkdownAstBuilder().Build(md);
             sw.Stop();
+            var cpu = process.TotalProcessorTime - cpuBefore;
+            var gcPause = GC.GetTotalPauseDuration() - gcPauseBefore;
+            var allocated = GC.GetTotalAllocatedBytes(precise: true) - allocatedBefore;
+            _out.WriteLine(
+                $"{items} items: wall={sw.Elapsed.TotalMilliseconds:F1}ms cpu={cpu.TotalMilliseconds:F1}ms "
+                + $"gcPause={gcPause.TotalMilliseconds:F1}ms allocated={allocated} bytes");
+            var list = Assert.IsType<MdList>(Assert.Single(document.Blocks));
+            Assert.Equal(items, list.Items.Count);
             return sw.ElapsedMilliseconds;
         }
         const int largestItemCount = 30_000;

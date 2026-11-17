@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OpenClaw.FileWorker\OpenClaw.FileWorker.csproj" />
+    <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" Aliases="CacheResolver" />
+  </ItemGroup>
+</Project>

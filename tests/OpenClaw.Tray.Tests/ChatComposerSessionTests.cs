@@ -130,6 +130,43 @@ public sealed class ChatComposerSessionTests
     }
 
     [Fact]
+    public async Task CompactConversationHidesCaptureDespiteLaterVisibleProjection()
+    {
+        var capture = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cleanedUp = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken captureToken = default;
+        var calls = 0;
+        var dispatcher = new RecordingUiDispatcher();
+        using var temp = new TempDirectory();
+        using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+        using var session = new ChatComposerFactory(dispatcher, store, new SandboxStatusStore()).Create(
+            new FakeChatDataProviderForComposerTests(),
+            new ChatComposerHostActions(null, null, (token, _) =>
+            {
+                calls++;
+                captureToken = token;
+                return capture.Task;
+            }, null), initialSpeakerMuted: false);
+        session.ApplyInputs(MakeInputs("first"));
+        session.ViewModel.SetDraft("Keep my draft");
+        session.Controller.TestOnlyVoiceOperationCleanedUp = () => cleanedUp.TrySetResult();
+        session.Controller.StartVoiceRecording();
+        session.SetConversationVisible(false);
+        session.ApplyInputs(MakeInputs("first"));
+        session.SetHostVisible(true);
+
+        Assert.True(captureToken.IsCancellationRequested);
+        Assert.False(session.ViewModel.IsRecording);
+        session.Controller.StartVoiceRecording();
+        Assert.Equal(1, calls);
+        session.SetConversationVisible(true);
+        Assert.Equal(1, calls);
+        capture.SetResult("Late hidden transcript");
+        await cleanedUp.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal("Keep my draft", session.ViewModel.Draft);
+    }
+
+    [Fact]
     public async Task RetainedHostSuspension_OverridesVisibleProjectionAndFencesCaptureAfterResume()
     {
         var speechTargets = new List<string>();

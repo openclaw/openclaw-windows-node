@@ -58,6 +58,36 @@ public class ChatMarkdownSanitizerTests
         Assert.Equal("t (https://e.com)", result);
     }
 
+    [Theory]
+    [InlineData(
+        "See [CI attempt 2](https://github.com/o/r/actions/runs/1) now.",
+        "See [CI attempt 2](<https://github.com/o/r/actions/runs/1>) now.")]
+    [InlineData("[docs](http://example.com/a?b=1&c=2)", "[docs](<http://example.com/a?b=1&c=2>)")]
+    [InlineData("[t](https://e.com \"title\")", "[t](<https://e.com>)")]
+    public void Sanitize_PreserveWebLinks_KeepsHttpAnchorsLikeWebChat(string input, string expected)
+    {
+        Assert.Equal(expected, ChatMarkdownSanitizer.Sanitize(input, preserveWebLinks: true));
+    }
+
+    [Theory]
+    [InlineData("[run](javascript:alert(1))", "run (javascript:alert(1))")]
+    [InlineData("[open](vscode://file/x)", "open (vscode://file/x)")]
+    [InlineData("[mail](mailto:a@b.c)", "mail (mailto:a@b.c)")]
+    [InlineData("[rel](/docs/page)", "rel (/docs/page)")]
+    public void Sanitize_PreserveWebLinks_StillFlattensNonWebDestinations(string input, string expected)
+    {
+        Assert.Equal(expected, ChatMarkdownSanitizer.Sanitize(input, preserveWebLinks: true));
+    }
+
+    [Fact]
+    public void Sanitize_PreserveWebLinks_FlattensNestedImagesInsideLinkText()
+    {
+        var result = ChatMarkdownSanitizer.Sanitize(
+            "[![pixel](https://attacker.example/p.png)](https://example.com)", preserveWebLinks: true);
+        Assert.Equal("[[Image: pixel]](<https://example.com>)", result);
+        Assert.DoesNotContain("attacker.example", result);
+    }
+
     [Fact]
     public void Sanitize_AngleBracketUrl_IsUnwrapped()
     {

@@ -12,6 +12,245 @@ namespace OpenClaw.Tray.Tests;
 [Collection("Chat telemetry")]
 public sealed class InteractiveGatewayChatTests
 {
+    private static readonly TimeSpan HistoryMergeTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(30);
+
+    [Fact]
+    public async Task FinalAfterPersistedReplyInLaterTurnRendersOnceWithoutHistoryReload()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Enqueue(args.Snapshot);
+        await provider.LoadAsync();
+        const string key = GatewayScenario.EmptySessionKey;
+
+        async Task Turn(int number, string prompt, string reply)
+        {
+            var runId = $"fixture-chat-{number}";
+            var finalReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            // Subscribed after the bridge: this final's provider update completes before the barrier.
+            void OnMessage(object? sender, ChatMessageInfo message)
+            {
+                if (message.RunId == runId && message.IsFinal && string.IsNullOrEmpty(message.OpenClawId))
+                    finalReceived.TrySetResult();
+            }
+            client.ChatMessageReceived += OnMessage;
+            try
+            {
+                await provider.SendMessageAsync(key, prompt);
+                await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "start" });
+                await server.PublishSessionToolEventAsync(key, runId, new
+                {
+                    phase = "start", name = "read", toolCallId = $"{runId}-tool", args = new { path = "fixture.txt" },
+                });
+                await server.PublishSessionToolEventAsync(key, runId, new
+                {
+                    phase = "result", name = "read", toolCallId = $"{runId}-tool",
+                    result = new { content = "fixture-only" },
+                });
+                await server.PublishChatContentAsync(key, runId,
+                    new object[] { new { type = "text", text = reply } }, isFinal: false);
+                await server.PublishPersistedAssistantAsync(key, runId, $"fixture-reply-{number}", number * 2, reply);
+                await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "end" });
+                await server.PublishChatFinalAsync(key, runId, reply);
+                await finalReceived.Task.WaitAsync(HistoryMergeTimeout);
+            }
+            finally { client.ChatMessageReceived -= OnMessage; }
+        }
+
+        await Turn(1, "First fixture question.", "First fixture reply.");
+        await Turn(2, "Second fixture question.", "Second fixture reply.");
+        var timeline = Latest(snapshots, key)!;
+        Assert.Equal(
+            ["First fixture question.", "First fixture reply.", "Second fixture question.", "Second fixture reply."],
+            timeline.Entries.Where(entry => entry.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant)
+                .Select(entry => entry.Text));
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(timeline.Entries, entry => entry.IsStreaming);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.history");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task SessionToolMirrorLinksAndCompletesExistingLiveChildWithoutHistory()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        var linkedWhileRunning = new TaskCompletionSource<ChatTimelineItem>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const string key = GatewayScenario.EmptySessionKey;
+        const string runId = "fixture-chat-1";
+        provider.Changed += (_, args) =>
+        {
+            snapshots.Enqueue(args.Snapshot);
+            if (args.Snapshot.Timelines.GetValueOrDefault(key) is not { } timeline) return;
+            var child = timeline.Entries.FirstOrDefault(entry => entry.ToolCallId == "child");
+            if (timeline.TurnActive && child is { ToolParentCallId: "parent", ToolResult: ChatToolCallStatus.InProgress })
+                linkedWhileRunning.TrySetResult(child);
+            if (!timeline.TurnActive && child is not null) finished.TrySetResult();
+        };
+        await provider.LoadAsync();
+        await provider.SendMessageAsync(key, "Synthetic nested tool proof.");
+        await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "start" });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = "tool:parent", toolCallId = "parent", name = "exec", kind = "tool",
+            phase = "start", title = "Wrapper", status = "running",
+        });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = "tool:child", toolCallId = "child", name = "read", kind = "tool",
+            phase = "start", title = "Read fixture.txt", status = "running",
+        });
+        await server.PublishSessionToolEventAsync(key, runId, new
+        {
+            phase = "start", name = "read", toolCallId = "child", parentToolCallId = "parent",
+            args = new { path = "fixture.txt" },
+        });
+        await server.PublishSessionToolEventAsync(key, runId, new
+        {
+            phase = "result", name = "read", toolCallId = "child",
+            result = new { content = "fixture child result" },
+        });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = "tool:child", toolCallId = "child", name = "read", kind = "tool",
+            phase = "end", title = "Read fixture.txt", status = "completed",
+        });
+        // The ordinary lifecycle event is a same-socket barrier even if the mirror is dropped.
+        await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "end" });
+        await finished.Task.WaitAsync(HistoryMergeTimeout);
+        Assert.True(linkedWhileRunning.Task.IsCompletedSuccessfully);
+        var timeline = Latest(snapshots, key)!;
+        var tools = timeline.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToArray();
+        Assert.Equal(2, tools.Length);
+        var child = Assert.Single(tools, entry => entry.ToolCallId == "child");
+        Assert.Equal("parent", child.ToolParentCallId);
+        Assert.Equal(ChatToolCallStatus.Success, child.ToolResult);
+        Assert.Equal("fixture child result", child.ToolOutput);
+        Assert.False(timeline.HistoryLoaded);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.history");
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Fact]
+    public async Task HistoryReadMergesRetainedItemStreamWithoutLosingRunningState()
+    {
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(allowChatSend: true), token);
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(HistoryMergeTimeout);
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        const string key = GatewayScenario.EmptySessionKey;
+        const string runId = "fixture-chat-1";
+        const string callId = "fixture-history-call";
+        const string prompt = "Synthetic history merge proof.";
+        provider.Changed += (_, args) =>
+        {
+            snapshots.Enqueue(args.Snapshot);
+            var tool = args.Snapshot.Timelines.GetValueOrDefault(key)?.Entries
+                .FirstOrDefault(entry => entry.ToolCallId == callId);
+            if (tool?.ToolResult == ChatToolCallStatus.InProgress) started.TrySetResult();
+            if (tool?.ToolResult == ChatToolCallStatus.Success) completed.TrySetResult();
+        };
+        await provider.LoadAsync();
+        await provider.SendMessageAsync(key, prompt);
+        await server.PublishChatRunEventAsync(key, runId, "lifecycle", new { phase = "start" });
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = $"tool:{callId}", toolCallId = callId, name = "exec", kind = "tool",
+            phase = "start", title = "Exec echo fixture-only", status = "running",
+            meta = "echo fixture-only", commandBearing = true,
+        });
+        await started.Task.WaitAsync(HistoryMergeTimeout);
+        var live = Assert.Single(Latest(snapshots, key)!.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.False(Latest(snapshots, key)!.HistoryLoaded);
+        Assert.Equal("Exec echo fixture-only", live.Text);
+        Assert.Null(live.ToolArgs);
+        Assert.DoesNotContain(server.Requests, request => request.Method == "chat.history");
+
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var messages = new List<object>
+        {
+            new { role = "user", content = prompt, timestamp, __openclaw = new { id = "fixture-history-user", seq = 1 } },
+            new
+            {
+                role = "assistant", timestamp,
+                __openclaw = new { id = "fixture-history-call-message", seq = 2, runId },
+                content = new[] { new { type = "toolCall", id = callId, name = "exec", arguments = new { command = "echo fixture-only" } } },
+            },
+        };
+        var sessionId = client.GetSessionList().Single(session => session.Key == key).SessionId;
+        server.OverrideChatRead("chat.history", _ => new { sessionKey = key, sessionId, messages });
+        // The same provider retains the live row across both initial and forced wire reads.
+        for (var read = 0; read < 2; read++)
+        {
+            await provider.LoadHistoryAsync(key, force: read > 0);
+            var merged = Latest(snapshots, key)!;
+            Assert.True(merged.HistoryLoaded);
+            var running = Assert.Single(merged.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+            Assert.Equal(callId, running.ToolCallId);
+            Assert.Equal(runId, running.ToolRunId);
+            Assert.Equal(ChatToolCallStatus.InProgress, running.ToolResult);
+            Assert.Equal(read + 1, server.Requests.Count(request => request.Method == "chat.history"));
+        }
+
+        await server.PublishChatRunEventAsync(key, runId, "item", new
+        {
+            itemId = $"tool:{callId}", toolCallId = callId, name = "exec", kind = "tool",
+            phase = "end", title = "Exec echo fixture-only", status = "completed",
+        });
+        await completed.Task.WaitAsync(HistoryMergeTimeout);
+        messages.Add(new
+        {
+            role = "toolResult", toolCallId = callId, toolName = "exec", content = "fixture-only", timestamp,
+            __openclaw = new { id = "fixture-history-result", seq = 3, runId },
+        });
+        await provider.LoadHistoryAsync(key, force: true);
+        var saved = Assert.Single(Latest(snapshots, key)!.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall);
+        Assert.Equal(callId, saved.ToolCallId);
+        Assert.Equal(ChatToolCallStatus.Success, saved.ToolResult);
+        Assert.Equal("fixture-only", saved.ToolOutput);
+        Assert.Equal(3, server.Requests.Count(request => request.Method == "chat.history"));
+        Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -135,6 +374,48 @@ public sealed class InteractiveGatewayChatTests
         var history = await client.RequestChatHistoryAsync(key);
         Assert.Contains(history.Messages, m => m.Text.Contains("FIXTURE INTERACTIVE COMPLETE"));
         Assert.Empty(server.UnexpectedRequests);
+        await client.DisconnectAsync();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LiveReplyRendersOneBubbleWithOrWithoutAgentAssistantText(bool chatOnlyAssistantText)
+    {
+        // The Tray's approval-capable profile advertises chat-only-assistant-text, so the fixture
+        // omits agent assistant text; the other profile receives both streams like an older Gateway.
+        using var temp = new TempDirectory();
+        var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateInteractive(), token,
+            eventDelay: TimeSpan.FromMilliseconds(30));
+        server.Interactive!.Playback.Select("streaming");
+        using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
+            identityPath: temp.Combine("identity"), ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false)
+        {
+            SupportsExecApprovals = chatOnlyAssistantText,
+        };
+        var agentAssistantText = 0;
+        client.AgentEventReceived += (_, evt) => { if (evt.Stream == "assistant") Interlocked.Increment(ref agentAssistantText); };
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SessionsUpdated += (_, sessions) => { if (sessions.Length == 5) ready.TrySetResult(); };
+        await client.ConnectAsync();
+        await ready.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var bridge = new GatewayClientChatBridge(client);
+        await using var provider = new OpenClawChatDataProvider(bridge, null, temp.Combine("tools.json"),
+            temp.Combine("attachments.json"), temp.Combine("last-chat.json"));
+        var snapshots = new ConcurrentQueue<ChatDataSnapshot>();
+        provider.Changed += (_, args) => snapshots.Enqueue(args.Snapshot);
+        await provider.LoadAsync();
+        var key = GatewayScenario.EmptySessionKey;
+        await provider.SendMessageAsync(key, "Synthetic provider proof.");
+
+        await WaitAsync(() => Latest(snapshots, key)?.Entries.Any(e =>
+            e.Kind == ChatTimelineItemKind.Assistant && e.Text.Contains("FIXTURE INTERACTIVE COMPLETE") && !e.IsStreaming) == true);
+        Assert.Equal(chatOnlyAssistantText, agentAssistantText == 0);
+        Assert.All(snapshots, snapshot => Assert.True(
+            snapshot.Timelines.GetValueOrDefault(key)?.Entries.Count(e => e.Kind == ChatTimelineItemKind.Assistant) is null or <= 1));
+        var reply = Assert.Single(Latest(snapshots, key)!.Entries, e => e.Kind == ChatTimelineItemKind.Assistant);
+        Assert.StartsWith("This is a **synthetic streaming answer**.", reply.Text);
         await client.DisconnectAsync();
     }
 

@@ -49,7 +49,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
     }
 
     [Fact]
-    public void QueuedMessages_RenderAsSyntheticTimelineRowsWithoutChangingQueueOwnership()
+    public void QueuedMessages_RenderInASeparatePanelWithoutChangingQueueOwnership()
     {
         var models = Read("src", "OpenClaw.Chat", "ChatModels.cs");
         var provider = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawChatDataProvider.cs");
@@ -59,6 +59,7 @@ public sealed class ChatTimelineRenderIdentityContractTests
         var root = Read("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
         var composer = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatComposer.cs");
         var timeline = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
+        var pending = Read("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatPendingMessages.cs");
 
         Assert.Contains("public record ChatQueuedMessage", models);
         Assert.Contains("QueuedMessagesByThread", models);
@@ -70,11 +71,12 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("snapshot.QueuedMessagesByThread", root);
         Assert.Contains("QueuedMessages: queuedMessages", root);
         Assert.DoesNotContain("inputs.QueuedMessages", composer);
-        Assert.Contains("ReactorChatTimeline.SyntheticRowKey(props.Timeline, $\"queued:{message.Id}\", ChatTimelineItemKind.User)", timeline);
-        Assert.Contains("Chat_Composer_QueuedMessageCancel", timeline);
-        Assert.Contains("Chat_Composer_QueuedMessageRemoveFailed", timeline);
-        Assert.Contains("Chat_Composer_QueuedMessageFailed", timeline);
-        Assert.Contains("ChatQueuedMessageSendState.Sending", timeline);
+        Assert.DoesNotContain("FromQueuedMessage", timeline);
+        Assert.Contains("context.SessionId}|{context.TimelineGeneration}|queued:{message.Id}", pending);
+        Assert.Contains("Chat_Composer_QueuedMessageCancel", pending);
+        Assert.Contains("Chat_Composer_QueuedMessageRemoveFailed", pending);
+        Assert.Contains("Chat_Composer_QueuedMessageFailed", pending);
+        Assert.Contains("ChatQueuedMessageSendState.Sending", pending);
     }
 
     [Fact]
@@ -151,8 +153,12 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}", renderer);
         Assert.DoesNotContain("entry.ToolArgs.ToJsonString", renderer);
         Assert.DoesNotContain("{entry.ToolResult}", renderer);
-        Assert.DoesNotContain("ToolRunId", renderer);
-        Assert.DoesNotContain("ToolLegacyTurn", renderer);
+        foreach (System.Text.RegularExpressions.Match key in
+            System.Text.RegularExpressions.Regex.Matches(renderer, @"\.WithKey\([^\r\n]+"))
+        {
+            Assert.DoesNotContain("ToolRunId", key.Value);
+            Assert.DoesNotContain("ToolLegacyTurn", key.Value);
+        }
     }
 
     private static string Read(params string[] parts)

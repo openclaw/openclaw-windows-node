@@ -10,6 +10,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="FileTransfer\Fixtures\worker-manifest-x64.json" LogicalName="OpenClaw.FileWorker.Manifest.win-x64" />
+    <EmbeddedResource Include="FileTransfer\Fixtures\worker-manifest-arm64.json" LogicalName="OpenClaw.FileWorker.Manifest.win-arm64" />
     <None Update="Mxc\Golden\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

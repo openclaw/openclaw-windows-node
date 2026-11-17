@@ -73,7 +73,9 @@ public sealed partial class GatewayFixtureProtocolTests
     [Theory]
     [InlineData("tools", "final")]
     [InlineData("tool-error", "final")]
+    [InlineData("tool-powershell", "final")]
     [InlineData("agent-activity", "final")]
+    [InlineData("nested-tools", "final")]
     [InlineData("chat-deltas", "final")]
     [InlineData("stream-error", "error")]
     [InlineData("slow", "final")]
@@ -92,11 +94,54 @@ public sealed partial class GatewayFixtureProtocolTests
             var tools = frames.Where(e => e.GetProperty("event").GetString() == "agent" && e.GetProperty("payload").GetProperty("stream").GetString() == "tool").ToArray();
             Assert.Equal(2, tools.Length);
             Assert.Equal(scenario == "tool-error", tools[1].GetProperty("payload").GetProperty("data").GetProperty("isError").GetBoolean());
+            if (scenario == "tool-powershell")
+            {
+                var input = tools[0].GetProperty("payload").GetProperty("data");
+                Assert.Equal("powershell", input.GetProperty("name").GetString());
+                Assert.Contains("Get-ChildItem -Path $env:TEMP", input.GetProperty("args").GetProperty("command").GetString());
+            }
+        }
+        if (scenario == "agent-activity")
+        {
+            var tools = frames.Where(e => e.GetProperty("event").GetString() == "agent" && e.GetProperty("payload").GetProperty("stream").GetString() == "tool").ToArray();
+            Assert.Equal(["exec", "exec", "apply_patch", "apply_patch"], tools.Select(e => e.GetProperty("payload").GetProperty("data").GetProperty("name").GetString()));
+        }
+        if (scenario == "nested-tools")
+        {
+            var starts = frames.Where(e => e.GetProperty("event").GetString() == "agent" &&
+                e.GetProperty("payload").GetProperty("stream").GetString() == "tool" &&
+                e.GetProperty("payload").GetProperty("data").GetProperty("phase").GetString() == "start").ToArray();
+            Assert.Equal([null, $"{run}-wrapper", $"{run}-wrapper"], starts.Select(e =>
+                e.GetProperty("payload").GetProperty("data").TryGetProperty("parentToolCallId", out var parent) ? parent.GetString() : null));
         }
         if (scenario == "slow") Assert.Contains(frames, e => IsChat(e, "status"));
         if (scenario == "chat-deltas") Assert.Contains(frames, e => IsChat(e, "delta") && e.GetProperty("payload").GetProperty("deltaText").GetString()!.Length > 0);
         var history = await peer.RequestAsync("chat.history", new { sessionKey = GatewayScenario.EmptySessionKey });
-        Assert.Equal(scenario.StartsWith("tool", StringComparison.Ordinal) ? 4 : 2, history.GetProperty("messages").GetArrayLength());
+        var expectedHistory = scenario switch
+        {
+            "nested-tools" => 8,
+            "agent-activity" => 6,
+            _ => scenario.StartsWith("tool", StringComparison.Ordinal) ? 4 : 2,
+        };
+        Assert.Equal(expectedHistory, history.GetProperty("messages").GetArrayLength());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Interactive_ChatOnlyAssistantTextCapOmitsAgentAssistantText(bool chatOnly)
+    {
+        var token = CreateToken();
+        await using var server = await StartInteractiveAsync(token);
+        server.Interactive!.Playback.Select("streaming");
+        await using var peer = await FixturePeer.ConnectAsync(server, token,
+            caps: chatOnly ? ["chat-only-assistant-text"] : null);
+        await peer.RequestAsync("chat.send", SendParams("one"));
+        var frames = await peer.ThroughAsync(e => IsChat(e, "final"));
+        Assert.Contains(frames, e => IsChat(e, "delta"));
+        var agentText = frames.Any(e => e.GetProperty("event").GetString() == "agent" &&
+            e.GetProperty("payload").GetProperty("stream").GetString() == "assistant");
+        Assert.Equal(!chatOnly, agentText);
     }
 
     [Fact]
@@ -233,6 +278,7 @@ public sealed partial class GatewayFixtureProtocolTests
         await using var peer = await FixturePeer.ConnectAsync(server, token);
         var create = await peer.RequestAsync("sessions.create", new { agentId = "research" });
         var key = create.GetProperty("key").GetString()!;
+        var sessionId = create.GetProperty("sessionId").GetString()!;
         await peer.RequestAsync("chat.send", SendParams("a"));
         await peer.RequestAsync("chat.send", new { sessionKey = key, message = "Independent B", idempotencyKey = "b" });
         var finals = await peer.ThroughAsync(e => IsChat(e, "final"));
@@ -240,10 +286,17 @@ public sealed partial class GatewayFixtureProtocolTests
         await peer.ThroughAsync(e => IsChat(e, "final") && e.GetProperty("payload").GetProperty("sessionKey").GetString() != firstKey);
         var history = await peer.RequestAsync("chat.history", new { sessionKey = key });
         Assert.Equal("Independent B", history.GetProperty("messages")[0].GetProperty("content").GetString());
-        await peer.RequestAsync("sessions.patch", new { key, label = "Renamed", archived = true });
+        // The Gateway rejects archive and unarchive without the observed session identity, and changes nothing.
+        var missingGuard = await Assert.ThrowsAsync<InvalidOperationException>(() => peer.RequestAsync("sessions.patch", new { key, archived = true }));
+        Assert.Equal($"expectedSessionId required for session lifecycle patch: {key}", missingGuard.Message);
+        var staleGuard = await Assert.ThrowsAsync<InvalidOperationException>(() => peer.RequestAsync("sessions.patch",
+            new { key, archived = true, expectedSessionId = "stale-session-id" }));
+        Assert.Equal($"Session {key} changed before patch. Retry.", staleGuard.Message);
+        Assert.Empty((await peer.RequestAsync("sessions.list", new { archived = true })).GetProperty("sessions").EnumerateArray());
+        await peer.RequestAsync("sessions.patch", new { key, label = "Renamed", archived = true, expectedSessionId = sessionId });
         var archived = await peer.RequestAsync("sessions.list", new { archived = true });
         Assert.Equal("Renamed", Assert.Single(archived.GetProperty("sessions").EnumerateArray()).GetProperty("label").GetString());
-        await peer.RequestAsync("sessions.patch", new { key, archived = false });
+        await peer.RequestAsync("sessions.patch", new { key, archived = false, expectedSessionId = sessionId });
         await peer.RequestAsync("sessions.reset", new { key });
         Assert.Empty((await peer.RequestAsync("chat.history", new { sessionKey = key })).GetProperty("messages").EnumerateArray());
         await peer.RequestAsync("sessions.delete", new { key, deleteTranscript = true });
@@ -539,7 +592,8 @@ public sealed partial class GatewayFixtureProtocolTests
         public void ExpectServerShutdown() => _expectServerShutdown = true;
 
         public static async Task<FixturePeer> ConnectAsync(FixtureGatewayServer server, string token,
-            Func<ClientWebSocket, Memory<byte>, CancellationToken, ValueTask<ValueWebSocketReceiveResult>>? receive = null)
+            Func<ClientWebSocket, Memory<byte>, CancellationToken, ValueTask<ValueWebSocketReceiveResult>>? receive = null,
+            string[]? caps = null)
         {
             var peer = new FixturePeer { _receive = receive };
             await peer._socket.ConnectAsync(server.Endpoint, peer._lifetime.Token);
@@ -549,6 +603,7 @@ public sealed partial class GatewayFixtureProtocolTests
             {
                 minProtocol = 4, maxProtocol = 4, role = "operator", auth = new { token },
                 client = new { id = "fixture-protocol-test" },
+                caps = caps ?? [],
                 device = new { id = "fixture-device", publicKey = "synthetic", signature = "synthetic", nonce = challenge.GetProperty("payload").GetProperty("nonce").GetString() }
             });
             return peer;

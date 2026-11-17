@@ -35,6 +35,19 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     internal static readonly TimeSpan StartupTimeout =
         ResolveStartupTimeout(Environment.GetEnvironmentVariable(StartupTimeoutEnvironmentVariable));
     internal static readonly TimeSpan StartupConfirmationTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>Whole seconds; read once at process start. Invalid or out-of-range values warn and keep the default.</summary>
+    public const string InspectionTimeoutEnvironmentVariable = "OPENCLAW_NATIVE_GATEWAY_INSPECT_TIMEOUT";
+    /// <summary>
+    /// Bounds lifecycle-gate wait, package resolution and one package status read for ownership proof.
+    /// A running ARM64 Gateway's status read took over 11 seconds, so five seconds denied a verified listener.
+    /// The default stays inside the credential handoff's 20-second inspection and handshake allowance.
+    /// </summary>
+    internal const int DefaultInspectionTimeoutSeconds = 15;
+    internal const int MinimumInspectionTimeoutSeconds = 5;
+    internal const int MaximumInspectionTimeoutSeconds = 120;
+    internal static readonly TimeSpan InspectionTimeout =
+        ResolveInspectionTimeout(Environment.GetEnvironmentVariable(InspectionTimeoutEnvironmentVariable));
     /// <summary>One finite allowance for native preparation, listener proof and operator admission.</summary>
     public static TimeSpan AdmissionTimeout => NativeGatewayEndpointSecurity.CredentialHandoffTimeout;
     private static readonly TimeSpan StartupPollInterval = TimeSpan.FromSeconds(2);
@@ -66,7 +79,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         _capture = capture;
         _captureSequences = captureSequences;
         _aliasExists = aliasExists;
-        _inspectionTimeout = inspectionTimeout ?? TimeSpan.FromSeconds(5);
+        _inspectionTimeout = inspectionTimeout ?? InspectionTimeout;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
     }
@@ -83,6 +96,20 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             $"{MinimumStartupTimeoutSeconds} to {MaximumStartupTimeoutSeconds}. " +
             $"Using the default {DefaultStartupTimeoutSeconds}s.");
         return TimeSpan.FromSeconds(DefaultStartupTimeoutSeconds);
+    }
+
+    internal static TimeSpan ResolveInspectionTimeout(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return TimeSpan.FromSeconds(DefaultInspectionTimeoutSeconds);
+        if (int.TryParse(raw.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int seconds) &&
+            seconds is >= MinimumInspectionTimeoutSeconds and <= MaximumInspectionTimeoutSeconds)
+            return TimeSpan.FromSeconds(seconds);
+        Trace.TraceWarning(
+            $"Ignoring {InspectionTimeoutEnvironmentVariable}='{raw}': expected whole seconds from " +
+            $"{MinimumInspectionTimeoutSeconds} to {MaximumInspectionTimeoutSeconds}. " +
+            $"Using the default {DefaultInspectionTimeoutSeconds}s.");
+        return TimeSpan.FromSeconds(DefaultInspectionTimeoutSeconds);
     }
 
     public async Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
@@ -292,8 +319,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private async Task<IsolatedGatewayStatus?> TryReadTimeoutStatusAsync(
         NativeGatewayPackage package, CancellationToken cancellationToken)
     {
-        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        bounded.CancelAfter(_inspectionTimeout);
+        using var timer = new CancellationTokenSource(_inspectionTimeout, _timeProvider);
+        using var bounded = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timer.Token);
         try
         {
             return await _client.StatusAsync(package, bounded.Token).WaitAsync(bounded.Token).ConfigureAwait(false);
@@ -312,8 +339,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         GatewayRecord record, CancellationToken cancellationToken)
     {
         Uri endpoint = RequireRecord(record);
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        deadline.CancelAfter(_inspectionTimeout);
+        using var timer = new CancellationTokenSource(_inspectionTimeout, _timeProvider);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timer.Token);
         bool entered = false;
         try
         {

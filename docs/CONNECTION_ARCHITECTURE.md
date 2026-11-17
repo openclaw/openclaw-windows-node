@@ -254,15 +254,37 @@ Chat and Settings end with one shared `WorkspacePaneFooter`: account, Dashboard,
 and the notifications bell, always visible. Settings' compact rail stacks the
 same three as 40 DIP icons, with connection status as a dot on the avatar.
 Diagnostics and App settings live at the end of "This Computer". Dashboard and
-Ctrl+Shift+D open the Gateway Dashboard home through `GatewayDashboardLauncher`.
+Ctrl+Shift+D open the verified counterpart of the visible page or chat through
+`GatewayDashboardLauncher`, falling back to Dashboard home when no verified
+route is available. Chat handoff uses `/chat?session=<encoded-full-session-key>`
+without checking Gateway release numbers. The Gateway owns resolution of its
+current session routes and configured main key. This query compatibility path
+is present in both the
+[older bootstrap](https://github.com/openclaw/openclaw/blob/3a9d69db306cd7f081e06254cb89c4bcc14a7107/ui/src/app/bootstrap-location.ts)
+and [current released parser](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/app/released-session-query.ts).
+Settings and search web destinations also use established routes, not Gateway
+release allowlists. Their route contracts are recorded in the
+[older route table](https://github.com/openclaw/openclaw/blob/3a9d69db306cd7f081e06254cb89c4bcc14a7107/ui/src/app-route-paths.ts)
+and [current released route table](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/app-route-paths.ts).
+Systems links use `/systems`, the same route the native Systems page's Open in
+web action uses when the Gateway reports environments, not the separate Devices
+settings page. The current released route table defines `/systems`; the older
+table does not. Gateways without that page cannot provide an equivalent Systems
+destination, and their web app opens its default view for any route it lacks.
+These navigation contracts are not capability negotiation. Search still gates
+remote reads on advertised methods and operator permissions, fences stale
+connection/profile results, and limits admin-only destinations to administrators.
 Each bell opens `NotificationFlyoutContent` using the existing
 `AppNotificationService`, without replacing chat or changing history. Its
 explicit Open notifications link and existing deep links retain the full page.
-The account menu's connection entry shows the `ConnectionStatusPresenter`
-label/accent, refreshed both on menu opening and every manager snapshot through
-`WindowManager`, including richer changes that keep the same legacy status.
-It opens `GatewayStatusContent` at the invoking account button
-using the current manager snapshot and existing reconnect/Connection actions.
+The account menu's Gateway row shows the `ConnectionStatusPresenter`
+label/accent and Gateway version, and its submenu's Connection status entry
+opens `GatewayStatusContent` at the invoking account button. The menu is rebuilt
+from the current manager snapshot and `GatewayRegistry` each time it opens.
+The status flyout uses the current manager snapshot and existing reconnect/Connection actions.
+Picking another saved Gateway in that submenu calls
+`GatewayConnectionManager.SwitchGatewayAsync`, the same path as the Connection
+page's saved-gateway Connect; Retry now and Reconnect use the existing reconnect command.
 The flyout contents own named-control application; windows own popup lifetime
 and route side effects. Notification subscriptions detach when the flyout closes.
 
@@ -285,16 +307,18 @@ buttons use native `SubtleButtonStyle` state brushes, and Owner uses the native
 `PersonPicture` avatar rather than a font glyph.
 
 `WindowManager` owns Workspace and `HubWindow` independently. The latter is the
-Settings companion and reuses the existing native Settings pages. Its Chat rail
-item opens or focuses Workspace without selecting a Settings page or replacing
-the retained composer. Its activation is queued after NavigationView completes its
-own focus handling. WindowManager restores a minimized Workspace and explicitly
+Settings companion and reuses the existing native Settings pages. Its sidebar
+starts with Back to app (Escape when nothing focused owns Escape) and the
+Settings title, matching macOS. Back to app returns to the chat, Notifications
+or pinned page Settings was opened from, reusing the retained composer and
+draft. WindowManager restores a minimized Workspace and explicitly
 requests foreground activation, including when Workspace is already open.
 The Gateway dashboard action and its channels/integrations
 description live in their own Connection settings card, not above chat.
-Owner's Settings, Usage, and About links open or focus that
-companion at `settings`, `usage`, and `about` respectively. Pair device opens
-the Gateway web dashboard's `channels` path. Closing
+Owner's Settings and Help & about's About links open or focus that
+companion at `settings` and `about` (Settings opens `about` while a Companion
+update is available). Usage stays in Settings navigation. Pair a device opens
+the Gateway web dashboard's Devices page through its `nodes` alias. Closing
 the companion does not close Workspace or discard an unsent chat draft.
 Generic Workspace refocus preserves the current page; explicit page/session
 links still navigate. `agent:<id>:workspace` retains its original agent-files
@@ -348,7 +372,7 @@ gateway classification and legacy session keys determine background status.
 Home uses the existing Reactor chat and session creation/history; disconnected
 state directs users to Connection. Notifications uses the existing notification
 service. Owner Settings provides access to the full companion catalog, while
-Owner Usage and Pair device keep their deep links. Owner Get apps opens the
+Owner Pair a device keeps its Dashboard deep link. Help & about's Get apps opens the
 existing platforms documentation directly, without a placeholder Apps page.
 No underlying management
 APIs, companion pages, or capabilities were removed.
@@ -419,6 +443,15 @@ orchestration. Three narrower owners sit behind it:
   durable two-role token clear gate, and operator token-mismatch recovery timing.
 - `DevicePairApprovalCoordinator` owns typed device role-upgrade approval and its
   one-in-flight plus one-queued bounded node reconnect workflow.
+
+Scheduled operator reconnects acquire the current lifecycle-attempt lease before
+disconnecting or connecting. A disconnect that wins the transition queue invalidates
+that attempt, even when the active Gateway id and user intent remain unchanged.
+Removing the active saved Gateway commits `RemoveAndSave` before disconnecting,
+so a failed save leaves the live connection and user intent unchanged. After a
+successful save, `DisconnectByUserAsync(gatewayId)` records intent for the removed
+Gateway and tears down only that live owner under the transition semaphore. A
+queued switch cannot disconnect the replacement Gateway or change its intent.
 
 `GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`,
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
@@ -542,7 +575,11 @@ cancellation, and window close. It adopts only the operation's known final
 registry output against its admitted baseline, refreshes the persistence
 baseline, and publishes changes outside locks. Stale live connections are
 disconnected conditionally against their captured connection snapshot; a newer
-connection is not canceled. External conflicts preserve live edits and provide
+connection is not canceled. The connection snapshot retains the manager's
+lifecycle generation across device, pairing and role updates, but not a
+reconnect to the same gateway. Conditional teardown compares published
+snapshots so a failed attempt that publishes no replacement remains retryable.
+External conflicts preserve live edits and provide
 an explicit reopen/reload recovery message instead of weakening save CAS.
 
 If settlement itself fails, `SetupPipelineSettlementException` retains the
@@ -901,7 +938,7 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 
 **Default-on product contract and macOS parity.** App-installed local gateways are supervised by default for both fresh setups and upgrades, matching the macOS local-mode contract where launchd supervision is active unless OpenClaw is paused. Fresh Windows setup writes `EnableManagedLocalGatewayAutoRepair=true` explicitly; an existing settings file that predates the field deserializes to the same default. This enrollment is restricted to records whose setup-managed ownership is positively linked to the installed endpoint. Manual localhost, repointed, SSH, and remote records are never adopted. The user-facing controls are **Disconnect** and **Stop** on the Connection page: either records explicit operator intent and suppresses automatic restart, process remediation, and reconnect until the operator explicitly connects/starts again. An explicitly persisted `false` remains available as a policy/debug kill switch and is never overwritten by setup merge.
 
-`ManagedLocalGatewayRepairCoordinator` **probes before it restarts**: if the gateway is already reachable it just reconnects (the macOS "attach" path); only a genuinely-down gateway triggers a WSL distro restart (via `WslGatewayController`), a keepalive re-arm (`WslGatewayKeepAliveService.TryEnsureAsync`), and a reconnect. For the native-vs-WSL collision case, `ManagedLocalGatewayPortProvenanceService` classifies listeners by address and proves process command line plus scheduled-task/profile lineage. Relayless mirrored networking is accepted only when complete Windows captures remain empty around positive expected-distro systemd MainPID proof. It automatically disables/stops only a fully proven obsolete native OpenClaw gateway; an unknown, incomplete, or conflicting listener is never trusted or killed and produces precise `LocalPortConflict` diagnostics. The shared lifecycle lease serializes that destructive work with manual WSL actions. Reconnect is **gateway-pinned, intent-aware, and cancellable** (`GatewayConnectionManager.ReconnectIfCurrentAsync(gatewayId, ct)`), so gateway switches, explicit Disconnect/Stop, and shutdown always win. Repair is single-flight, verifies success by a real operator connection to the same gateway, is per-gateway restart-budget-bounded, and never reads or logs credentials.
+`ManagedLocalGatewayRepairCoordinator` **probes before it restarts**: if the gateway is already reachable it just reconnects (the macOS "attach" path); only a genuinely-down gateway triggers a WSL distro restart (via `WslGatewayController`), a keepalive re-arm (`WslGatewayKeepAliveService.TryEnsureAsync`), and a reconnect. After any attempted restart, including a failed one (the forced restart terminates the distro and the keepalive with it), the coordinator makes a best-effort attempt to re-arm the keepalive, unless the repair was cancelled or the user had already stopped, disconnected, or switched away from the gateway when the re-arm began. For the native-vs-WSL collision case, `ManagedLocalGatewayPortProvenanceService` classifies listeners by address and proves process command line plus scheduled-task/profile lineage. Relayless mirrored networking is accepted only when complete Windows captures remain empty around positive expected-distro systemd MainPID proof. It automatically disables/stops only a fully proven obsolete native OpenClaw gateway; an unknown, incomplete, or conflicting listener is never trusted or killed and produces precise `LocalPortConflict` diagnostics. The shared lifecycle lease serializes that destructive work with manual WSL actions. Reconnect is **gateway-pinned, intent-aware, and cancellable** (`GatewayConnectionManager.ReconnectIfCurrentAsync(gatewayId, ct)`), so gateway switches, explicit Disconnect/Stop, and shutdown always win. Repair is single-flight, verifies success by a real operator connection to the same gateway, is per-gateway restart-budget-bounded, and never reads or logs credentials.
 
 ## Client instance lifecycle
 
@@ -912,6 +949,29 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 - **Local setup**: `NodeService.ConnectAsync()` creates its own client (used only during WSL local gateway setup)
 
 Both paths dispose old clients before creating new ones.
+
+Within a client, `WebSocketClientBase` reports transport loss once per current
+socket generation, including client abort, oversized messages and listen errors.
+Oversized-message cleanup runs before waiting for the peer's close handshake.
+`OpenClawGatewayClient.OnDisconnected` is the invalidation owner: it clears the
+live handshake, canonical session key and advertised methods/capabilities, and
+fails wizard requests with `GatewayConnectionLostException`; other pending
+waiters are canceled. Listen errors use that same cleanup before publishing
+Error. Invalidation is serialized with socket publication; transport events and
+node invocation cancellation run outside that lock. Superseded listeners and
+disposal do not invalidate a replacement connection. Client-initiated aborts
+still run that cleanup but do not add a Disconnected status or observation;
+their callers keep their existing Error or quiet-retry policy. Each loss
+callback runs separately, so a failing step is logged without skipping the
+remaining cleanup, status notifications or the client-owned reconnect. Status
+delivery stops once the client is disposed or the connection is replaced, so a
+stale Disconnected cannot follow a newer connection's Connecting.
+
+Health checks capture their socket and generation before sending or starting
+recovery. Backoff and reconnect authorization recheck that ownership, so delayed
+health work cannot replace a newer open socket. An explicit `ConnectAsync` may
+still publish a new attempt; failed or closed attempts retain the existing
+single-flight recovery policy.
 
 ## Setup-code and pairing flow
 

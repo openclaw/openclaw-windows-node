@@ -5,7 +5,7 @@ public sealed class FixturePlayback
 {
     public static IReadOnlyList<string> Scenarios { get; } = Array.AsReadOnly(new[]
     {
-        "streaming", "chat-deltas", "tools", "tool-error", "agent-activity", "question-choice", "question-text", "question-multi",
+        "streaming", "chat-deltas", "tools", "tool-error", "tool-powershell", "agent-activity", "nested-tools", "question-choice", "question-text", "question-multi",
         "approval", "approval-deny-only", "slow", "send-error", "stream-error", "disconnect"
     });
 

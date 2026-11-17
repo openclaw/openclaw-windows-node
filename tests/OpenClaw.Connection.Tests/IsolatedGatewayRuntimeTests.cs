@@ -702,6 +702,62 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         Assert.Equal(expected, IsolatedGatewayRuntime.ResolveStartupTimeout(raw));
     }
 
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("abc", null)]
+    [InlineData("4", null)]
+    [InlineData("121", null)]
+    [InlineData("7.5", null)]
+    [InlineData("5", 5)]
+    [InlineData(" 30 ", 30)]
+    [InlineData("120", 120)]
+    public void InspectionTimeoutOverrideAcceptsOnlyBoundedWholeSeconds(string? raw, int? expectedSeconds)
+    {
+        var expected = TimeSpan.FromSeconds(expectedSeconds ?? IsolatedGatewayRuntime.DefaultInspectionTimeoutSeconds);
+        Assert.Equal(expected, IsolatedGatewayRuntime.ResolveInspectionTimeout(raw));
+    }
+
+    [Fact]
+    public void DefaultInspectionDeadlineFitsTheCredentialHandoffAllowance()
+    {
+        var startup = TimeSpan.FromSeconds(IsolatedGatewayRuntime.DefaultStartupTimeoutSeconds);
+        var afterConfirmedStart = NativeGatewayEndpointSecurity.CredentialHandoffTimeoutFor(startup)
+            - startup - IsolatedGatewayRuntime.StartupConfirmationTimeout;
+
+        Assert.True(TimeSpan.FromSeconds(IsolatedGatewayRuntime.DefaultInspectionTimeoutSeconds) < afterConfirmedStart);
+    }
+
+    [Theory]
+    [InlineData(11, true)]
+    [InlineData(16, false)]
+    public async Task DefaultInspectionDeadlineAdmitsSlowPackageStatusButStillFailsClosed(
+        int statusSeconds, bool allowed)
+    {
+        await _runtime.EnsureRunningAsync(_record, default);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _duringStatus = async ct =>
+        {
+            entered.TrySetResult();
+            await Task.Delay(TimeSpan.FromSeconds(statusSeconds), _clock, ct); // test-timing-exception: fake clock delay completed by the test's explicit Advance
+        };
+
+        var authorization = NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, default, allowStart: false);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        _clock.Advance(TimeSpan.FromSeconds(Math.Min(statusSeconds, IsolatedGatewayRuntime.DefaultInspectionTimeoutSeconds)));
+        var result = await authorization.WaitAsync(TimeSpan.FromSeconds(30));
+        _duringStatus = null;
+
+        Assert.Equal(allowed, result.Allowed);
+        if (!allowed)
+        {
+            Assert.Equal(GatewayErrorKind.Network, result.FailureKind);
+            Assert.Contains("inspection timed out", result.Detail);
+            Assert.Contains("Credentials were not sent", result.Detail);
+        }
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task PrestartConflictNamesTheSquattingProcessWithoutClaimingItsIdentity()
     {

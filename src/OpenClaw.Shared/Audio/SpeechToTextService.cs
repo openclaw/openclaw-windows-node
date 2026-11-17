@@ -16,8 +16,11 @@ public sealed class SpeechToTextService : ISpeechToTextService
 {
     private readonly IOpenClawLogger _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private WhisperFactory? _factory;
-    private string? _loadedModelPath;
+    private volatile WhisperFactory? _factory;
+    private volatile string? _loadedModelPath;
+    private volatile bool _disposed;
+
+    internal Func<CancellationToken, IAsyncEnumerable<TranscriptionResult>>? TranscriptionOverride { get; set; }
 
     public bool IsModelLoaded => _factory != null;
     public string? LoadedModelPath => _loadedModelPath;
@@ -33,19 +36,44 @@ public sealed class SpeechToTextService : ISpeechToTextService
         if (!System.IO.File.Exists(modelPath))
             throw new System.IO.FileNotFoundException($"Whisper model not found: {modelPath}");
 
-        _factory?.Dispose();
-        _factory = WhisperFactory.FromPath(modelPath);
-        _loadedModelPath = modelPath;
-        _logger.Info($"Whisper model loaded: {modelPath}");
+        // A second EnsureInitializedAsync, or a reload, must not free the factory
+        // another TranscribeAsync is still using.
+        _gate.Wait();
+        try
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var previous = _factory;
+            _factory = null;
+            _loadedModelPath = null;
+            previous?.Dispose();
+            _factory = WhisperFactory.FromPath(modelPath);
+            _loadedModelPath = modelPath;
+            _logger.Info($"Whisper model loaded: {modelPath}");
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>Unload the current model and free memory.</summary>
     public void UnloadModel()
     {
-        _factory?.Dispose();
-        _factory = null;
-        _loadedModelPath = null;
-        _logger.Info("Whisper model unloaded");
+        if (_disposed) return;
+        _gate.Wait();
+        try
+        {
+            if (_disposed) return;
+            var previous = _factory;
+            _factory = null;
+            _loadedModelPath = null;
+            previous?.Dispose();
+            _logger.Info("Whisper model unloaded");
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     /// <summary>
@@ -57,48 +85,70 @@ public sealed class SpeechToTextService : ISpeechToTextService
         string language = "auto",
         CancellationToken cancellationToken = default)
     {
-        if (_factory == null)
-            throw new InvalidOperationException("No Whisper model is loaded. Call LoadModel first.");
-
-        await _gate.WaitAsync(cancellationToken);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            // Whisper.net's WithLanguage expects either "auto" or a 2-letter
-            // ISO 639-1 code. The capability validator accepts the broader
-            // BCP-47 shape ("en-US", "zh-Hans-CN") because that's what the
-            // public docs advertise; normalize down here so Whisper actually
-            // sees something it understands.
-            var whisperLang = NormalizeForWhisper(language);
-            var builder = _factory.CreateBuilder()
-                .WithLanguage(whisperLang)
-                .WithThreads(Math.Max(1, Environment.ProcessorCount / 2));
-
-            using var processor = builder.Build();
-
-            using var wavStream = PcmToWavStream(samples, 16000);
-
-            var results = new List<TranscriptionResult>();
-            await foreach (var segment in processor.ProcessAsync(wavStream, cancellationToken))
-            {
-                var text = segment.Text?.Trim();
-                if (!string.IsNullOrEmpty(text))
-                {
-                    results.Add(new TranscriptionResult
-                    {
-                        Text = text,
-                        Start = segment.Start,
-                        End = segment.End,
-                        Language = whisperLang
-                    });
-                }
-            }
-
-            return results;
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            // ProcessAsync awaits capture the caller synchronization context.
+            // Dispose, LoadModel, and UnloadModel wait on this gate from that
+            // same context, so the enumerator has to start without it.
+            return await Task.Run(
+                () => TranscribeHeldAsync(samples, language, cancellationToken),
+                cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private async Task<List<TranscriptionResult>> TranscribeHeldAsync(
+        float[] samples,
+        string language,
+        CancellationToken cancellationToken)
+    {
+        if (TranscriptionOverride is { } transcribeOverride)
+        {
+            var overridden = new List<TranscriptionResult>();
+            await foreach (var result in transcribeOverride(cancellationToken).ConfigureAwait(false))
+                overridden.Add(result);
+            return overridden;
+        }
+
+        if (_factory == null)
+            throw new InvalidOperationException("No Whisper model is loaded. Call LoadModel first.");
+
+        // Whisper.net's WithLanguage expects either "auto" or a 2-letter
+        // ISO 639-1 code. The capability validator accepts the broader
+        // BCP-47 shape ("en-US", "zh-Hans-CN") because that's what the
+        // public docs advertise; normalize down here so Whisper actually
+        // sees something it understands.
+        var whisperLang = NormalizeForWhisper(language);
+        var builder = _factory.CreateBuilder()
+            .WithLanguage(whisperLang)
+            .WithThreads(Math.Max(1, Environment.ProcessorCount / 2));
+
+        using var processor = builder.Build();
+
+        using var wavStream = PcmToWavStream(samples, 16000);
+
+        var results = new List<TranscriptionResult>();
+        await foreach (var segment in processor.ProcessAsync(wavStream, cancellationToken).ConfigureAwait(false))
+        {
+            var text = segment.Text?.Trim();
+            if (!string.IsNullOrEmpty(text))
+            {
+                results.Add(new TranscriptionResult
+                {
+                    Text = text,
+                    Start = segment.Start,
+                    End = segment.End,
+                    Language = whisperLang
+                });
+            }
+        }
+
+        return results;
     }
 
     /// <summary>
@@ -176,7 +226,24 @@ public sealed class SpeechToTextService : ISpeechToTextService
 
     public void Dispose()
     {
-        _factory?.Dispose();
-        _gate.Dispose();
+        // Shutdown waits out one in-flight transcription. A timeout would free
+        // the native model while that transcription still uses it.
+        // A second dispose is a no-op. The semaphore stays alive so a transcription
+        // that already queued on it can observe that the service is gone and return.
+        if (_disposed) return;
+        _gate.Wait();
+        try
+        {
+            if (_disposed) return;
+            var previous = _factory;
+            _factory = null;
+            _loadedModelPath = null;
+            _disposed = true;
+            previous?.Dispose();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 }

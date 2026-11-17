@@ -62,14 +62,15 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
         Func<string, bool>? isAutomaticRepairAllowed = null,
         Func<GatewayRecord, CancellationToken, Task<ManagedLocalPortConflictRepairResult>>?
             repairPortConflictAsync = null,
-        Func<bool>? isPortConflictCandidate = null)
+        Func<bool>? isPortConflictCandidate = null,
+        Func<Task>? onReArmAsync = null)
         => new(
             _registry,
             restarter,
             (_, _) => Task.FromResult(probeReachable()),
             reconnectIfCurrent,
             isOperatorConnected,
-            _ => { onReArm?.Invoke(); return Task.CompletedTask; },
+            _ => { onReArm?.Invoke(); return onReArmAsync?.Invoke() ?? Task.CompletedTask; },
             _diagnostics,
             NullLogger.Instance,
             maxRestartsPerGateway: maxRestarts,
@@ -529,41 +530,191 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
         Assert.Equal(0, reconnects);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedRestart_StillRearmsKeepAlive(bool restarterThrows)
+    {
+        // A forced restart terminates the distro (and its keepalive) before the cold restart can fail.
+        SetActiveManagedLocal();
+        var lease = new CountingLease();
+        var rearms = 0;
+        var leaseReleasesAtRearm = -1;
+        var restarter = restarterThrows
+            ? new FakeRestarter { Throw = new InvalidOperationException("wsl.exe failed") }
+            : new FakeRestarter { Result = new ManagedLocalGatewayRestartResult(false, "boom") };
+        var coordinator = CreateCoordinator(
+            restarter,
+            () => false,
+            (_, _) => Task.FromResult(true),
+            () => false,
+            onReArm: () => { rearms++; leaseReleasesAtRearm = lease.Disposed; },
+            tryAcquireLifecycleLease: () => lease);
+
+        var result = await coordinator.TryRepairActiveGatewayAsync();
+
+        Assert.Equal(ManagedLocalGatewayRepairOutcome.RestartFailed, result.Outcome);
+        Assert.Equal(1, rearms);
+        Assert.Equal(0, leaseReleasesAtRearm); // re-armed while the lease still excluded a manual Stop or Switch
+        Assert.Equal(1, lease.Disposed);
+    }
+
+    [Fact]
+    public async Task RearmThrowsAfterFailedRestart_KeepsRestartFailedAndReleasesLease()
+    {
+        SetActiveManagedLocal();
+        var lease = new CountingLease();
+        var rearms = 0;
+        var restarter = new FakeRestarter { Result = new ManagedLocalGatewayRestartResult(false, "boom") };
+        var coordinator = CreateCoordinator(
+            restarter,
+            () => false,
+            (_, _) => Task.FromResult(true),
+            () => false,
+            onReArm: () =>
+            {
+                rearms++;
+                throw new InvalidOperationException("keepalive spawn failed");
+            },
+            tryAcquireLifecycleLease: () => lease);
+
+        var result = await coordinator.TryRepairActiveGatewayAsync();
+
+        Assert.Equal(ManagedLocalGatewayRepairOutcome.RestartFailed, result.Outcome);
+        Assert.Equal(1, rearms);
+        Assert.Equal(1, lease.Disposed);
+    }
+
+    [Fact]
+    public async Task SlowRearmAfterFailedRestart_KeepsTheLeaseUntilItCompletes()
+    {
+        // The re-arm is awaited under the lease, so a manual Stop or Switch cannot start while the
+        // keepalive is still being spawned.
+        SetActiveManagedLocal();
+        var timeout = TimeSpan.FromSeconds(10);
+        var lease = new CountingLease();
+        var rearmStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var rearmGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var restarter = new FakeRestarter { Result = new ManagedLocalGatewayRestartResult(false, "boom") };
+        var coordinator = CreateCoordinator(
+            restarter,
+            () => false,
+            (_, _) => Task.FromResult(true),
+            () => false,
+            tryAcquireLifecycleLease: () => lease,
+            onReArmAsync: () =>
+            {
+                rearmStarted.SetResult();
+                return rearmGate.Task;
+            });
+
+        var repair = coordinator.TryRepairActiveGatewayAsync();
+        await rearmStarted.Task.WaitAsync(timeout);
+        await Task.Delay(TimeSpan.FromMilliseconds(200)); // time for a coordinator that does not await the re-arm to finish
+        Assert.False(repair.IsCompleted);
+        Assert.Equal(0, lease.Disposed);
+
+        rearmGate.SetResult();
+        var result = await repair.WaitAsync(timeout);
+
+        Assert.Equal(ManagedLocalGatewayRepairOutcome.RestartFailed, result.Outcome);
+        Assert.Equal(1, lease.Disposed);
+    }
+
+    [Fact]
+    public async Task UserStopsDuringFailedRestart_DoesNotRearmKeepAlive()
+    {
+        SetActiveManagedLocal();
+        var allowed = true;
+        var rearms = 0;
+        var restarter = new FakeRestarter
+        {
+            Result = new ManagedLocalGatewayRestartResult(false, "boom"),
+            Gate = () =>
+            {
+                allowed = false;
+                return Task.CompletedTask;
+            }
+        };
+        var coordinator = CreateCoordinator(
+            restarter,
+            probeReachable: () => false,
+            reconnectIfCurrent: (_, _) => Task.FromResult(true),
+            isOperatorConnected: () => false,
+            onReArm: () => rearms++,
+            isAutomaticRepairAllowed: _ => allowed);
+
+        var result = await coordinator.TryRepairActiveGatewayAsync();
+
+        Assert.Equal(ManagedLocalGatewayRepairOutcome.AbortedUserIntent, result.Outcome);
+        Assert.Equal(1, restarter.Calls);
+        Assert.Equal(0, rearms); // an explicit Stop must not be undone by the repair
+    }
+
+    [Fact]
+    public async Task GatewaySwitchedDuringFailedRestart_DoesNotRearmKeepAlive()
+    {
+        SetActiveManagedLocal();
+        _registry.AddOrUpdate(new GatewayRecord { Id = "gw-other", Url = "wss://remote.example" });
+        var rearms = 0;
+        var restarter = new FakeRestarter
+        {
+            Result = new ManagedLocalGatewayRestartResult(false, "boom"),
+            Gate = () =>
+            {
+                _registry.SetActive("gw-other");
+                return Task.CompletedTask;
+            }
+        };
+        var coordinator = CreateCoordinator(
+            restarter, () => false, (_, _) => Task.FromResult(true), () => false, onReArm: () => rearms++);
+
+        var result = await coordinator.TryRepairActiveGatewayAsync();
+
+        Assert.Equal(ManagedLocalGatewayRepairOutcome.AbortedGatewayChanged, result.Outcome);
+        Assert.Equal(0, rearms);
+    }
+
     [Fact]
     public async Task RestartBudget_ExhaustsThenResetAllowsAgain()
     {
         SetActiveManagedLocal();
+        var rearms = 0;
         var restarter = new FakeRestarter();
         // Unreachable + operator never connects: each attempt restarts and ends PendingVerification.
         var coordinator = CreateCoordinator(
-            restarter, () => false, (_, _) => Task.FromResult(true), () => false, maxRestarts: 2);
+            restarter, () => false, (_, _) => Task.FromResult(true), () => false, onReArm: () => rearms++, maxRestarts: 2);
 
         Assert.Equal(ManagedLocalGatewayRepairOutcome.ReconnectPendingVerification, (await coordinator.TryRepairActiveGatewayAsync()).Outcome);
         Assert.Equal(ManagedLocalGatewayRepairOutcome.ReconnectPendingVerification, (await coordinator.TryRepairActiveGatewayAsync()).Outcome);
         Assert.Equal(ManagedLocalGatewayRepairOutcome.AttemptsExhausted, (await coordinator.TryRepairActiveGatewayAsync()).Outcome);
         Assert.Equal(2, restarter.Calls); // exhausted attempt did not restart again
+        Assert.Equal(2, rearms);          // no restart was attempted, so no re-arm either
 
         coordinator.ResetAttemptBudget();
 
         Assert.Equal(ManagedLocalGatewayRepairOutcome.ReconnectPendingVerification, (await coordinator.TryRepairActiveGatewayAsync()).Outcome);
         Assert.Equal(3, restarter.Calls);
+        Assert.Equal(3, rearms);
     }
 
     [Fact]
-    public async Task CancelledDuringRestart_DoesNotReconnect()
+    public async Task CancelledDuringRestart_DoesNotReconnectOrRearmKeepAlive()
     {
         SetActiveManagedLocal();
         using var cts = new CancellationTokenSource();
         var reconnects = 0;
+        var rearms = 0;
         var restarter = new FakeRestarter { Gate = () => { cts.Cancel(); return Task.CompletedTask; } };
         var coordinator = CreateCoordinator(
-            restarter, () => false, (_, _) => { reconnects++; return Task.FromResult(true); }, () => true);
+            restarter, () => false, (_, _) => { reconnects++; return Task.FromResult(true); }, () => true, onReArm: () => rearms++);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => coordinator.TryRepairActiveGatewayAsync(cts.Token));
 
         Assert.Equal(1, restarter.Calls);
         Assert.Equal(0, reconnects);
+        Assert.Equal(0, rearms);
     }
 
     [Fact]
@@ -588,12 +739,20 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
         Assert.Equal(ManagedLocalGatewayRepairOutcome.AbortedGatewayChanged, result.Outcome);
     }
 
+    private sealed class CountingLease : IDisposable
+    {
+        public int Disposed;
+
+        public void Dispose() => Disposed++;
+    }
+
     private sealed class FakeRestarter : IManagedLocalGatewayRestarter
     {
         public int Calls;
         public string? LastDistro;
         public ManagedLocalGatewayRestartResult Result = new(true);
         public Func<Task>? Gate;
+        public Exception? Throw;
 
         public async Task<ManagedLocalGatewayRestartResult> RestartAsync(
             string distroName,
@@ -604,6 +763,8 @@ public class ManagedLocalGatewayRepairCoordinatorTests : IDisposable
                 return new ManagedLocalGatewayRestartResult(false, "Gateway changed before restart.");
             Calls++;
             LastDistro = distroName;
+            if (Throw is not null)
+                throw Throw;
             if (Gate != null)
                 await Gate();
             cancellationToken.ThrowIfCancellationRequested();

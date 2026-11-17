@@ -4,7 +4,7 @@ using OpenClaw.Shared;
 namespace OpenClawTray.Presentation;
 
 internal sealed record HubSearchContext(
-    IOperatorGatewayClient? Client, string AgentId, string? GatewayVersion,
+    IOperatorGatewayClient? Client, string AgentId,
     IReadOnlyList<HubSearchItem> LocalItems, IReadOnlyList<SessionInfo> Sessions,
     int ProfileRevision = 0, bool IsActiveConnection = true)
 {
@@ -38,8 +38,6 @@ internal sealed class HubSearchController(
     internal string Query { get; private set; } = "";
     internal IReadOnlyList<HubSearchMatch> Results { get; private set; } = [];
     internal bool HasMoreResults { get; private set; }
-    internal bool HasDashboardCompatibilityWarning => _context is { Connected: true } &&
-        !HubSearchCatalog.SupportsDashboard(_context.GatewayVersion);
     internal IReadOnlyList<HubSearchStatus> Statuses => _states.Select(pair => new HubSearchStatus(pair.Key, pair.Value)).ToArray();
     internal event Action? Changed;
 
@@ -234,9 +232,8 @@ internal sealed class HubSearchController(
                     .DistinctBy(session => session.Key).ToArray();
                 if (result.Indexing || result.Truncated || result.ArchivedExcluded > 0)
                     Post(generation, context, () => _states[messages ? HubSearchGroup.Messages : HubSearchGroup.Chats] = "Partial");
-                var dashboardSupported = HubSearchCatalog.SupportsDashboard(context.GatewayVersion);
-                if (!messages) return HubSearch.Sessions(result.Sessions, serverMatch: true, dashboardSupported: dashboardSupported).ToArray();
-                var byKey = HubSearch.Sessions(rows, dashboardSupported: dashboardSupported)
+                if (!messages) return HubSearch.Sessions(result.Sessions, serverMatch: true).ToArray();
+                var byKey = HubSearch.Sessions(rows)
                     .ToDictionary(item => item.Target.Value, StringComparer.Ordinal);
                 return result.Hits.Where(hit => byKey.ContainsKey(hit.SessionKey)).Select(hit =>
                 {
@@ -273,19 +270,15 @@ internal sealed class HubSearchController(
                     if (cache)
                         Post(generation, context, () => { lock (_cache) _cache[method] = (DateTimeOffset.UtcNow, payload); });
                 }
-                var supported = HubSearchCatalog.SupportsDashboard(context.GatewayVersion);
-                if (group == HubSearchGroup.Models && !supported)
-                    Post(generation, context, () => _states[group] = "Unavailable");
                 if (method == "config.schema")
                 {
-                    var items = HubSearchCatalog.Config(payload, supported, out var partial);
+                    var items = HubSearchCatalog.Config(payload, out var partial);
                     if (partial) Post(generation, context, () => _states[group] = "Partial");
                     return items;
                 }
                 if (payload.TryGetProperty("hasMore", out var more) && more.ValueKind == JsonValueKind.True)
                     Post(generation, context, () => _states[group] = "Partial");
-                return HubSearchCatalog.ParseCatalog(method, payload, context.AgentId, supported,
-                    HubSearchCatalog.SupportsSkillsDashboard(context.GatewayVersion));
+                return HubSearchCatalog.ParseCatalog(method, payload, context.AgentId);
             });
     }
 

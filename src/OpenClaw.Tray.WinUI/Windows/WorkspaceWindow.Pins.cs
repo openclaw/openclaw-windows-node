@@ -107,7 +107,7 @@ public sealed partial class WorkspaceWindow
         var label = LocalizationHelper.GetString(page.LabelKey);
         var icon = new ImageIcon
         {
-            Source = new SvgImageSource(new Uri($"ms-appx:///Assets/SidebarIcons/{page.IconAsset}.svg")),
+            Source = new SvgImageSource(new Uri(page.IconUri)),
             Width = 22,
             Height = 22,
         };

@@ -10,7 +10,9 @@ namespace OpenClawTray.Chat;
 ///   <item>Inline images <c>![alt](src)</c> render as <c>[Image: alt]</c>
 ///         text (no Uri instantiation, no <c>BitmapImage</c> fetch).</item>
 ///   <item>Inline links <c>[text](url)</c> render as plain
-///         <c>text (url)</c> with the URL visible but inert.</item>
+///         <c>text (url)</c> with the URL visible but inert, unless the
+///         caller opts into web-chat parity, which keeps http/https links
+///         as real links (the renderer still re-checks the scheme).</item>
 ///   <item>Reference link definitions <c>[ref]: url</c> render as
 ///         plain <c>ref: url</c> so any usage <c>[text][ref]</c>
 ///         degrades to literal text.</item>
@@ -31,6 +33,12 @@ namespace OpenClawTray.Chat;
 /// </remarks>
 internal static class ChatMarkdownSanitizer
 {
+    private static readonly System.Text.RegularExpressions.Regex s_deliveryDirective = new(
+        @"^\[\[\s*(?:audio_as_voice|reply_to_current|reply_to\s*:\s*[^\]\r\n]{1,256})\s*\]\]",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant |
+        System.Text.RegularExpressions.RegexOptions.NonBacktracking);
+
     public readonly record struct TextSegment(string Text, bool IsStrong);
 
     /// <summary>
@@ -72,7 +80,19 @@ internal static class ChatMarkdownSanitizer
     /// <summary>
     /// Sanitize a chat-bubble markdown string.
     /// </summary>
-    public static string Sanitize(string? text)
+    /// <param name="preserveWebLinks">
+    /// When true, inline links whose destination is an absolute http/https URL
+    /// stay real Markdown links, matching the web chat's anchor policy. Link
+    /// text is still sanitized (nested images/links flatten) and every other
+    /// destination is flattened to inert text as before.
+    /// </param>
+    public static string Sanitize(string? text, bool preserveWebLinks = false) =>
+        Transform(text, preserveWebLinks, stripDeliveryDirectives: false);
+
+    internal static string StripDeliveryDirectives(string text) =>
+        Transform(text, preserveWebLinks: true, stripDeliveryDirectives: true);
+
+    private static string Transform(string? text, bool preserveWebLinks, bool stripDeliveryDirectives)
     {
         if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
         if (text.IndexOf('[') < 0 && text.IndexOf('!') < 0) return text;
@@ -162,6 +182,23 @@ internal static class ChatMarkdownSanitizer
                 continue;
             }
 
+            if (stripDeliveryDirectives)
+            {
+                var directiveLength = 0;
+                if (c == '[' && i + 1 < n && text[i + 1] == '[')
+                    foreach (var match in s_deliveryDirective.EnumerateMatches(text.AsSpan(i)))
+                        directiveLength = match.Length;
+                if (directiveLength > 0)
+                    i += directiveLength;
+                else
+                {
+                    sb.Append(c);
+                    i++;
+                    atLineStart = c == '\n';
+                }
+                continue;
+            }
+
             // Reference link definition at line start: ``[ref]: url ...``.
             // CommonMark also allows up to 3 leading spaces before the
             // definition; 4+ spaces are handled above as indented code.
@@ -208,6 +245,18 @@ internal static class ChatMarkdownSanitizer
             {
                 if (TryParseLinkOrImage(text, i, out _, out var linkText, out var url, out var afterParen, out var exceededScanLimit))
                 {
+                    if (preserveWebLinks && IsWebLinkDestination(url))
+                    {
+                        sb.Append('[');
+                        sb.Append(Sanitize(linkText));
+                        sb.Append("](<");
+                        sb.Append(url);
+                        sb.Append(">)");
+                        i = afterParen;
+                        atLineStart = false;
+                        continue;
+                    }
+
                     // Recursively sanitize the link text so a nested
                     // image / link inside the brackets (e.g.
                     // ``[![alt](http://img)](http://other)``) is also
@@ -245,6 +294,14 @@ internal static class ChatMarkdownSanitizer
 
     public static IReadOnlyList<TextSegment> SanitizeAndSplitStrongEmphasis(string? text) =>
         SplitStrongEmphasis(Sanitize(text));
+
+    // Web chat anchors only http/https destinations; the angle-bracket
+    // destination we emit cannot carry '<', '>' or line breaks.
+    private static bool IsWebLinkDestination(string? url) =>
+        !string.IsNullOrEmpty(url) &&
+        url.IndexOfAny(['<', '>', '\r', '\n']) < 0 &&
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
 
     private static IReadOnlyList<TextSegment> SplitStrongEmphasis(string text)
     {

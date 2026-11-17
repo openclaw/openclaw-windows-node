@@ -1,0 +1,12 @@
+{
+  "sessionKey": "agent:main:main",
+  "sessionId": "00000000-0000-4000-8000-000000000001",
+  "runId": "recovery-run",
+  "callId": "recovery-call",
+  "resultMessageId": "recovery-result",
+  "genericHistoryMaxChars": 8000,
+  "webToolPreviewMaxChars": 2000,
+  "line": "Synthetic recovery output. No user data is present.\n",
+  "lineCount": 240,
+  "tail": "RECOVERED OUTPUT TAIL"
+}

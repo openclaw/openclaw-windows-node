@@ -70,7 +70,7 @@ internal sealed class AppNotificationInfoBarPresenter
         return new AppNotificationInfoBarPresentation(
             notification,
             ToSemanticSeverity(notification.Severity),
-            GetAction(notification, snapshot.HasMultipleActiveNotifications, currentTag, showMoreLabel));
+            GetAction(notification, InboxProjection.Build(snapshot.ActiveNotifications).Entries.Count > 1, currentTag, showMoreLabel));
     }
 
     public AppNotificationInfoBarPresentation UpdateCurrentTag(
@@ -94,7 +94,7 @@ internal sealed class AppNotificationInfoBarPresenter
 
     private static AppNotificationInfoBarAction GetAction(
         AppNotification notification,
-        bool hasMultipleActiveNotifications,
+        bool hasMoreInboxEntries,
         string? currentTag,
         string showMoreLabel)
     {
@@ -108,7 +108,8 @@ internal sealed class AppNotificationInfoBarPresenter
                 true);
         }
 
-        if (hasMultipleActiveNotifications)
+        // "Show more" opens the Inbox, so it needs another Inbox entry to show.
+        if (hasMoreInboxEntries)
         {
             return new AppNotificationInfoBarAction(
                 AppNotificationInfoBarActionKind.ShowMore,

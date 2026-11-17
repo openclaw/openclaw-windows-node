@@ -384,7 +384,7 @@ public class ChatNavigationReadinessTests
         public Task ConnectAsync(string? gatewayId = null) => Task.CompletedTask;
         public Task ConnectNodeOnlyAsync(string? gatewayId = null) => Task.CompletedTask;
         public Task DisconnectAsync() => Task.CompletedTask;
-        public Task DisconnectByUserAsync() => Task.CompletedTask;
+        public Task DisconnectByUserAsync(string? gatewayId = null) => Task.CompletedTask;
         public Task ReconnectAsync() => Task.CompletedTask;
         public Task<bool> ReconnectIfCurrentAsync(string gatewayId, CancellationToken cancellationToken = default) =>
             Task.FromResult(true);

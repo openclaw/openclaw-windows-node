@@ -161,6 +161,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public static string McpTokenPath =>
         System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "mcp-token.txt");
     private volatile bool _enableMcpServer;
+    // Guards _mcpServer/_mcpToolBridge ownership across start and stop. Taken after
+    // _clientLock when both are held; never acquire _clientLock while holding it.
+    private readonly object _mcpLifecycleLock = new();
     private McpHttpServer? _mcpServer;
     private McpToolBridge? _mcpToolBridge;
     private string? _mcpStartupError;
@@ -324,6 +327,17 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             includeRunCommands: () => NodeCapabilityGating.ShouldRegisterSystemRun(_settings));
         _systemCapability.NotifyRequested += OnSystemNotify;
         _systemCapability.SetCommandRunner(BuildSystemRunRunner());
+        _fileOperations ??= new OpenClaw.Shared.FileTransfer.FileOperations(_sandboxExecutor!);
+        if (_uploadRetention is null)
+        {
+            var settingsDirectory = _settings?.SettingsDirectory ?? SettingsManager.SettingsDirectoryPath;
+            _uploadRetention = new OpenClaw.Shared.FileTransfer.UploadRetentionCoordinator(
+                _fileOperations, System.IO.Path.Combine(settingsDirectory, "upload-roots.json"), _logger);
+            _uploadRetention.Changed += OnUploadCleanupChanged;
+            _uploadRetention.Start();
+            if (_settings is not null) _settings.Saved += OnUploadSettingsSaved;
+        }
+        Register(new OpenClaw.Shared.FileTransfer.FileCapability(_logger, _fileOperations));
         // One coordinator per service lifetime (it serializes approvals with a
         // per-instance semaphore). Construction failures are not sticky, so a
         // later rebuild retries while this capability remains fail closed.
@@ -336,7 +350,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         if (NodeCapabilityGating.ShouldRegisterCanvas(_settings))
         {
-            _canvasCapability = new CanvasCapability(_logger);
+            _canvasCapability = new CanvasCapability(_logger, _fileOperations!.ReadContentAsync);
             _canvasCapability.PresentRequested += OnCanvasPresent;
             _canvasCapability.HideRequested += OnCanvasHide;
             _canvasCapability.NavigateRequested += OnCanvasNavigate;
@@ -456,7 +470,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
                 useSshTunnel: tunnelState.Enabled,
                 sshTunnelLocalPort: tunnelState.LocalPort,
                 allowGatewayPortFallback: tunnelState.AllowGatewayPortFallback,
-                authorizeEndpointAsync: _browserControlAuthorization);
+                authorizeEndpointAsync: _browserControlAuthorization,
+                readFile: _fileOperations!.ReadContentAsync);
             Register(_browserProxyCapability);
         }
         else if (browserProxyBlock != BrowserProxyActivation.RegistrationBlock.ToggleDisabled)
@@ -656,25 +671,42 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private ICommandRunner BuildSystemRunRunner()
     {
         // Admission is deferred, never probed under the capability-registration lock.
-        var settingsDirectory = SettingsManager.SettingsDirectoryPath;
-        return new MxcCommandRunner(
-            () => SnapshotSettings(),
+        var settingsDirectory = _settings?.SettingsDirectory ?? SettingsManager.SettingsDirectoryPath;
+        _sandboxExecutor ??= new NodeSandboxExecutor(
+            _settings?.SandboxPolicies ?? new NodeSandboxPolicyStore(new SettingsData()),
             () => settingsDirectory,
             GetOrProbeMxcAvailability,
             _logger,
-            contextProvider: () => MxcWindowsRequestContext.Capture(settingsDirectory));
+            contextProvider: () => MxcWindowsRequestContext.Capture(settingsDirectory),
+            fileWorker: new OpenClaw.Shared.FileTransfer.InstalledFileWorkerResolver(typeof(NodeService).Assembly));
+        return new MxcCommandRunner(_sandboxExecutor);
     }
 
-    /// <summary>
-    /// Snapshot the live <see cref="SettingsManager"/> into the wire-shaped
-    /// <see cref="SettingsData"/> consumed by the immutable request builder.
-    /// </summary>
-    private SettingsData SnapshotSettings() => _settings?.SnapshotSystemRunSettings() ?? new();
+    private NodeSandboxExecutor? _sandboxExecutor;
+    private OpenClaw.Shared.FileTransfer.FileOperations? _fileOperations;
+    private OpenClaw.Shared.FileTransfer.UploadRetentionCoordinator? _uploadRetention;
+    public string? UploadCleanupBlockedReason => _uploadRetention?.BlockedReason;
+    public event Action? UploadCleanupChanged;
+    private void OnUploadCleanupChanged()
+    {
+        if (_uploadRetention?.BlockedReason is not null)
+            _logger.Warn("[files] operation=upload-cleanup outcome=blocked action=review-sandbox-settings retryCompletedUpload=false");
+        UploadCleanupChanged?.Invoke();
+    }
+    private void OnUploadSettingsSaved(object? sender, EventArgs args) => _uploadRetention?.Refresh(recoverRoots: true);
 
     private MxcAvailability? _mxcAvailability;
     private DateTime _mxcNextProbeAllowedAtUtc;
     private Task<MxcAvailability>? _mxcProbeInFlight;
     private readonly object _mxcAvailabilityLock = new();
+
+    /// <summary>
+    /// True when file commands run inside the Node Sandbox and false when they run uncontained (positively
+    /// unsupported Windows). Null after a probe error: a later probe may still find Windows unsupported, so
+    /// callers must not treat it as enforced. Blocks while probing, so call off the UI thread.
+    /// </summary>
+    public bool? FileCommandsEnforceSandbox() =>
+        GetOrProbeMxcAvailability() is { ProbeErrored: false } availability ? !availability.IsWindowsUnsupported : null;
 
     /// <summary>
     /// Minimum interval before re-probing after a transient probe error. Bounds the
@@ -772,6 +804,15 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
     private bool StartMcpServer()
     {
+        // Start is reached from the UI (SetMcpEnabled) and from AttachClient on a
+        // threadpool thread. Serializing it with the stop swap keeps one tracked
+        // listener and lets a disable that wins the lock prevent a later start.
+        lock (_mcpLifecycleLock)
+            return StartMcpServerLocked();
+    }
+
+    private bool StartMcpServerLocked()
+    {
         if (!_enableMcpServer) return true;
         if (_mcpServer != null) return true;
         McpHttpServer? attempt = null;
@@ -834,7 +875,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             {
                 _logger.Debug($"[MCP] Cleanup of half-started listener failed: {cleanupEx.Message}");
             }
-            _mcpServer = null;
             return false;
         }
     }
@@ -871,11 +911,16 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         // Awaited shutdown callers depend on this drain finishing before
         // capability-backing services are torn down.
-        var server = _mcpServer;
-        var bridge = _mcpToolBridge;
-        _mcpServer = null;
-        _mcpToolBridge = null;
-        _mcpStartupError = null;
+        McpHttpServer? server;
+        McpToolBridge? bridge;
+        lock (_mcpLifecycleLock)
+        {
+            server = _mcpServer;
+            bridge = _mcpToolBridge;
+            _mcpServer = null;
+            _mcpToolBridge = null;
+            _mcpStartupError = null;
+        }
 
         if (server == null)
             return;
@@ -956,8 +1001,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             {
                 _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
                 // Always call StopMcpServer to clear stale startup errors even
-                // if the server isn't running. StopMcpServer is lock-protected
-                // and handles _mcpServer == null safely.
+                // if the server isn't running. The flag is cleared first, so a
+                // start that takes _mcpLifecycleLock after this swap sees it.
                 StopMcpServer();
             }
         }
@@ -2539,6 +2584,13 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private async Task DisposeCoreAsync()
     {
         await StopMcpServerAsync().ConfigureAwait(false);
+        if (_settings is not null) _settings.Saved -= OnUploadSettingsSaved;
+        if (_uploadRetention is not null)
+        {
+            _uploadRetention.Changed -= OnUploadCleanupChanged;
+            try { await _uploadRetention.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger.Debug($"NodeService: Dispose UploadRetentionCoordinator failed: {ex.GetType().Name}"); }
+        }
 
         WindowsNodeClient? client;
         lock (_clientLock)
@@ -2553,6 +2605,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
         // Best-effort disposal during teardown; surface failures at Debug for diagnostics
         // but never let a cleanup throw block the rest of the teardown chain.
+        try { _sandboxExecutor?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose NodeSandboxExecutor failed: {ex.Message}"); }
         try { _cameraCaptureService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose CameraCaptureService failed: {ex.Message}"); }
         try { _screenRecordingService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose ScreenRecordingService failed: {ex.Message}"); }
         try { _textToSpeechService?.Dispose(); } catch (Exception ex) { _logger.Debug($"NodeService: Dispose TextToSpeechService failed: {ex.Message}"); }

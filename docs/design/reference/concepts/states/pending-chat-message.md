@@ -4,31 +4,30 @@ A locally accepted message waiting for the current assistant turn or send admiss
 
 ## Canonical name and copy
 
-The status label is `Pending` (`Chat_Timeline_Pending`). It appears beneath queued
-and sending messages on hover or keyboard focus until the provider promotes them
-into the transcript. The accessible item status is always available.
+The accessible status is `Pending` (`Chat_Timeline_Pending`) until the provider
+promotes the message into the transcript. It stays available without a visual footer.
 Failed messages retain the existing `Failed` label and error detail.
 
 ## Icon and states
 
-No status icon is required. The existing Cancel action uses `FluentIconCatalog.Exit`.
-Pending messages use the normal right-aligned user bubble geometry with
-`ChatPendingUserBrush`, a `ChatStrokeBrush` outline, and `ChatSecondaryTextBrush`,
-not reduced whole-control opacity. The pending fill is transparent in every
-theme so the bubble has the same background as the conversation. Text uses the
-slightly faded secondary foreground in Light/Dark and readable system text in HC.
-The status and actions share a hover/focus footer that reserves its layout space.
-Failures retain an always-visible footer and error. Keyboard focus reveals the
-footer independently of pointer position.
+Pending messages share one rounded `ChatCardBrush` panel above the composer.
+Each row has the web queue's native-rendered list/return outline, a circular
+operator-avatar fallback, selectable `ChatTextBrush` text and an always-visible
+outline trash removal action. Icons are 14px with rounded 1.75px strokes in a
+24px viewbox; the trash target remains 32px. The avatar is 20px (18px on narrow
+layouts), with 13/18 text and compact row insets. Row dividers use `ChatStrokeBrush`.
+Sending disables the action in place; failures retain their error and enabled
+removal. Native text selection supplies Copy without a separate action footer.
+The panel is bounded to 160px or one third of the viewport height, whichever is smaller.
 
 ## Appears in
 
-Workspace's ChatPage through its Reactor timeline.
+Workspace's ChatPage through its Reactor root, immediately above the composer.
 See [Native chat visual system](../../../../CHAT_VISUAL_DESIGN.md).
 
 ## Code anchors and invariants
 
-- `ReactorChatTimeline`: presentation-only queue rows after the current turn.
+- `ReactorChatPendingMessages`: keyed panel rows outside transcript history.
 - `OpenClawReactorChatRoot`: selected-thread queue and cancel callback.
 - `ChatComposerController`: accepted submission clears the matching draft.
 - `ChatQueueState`: unchanged send ordering, cancellation and promotion owner.

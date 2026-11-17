@@ -482,6 +482,11 @@ creation does not trigger another tag-push workflow. Do not replace it with a
 PAT or dispatch CI on the old candidate tag: that would execute the historical
 workflow instead of the selected pipeline.
 
+Tray UI crash diagnostics are pipeline-owned. Promotions fetch the metadata
+helper from the pinned dispatch SHA into a separate sparse checkout after the
+UI tests. The alpha checkout still owns the app and tests, even when it predates
+that helper. Ordinary CI uses the helper from its normal source checkout.
+
 The existing MSIX allocator reserves a new package version for the stable tag,
 shared by both architectures. Promotion rechecks candidate eligibility and
 approval protection, then the allocator verifies the existing same-base alpha
@@ -507,23 +512,29 @@ For `v2026.9.5`, this includes the coordinated migration proof above on exact
 signed x64 and ARM64 packages. A Store listing or a green CI badge is not that
 proof. Do not approve a run with missing acceptance.
 
-Ordinary same-repository publication uses `GITHUB_TOKEN` with **Contents: write**.
-An extra publication credential is needed only when the candidate adds or
-modifies files under `.github/workflows/` relative to current main. Older product
-code or workflow deletions alone do not require it. The publication owner checks
-complete Git trees before creating any public tag and fails closed if that
-permission check cannot complete. GitHub's
-[release API authorization contract](https://docs.github.com/en/rest/releases/releases#update-a-release)
-requires **Workflows: write** for that historical-workflow exception, which
-`GITHUB_TOKEN` cannot receive. For those candidates only, configure
-`STABLE_RELEASE_TOKEN` as an environment secret in `stable-release`, using a
-GitHub App installation token or fine-grained token restricted to this repository
-with **Contents: write** and **Workflows: write**. The protected token is used
-only for draft creation and final release publication, never for Git refs,
-candidate builds, or eligibility checks. Tag creation and asset uploads continue
-to use `GITHUB_TOKEN`, so historical tag workflows are not triggered. Missing or
-malformed exception credentials, or substituted workflow tokens, block before
-tag creation. Protected publication approval is required in both cases.
+Publication explicitly checks `!cancelled()` and successful release preparation
+so an intentionally skipped ancestor, such as the pull-request-only test soak,
+does not suppress the approval job through GitHub's implicit `success()` check.
+Failed preparation and cancelled runs still cannot publish.
+
+Promotion publication uses only `GITHUB_TOKEN` with **Contents: write**. No PAT,
+GitHub App key, or separate release-token secret is required by the workflow.
+The approved alpha SHA and pipeline SHA are pinned in `promotion.json`; moving
+main forward does not impose a workflow-file equality requirement. The existing
+ancestry check still requires the pinned pipeline to remain on main's history.
+
+Publication creates and verifies the annotated stable tag at the exact alpha
+SHA before creating the release. The release request specifies that existing
+tag and omits `target_commitish`, which GitHub documents as unused for existing
+tags. Release notes still explicitly compare the previous stable with the alpha
+SHA. Tag creation, asset uploads, and publication all use `GITHUB_TOKEN`, so
+creating the stable tag does not trigger historical tag workflows.
+
+The local checks prove the request shape and race handling, not GitHub's live
+permission decision. If GitHub rejects tag creation or release publication,
+stop and inspect that API failure; do not move the alpha or stable tag, switch
+the source to main, or mint broader credentials automatically. The token-only
+path with differing historical workflow files needs live Actions verification.
 
 Approval publishes the exact prepared artifact ID, not a rebuild. Under the
 shared release-publication lock, CI rechecks source tags, Latest ordering,
@@ -626,6 +637,30 @@ modify, resubmit, or claim acceptance of the package already in Microsoft Store.
    ```
 
 ## Release channel policy
+
+### Fixed file-worker signing
+
+The `sign-cleanup-host` job also publishes the x64 and ARM64 fixed file workers
+and signs only their first-party EXE/DLL files on the x64 signing runner. It
+verifies their release signer before generating each payload manifest.
+The portable/Inno and MSIX build jobs download those complete signed payloads
+and set `OpenClawSignedFileWorkerPath` to the matching RID directory.
+`RequireSignedFileWorker=true` rejects missing or unsigned input before
+Companion embeds its manifest. Ordinary non-release builds still publish a
+local unsigned worker.
+
+Manifest generation explicitly launches PowerShell 7 (`pwsh` on the build
+host's `PATH`), matching the signing job and cleanup-helper checks. It does
+not launch Windows PowerShell 5.1 with inherited PowerShell 7 module paths,
+which can prevent the Authenticode module from loading.
+
+Do not sign or republish the worker after manifest generation: either changes
+the bytes checked by Companion's embedded digests. Final release signing covers
+the app binaries separately and verifies the already-signed worker in its
+manifest-addressed slot. Signed-package and native runtime proof remain separate
+release obligations.
+
+### Tag channels
 
 Stable, stable-correction, and alpha tags use the same signed CI release pipeline:
 
@@ -730,11 +765,13 @@ extract the matching architecture archive and follow its instructions,
 including explicitly trusting the included public certificate.
 
 Unsigned Store submission packages, the multi-architecture bundle, and their
-metadata remain Actions artifacts only. Use [Store submission](MICROSOFT_STORE.md)
-to upload the validated unsigned bundle from a successful release run. No
-production signing step is applied to those Store inputs.
+metadata remain Actions artifacts only. Use [Store publication requests](MICROSOFT_STORE.md)
+to request release-manager-approved central publication of the validated unsigned
+bundle from a successful release run. No production signing step is applied to
+those Store inputs.
 
-Automatic Partner Center submission is staged behind `MSSTORE_ENABLED`.
+Automatic central publication requests are staged behind `MSSTORE_ENABLED`.
+The variable never bypasses central release-manager approval.
 Store-signed retrieval and publication, and official lifecycle acceptance
 remain release gates tracked in #1375. Submission automation and release
 artifacts do not clear those rollout gates.
@@ -1086,11 +1123,12 @@ only receive a stable tag through the controlled promotion workflow above.
 - CI computes GitVersion outputs for artifact naming, while product builds use
   GitVersion-backed assembly metadata.
 
-## Automated Store submission
+## Central Store publication
 
-See [Microsoft Store submission](MICROSOFT_STORE.md) for protected OIDC setup,
-manual submission, Development-flight enrollment, automatic activation, and
-recovery. Production uses `MSSTORE_ENABLED`; alpha releases use the separate
-`MSSTORE_DEVELOPMENT_ENABLED` flag and `MSSTORE_DEVELOPMENT_FLIGHT_ID` destination.
-Both automatic paths remain off until their manual submission and Store
-install/upgrade acceptance succeed.
+See [Store publication requests](MICROSOFT_STORE.md) for the central publishing
+boundary, required administrator cutover, manual requests from existing release
+runs, automatic request activation, and recovery. This repository only sends
+requests to `openclaw/releases`; it does not hold Store publishing authority.
+Automatic requests remain off until the repository variable `MSSTORE_ENABLED`
+is `true`. The stable-promotion approval, MSIX version reservations, unsigned
+x64/ARM64 artifacts, and release witness remain unchanged.

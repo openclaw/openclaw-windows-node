@@ -168,9 +168,6 @@ public sealed partial class SearchHost : UserControl
         var statuses = _controller.Statuses.Select(status =>
             LocalizationHelper.Format($"Search_Status_{status.State}", L($"Search_Group_{status.Group}")));
         var statusText = string.Join("\n", statuses);
-        if (_controller.HasDashboardCompatibilityWarning)
-            statusText = string.Join("\n", new[] { statusText, L("Search_Compatibility") }
-                .Where(text => text.Length > 0));
         if (statusText.Length == 0 && items.Length == 0)
             statusText = L("Search_Empty");
         SetInputStatus(statusText);

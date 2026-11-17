@@ -185,6 +185,7 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
 
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
         Assert.Contains("outside the trusted WSL install locations", result.Detail);
+        Assert.Equal(GatewayEndpointProvenanceFailureReason.None, result.FailureReason);
     }
 
     [Fact]
@@ -253,6 +254,62 @@ public class ManagedLocalGatewayPortProvenanceServiceTests
 
         Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
         Assert.Contains("does not report its systemd gateway MainPID owning port", result.Detail);
+        Assert.Equal(
+            GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening,
+            result.FailureReason);
+    }
+
+    [Fact]
+    public void Inspect_DualStackTrustedRelayWithoutGuestOwner_IsRetryableOwnerWait()
+    {
+        var platform = new FakePlatform { ExpectedDistroListening = false };
+        var start = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc);
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            18789,
+            102,
+            "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe",
+            start));
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.IPv6Loopback,
+            18789,
+            102,
+            "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe",
+            start));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Equal(
+            GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening,
+            result.FailureReason);
+    }
+
+    [Fact]
+    public void Inspect_TrustedRelayBesideForeignListenerWithoutGuestOwner_IsNotRetryable()
+    {
+        var platform = new FakePlatform { ExpectedDistroListening = false };
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.Loopback,
+            18789,
+            102,
+            "wslrelay",
+            @"C:\Program Files\WSL\wslrelay.exe"));
+        platform.Listeners.Add(new WindowsTcpListenerInfo(
+            IPAddress.IPv6Loopback,
+            18789,
+            103,
+            "node",
+            @"C:\Tools\node.exe"));
+        var service = new ManagedLocalGatewayPortProvenanceService(platform, NullLogger.Instance);
+
+        var result = service.Inspect(ManagedRecord());
+
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, result.Kind);
+        Assert.Equal(GatewayEndpointProvenanceFailureReason.None, result.FailureReason);
     }
 
     [Fact]

@@ -16,6 +16,7 @@ public sealed class OnboardingMascotAnimatorTests
         {
             Assert.Equal(expected, animator.Advance(TimeSpan.FromDays(1), false));
             animator.HandleTap();
+            animator.WakeUp();
             animator.SetPointer(new(1, -1));
         }
         Assert.Equal(0, animator.ElapsedSeconds);
@@ -258,6 +259,28 @@ public sealed class OnboardingMascotAnimatorTests
         Assert.False(passive.IsDozing);
         passive.HandleTap();
         Assert.NotEqual(OnboardingMascotGesture.Startle, passive.ActiveGesture);
+    }
+
+    [Fact]
+    public void Drag_WakesWithoutCountingTaps_AndDefersSleepUntilInteractionStops()
+    {
+        var animator = New();
+        Advance(animator, 81);
+        Assert.True(animator.IsDozing);
+        animator.WakeUp();
+        Assert.False(animator.IsDozing);
+        Assert.Equal(OnboardingMascotGesture.Startle, animator.ActiveGesture);
+        for (var i = 0; i < 1000; i++)
+        {
+            animator.WakeUp();
+            animator.Advance(TimeSpan.FromSeconds(0.1), true);
+        }
+        Assert.False(animator.IsDozing);
+        animator.HandleTap();
+        Assert.Contains(animator.ActiveGesture!.Value,
+            new[] { OnboardingMascotGesture.Hop, OnboardingMascotGesture.Wave, OnboardingMascotGesture.Wink });
+        Advance(animator, 81);
+        Assert.True(animator.IsDozing);
     }
 
     [Fact]

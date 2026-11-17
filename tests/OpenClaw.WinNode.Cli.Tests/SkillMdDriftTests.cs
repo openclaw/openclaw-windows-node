@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Capabilities;
 using OpenClaw.Shared.Mcp;
+using OpenClaw.Shared.FileTransfer;
 
 namespace OpenClaw.WinNode.Cli.Tests;
 
@@ -100,6 +101,7 @@ public class SkillMdDriftTests
             new CameraCapability(NullLogger.Instance),
             new CanvasCapability(NullLogger.Instance),
             new DeviceCapability(NullLogger.Instance, provider),
+            new FileCapability(NullLogger.Instance, null!),
             new LocationCapability(NullLogger.Instance),
             new ScreenCapability(NullLogger.Instance),
             new SttCapability(NullLogger.Instance),

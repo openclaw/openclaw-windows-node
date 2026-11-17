@@ -7,6 +7,110 @@ namespace OpenClaw.Tray.Tests;
 
 public class NativeToolProjectorTests
 {
+    [Fact]
+    public void InputDetails_CommandPreviewUsesOneLineWithoutChangingTheDisclosedCommand()
+    {
+        using var input = JsonDocument.Parse("""{"command":"first\nsecond\tthird"}""");
+        var details = NativeToolProjector.ProjectInputDetails(input.RootElement, "exec")!;
+        Assert.Equal("first second\\u{9}third", details.Preview);
+        Assert.Equal("first\nsecond\\u{9}third", details.Command);
+    }
+
+    [Fact]
+    public void InputDetails_PrefersSuppliedTitleOverCommandForTheCollapsedPreview()
+    {
+        using var input = JsonDocument.Parse(
+            """{"title":"Build identical reviewer input","command":"dotnet test .\\tests\\OpenClaw.Tray.Tests"}""");
+
+        var details = NativeToolProjector.ProjectInputDetails(input.RootElement, "exec")!;
+
+        Assert.Equal("Build identical reviewer input", details.Preview);
+        Assert.Equal("dotnet test .\\tests\\OpenClaw.Tray.Tests", details.Command);
+    }
+
+    [Fact]
+    public void InputDetails_RetainMultilineCommandAndGenericValuesWithoutExpandingTheSummaryCache()
+    {
+        var command = "Write-Output 'first'\n" + new string('x', 350) + "\nCOMMAND TAIL";
+        using var payload = JsonDocument.Parse(JsonSerializer.Serialize(new
+        {
+            args = new { command, workdir = "C:\\fixture", timeout = 30, options = new { includeDocs = true } },
+        }));
+        var summary = NativeToolProjector.ExtractSafeToolDisplayArgs(payload.RootElement)!;
+        var details = NativeToolProjector.ExtractInputDetails(payload.RootElement, "exec")!;
+        Assert.DoesNotContain("COMMAND TAIL", summary["command"]!.GetValue<string>());
+        Assert.Equal(command, details.Command);
+        Assert.Contains("includeDocs", details.Text);
+        Assert.Contains("workdir", details.Text);
+        Assert.Contains("30", details.Text);
+        Assert.False(summary.ContainsKey("options"));
+    }
+
+    [Fact]
+    public void InputDetails_RedactCredentialsButRetainOperationalParameters()
+    {
+        using var input = JsonDocument.Parse("""
+            {"message":"Inspect files","node":"fixture-node","sessionKey":"agent:main:main","max_tokens":256,
+             "enabled":true,"tags":["one","two"],"password":1234,"credentials":{"value":"private"},
+             "headers":{"Authorization":"Bearer private-value"},"api_key":"do-not-show"}
+            """);
+        var details = NativeToolProjector.ProjectInputDetails(input.RootElement, "custom_task")!;
+        Assert.Equal("Inspect files", details.Preview);
+        Assert.Contains("fixture-node", details.Text);
+        Assert.Contains("agent:main:main", details.Text);
+        Assert.Contains("256", details.Text);
+        Assert.Contains("true", details.Text);
+        Assert.Contains("one", details.Text);
+        Assert.DoesNotContain("1234", details.Text);
+        Assert.DoesNotContain("private", details.Text);
+        Assert.DoesNotContain("do-not-show", details.Text);
+        Assert.Contains("[redacted]", details.Text);
+    }
+
+    [Fact]
+    public void InputDetails_KeepFreeFormInputAndExplicitlyRejectOversizeAndPrivateYieldInput()
+    {
+        var patch = JsonSerializer.SerializeToElement("*** Begin Patch\n*** Add File: sample.txt\n+hello\n*** End Patch");
+        Assert.Contains("*** End Patch", NativeToolProjector.ProjectInputDetails(patch, "apply_patch")!.Text);
+        Assert.Null(NativeToolProjector.ProjectInputDetails(patch, "sessions_yield"));
+        var oversized = JsonSerializer.SerializeToElement(new { text = new string('x', 70 * 1024) });
+        var result = NativeToolProjector.ProjectInputDetails(oversized, "custom")!;
+        Assert.True(result.Unavailable);
+        Assert.Empty(result.Text);
+    }
+
+    [Fact]
+    public void ToolOutput_PreservesTheFormerPreviewTailAndRetainsTheEntrySafetyBudget()
+    {
+        var text = new string('x', 6000) + " OUTPUT TAIL";
+        Assert.Equal(text, NativeToolProjector.TruncateToolOutput(text));
+        var bounded = NativeToolProjector.TruncateToolOutput(new string('x', 300 * 1024));
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(bounded) <= OpenClawChatDataProvider.MaxEntryTextBytes);
+        Assert.Contains("truncated", bounded, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("command", "dotnet test")]
+    [InlineData("path", "src\\main.cs")]
+    [InlineData("file_path", "src\\main.cs")]
+    [InlineData("filePath", "src\\main.cs")]
+    [InlineData("notebook_path", "analysis.ipynb")]
+    [InlineData("query", "streaming tools")]
+    [InlineData("url", "https://example.test")]
+    public void CollapsedPreview_UsesTheSameSafeSuppliedInputForLiveAndHistory(string key, string value)
+    {
+        var args = new Dictionary<string, string> { [key] = value, ["content"] = "not displayed" };
+        var live = NativeToolProjector.ExtractSafeToolDisplayArgs(
+            JsonSerializer.SerializeToElement(new { args }));
+        var history = NativeToolProjector.ExtractSafePersistedToolDisplayArgs(
+            JsonSerializer.SerializeToElement(JsonSerializer.Serialize(args)));
+
+        Assert.Equal(value, NativeToolProjector.FirstToolDisplayValue(live));
+        Assert.Equal(value, NativeToolProjector.FirstToolDisplayValue(history));
+        Assert.False(live!.ContainsKey("content"));
+        Assert.False(history!.ContainsKey("content"));
+    }
+
     [Theory]
     [InlineData("Bash", "Bash", ChatToolIdentityStrength.Specific)]
     [InlineData("APPLY_PATCH", "Apply Patch", ChatToolIdentityStrength.Specific)]

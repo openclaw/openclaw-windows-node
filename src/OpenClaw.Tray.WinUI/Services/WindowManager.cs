@@ -197,7 +197,14 @@ internal sealed class WindowManager : IWindowManager
 
     /// <summary>Shows the workspace and optionally navigates it before activation.</summary>
     public void ShowHub(string? navigateTo = null, bool activate = true)
-        => ShowHubCore(navigateTo, activate);
+    {
+        var admission = ShowHubCoreAsync(navigateTo, activate);
+        AsyncEventHandlerGuard.Run(async () => await admission,
+            new AppLogger(), nameof(ShowHub));
+    }
+
+    public Task<bool> TryShowHubAsync(string navigateTo, string? chatSessionKey = null) =>
+        ShowHubCoreAsync(navigateTo, activate: true, chatSessionKey, usePendingChatSession: false);
 
     /// <summary>Shows the native setup completion experience until it is closed or committed.</summary>
     public async Task ShowNativeSetupAsync(SetupNativeCompletion completion, CancellationToken ct)
@@ -358,7 +365,9 @@ internal sealed class WindowManager : IWindowManager
             {
                 _readyWindow?.Close();
                 ShowHub("connection");
-            });
+            },
+            gatewayId => _callbacks.GetGatewayRegistry()?.GetById(gatewayId),
+            collectLogs: ShowSetupDiagnosticsAsync);
         _readyWindow = ready;
         ready.Closed += (_, _) =>
         {
@@ -455,14 +464,15 @@ internal sealed class WindowManager : IWindowManager
             retry?.Invoke();
     }
 
-    private void ShowHubCore(string? navigateTo, bool activate)
+    private Task<bool> ShowHubCoreAsync(
+        string? navigateTo, bool activate, string? chatSessionKey = null, bool usePendingChatSession = true)
     {
         if (_isShuttingDown)
         {
-            return;
+            return Task.FromResult(false);
         }
 
-        WorkspaceNavigation.Dispatch(navigateTo, destination =>
+        return WorkspaceNavigation.DispatchAsync(navigateTo, destination =>
         {
             if (_callbacks.RequiresSetup())
             {
@@ -470,17 +480,20 @@ internal sealed class WindowManager : IWindowManager
                     ShowOnboardingAsync,
                     new AppLogger(),
                     nameof(ShowOnboardingAsync));
-                return;
+                return Task.FromResult(false);
             }
 
-            ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub");
-        }, tag => ShowWorkspace(WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag),
-            path => ((IAppCommands)Application.Current).OpenDashboard(path));
+            return Task.FromResult(ShowWorkspace(destination, activate, preserveCurrent: navigateTo is null or "hub",
+                chatSessionKey: chatSessionKey, usePendingChatSession: usePendingChatSession));
+        }, tag => Task.FromResult(ShowWorkspace(
+            WorkspaceDestination.Settings("settings"), activate, preserveCurrent: false, settingsTag: tag)),
+            path => ((IAppCommands)Application.Current).TryOpenDashboardAsync(path));
     }
 
-    private void ShowWorkspace(
+    private bool ShowWorkspace(
         WorkspaceDestination destination, bool activate, bool preserveCurrent,
-        SetupNativeNavigationRequest? nativeRequest = null, string? settingsTag = null)
+        SetupNativeNavigationRequest? nativeRequest = null, string? settingsTag = null,
+        string? chatSessionKey = null, bool usePendingChatSession = true)
     {
         if (_workspaceWindow is null || _workspaceWindow.IsClosed)
         {
@@ -488,7 +501,7 @@ internal sealed class WindowManager : IWindowManager
                 _callbacks.GetAppNotificationService() is not { } notifications)
             {
                 Logger.Warn("[WindowManager] Workspace cannot open before application services are ready.");
-                return;
+                return false;
             }
 
             _workspaceWindow = new WorkspaceWindow(state, notifications, ShowConnectionStatus);
@@ -498,6 +511,7 @@ internal sealed class WindowManager : IWindowManager
             _workspaceWindow.Activated += OnMainWindowActivated;
         }
 
+        var admitted = false;
         if (nativeRequest is not null)
         {
             nativeRequest.RequireWorkspaceDestination(destination);
@@ -505,15 +519,17 @@ internal sealed class WindowManager : IWindowManager
         }
         else if (settingsTag is not null)
         {
-            _workspaceWindow.OpenSettings(settingsTag);
+            admitted = _workspaceWindow.TryOpenSettings(settingsTag);
         }
         else if (!preserveCurrent)
         {
-            if (destination.Page == WorkspacePageId.Home &&
-                _callbacks.GetPendingChatSessionKey() is { Length: > 0 } sessionKey)
-                _workspaceWindow.SelectSession(sessionKey);
-            else
-                _workspaceWindow.Navigate(destination);
+            if (destination.Page == WorkspacePageId.Home)
+            {
+                var sessionKey = chatSessionKey ?? (usePendingChatSession ? _callbacks.GetPendingChatSessionKey() : null);
+                if (sessionKey is { Length: > 0 })
+                    destination = destination with { SessionKey = sessionKey };
+            }
+            admitted = _workspaceWindow.TryNavigate(destination);
         }
         if (_workspaceWindow.AppWindow.Presenter is Microsoft.UI.Windowing.OverlappedPresenter presenter &&
             presenter.State == Microsoft.UI.Windowing.OverlappedPresenterState.Minimized)
@@ -527,6 +543,7 @@ internal sealed class WindowManager : IWindowManager
         }
         else
             _workspaceWindow.AppWindow.Show(activateWindow: false);
+        return admitted;
     }
 
     private void OnWorkspaceSettingsSaved(object? sender, EventArgs e) => _callbacks.SettingsSaved(sender, e);
@@ -880,6 +897,7 @@ internal sealed class WindowManager : IWindowManager
                     _callbacks.GetGatewayRegistry() is { } registry
                     ? new SetupNativeConnectionHost(directConnect, registry, new AppLogger(), NotifyIncompleteNativeConnection)
                     : null,
+                collectLogs: ShowSetupDiagnosticsAsync,
                 commandLineArgs: SetupWindowArgumentProjection.Project(
                     _callbacks.GetStartupArgs(),
                     _callbacks.IsDeepLinkArg,
@@ -934,6 +952,38 @@ internal sealed class WindowManager : IWindowManager
         }
     }
 
+    private async Task ShowSetupDiagnosticsAsync(FrameworkElement page)
+    {
+        if (_isShuttingDown || page.XamlRoot is not { } root)
+            throw new InvalidOperationException("The setup diagnostics window is unavailable.");
+        var app = (App)Application.Current;
+        var state = app.BuildCommandCenterState();
+        var events = app.GetConnectionDiagnosticEvents().ToArray();
+        var bundle = await Task.Run(() => DiagnosticsBundleBuilder.Build(state, events));
+        if (_isShuttingDown || !page.IsLoaded || !ReferenceEquals(page.XamlRoot, root))
+            throw new InvalidOperationException("The setup diagnostics window has closed.");
+        var dialog = new DiagnosticsBundleDialog
+        {
+            XamlRoot = root,
+            Title = LocalizationHelper.GetString("DiagnosticsBundleDialog_DiagnosticsBundle.Title"),
+        };
+        dialog.Configure(bundle,
+            LocalizationHelper.GetString("DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text"),
+            $"openclaw-setup-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            ResolveWindowHandle);
+        await dialog.ShowAsync();
+
+        IntPtr ResolveWindowHandle()
+        {
+            if (!page.IsLoaded || _isShuttingDown) return IntPtr.Zero;
+            if (_setupWindow is { IsClosed: false } setup && ReferenceEquals((setup.Content as FrameworkElement)?.XamlRoot, root))
+                return WinRT.Interop.WindowNative.GetWindowHandle(setup);
+            if (_readyWindow is { IsClosed: false } ready && ReferenceEquals((ready.Content as FrameworkElement)?.XamlRoot, root))
+                return WinRT.Interop.WindowNative.GetWindowHandle(ready);
+            return IntPtr.Zero;
+        }
+    }
+
     private void OnSetupClosed(object sender, WindowEventArgs args)
     {
         if (sender is not SetupWindow setupWindow)
@@ -957,6 +1007,29 @@ internal sealed class WindowManager : IWindowManager
         {
             _setupWindow = null;
         }
+
+        var registry = _callbacks.GetGatewayRegistry();
+        if (registry is null)
+            return;
+        var before = registry.GetActive();
+        // The file lease can wait up to its own bound. Keep that wait off the UI thread.
+        // Registry change handlers marshal themselves back to the dispatcher.
+        var adoption = await Task.Run(() => registry.TryAdoptExternalSnapshot());
+        if (adoption == ExternalSnapshotAdoption.UnsavedEdits)
+        {
+            Logger.Warn("Gateway list was not refreshed after setup closed because this session has unsaved Gateway edits.");
+            NotifySetupRegistryRecovery();
+            return;
+        }
+
+        if (adoption != ExternalSnapshotAdoption.Adopted)
+        {
+            Logger.Warn("Gateway list was not refreshed after setup closed because the saved list could not be read.");
+            return;
+        }
+
+        Logger.Info("Gateway list refreshed after setup closed.");
+        await ReconcileSetupConnectionAsync(before, registry.GetActive());
     }
 
     public void CloseSetup()

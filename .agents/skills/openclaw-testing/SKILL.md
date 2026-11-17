@@ -157,6 +157,22 @@ dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj `
 
 ### 4. WinUI and application-boundary proof
 
+Use [WinApp CLI](../../../docs/WINAPP_CLI.md) as a first-choice companion to
+the existing harness: discover selectors and state with `ui`, diagnose native
+crashes with `run --debug-output`, and measure layout with `perf`. Prefer
+bounded condition waits and explicit outcomes over sleeps or command-exit-only
+checks. Keep native keyboard/IME/focus tests, Axe scans, pixel proof and all
+existing assertions; UIA invocation cannot replace a keyboard regression.
+Sandbox helps with authorized disposable app/installer experiments, not
+WSL/MXC or signed-release acceptance. Check installed help/schema and the
+guide's identity, desktop ownership, capture and DevTools limitations first.
+For clean-machine dependencies and installer/uninstaller differences, prefer
+our [sandbox-mcp / sbx tools](https://github.com/shanselman/sandbox-mcp), which
+do not implicitly provision app runtimes. Use the
+[tool-choice matrix](../../../docs/WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp)
+before starting a guest; WinApp's runtime-prepared loop and a clean baseline
+answer different questions. One Sandbox has one lifecycle owner.
+
 Pure view models and projections belong in focused unit tests. Mounted controls,
 Windows App SDK behavior, accessibility, keyboard input, and visible rendering
 need the UI suite or an interactive proof host.
@@ -177,18 +193,21 @@ Windows desktop, and emits inventory-bound evidence. CI runs the same
 accessibility category through its own prebuilt test-lane command.
 
 For deterministic real-app chat and navigation behavior, build the exact app and
-use the fixture. Runtime regressions require both Debug and production-shaped,
+use the fixture on an authorized exclusive interactive desktop. The complete
+fixture UI selection includes owned foreground wheel input, explicitly enabled
+with `-NativeInputProof`; its exact opt-in, foreground and injected-event guards
+remain mandatory. Runtime regressions require both Debug and production-shaped,
 non-Dev Release runs:
 
 ```powershell
 .\build.ps1
 $debugApp = '.\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'
-.\scripts\test-gateway-fixture.ps1 -AppPath $debugApp
+.\scripts\test-gateway-fixture.ps1 -AppPath $debugApp -NativeInputProof
 
 .\build.ps1 -Project WinUI -Configuration Release
 $releaseApp = '.\src\OpenClaw.Tray.WinUI\bin\Release\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe'
 .\scripts\test-gateway-fixture.ps1 `
-  -AppPath $releaseApp -Configuration Release -Screenshots
+  -AppPath $releaseApp -Configuration Release -Screenshots -NativeInputProof
 ```
 
 Use `win-arm64` on a native ARM64 host. The fixture proves the real app,

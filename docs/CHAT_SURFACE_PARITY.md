@@ -1,5 +1,78 @@
 # Reactor chat parity audit
 
+## Current conversation presentation closeout
+
+The current implementation target is the reachable default web conversation at
+[`b896457970bfa1b2cef23ea16f3731ba73436b0c`](https://github.com/openclaw/openclaw/tree/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/pages/chat).
+This checklist covers conversation feedback, not web workspace tools or agent
+management. The October inventory below remains historical context, not a
+blanket completion claim. Implementation and current native proof are separate.
+
+| Contract | Implementation | Native owner |
+| --- | --- | --- |
+| History loading motion, reduced-motion and high-contrast fallback | Implemented; reduced-motion and high-contrast gates are retained; motion-on proof remains pending | `ReactorChatTimeline` |
+| Empty/cached history failures and explicit retry | Implemented; current proof pending | `ChatHistoryState`, root, timeline |
+| Immediate post-send feedback before the first Gateway event | Existing, retained | Composer send lifecycle, `ReactorRunProgress` |
+| Supplied thinking stream and independent Show thinking preference | Implemented; supplied Thinking text was visible in native capture; working motion follows the Windows animation preference | Reasoning projection, Settings, root |
+| Mid-run history reopen with supplied text, tools and start time | Implemented; current proof pending | Shared history parser, conversation state, provider |
+| Streaming commentary, partial tool outputs and chronological reasoning | Implemented; current proof pending | Mapper, reducer, reasoning projection |
+| Full safe command/input/output disclosure and authenticated truncated-output recovery | Implemented; current proof pending | Tool projector, renderer, history loader |
+| Live tool input preparation and supplied review feedback | Implemented; current proof pending | Mapper, reducer, tool renderer |
+| Approval/question waits, compaction, retry countdown and terminal settlement | Implemented; current proof pending | Progress projection, existing native question/approval owners |
+| Direct child-agent activity and explicit parent wait | Implemented; current proof pending | Session snapshot, timeline progress |
+| Dashboard-only completed-work rollups and preserved final answer | Implemented; current proof pending | Tool activity presentation |
+| Older history and new-message awareness | Partial; explicit Jump to latest landed in native proof; other scroll behavior remains unproven; in-conversation search is intentionally absent | History owners, timeline, scroll controller |
+| Expansion, reading position, focus/selection, accessibility and six locales | Partial; broader native scroll and selection proof remains pending | Native renderers and scroll controller |
+
+The isolated native test
+`ReactorChatLayoutProofTests.ConversationFeedback_VisibleMotionThinkingToolReviewsAndSearchRetainComposer`
+ran on 2026-11-07 at source HEAD
+`122bda71b2211a8fdb40bb7c8589efd19beb5b2e` and passed 1/1. It showed supplied
+Thinking text and the final message after **Jump to latest** in a test-owned
+WinUI window with synthetic data, not a live Gateway session. The explicit jump
+uses render-fenced offset navigation while retaining the existing live
+tail/session checks; initial positioning and ordinary follow keep their existing
+path. Source inspection of the consumed Reactor version found no stale button
+callback or skipped decorator update.
+
+The five history-loading captures were byte-identical, and the sampled working
+claw glyph did not change. The test asserts loading opacity motion only when
+`UISettings.AnimationsEnabled` is true, but did not persist that setting. A
+subsequent read of the current Windows client-area animation setting returned
+disabled, which directly suppresses working-claw motion. The history pulse also
+uses the reduced-motion hook and high-contrast gate; those values were not
+persisted. The current preference does not establish which gate was active at
+capture time, so motion-on rendering remains unverified. Do not override the
+Windows animation preference; static status and supplied thinking remain
+visible.
+
+No reasoning text is fabricated. A working animation is activity feedback, not
+proof that a provider supplied visible reasoning. Hidden reasoning and private
+continuation input must remain hidden in child activity too.
+
+The imported in-conversation search control and its loaded-history filtering
+were removed by user request. Global search remains separate. Current feedback
+coverage is
+`ReactorChatLayoutProofTests.ConversationFeedback_ThinkingToolReviewsAndHistoryRetainComposerWithoutSearch`;
+the earlier test name and results above are historical.
+Earlier history prefers the Gateway's opaque
+cursor and falls back to its canonical message/session boundary, with a disabled
+loading action and visible failure notification. Missing boundaries are not
+replaced with guessed offsets. New-message feedback does not pull a reader away
+from an older message; **Jump to latest** explicitly resumes following.
+
+Tool input streaming shows **Preparing input** and supplied added/removed counts,
+not incomplete argument JSON. Public review rationale and outcome stay visible
+outside the tool disclosure. The existing full `sessions.list` response supplies
+provider-review details; native shows them with explicit web-chat guidance rather
+than inventing a continuation/authorization action. Sparse updates preserve that
+detail, and a fresh full list removes a completed review. Child activity uses
+authenticated direct-child liveness and supplied current activity. It does not
+enable the separate web observer service or invent an agent's reasoning/plan.
+
+The separate workspace gaps below (browser/editor/terminal panes, orchestration
+controls, collaboration and publication) are not conversation-feedback work.
+
 Reference: [openclaw/openclaw at `1fe2aa03fe4fb4f53ac11290562f9b60acc45e91`](https://github.com/openclaw/openclaw/tree/1fe2aa03fe4fb4f53ac11290562f9b60acc45e91/ui/src/pages/chat),
 audited October 8, 2026. This is a source comparison, not a claim that every
 feature of that unreleased web UI exists in every installed Gateway.
@@ -117,7 +190,7 @@ Sources: [question wire schema](https://github.com/openclaw/openclaw/blob/1fe2aa
 | Check | Web behavior | Companion status / native owner |
 | --- | --- | --- |
 | [x] | Markdown, code blocks, copy, selectable prose | Existing `ChatMarkdownPresentation`, sanitizer, bubble and copy renderers |
-| [x] | Expandable reasoning and tool activity | Existing `ChatToolActivityPresentation` and `ToolCallCardRenderer` |
+| [x] | Expandable reasoning and tool activity, supplied tool titles, category icons, completed-work counts ([web activity headline](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/pages/chat/components/chat-activity-headline.solid.tsx), [tool icon mapping](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/lib/chat/tool-display-icon.ts)) | `ChatToolActivityPresentation` and `ToolCallCardRenderer`; titles stay source-driven, details remain expandable, and missing metadata is not invented |
 | [x] | Attach, paste/drop files and images; attachment removal | Existing composer controller, attachment presentation and media renderer |
 | [x] | Model search/selection and effort controls | Existing `ChatModelPicker`, `ChatReasoningPicker`, `ChatEffortGauge` |
 | [x] | Slash commands, draft editing, queue, cancel, stop/retry | Existing composer controller, send queue, lifecycle dispatcher |

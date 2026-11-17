@@ -13,9 +13,8 @@ internal static class HubCommandCatalog
         var resources = HubPageRegistry.CommandResourceKeys.ToImmutableDictionary(
             key => key, LocalizationHelper.GetString, StringComparer.Ordinal);
         var connected = state?.Status == ConnectionStatus.Connected;
-        var supported = HubSearchCatalog.SupportsDashboard(state?.GatewaySelf?.ServerVersion);
         var commands = HubPageRegistry.BuildCommands(new(agentId, DiagnosticsGate.IsVisible, null, [], resources));
-        var items = HubSearchCatalog.Navigation(commands, connected, supported, LocalizationHelper.GetString).ToList();
+        var items = HubSearchCatalog.Navigation(commands, connected, LocalizationHelper.GetString).ToList();
         foreach (var (id, label) in new[]
         {
             ("NodeMode", "PermissionsPage_NodeMode.Text"),
@@ -30,12 +29,12 @@ internal static class HubCommandCatalog
                 $"{id} {LocalizationHelper.GetString(id == "NodeMode" ? "PermissionsPage_WhenOnThisPC.Text" : label.Replace("_Label", "_Description"))}"));
         if (connected)
         {
-            items.AddRange(HubSearch.Sessions(state!.Sessions.Select(session => session.Clone()), dashboardSupported: supported));
+            items.AddRange(HubSearch.Sessions(state!.Sessions.Select(session => session.Clone())));
             if (state.AgentsList is { ValueKind: JsonValueKind.Object } agents &&
                 agents.TryGetProperty("agents", out var agentRows) && agentRows.ValueKind == JsonValueKind.Array)
-                items.AddRange(HubSearchCatalog.ParseCatalog("agents.list", agents, agentId, supported));
+                items.AddRange(HubSearchCatalog.ParseCatalog("agents.list", agents, agentId));
         }
-        if (supported)
+        if (connected)
             foreach (var route in HubSearchCatalog.DashboardRoutes)
             {
                 if (route.Admin && !canAdmin) continue;

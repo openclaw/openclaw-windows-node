@@ -96,7 +96,7 @@ OpenClaw Companion responds to `openclaw://` deep links, which can be invoked fr
 | `openclaw://settings` | Open the Settings page |
 | `openclaw://setup` | Open the Setup Wizard |
 | `openclaw://commandcenter` | Open Command Center diagnostics |
-| `openclaw://activity` | Legacy activity route; opens Sessions, Usage, Instances, or the Gateway dashboard channels path according to `?filter=` |
+| `openclaw://activity` | Legacy activity route; opens Sessions, Usage, Systems, or the Gateway dashboard channels path according to `?filter=` |
 | `openclaw://history` | Legacy notification-history alias; opens the Gateway dashboard channels path |
 | `openclaw://healthcheck` | Run a manual health check |
 | `openclaw://check-updates` | Run a manual update check |

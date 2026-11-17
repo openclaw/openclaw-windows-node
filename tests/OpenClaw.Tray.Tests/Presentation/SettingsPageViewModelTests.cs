@@ -213,6 +213,23 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
+    public void ShowChatThinking_Persists_AndNotifies()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            Assert.True(vm.ShowChatThinking);
+            vm.ShowChatThinking = false;
+
+            Assert.False(settings.ShowChatThinking);
+            Assert.False(settings.CapturePresentationSnapshot().ShowChatThinking);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
     public void ExternalChange_ReloadsWithoutRePersisting()
     {
         var vm = NewVm(out var settings, out var appCommands, out _, out var temp);

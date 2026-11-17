@@ -30,10 +30,11 @@ public sealed class GatewaySearchTests
     {
         var page = JsonSerializer.SerializeToElement(new
         {
-            jobs = new[] { new { id = "job" } }, hasMore = true, nextOffset = 0
+            jobs = new[] { new { id = "job" } }, snapshotRevision = "same", hasMore = true, nextOffset = 0
         });
-        await Assert.ThrowsAsync<InvalidDataException>(() =>
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
             GatewaySearchProtocol.ReadAutomationPagesAsync((_, _) => Task.FromResult(page), null, default));
+        Assert.Contains("did not advance", error.Message);
     }
 
     [Fact]
@@ -47,6 +48,32 @@ public sealed class GatewaySearchTests
                 total = 2, hasMore = true, nextOffset = calls
             })), null, default));
         Assert.Equal(2, calls);
+    }
+
+    [Fact]
+    public async Task AutomationPaginationWithoutRevisionCannotClaimAConsistentInventory()
+    {
+        var calls = 0;
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            GatewaySearchProtocol.ReadAutomationPagesAsync((_, _) =>
+            {
+                calls++;
+                return Task.FromResult(JsonSerializer.SerializeToElement(new
+                {
+                    jobs = new[] { new { id = "first" } }, total = 2, hasMore = true, nextOffset = 1,
+                }));
+            }, null, default));
+        Assert.Contains("snapshot revision", error.Message);
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public async Task LegacySinglePageAutomationInventoryDoesNotRequirePaginationMetadata()
+    {
+        var result = await GatewaySearchProtocol.ReadAutomationPagesAsync((_, _) =>
+            Task.FromResult(JsonSerializer.SerializeToElement(new { jobs = new[] { new { id = "legacy" } } })),
+            null, default);
+        Assert.Equal("legacy", Assert.Single(result.GetProperty("jobs").EnumerateArray()).GetProperty("id").GetString());
     }
 
     [Fact]

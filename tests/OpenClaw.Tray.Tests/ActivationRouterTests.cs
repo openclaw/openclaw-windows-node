@@ -12,6 +12,11 @@ namespace OpenClaw.Tray.Tests;
 public class ActivationRouterTests
 {
     private const string Scheme = "openclaw";
+    private const string ActivationWaitTimeoutVariable = "OPENCLAW_TRAY_TEST_ACTIVATION_WAIT_SECONDS";
+    // Bounds stop/drain waits; a hung drain still fails, but loaded runners get scheduling headroom.
+    private static readonly TimeSpan ActivationWaitTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ActivationWaitTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
 
     private static string UniquePipeName() =>
         DeepLinkSecurityPolicy.BuildPipeName(Guid.NewGuid().ToString("N"), "test-user", 0);
@@ -75,6 +80,21 @@ public class ActivationRouterTests
             Confirmations.Add(confirmation);
             return Task.FromResult(ConfirmResult);
         }
+    }
+
+    private sealed class SignalingSink : IActivationPlanSink
+    {
+        public TaskCompletionSource<ActivationRoute> Dispatched { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task DispatchAsync(ActivationRoute route, CancellationToken cancellationToken)
+        {
+            Dispatched.TrySetResult(route);
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> ConfirmAsync(ActivationConfirmation confirmation, CancellationToken cancellationToken) =>
+            Task.FromResult(false);
     }
 
     private sealed class BlockingConfirmationSink : IActivationPlanSink
@@ -436,9 +456,9 @@ public class ActivationRouterTests
                 new ActivationConfirmation("restart the SSH tunnel", "redacted")),
             sink,
             CancellationToken.None);
-        await sink.ConfirmationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await sink.ConfirmationStarted.Task.WaitAsync(ActivationWaitTimeout);
 
-        await router.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+        await router.StopAsync().WaitAsync(ActivationWaitTimeout);
 
         Assert.True(dispatchTask.IsCompleted);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await dispatchTask);
@@ -449,6 +469,39 @@ public class ActivationRouterTests
     #endregion
 
     #region Forwarded activation IPC
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ForwardedLaunch_IsDispatchedWhileStartupUpdateCheckIsPending(bool deepLink)
+    {
+        var pipeName = UniquePipeName();
+        await using var listener = new ActivationRouter(Scheme, pipeName);
+        await using var forwarder = new ActivationRouter(Scheme, pipeName);
+        var sink = new SignalingSink();
+        var releaseUpdate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+
+        await listener.StartForwardedActivationListenerAsync(sink, timeout.Token);
+        var update = listener.CheckOrdinaryStartupUpdateAsync(Input(args: ["app.exe"]), () => releaseUpdate.Task);
+        try
+        {
+            Assert.False(update.IsCompleted);
+            var input = deepLink
+                ? Input(protocolUri: "openclaw://settings")
+                : Input(args: ["app.exe"]);
+            Assert.True(await forwarder.ForwardLaunchToPrimaryAsync(input, timeout.Token));
+            var route = await sink.Dispatched.Task.WaitAsync(timeout.Token);
+            var hub = Assert.IsType<ActivationRoute.OpenHub>(route);
+            Assert.Equal(deepLink ? "settings" : null, hub.Page);
+            Assert.False(update.IsCompleted);
+        }
+        finally
+        {
+            releaseUpdate.TrySetResult(true);
+            await update;
+        }
+    }
 
     [Fact]
     public async Task ForwardThenListen_DispatchesRouteFromForwardedDeepLink()
@@ -618,19 +671,30 @@ public class ActivationRouterTests
         var forwarder = new ActivationRouter(Scheme, pipeName);
         var sink = new BlockingConfirmationSink();
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        await listener.StartForwardedActivationListenerAsync(sink, cts.Token);
+        try
+        {
+            // The listener gets a timer-free token so only StopAsync can cancel the pending
+            // confirmation; the test's own 10 s timer must not mask a shutdown bug.
+            await listener.StartForwardedActivationListenerAsync(sink, CancellationToken.None);
 
-        Assert.True(await ForwardWithRetryAsync(
-            forwarder,
-            $"{Scheme}://agent?message=hello",
-            cts.Token));
-        await sink.ConfirmationStarted.Task.WaitAsync(cts.Token);
+            Assert.True(await ForwardWithRetryAsync(
+                forwarder,
+                $"{Scheme}://agent?message=hello",
+                cts.Token));
+            await sink.ConfirmationStarted.Task.WaitAsync(cts.Token);
 
-        await listener.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+            await listener.StopAsync().WaitAsync(ActivationWaitTimeout);
 
-        sink.ReleaseConfirmation(true);
-        Assert.DoesNotContain(sink.Dispatched, route => route is ActivationRoute.SendMessage);
-        await listener.DisposeAsync();
+            sink.ReleaseConfirmation(true);
+            Assert.DoesNotContain(sink.Dispatched, route => route is ActivationRoute.SendMessage);
+        }
+        finally
+        {
+            // Unblock a confirmation that ignored cancellation, then bound the dispose: a plain
+            // dispose awaits the same stop task, so a shutdown bug would hang instead of fail.
+            sink.ReleaseConfirmation(false);
+            await listener.DisposeAsync().AsTask().WaitAsync(ActivationWaitTimeout);
+        }
     }
 
     private static async Task<bool> ForwardWithRetryAsync(

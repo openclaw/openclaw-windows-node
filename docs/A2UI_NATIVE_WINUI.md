@@ -161,7 +161,7 @@ Action payload shape (v0.8):
 | `ChoicePicker` | `ComboBox` (single) / `ListView` w/ `SelectionMode=Multiple` (multi) | |
 | `Slider` | `Slider` | |
 
-Each mapping lives in a single `IComponentRenderer` implementation under `OpenClaw.Tray.WinUI/A2UI/Renderers/`. The set is closed at compile time (catalog-strict) - no runtime registration in v1.
+Each mapping lives in a single `IComponentRenderer` implementation under `src/OpenClaw.Tray.WinUI/A2UI/Rendering/Renderers/`. The set is closed at compile time (catalog-strict) - no runtime registration in v1.
 
 ## 6. Data model & binding
 

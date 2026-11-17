@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using OpenClaw.Shared;
 using OpenClawTray.Services;
 
 namespace OpenClawTray.Presentation;
@@ -42,6 +43,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _globalHotkeyEnabled;
     private bool _useLegacyWebChat;
     private bool _showNotifications;
+    private bool _showDesktopCompanion;
+    private int _desktopCompanionScalePercent = DesktopCompanionScale.DefaultPercent;
     private string _notificationSound = DefaultNotificationSound;
     private string _appTheme = DefaultAppTheme;
     private bool _showDiagnostics;
@@ -54,6 +57,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _notifyStock;
     private bool _notifyInfo;
     private bool _showChatToolCalls;
+    private bool _showChatThinking = true;
 
     public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
     {
@@ -140,6 +144,25 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
+    public bool ShowDesktopCompanion
+    {
+        get => _showDesktopCompanion;
+        set { if (SetField(ref _showDesktopCompanion, value) && !_loading) Persist(e => e.ShowDesktopCompanion = value); }
+    }
+
+    public IReadOnlyList<int> DesktopCompanionScaleOptions { get; } = [50, 75, 100, 125, 150, 175, 200];
+
+    public int DesktopCompanionScalePercent
+    {
+        get => _desktopCompanionScalePercent;
+        set
+        {
+            var percent = DesktopCompanionScale.Normalize(value);
+            if (!SetField(ref _desktopCompanionScalePercent, percent)) return;
+            Persist(edit => edit.DesktopCompanionScalePercent = percent);
+        }
+    }
+
     public string AppTheme
     {
         get => _appTheme;
@@ -217,6 +240,22 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             if (SetField(ref _showChatToolCalls, value) && !_loading)
             {
                 Persist(e => e.ShowChatToolCalls = value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// "Show thinking" persists the setting. App's settings-save path applies it
+    /// to every live Reactor chat host.
+    /// </summary>
+    public bool ShowChatThinking
+    {
+        get => _showChatThinking;
+        set
+        {
+            if (SetField(ref _showChatThinking, value) && !_loading)
+            {
+                Persist(e => e.ShowChatThinking = value);
             }
         }
     }
@@ -310,6 +349,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _globalHotkeyEnabled, s.GlobalHotkeyEnabled, nameof(GlobalHotkeyEnabled));
             SetField(ref _useLegacyWebChat, s.UseLegacyWebChat, nameof(UseLegacyWebChat));
             SetField(ref _showNotifications, s.ShowNotifications, nameof(ShowNotifications));
+            SetField(ref _showDesktopCompanion, s.ShowDesktopCompanion, nameof(ShowDesktopCompanion));
+            SetField(ref _desktopCompanionScalePercent, s.DesktopCompanionScalePercent, nameof(DesktopCompanionScalePercent));
             // Normalize combo values to a known tag so a legacy or odd stored value selects the
             // default item instead of rendering a blank combo (matching the old tag lookup).
             SetField(ref _notificationSound, NormalizeTag(s.NotificationSound, SoundTags, DefaultNotificationSound), nameof(NotificationSound));
@@ -324,6 +365,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _notifyStock, s.NotifyStock, nameof(NotifyStock));
             SetField(ref _notifyInfo, s.NotifyInfo, nameof(NotifyInfo));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
+            SetField(ref _showChatThinking, s.ShowChatThinking, nameof(ShowChatThinking));
         }
         finally
         {

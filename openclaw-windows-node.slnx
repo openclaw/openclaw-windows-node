@@ -8,6 +8,7 @@
     <Project Path="src/OpenClaw.Cli/OpenClaw.Cli.csproj" />
     <Project Path="src/OpenClaw.WinNode.Cli/OpenClaw.WinNode.Cli.csproj" />
     <Project Path="src/OpenClaw.Shared/OpenClaw.Shared.csproj" />
+    <Project Path="src/OpenClaw.FileWorker/OpenClaw.FileWorker.csproj" />
     <Project Path="src/OpenClaw.Connection/OpenClaw.Connection.csproj" />
     <Project Path="src/OpenClaw.Chat/OpenClaw.Chat.csproj">
       <Platform Solution="*|Any CPU" Project="x64" />
@@ -34,6 +35,7 @@
     <Project Path="tests/OpenClaw.Shared.TestHost/OpenClaw.Shared.TestHost.csproj" />
     <Project Path="tests/OpenClaw.GatewayFixtureHost/OpenClaw.GatewayFixtureHost.csproj" />
     <Project Path="tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj" />
+    <Project Path="tests/OpenClaw.FileWorker.Tests/OpenClaw.FileWorker.Tests.csproj" />
     <Project Path="tests/OpenClaw.Connection.Tests/OpenClaw.Connection.Tests.csproj" />
     <Project Path="tests/OpenClaw.WinNode.Cli.Tests/OpenClaw.WinNode.Cli.Tests.csproj" />
     <Project Path="tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj" />

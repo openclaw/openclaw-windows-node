@@ -98,10 +98,10 @@ public sealed class NativeToolIdentityScreenshotProofTests
             $"head={Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_HEAD") ?? "local"}",
         };
 
-        ExpandToolActivity(proof);
-        ExpandTool("Tool call Bash. Done.", proof);
+        ExpandToolActivities(proof);
+        ExpandTool("Tool call $ powershell -NoProfile -Command Get-ChildItem .\\src. Done.", proof);
         ExpandTool("Tool call Apply Patch. Done.", proof);
-        ExpandTool("Tool call Tool. Done.", proof);
+        ExpandTool("Tool call $ [redacted]. Done.", proof);
 
         var names = WaitForExpectedText();
         Assert.Contains(
@@ -138,14 +138,25 @@ public sealed class NativeToolIdentityScreenshotProofTests
         WriteProofArtifactIfRequested(proof);
     }
 
-    private void ExpandToolActivity(ICollection<string> proof)
+    // Single calls render as their own rows, like the web; only multi-call groups need expanding.
+    private void ExpandToolActivities(ICollection<string> proof)
     {
-        var activity = WaitForElement(
-            element => element.Current.AutomationId.StartsWith(
-                "ChatToolActivity_",
-                StringComparison.Ordinal),
-            "native tool activity to appear");
-        Expand(activity, activity.Current.Name, proof);
+        WaitForElement(
+            element => element.Current.AutomationId.StartsWith("ChatToolActivity_", StringComparison.Ordinal) ||
+                element.Current.AutomationId.StartsWith("ChatToolCall_", StringComparison.Ordinal),
+            "native tool rows to appear");
+        var activityIds = AutomationElement.FromHandle(_app.HubWindowHandle)
+            .FindAll(TreeScope.Descendants, Condition.TrueCondition)
+            .Cast<AutomationElement>()
+            .Select(element => element.Current.AutomationId)
+            .Where(id => id.StartsWith("ChatToolActivity_", StringComparison.Ordinal))
+            .ToArray();
+        foreach (var id in activityIds)
+        {
+            var activity = WaitForElement(new PropertyCondition(
+                AutomationElement.AutomationIdProperty, id));
+            Expand(activity, activity.Current.Name, proof);
+        }
     }
 
     private void ExpandTool(string automationName, ICollection<string> proof)
@@ -290,27 +301,24 @@ public sealed class HistoryCollisionScreenshotProofTests
             "ChatPage",
             "ChatComposerInput");
 
-        var activity = WaitForElement(
-            element => element.Current.AutomationId.StartsWith(
-                "ChatToolActivity_",
-                StringComparison.Ordinal),
-            "history collision tool activity to appear");
-        Assert.True(
-            activity.TryGetCurrentPattern(
-                ExpandCollapsePattern.Pattern,
-                out var rawActivityPattern));
-        var activityPattern =
-            Assert.IsType<ExpandCollapsePattern>(rawActivityPattern);
-        if (activityPattern.Current.ExpandCollapseState ==
-            ExpandCollapseState.Collapsed)
+        var row = WaitForElement(
+            element => element.Current.AutomationId.StartsWith("ChatToolActivity_", StringComparison.Ordinal) ||
+                element.Current.AutomationId.StartsWith("ChatToolCall_", StringComparison.Ordinal),
+            "history collision tool row to appear");
+        // A lone call renders as its own row; a group of calls must be opened first.
+        if (row.Current.AutomationId.StartsWith("ChatToolActivity_", StringComparison.Ordinal) &&
+            row.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var rawActivityPattern) &&
+            rawActivityPattern is ExpandCollapsePattern activityPattern &&
+            activityPattern.Current.ExpandCollapseState == ExpandCollapseState.Collapsed)
         {
             activityPattern.Expand();
         }
 
+        const string BashRowName = "Tool call $ synthetic flattened id: history-tool-1. Done.";
         var bash = WaitForElement(
             new PropertyCondition(
                 AutomationElement.NameProperty,
-                "Tool call Bash. Done."));
+                BashRowName));
         Assert.True(
             bash.TryGetCurrentPattern(
                 ExpandCollapsePattern.Pattern,
@@ -339,7 +347,7 @@ public sealed class HistoryCollisionScreenshotProofTests
         var proof = new List<string>
         {
             $"head={Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_HEAD") ?? "local"}",
-            "UIA tool=\"Tool call Bash. Done.\"",
+            $"UIA tool=\"{BashRowName}\"",
             "UIA input=\"command: synthetic flattened id: history-tool-1\"",
             "UIA output=\"flattened output owned by history-tool-1\"",
             "forbidden unverified-flat-id=absent",

@@ -1,0 +1,101 @@
+{
+  "sessionKey": "agent:main:main",
+  "title": "PARITY FIXTURE",
+  "session": {
+    "key": "agent:main:main",
+    "sessionId": "parity-session",
+    "label": "PARITY FIXTURE",
+    "displayName": "PARITY FIXTURE",
+    "agentId": "main",
+    "status": "done",
+    "updatedAt": 1793952000700,
+    "lastRunId": "parity-run",
+    "runtimeMs": 1200,
+    "reasoningLevel": "on",
+    "model": "fixture-model",
+    "modelProvider": "fixture",
+    "totalTokens": 200,
+    "contextTokens": 128000
+  },
+  "longOutput": {
+    "line": "Synthetic output line: the fixture contains no user data.\n",
+    "count": 110,
+    "tail": "PARITY OUTPUT TAIL: all 110 lines are available."
+  },
+  "messages": [
+    {
+      "role": "user",
+      "timestamp": 1793952000000,
+      "__openclaw": { "id": "user-1", "seq": 1, "runId": "parity-run" },
+      "content": "PARITY FIXTURE: inspect the synthetic project and summarize the result."
+    },
+    {
+      "role": "assistant",
+      "phase": "commentary",
+      "timestamp": 1793952000100,
+      "__openclaw": { "id": "commentary-1", "seq": 2, "runId": "parity-run" },
+      "content": [{ "type": "text", "text": "I will inspect the files and report what changed." }]
+    },
+    {
+      "role": "assistant",
+      "timestamp": 1793952000200,
+      "__openclaw": { "id": "calls-1", "seq": 3, "runId": "parity-run" },
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "command-1",
+          "name": "exec",
+          "arguments": {
+            "command": "Write-Output 'First synthetic line'\nWrite-Output 'Second synthetic line'\nWrite-Output 'The full command should remain readable when the tool details are expanded, rather than disappearing after the compact row preview limit. This is safe synthetic text used only by the comparison fixture.'\nWrite-Output 'PARITY COMMAND TAIL'",
+            "workdir": "C:\\fixture\\project",
+            "timeout": 30
+          }
+        }
+      ]
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "command-1",
+      "toolName": "exec",
+      "timestamp": 1793952000300,
+      "__openclaw": { "id": "result-1", "seq": 4, "runId": "parity-run" },
+      "content": [{ "type": "text", "text": "__LONG_OUTPUT__" }]
+    },
+    {
+      "role": "assistant",
+      "timestamp": 1793952000400,
+      "__openclaw": { "id": "calls-2", "seq": 5, "runId": "parity-run" },
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "generic-1",
+          "name": "custom_task",
+          "arguments": {
+            "message": "Compare the synthetic project files",
+            "options": { "limit": 3, "includeDocs": true },
+            "tags": ["source", "tests"],
+            "enabled": true
+          }
+        }
+      ]
+    },
+    {
+      "role": "toolResult",
+      "toolCallId": "generic-1",
+      "toolName": "custom_task",
+      "timestamp": 1793952000500,
+      "__openclaw": { "id": "result-2", "seq": 6, "runId": "parity-run" },
+      "content": [{ "type": "text", "text": "Three synthetic files were inspected." }]
+    },
+    {
+      "role": "assistant",
+      "timestamp": 1793952000600,
+      "__openclaw": { "id": "answer-1", "seq": 7, "runId": "parity-run" },
+      "content": [
+        { "type": "thinking", "thinking": "PARITY THINKING: compare the source and tests before summarizing." },
+        { "type": "text", "text": "## Synthetic result\n\nThe inspection is complete. **Three files** were checked.\n\n- Source is consistent.\n- Tests cover the reported behavior.\n\n```text\nPARITY FINAL ANSWER\n```", "textSignature": "{\"v\":1,\"id\":\"answer-text\",\"phase\":\"final_answer\"}" }
+      ],
+      "stopReason": "stop"
+    }
+  ]
+}

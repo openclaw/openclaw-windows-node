@@ -74,6 +74,7 @@ public sealed class HubSearchTests
         var item = Assert.Single(items);
         Assert.Equal("My chat", item.Title);
         Assert.Equal(new(HubSearchTargetKind.Session, "agent:main:one"), item.Target);
+        Assert.Equal("/chat?session=agent%3Amain%3Aone", item.DashboardPath);
     }
 
     private static HubSearchItem Item(string id, string title) =>

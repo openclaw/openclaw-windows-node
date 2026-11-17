@@ -184,6 +184,7 @@ if ([string]::IsNullOrWhiteSpace($RuntimeIdentifier)) {
 Write-Host "Selected runtime: $RuntimeIdentifier"
 
 if (-not $NoBuild) {
+    & (Join-Path $repoRoot "scripts\Initialize-ReactorPackages.ps1")
     $dotnetArgs = @("build", $projectPath, "-c", $Configuration, "-r", $RuntimeIdentifier)
     if ($Dev) {
         $dotnetArgs += "-p:DevBuild=true"

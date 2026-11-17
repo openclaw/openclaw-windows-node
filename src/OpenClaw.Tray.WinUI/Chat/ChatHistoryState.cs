@@ -13,7 +13,9 @@ internal sealed class ChatHistoryState
 {
     private readonly Dictionary<string, string> _sessionIds = new();
     private readonly HashSet<string> _loadedThreads = new();
+    private readonly HashSet<string> _failedThreads = new();
     private readonly Dictionary<string, long> _revisions = new();
+    private readonly Dictionary<string, ChatHistoryPageRequest> _olderPages = new();
     private readonly Dictionary<string, string> _resetClearedSessionIds = new();
     private readonly Dictionary<string, long> _replacementGenerations = new();
 
@@ -23,6 +25,9 @@ internal sealed class ChatHistoryState
         CompletedActivation();
 
     internal long ConnectionGeneration => _connectionGeneration;
+
+    internal long Revision(string threadId) => _revisions.GetValueOrDefault(threadId);
+    internal bool HasCurrentHistory(string threadId) => _loadedThreads.Contains(threadId);
 
     internal string? ResolveSessionId(string threadId) =>
         _sessionIds.TryGetValue(threadId, out var sessionId)
@@ -34,6 +39,22 @@ internal sealed class ChatHistoryState
 
     internal IReadOnlySet<string> SnapshotCurrentHistoryThreads() =>
         _loadedThreads.ToImmutableHashSet(StringComparer.Ordinal);
+
+    internal IReadOnlySet<string> SnapshotFailedHistoryThreads() =>
+        _failedThreads.ToImmutableHashSet(StringComparer.Ordinal);
+
+    internal IReadOnlySet<string> SnapshotOlderHistoryThreads() =>
+        _olderPages.Keys.Where(key => OlderPage(key) is not null).ToImmutableHashSet(StringComparer.Ordinal);
+
+    internal ChatHistoryPageRequest? OlderPage(string threadId) =>
+        _loadedThreads.Contains(threadId) && !_failedThreads.Contains(threadId) &&
+            _olderPages.TryGetValue(threadId, out var page)
+            && ResolveSessionId(threadId) == page.SessionId ? page : null;
+
+    /// <summary>Records that history retries for the thread are exhausted until the next commit or retry.</summary>
+    internal void MarkFailed(string threadId) => _failedThreads.Add(threadId);
+
+    internal bool ClearFailed(string threadId) => _failedThreads.Remove(threadId);
 
     internal ChatHistoryCommitToken CreateCommitToken(
         string threadId,
@@ -51,6 +72,8 @@ internal sealed class ChatHistoryState
         _replacementGenerations[threadId] =
             GetReplacementGeneration(threadId) + 1;
         _loadedThreads.Remove(threadId);
+        _failedThreads.Remove(threadId);
+        _olderPages.Remove(threadId);
         return CreateCommitToken(threadId, resetGeneration);
     }
 
@@ -66,7 +89,7 @@ internal sealed class ChatHistoryState
     {
         token = CreateCommitToken(threadId, resetGeneration);
         generationActivation = null;
-        if (disposed || !force && _loadedThreads.Contains(threadId))
+        if (disposed || !force && (_loadedThreads.Contains(threadId) || _failedThreads.Contains(threadId)))
             return false;
 
         if (!_generationReady)
@@ -105,15 +128,20 @@ internal sealed class ChatHistoryState
 
     internal void MarkCommitted(
         ChatHistoryCommitToken token,
-        string? sessionId)
+        string? sessionId, string? olderCursor = null, bool olderPage = false, string? olderMessageId = null)
     {
         if (!string.IsNullOrEmpty(sessionId))
             _sessionIds[token.ThreadId] = sessionId;
-        _revisions[token.ThreadId] =
-            (_revisions.TryGetValue(token.ThreadId, out var revision)
-                ? revision
-                : 0) + 1;
+        if (!olderPage)
+            _revisions[token.ThreadId] =
+                (_revisions.TryGetValue(token.ThreadId, out var revision) ? revision : 0) + 1;
+        if (!string.IsNullOrEmpty(sessionId) &&
+            (!string.IsNullOrEmpty(olderCursor) || !string.IsNullOrEmpty(olderMessageId)))
+            _olderPages[token.ThreadId] = new(olderCursor, sessionId, olderMessageId);
+        else
+            _olderPages.Remove(token.ThreadId);
         _loadedThreads.Add(token.ThreadId);
+        _failedThreads.Remove(token.ThreadId);
     }
 
     internal long AdvanceConnectionGeneration(bool clearLoaded)
@@ -123,6 +151,8 @@ internal sealed class ChatHistoryState
         _generationReady = false;
         _generationActivation = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        _failedThreads.Clear();
+        _olderPages.Clear();
         if (clearLoaded)
             _loadedThreads.Clear();
         return _connectionGeneration;
@@ -150,6 +180,7 @@ internal sealed class ChatHistoryState
         else
             _resetClearedSessionIds.Remove(threadId);
         _sessionIds.Remove(threadId);
+        _olderPages.Remove(threadId);
         _loadedThreads.Add(threadId);
         return oldSessionId;
     }
@@ -184,6 +215,61 @@ internal sealed class ChatHistoryState
             ? generation
             : 0;
 
+    /// <summary>
+    /// The same successful call seen live and in history keeps whichever copy carried result details,
+    /// so a reload never turns exact line counts into argument-derived ones.
+    /// </summary>
+    internal static ChatTimelineItem KeepToolResultFacts(ChatTimelineItem target, ChatTimelineItem source) =>
+        target is { Kind: ChatTimelineItemKind.ToolCall, ToolResult: ChatToolCallStatus.Success, ToolResultDiffFacts: null } &&
+        source is { Kind: ChatTimelineItemKind.ToolCall, ToolResult: ChatToolCallStatus.Success, ToolResultDiffFacts: { } facts } &&
+        target.ToolCallId is { Length: > 0 } callId && callId == source.ToolCallId
+            ? target with { ToolResultDiffFacts = facts }
+            : target;
+
+    internal static (ChatTimelineState Timeline, Dictionary<string, ChatEntryMetadata> Metadata)
+        PrependOlderPage(ChatHistoryRebuildPlan plan, ChatTimelineState prior,
+            IReadOnlyDictionary<string, ChatEntryMetadata> priorMetadata)
+    {
+        var known = priorMetadata.Values.Where(value => !string.IsNullOrEmpty(value.GatewayMessageId))
+            .Select(value => value.GatewayMessageId!).ToHashSet(StringComparer.Ordinal);
+        var entries = ImmutableList.CreateBuilder<ChatTimelineItem>();
+        var metadata = new Dictionary<string, ChatEntryMetadata>(priorMetadata);
+        var reunitedTools = new HashSet<string>(StringComparer.Ordinal);
+        var nextId = prior.NextId;
+        foreach (var entry in plan.Timeline.Entries)
+        {
+            plan.Metadata.TryGetValue(entry.Id, out var detail);
+            if (detail?.GatewayMessageId is { Length: > 0 } messageId && known.Contains(messageId))
+                continue;
+            if (entry.Kind == ChatTimelineItemKind.ToolCall && entry.ToolName is { } toolName &&
+                entry.ToolRunId is { Length: > 0 } runId && entry.ToolCallId is { Length: > 0 } callId &&
+                prior.Entries.FirstOrDefault(existing => existing.Kind == ChatTimelineItemKind.ToolCall &&
+                    existing.ToolRunId == runId && existing.ToolCallId == callId) is { } current)
+            {
+                var enriched = ChatTimelineReducer.Apply(
+                    ChatTimelineState.Initial() with { Entries = ImmutableList.Create(current) },
+                    new ChatToolStartEvent(entry.Text, toolName, entry.ToolArgs, callId,
+                        IdentityStrength: entry.ToolIdentityStrength, RunId: runId,
+                        HandoffInput: entry.HandoffInput, InputDetails: entry.ToolInputDetails,
+                        ParentCallId: entry.ToolParentCallId));
+                entries.Add(KeepToolResultFacts(enriched.Entries.Single(), entry));
+                reunitedTools.Add(current.Id);
+                continue;
+            }
+            if (detail?.Timestamp is { } timestamp && prior.Entries.Any(existing =>
+                existing.Kind == entry.Kind && existing.Text == entry.Text &&
+                priorMetadata.TryGetValue(existing.Id, out var existingDetail) && existingDetail.Timestamp == timestamp))
+                continue;
+            var id = $"e{nextId++}";
+            entries.Add(entry with { Id = id });
+            if (detail is not null)
+                metadata[id] = detail;
+        }
+        entries.AddRange(prior.Entries.Where(entry => !reunitedTools.Contains(entry.Id)));
+        // A page is historical only. Preserve every active-run identity and live receipt.
+        return (prior with { Entries = entries.ToImmutable(), NextId = nextId }, metadata);
+    }
+
     internal static (
         ChatTimelineState Timeline,
         Dictionary<string, ChatEntryMetadata> Metadata)
@@ -205,6 +291,14 @@ internal sealed class ChatHistoryState
             $"{kind}|{text}";
         static string SequenceKey(ChatTimelineItemKind kind, int sequence) =>
             $"{kind}|{sequence}";
+        static bool HasConflictingToolIdentity(ChatTimelineItem left, ChatTimelineItem right) =>
+            left.Kind == ChatTimelineItemKind.ToolCall &&
+            right.Kind == ChatTimelineItemKind.ToolCall &&
+            left.ToolCallId is { Length: > 0 } leftCallId &&
+            left.ToolRunId is { Length: > 0 } leftRunId &&
+            right.ToolCallId is { Length: > 0 } rightCallId &&
+            right.ToolRunId is { Length: > 0 } rightRunId &&
+            (leftCallId != rightCallId || leftRunId != rightRunId);
 
         var contentTimestamps = new Dictionary<string, List<(long Timestamp, ChatTimelineItem Entry)>>(
             StringComparer.Ordinal);
@@ -280,13 +374,79 @@ internal sealed class ChatHistoryState
             .Max();
         var nextId = Math.Max(rebuilt.NextId, maxSuffix + 1);
         var entries = rebuilt.Entries.ToBuilder();
+        var remappedEntryIds = new Dictionary<string, string>(StringComparer.Ordinal);
+        var retainedPreambles = new HashSet<string>(StringComparer.Ordinal);
+        var rebuiltTools = new Dictionary<(string CallId, string RunId), int>();
+        var rebuiltPreambles = rebuilt.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation is { RunId: not null, StreamItemId: not null, IsImported: false })
+            .GroupBy(entry => (entry.Presentation!.RunId!, entry.Presentation.StreamItemId!))
+            .ToDictionary(group => group.Key, group => group.First());
+        for (var index = 0; index < rebuilt.Entries.Count; index++)
+        {
+            if (rebuilt.Entries[index] is
+                {
+                    Kind: ChatTimelineItemKind.ToolCall,
+                    ToolCallId: { Length: > 0 } callId,
+                    ToolRunId: { Length: > 0 } runId,
+                })
+            {
+                rebuiltTools.TryAdd((callId, runId), index);
+            }
+        }
+        void PreserveToolResultFacts(ChatTimelineItem historyEntry, ChatTimelineItem liveEntry)
+        {
+            if (KeepToolResultFacts(historyEntry, liveEntry) is { } merged && !ReferenceEquals(merged, historyEntry) &&
+                entries.FindIndex(candidate => candidate.Id == historyEntry.Id) is >= 0 and var index)
+                entries[index] = merged;
+        }
         foreach (var entry in prior.Entries)
         {
             priorMetadata.TryGetValue(entry.Id, out var metadata);
+            if (entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation is { RunId: not null, StreamItemId: not null, MessageId: null, IsImported: false } progress &&
+                metadata?.GatewayMessageId is null && metadata?.OpenClawSeq is null &&
+                rebuiltPreambles.TryGetValue((progress.RunId, progress.StreamItemId), out var savedProgress))
+            {
+                remappedEntryIds[entry.Id] = savedProgress.Id;
+                if (savedProgress.Presentation?.MessageId is null &&
+                    rebuiltMetadata.GetValueOrDefault(savedProgress.Id)?.OpenClawSeq is null)
+                    entries[entries.FindIndex(candidate => candidate.Id == savedProgress.Id)] = entry with { Id = savedProgress.Id };
+                continue;
+            }
+            // A live tool row and its persisted call share a call ID within one run; IDs can
+            // repeat across runs. Match these first so a still-running call keeps its live
+            // state after it takes the persisted row's identity.
+            if (entry is
+                {
+                    Kind: ChatTimelineItemKind.ToolCall,
+                    ToolCallId: { Length: > 0 } callId,
+                    ToolRunId: { Length: > 0 } runId,
+                } &&
+                rebuiltTools.TryGetValue((callId, runId), out var toolIndex))
+            {
+                var persisted = rebuilt.Entries[toolIndex];
+                remappedEntryIds[entry.Id] = persisted.Id;
+                // History marks a call without a saved result Interrupted; a persisted outcome is canonical.
+                if (persisted.ToolResult == ChatToolCallStatus.Interrupted &&
+                    entry.ToolResult != ChatToolCallStatus.Interrupted)
+                {
+                    entries[toolIndex] = entry with { Id = persisted.Id };
+                }
+                else
+                {
+                    entries[toolIndex] = KeepToolResultFacts(entries[toolIndex], entry);
+                }
+                // Live tool rows carry timestamps, so a same-label sibling must not content-match this row.
+                if (contentTimestamps.TryGetValue(ContentKey(persisted.Kind, persisted.Text), out var persistedTimes))
+                    persistedTimes.RemoveAll(value => value.Entry.Id == persisted.Id);
+                continue;
+            }
             if (!string.IsNullOrEmpty(metadata?.GatewayMessageId) &&
                 messageIds.TryGetValue(metadata.GatewayMessageId, out var matchingId))
             {
+                remappedEntryIds[entry.Id] = matchingId.Id;
                 PreserveMatchedUsage(matchingId, entry.Kind, metadata);
+                PreserveToolResultFacts(matchingId, entry);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
                     ContentKey(entry.Kind, entry.Text));
@@ -298,7 +458,9 @@ internal sealed class ChatHistoryState
                     SequenceKey(entry.Kind, sequence),
                     out var sequenceEntryId))
             {
+                remappedEntryIds[entry.Id] = sequenceEntryId.Id;
                 PreserveMatchedUsage(sequenceEntryId, entry.Kind, metadata);
+                PreserveToolResultFacts(sequenceEntryId, entry);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
                     ContentKey(entry.Kind, entry.Text));
@@ -312,7 +474,8 @@ internal sealed class ChatHistoryState
             {
                 continue;
             }
-            if (metadata?.Timestamp is { } timestamp &&
+            if (entry.Presentation?.StreamItemId is null &&
+                metadata?.Timestamp is { } timestamp &&
                 timestamp != default &&
                 contentTimestamps.TryGetValue(
                     ContentKey(entry.Kind, entry.Text),
@@ -320,10 +483,14 @@ internal sealed class ChatHistoryState
             {
                 var priorSeconds = timestamp.ToUnixTimeSeconds();
                 var match = rebuiltTimes.FindIndex(value =>
-                    Math.Abs(value.Timestamp - priorSeconds) <= 2);
+                    Math.Abs(value.Timestamp - priorSeconds) <= 2 &&
+                    value.Entry.Presentation?.StreamItemId is null &&
+                    !HasConflictingToolIdentity(entry, value.Entry));
                 if (match >= 0)
                 {
+                    remappedEntryIds[entry.Id] = rebuiltTimes[match].Entry.Id;
                     PreserveMatchedUsage(rebuiltTimes[match].Entry, entry.Kind, metadata);
+                    PreserveToolResultFacts(rebuiltTimes[match].Entry, entry);
                     rebuiltTimes.RemoveAt(match);
                     continue;
                 }
@@ -338,6 +505,11 @@ internal sealed class ChatHistoryState
                      suffix >= nextId)
                 nextId = suffix + 1;
             entries.Add(entryToAdd);
+            if (entry.Kind == ChatTimelineItemKind.Assistant &&
+                entry.Presentation is { StreamItemId: not null, MessageId: null } &&
+                metadata?.OpenClawSeq is null)
+                retainedPreambles.Add(entry.Id);
+            remappedEntryIds[entry.Id] = entryToAdd.Id;
             existingIds.Add(entryToAdd.Id);
             if (metadata?.Timestamp is { } addedTimestamp &&
                 addedTimestamp != default)
@@ -363,6 +535,34 @@ internal sealed class ChatHistoryState
                 rebuiltMetadata[entryToAdd.Id] = metadata;
         }
 
+        // Unsaved commentary keeps its observed place between surviving rows,
+        // rather than moving below a final answer introduced by history.
+        for (var index = 0; index < prior.Entries.Count; index++)
+        {
+            if (!retainedPreambles.Contains(prior.Entries[index].Id))
+                continue;
+            var id = remappedEntryIds[prior.Entries[index].Id];
+            var current = entries.FindIndex(entry => entry.Id == id);
+            // Later retained items are not stable anchors, and a newer turn cannot
+            // anchor this turn's progress behind a history-supplied answer.
+            var following = prior.Entries.Skip(index + 1)
+                .TakeWhile(entry => entry.Kind != ChatTimelineItemKind.User && !entry.IsBackgroundFinal &&
+                    entry.Presentation is not { TurnBoundary: true } and not { IsIndependent: true })
+                .Where(entry => !retainedPreambles.Contains(entry.Id))
+                .Select(entry => remappedEntryIds.GetValueOrDefault(entry.Id))
+                .FirstOrDefault(candidate => candidate is not null);
+            var preceding = prior.Entries.Take(index).Select(entry => remappedEntryIds.GetValueOrDefault(entry.Id))
+                .LastOrDefault(candidate => candidate is not null);
+            var target = following is not null ? entries.FindIndex(entry => entry.Id == following)
+                : preceding is not null ? entries.FindIndex(entry => entry.Id == preceding) + 1 : current;
+            if (target >= 0 && current > target)
+            {
+                var entry = entries[current];
+                entries.RemoveAt(current);
+                entries.Insert(target, entry);
+            }
+        }
+
         var merged = rebuilt with
             {
                 Entries = entries.ToImmutable(),
@@ -371,7 +571,22 @@ internal sealed class ChatHistoryState
                 TurnStartedAt = prior.TurnStartedAt,
                 TurnEndedAt = prior.TurnEndedAt,
                 ProgressText = prior.ProgressText,
+                ProgressRetryAtMs = prior.ProgressRetryAtMs,
+                ReconcilableAssistantId = prior.ReconcilableAssistantId is { } pending
+                    ? remappedEntryIds.TryGetValue(pending, out var mapped) ? mapped
+                        : entries.Any(entry => entry.Id == pending) ? pending : null
+                    : null,
                 RunUsage = prior.RunUsage,
+                PreambleSequences = prior.PreambleSequences,
+                ReasoningStream = prior.TurnActive && prior.ReasoningStream is { } reasoning
+                    ? reasoning with
+                    {
+                        Items = reasoning.Items.ConvertAll(item => item with
+                        {
+                            AfterEntryId = item.AfterEntryId is { } anchor
+                                ? remappedEntryIds.GetValueOrDefault(anchor) : null,
+                        }),
+                    } : null,
                 PendingToolPresentations = prior.PendingToolPresentations,
                 PendingToolOutcomes = prior.PendingToolOutcomes,
                 TerminalToolCorrelations =
@@ -383,6 +598,7 @@ internal sealed class ChatHistoryState
                 ToolLegacyTurn = prior.ToolLegacyTurn,
             };
         merged = ChatTimelineReducer.RebuildActiveToolTracking(merged);
+        merged = ChatReasoningPresentation.Reconcile(merged, rebuiltMetadata);
         return (merged, rebuiltMetadata);
     }
 

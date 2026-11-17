@@ -1,5 +1,12 @@
 # AGENTS.md
 
+> **Use WinApp CLI first for native Windows work.** Before inventing tooling or
+> declaring native inspection impossible, run `winapp --version` and
+> `winapp --cli-schema`, then use its UI automation, crash/debug triage, WinUI
+> DevTools, performance recording, API/UI sample discovery and Sandbox runs.
+> Read [Use WinApp CLI proactively](#use-winapp-cli-proactively) for limits and
+> runtime authority, and the [WinApp guide](docs/WINAPP_CLI.md) for recipes.
+
 ## Working agreement
 
 Read-only requests stay read-only. Permission to implement does not grant
@@ -12,8 +19,22 @@ Delegate independent work only when it benefits from separate context; keep
 one writer per worktree and give each task a bounded objective and evidence
 requirement. A tool's successful exit is not proof that the intended work ran.
 
+Before generating or changing networking, IPC, or cross-process handoff code,
+use [network-handoff](.agents/skills/network-handoff/SKILL.md), including for
+retries, deadlines, reconnect, configuration apply, process launch, cancellation,
+and cleanup. This is mandatory alongside the affected owner's route below,
+not only for setup or a reported failure. Trace the existing producer contract
+and installed-version support before adding consumer behavior. Missing producer
+guarantees require an evidenced upstream proposal, not a local workaround.
+
+Do not create or maintain checked-in CI-failure or unresolved-issue backlogs.
+Investigate failures, fix their causes, and validate the repairs. Keep temporary
+tracking in session tooling, not repository files. Report genuine blockers
+directly; documenting a failure or deleting its record does not resolve it.
+
 | Task | Entry point |
 |---|---|
+| Generate, change, or review networking, IPC, or handoff behavior | [Network and handoff contracts](.agents/skills/network-handoff/SKILL.md), then the affected owner's guide |
 | Write, review, or restructure documentation/instructions | [Docs instructions](docs/AGENTS.md) and [technical-documentation](.agents/skills/technical-documentation/SKILL.md) |
 | Write or review a regression test | [Test authoring](docs/TEST_COVERAGE.md#writing-a-regression-test) and [test-audit](.agents/skills/test-audit/SKILL.md) |
 | Select tests and required proof | [Windows testing](.agents/skills/openclaw-testing/SKILL.md); use the [proof skill](.agents/skills/openclaw-proof-validation/SKILL.md) for runtime evidence |
@@ -22,6 +43,8 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 | Retrigger CI on a PR with failing checks | [retrigger-flaky-ci](.agents/skills/retrigger-flaky-ci/SKILL.md); rerun only failures unrelated to the PR's changes, otherwise warn |
 | Change a WinUI owner or its caller | [WinUI instructions](src/OpenClaw.Tray.WinUI/AGENTS.md) and the affected architecture ledger rows |
 | Debug Companion, setup, Gateway connection, node capabilities, packaging, or `system.run` | [Windows debugging](.agents/skills/openclaw-debugging/SKILL.md) |
+| Use Windows developer tooling for UI, crashes, performance, API discovery, or disposable app runs | [WinApp CLI guide](docs/WINAPP_CLI.md): check the installed version/help/schema and use the relevant capability before inventing tooling |
+| Choose a clean-machine or warm Sandbox test | [WinApp versus sandbox-mcp](docs/WINAPP_CLI.md#choose-winapp-sandbox-or-sandbox-mcp): use our [Sandbox MCP/sbx tooling](https://github.com/shanselman/sandbox-mcp) for dependency/installer audits, WinApp for its package-aware developer loop |
 | Drive the app through local MCP | [windows-app-mcp](.agents/skills/windows-app-mcp/SKILL.md); use [winnode](.agents/skills/winnode/SKILL.md) for the shipped command contract |
 | Review code | [Shared autoreview](.agents/skills/autoreview/SKILL.md); use [Hanselman review](.agents/skills/hanselman-code-review/SKILL.md) when adversarial review is requested |
 | Run remote native Windows proof | [Crabbox](.agents/skills/crabbox/SKILL.md), with explicit host/provider authority |
@@ -32,6 +55,29 @@ requirement. A tool's successful exit is not proof that the intended work ran.
 Use [agent readiness and workflow checks](docs/AGENT_WORKFLOWS.md) when changing
 this guidance. These are coding-agent instructions, not the product's
 end-user Gateway workspace `AGENTS.md` templates.
+
+## Use WinApp CLI proactively
+
+Windows developers and coding agents should use **WinApp CLI** as a first-choice
+development and diagnostic tool, not only an optional packaging launcher.
+For Windows UI/debugging/testing work, check `Get-Command winapp`, `winapp --version`
+and the relevant `--help`; use `winapp --cli-schema` for exact machine-readable
+options. The [WinApp guide](docs/WINAPP_CLI.md) maps `find-api`/`find-ui`, UIA,
+crash triage, DevTools, performance recording and Sandbox to our actual workflows.
+Prefer these capabilities over guessed APIs, ad hoc automation or unsupported
+claims that native inspection is unavailable. Report a missing tool or unsupported
+boundary explicitly; install/update only with authority.
+
+Keep `build.ps1`, existing test harnesses and repository packaging authoritative.
+Select a task-owned process/profile and obtain runtime authority before launching,
+injecting DevTools, registering packages, recording or preparing Sandbox. Honor
+the host's computer-use rules. WinApp Sandbox is not MXC/WSL/Gateway proof, and
+`--unique-identity` is not compatible with Companion's protocol-bearing manifest.
+Use [sandbox-mcp / sbx](https://github.com/shanselman/sandbox-mcp) for fresh
+artifact checks, explicit network-off runs and installer/uninstaller differences.
+Do not hide missing runtimes with WinApp's automatic guest provisioning.
+Both tools share one Windows Sandbox slot: select one lifecycle owner, inspect
+existing state, and never adopt or stop another task's guest without authority.
 
 ## Gateway MSIX Packaging
 
@@ -198,23 +244,23 @@ repository's existing P0–P3 review gate. Follow the
 <!-- colophon:start -->
 ## Design system
 
-This repository has a living design system at [`DESIGN.md`](DESIGN.md). These files are the **source of truth for design** - tokens, component intent, and principles - and are framework-agnostic. `components.jsonc` shows design intent for preview; it is **not** shipping code.
-**Read it before creating or changing any UI.** To ship, port the design into this app's implementation using the port target(s) below - don't copy `components.jsonc` verbatim.
+This repository has a living design system at [`DESIGN.md`](DESIGN.md). These files are the **source of truth for design** (tokens, component intent, and principles) and are framework-agnostic. `components.jsonc` shows design intent for preview; it is **not** shipping code.
+**Read it before creating or changing any UI.** To ship, port the design into this app's implementation using the port target(s) below. Don't copy `components.jsonc` verbatim.
 
-- `DESIGN.md` - design tokens and rationale: brand, colors, typography, spacing, radii, shadows, principles.
-- `.agents/design/components.jsonc` - the component patterns to reuse (structure, variants, states).
+- `DESIGN.md`: design tokens and rationale: brand, colors, typography, spacing, radii, shadows, principles.
+- `.agents/design/components.jsonc`: the component patterns to reuse (structure, variants, states).
 
 Generate UI from these tokens and patterns: use token names (e.g. `accent`, `ink`, spacing step `4`, radius `md`), not raw hex or ad-hoc px; reuse the documented components instead of inventing new ones; honor the brand voice; and avoid the system's listed anti-references. If you need a value the system doesn't cover, add it to `DESIGN.md` rather than hard-coding a one-off.
 
 Use the **Colophon** tool/canvas to inspect, edit, and preview this system when available. Install the optional plugin with `copilot plugin install karkarl/colophon`. Without the extension, read and edit the files directly; Colophon is not required.
 
-**Port targets** - how a design becomes shipping code here (design stays the source of truth; these say what each surface ships as and which reference/skill to port it with):
-- Default: ships as Native WinUI 3 / C# (Windows Fluent) - port via https://github.com/microsoft/win-dev-skills (helper agent: win-dev-skills)
-- area "chat", components ChatBubble, ChatComposer, ChatThread: ships as Reactor (Microsoft.UI.Reactor) - port via https://github.com/microsoft/microsoft-ui-reactor (no helper agent yet)
+**Port targets**: how a design becomes shipping code here (design stays the source of truth; these say what each surface ships as and which reference/skill to port it with):
+- Default: ships as Native WinUI 3 / C# (Windows Fluent). Port via https://github.com/microsoft/win-dev-skills (helper agent: win-dev-skills)
+- area "chat", components ChatBubble, ChatComposer, ChatThread: ships as Reactor (Microsoft.UI.Reactor). Port via https://github.com/microsoft/microsoft-ui-reactor (no helper agent yet)
 - Canonical implementation owner: OpenClaw Windows (openclaw/openclaw-windows-node)
 - Examples kept aligned via: Tokens are captured by manual inspection of the app's WinUI 3 XAML/C# Fluent resources; re-inspect and update this file when the app's ThemeResource mappings or SystemAccentColor usage change.
 
-Colors in `DESIGN.md` are **preview-only** swatches. When a color has a `resource` (e.g. a WinUI `ThemeResource` key), bind that resource in code - never hard-code the preview hex - so light, dark, and high-contrast themes stay correct. The shipping implementation is canonical; treat `components.jsonc` and the token values as derived visual examples, not a parallel upstream source.
+Colors in `DESIGN.md` are **preview-only** swatches. When a color has a `resource` (e.g. a WinUI `ThemeResource` key), bind that resource in code, never hard-code the preview hex, so light, dark, and high-contrast themes stay correct. The shipping implementation is canonical; treat `components.jsonc` and the token values as derived visual examples, not a parallel upstream source.
 
-<sub>Managed by [Colophon](https://github.com/karkarl/colophon) - edit `DESIGN.md` to change the system; this block only points to it.</sub>
+<sub>Managed by [Colophon](https://github.com/karkarl/colophon). Edit `DESIGN.md` to change the system; this block only points to it.</sub>
 <!-- colophon:end -->

@@ -366,6 +366,91 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
     private static string[] SystemCommand() =>
         [Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "where.exe"), "cmd.exe"];
 
+    private const string StatsFrame = """
+        {"type":"req","id":"stats-1","method":"node.event","params":{"event":"node.host.stats","payloadJSON":"{\"cpuCount\":2,\"memoryTotalBytes\":100,\"memoryFreeBytes\":40}"}}
+        """;
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ReplyReader_AcknowledgesKnownStatsBeforeReturningCorrelatedDenial(bool gatewayEvent)
+    {
+        var denial = gatewayEvent
+            ? """{"type":"req","method":"node.invoke.result","params":{"id":"wire-exec","ok":false,"error":{"code":"EXEC_APPROVAL_DENIED"}}}"""
+            : """{"type":"res","id":"wire-exec","ok":false,"error":{"code":"EXEC_APPROVAL_DENIED"}}""";
+        var incoming = new Queue<string>([StatsFrame, denial]);
+        var acknowledgements = new List<string>();
+        var result = await ReadInvocationReplyAsync(_ => Task.FromResult(incoming.Dequeue()),
+            (message, _) => { acknowledgements.Add(message); return Task.CompletedTask; }, gatewayEvent, CancellationToken.None);
+        Assert.False(result.GetProperty("ok").GetBoolean());
+        Assert.Equal("EXEC_APPROVAL_DENIED", result.GetProperty("error").GetProperty("code").GetString());
+        using var acknowledgement = JsonDocument.Parse(Assert.Single(acknowledgements));
+        var ack = acknowledgement.RootElement;
+        Assert.Equal("res", ack.GetProperty("type").GetString());
+        Assert.Equal("stats-1", ack.GetProperty("id").GetString());
+        Assert.True(ack.GetProperty("ok").GetBoolean());
+        Assert.True(ack.GetProperty("payload").GetProperty("ok").GetBoolean());
+        Assert.Equal("node.host.stats", ack.GetProperty("payload").GetProperty("event").GetString());
+        Assert.True(ack.GetProperty("payload").GetProperty("handled").GetBoolean());
+        Assert.Equal("updated", ack.GetProperty("payload").GetProperty("reason").GetString());
+        Assert.Empty(incoming);
+    }
+
+    [Theory]
+    [InlineData(false, """{"type":"res","id":"wrong-invocation","ok":false}""")]
+    [InlineData(true, """{"type":"req","method":"node.invoke.result","params":{"id":"wrong-invocation","ok":false}}""")]
+    [InlineData(true, """{"type":"req","method":"unexpected.method","params":{"id":"wire-exec","ok":false}}""")]
+    [InlineData(false, """{"type":"req","id":"other","method":"node.event","params":{"event":"unexpected.event","payloadJSON":"{}"}}""")]
+    public async Task ReplyReader_RejectsWrongCorrelationOrUnexpectedFrames(bool gatewayEvent, string message)
+    {
+        var acknowledgements = new List<string>();
+        await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() => ReadInvocationReplyAsync(
+            _ => Task.FromResult(message),
+            (ack, _) => { acknowledgements.Add(ack); return Task.CompletedTask; }, gatewayEvent, CancellationToken.None));
+        Assert.Empty(acknowledgements);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("[]")]
+    public async Task ReplyReader_RejectsMalformedStatsWithoutAcknowledging(string payload)
+    {
+        var message = StatsFrame.Replace(
+            """{\"cpuCount\":2,\"memoryTotalBytes\":100,\"memoryFreeBytes\":40}""", payload, StringComparison.Ordinal);
+        var acknowledgements = new List<string>();
+        await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() => ReadInvocationReplyAsync(
+            _ => Task.FromResult(message),
+            (ack, _) => { acknowledgements.Add(ack); return Task.CompletedTask; }, true, CancellationToken.None));
+        Assert.Empty(acknowledgements);
+    }
+
+    [Fact]
+    public async Task ReplyReader_RejectsInvalidStatsJsonWithoutAcknowledging()
+    {
+        var message = StatsFrame.Replace(
+            """{\"cpuCount\":2,\"memoryTotalBytes\":100,\"memoryFreeBytes\":40}""", "not-json", StringComparison.Ordinal);
+        var acknowledgements = new List<string>();
+        await Assert.ThrowsAnyAsync<JsonException>(() => ReadInvocationReplyAsync(
+            _ => Task.FromResult(message),
+            (ack, _) => { acknowledgements.Add(ack); return Task.CompletedTask; }, true, CancellationToken.None));
+        Assert.Empty(acknowledgements);
+    }
+
+    [Fact]
+    public async Task ReplyReader_ContinuedStatsCannotOutliveCancellation()
+    {
+        using var deadline = new CancellationTokenSource();
+        var acknowledgements = 0;
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ReadInvocationReplyAsync(
+            _ => Task.FromResult(StatsFrame),
+            (_, _) =>
+            {
+                if (++acknowledgements == 2) deadline.Cancel();
+                return Task.CompletedTask;
+            }, true, deadline.Token));
+        Assert.Equal(2, acknowledgements);
+    }
+
     private static void WritePromptPolicy(string directory, string security) =>
         File.WriteAllText(Path.Combine(directory, "exec-approvals.json"),
             JsonSerializer.Serialize(new
@@ -440,20 +525,55 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
                 type = "req", id = "wire-exec", method = "node.invoke", @params = parameters
             });
         await server.SendTextAsync(invocation, deadline.Token);
-        using var result = JsonDocument.Parse(
-            await server.ReceiveTextAsync(deadline.Token));
-        if (gatewayEvent)
-        {
-            Assert.Equal("node.invoke.result",
-                result.RootElement.GetProperty("method").GetString());
-            output.WriteLine($"Actual Gateway event reply: {result.RootElement.GetProperty("params").GetRawText()}");
-            return result.RootElement.GetProperty("params").Clone();
-        }
+        var result = await ReadInvocationReplyAsync(server.ReceiveTextAsync, server.SendTextAsync, gatewayEvent, deadline.Token);
+        output.WriteLine($"Actual {(gatewayEvent ? "Gateway event" : "legacy")} reply: {result.GetRawText()}");
+        return result;
+    }
 
-        Assert.Equal("res", result.RootElement.GetProperty("type").GetString());
-        Assert.Equal("wire-exec", result.RootElement.GetProperty("id").GetString());
-        output.WriteLine($"Actual legacy reply: {result.RootElement.GetRawText()}");
-        return result.RootElement.Clone();
+    private static async Task<JsonElement> ReadInvocationReplyAsync(
+        Func<CancellationToken, Task<string>> receive,
+        Func<string, CancellationToken, Task> send,
+        bool gatewayEvent,
+        CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var frame = JsonDocument.Parse(await receive(cancellationToken));
+            if (frame.RootElement.TryGetProperty("method", out var method) &&
+                method.GetString() == "node.event" &&
+                frame.RootElement.GetProperty("params").GetProperty("event").GetString() == OpenClaw.Shared.Systems.HostStatsSampler.EventName)
+            {
+                // Real paired nodes may publish telemetry before the command reply.
+                Assert.Equal("req", frame.RootElement.GetProperty("type").GetString());
+                var telemetryId = frame.RootElement.GetProperty("id").GetString();
+                Assert.False(string.IsNullOrWhiteSpace(telemetryId));
+                var telemetryJson = Assert.IsType<string>(frame.RootElement.GetProperty("params").GetProperty("payloadJSON").GetString());
+                using var telemetry = JsonDocument.Parse(telemetryJson);
+                Assert.NotNull(OpenClaw.Shared.Systems.SystemsParser.ParseMeasurements(telemetry.RootElement));
+                await send(JsonSerializer.Serialize(new
+                {
+                    type = "res",
+                    id = telemetryId,
+                    ok = true,
+                    // Mirrors Gateway server-node-events.ts's successful current-connection result.
+                    payload = new { ok = true, @event = "node.host.stats", handled = true, reason = "updated" }
+                }), cancellationToken);
+                continue;
+            }
+            var result = frame.RootElement;
+            if (gatewayEvent)
+            {
+                Assert.Equal("req", result.GetProperty("type").GetString());
+                Assert.Equal("node.invoke.result", result.GetProperty("method").GetString());
+                Assert.Equal("wire-exec", result.GetProperty("params").GetProperty("id").GetString());
+                return result.GetProperty("params").Clone();
+            }
+
+            Assert.Equal("res", result.GetProperty("type").GetString());
+            Assert.Equal("wire-exec", result.GetProperty("id").GetString());
+            return result.Clone();
+        }
     }
 
     private sealed class CallbackPromptHandler(

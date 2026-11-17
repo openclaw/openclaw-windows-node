@@ -71,7 +71,11 @@ internal static class MxcFolderAdmission
         const uint openExisting = 3;
         const uint openReparsePoint = 0x00200000;
         const uint backupSemantics = 0x02000000;
-        using var handle = CreateFileW(path, fileReadAttributes, FileShare.ReadWrite | FileShare.Delete,
+        // Native queries must not report existing long paths as missing when LongPathsEnabled is off.
+        var fullPath = NormalizeIdentity(path);
+        var nativePath = fullPath.StartsWith(@"\\", StringComparison.Ordinal)
+            ? @"\\?\UNC\" + fullPath[2..] : @"\\?\" + fullPath;
+        using var handle = CreateFileW(nativePath, fileReadAttributes, FileShare.ReadWrite | FileShare.Delete,
             IntPtr.Zero, openExisting, openReparsePoint | backupSemantics, IntPtr.Zero);
         if (handle.IsInvalid)
         {

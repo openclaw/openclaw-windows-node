@@ -62,6 +62,7 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
     private readonly List<string> _operationLog = new();
 
     public List<string> Navigations { get; } = new();
+    public List<string?> DashboardPaths { get; } = new();
     public IReadOnlyList<string> OperationLog => _operationLog;
     public bool Disposed { get; private set; }
     public int ReconnectCount { get; private set; }
@@ -71,8 +72,10 @@ internal sealed class FakeAppCommands : IAppCommands, IDisposable
 
     public void ClearOperationLog() => _operationLog.Clear();
 
-    public void OpenDashboard(string? path = null) { }
+    public void OpenDashboard(string? path = null) => DashboardPaths.Add(path);
+    public Task<bool> TryOpenDashboardAsync(string? path = null) => Task.FromResult(false);
     public void Navigate(string pageTag) => Navigations.Add(pageTag);
+    public Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null) => Task.FromResult(false);
     public void Reconnect() => ReconnectCount++;
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }
@@ -141,7 +144,9 @@ internal sealed class SelfWritingAppCommands : IAppCommands
     }
 
     public void OpenDashboard(string? path = null) { }
+    public Task<bool> TryOpenDashboardAsync(string? path = null) => Task.FromResult(false);
     public void Navigate(string pageTag) { }
+    public Task<bool> TryNavigateAsync(string pageTag, string? chatSessionKey = null) => Task.FromResult(false);
     public void Reconnect() { }
     public void Disconnect() { }
     public void ShowVoiceOverlay() { }

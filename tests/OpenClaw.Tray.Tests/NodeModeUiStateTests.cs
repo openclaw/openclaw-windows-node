@@ -181,7 +181,7 @@ public sealed class NodeModeUiStateTests
         Assert.Contains("public string? McpStartupError", service);
         Assert.Contains("public void SetMcpStartupError", service);
         Assert.Contains("SetMcpStartupFailure(ex, \"capability registration\")", service);
-        Assert.Contains("return false;", ExtractMethodBody(service, "bool StartMcpServer"));
+        Assert.Contains("return false;", ExtractMethodBody(service, "bool StartMcpServerLocked"));
         Assert.Contains("MCP server startup failed: listener did not start.", service);
     }
 
@@ -190,8 +190,11 @@ public sealed class NodeModeUiStateTests
     {
         var service = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "NodeService.cs");
         var settings = ReadSource("src", "OpenClaw.Tray.WinUI", "Services", "SettingsManager.cs");
-        Assert.Contains("_settings?.SnapshotSystemRunSettings()", service);
+        Assert.Contains("_settings?.SandboxPolicies", service);
+        Assert.Contains("return new MxcCommandRunner(_sandboxExecutor)", service);
+        Assert.Contains("FileOperations(_sandboxExecutor!)", service);
         Assert.Contains("MxcRequestBuilder.Snapshot(_data)", settings);
+        Assert.Contains("SandboxPolicies.Persist", settings);
         Assert.DoesNotContain("SystemRunAllowWindowsUi", service);
     }
 

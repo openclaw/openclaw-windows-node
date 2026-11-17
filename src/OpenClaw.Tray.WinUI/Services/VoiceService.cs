@@ -529,6 +529,8 @@ public sealed class VoiceService : IAsyncDisposable
         finally
         {
             if (_ownsPlaybackMute) _playbackMute.Dispose();
+            // One-shot transcription follows the caller token, not StopAsync.
+            // Dispose waits for that call so the model is not freed under it.
             _stt.Dispose();
         }
     }

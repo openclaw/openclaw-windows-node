@@ -30,6 +30,9 @@ public record class SettingsData
     /// </summary>
     public bool HasInjectedFirstRunBootstrap { get; set; }
     public bool ShowNotifications { get; set; } = true;
+    /// <summary>Desktop mascot, enabled by default. Notification text is visible outside the app when enabled.</summary>
+    public bool ShowDesktopCompanion { get; set; } = true;
+    public int DesktopCompanionScalePercent { get; set; } = DesktopCompanionScale.DefaultPercent;
     public string? NotificationSound { get; set; }
     public bool NotifyHealth { get; set; } = true;
     public bool NotifyUrgent { get; set; } = true;
@@ -98,6 +101,8 @@ public record class SettingsData
     public bool VoiceTtsEnabled { get; set; } = false;
     /// <summary>Show tool-call and usage chips inline in the chat timeline.</summary>
     public bool ShowChatToolCalls { get; set; } = true;
+    /// <summary>Show supplied assistant reasoning in the chat timeline (web <c>chatShowThinking</c>).</summary>
+    public bool ShowChatThinking { get; set; } = true;
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get; set; } = true;
     public bool NodeTtsEnabled { get; set; } = false;
@@ -160,7 +165,8 @@ public record class SettingsData
     /// </summary>
     public List<string>? A2UIImageHosts { get; set; }
     /// <summary>
-    /// Local sidebar page pins keyed by saved Gateway id (or "unconfigured"). Absent means no pins.
+    /// Local sidebar page pins keyed by saved Gateway id (or "(unconfigured)").
+    /// Absent scopes use native defaults; an explicit empty list means no pins.
     /// Holds only canonical page tags; never credentials or user data.
     /// </summary>
     public Dictionary<string, List<string>>? PinnedPagesByGateway { get; set; }
@@ -229,6 +235,10 @@ public record class SettingsData
     /// </summary>
     public SandboxFolderAccess? SandboxDocumentsAccess { get; set; }
     public SandboxFolderAccess? SandboxDownloadsAccess { get; set; }
+
+    /// <summary>Legacy staging configuration, preserved for compatibility. New uploads use executor-owned profile storage.</summary>
+    public string? SandboxUploadStagingPath { get; set; }
+    public long SandboxMaxTransferBytes { get; set; } = FileTransfer.FileLimits.DefaultCreateBytes;
     public SandboxFolderAccess? SandboxDesktopAccess { get; set; }
 
     /// <summary>

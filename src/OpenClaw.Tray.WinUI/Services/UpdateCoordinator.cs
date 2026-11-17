@@ -197,7 +197,7 @@ internal sealed class UpdateCoordinator(
             Logger.Info($"Update available: {releaseTag}");
             appState.UpdateInfo = new UpdateCommandCenterInfo
             {
-                Status = "Available",
+                Status = UpdateCommandCenterInfo.AvailableStatus,
                 CurrentVersion = AppVersionInfo.Version,
                 LatestVersion = releaseTag,
                 CheckedAt = DateTime.UtcNow,
@@ -213,11 +213,11 @@ internal sealed class UpdateCoordinator(
                 // AppState.UpdateInfo only fires PropertyChanged on assignment, not on mutation.
                 appState.UpdateInfo = new UpdateCommandCenterInfo
                 {
-                    Status = "Available",
+                    Status = UpdateCommandCenterInfo.AvailableStatus,
                     CurrentVersion = AppVersionInfo.Version,
                     LatestVersion = releaseTag,
                     CheckedAt = DateTime.UtcNow,
-                    Detail = "skipped by user"
+                    Detail = UpdateCommandCenterInfo.SkippedByUserDetail
                 };
                 return true;
             }
@@ -307,7 +307,7 @@ internal sealed class UpdateCoordinator(
                 // our "download requested" detail — briefly inconsistent.
                 appState.UpdateInfo = new UpdateCommandCenterInfo
                 {
-                    Status = "Available",
+                    Status = UpdateCommandCenterInfo.AvailableStatus,
                     CurrentVersion = AppVersionInfo.Version,
                     LatestVersion = releaseTag,
                     CheckedAt = DateTime.UtcNow,
@@ -338,11 +338,11 @@ internal sealed class UpdateCoordinator(
                 _settings.Save();
                 appState.UpdateInfo = new UpdateCommandCenterInfo
                 {
-                    Status = "Available",
+                    Status = UpdateCommandCenterInfo.AvailableStatus,
                     CurrentVersion = AppVersionInfo.Version,
                     LatestVersion = releaseTag,
                     CheckedAt = DateTime.UtcNow,
-                    Detail = "skipped by user"
+                    Detail = UpdateCommandCenterInfo.SkippedByUserDetail
                 };
             }
             else if (userInitiated && _settings != null

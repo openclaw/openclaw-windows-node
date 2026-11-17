@@ -116,26 +116,11 @@ public static class MxcFolderPermissions
     public static SandboxFolderAccess? EffectiveAccess(string path, IEnumerable<string> readOnly,
         IEnumerable<string> readWrite, IEnumerable<string> userDenied)
     {
-        path = NormalizePath(path);
-        SandboxFolderAccess? result = null;
-        var length = -1;
         var boundaries = readWrite.Select(p => (Path: p, Access: SandboxFolderAccess.ReadWrite))
             .Concat(readOnly.Select(p => (Path: p, Access: SandboxFolderAccess.ReadOnly)))
             .Concat(userDenied.Select(p => (Path: p, Access: SandboxFolderAccess.NoAccess)));
         // Iteration order gives equal paths the SDK's deny > RO > RW precedence.
-        foreach (var (boundary, access) in boundaries)
-        {
-            var normalized = NormalizePath(boundary);
-            var prefix = Path.EndsInDirectorySeparator(normalized) ? normalized : normalized + Path.DirectorySeparatorChar;
-            if (normalized.Length >= length &&
-                (path.Equals(normalized, StringComparison.OrdinalIgnoreCase) ||
-                 path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
-            {
-                length = normalized.Length;
-                result = access;
-            }
-        }
-        return result;
+        return SandboxPathRules.Effective(path, boundaries);
     }
 
     public static bool SamePath(string left, string right)

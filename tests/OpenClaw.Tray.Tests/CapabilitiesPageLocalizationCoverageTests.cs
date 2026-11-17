@@ -78,8 +78,10 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
     {
         new object[] { "VoiceSettingsPage_TtsMiniMax", new[] { ".Content" } },
         new object[] { "VoiceSettingsPage_MiniMaxApiKeyBox", new[] { ".Header" } },
-        new object[] { "VoiceSettingsPage_MiniMaxVoiceIdBox", new[] { ".Header", ".PlaceholderText" } },
-        new object[] { "VoiceSettingsPage_MiniMaxModelBox", new[] { ".Header", ".PlaceholderText" } },
+        new object[] { "VoiceSettingsPage_MiniMaxVoiceIdBox", new[] { ".Header" } },
+        new object[] { "VoiceSettingsPage_MiniMaxVoiceIdField", new[] { ".PlaceholderText" } },
+        new object[] { "VoiceSettingsPage_MiniMaxModelBox", new[] { ".Header" } },
+        new object[] { "VoiceSettingsPage_MiniMaxModelField", new[] { ".PlaceholderText" } },
         new object[] { "VoiceSettingsPage_MiniMaxRegionCombo", new[] { ".Header" } },
         new object[] { "VoiceSettingsPage_MiniMaxRegionGlobal", new[] { ".Content" } },
         new object[] { "VoiceSettingsPage_MiniMaxRegionChina", new[] { ".Content" } },
@@ -211,8 +213,8 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
 
         Assert.Contains("x:Name=\"SttCapabilityNotice\"", xaml);
         Assert.Contains("x:Name=\"TtsCapabilityNotice\"", xaml);
-        Assert.Contains("x:Name=\"SttCapabilityNoticeIcon\"", xaml);
-        Assert.Contains("x:Name=\"TtsCapabilityNoticeIcon\"", xaml);
+        Assert.Contains("x:Name=\"SttSettings\"", xaml);
+        Assert.Contains("x:Name=\"TtsSettings\"", xaml);
         Assert.Contains("x:Uid=\"VoiceSettingsPage_SttCapabilityDisabledNotice\"", xaml);
         Assert.Contains("x:Uid=\"VoiceSettingsPage_TtsCapabilityDisabledNotice\"", xaml);
         Assert.Equal(2, LoadVoiceSettingsXamlUids().Count(uid =>
@@ -220,15 +222,14 @@ public sealed class CapabilitiesPageLocalizationCoverageTests
         Assert.DoesNotContain("SttEnabledToggle", xaml);
         Assert.DoesNotContain("OnSttToggled", source);
         Assert.Contains("((IAppCommands)CurrentApp).Navigate(\"permissions\")", source);
-        Assert.Contains("SttCapabilityNotice.Visibility = sttEnabled ? Visibility.Collapsed : Visibility.Visible;", source);
-        Assert.Contains("TtsCapabilityNotice.Visibility = ttsEnabled ? Visibility.Collapsed : Visibility.Visible;", source);
-        Assert.DoesNotContain("IsHitTestVisible = sttEnabled", source);
-        Assert.DoesNotContain("TestVoiceButton.IsEnabled = sttEnabled", source);
-        Assert.DoesNotContain("InlineTestStartBtn.IsEnabled = sttEnabled", source);
-        Assert.DoesNotContain("PiperPreviewButton.IsEnabled = ttsEnabled", source);
-        Assert.DoesNotContain("PreviewVoiceButton.IsEnabled = ttsEnabled", source);
-        Assert.Contains("VoiceSettingsPage_SttCapabilityDisabledNotice.Text", keys);
-        Assert.Contains("VoiceSettingsPage_TtsCapabilityDisabledNotice.Text", keys);
+        Assert.Contains("SttCapabilityNotice.IsOpen = !sttEnabled;", source);
+        Assert.Contains("TtsCapabilityNotice.IsOpen = !ttsEnabled;", source);
+        Assert.Contains("SttSettings.IsEnabled = sttEnabled;", source);
+        Assert.Contains("TtsSettings.IsEnabled = ttsEnabled;", source);
+        Assert.Contains("VoiceSettingsPage_SttCapabilityDisabledNotice.Title", keys);
+        Assert.Contains("VoiceSettingsPage_SttCapabilityDisabledNotice.Message", keys);
+        Assert.Contains("VoiceSettingsPage_TtsCapabilityDisabledNotice.Title", keys);
+        Assert.Contains("VoiceSettingsPage_TtsCapabilityDisabledNotice.Message", keys);
         Assert.Contains("VoiceSettingsPage_OpenPermissionsLink.Content", keys);
     }
 }

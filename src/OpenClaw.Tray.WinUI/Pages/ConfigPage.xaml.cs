@@ -23,9 +23,17 @@ namespace OpenClawTray.Pages;
 public sealed partial class ConfigPage : Page
 {
     private static readonly JsonElement s_emptyObject = JsonDocument.Parse("{}").RootElement.Clone();
-    private const double JsonPreviewAutoCollapseWidth = 1040;
+    private const double JsonPreviewAutoCollapseWidth = 1060;
     private const double JsonPreviewAutoExpandWidth = 1120;
     private const double JsonPreviewMinWidth = 340;
+    private const double CompactEditorWidth = 728;
+    private const double CompactActionsWidth = 720;
+    private const double CompactTreeMaxHeight = 160;
+    private const double DetailPaneMinWidth = 400;
+    private const double SplitterWidth = 8;
+    private const double TreePaneMinWidth = 300;
+    private bool _compactEditor;
+    private GridLength _treeExpandedWidth = new(320);
 
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private static string L(string key) => LocalizationHelper.GetString(key);
@@ -66,6 +74,7 @@ public sealed partial class ConfigPage : Page
     public ConfigPage()
     {
         InitializeComponent();
+        SizeChanged += OnLayoutSizeChanged;
         NavigationCacheMode = NavigationCacheMode.Required;
         Unloaded += (_, _) =>
         {
@@ -778,6 +787,36 @@ public sealed partial class ConfigPage : Page
 
     private void OnSchemaTreeGridSizeChanged(object sender, SizeChangedEventArgs e)
     {
+        var compact = e.NewSize.Width < CompactEditorWidth;
+        if (compact != _compactEditor)
+        {
+            // Keep the tree and editor mounted, including draft controls and keyboard focus.
+            if (compact)
+                _treeExpandedWidth = ConfigTreeColumn.Width;
+            _compactEditor = compact;
+            ConfigTreeColumn.MinWidth = compact ? 0 : TreePaneMinWidth;
+            ConfigTreeColumn.Width = compact ? new GridLength(1, GridUnitType.Star) : _treeExpandedWidth;
+            ConfigDetailColumn.MinWidth = compact ? 0 : DetailPaneMinWidth;
+            ConfigDetailColumn.Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+            TreeSplitterColumn.Width = new GridLength(compact ? 0 : SplitterWidth);
+            TreeSplitter.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+            Grid.SetColumnSpan(TreePane, compact ? 5 : 1);
+            Grid.SetColumn(DetailPane, compact ? 0 : 2);
+            Grid.SetColumnSpan(DetailPane, compact ? 5 : 1);
+            Grid.SetRow(DetailPane, compact ? 1 : 0);
+            Grid.SetColumnSpan(DetailHeading, compact ? 3 : 1);
+            Grid.SetRow(ToggleJsonPreviewButton, compact ? 1 : 0);
+            Grid.SetColumn(ToggleJsonPreviewButton, compact ? 0 : 1);
+            Grid.SetColumnSpan(ToggleJsonPreviewButton, compact ? 3 : 1);
+            Grid.SetRow(ResetSectionButton, compact ? 2 : 0);
+            Grid.SetColumn(ResetSectionButton, compact ? 0 : 2);
+            Grid.SetColumnSpan(ResetSectionButton, compact ? 3 : 1);
+        }
+        TreeRow.Height = compact
+            ? new GridLength(Math.Min(CompactTreeMaxHeight, e.NewSize.Height / 3))
+            : new GridLength(1, GridUnitType.Star);
+        DetailRow.Height = compact ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        ToggleJsonPreviewButton.IsEnabled = e.NewSize.Width >= JsonPreviewAutoCollapseWidth;
         if (_jsonPreviewVisible && e.NewSize.Width < JsonPreviewAutoCollapseWidth)
         {
             _jsonPreviewVisible = false;
@@ -788,6 +827,20 @@ public sealed partial class ConfigPage : Page
             _jsonPreviewVisible = true;
             ApplyJsonPreviewVisibility();
         }
+        ConstrainExpandedPaneWidths();
+    }
+
+    private void OnLayoutSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        var compact = e.NewSize.Width < CompactActionsWidth;
+        Grid.SetRow(SearchControls, compact ? 1 : 0);
+        Grid.SetColumn(SearchControls, compact ? 0 : 1);
+        Grid.SetColumnSpan(SearchControls, compact ? 2 : 1);
+        SearchControls.HorizontalAlignment = compact ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
+        Grid.SetRow(SaveActions, compact ? 1 : 0);
+        Grid.SetColumn(SaveActions, compact ? 0 : 1);
+        Grid.SetColumnSpan(SaveActions, compact ? 2 : 1);
+        SaveActions.Orientation = compact ? Orientation.Vertical : Orientation.Horizontal;
     }
 
     private void ApplyPaneVisibility()
@@ -911,10 +964,27 @@ public sealed partial class ConfigPage : Page
         }
 
         SelectedJsonPreviewPane.Visibility = _jsonPreviewVisible ? Visibility.Visible : Visibility.Collapsed;
+        JsonSplitterColumn.Width = new GridLength(_jsonPreviewVisible ? SplitterWidth : 0);
         JsonPreviewSplitter.Visibility = _jsonPreviewVisible ? Visibility.Visible : Visibility.Collapsed;
         ToggleJsonPreviewButton.Content = LocalizationHelper.GetString(_jsonPreviewVisible
             ? "ToggleJsonPreviewButton.Content"
             : "ToggleJsonPreviewButton_Show.Content");
+        ConstrainExpandedPaneWidths();
+    }
+
+    private void ConstrainExpandedPaneWidths()
+    {
+        if (_compactEditor || SchemaTreeGrid.ActualWidth < CompactEditorWidth)
+            return;
+
+        var availableWidth = SchemaTreeGrid.ActualWidth - DetailPaneMinWidth - SplitterWidth;
+        if (_jsonPreviewVisible)
+        {
+            var previewWidth = Math.Min(JsonPreviewColumn.Width.Value, availableWidth - TreePaneMinWidth - SplitterWidth);
+            JsonPreviewColumn.Width = new GridLength(Math.Max(JsonPreviewMinWidth, previewWidth));
+            availableWidth -= JsonPreviewColumn.Width.Value + SplitterWidth;
+        }
+        ConfigTreeColumn.Width = new GridLength(Math.Max(TreePaneMinWidth, Math.Min(ConfigTreeColumn.Width.Value, availableWidth)));
     }
 
     private void UpdateSearchMetaText()

@@ -112,8 +112,11 @@ public sealed class DeviceIdentityFailClosedTests
         var originalBytes = File.ReadAllBytes(path);
         using var held = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
 
-        var attempt = Task.Run(
-            () => Record.Exception(() => new DeviceIdentity(temp.Path).Initialize()));
+        var attempt = Task.Factory.StartNew(
+            () => Record.Exception(() => new DeviceIdentity(temp.Path).Initialize()),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
         var error = await attempt.WaitAsync(TimeSpan.FromSeconds(5));
         held.Dispose();
 

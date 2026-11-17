@@ -154,6 +154,37 @@ public sealed class MxcPhysicalPathsTests : IDisposable
     }
 
     [Fact]
+    public void ExecutorPrivateDataExcludesBothObservedSpellingsAndRejectsPhysicalChildOverrides()
+    {
+        var context = MxcSyntheticContext.Create(_root);
+        var logical = Directory.CreateDirectory(Path.Combine(_root, "logical-runs")).FullName;
+        var physical = Directory.CreateDirectory(Path.Combine(_root, "physical-runs")).FullName;
+        var scratch = Directory.CreateDirectory(Path.Combine(_root, "scratch")).FullName;
+        var child = Directory.CreateDirectory(Path.Combine(physical, "other-operation")).FullName;
+        context = context with { ExecutorPrivatePaths = [logical] };
+        MxcFolderAdmission.Metadata? Read(string path)
+        {
+            var value = MxcFolderAdmission.ReadMetadata(path);
+            return path == logical && value is { } metadata ? metadata with { FinalPath = physical } : value;
+        }
+        var settings = new SettingsData
+        {
+            SandboxCustomFolders = [new() { Path = _root, Access = SandboxFolderAccess.ReadWrite }],
+        };
+        var resources = MxcRequestBuilder.ComposeResources(settings, context.ProtectedPaths[0], scratch,
+            context, MxcFolderAdmission.ReadMetadata, Read);
+        Assert.Contains(logical, resources.DeniedPaths);
+        Assert.Contains(physical, resources.DeniedPaths);
+        Assert.Equal(SandboxFolderAccess.NoAccess, resources.DataAccess.EffectiveAccess(Path.Combine(logical, "worker")));
+        Assert.Equal(SandboxFolderAccess.NoAccess, resources.DataAccess.EffectiveAccess(child));
+        Assert.DoesNotContain(logical, resources.DataAccess.ProtectedPaths);
+        Assert.All(context.ProtectedPaths, path => Assert.Contains(path, resources.DataAccess.ProtectedPaths));
+        settings.SandboxCustomFolders.Add(new() { Path = child, Access = SandboxFolderAccess.ReadWrite });
+        Assert.Throws<NotSupportedException>(() => MxcRequestBuilder.ComposeResources(
+            settings, context.ProtectedPaths[0], scratch, context, MxcFolderAdmission.ReadMetadata, Read));
+    }
+
+    [Fact]
     public void BuilderBroadensMissingPhysicalAndLogicalParentsIndependentlyWithoutRemovingEitherDeny()
     {
         var context = MxcSyntheticContext.Create(_root);

@@ -56,7 +56,8 @@ public class A2UICapabilitySecurityTests
     [Fact]
     public async Task A2UIPush_FileJsonl_OverCap_ReturnsError()
     {
-        var cap = new CanvasCapability(NullLogger.Instance);
+        var cap = new CanvasCapability(NullLogger.Instance,
+            async (path, _, stop) => await File.ReadAllBytesAsync(path, stop));
         var tmpFile = Path.Combine(Path.GetTempPath(), $"a2ui-oversize-{System.Guid.NewGuid():N}.jsonl");
         try
         {
@@ -84,56 +85,32 @@ public class A2UICapabilitySecurityTests
     }
 
     [Fact]
-    public async Task A2UIPush_FileJsonl_SymlinkOutsideTemp_ReturnsError()
+    public async Task A2UIPush_JsonlPathWithoutSandboxReader_IsUnavailable()
     {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        if (string.IsNullOrWhiteSpace(localAppData))
-            return;
-
-        var outsideDir = Path.Combine(localAppData, "OpenClawTests", Guid.NewGuid().ToString("N"));
-        var outsideFile = Path.Combine(outsideDir, "payload.jsonl");
-        var linkPath = Path.Combine(Path.GetTempPath(), $"a2ui-link-{Guid.NewGuid():N}.jsonl");
-
-        try
+        var cap = new CanvasCapability(NullLogger.Instance);
+        var result = await cap.ExecuteAsync(new NodeInvokeRequest
         {
-            Directory.CreateDirectory(outsideDir);
-            await File.WriteAllTextAsync(outsideFile, "{}");
-            try
-            {
-                File.CreateSymbolicLink(linkPath, outsideFile);
-            }
-            catch (IOException)
-            {
-                return;
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return;
-            }
-            catch (PlatformNotSupportedException)
-            {
-                return;
-            }
+            Command = "canvas.a2ui.push",
+            Args = Parse(JsonSerializer.Serialize(new { jsonlPath = Path.Combine(Path.GetTempPath(), "unavailable.jsonl") }))
+        });
+        Assert.False(result.Ok);
+        Assert.Equal("Failed to read jsonlPath", result.Error);
+    }
 
-            var cap = new CanvasCapability(NullLogger.Instance);
-            var req = new NodeInvokeRequest
-            {
-                Id = "sec4",
-                Command = "canvas.a2ui.push",
-                Args = Parse($"{{\"jsonlPath\":{JsonSerializer.Serialize(linkPath)}}}"),
-            };
-
-            var res = await cap.ExecuteAsync(req);
-
-            Assert.False(res.Ok);
-            Assert.Equal("Failed to read jsonlPath", res.Error);
-        }
-        finally
+    [Fact]
+    public async Task A2UIPush_SandboxDenialDoesNotReachTheRenderer()
+    {
+        var cap = new CanvasCapability(NullLogger.Instance, (_, _, _) =>
+            Task.FromException<byte[]?>(new OpenClaw.Shared.FileTransfer.FileCommandException(
+                "PERMISSION_DENIED", "The shared policy denies this folder.")));
+        var rendered = false;
+        cap.A2UIPushRequested += (_, _) => rendered = true;
+        var result = await cap.ExecuteAsync(new NodeInvokeRequest
         {
-            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-            try { File.Delete(linkPath); } catch { }
-            // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-            try { Directory.Delete(outsideDir, recursive: true); } catch { }
-        }
+            Command = "canvas.a2ui.push",
+            Args = Parse(JsonSerializer.Serialize(new { jsonlPath = Path.Combine(Path.GetTempPath(), "denied.jsonl") }))
+        });
+        Assert.False(result.Ok);
+        Assert.False(rendered);
     }
 }

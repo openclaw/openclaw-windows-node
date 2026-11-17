@@ -5,6 +5,19 @@ namespace OpenClaw.Connection;
 
 public sealed record GatewayRegistrySnapshot(IReadOnlyList<GatewayRecord> Records, string? ActiveId);
 
+/// <summary>Result of reading a registry file published by another instance.</summary>
+public enum ExternalSnapshotAdoption
+{
+    /// <summary>Memory now matches that file, or there was no file and nothing loaded to keep.</summary>
+    Adopted,
+
+    /// <summary>This instance still has edits that were not saved.</summary>
+    UnsavedEdits,
+
+    /// <summary>The file is missing, unreadable, or not a registry this instance can adopt.</summary>
+    Unavailable,
+}
+
 /// <summary>
 /// Pure data catalog of known gateway endpoints. Persistence only — no runtime state.
 /// Thread-safe: lock-protected internal list; events fire outside the lock.
@@ -104,8 +117,69 @@ public sealed class GatewayRegistry
     public GatewayRegistrySnapshot AdoptPersistedSnapshot(GatewayRegistrySnapshot expectedMemory) =>
         AdoptPersistedCore(expectedMemory, null, null);
 
+    /// <summary>
+    /// Loads a registry file written by another instance when this instance has no unsaved edits.
+    /// A missing file does not clear a registry this instance already loaded. Known pipeline
+    /// output still goes through <see cref="ReconcileSetupOutcome"/>.
+    /// </summary>
+    public ExternalSnapshotAdoption TryAdoptExternalSnapshot()
+    {
+        GatewayRegistrySnapshot baseline;
+        lock (_lock)
+        {
+            if (!HasSameSetupAuthority(new(_records, _activeId), _persisted))
+                return ExternalSnapshotAdoption.UnsavedEdits;
+            baseline = _persisted;
+        }
+
+        try
+        {
+            AdoptPersistedCore(baseline, null, null, missingFileIsUnpublished: true);
+            return ExternalSnapshotAdoption.Adopted;
+        }
+        catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException or JsonException
+            or IOException or UnauthorizedAccessException)
+        {
+            _logger.Warn($"Could not adopt the saved Gateway registry: {ex.Message}");
+            return ExternalSnapshotAdoption.Unavailable;
+        }
+    }
+
+    /// <summary>
+    /// Removes a gateway and saves. If the save fails, the in-memory list is restored.
+    /// </summary>
+    public void RemoveAndSave(string id)
+    {
+        List<GatewayRecord> snapshot;
+        string? activeId;
+        lock (_lock)
+        {
+            var beforeRecords = _records.ToList();
+            var beforeActive = _activeId;
+            _records.RemoveAll(record => record.Id == id);
+            if (_activeId == id)
+                _activeId = null;
+            try
+            {
+                SaveLocked();
+            }
+            catch
+            {
+                _records = beforeRecords;
+                _activeId = beforeActive;
+                throw;
+            }
+
+            snapshot = _records.ToList();
+            activeId = _activeId;
+        }
+
+        Changed?.Invoke(this, new GatewayRegistryChangedEventArgs(snapshot, activeId));
+    }
+
     private GatewayRegistrySnapshot AdoptPersistedCore(
-        GatewayRegistrySnapshot baseline, GatewayRegistrySnapshot? expectedOutput, string? completedGatewayId)
+        GatewayRegistrySnapshot baseline, GatewayRegistrySnapshot? expectedOutput, string? completedGatewayId,
+        bool missingFileIsUnpublished = false)
     {
         GatewayRegistrySnapshot snapshot;
         bool changed;
@@ -114,6 +188,13 @@ public sealed class GatewayRegistry
             using var lease = PersistenceFileLease.Acquire(_filePath);
             if (!HasSameSetupAuthority(new(_records, _activeId), baseline))
                 throw new InvalidOperationException("The Gateway registry changed during setup. Refresh before continuing.");
+            if (missingFileIsUnpublished && !_fs.FileExists(_filePath))
+            {
+                if (baseline.Records.Count == 0 && baseline.ActiveId is null)
+                    return new(_records.ToArray(), _activeId);
+                throw new FileNotFoundException("The saved Gateway registry is not on disk.");
+            }
+
             var data = _fs.FileExists(_filePath)
                 ? JsonSerializer.Deserialize<RegistryData>(_fs.ReadAllText(_filePath), s_jsonOptions)
                     ?? throw new InvalidDataException("The saved Gateway registry is invalid.")

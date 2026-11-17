@@ -10,7 +10,7 @@ public sealed record ChatTimelinePresentationContext(
     string? SessionId,
     IReadOnlyList<ChatTimelineItem> Entries,
     bool HasMoreHistory,
-    Action? OnLoadMoreHistory,
+    Func<Task>? OnLoadMoreHistory,
     IReadOnlyDictionary<string, ChatEntryMetadata>? EntryMetadata = null,
     long TimelineGeneration = 0,
     string UserSenderLabel = "OpenClaw Windows Tray",
@@ -30,4 +30,26 @@ public sealed record ChatTimelinePresentationContext(
     Action<string>? OnCancelQueuedMessage = null,
     ChatRunProgressPresentation? RunProgress = null,
     Func<string, ChatMediaContentInfo, CancellationToken, Task<AssistantFileDownloadStatus>>?
-        DownloadAssistantFileAsync = null);
+        DownloadAssistantFileAsync = null,
+    ChatThread? Session = null,
+    bool ShowReasoning = false,
+    bool ShowReasoningPreview = false,
+    ChatReasoningStream? ReasoningStream = null,
+    long HistoryRevision = 0,
+    long? ToolOutputConnectionEpoch = null,
+    Func<ChatToolOutputRequest, CancellationToken, Task<ChatToolOutputResult>>? LoadToolOutputAsync = null,
+    ChatToolDetailsProfileState ToolDetailsProfileState = default,
+    Func<ChatToolDetailsProfileState>? ReadToolDetailsProfileState = null,
+    bool LoadingOlderHistory = false,
+    ChatToolActivityExpansionState? ToolExpansionState = null,
+    string UserDisplayName = "",
+    Microsoft.UI.Xaml.Media.ImageSource? UserProfilePicture = null,
+    Action<ChatToolDetailRequest>? OnOpenToolDetails = null,
+    IReadOnlyList<ChatThread>? ChildThreads = null,
+    // Tool row links: the workspace file a row names, and the subagent session a launch started.
+    Action<string>? OnOpenWorkspaceFile = null,
+    Func<string, bool>? CanOpenSession = null,
+    Action<string>? OnOpenSession = null,
+    Action<ChatAssistantMediaPresentation>? OnOpenAssistantFile = null,
+    // The saved reasoning row the current thought is still writing, if any.
+    string? ActiveReasoningId = null);

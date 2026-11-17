@@ -42,7 +42,7 @@ public sealed class NativeCompletionPresentationTests
         Assert.True(commit.IndexOf("_nativeSetupFailureVersion++", StringComparison.Ordinal) <
             commit.IndexOf("_nativeSetupFailureDialog?.Hide();", StringComparison.Ordinal));
         var failure = manager[manager.IndexOf("public async Task ShowNativeSetupFailureAsync", StringComparison.Ordinal)..
-            manager.IndexOf("private void ShowHubCore", StringComparison.Ordinal)];
+            manager.IndexOf("private Task<bool> ShowHubCoreAsync", StringComparison.Ordinal)];
         var duplicateUnavailable = failure.IndexOf(
             "if (_nativeSetupFailureVisible && failure == SetupNativeLaunchFailure.Unavailable) return;",
             StringComparison.Ordinal);
@@ -114,7 +114,7 @@ public sealed class NativeCompletionPresentationTests
         Assert.Contains("!_admitted", page);
         Assert.DoesNotContain("SetupNativeCompletionCoordinator", page);
         var readyXaml = Read(@"src\OpenClaw.SetupEngine.UI\Pages\AiReadyPage.xaml");
-        Assert.DoesNotContain("Text=\"Your AI is ready\"", readyXaml);
+        Assert.DoesNotContain("Text=\"All set!\"", readyXaml);
         Assert.DoesNotContain("Mood=\"Celebrating\"", readyXaml);
         Assert.Contains("_presentation.CompleteMount(generation)", ready);
         Assert.Contains("_presentation.IsReady", ready);
@@ -201,15 +201,16 @@ public sealed class NativeCompletionPresentationTests
     }
 
     [Fact]
-    public void NativeConnectionProgress_HasItsOwnRowAboveWrappableActions()
+    public void NativeConnectionActions_KeepOneWrappableRow()
     {
         var page = XDocument.Parse(Read(@"src\OpenClaw.SetupEngine.UI\Pages\SetupNativeConnectionPage.xaml"));
         XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
-        var progress = Assert.Single(page.Descendants(), item => (string?)item.Attribute(x + "Name") == "FlowProgress");
-        Assert.Equal("Auto,Auto", (string?)progress.Parent!.Attribute("RowDefinitions"));
-        foreach (var button in progress.Parent.Elements().Where(item => item.Name.LocalName == "Button"))
+        var footer = Assert.Single(page.Descendants(), item => (string?)item.Attribute(x + "Name") == "NavigationFooter");
+        Assert.Equal("Auto", (string?)footer.Attribute("RowDefinitions"));
+        Assert.DoesNotContain(page.Descendants(), item => (string?)item.Attribute(x + "Name") == "FlowProgress");
+        foreach (var button in footer.Elements().Where(item => item.Name.LocalName == "Button"))
         {
-            Assert.Equal("1", (string?)button.Attribute("Grid.Row"));
+            Assert.Null(button.Attribute("Grid.Row"));
             Assert.Equal("0", (string?)button.Attribute("MinWidth"));
             Assert.Equal("{StaticResource WrappedFooterAction}", (string?)button.Attribute("ContentTemplate"));
         }

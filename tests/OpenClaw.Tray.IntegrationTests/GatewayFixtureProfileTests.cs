@@ -47,7 +47,7 @@ public sealed class GatewayFixtureProfileTests
         Assert.True(settings.RootElement.GetProperty("EnableMcpServer").GetBoolean());
         foreach (var disabled in new[]
         {
-            "EnableNodeMode", "AutoStart", "GlobalHotkeyEnabled", "NodeSystemRunEnabled",
+            "EnableNodeMode", "AutoStart", "GlobalHotkeyEnabled", "ShowDesktopCompanion", "NodeSystemRunEnabled",
             "NodeBrowserProxyEnabled", "NodeScreenEnabled", "NodeCameraEnabled",
             "NodeLocationEnabled", "NodeCanvasEnabled", "EnableManagedLocalGatewayAutoRepair",
             "NodeOllamaInferenceEnabled", "VoiceTtsEnabled", "UseLegacyWebChat"
@@ -117,6 +117,16 @@ public sealed class GatewayFixtureProfileTests
         Assert.False(Directory.Exists(firstRoot));
         Assert.True(Directory.Exists(second.DataDirectory));
         Assert.Equal("synthetic sentinel, never a real pairing", File.ReadAllText(sentinelFile));
+    }
+
+    [Fact]
+    public void CleanupAcceptsAnAlreadyRemovedOwnedProfileRoot()
+    {
+        var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        var root = profile.RunDirectory;
+        Directory.Delete(root, recursive: true);
+        profile.Dispose();
+        Assert.False(Directory.Exists(root));
     }
 
     [Fact]

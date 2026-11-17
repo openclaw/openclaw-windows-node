@@ -18,12 +18,16 @@ internal readonly record struct NativeToolIdentity(
 internal static class NativeToolProjector
 {
     internal static IReadOnlyList<string> DisplayArgumentKeys { get; } =
-        ["command", "path", "file_path", "query", "url", "pattern"];
+        ["command", "path", "file_path", "filePath", "notebook_path", "query", "url", "pattern"];
 
     internal const int MaxDisplayValueChars = 240;
     internal const int MaxPersistedToolArgumentsChars = 64 * 1024;
     private const int MaxIdentityChars = 80;
-    private const int ToolOutputMaxChars = 4000;
+    private const int ToolOutputMaxChars = OpenClawChatDataProvider.MaxEntryTextBytes;
+    private static readonly JsonSerializerOptions DetailJsonOptions = new() { WriteIndented = true };
+    private static readonly string[] CredentialArgumentFragments =
+        ["password", "passwd", "secret", "credential", "authorization", "cookie", "privatekey", "apikey",
+         "apitoken", "cardnumber", "cardcvc", "cardcvv", "securitycode"];
 
     private static readonly (string Alias, string Canonical)[] ToolAliases =
     [
@@ -199,6 +203,153 @@ internal static class NativeToolProjector
         {
             return null;
         }
+    }
+
+    internal static ChatToolInputDetails? ExtractInputDetails(JsonElement data, string toolName)
+    {
+        if (toolName == "sessions_yield" || data.ValueKind != JsonValueKind.Object)
+            return null;
+        foreach (var name in new[] { "args", "input" })
+            if (data.TryGetProperty(name, out var input))
+                return ProjectInputDetails(input, toolName);
+        var known = new JsonObject();
+        foreach (var key in DisplayArgumentKeys)
+            if (data.TryGetProperty(key, out var value) && value.ValueKind == JsonValueKind.String)
+                known[key] = value.GetString();
+        return known.Count == 0 ? null
+            : ProjectInputDetails(JsonSerializer.SerializeToElement(known), toolName);
+    }
+
+    internal static ChatToolResultReference? ProjectResultReference(OpenClaw.Shared.ChatToolContentInfo tool, string? sessionId)
+    {
+        var limited = Encoding.UTF8.GetByteCount(ExecApprovalSecretRedactor.Redact(tool.Text ?? "")) >
+            OpenClawChatDataProvider.MaxEntryTextBytes;
+        return tool.ResultMessageId is null && !tool.OutputTruncated && !limited ? null
+            : new(tool.ResultMessageId, tool.OutputTruncated || limited,
+                limited ? "client-limit" : tool.TruncationReason, sessionId, tool.CallId);
+    }
+
+    internal static ChatToolInputDetails? ProjectInputDetails(JsonElement? value, string toolName)
+    {
+        if (toolName == "sessions_yield" || value is null || value.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+            return null;
+        var input = value.Value;
+        if (input.GetRawText().Length > MaxPersistedToolArgumentsChars)
+            return new("", Unavailable: true);
+        if (input.ValueKind == JsonValueKind.String)
+        {
+            var text = input.GetString() ?? "";
+            try
+            {
+                using var document = JsonDocument.Parse(text);
+                if (document.RootElement.ValueKind == JsonValueKind.Object)
+                    return ProjectInputDetails(document.RootElement, toolName);
+            }
+            catch (JsonException)
+            {
+                // Free-form tool input is literal text, not necessarily serialized arguments.
+            }
+            var sanitized = ExecApprovalCommandDisplaySanitizer.SanitizeWarningTextWithStatus(text);
+            return new(sanitized.Text,
+                Lossy: sanitized.Redacted || sanitized.Truncated || sanitized.Oversized || ChangesLineCount(text));
+        }
+        var loss = new InputLoss();
+        var safe = SafeInputNode(input, loss);
+        string? command = null;
+        string? preview = null;
+        if (safe is JsonObject args)
+        {
+            if (ChatToolActivityPresentation.Classify(toolName, args) == ChatToolActivityCategory.Command &&
+                args["command"] is JsonValue commandValue && commandValue.TryGetValue<string>(out command) && command is not null)
+            {
+                args.Remove("command");
+                preview = SanitizeToolDisplayValue(command.ReplaceLineEndings(" "));
+            }
+            foreach (var key in new[] { "title", "message", "prompt", "task", "query", "text", "description" })
+                if (args[key] is JsonValue candidate && candidate.TryGetValue<string>(out var text) &&
+                    !string.IsNullOrWhiteSpace(text))
+                {
+                    preview = SanitizeToolDisplayValue(text.Split('\n')[0]);
+                    break;
+                }
+            if (args.Count == 0 && command is not null)
+                return new("", command, preview);
+        }
+        var json = safe?.ToJsonString(DetailJsonOptions) ?? "null";
+        var redacted = ExecApprovalSecretRedactor.Redact(json);
+        var bounded = ChatContentFormatting.TruncateForChatEntry(redacted);
+        return new(bounded, command, preview, Lossy: loss.Value || json != redacted || bounded != redacted);
+    }
+
+    /// <summary>Set when redaction or truncation changed any projected input value.</summary>
+    private sealed class InputLoss
+    {
+        internal bool Value;
+    }
+
+    /// <summary>
+    /// Parses redacted disclosure input back into its arguments. Returns null when the input was
+    /// withheld, free-form, or cut so that it is no longer valid JSON. String values remain
+    /// untrusted and may still carry <see cref="IsCutDisplayText"/> markers.
+    /// </summary>
+    internal static JsonObject? ReadInputArguments(ChatToolInputDetails? details)
+    {
+        if (details is null || details.Unavailable || string.IsNullOrWhiteSpace(details.Text))
+            return null;
+        try
+        {
+            return JsonNode.Parse(details.Text) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>True when sanitized input text no longer holds the complete original value.</summary>
+    internal static bool IsCutDisplayText(string text) =>
+        text.EndsWith(ExecApprovalCommandDisplaySanitizer.TruncationMarker, StringComparison.Ordinal) ||
+        text == ExecApprovalCommandDisplaySanitizer.WarningOversizedMarker;
+
+    private static JsonNode? SafeInputNode(JsonElement input, InputLoss loss)
+    {
+        if (input.ValueKind == JsonValueKind.Object)
+        {
+            var result = new JsonObject();
+            foreach (var property in input.EnumerateObject())
+            {
+                var credential = IsCredentialArgument(property.Name);
+                loss.Value |= credential;
+                result[property.Name] = credential
+                    ? JsonValue.Create("[redacted]") : SafeInputNode(property.Value, loss);
+            }
+            return result;
+        }
+        return input.ValueKind switch
+        {
+            JsonValueKind.Array => new JsonArray(input.EnumerateArray().Select(item => SafeInputNode(item, loss)).ToArray()),
+            JsonValueKind.String => SafeString(input.GetString() ?? "", loss),
+            _ => JsonNode.Parse(input.GetRawText()),
+        };
+    }
+
+    private static JsonNode SafeString(string text, InputLoss loss)
+    {
+        var sanitized = ExecApprovalCommandDisplaySanitizer.SanitizeWarningTextWithStatus(text);
+        loss.Value |= sanitized.Redacted || sanitized.Truncated || sanitized.Oversized || ChangesLineCount(text);
+        return JsonValue.Create(sanitized.Text);
+    }
+
+    // Display turns Unicode line and paragraph separators into LF, which the tool's own line count did not.
+    private static bool ChangesLineCount(string text) =>
+        text.Contains('\u2028', StringComparison.Ordinal) || text.Contains('\u2029', StringComparison.Ordinal);
+
+    private static bool IsCredentialArgument(string key)
+    {
+        var normalized = new string(key.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+        return normalized is "auth" or "token" or "pin" or "otp" or "verificationcode" ||
+            normalized.EndsWith("token", StringComparison.Ordinal) ||
+            CredentialArgumentFragments.Any(fragment => normalized.Contains(fragment, StringComparison.Ordinal));
     }
 
     internal static string SanitizeToolDisplayValue(string? value)
@@ -400,7 +551,7 @@ internal static class NativeToolProjector
                 return;
             }
 
-            var text = textValue.GetString()?.Trim();
+            var text = textValue.GetString();
             if (string.IsNullOrEmpty(text))
                 return;
 
@@ -623,8 +774,6 @@ internal static class NativeToolProjector
 
     internal static string TruncateToolOutput(string text)
     {
-        if (text.Length <= ToolOutputMaxChars)
-            return text;
-        return text[..ToolOutputMaxChars] + "\n…(truncated)";
+        return ChatContentFormatting.TruncateForChatEntry(ExecApprovalSecretRedactor.Redact(text));
     }
 }

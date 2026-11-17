@@ -1,6 +1,4 @@
 using System.Text.Json;
-using System.Text.RegularExpressions;
-using OpenClaw.Shared;
 
 namespace OpenClawTray.Presentation;
 
@@ -9,7 +7,7 @@ internal static class HubSearchCatalog
     internal static readonly (string Tag, string Path)[] Counterparts =
     [
         ("connection", "/settings/connection"), ("sessions", "/sessions"), ("skills", "/skills"),
-        ("instances", "/settings/devices"),
+        ("systems", "/systems"),
         ("cron", "/automations"), ("config", "/settings/general"), ("usage", "/usage")
     ];
 
@@ -24,43 +22,12 @@ internal static class HubSearchCatalog
         ("Activity", "/activity", false), ("Portals", "/portals", false), ("Worktrees", "/worktrees", false)
     ];
 
-    internal static bool SupportsDashboard(string? version) =>
-        OpenClawReleaseVersion.TryParseStable(version, out var release) &&
-        release.Year == 2026 && release.Month == 10 && release.Patch == 9;
+    // The released query contract lets the Gateway resolve its own session route and main key.
+    internal static string? SessionPath(string? key) =>
+        string.IsNullOrWhiteSpace(key) ? null : $"/chat?session={Uri.EscapeDataString(key)}";
 
-    internal static bool SupportsSkillsDashboard(string? version) =>
-        SupportsDashboard(version) ||
-        OpenClawReleaseVersion.TryParseStable(version, out var release) &&
-        release.Year == 2026 && release.Month == 11 && release.Patch == 1;
-
-    // Released session-url-contract exactKey grammar. Never derive a shortened session identity.
-    internal static string? SessionPath(string key, bool? isMain = null)
+    internal static string? Counterpart(string tag)
     {
-        var parts = key.Split(':');
-        if (parts.Length < 3 || parts[0] != "agent" || parts.Any(string.IsNullOrEmpty) ||
-            !Regex.IsMatch(parts[1], "^[a-z0-9][a-z0-9_-]*$", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking))
-            return null;
-        var root = $"/chat/{Escape(parts[1])}";
-        var rest = parts.Skip(2).ToArray();
-        if (isMain == true || isMain is null && rest.Length == 1 && rest[0].Equals("main", StringComparison.OrdinalIgnoreCase))
-            return root;
-        if (rest.Length == 1 && (rest[0].ToLowerInvariant() is "main" or "global" or "boot" or "sessions" ||
-            Regex.IsMatch(rest[0], "^(?:.*-)?[0-9a-f]{8,32}$", RegexOptions.IgnoreCase | RegexOptions.NonBacktracking)))
-            return $"{root}/~key/{Escape(rest[0])}";
-        return $"{root}/{string.Join("/", rest.Select(Escape))}";
-
-        static string Escape(string value)
-        {
-            if (value == ".") return "~dot";
-            if (value == "..") return "~dotdot";
-            var encoded = Uri.EscapeDataString(value).Replace(".", "%2E");
-            return encoded.StartsWith('~') ? "~" + encoded : encoded;
-        }
-    }
-
-    internal static string? Counterpart(string tag, bool supported)
-    {
-        if (!supported) return null;
         if (tag.StartsWith("agent:", StringComparison.Ordinal))
         {
             var parts = tag.Split(':');
@@ -72,11 +39,8 @@ internal static class HubSearchCatalog
 
     internal static string? ContextualDashboardPath(
         WorkspaceDestination destination,
-        string? currentSessionKey,
-        bool? isMain,
-        string? gatewayVersion)
+        string? currentSessionKey)
     {
-        var supported = SupportsDashboard(gatewayVersion);
         if (destination.Page == WorkspacePageId.Settings)
         {
             if (destination.CompanionTag is not { } tag)
@@ -84,17 +48,16 @@ internal static class HubSearchCatalog
             if (tag.StartsWith("agent:", StringComparison.Ordinal) &&
                 tag.IndexOf(':', "agent:".Length) < 0)
                 return null;
-            return Counterpart(tag, supported);
+            return Counterpart(tag);
         }
-        if (!supported || destination.Page != WorkspacePageId.Home)
+        if (destination.Page != WorkspacePageId.Home)
             return null;
 
-        var sessionKey = destination.SessionKey ?? currentSessionKey;
-        return string.IsNullOrWhiteSpace(sessionKey) ? null : SessionPath(sessionKey, isMain);
+        return SessionPath(destination.SessionKey ?? currentSessionKey);
     }
 
     internal static IEnumerable<HubSearchItem> Navigation(
-        IEnumerable<HubCommand> commands, bool connected, bool dashboardSupported, Func<string, string> localize)
+        IEnumerable<HubCommand> commands, bool connected, Func<string, string> localize)
     {
         var destinations = commands.GroupBy(command =>
             command.Action is { Kind: HubCommandActionKind.Navigate, Value: { } tag }
@@ -117,7 +80,7 @@ internal static class HubSearchCatalog
                 yield return new($"page:{tag}", HubSearchGroup.Settings, localize(presentation.TitleKey), command.Subtitle,
                     presentation.Icon, new(HubSearchTargetKind.Page, tag),
                     string.Join(" ", destination.Select(alias => $"{alias.Action.Value} {alias.Title} {alias.Subtitle}")),
-                    Counterpart(tag, dashboardSupported));
+                    connected ? Counterpart(tag) : null);
             }
             else if (command.Action.Kind == HubCommandActionKind.OpenDashboard && string.IsNullOrEmpty(command.Action.Value))
             {
@@ -129,7 +92,7 @@ internal static class HubSearchCatalog
     }
 
     internal static IReadOnlyList<HubSearchItem> ParseCatalog(
-        string method, JsonElement payload, string agentId, bool dashboardSupported, bool skillsDashboardSupported = false)
+        string method, JsonElement payload, string agentId)
     {
         var (property, group) = method switch
         {
@@ -143,7 +106,6 @@ internal static class HubSearchCatalog
             rows.ValueKind != JsonValueKind.Array)
             throw new InvalidDataException("Invalid search catalog response.");
         var items = new List<HubSearchItem>();
-        var skillsSupported = dashboardSupported || skillsDashboardSupported;
         foreach (var row in rows.EnumerateArray())
         {
             var id = Text(row, group == HubSearchGroup.Skills ? "skillKey" : "id");
@@ -155,11 +117,10 @@ internal static class HubSearchCatalog
             var target = group switch
             {
                 HubSearchGroup.Automations => new HubSearchTarget(HubSearchTargetKind.Page, agent.Length == 0 ? "cron" : $"agent:{agent}:cron", id),
-                HubSearchGroup.Skills => new(HubSearchTargetKind.Dashboard, skillsSupported ? "/skills" : ""),
+                HubSearchGroup.Skills => new(HubSearchTargetKind.Dashboard, "/skills"),
                 HubSearchGroup.Agents => new(HubSearchTargetKind.Page, $"agent:{id}"),
                 _ => new(HubSearchTargetKind.Dashboard, "/settings/model-providers")
             };
-            if (group == HubSearchGroup.Models && !dashboardSupported) continue;
             if (group == HubSearchGroup.Agents && row.TryGetProperty("identity", out var identity))
                 name = Text(identity, "name") ?? name;
             var dashboard = group switch
@@ -173,12 +134,12 @@ internal static class HubSearchCatalog
                 JsonSerializer.Serialize(new[] { group.ToString(), group == HubSearchGroup.Skills ? agentId : provider, id }),
                 group, name, detail, "\uE8A5", target,
                 $"{id} {Text(row, "name")} {Text(row, "source")} {Text(row, "workspace")} {Text(row, "alias")} {provider} {Tags(row)}",
-                (group == HubSearchGroup.Skills ? skillsSupported : dashboardSupported) ? dashboard : null));
+                dashboard));
         }
         return items;
     }
 
-    internal static IReadOnlyList<HubSearchItem> Config(JsonElement payload, bool dashboardSupported, out bool partial)
+    internal static IReadOnlyList<HubSearchItem> Config(JsonElement payload, out bool partial)
     {
         if (payload.ValueKind != JsonValueKind.Object || !payload.TryGetProperty("schema", out var schema) ||
             schema.ValueKind != JsonValueKind.Object)
@@ -202,7 +163,7 @@ internal static class HubSearchCatalog
                     Text(hint, "label") ?? Text(node, "title") ?? path,
                     path, "\uE713", new(HubSearchTargetKind.Page, "config", path),
                     $"{path} {Text(hint, "help")} {Text(node, "description")} {Tags(hint)}",
-                    dashboardSupported ? "/settings/general" : null));
+                    "/settings/general"));
             if (node.TryGetProperty("properties", out var properties) && properties.ValueKind == JsonValueKind.Object)
                 foreach (var property in properties.EnumerateObject())
                     Visit(property.Value, path.Length == 0 ? property.Name : $"{path}.{property.Name}", depth + 1);

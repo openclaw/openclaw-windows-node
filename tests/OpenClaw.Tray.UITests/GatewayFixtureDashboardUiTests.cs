@@ -24,7 +24,9 @@ public sealed partial class GatewayFixtureUiTests
     private const string ScreenshotsVariable = "OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS";
     private const string SetupVerifyMethod = "openclaw.setup.verify";
     private const string RetryButtonName = "Retry";
-    private const string PairDeviceMenuItemName = "Pair device";
+    private const string PairDeviceMenuItemName = "Pair a device";
+    // The account menu opens the Dashboard Devices page through its upstream /nodes alias.
+    private const string PairDeviceRoute = "nodes";
     private const string OwnerButtonId = "WorkspaceOwner";
     private const string SetupFailureTitle = "Could not open your setup destination";
     private const string SetupChangedMessage = "The verified Gateway or agent changed.";
@@ -40,6 +42,101 @@ public sealed partial class GatewayFixtureUiTests
         (DashboardBrowser.SuppressedLaunchLogPrefix, DashboardOutcome.Opened),
         (DashboardBrowser.SimulatedFailureLogPrefix, DashboardOutcome.SimulatedFailure),
     ];
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    [Trait("Category", "Accessibility")]
+    public async Task ConnectionGlancePills_ExplainTheirStateAndOpenTheMatchingDashboardViews()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "connection" });
+            await WaitUiAsync(run, () => FindById(run, "ConnectionPageMarker") is { Current.IsOffscreen: false },
+                "Connection page ready");
+
+            Task PublishHealthAsync(string status, string? error = null, int clients = 2) =>
+                run.Gateway.PublishHealthAsync(new
+                {
+                    channels = new
+                    {
+                        telegram = new { configured = true, running = true },
+                        slack = new { configured = true, status, lastError = error },
+                    },
+                    presence = Enumerable.Range(1, clients).Select(index => new { host = $"fixture-client-{index}" }).ToArray(),
+                });
+
+            await PublishHealthAsync("stopped");
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels") is
+                { Current.Name: "1/2 channels" } && FindById(run, "ConnectionGlanceUsage") is not null,
+                "partial channel readiness and usage pills");
+            Assert.Contains("How this PC reaches the Gateway", FindById(run, "ConnectionGlanceTopology")!.Current.HelpText);
+            Assert.Contains("Windows PC running Companion", FindById(run, "ConnectionGlanceHostname")!.Current.HelpText);
+            var channels = FindById(run, "ConnectionGlanceChannels")!;
+            Assert.Contains("Ready channels: 1/2.", channels.Current.HelpText);
+            Assert.Contains("telegram: running", channels.Current.HelpText);
+            Assert.Contains("slack: stopped", channels.Current.HelpText);
+            channels.SetFocus();
+            await WaitUiAsync(run, () => channels.Current.HasKeyboardFocus, "channel pill focused before refresh");
+
+            const string error = "Sign in again";
+            await PublishHealthAsync("error", error);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels")?.Current.HelpText
+                .Contains($"slack: error ({error})", StringComparison.Ordinal) == true,
+                "channel details updated without changing the ready count");
+            Assert.Equal("1/2 channels", FindById(run, "ConnectionGlanceChannels")!.Current.Name);
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus,
+                "Channel readiness updates must keep keyboard focus on the channel pill.");
+            await PublishHealthAsync("error", error, clients: 0);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceClients") is null,
+                "client pill removed while channels retains focus");
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus);
+            await PublishHealthAsync("running");
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels") is
+                { Current.Name: "2/2 channels" } && FindById(run, "ConnectionGlanceClients") is not null,
+                "healthy channel label and restored client pill");
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus);
+            await PublishHealthAsync("error", error);
+            await WaitUiAsync(run, () => FindById(run, "ConnectionGlanceChannels") is
+                { Current.Name: "1/2 channels" }, "partial readiness restored");
+            Assert.True(FindById(run, "ConnectionGlanceChannels")!.Current.HasKeyboardFocus);
+
+            var copy = FindById(run, "ConnectionGlanceSharedToken")!;
+            Assert.Equal(ControlType.Button, copy.Current.ControlType);
+            Assert.True(copy.Current.IsKeyboardFocusable);
+            Assert.Contains("Keep it private", copy.Current.HelpText);
+            Assert.Contains("UTC", FindById(run, "ConnectionGlanceUsage")!.Current.HelpText);
+            var window = AppWindows(run).Single(candidate => candidate.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionPageMarker")) is not null);
+            AxeHelper.AssertNoAccessibilityErrors(
+                new IntPtr(window.Current.NativeWindowHandle), context: "Connection glance pills",
+                targetProcessId: run.AppProcessId);
+            await CaptureIfRequestedAsync(run, "connection-glance-details.png");
+
+            var expected = new List<(DashboardOutcome Outcome, string Route)>();
+            foreach (var (id, route) in new[]
+            {
+                ("ConnectionGlanceChannels", "channels"),
+                ("ConnectionGlanceClients", "systems"),
+                ("ConnectionGlanceUsage", "usage"),
+            })
+            {
+                var button = FindById(run, id)!;
+                Assert.Equal(ControlType.Button, button.Current.ControlType);
+                Assert.True(button.Current.IsKeyboardFocusable);
+                Assert.Contains("web dashboard", button.Current.HelpText);
+                Invoke(button);
+                expected.Add((DashboardOutcome.Opened, route));
+                await WaitForDashboardLaunchesAsync(run, expected.Count, $"{route} pill opening the Dashboard");
+            }
+            AssertDashboardLaunchRoutes(run, expected.ToArray());
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "connection-glance-help.json"),
+                JsonSerializer.Serialize(new[]
+                {
+                    "ConnectionGlanceTopology", "ConnectionGlanceHostname", "ConnectionGlanceChannels",
+                    "ConnectionGlanceClients", "ConnectionGlanceUsage", "ConnectionGlanceSharedToken",
+                }.Select(id => new { id, help = FindById(run, id)!.Current.HelpText })));
+        }, scenario: GatewayScenario.CreateAccessibilityBaseline());
+    }
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
@@ -122,13 +219,32 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task AccountMenu_CurrentGatewayExposesItsStateWithoutAnAccessibleShortcut()
+    {
+        await WithAppAsync(async run =>
+        {
+            await OpenWorkspaceAsync(run);
+            Invoke(FindById(run, OwnerButtonId)!);
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwnerGateway") is not null, "Gateway submenu ready");
+            ((ExpandCollapsePattern)FindById(run, "WorkspaceOwnerGateway")!
+                .GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceOwnerGateway_0") is not null, "current Gateway row ready");
+            var current = FindById(run, "WorkspaceOwnerGateway_0")!;
+            Assert.Equal("Current gateway", current.Current.ItemStatus);
+            Assert.Equal("Current gateway. Connected", current.Current.HelpText);
+            Assert.Empty(current.Current.AcceleratorKey);
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task ChannelsNavigation_OpensTheGatewayDashboardAndOffersRetryWhenTheBrowserFails()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false }
-                && FindById(run, OwnerButtonId)?.Current.Name == "Fixture Owner",
+                && FindById(run, OwnerButtonId)?.Current.Name == "Fixture",
                 "Workspace chat with the authenticated owner");
 
             await run.InvokeAsync("app.navigate", new { page = ChannelsRoute });
@@ -136,21 +252,21 @@ public sealed partial class GatewayFixtureUiTests
             Assert.NotNull(FindById(run, "ChatComposerInput"));
 
             await InvokeOwnerMenuItemAsync(run, PairDeviceMenuItemName);
-            await WaitForDashboardLaunchesAsync(run, 2, "Pair device opening the Dashboard");
+            await WaitForDashboardLaunchesAsync(run, 2, "Pair a device opening the Dashboard Devices page");
 
             ArmSimulatedBrowserFailure(run);
             await InvokeOwnerMenuItemAsync(run, PairDeviceMenuItemName);
             await WaitUiAsync(run, () => FindText(run, DashboardFailureMessage) is { Current.IsOffscreen: false },
                 "Dashboard failure dialog", HandoffSettleTimeout);
             var retry = Assert.Single(FindButtons(run, RetryButtonName));
-            AssertDashboardLaunches(run, DashboardOutcome.Opened, DashboardOutcome.Opened,
-                DashboardOutcome.SimulatedFailure);
+            AssertDashboardLaunchRoutes(run, (DashboardOutcome.Opened, ChannelsRoute), (DashboardOutcome.Opened, PairDeviceRoute),
+                (DashboardOutcome.SimulatedFailure, PairDeviceRoute));
             CaptureDialog(run, DashboardFailureMessage, "channels-navigation-browser-failed.png", retry);
 
             Invoke(retry);
             await WaitForDashboardLaunchesAsync(run, 4, "Retry opening the Dashboard");
-            AssertDashboardLaunches(run, DashboardOutcome.Opened, DashboardOutcome.Opened,
-                DashboardOutcome.SimulatedFailure, DashboardOutcome.Opened);
+            AssertDashboardLaunchRoutes(run, (DashboardOutcome.Opened, ChannelsRoute), (DashboardOutcome.Opened, PairDeviceRoute),
+                (DashboardOutcome.SimulatedFailure, PairDeviceRoute), (DashboardOutcome.Opened, PairDeviceRoute));
             await WaitUiAsync(run, () => FindText(run, DashboardFailureMessage) is null,
                 "Dashboard failure dialog closed by the retry", HandoffSettleTimeout);
         });
@@ -292,18 +408,22 @@ public sealed partial class GatewayFixtureUiTests
     private static Task WaitForDashboardLaunchesAsync(GatewayFixtureRun run, int count, string description) =>
         WaitUiAsync(run, () => DashboardLaunches(run).Count >= count, description, HandoffSettleTimeout);
 
-    private static void AssertDashboardLaunches(GatewayFixtureRun run, params DashboardOutcome[] expected)
+    private static void AssertDashboardLaunches(GatewayFixtureRun run, params DashboardOutcome[] expected) =>
+        AssertDashboardLaunchRoutes(run, expected.Select(outcome => (outcome, ChannelsRoute)).ToArray());
+
+    private static void AssertDashboardLaunchRoutes(
+        GatewayFixtureRun run, params (DashboardOutcome Outcome, string Route)[] expected)
     {
         var launches = DashboardLaunches(run);
-        Assert.Equal(expected, launches.Select(launch => launch.Outcome));
-        Assert.All(launches, launch => Assert.True(IsChannelsDashboard(run, launch),
-            $"The Dashboard target is not this run's Gateway Channels view: {launch.Target}"));
+        Assert.Equal(expected.Select(item => item.Outcome), launches.Select(launch => launch.Outcome));
+        Assert.All(launches.Zip(expected), pair => Assert.True(IsDashboardRoute(run, pair.First, pair.Second.Route),
+            $"The Dashboard target is not this run's Gateway {pair.Second.Route} view: {pair.First.Target}"));
     }
 
     // The tray logs the URL without its host and credentials, so the Gateway port and route identify the target.
-    private static bool IsChannelsDashboard(GatewayFixtureRun run, DashboardLaunch launch) =>
+    private static bool IsDashboardRoute(GatewayFixtureRun run, DashboardLaunch launch, string route) =>
         launch.Target.StartsWith("http://", StringComparison.Ordinal)
-        && launch.Target.EndsWith($":{run.Gateway.Endpoint.Port}/{ChannelsRoute}", StringComparison.Ordinal);
+        && launch.Target.EndsWith($":{run.Gateway.Endpoint.Port}/{route}", StringComparison.Ordinal);
 
     // DashboardBrowser logs every fixture launch, so the app's own log is the ordered record of browser hand-offs.
     private static List<DashboardLaunch> DashboardLaunches(GatewayFixtureRun run)

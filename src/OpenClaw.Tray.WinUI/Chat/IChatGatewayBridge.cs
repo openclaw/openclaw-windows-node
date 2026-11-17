@@ -1,5 +1,6 @@
 using OpenClaw.Shared;
 using OpenClawTray.Services;
+using System.Text.Json;
 
 namespace OpenClawTray.Chat;
 
@@ -11,6 +12,9 @@ namespace OpenClawTray.Chat;
 public interface IChatGatewayBridge : IDisposable
 {
     bool IsConnected { get; }
+    ChatToolDetailsProfileState ToolDetailsProfileState => default;
+    bool ToolDetailsAvailable => ToolDetailsProfileState.IsAvailable;
+    event EventHandler? ToolDetailsInvalidated { add { } remove { } }
     ConnectionStatus CurrentStatus { get; }
     /// <summary>Canonical main session key resolved by the gateway handshake; <c>null</c> until ready.</summary>
     string? MainSessionKey { get; }
@@ -74,6 +78,8 @@ public interface IChatGatewayBridge : IDisposable
             Error = "Response-aware sessions.compact is not supported by this chat bridge."
         });
     Task RequestSessionsAsync() => Task.CompletedTask;
+    Task<JsonElement> RequestAgentIdentityAsync(string agentId) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Agent identity is unavailable."));
     Task PatchSessionModelAsync(string sessionKey, string model);
     /// <summary>
     /// Clears the session's model override (tri-state <c>sessions.patch</c> with
@@ -89,11 +95,28 @@ public interface IChatGatewayBridge : IDisposable
     /// </summary>
     Task ClearSessionThinkingLevelAsync(string sessionKey);
     Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey);
+    Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
+        Task.FromException<ChatHistoryInfo>(new NotSupportedException("Older history is not available on this bridge."));
+    long? ChatMessageReadConnectionEpoch => null;
+    /// <summary>Reads the session's file list through <c>sessions.files.list</c>; unsupported when the bridge has no Gateway.</summary>
+    Task<SessionFileList> ListSessionFilesAsync(string sessionKey) =>
+        Task.FromResult(new SessionFileList { Key = sessionKey, IsSupported = false });
+    Task<ChatMessageReadResult> RequestChatMessageAsync(
+        string sessionKey, string sessionId, string messageId, int maxChars,
+        long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        Task.FromResult(new ChatMessageReadResult(ChatMessageReadStatus.Unsupported));
     Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
         string sessionKey,
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantMediaResolutionResult.Unavailable);
+    /// <summary>
+    /// Reads one session workspace file (<c>sessions.files.get</c>) on the given connection epoch. The client
+    /// bounds the whole call, including queueing and sending, and honors cancellation; there is no retry.
+    /// </summary>
+    Task<SessionFileContent> GetSessionFileAsync(
+        string sessionKey, string path, long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        Task.FromResult(new SessionFileContent { Key = sessionKey, Path = path, IsSupported = false });
     /// <summary>
     /// Downloads a structured file attachment through the default browser. The bridge
     /// resolves the ticketed Gateway URL and launches it itself; callers only receive the
@@ -135,6 +158,8 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     private readonly EventHandler<AgentEventInfo> _agentEventReceivedHandler;
     private readonly EventHandler<ModelsListInfo> _modelsListUpdatedHandler;
     private readonly EventHandler _modelCatalogInvalidatedHandler;
+    private readonly EventHandler _toolDetailsInvalidatedHandler;
+    private readonly ChatToolDetailsProfile _toolDetailsProfile;
     // _currentStatus is written from the gateway client's StatusChanged
     // callback (arbitrary thread) and read from CurrentStatus on the UI
     // thread. ``volatile`` gives us a memory barrier so the reader can't
@@ -154,6 +179,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         Func<Uri, Task<bool>>? launchUri = null)
     {
         _client = client;
+        _toolDetailsProfile = new ChatToolDetailsProfile(client,
+            () => ToolDetailsInvalidated?.Invoke(this, EventArgs.Empty),
+            category => Logger.Warn($"[ChatBridge] tool details profile unavailable ({category})."));
         PlacementGateway = client.CreateChatPlacementGateway();
         _launchUri = launchUri ?? LaunchWithDefaultBrowserAsync;
         _statusChangedHandler = (s, e) =>
@@ -162,6 +190,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
             if (e != ConnectionStatus.Connected)
                 _currentModels = null;
             StatusChanged?.Invoke(s, e);
+            RefreshToolDetailsProfile();
             // Fetch the available models list whenever we connect so the
             // chat composer dropdown is populated without needing to open
             // the Hub's SessionsPage first.
@@ -183,6 +212,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
             ModelsListUpdated?.Invoke(s, e);
         };
         _modelCatalogInvalidatedHandler = (s, e) => ModelCatalogInvalidated?.Invoke(s, e);
+        _toolDetailsInvalidatedHandler = (_, _) => RefreshToolDetailsProfile(profileInvalidated: true);
 
         // Subscribe StatusChanged BEFORE reading the seed so any
         // ``StatusChanged → X`` edge that fires during construction is
@@ -205,6 +235,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         _client.AgentEventReceived += _agentEventReceivedHandler;
         _client.ModelsListUpdated += _modelsListUpdatedHandler;
         _client.ModelCatalogInvalidated += _modelCatalogInvalidatedHandler;
+        _client.SelfProfileChanged += _toolDetailsInvalidatedHandler;
 
         if (_currentStatus == ConnectionStatus.Disconnected)
         {
@@ -226,12 +257,22 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     {
         if (_disposed) return;
         if (!_client.IsConnectedToGateway) return;
+        RefreshToolDetailsProfile();
         Logger.Info("[ChatBridge] proactive: requesting models.list and sessions.list");
         try { _ = _client.RequestModelsListAsync(); } catch (Exception ex) { Logger.Warn($"[ChatBridge] proactive models.list failed: {ex.Message}"); }
         try { _ = _client.RequestSessionsAsync(); } catch (Exception ex) { Logger.Warn($"[ChatBridge] proactive sessions.list failed: {ex.Message}"); }
     }
 
     public bool IsConnected => _client.IsConnectedToGateway;
+    public ChatToolDetailsProfileState ToolDetailsProfileState => _toolDetailsProfile.Snapshot;
+    public bool ToolDetailsAvailable => ToolDetailsProfileState.IsAvailable;
+    public event EventHandler? ToolDetailsInvalidated;
+    private void RefreshToolDetailsProfile(bool profileInvalidated = false)
+    {
+        _ = _toolDetailsProfile.RefreshAsync(profileInvalidated).ContinueWith(task =>
+            Logger.Warn($"[ChatBridge] tool details profile refresh failed ({task.Exception!.GetBaseException().GetType().Name})."),
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+    }
     public IChatPlacementGateway PlacementGateway { get; }
     public event EventHandler<GatewayQuestionEvent>? QuestionReceived
     {
@@ -303,14 +344,34 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public Task RequestSessionsAsync() =>
         _client.RequestSessionsAsync();
 
+    public Task<JsonElement> RequestAgentIdentityAsync(string agentId) =>
+        _client.SendWizardRequestAsync("agent.identity.get", new { agentId });
+
     public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) =>
         _client.RequestChatHistoryAsync(sessionKey);
+    public Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
+        _client.RequestChatHistoryAsync(sessionKey, page: page);
+
+    public long? ChatMessageReadConnectionEpoch => _client.SessionMutationConnectionEpoch;
+    public Task<SessionFileList> ListSessionFilesAsync(string sessionKey) =>
+        // Ask only Gateways that advertise the method; hello fills the list before Connected is raised.
+        _client.AdvertisedServerMethods.Contains("sessions.files.list", StringComparer.Ordinal)
+            ? _client.ListSessionFilesAsync(sessionKey)
+            : Task.FromResult(new SessionFileList { Key = sessionKey, IsSupported = false });
+    public Task<ChatMessageReadResult> RequestChatMessageAsync(
+        string sessionKey, string sessionId, string messageId, int maxChars,
+        long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        _client.RequestChatMessageAsync(sessionKey, sessionId, messageId, maxChars, expectedConnectionEpoch, cancellationToken);
 
     public Task<AssistantMediaResolutionResult> ResolveAssistantMediaAsync(
         string sessionKey,
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         _client.ResolveAssistantMediaAsync(sessionKey, media, cancellationToken);
+
+    public Task<SessionFileContent> GetSessionFileAsync(
+        string sessionKey, string path, long expectedConnectionEpoch, CancellationToken cancellationToken) =>
+        _client.ReadSessionFileAsync(sessionKey, path, expectedConnectionEpoch, cancellationToken);
 
 #if OPENCLAW_TRAY_TESTS
     // The test host has no WinRT launcher; tests inject one through the constructor.
@@ -356,8 +417,11 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         _client.AgentEventReceived -= _agentEventReceivedHandler;
         _client.ModelsListUpdated -= _modelsListUpdatedHandler;
         _client.ModelCatalogInvalidated -= _modelCatalogInvalidatedHandler;
+        _client.SelfProfileChanged -= _toolDetailsInvalidatedHandler;
+        _toolDetailsProfile.Dispose();
 
         StatusChanged = null;
+        ToolDetailsInvalidated = null;
         SessionsUpdated = null;
         SessionUsageSnapshotUpdated = null;
         SessionCommandCompleted = null;

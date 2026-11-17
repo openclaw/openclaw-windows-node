@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Mcp;
+using OpenClaw.Shared.FileTransfer;
 
 namespace OpenClaw.WinNode.Cli;
 
@@ -22,6 +23,8 @@ internal sealed class WinNodeOptions
     public string? McpTokenOverride { get; set; }
     public string? Identity { get; set; }
     public bool Verbose { get; set; }
+    public string? InputFile { get; set; }
+    public string? OutputFile { get; set; }
 }
 
 /// <summary>
@@ -95,6 +98,12 @@ internal static class CliRunner
             stderr.WriteLine("--command is required");
             return 2;
         }
+        if ((options.InputFile != null && (options.Command != "file.create" || options.OutputFile != null)) ||
+            (options.OutputFile != null && options.Command != "file.fetch"))
+        {
+            stderr.WriteLine("--input-file requires file.create; --output-file requires file.fetch. Do not combine them.");
+            return 2;
+        }
 
         // F-04: --mcp-token literal is visible to other same-user processes via
         // the Windows process listing. Warn unconditionally so an agent that
@@ -129,7 +138,11 @@ internal static class CliRunner
                 }
                 try
                 {
-                    paramsJson = File.ReadAllText(path);
+                    var limit = FileCommandParser.Commands.Contains(options.Command!) ? FileTransportJson.EnvelopeBytes : 4 * 1024 * 1024;
+                    using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    if (input.Length > limit) throw new IOException("Params file exceeds its byte limit.");
+                    using var reader = new StreamReader(input);
+                    paramsJson = reader.ReadToEnd();
                 }
                 catch (Exception ex)
                 {
@@ -140,6 +153,9 @@ internal static class CliRunner
 
             try
             {
+                var limit = FileCommandParser.Commands.Contains(options.Command!) ? FileTransportJson.EnvelopeBytes : 4 * 1024 * 1024;
+                if (Encoding.UTF8.GetByteCount(paramsJson) > limit)
+                    throw new JsonException("Params exceed their byte limit.");
                 using var paramsDoc = JsonDocument.Parse(paramsJson);
                 if (paramsDoc.RootElement.ValueKind != JsonValueKind.Object)
                 {
@@ -255,7 +271,7 @@ internal static class CliRunner
             http = new HttpClient(ownedHandler, disposeHandler: true)
             {
                 Timeout = httpTimeout,
-                MaxResponseContentBufferSize = MaxResponseContentBytes,
+                MaxResponseContentBufferSize = FileCommandParser.Commands.Contains(options.Command ?? "") ? FileTransportJson.ResultEnvelopeBytes : MaxResponseContentBytes,
             };
         }
         else
@@ -263,7 +279,7 @@ internal static class CliRunner
             http = new HttpClient(httpHandler, disposeHandler: false)
             {
                 Timeout = httpTimeout,
-                MaxResponseContentBufferSize = MaxResponseContentBytes,
+                MaxResponseContentBufferSize = FileCommandParser.Commands.Contains(options.Command ?? "") ? FileTransportJson.ResultEnvelopeBytes : MaxResponseContentBytes,
             };
         }
 
@@ -274,6 +290,10 @@ internal static class CliRunner
                 http.DefaultRequestHeaders.Authorization =
                     new AuthenticationHeaderValue("Bearer", token.Token);
             }
+            if (options.InputFile != null || options.OutputFile != null)
+                return await FileTransferClient.RunAsync(http, endpointUri, options, arguments, stdout, stderr);
+            if (FileCommandParser.Commands.Contains(options.Command ?? ""))
+                http.DefaultRequestHeaders.Add(FileTransportJson.EnvelopeHeader, options.Command);
 
             // F-14: skip the byte[] -> string -> byte[] round-trip. ByteArrayContent
             // takes the Utf8JsonWriter buffer directly with no additional copy.
@@ -482,7 +502,7 @@ internal static class CliRunner
     internal static (byte[] Buffer, int Length) BuildToolsCallBody(string command, JsonElement arguments)
     {
         using var ms = new MemoryStream();
-        using (var w = new Utf8JsonWriter(ms))
+        using (var w = new Utf8JsonWriter(ms, new JsonWriterOptions { Encoder = FileTransportJson.Options.Encoder }))
         {
             w.WriteStartObject();
             w.WriteString("jsonrpc", "2.0");
@@ -771,6 +791,12 @@ internal static class CliRunner
                 case "--params":
                     options.Params = RequireValue(args, ref i, arg);
                     break;
+                case "--input-file":
+                    options.InputFile = RequireValue(args, ref i, arg);
+                    break;
+                case "--output-file":
+                    options.OutputFile = RequireValue(args, ref i, arg);
+                    break;
                 case "--invoke-timeout":
                     // F-18: cap at 10 minutes so we can't be tricked into a
                     // multi-day hang and the +5000ms buffer can't overflow.
@@ -831,6 +857,7 @@ internal static class CliRunner
 
     internal static void PrintUsage(TextWriter stdout)
     {
+        stdout.WriteLine("File IO: file.create --input-file <path>; file.fetch --output-file <new-path> (requires maxBytes).");
         stdout.WriteLine("winnode - invoke OpenClaw node commands on the local Windows tray over MCP");
         stdout.WriteLine();
         stdout.WriteLine("Mirrors the flag surface of `openclaw nodes invoke`. The --node value is");

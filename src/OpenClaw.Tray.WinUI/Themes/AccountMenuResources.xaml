@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Account menu item styles. Copies of the WinUI 2.6 DefaultMenuFlyoutItemStyle and
+     DefaultMenuFlyoutSubItemStyle templates that add optional secondary text, metadata, an accent badge
+     and a profile picture. Named parts keep every native visual state target. -->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Hover/pressed rows use the system highlight in High Contrast, so the secondary line and
+         badge switch to the highlight text color there; other themes keep their normal colors. -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Default">
+            <StaticResource x:Key="AccountMenuDetailForegroundActive" ResourceKey="TextFillColorSecondaryBrush"/>
+            <StaticResource x:Key="AccountMenuBadgeForegroundActive" ResourceKey="AccentTextFillColorPrimaryBrush"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <StaticResource x:Key="AccountMenuDetailForegroundActive" ResourceKey="TextFillColorSecondaryBrush"/>
+            <StaticResource x:Key="AccountMenuBadgeForegroundActive" ResourceKey="AccentTextFillColorPrimaryBrush"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="AccountMenuDetailForegroundActive" Color="{ThemeResource SystemColorHighlightTextColor}"/>
+            <SolidColorBrush x:Key="AccountMenuBadgeForegroundActive" Color="{ThemeResource SystemColorHighlightTextColor}"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <Style x:Key="AccountMenuDescriptionTextStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
+        <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        <Setter Property="TextWrapping" Value="NoWrap"/>
+        <Setter Property="Visibility" Value="Collapsed"/>
+    </Style>
+
+    <Style x:Key="AccountMenuItemStyle" TargetType="MenuFlyoutItem">
+        <Setter Property="Background" Value="{ThemeResource MenuFlyoutItemBackground}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource MenuFlyoutItemBackgroundBrush}"/>
+        <Setter Property="BorderThickness" Value="{ThemeResource MenuFlyoutItemBorderThickness}"/>
+        <Setter Property="Foreground" Value="{ThemeResource MenuFlyoutItemForeground}"/>
+        <Setter Property="Padding" Value="{StaticResource MenuFlyoutItemThemePadding}"/>
+        <Setter Property="FontSize" Value="{ThemeResource ControlContentThemeFontSize}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="UseSystemFocusVisuals" Value="{StaticResource UseSystemFocusVisuals}"/>
+        <Setter Property="KeyboardAcceleratorPlacementMode" Value="Hidden"/>
+        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuFlyoutItem">
+                    <Grid x:Name="LayoutRoot" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                          Margin="{StaticResource MenuFlyoutItemMargin}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutItemBackgroundPointerOver}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource AccountMenuDetailForegroundActive}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPointerOver}"/>
+                                        <Setter Target="IconContent.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPointerOver}"/>
+                                        <Setter Target="KeyboardAcceleratorTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPointerOver}"/>
+                                        <Setter Target="MetadataTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPointerOver}"/>
+                                        <Setter Target="BadgeTextBlock.Foreground" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
+                                        <Setter Target="BadgeRoot.BorderBrush" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutItemBackgroundPressed}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource AccountMenuDetailForegroundActive}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPressed}"/>
+                                        <Setter Target="IconContent.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPressed}"/>
+                                        <Setter Target="KeyboardAcceleratorTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPressed}"/>
+                                        <Setter Target="MetadataTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundPressed}"/>
+                                        <Setter Target="BadgeTextBlock.Foreground" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
+                                        <Setter Target="BadgeRoot.BorderBrush" Value="{ThemeResource AccountMenuBadgeForegroundActive}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutItemBackgroundDisabled}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundDisabled}"/>
+                                        <Setter Target="IconContent.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundDisabled}"/>
+                                        <Setter Target="KeyboardAcceleratorTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundDisabled}"/>
+                                        <Setter Target="MetadataTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForegroundDisabled}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundDisabled}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckPlaceholderStates">
+                                <VisualState x:Name="NoPlaceholder"/>
+                                <VisualState x:Name="CheckPlaceholder">
+                                    <VisualState.Setters>
+                                        <Setter Target="TextRoot.Margin" Value="{ThemeResource MenuFlyoutItemPlaceholderThemeThickness}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="IconPlaceholder">
+                                    <VisualState.Setters>
+                                        <Setter Target="TextRoot.Margin" Value="{ThemeResource MenuFlyoutItemPlaceholderThemeThickness}"/>
+                                        <Setter Target="IconRoot.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckAndIconPlaceholder">
+                                    <VisualState.Setters>
+                                        <Setter Target="TextRoot.Margin" Value="{ThemeResource MenuFlyoutItemDoublePlaceholderThemeThickness}"/>
+                                        <Setter Target="IconRoot.Margin" Value="{ThemeResource MenuFlyoutItemPlaceholderThemeThickness}"/>
+                                        <Setter Target="IconRoot.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="PaddingSizeStates">
+                                <VisualState x:Name="DefaultPadding"/>
+                                <VisualState x:Name="NarrowPadding">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="LayoutRoot" Storyboard.TargetProperty="Padding">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource MenuFlyoutItemThemePaddingNarrow}"/>
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="KeyboardAcceleratorTextVisibility">
+                                <VisualState x:Name="KeyboardAcceleratorTextCollapsed"/>
+                                <VisualState x:Name="KeyboardAcceleratorTextVisible">
+                                    <VisualState.Setters>
+                                        <Setter Target="KeyboardAcceleratorTextBlock.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Viewbox x:Name="IconRoot" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                 Width="16" Height="16" Visibility="Collapsed">
+                            <ContentPresenter x:Name="IconContent" Content="{TemplateBinding Icon}" Foreground="{TemplateBinding Foreground}"/>
+                        </Viewbox>
+                        <StackPanel x:Name="TextRoot" VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                            <TextBlock x:Name="TextBlock" Text="{TemplateBinding Text}" TextTrimming="{ThemeResource MenuFlyoutItemTextTrimming}"
+                                       Foreground="{TemplateBinding Foreground}" HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                            <TextBlock x:Name="DescriptionTextBlock" Style="{StaticResource AccountMenuDescriptionTextStyle}"
+                                       AutomationProperties.AccessibilityView="Raw"/>
+                        </StackPanel>
+                        <Border x:Name="BadgeRoot" Grid.Column="1" Margin="12,0,0,0" Padding="8,2" VerticalAlignment="Center"
+                                Visibility="Collapsed" Background="Transparent" BorderThickness="1"
+                                BorderBrush="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                CornerRadius="{ThemeResource ControlCornerRadius}">
+                            <TextBlock x:Name="BadgeTextBlock" Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                       AutomationProperties.AccessibilityView="Raw"/>
+                        </Border>
+                        <TextBlock x:Name="MetadataTextBlock" Grid.Column="2" Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Margin="24,0,0,0" Foreground="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForeground}"
+                                   TextAlignment="Right" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock x:Name="KeyboardAcceleratorTextBlock" Grid.Column="3" Style="{ThemeResource CaptionTextBlockStyle}"
+                                   Text="{TemplateBinding KeyboardAcceleratorTextOverride}"
+                                   MinWidth="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=TemplateSettings.KeyboardAcceleratorTextMinWidth}"
+                                   Margin="24,0,0,0" Foreground="{ThemeResource MenuFlyoutItemKeyboardAcceleratorTextForeground}"
+                                   TextAlignment="Right" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                   Visibility="Collapsed" AutomationProperties.AccessibilityView="Raw"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Profile header: 32 DIP PersonPicture, semibold name and a secondary line. -->
+    <Style x:Key="AccountMenuProfileItemStyle" TargetType="MenuFlyoutItem" BasedOn="{StaticResource AccountMenuItemStyle}">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuFlyoutItem">
+                    <Grid x:Name="LayoutRoot" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                          Margin="{StaticResource MenuFlyoutItemMargin}" CornerRadius="{TemplateBinding CornerRadius}"
+                          ColumnSpacing="12">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutItemBackgroundPointerOver}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource AccountMenuDetailForegroundActive}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPointerOver}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutItemBackgroundPressed}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource AccountMenuDetailForegroundActive}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForegroundPressed}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutItemForeground}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="PaddingSizeStates">
+                                <VisualState x:Name="DefaultPadding"/>
+                                <VisualState x:Name="NarrowPadding">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="LayoutRoot" Storyboard.TargetProperty="Padding">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource MenuFlyoutItemThemePaddingNarrow}"/>
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <PersonPicture x:Name="PicturePart" Width="32" Height="32" VerticalAlignment="Center"
+                                       IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw"/>
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                            <TextBlock x:Name="TextBlock" Text="{TemplateBinding Text}" FontWeight="SemiBold"
+                                       TextTrimming="CharacterEllipsis" Foreground="{TemplateBinding Foreground}"/>
+                            <TextBlock x:Name="DescriptionTextBlock" Style="{StaticResource AccountMenuDescriptionTextStyle}"
+                                       AutomationProperties.AccessibilityView="Raw"/>
+                        </StackPanel>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="AccountMenuSubItemStyle" TargetType="MenuFlyoutSubItem">
+        <Setter Property="Background" Value="{ThemeResource MenuFlyoutSubItemBackground}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource MenuFlyoutSubItemBackgroundBrush}"/>
+        <Setter Property="BorderThickness" Value="{ThemeResource MenuFlyoutSubItemBorderThickness}"/>
+        <Setter Property="Foreground" Value="{ThemeResource MenuFlyoutSubItemForeground}"/>
+        <Setter Property="Padding" Value="{StaticResource MenuFlyoutItemThemePadding}"/>
+        <Setter Property="FontSize" Value="{ThemeResource ControlContentThemeFontSize}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="UseSystemFocusVisuals" Value="{StaticResource UseSystemFocusVisuals}"/>
+        <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="MenuFlyoutSubItem">
+                    <Grid x:Name="LayoutRoot" Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}"
+                          BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                          Margin="{StaticResource MenuFlyoutItemMargin}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal"/>
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutSubItemBackgroundPointerOver}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource AccountMenuDetailForegroundActive}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutSubItemForegroundPointerOver}"/>
+                                        <Setter Target="SubItemChevron.Foreground" Value="{ThemeResource MenuFlyoutSubItemChevronPointerOver}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutSubItemBackgroundPressed}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource AccountMenuDetailForegroundActive}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutSubItemForegroundPressed}"/>
+                                        <Setter Target="SubItemChevron.Foreground" Value="{ThemeResource MenuFlyoutSubItemChevronPressed}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="SubMenuOpened">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutSubItemBackgroundSubMenuOpened}"/>
+                                        <Setter Target="DescriptionTextBlock.Foreground" Value="{ThemeResource AccountMenuDetailForegroundActive}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutSubItemForegroundSubMenuOpened}"/>
+                                        <Setter Target="SubItemChevron.Foreground" Value="{ThemeResource MenuFlyoutSubItemChevronSubMenuOpened}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="LayoutRoot.Background" Value="{ThemeResource MenuFlyoutSubItemBackgroundDisabled}"/>
+                                        <Setter Target="TextBlock.Foreground" Value="{ThemeResource MenuFlyoutSubItemForegroundDisabled}"/>
+                                        <Setter Target="SubItemChevron.Foreground" Value="{ThemeResource MenuFlyoutSubItemChevronDisabled}"/>
+                                        <Setter Target="IconContent.Foreground" Value="{ThemeResource MenuFlyoutSubItemForegroundDisabled}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CheckPlaceholderStates">
+                                <VisualState x:Name="NoPlaceholder"/>
+                                <VisualState x:Name="CheckPlaceholder">
+                                    <VisualState.Setters>
+                                        <Setter Target="TextRoot.Margin" Value="{ThemeResource MenuFlyoutItemPlaceholderThemeThickness}"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="IconPlaceholder">
+                                    <VisualState.Setters>
+                                        <Setter Target="TextRoot.Margin" Value="{ThemeResource MenuFlyoutItemPlaceholderThemeThickness}"/>
+                                        <Setter Target="IconRoot.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="CheckAndIconPlaceholder">
+                                    <VisualState.Setters>
+                                        <Setter Target="TextRoot.Margin" Value="{ThemeResource MenuFlyoutItemDoublePlaceholderThemeThickness}"/>
+                                        <Setter Target="IconRoot.Margin" Value="{ThemeResource MenuFlyoutItemPlaceholderThemeThickness}"/>
+                                        <Setter Target="IconRoot.Visibility" Value="Visible"/>
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="PaddingSizeStates">
+                                <VisualState x:Name="DefaultPadding"/>
+                                <VisualState x:Name="NarrowPadding">
+                                    <Storyboard>
+                                        <ObjectAnimationUsingKeyFrames Storyboard.TargetName="LayoutRoot" Storyboard.TargetProperty="Padding">
+                                            <DiscreteObjectKeyFrame KeyTime="0" Value="{StaticResource MenuFlyoutItemThemePaddingNarrow}"/>
+                                        </ObjectAnimationUsingKeyFrames>
+                                    </Storyboard>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- The status dot icon keeps its own semantic color in every state. -->
+                            <Viewbox x:Name="IconRoot" HorizontalAlignment="Left" VerticalAlignment="Center"
+                                     Width="16" Height="16" Visibility="Collapsed">
+                                <ContentPresenter x:Name="IconContent" Content="{TemplateBinding Icon}"/>
+                            </Viewbox>
+                            <StackPanel x:Name="TextRoot" VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                <TextBlock x:Name="TextBlock" Foreground="{TemplateBinding Foreground}" Text="{TemplateBinding Text}"
+                                           TextTrimming="{ThemeResource MenuFlyoutItemTextTrimming}"
+                                           HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"/>
+                                <!-- The description is the item's Tag; this style is only applied to rows that have one. -->
+                                <TextBlock x:Name="DescriptionTextBlock" Style="{StaticResource AccountMenuDescriptionTextStyle}"
+                                           Text="{Binding Tag, RelativeSource={RelativeSource TemplatedParent}}"
+                                           Visibility="Visible" AutomationProperties.AccessibilityView="Raw"/>
+                            </StackPanel>
+                            <FontIcon x:Name="SubItemChevron" Grid.Column="1" Glyph="&#xE974;" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                      FontSize="12" AutomationProperties.AccessibilityView="Raw"
+                                      Foreground="{ThemeResource MenuFlyoutSubItemChevron}"
+                                      Margin="{StaticResource MenuFlyoutItemChevronMargin}" MirroredWhenRightToLeft="True"/>
+                        </Grid>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

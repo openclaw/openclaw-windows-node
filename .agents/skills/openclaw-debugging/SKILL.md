@@ -117,6 +117,22 @@ setup, pairing, provider, node invocation, sensor, notification, or MXC proof.
 
 ## Use the repository diagnostics
 
+### Start with WinApp for native Windows failures
+
+Check `winapp --version` and the relevant `--help` or `--cli-schema`.
+Use the [WinApp workflow](../../../docs/WINAPP_CLI.md) before inventing native
+diagnostic tooling: `run --debug-output --symbols` for an authorized crash
+repro, `perf` for WinUI layout/GC/process-cost evidence, `ui` for mounted
+control state, and `devtools` for live XAML properties and binding diagnostics.
+Prefer project-scoped `find-api` and Reactor-aware `find-ui` to guessed APIs.
+
+These are first-choice aids, not permission to launch, inject, capture private
+state, replace a running app or register its package. Keep the same owned
+runtime/profile and preserve exact binary/configuration identity. A successful
+attachment is not useful trace coverage; a layout trace is not GPU/Defender
+attribution; a Sandbox run is not MXC or real Gateway proof. Retain the sanitized
+bundle below, and never publish raw dumps/ETL as if they were sanitized logs.
+
 ### Preferred sanitized bundle
 
 Open **Settings > Diagnostics**, then use **Create diagnostics bundle**. Review

@@ -1,4 +1,3 @@
-using Microsoft.Toolkit.Uwp.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
@@ -93,21 +92,6 @@ public sealed partial class SettingsPage : Page
         }
         _savedIndicatorTimer.Stop();
         _savedIndicatorTimer.Start();
-    }
-
-    private void OnTestNotification(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            new ToastContentBuilder()
-                .AddText("Test Notification")
-                .AddText("This is a test notification from OpenClaw settings.")
-                .Show();
-        }
-        catch (Exception ex)
-        {
-            Logger.Warn($"SettingsPage: Test notification failed: {ex.Message}");
-        }
     }
 
     private void LoadGatewaySection(SettingsManager settings)

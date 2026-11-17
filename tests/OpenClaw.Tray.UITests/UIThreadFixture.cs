@@ -6,6 +6,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.ApplicationModel.DynamicDependency;
+using OpenClaw.TestSupport;
 
 // Windows App SDK bootstrap must not run while other test collections execute: hosted runners
 // froze the whole testhost inside Bootstrap.Initialize while non-UI collections started in parallel.
@@ -44,6 +45,8 @@ internal static class TestHostDpiInitializer
 ///     across all UI tests).
 ///   - Application.Start blocks the calling thread (it pumps the message loop),
 ///     so we spin a dedicated thread and call Application.Start there.
+///     Collection cleanup hides the window but leaves this background thread
+///     running until process exit so late native finalizers retain a dispatcher.
 ///   - Renderers like <see cref="OpenClawTray.A2UI.Rendering.Renderers.TextRenderer"/>
 ///     call Application.Current.Resources["BodyTextBlockStyle"], so a real
 ///     Application instance must exist.
@@ -74,6 +77,7 @@ public sealed class UIThreadFixture : IDisposable
     private readonly ManualResetEventSlim _ready = new(false);
     private Exception? _startupError;
     private volatile string _startupPhase = "not started";
+    internal NativeUiExceptionDiagnostics Diagnostics { get; } = NativeUiExceptionDiagnostics.FromEnvironment();
 
     /// <summary>
     /// True when env var SLOW_UI_TESTS=1. Window stays visible, tests insert
@@ -96,8 +100,13 @@ public sealed class UIThreadFixture : IDisposable
     /// </summary>
     public Grid Container { get; private set; } = null!;
 
+    internal bool UsesProductionResources { get; }
+
     public UIThreadFixture()
     {
+        UsesProductionResources = TestAppResourceLoader.IsProductionProfile(
+            Environment.GetEnvironmentVariable(TestAppResourceLoader.ProfileVariable));
+        Console.WriteLine($"UIThreadFixture process={Environment.ProcessId}; WindowsAppSDK={WinAppSdkMajorMinor >> 16}.{WinAppSdkMajorMinor & 0xffff}");
         IsSlow = string.Equals(
             Environment.GetEnvironmentVariable("SLOW_UI_TESTS"), "1", StringComparison.Ordinal);
         SlowStepMs = int.TryParse(
@@ -159,14 +168,20 @@ public sealed class UIThreadFixture : IDisposable
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!Dispatcher.TryEnqueue(async () =>
         {
+            var diagnosticDispatch = Diagnostics.BeginDispatch();
             try
             {
                 OnboardingNativeProof.TraceDpiContext("RunOnUIAsync: dispatched", TestWindow);
                 var result = await work().ConfigureAwait(true);
                 OnboardingNativeProof.TraceDpiContext("RunOnUIAsync: resumed", TestWindow);
+                Diagnostics.CompleteDispatch(diagnosticDispatch);
                 tcs.SetResult(result);
             }
-            catch (Exception ex) { tcs.SetException(ex); }
+            catch (Exception ex)
+            {
+                Diagnostics.RecordException(NativeUiExceptionSource.DispatchCatch, () => ex, diagnosticDispatch);
+                tcs.SetException(ex);
+            }
         }))
         {
             tcs.SetException(new InvalidOperationException("Dispatcher rejected enqueue (shutting down?)"));
@@ -224,19 +239,22 @@ public sealed class UIThreadFixture : IDisposable
 
     private void UIThreadProc()
     {
+        Diagnostics.SetPhase(NativeUiPhase.UiStarting);
         try
         {
             OnboardingNativeProof.InitializeProductProcessDpi();
             OnboardingNativeProof.TraceDpiContext("UIThreadProc: before bootstrap");
             _startupPhase = "initializing WinRT COM wrappers";
             Console.WriteLine("UIThreadFixture: initializing WinRT COM wrappers");
+            OnboardingNativeProof.TraceDpiContext("UIThreadProc: before COM wrappers");
             WinRT.ComWrappersSupport.InitializeComWrappers();
+            OnboardingNativeProof.TraceDpiContext("UIThreadProc: COM wrappers initialized");
             Console.WriteLine("UIThreadFixture: WinRT COM wrappers initialized");
 
             // Initialize WinAppSDK runtime (unpackaged process).
+            _startupPhase = "initializing Windows App SDK bootstrap";
             if (Interlocked.Exchange(ref s_bootstrapInitialized, 1) == 0)
             {
-                _startupPhase = "initializing Windows App SDK bootstrap";
                 Console.WriteLine("UIThreadFixture: initializing Windows App SDK bootstrap");
                 Bootstrap.Initialize(WinAppSdkMajorMinor, WinAppSdkVersionTag);
                 Console.WriteLine("UIThreadFixture: Windows App SDK bootstrap initialized");
@@ -255,7 +273,7 @@ public sealed class UIThreadFixture : IDisposable
                     SynchronizationContext.SetSynchronizationContext(
                         new DispatcherQueueSynchronizationContext(Dispatcher));
                     _startupPhase = "creating TestApp";
-                    var app = new TestApp(); // ctor stashes itself as Application.Current
+                    var app = new TestApp(Diagnostics); // ctor stashes itself as Application.Current
                     OnboardingNativeProof.TraceDpiContext("Application.Start: TestApp constructed");
                     _startupPhase = "getting dispatcher";
                     _startupPhase = "creating hidden test window";
@@ -294,10 +312,11 @@ public sealed class UIThreadFixture : IDisposable
                     {
                         try
                         {
-                            app.MergeStandardResources();
+                            app.InitializeResources(UsesProductionResources);
                             if (!app.Resources.ContainsKey("TextFillColorSecondaryBrush"))
                                 throw new InvalidOperationException("The WinUI test resource map did not initialize.");
                             _startupPhase = "ready";
+                            Diagnostics.SetPhase(NativeUiPhase.UiReady);
                         }
                         catch (Exception ex)
                         {
@@ -319,6 +338,12 @@ public sealed class UIThreadFixture : IDisposable
             _startupError = ex;
             _ready.Set();
         }
+        finally
+        {
+            // Close only after Application.Start unwinds, not at a timed-out Join.
+            Diagnostics.SetPhase(NativeUiPhase.UiExited);
+            Diagnostics.Dispose();
+        }
     }
 
     private static void MoveOffScreen(Window w)
@@ -337,40 +362,25 @@ public sealed class UIThreadFixture : IDisposable
         }
     }
 
+    /// <summary>Retire the test surface without ending the process-wide XAML lifetime.</summary>
     public void Dispose()
     {
+        Diagnostics.SetPhase(NativeUiPhase.UiStopping);
         if (Dispatcher is not null && _uiThread.IsAlive)
         {
-            ResetContainerAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-            // Release projected XAML objects while their dispatcher and native
-            // reference trackers still exist, not after Application.Exit.
+            RunOnUIAsync(() =>
+            {
+                Container.Children.Clear();
+                TestWindow.AppWindow.Hide();
+            }).WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
+            // A drain cannot release objects still held by test results or interop wrappers.
+            // Keep the hidden window and background dispatcher alive for those later releases:
+            // closing the last window or calling Application.Exit tears down their XAML core.
             Console.WriteLine("UIThreadFixture: dispose finalizer drain begin");
             GC.Collect();
             GC.WaitForPendingFinalizers();
             Console.WriteLine("UIThreadFixture: dispose finalizer drain end");
             YieldToRenderAsync().WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
-        }
-        try
-        {
-            // Ask the UI thread to exit. Application.Current.Exit() unwinds
-            // Application.Start; the thread then completes naturally.
-            if (Dispatcher != null)
-            {
-                Dispatcher.TryEnqueue(() =>
-                {
-                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-                    try { TestWindow?.Close(); } catch { }
-                    // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-                    try { Application.Current?.Exit(); } catch { }
-                });
-            }
-            // Don't block the test process forever if the UI thread misbehaves.
-            _uiThread.Join(TimeSpan.FromSeconds(5));
-        }
-        // slopwatch-ignore: SW003 Test cleanup or fixture teardown is best-effort and must not hide the test outcome.
-        catch
-        {
-            // Disposal is best-effort.
         }
     }
 }

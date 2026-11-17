@@ -87,7 +87,8 @@ Treat a failure as **unrelated** only with positive evidence, such as:
   gh run view <other-run-id> --log-failed
   ```
 
-- The failure is listed in the [CI failure backlog](../../../docs/CI_FAILURES.md).
+- Retained CI evidence or an existing issue shows the same failure on the
+  recorded base revision, and comparison confirms the PR does not introduce it.
 - It has the shape of a timing or infrastructure failure: a UI Automation
   element briefly missing (`NullReferenceException` inside a wait lambda), a
   `TimeoutException` from a fixture wait, a wall-clock limit on a loaded
@@ -132,13 +133,15 @@ missing permission or a fork run that needs approval, report the error as is.
 
 Do not rerun the same failure on the same head more than once. A second
 identical failure on the same SHA reclassifies it as related, or as a real
-`main` breakage to record in the [CI failure backlog](../../../docs/CI_FAILURES.md).
+`main` breakage. Stop rerunning and report the evidence and blocker. When
+authorized to fix it, investigate the cause, implement the repair, and validate
+it. Do not create a checked-in failure backlog.
 
 ## Report
 
 - PR number and title, head SHA, and whether local work matches it.
 - Each failing job with its test or step and error.
 - The related or unrelated decision for each failure, with its evidence (diff
-  overlap, other runs with the same failure, backlog entry, local reproduction).
+  overlap, matching baseline failures, existing issue evidence, local reproduction).
 - The action taken: no rerun with a warning, or the rerun command and the new
   run status.

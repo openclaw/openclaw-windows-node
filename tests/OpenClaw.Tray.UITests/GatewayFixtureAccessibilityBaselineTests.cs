@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Windows.Automation;
+using System.Globalization;
 using OpenClaw.TestSupport.Gateway;
 using OpenClaw.GatewayFixtureHost;
 
@@ -7,6 +8,50 @@ namespace OpenClaw.Tray.UITests;
 
 public sealed partial class GatewayFixtureUiTests
 {
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task SandboxPageKeepsPermissionControlsWithoutTransferConfigurationCards()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "sandbox" });
+            await WaitUiAsync(run, () => FindById(run, "SandboxPageMarker") is { Current.IsOffscreen: false },
+                "visible Sandbox page");
+            var marker = FindById(run, "SandboxPageMarker")!;
+            var window = AppWindows(run).Single(candidate => candidate.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxPageMarker")) is not null);
+            AutomationElement? Named(string name) => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.NameProperty, name));
+            await WaitUiAsync(run, () => Named("Security level") is { Current.IsOffscreen: false },
+                "visible Sandbox permission presets");
+            Assert.Null(FindById(run, "TransferBudgetBox"));
+            Assert.Null(Named("Upload storage location"));
+            Assert.Null(Named("File transfer budget (MiB)"));
+            Assert.Null(Named("Choose parent folder…"));
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            {
+                await WaitForStablePageGeometryAsync(run, window, marker.Current.BoundingRectangle.Left);
+                OwnedWindowCapture.Save(run, window, "sandbox-managed-staging.png", marker, Named("Security level")!);
+            }
+            Assert.False(FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false });
+            var scope = FindById(run, "ScopeExpander")!;
+            var scopeToggle = Assert.Single(scope.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true)).Cast<AutomationElement>());
+            ((ExpandCollapsePattern)scopeToggle.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+            await WaitUiAsync(run, () => FindById(run, "SandboxContainedOperations") is { Current.IsOffscreen: false },
+                "contained operations in the expanded scope section");
+            var operations = FindById(run, "SandboxContainedOperations")!;
+            Assert.Null(FindById(run, "SandboxContainmentDetails"));
+            Assert.Contains("system.run", operations.Current.Name);
+            Assert.Contains("file actions", operations.Current.Name);
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+            {
+                await WaitForStablePageGeometryAsync(run, window, marker.Current.BoundingRectangle.Left);
+                OwnedWindowCapture.Save(run, window, "sandbox-containment-scope.png", operations);
+            }
+        });
+    }
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
@@ -64,7 +109,15 @@ public sealed partial class GatewayFixtureUiTests
                 if (route != "settings")
                     Assert.Null(FindById(run, "SettingsPageNotifyHealth"));
                 else
-                    Assert.NotNull(FindById(run, "SettingsPageNotifyHealth"));
+                {
+                    // Notification options live in a disclosure that starts collapsed.
+                    var disclosure = Assert.Single(FindById(run, "GeneralNotificationsCard")!.FindAll(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                        .Cast<AutomationElement>());
+                    ((ExpandCollapsePattern)disclosure.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
+                    await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null,
+                        "notification options in the expanded General disclosure");
+                }
                 if (route != "permissions")
                     Assert.Null(FindById(run, "SettingsPageScreenRecording"));
                 if (route != "about")
@@ -171,6 +224,7 @@ public sealed partial class GatewayFixtureUiTests
             var connectionWindow = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "ConnectionPageMarker")) is not null);
             var connectionHeading = FindById(run, "ConnectionPageMarker")!;
+            Assert.Equal("Connection", connectionHeading.Current.Name);
             await WaitForStablePageGeometryAsync(run, connectionWindow, connectionHeading.Current.BoundingRectangle.Left);
             OwnedWindowCapture.Save(run, connectionWindow, "connection-offline.png", connection, connectionHeading);
             ReleaseHandshake();
@@ -280,27 +334,55 @@ public sealed partial class GatewayFixtureUiTests
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 
+    // A non-editable WinUI ComboBox exposes its choice through Selection, not Value.
+    private static string SelectedComboText(AutomationElement combo)
+    {
+        if (combo.TryGetCurrentPattern(SelectionPattern.Pattern, out var selection))
+        {
+            var selected = ((SelectionPattern)selection).Current.GetSelection();
+            if (selected.Length == 1) return selected[0].Current.Name;
+        }
+        return combo.FindFirst(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))?.Current.Name ?? string.Empty;
+    }
+
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
-    public async Task ClipboardExpander_ExposesNamedSelectableRadioChildren()
+    public async Task ClipboardAccess_ExposesNamedSelectableOptions()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "sandbox" });
-            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardExpander") is not null, "clipboard expander");
-            var expander = FindById(run, "SandboxClipboardExpander")!;
-            Assert.Equal("📋 Clipboard", expander.Current.Name);
-            var expand = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            if (expand.Current.ExpandCollapseState != ExpandCollapseState.Expanded) expand.Expand();
-            var radios = expander.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton));
-            var items = radios.Cast<AutomationElement>().ToArray();
-            Assert.Equal(new[] { "None (default)", "Read: agent can see what you copied", "Write: agent can replace your clipboard (cannot read it)", "Read & write" }, items.Select(item => item.Current.Name));
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardAccess") is not null, "clipboard access selector");
+            var combo = FindById(run, "SandboxClipboardAccess")!;
+            Assert.Equal(ControlType.ComboBox, combo.Current.ControlType);
+            Assert.Equal("Clipboard access", combo.Current.Name);
+            Assert.Equal("None (default)", SelectedComboText(combo));
+            var expand = (ExpandCollapsePattern)combo.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+            // Hosts that cannot run the sandbox (for example Windows Server) disable permission editing, and a
+            // collapsed ComboBox exposes no options, so the popup checks need an enabled selector.
+            if (!combo.Current.IsEnabled)
+            {
+                output.WriteLine("Clipboard access is disabled on this host; popup option checks need a sandbox-capable host.");
+                return;
+            }
+            expand.Expand();
+            await WaitUiAsync(run, () => expand.Current.ExpandCollapseState == ExpandCollapseState.Expanded,
+                "clipboard options popup open");
+            // The open popup repeats the options under the window root; the selector owns the canonical four.
+            AutomationElement[] Options() => combo.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
+                .Cast<AutomationElement>().Where(item => item.Current.Name is "None (default)" or "Read & write"
+                    || item.Current.Name.StartsWith("Read:", StringComparison.Ordinal)
+                    || item.Current.Name.StartsWith("Write:", StringComparison.Ordinal)).ToArray();
+            await WaitUiAsync(run, () => Options().Length == 4, "clipboard options listed");
+            var items = Options();
+            Assert.Equal(new[] { "None (default)", "Read: agent can see what you copied", "Write: agent can replace your clipboard (cannot read it)", "Read & write" },
+                items.Select(item => item.Current.Name));
             Assert.All(items, item => Assert.True(item.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _)));
             Assert.Single(items, item => ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected);
             expand.Collapse();
-            expand.Expand();
-            Assert.Equal(4, expander.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Count);
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 
@@ -312,6 +394,20 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "settings" });
+            await WaitUiAsync(run, () => FindById(run, "GeneralNotificationsCard") is not null,
+                "notification disclosure");
+            void ExpandNotifications()
+            {
+                var expander = FindById(run, "GeneralNotificationsCard")!;
+                var header = Assert.Single(expander.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                    .Cast<AutomationElement>());
+                var pattern = (ExpandCollapsePattern)header.GetCurrentPattern(ExpandCollapsePattern.Pattern);
+                Assert.Equal(ExpandCollapseState.Collapsed, pattern.Current.ExpandCollapseState);
+                pattern.Expand();
+            }
+            Assert.True(FindById(run, "SettingsPageSound") is null or { Current.IsOffscreen: true });
+            ExpandNotifications();
             await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null, "notification settings");
             Assert.NotNull(FindById(run, "SettingsPageMarker"));
             Assert.Null(FindById(run, "SettingsNavNotificationPreferences"));
@@ -347,6 +443,9 @@ public sealed partial class GatewayFixtureUiTests
             await run.InvokeAsync("app.navigate", new { page = "about" });
             await WaitUiAsync(run, () => FindById(run, "AboutPageMarker") is not null, "leave General");
             await run.InvokeAsync("app.navigate", new { page = "notification-preferences" });
+            await WaitUiAsync(run, () => FindById(run, "GeneralNotificationsCard") is not null,
+                "preferences alias notification disclosure");
+            ExpandNotifications();
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null
                 && FindById(run, "SettingsPageNotifyHealth") is not null, "preferences alias opens General");
             Assert.Equal(expected,
@@ -489,7 +588,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => !HasValue("alpha") && HasValue("bravo"), "alpha removed and bravo retained");
             var focused = AutomationElement.FocusedElement;
             Assert.NotNull(focused);
-            Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                "Focus must remain in the owned native window.");
             output.WriteLine($"Focus after removal: type=[{focused.Current.ControlType.ProgrammaticName}] id=[{focused.Current.AutomationId}].");
             var discard = window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "DiscardButton"));
@@ -507,7 +607,8 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => !previousFocus.SequenceEqual(AutomationElement.FocusedElement.GetRuntimeId()), "focus advances after Tab");
                 focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 reachedBravo |= Automation.Compare(bravoRemove, focused);
                 reachedDiscard = Automation.Compare(discard, focused);
             }
@@ -527,67 +628,70 @@ public sealed partial class GatewayFixtureUiTests
     public async Task UsageRows_StayReadableAcrossChangedSnapshotAndPeriodSwitch()
     {
         var scenario = GatewayScenario.CreateAccessibilityBaseline();
+        var firstDate = DateTime.Today.AddDays(-1);
+        var secondDate = DateTime.Today.AddDays(-2);
+        var firstId = "UsageDailyRow_" + firstDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        var secondId = "UsageDailyRow_" + secondDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "usage" });
-            await WaitUiAsync(run, () => FindText(run, "Fixture Provider") is not null
-                && FindText(run, "Fixture Empty") is not null && FindText(run, "2026-10-31") is not null
-                && FindText(run, "2026-10-30") is not null, "two providers and two daily rows");
-            AutomationElement RowFor(string text)
+            await WaitUiAsync(run, () => FindById(run, "UsageProvider_fixture") is not null
+                && FindById(run, "UsageProvider_fixture-empty") is not null, "two named provider cards");
+            void Select(string id, string label)
             {
-                var current = FindText(run, text) ?? throw new InvalidOperationException($"Missing synthetic row text {text}.");
-                while (current.Current.ControlType != ControlType.ListItem)
-                    current = TreeWalker.ControlViewWalker.GetParent(current)
-                        ?? throw new InvalidOperationException($"No ListItem peer for {text}.");
-                return current;
+                var selector = FindById(run, id);
+                Assert.NotNull(selector);
+                var matches = selector.FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.NameProperty, label)).Cast<AutomationElement>();
+                var item = Assert.Single(matches, candidate => candidate.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
+                ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             }
-            string ReadRow(string text)
+            string ReadRow(string id) => FindById(run, id)?.Current.Name
+                ?? throw new InvalidOperationException($"Missing named Usage row {id}.");
+            async Task<string> SelectPeriodAndReadRow(string periodLabel, string expectedCost)
             {
-                var row = RowFor(text);
-                if (row.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var scroll)) ((ScrollItemPattern)scroll).ScrollIntoView();
-                return row.Current.Name;
-            }
-            async Task<string> SelectPeriodAndReadRow(string periodId, string expectedCost)
-            {
-                var period = FindById(run, periodId);
-                Assert.NotNull(period);
-                Invoke(period);
-                await WaitUiAsync(run, () => FindText(run, "2026-10-31") is not null
-                    && RowFor("2026-10-31").FindFirst(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.NameProperty, expectedCost)) is not null
-                    && ReadRow("2026-10-31").Contains(expectedCost, StringComparison.Ordinal),
+                await WaitUiAsync(run, () => FindById(run, "UsageChartView") is not null, "loaded daily controls");
+                Select("UsagePresets", periodLabel);
+                if (FindById(run, "UsageDailyTable") is null) Select("UsageChartView", "Table");
+                await WaitUiAsync(run, () => FindById(run, firstId) is { } row
+                    && row.Current.Name.Contains(expectedCost, StringComparison.Ordinal),
                     $"period row and accessible name updated to {expectedCost}");
-                return ReadRow("2026-10-31");
+                return ReadRow(firstId);
             }
-            var provider = ReadRow("Fixture Provider");
-            var empty = ReadRow("Fixture Empty");
-            var first = await SelectPeriodAndReadRow("Period7DaysItem", "$0.75");
-            var second = ReadRow("2026-10-30");
+            var provider = ReadRow("UsageProvider_fixture");
+            var empty = ReadRow("UsageProvider_fixture-empty");
+            var first = await SelectPeriodAndReadRow("7 days", "$0.75");
+            var second = ReadRow(secondId);
             output.WriteLine($"Initial rows: provider=[{provider}], empty=[{empty}], day1=[{first}], day2=[{second}].");
             scenario.AdvanceAccessibilityUsage();
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is not null, "leave Usage");
             await run.InvokeAsync("app.navigate", new { page = "usage" });
             await WaitUiAsync(run, () => FindText(run, "Fixture changed warning") is not null, "changed usage snapshot");
-            var changedProvider = ReadRow("Fixture Provider");
-            var changedDay = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
-            var thirtyDayRow = await SelectPeriodAndReadRow("Period30DaysItem", "$2.50");
-            var sevenDayRow = await SelectPeriodAndReadRow("Period7DaysItem", "$1.50");
+            var changedProvider = ReadRow("UsageProvider_fixture");
+            var changedDay = await SelectPeriodAndReadRow("7 days", "$1.50");
+            var thirtyDayRow = await SelectPeriodAndReadRow("30 days", "$2.50");
+            var sevenDayRow = await SelectPeriodAndReadRow("7 days", "$1.50");
             output.WriteLine($"Changed rows: provider=[{changedProvider}], day1=[{changedDay}], 30 days=[{thirtyDayRow}], 7 days=[{sevenDayRow}].");
-            foreach (var expected in new[] { "Fixture Provider", "Pro", "37% used", "Fixture quota warning" })
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "37%", "Fixture quota warning" })
                 Assert.Contains(expected, provider, StringComparison.Ordinal);
             Assert.Equal("Fixture Empty", empty);
-            Assert.Contains("2026-10-31", first, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), first, StringComparison.Ordinal);
             Assert.Contains("$0.75", first, StringComparison.Ordinal);
-            Assert.Contains("2026-10-30", second, StringComparison.Ordinal);
+            Assert.Contains(secondDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), second, StringComparison.Ordinal);
             Assert.Contains("$0.50", second, StringComparison.Ordinal);
-            foreach (var expected in new[] { "Fixture Provider", "Pro", "53% used", "Fixture changed warning" })
+            foreach (var expected in new[] { "Fixture Provider", "Pro", "53%", "Fixture changed warning" })
                 Assert.Contains(expected, changedProvider, StringComparison.Ordinal);
-            Assert.Contains("2026-10-31", changedDay, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), changedDay, StringComparison.Ordinal);
             Assert.Contains("$1.50", changedDay, StringComparison.Ordinal);
-            Assert.Contains("2026-10-31", thirtyDayRow, StringComparison.Ordinal);
+            Assert.Contains(firstDate.ToString("D", CultureInfo.GetCultureInfo("en-US")), thirtyDayRow, StringComparison.Ordinal);
             Assert.Contains("$2.50", thirtyDayRow, StringComparison.Ordinal);
             Assert.Equal(changedDay, sevenDayRow);
+            File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "usage-accessible-rows.json"),
+                JsonSerializer.Serialize(new { provider, empty, first, second, changedProvider, changedDay, thirtyDayRow, sevenDayRow }));
+            var window = AppWindows(run).Single(window => window.FindFirst(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "UsagePageRoot")) is not null);
+            OwnedWindowCapture.Save(run, window, "Usage-accessible-rows-updated.png");
         }, scenario: scenario);
     }
 
@@ -600,6 +704,12 @@ public sealed partial class GatewayFixtureUiTests
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "settings" });
+            AutomationElement? notificationsCard = null;
+            await WaitUiAsync(run, () => (notificationsCard = FindById(run, "GeneralNotificationsCard")) is not null, "notification disclosure");
+            var notificationsHeader = Assert.Single(notificationsCard!.FindAll(TreeScope.Descendants,
+                new PropertyCondition(AutomationElement.IsExpandCollapsePatternAvailableProperty, true))
+                .Cast<AutomationElement>());
+            ((ExpandCollapsePattern)notificationsHeader.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
             await WaitUiAsync(run, () => FindById(run, "SettingsPageNotifyHealth") is not null
                 && FindText(run, "Show notifications for:") is not null, "notification context and checkboxes");
             var heading = FindText(run, "Show notifications for:")!;
@@ -625,7 +735,8 @@ public sealed partial class GatewayFixtureUiTests
             {
                 var focused = AutomationElement.FocusedElement;
                 Assert.NotNull(focused);
-                Assert.Equal(run.AppProcessId, focused.Current.ProcessId);
+                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, focused, run.AppProcessId),
+                    "Focus must remain in the owned native window.");
                 actual.Add(focused.Current.Name);
                 if (i + 1 < expected.Length)
                 {
@@ -650,51 +761,45 @@ public sealed partial class GatewayFixtureUiTests
     [Trait("Category", "GatewayFixture")]
     [Trait("Category", "Accessibility")]
     [Trait("KeyboardProof", "Required")]
-    public async Task ClipboardExpander_SupportsKeyboardSelectionAndCollapse()
+    public async Task ClipboardAccess_SupportsKeyboardSelectionAndFocusTraversal()
     {
         await WithAppAsync(async run =>
         {
             await run.InvokeAsync("app.navigate", new { page = "sandbox" });
-            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardExpander") is not null, "Clipboard expander");
-            var expander = FindById(run, "SandboxClipboardExpander")!;
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardAccess") is not null, "Clipboard access selector");
+            var combo = FindById(run, "SandboxClipboardAccess")!;
             var window = AppWindows(run).Single(w => w.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxClipboardExpander")) is not null);
-            Assert.Equal("📋 Clipboard", expander.Current.Name);
-            var pattern = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
-            if (pattern.Current.ExpandCollapseState != ExpandCollapseState.Expanded) pattern.Expand();
-            var radios = expander.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Cast<AutomationElement>().ToArray();
-            Assert.Equal(4, radios.Length);
-            output.WriteLine($"Clipboard radio enabled states: {string.Join(", ", radios.Select(r => r.Current.IsEnabled))}.");
-            Assert.All(radios, radio => Assert.True(radio.Current.IsEnabled,
-                "Clipboard keyboard proof requires enabled sandbox controls; check this host's support state."));
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SandboxClipboardAccess")) is not null);
+            Assert.Equal("Clipboard access", combo.Current.Name);
+            Assert.True(combo.Current.IsEnabled,
+                "Clipboard keyboard proof requires enabled sandbox controls; check this host's support state.");
+            string Value() => SelectedComboText(FindById(run, "SandboxClipboardAccess")!);
+            Assert.Equal("None (default)", Value());
             var hwnd = new IntPtr(window.Current.NativeWindowHandle);
             await NativeKeyboardProof.ActivateAsync(hwnd);
-            radios[0].SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(radios[0], AutomationElement.FocusedElement), "first Clipboard option focused");
+            combo.SetFocus();
+            await WaitUiAsync(run, () => Automation.Compare(combo, AutomationElement.FocusedElement), "Clipboard access focused");
+            // A closed ComboBox commits the neighbouring option on Down without opening its popup.
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Down);
-            await WaitUiAsync(run, () => ((SelectionItemPattern)radios[1].GetCurrentPattern(SelectionItemPattern.Pattern)).Current.IsSelected,
-                "Down selects the next Clipboard option");
-            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "selected Clipboard option focused");
+            await WaitUiAsync(run, () => Value() == "Read: agent can see what you copied", "Down selects Read");
+            Assert.True(Automation.Compare(combo, AutomationElement.FocusedElement), "The selector keeps focus after selecting.");
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
-            await WaitUiAsync(run, () => !radios.Any(radio => Automation.Compare(radio, AutomationElement.FocusedElement)), "focus leaves Clipboard options");
+            await WaitUiAsync(run, () => !Automation.Compare(combo, AutomationElement.FocusedElement), "focus leaves Clipboard access");
             var after = AutomationElement.FocusedElement;
             Assert.NotNull(after);
-            Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
+            Assert.True(NativeUiOwnership.IsOwnedDescendant(window, after, run.AppProcessId),
+                "Focus must remain in the owned native window.");
+            Assert.Equal("Read: agent can see what you copied", Value());
             NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab, shift: true);
-            await WaitUiAsync(run, () => Automation.Compare(radios[1], AutomationElement.FocusedElement), "focus returns to selected Clipboard option");
-            Assert.True(Automation.Compare(radios[1], AutomationElement.FocusedElement), "Shift+Tab returns to the selected option.");
-            pattern.Collapse();
-            expander.SetFocus();
-            await WaitUiAsync(run, () => Automation.Compare(expander, AutomationElement.FocusedElement), "collapsed Clipboard expander focused");
-            NativeKeyboardProof.Press(hwnd, Windows.System.VirtualKey.Tab);
-            await WaitUiAsync(run, () => !Automation.Compare(expander, AutomationElement.FocusedElement), "focus leaves collapsed expander");
-            after = AutomationElement.FocusedElement;
-            Assert.NotNull(after);
-            Assert.DoesNotContain(radios, radio => Automation.Compare(radio, after));
-            pattern.Expand();
-            Assert.Equal(4, expander.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.RadioButton)).Count);
+            await WaitUiAsync(run, () => Automation.Compare(combo, AutomationElement.FocusedElement), "Shift+Tab returns to Clipboard access");
+            Assert.Equal("Read: agent can see what you copied", Value());
+
+            await run.InvokeAsync("app.navigate", new { page = "permissions" });
+            await WaitUiAsync(run, () => FindById(run, "PermissionsPageMarker") is { Current.IsOffscreen: false }, "Permissions page active");
+            await run.InvokeAsync("app.navigate", new { page = "sandbox" });
+            await WaitUiAsync(run, () => FindById(run, "SandboxClipboardAccess") is not null, "Sandbox page reactivated");
+            await WaitUiAsync(run, () => Value() == "Read: agent can see what you copied",
+                "keyboard-selected Clipboard permission persists after page reactivation");
         }, scenario: GatewayScenario.CreateAccessibilityBaseline());
     }
 

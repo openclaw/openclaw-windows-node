@@ -99,6 +99,14 @@ internal static class WorkspaceSessionMenu
         return patch;
     }
 
+    /// <summary>
+    /// Archive or unarchive. The gateway rejects <c>archived</c> without the observed
+    /// <c>sessionId</c> as <c>expectedSessionId</c>; a row with no known id sends the
+    /// patch unguarded and surfaces the gateway's own error.
+    /// </summary>
+    public static SessionPatch ArchivePatch(bool archive, string? sessionId) =>
+        new() { Archived = archive, ExpectedSessionId = sessionId };
+
     public static SessionCreateRequest ForkRequest(SessionInfo session)
     {
         ArgumentNullException.ThrowIfNull(session);

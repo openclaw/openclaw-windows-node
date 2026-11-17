@@ -55,14 +55,14 @@ public sealed class HubSearchControllerTests
     }
 
     [Fact]
-    public void ReleasedSkillsRouteFlowsThroughTheControllerWithoutEnablingTheWholeDashboardCatalog()
+    public void AdvertisedSkillsCatalogOffersItsWebRouteWithoutProbingUnadvertisedCatalogs()
     {
         var client = DispatchProxy.Create<IOperatorGatewayClient, GatewayProxy>();
         var proxy = (GatewayProxy)client;
         proxy.Methods = ["skills.status"];
         using var json = JsonDocument.Parse("""{"skills":[{"name":"Weather","skillKey":"weather"}]}""");
         proxy.Catalog = json.RootElement;
-        using var controller = new HubSearchController(() => new(client, "main", "2026.11.1", [], []),
+        using var controller = new HubSearchController(() => new(client, "main", [], []),
             new InlineDispatcher(), _ => { }, TimeSpan.Zero);
         controller.Open();
         controller.SetQuery("Weather");
@@ -70,7 +70,26 @@ public sealed class HubSearchControllerTests
         var skill = Assert.Single(controller.Results).Item;
         Assert.Equal(new(HubSearchTargetKind.Dashboard, "/skills"), skill.Target);
         Assert.Equal("/skills", skill.DashboardPath);
-        Assert.True(controller.HasDashboardCompatibilityWarning);
+        Assert.Contains(controller.Statuses, status => status.Group == HubSearchGroup.Models && status.State == "Unavailable");
+        Assert.Contains(controller.Statuses, status => status.Group == HubSearchGroup.Settings && status.State == "Unavailable");
+    }
+
+    [Fact]
+    public void AdvertisedModelsRemainSearchableWithoutReleaseMetadata()
+    {
+        var client = DispatchProxy.Create<IOperatorGatewayClient, GatewayProxy>();
+        var proxy = (GatewayProxy)client;
+        proxy.Methods = ["models.list"];
+        using var json = JsonDocument.Parse("""{"models":[{"id":"weather-model","provider":"local"}]}""");
+        proxy.Catalog = json.RootElement;
+        using var controller = Create(client);
+        controller.Open();
+        controller.SetQuery("weather-model");
+
+        var model = Assert.Single(controller.Results).Item;
+        Assert.Equal(new(HubSearchTargetKind.Dashboard, "/settings/model-providers"), model.Target);
+        Assert.DoesNotContain(controller.Statuses,
+            status => status.Group == HubSearchGroup.Models && status.State == "Unavailable");
     }
 
     [Fact]
@@ -161,7 +180,7 @@ public sealed class HubSearchControllerTests
     {
         var client = DispatchProxy.Create<IOperatorGatewayClient, GatewayProxy>();
         var proxy = (GatewayProxy)client;
-        using var controller = new HubSearchController(() => new(client, "main", "2026.10.9", [], []),
+        using var controller = new HubSearchController(() => new(client, "main", [], []),
             new InlineDispatcher(), _ => { }, TimeSpan.FromSeconds(1));
         controller.Open();
         controller.SetQuery("camera");
@@ -209,7 +228,7 @@ public sealed class HubSearchControllerTests
         var dispatcher = new InlineDispatcher();
         IReadOnlyList<HubSearchItem> local = [];
         using var controller = new HubSearchController(
-            () => new(client, "main", "2026.10.9", local, []), dispatcher, _ => { }, TimeSpan.Zero);
+            () => new(client, "main", local, []), dispatcher, _ => { }, TimeSpan.Zero);
         controller.Open();
         controller.SetQuery("lighthouse");
         var pending = proxy.Queries["lighthouse"];
@@ -299,7 +318,7 @@ public sealed class HubSearchControllerTests
 
     private static HubSearchController Create(IOperatorGatewayClient client, Action<string>? report = null,
         InlineDispatcher? dispatcher = null) =>
-        new(() => new(client, "main", "2026.10.9", [], []), dispatcher ?? new InlineDispatcher(), report ?? (_ => { }), TimeSpan.Zero);
+        new(() => new(client, "main", [], []), dispatcher ?? new InlineDispatcher(), report ?? (_ => { }), TimeSpan.Zero);
 
     private static GatewaySearchResult Hit(string id) =>
         new([new() { Key = $"agent:main:{id}", Label = "Uncached conversation" }],

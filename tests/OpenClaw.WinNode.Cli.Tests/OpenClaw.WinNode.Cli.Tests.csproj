@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.WinNode.Cli\OpenClaw.WinNode.Cli.csproj" />
+    <ProjectReference Include="..\..\src\OpenClaw.FileWorker\OpenClaw.FileWorker.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\OpenClaw.TestSupport\OpenClaw.TestSupport.csproj" />
   </ItemGroup>
 

@@ -13,8 +13,8 @@ internal sealed class NativeChatWelcomeAvatar : Control
     public NativeChatWelcomeAvatar() =>
         Template = (ControlTemplate)Application.Current.Resources["ChatWelcomeAvatarTemplate"];
 
-    internal void Update(WorkspaceAgent agent, double size) =>
-        _badge.Initialize(agent, avatarOnly: true, pictureSize: size);
+    internal void Update(WorkspaceAgent agent, double size, IChatAgentAvatarImageSource? imageSource = null) =>
+        _badge.Initialize(agent, avatarOnly: true, pictureSize: size, imageSource: imageSource);
 
     protected override void OnApplyTemplate()
     {

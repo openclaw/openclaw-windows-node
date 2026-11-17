@@ -1,35 +1,353 @@
 using System.Runtime.CompilerServices;
+using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Elements;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 
 namespace OpenClawTray.Chat;
 
 /// <summary>Shared native chat geometry. See docs/CHAT_VISUAL_DESIGN.md.</summary>
 internal static class ChatVisuals
 {
+    private const double TextShimmerSweepMilliseconds = 900;
+    private const double TextShimmerCycleMilliseconds = 1300;
+    private sealed record ShimmerState(Storyboard Storyboard, object OriginalLocal, LinearGradientBrush Shimmer);
+    private static readonly ConditionalWeakTable<TextBlock, ShimmerState> s_shimmers = new();
+
+    internal static TextBlockElement WithTextShimmer(this TextBlockElement element, bool active) =>
+        element.Set(text => TextShimmer(text, active))
+            .OnUnmount(control => TextShimmer((TextBlock)control, false));
+
+    /// <summary>
+    /// A small, slower indeterminate ring. ProgressRing's default style has a 16px minimum, which
+    /// would crop smaller rings, and its Lottie player runs at a fixed rate unless slowed here.
+    /// </summary>
+    internal static Element SubagentSpinner(double size) =>
+        Factories.ProgressRing().IsActive(true).Size(size, size).MinWidth(0).MinHeight(0)
+            .OnMount(control =>
+            {
+                var ring = (ProgressRing)control;
+                ring.Loaded -= SlowSpinner;
+                ring.Loaded += SlowSpinner;
+                SlowSpinner(ring, null!);
+            });
+
+    private static void SlowSpinner(object sender, RoutedEventArgs args)
+    {
+        if (sender is ProgressRing ring && FindDescendant<AnimatedVisualPlayer>(ring) is { } player)
+            player.PlaybackRate = SubagentSpinnerPlaybackRate;
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is T match) return match;
+            if (FindDescendant<T>(child) is { } nested) return nested;
+        }
+        return null;
+    }
+
+    internal static void StopToolRowShimmers(FrameworkElement control)
+    {
+        // Reactor preview.16 tears down Expander.Content but does not visit its Header slot.
+        if (control is Expander { Header: DependencyObject header })
+            StopHeader(header);
+
+        static void StopHeader(DependencyObject element)
+        {
+            if (element is TextBlock text)
+                TextShimmer(text, false);
+            else if (element is Panel panel)
+                foreach (var child in panel.Children)
+                    StopHeader(child);
+            else if (element is Border { Child: { } child })
+                StopHeader(child);
+            else if (element is ContentControl { Content: DependencyObject content })
+                StopHeader(content);
+        }
+    }
+
+    /// <summary>
+    /// The web's running-text shimmer (<c>text-shimmer</c>): a brighter band sweeps
+    /// across the label while a tool, thinking or run is active. Windows animation
+    /// off or high contrast keeps static text, like the web's reduced-motion and
+    /// forced-colors rules. Use <see cref="WithTextShimmer"/> to stop before Reactor pools the control.
+    /// </summary>
+    internal static void TextShimmer(TextBlock text, bool active)
+    {
+        s_shimmers.TryGetValue(text, out var state);
+        var enabled = active &&
+            new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled &&
+            !new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast;
+        if (!enabled)
+        {
+            if (state is not null)
+                StopShimmer(text, state);
+            return;
+        }
+        if (state is not null)
+        {
+            RefreshShimmerColors(text);
+            if (!ReferenceEquals(text.Foreground, state.Shimmer))
+                text.Foreground = state.Shimmer;
+            return;
+        }
+
+        // Keep the brush coordinates fixed. Animating RelativeTransform on a translucent
+        // text brush can corrupt other content on WinUI's shared render surface.
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new(0, 0.5),
+            EndPoint = new(1, 0.5),
+        };
+        foreach (var offset in new[] { 0, 0, 0, 0.15, 1 })
+            brush.GradientStops.Add(new GradientStop { Offset = offset });
+
+        var storyboard = new Storyboard
+        {
+            Duration = TimeSpan.FromMilliseconds(TextShimmerCycleMilliseconds),
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
+        foreach (var (index, end) in new[] { (1, 0.85), (2, 1.0), (3, 1.0) })
+        {
+            var stop = brush.GradientStops[index];
+            var sweep = new DoubleAnimation
+            {
+                From = stop.Offset,
+                To = end,
+                Duration = TimeSpan.FromMilliseconds(TextShimmerSweepMilliseconds),
+                EnableDependentAnimation = true,
+            };
+            Storyboard.SetTarget(sweep, stop);
+            Storyboard.SetTargetProperty(sweep, "Offset");
+            storyboard.Children.Add(sweep);
+        }
+
+        var original = text.ReadLocalValue(TextBlock.ForegroundProperty);
+        text.Foreground = brush;
+        s_shimmers.AddOrUpdate(text, new ShimmerState(storyboard, original, brush));
+        text.Unloaded -= OnShimmerUnloaded;
+        text.Unloaded += OnShimmerUnloaded;
+        text.Loaded -= OnShimmerLoaded;
+        text.Loaded += OnShimmerLoaded;
+        text.ActualThemeChanged -= OnShimmerActualThemeChanged;
+        text.ActualThemeChanged += OnShimmerActualThemeChanged;
+        RefreshShimmerColors(text);
+        storyboard.Begin();
+    }
+
+    /// <summary>
+    /// Resolve ink on the actual label through native theme binding, not by reading
+    /// an application-wide brush whose color may belong to the opposite theme.
+    /// The temporary style/foreground swap is synchronous and never painted.
+    /// </summary>
+    private static void RefreshShimmerColors(TextBlock text)
+    {
+        if (!s_shimmers.TryGetValue(text, out var state))
+            return;
+        var originalStyle = text.Style;
+        var originalForeground = text.ReadLocalValue(TextBlock.ForegroundProperty);
+        global::Windows.UI.Color ink;
+        global::Windows.UI.Color secondary;
+        try
+        {
+            text.ClearValue(TextBlock.ForegroundProperty);
+            text.Style = (Style)Application.Current.Resources["ChatPrimaryTextStyle"];
+            ink = ((SolidColorBrush)text.Foreground).Color;
+            text.Style = (Style)Application.Current.Resources["ChatSecondaryTextStyle"];
+            secondary = ((SolidColorBrush)text.Foreground).Color;
+        }
+        finally
+        {
+            text.Style = originalStyle;
+            if (originalForeground == DependencyProperty.UnsetValue)
+                text.ClearValue(TextBlock.ForegroundProperty);
+            else
+                text.SetValue(TextBlock.ForegroundProperty, originalForeground);
+        }
+        foreach (var stop in state.Shimmer.GradientStops)
+            stop.Color = secondary;
+        state.Shimmer.GradientStops[2].Color = ink;
+    }
+
+    private static void OnShimmerLoaded(object sender, RoutedEventArgs args)
+    {
+        if (sender is TextBlock text)
+            RefreshShimmerColors(text);
+    }
+
+    private static void OnShimmerActualThemeChanged(FrameworkElement sender, object args)
+    {
+        if (sender is TextBlock text)
+            RefreshShimmerColors(text);
+    }
+
+    private static void OnShimmerUnloaded(object sender, RoutedEventArgs args)
+    {
+        if (sender is TextBlock text && s_shimmers.TryGetValue(text, out var state))
+            StopShimmer(text, state);
+    }
+
+    private static void StopShimmer(TextBlock text, ShimmerState state)
+    {
+        text.Unloaded -= OnShimmerUnloaded;
+        text.Loaded -= OnShimmerLoaded;
+        text.ActualThemeChanged -= OnShimmerActualThemeChanged;
+        state.Storyboard.Stop();
+        if (ReferenceEquals(text.ReadLocalValue(TextBlock.ForegroundProperty), state.Shimmer))
+        {
+            if (state.OriginalLocal == DependencyProperty.UnsetValue)
+                text.ClearValue(TextBlock.ForegroundProperty);
+            else
+                text.SetValue(TextBlock.ForegroundProperty, state.OriginalLocal);
+        }
+        s_shimmers.Remove(text);
+    }
     internal const double ReadingWidth = 768;
     internal const double ProseInset = 16;
     internal const double ComposerRadius = 20;
+    internal const double ComposerMinHeight = 96;
+    // Desktop reference composer: 14px editor text, a 14px "+", and a compact 24px Send/Stop
+    // disc inside a 32px hit target with a 12px arrow or a filled 10px Stop square.
+    internal const double ComposerInputSize = 14;
+    internal const double ComposerAttachGlyphSize = 14;
+    internal const double ComposerSendTargetSize = 32;
+    internal const double ComposerSendSize = 24;
+    internal const double ComposerSendGlyphSize = 12;
+    internal const double ComposerStopGlyphSize = 10;
+    internal const double ComposerToolbarInset = 8;
+    // Pending attachments are compact pills: a 14px document glyph, 12px SemiBold name and a
+    // 24px remove target revealed on hover, focus or touch, sized to the name up to the max width.
+    internal const double AttachmentChipHeight = 28;
+    internal const double AttachmentChipMaxWidth = 216;
+    internal const double AttachmentChipGap = 6;
+    internal const double AttachmentGlyphSize = 14;
+    internal const double AttachmentRemoveSize = 24;
+    // Image attachments are square tiles on their own row above the file pills, sized like the web
+    // composer's 56px thumbnails. The remove badge overlaps the tile's top-right corner by this inset.
+    internal const double AttachmentThumbnailSize = 56;
+    internal const double AttachmentThumbnailBadgeInset = 6;
+    internal const double AttachmentThumbnailCell = AttachmentThumbnailSize + AttachmentThumbnailBadgeInset;
+    // Physical-pixel decode bound: sharp at 300% scale without holding full-size images.
+    internal const uint AttachmentThumbnailDecodeSize = 192;
+    internal const double AttachmentRailRowGap = 8;
+    // Pills wrap onto new rows; past this height (four rows at default text size) the rail scrolls
+    // instead of growing further. Scaled text makes rows taller, so fewer rows fit before scrolling.
+    internal const int AttachmentRailMaxRows = 4;
+    // Includes the rail's 3px top and bottom focus padding.
+    internal const double AttachmentRailMaxHeight =
+        AttachmentRailMaxRows * AttachmentChipHeight + (AttachmentRailMaxRows - 1) * AttachmentChipGap + 6;
+    // WinUI's expanded ScrollBar (ScrollBarSize) overlays content instead of reserving space.
+    internal const double AttachmentRailScrollBarInset = 12;
+    // Space between the writing surface and the window's bottom edge. Matches the workspace pane
+    // footer's bottom margin so the composer and account row share a baseline.
+    internal const double ComposerBottomInset = 12;
     internal const double SurfaceRadius = 12;
     internal const double BodySize = 14;
+    internal const string BodyFontFamily = "Segoe UI Variable Text";
+    internal const string TaskMarkerFontFamily = "Segoe UI Symbol";
     internal const double BodyLineHeight = 21;
     internal const string CodeFontFamily = "Consolas";
     internal const double CodeSize = 13;
     internal const double CodeLineHeight = 18;
-    internal const double BlockGap = 16;
-    internal const double TranscriptTopInset = 16;
-    internal const double HeadingTopInset = 8;
+    // Web .chat-thinking is 12px muted text; 18 follows the 12/18 footer ramp.
+    internal const double ReasoningSize = 12;
+    internal const double ReasoningLineHeight = 18;
+    internal const double BlockGap = 8;
+    // Web --chat-block-gap: top-level Markdown blocks and text/media stacks are one text size apart.
+    internal const double MessageBlockGap = 14;
+    // Headings that follow other blocks get the web's 1.5x block gap.
+    internal const double HeadingTopInset = MessageBlockGap / 2;
+    // Web .code-block-wrapper: 10px corners, 36px header (8/8/4/14 insets) and pre insets that
+    // place code 14 pixels from the side and bottom edges.
+    internal const double CodeRadius = 10;
+    internal const double CodeInset = 14;
+    internal const double CodeHeaderTopInset = 8;
+    internal const double CodeHeaderTrailingInset = 8;
+    internal const double CodeHeaderBottomInset = 4;
+    internal const double CodeLabelSize = 12;
+    // Web lists reserve a 24px marker column (16px marker box plus 8px gap) and space items 0.4em apart.
+    internal const double ListMarkerColumn = 20;
+    internal const double ListItemGap = 6;
+    // Compact thinking text keeps Reactor's original 2px list rhythm.
+    internal const double CompactListItemGap = 2;
+    // Web blockquote: 8px 12px padding over a 3px rounded bar inset 4px from the top and bottom.
+    internal const double QuoteBarWidth = 3;
+    internal const double QuoteBarInset = 4;
+    internal const double QuoteVerticalInset = 8;
+    internal const double QuoteHorizontalInset = 12;
+    // Web table: rounded 1px frame, 8px 12px cells separated by 1px rules, tinted header row.
+    internal const double TableRadius = 8;
+    internal const double TableCellHorizontalInset = 12;
+    internal const double TableCellVerticalInset = 8;
+    internal const double CompactGap = 4;
+    internal const double TurnGap = 4;
+    internal const double DetailHorizontalInset = 12;
+    internal const double DetailVerticalInset = 8;
+    internal const double ActionIconSize = 14;
+    internal const double ToolRowMinHeight = 32;
+    // A tool row's 16px leading icon column plus its 8px gap; disclosure content aligns with the title.
+    internal const double ToolRowTitleInset = 24;
+    // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
+    internal const double ToolRowFontSize = 13;
+    // Quieter activity titles (tool, thinking and run status) and their dimmed details.
+    internal const double ActivityTextFontSize = 12;
+    // A tool row's dimmed directory or search scope never takes more than this; it trims with "…".
+    internal const double ToolRowDetailMaxWidth = 240;
+    internal const double ActivityDetailsMaxHeight = 160;
+    internal const double TranscriptTopInset = 8;
+    // The transcript's bottom edge fades into the composer over this height. Like the web
+    // thread padding, the last row's inset adds the fade so a settled tail stays fully opaque.
+    internal const double TranscriptFadeHeight = 32;
+    internal const double TranscriptBottomInset = TranscriptFadeHeight + 6;
+    internal const double JumpLatestSize = 32;
+    internal const double QueueAvatarSize = 20;
+    internal const double QueueCompactAvatarSize = 18;
+    internal const double QueueLeadingInset = 13;
+    internal const double QueueVerticalInset = 6;
+    internal const double QueueTrailingInset = 4;
+    internal const double QueueCompactGap = 6;
     internal const double FooterBreakpoint = 640;
     internal const double CompactEffortBreakpoint = 560;
     internal const double AvatarBreakpoint = 960;
-    internal const double AvatarSlot = 44;
+    internal const double AvatarSize = 36;
+    internal const double AvatarGap = 10;
+    internal const double AvatarSlot = AvatarSize + AvatarGap;
+    internal const double HistoryTickSpacing = 10;
+    internal const double HistoryTickHeight = 2;
+    internal const double HistoryTickMinimumGap = 4;
+    internal const double HistoryRailInset = 8;
+    internal const int HistoryPreviewLength = 240;
+    // Subagents pill above the composer and rows in the Subagents tab.
+    internal const double SubagentPillHeight = 28;
+    internal const double SubagentPillIconSize = 14;
+    internal const double SubagentAvatarSize = 32;
+    internal const double SubagentAvatarGlyphSize = 16;
+    internal const double SubagentBadgeSize = 16;
+    internal const double SubagentBadgeSpinnerSize = 10;
+    internal const double SubagentBadgeOverhang = 4;
+    // Subagent spinners sit beside text for minutes; the default Lottie rate reads as busy.
+    private const double SubagentSpinnerPlaybackRate = 0.6;
+    internal const double SubagentRowMinHeight = 56;
+    internal const double SubagentFinishedRowMinHeight = 40;
+    // Web .chat-composer-neighbor-card: 18px icon column, 10px gaps, 10/12 insets, 16px radius, 52px minimum.
+    internal const double ReviewIconColumn = 18;
+    internal const double ReviewIconSize = 16;
+    internal const double ReviewGap = 10;
+    internal const double ReviewVerticalInset = 10;
+    internal const double ReviewRadius = 16;
+    internal const double ReviewMinHeight = 52;
+    internal const double ReviewDialogMaxHeight = 420;
 
     internal static double WelcomeAvatarSize(double width) => width <= 768 ? 64 : 96;
     internal static double Gutter(double width) => width < FooterBreakpoint ? 12 : 40;
-    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 32;
+    internal static double RailWidth(double width) => width < FooterBreakpoint ? 24 : 40;
     internal static double ProseWidth(double width) =>
         Math.Min(ReadingWidth - 2 * ProseInset, width - 2 * (Gutter(width) + ProseInset));
 
@@ -42,21 +360,103 @@ internal static class ChatVisuals
             .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
             .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush"));
 
+    // Send/Stop paints its own compact disc, so the 32px button chrome stays transparent at
+    // rest and while disabled, with only a subtle circular hover/pressed halo around the disc.
+    internal static void SendButtonResources(ResourceBuilder resources) =>
+        resources
+            .Set("ButtonBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBackgroundPointerOver", Theme.SubtleFill)
+            .Set("ButtonBackgroundPressed", Theme.Ref("SubtleFillColorTertiaryBrush"))
+            .Set("ButtonBackgroundDisabled", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushPointerOver", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushPressed", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ButtonBorderBrushDisabled", Theme.Ref("SubtleFillColorTransparentBrush"));
+
+    /// <summary>
+    /// Transparent, borderless (in every header state) tool-row Expander header whose built-in
+    /// chevron is hidden; the row's leading icon swaps to a chevron on hover or keyboard focus instead.
+    /// </summary>
+    internal static void ToolRowExpanderResources(ResourceBuilder resources)
+    {
+        resources
+            .Set("ExpanderHeaderBackground", Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Set("ExpanderChevronButtonSize", 0d);
+        foreach (var key in s_transparentToolRowBrushKeys)
+            resources.Set(key, Theme.Ref("SubtleFillColorTransparentBrush"));
+    }
+
+    /// <summary>Quiet 12px activity title; it shimmers only while its work is active.</summary>
+    internal static TextBlockElement ActivityText(string label, bool active) =>
+        Factories.TextBlock(label).FontSize(ActivityTextFontSize).TextWrapping(TextWrapping.NoWrap)
+            .TextTrimming(TextTrimming.CharacterEllipsis)
+            .Set(StyleSecondaryText)
+            .WithTextShimmer(active);
+
+    /// <summary>
+    /// Aligns the stock Expander template with prose without replacing its interaction states.
+    /// Header padding and the content border use template-scoped StaticResources, so local
+    /// resource overrides alone cannot remove those insets.
+    /// </summary>
+    internal static void FlushToolRowExpander(Microsoft.UI.Xaml.Controls.Expander expander)
+    {
+        expander.Resources["ExpanderHeaderBorderThickness"] = new Thickness(0);
+        expander.Resources["ExpanderChevronMargin"] = new Thickness(0);
+        expander.Loaded -= OnToolRowLoaded;
+        expander.Loaded += OnToolRowLoaded;
+        if (expander.IsLoaded)
+            ApplyToolRowInsets(expander);
+    }
+
+    private static void OnToolRowLoaded(object sender, RoutedEventArgs args) =>
+        ApplyToolRowInsets((Expander)sender);
+
+    private static void ApplyToolRowInsets(Expander expander)
+    {
+        var root = (FrameworkElement)VisualTreeHelper.GetChild(expander, 0);
+        var header = (ToggleButton)root.FindName("ExpanderHeader");
+        header.Padding = new Thickness(0);
+        header.BorderThickness = new Thickness(0);
+        ((Border)root.FindName("ExpanderContent")).BorderThickness = new Thickness(0);
+    }
+
+    private static readonly string[] s_transparentToolRowBrushKeys =
+    [
+        "ExpanderHeaderBorderBrush", "ExpanderHeaderBorderPointerOverBrush", "ExpanderHeaderBorderPressedBrush",
+        "ExpanderHeaderDisabledBorderBrush",
+        "ExpanderChevronForeground", "ExpanderChevronPointerOverForeground", "ExpanderChevronPressedForeground",
+        "ExpanderChevronBackground", "ExpanderChevronPointerOverBackground", "ExpanderChevronPressedBackground",
+        "ExpanderChevronBorderBrush", "ExpanderChevronBorderPointerOverBrush", "ExpanderChevronBorderPressedBrush",
+    ];
+
     // Native setters reapply presentation after Reactor's defaults on every update.
     internal static void StylePicker(Flyout flyout)
     {
+        // WinUI connects SystemBackdrop only for windowed popups.
+        flyout.ShouldConstrainToRootBounds = false;
+        flyout.SystemBackdrop ??= new DesktopAcrylicBackdrop();
         flyout.FlyoutPresenterStyle = (Style)Application.Current.Resources["ChatPickerFlyoutStyle"];
         flyout.Placement = FlyoutPlacementMode.TopEdgeAlignedRight;
     }
 
     internal static void StylePicker(MenuFlyout menu)
     {
+        menu.SystemBackdrop ??= new DesktopAcrylicBackdrop();
         menu.MenuFlyoutPresenterStyle = (Style)Application.Current.Resources["ChatPickerMenuStyle"];
         menu.Placement = FlyoutPlacementMode.TopEdgeAlignedRight;
     }
 
+    internal static void StyleLeadingPicker(Flyout flyout)
+    {
+        StylePicker(flyout);
+        flyout.Placement = FlyoutPlacementMode.TopEdgeAlignedLeft;
+    }
+
     internal static void StylePickerAccent(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["ChatPickerAccentTextStyle"];
+
+    internal static void StylePickerValue(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatPickerValueTextStyle"];
 
     internal static void StyleSecondaryText(TextBlock text)
     {
@@ -88,6 +488,58 @@ internal static class ChatVisuals
         button.ClearValue(Control.BorderThicknessProperty);
     }
 
+    internal static void AttachComposerPlaceholder(TextBox input)
+    {
+        DetachComposerPlaceholder(input);
+        input.Loaded += OnComposerLoaded;
+        input.Unloaded += OnComposerUnloaded;
+        if (input.IsLoaded)
+            ActivateComposerPlaceholder(input);
+    }
+
+    internal static void DetachComposerPlaceholder(TextBox input)
+    {
+        input.Loaded -= OnComposerLoaded;
+        input.Unloaded -= OnComposerUnloaded;
+        DeactivateComposerPlaceholder(input);
+    }
+
+    private static void DeactivateComposerPlaceholder(TextBox input)
+    {
+        input.ActualThemeChanged -= OnComposerThemeChanged;
+        ChatThemeChanges.Unwatch(input);
+        input.ClearValue(TextBox.PlaceholderForegroundProperty);
+    }
+
+    private static void OnComposerLoaded(object sender, RoutedEventArgs args) =>
+        ActivateComposerPlaceholder((TextBox)sender);
+
+    private static void OnComposerUnloaded(object sender, RoutedEventArgs args) =>
+        DeactivateComposerPlaceholder((TextBox)sender);
+
+    private static void ActivateComposerPlaceholder(TextBox input)
+    {
+        input.ActualThemeChanged -= OnComposerThemeChanged;
+        input.ActualThemeChanged += OnComposerThemeChanged;
+        ChatThemeChanges.Watch(input, () => ApplyComposerPlaceholder(input));
+        ApplyComposerPlaceholder(input);
+    }
+
+    // Reactor owns the control Style. Keep this explicit brush in sync with both
+    // element theme and contrast-only changes, and clear it before control pooling.
+    private static void ApplyComposerPlaceholder(TextBox input)
+    {
+        if (ChatThemeChanges.IsHighContrast())
+            input.ClearValue(TextBox.PlaceholderForegroundProperty);
+        else
+            input.PlaceholderForeground =
+                ThemeRef.Resolve("ChatMutedTextBrush", input.ActualTheme == ElementTheme.Dark) as Brush
+                ?? throw new InvalidOperationException("ChatMutedTextBrush is missing.");
+    }
+
+    private static void OnComposerThemeChanged(FrameworkElement sender, object args) =>
+        ApplyComposerPlaceholder((TextBox)sender);
+
     internal static void StyleQuestionInput(TextBox input, bool inline)
     {
         if (!inline) return;
@@ -108,8 +560,18 @@ internal static class ChatVisuals
     internal static void StyleFlyoutHeading(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"];
 
+    internal static void StyleFlyoutBody(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["BodyTextBlockStyle"];
+
     internal static void StyleFlyoutCaption(TextBlock text) =>
         text.Style = (Style)Application.Current.Resources["CaptionTextBlockStyle"];
+
+    // A ThemeRef foreground replaces the element Style, so secondary flyout text carries its brush in its style.
+    internal static void StyleFlyoutSecondaryBody(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatFlyoutSecondaryBodyTextStyle"];
+
+    internal static void StyleFlyoutSecondaryCaption(TextBlock text) =>
+        text.Style = (Style)Application.Current.Resources["ChatFlyoutSecondaryCaptionTextStyle"];
 
     private static readonly ConditionalWeakTable<FrameworkElement, SizeChangedEventHandler> Observers = new();
 

@@ -6,6 +6,8 @@ presentation follows the reading rhythm of the published 2026.9.4 web chat
 replacing Windows chrome, native input, or gateway contracts.
 The question dock geometry and working claw motion additionally follow the
 October 2026 Control UI at `db2d951fd047a9e6a03b73d41c8e5757506dedf9`.
+Running-label animation and message-footer disclosure were rechecked against
+Control UI `be1e36290247b257945988fb873cd3ab00cc05fd` on November 8, 2026.
 Backplates and accents stay native: WinUI owns the surfaces and Windows supplies
 the accent color, rather than the web client's orange/red palette.
 This source-derived presentation does not imply pixel-identical macOS text
@@ -18,31 +20,132 @@ pixels. Transcript prose is inset 16 pixels from the aligned composer edge.
 Outer gutters are 12 pixels below 640 pixels and 40 pixels above it. The native
 annotated rail overlays only the unused right gutter, leaving transcript and
 composer centered on the viewport, including while the rail is focused.
+The rail represents displayed user and assistant messages, excluding tool,
+reasoning and loading rows. Ticks are visible without hover or focus.
+Their normal, visible-message and hover/pressed treatments follow the web
+position rail at `10285cd35ca7d696957430bbc6c8556f55af79fe`
+(`ui/src/styles/chat/message-layout.css`): 8-by-2-pixel rounded ticks use muted
+gray at 40% opacity, increasing to full muted gray for messages in the viewport.
+Hover and press use the primary text tone, never an accent-colored thumb.
+The hovered tick expands to 32 pixels; its three neighbors expand to 24, 16 and
+12 pixels. Native semantic brushes preserve light, dark and High Contrast;
+High Contrast does not reduce tick opacity. Expansion stays within the unused
+gutter, including on narrow windows. Ticks have
+10-pixel pitch before the rail reaches the transcript viewport height. The
+rail has 8-pixel vertical and 4-pixel horizontal insets. At the viewport cap,
+ticks remain equidistant regardless of message height. Long histories sample
+messages evenly, retaining the first and last, so rendered ticks have at least
+4 logical pixels of clear vertical space after layout rounding. The tick budget
+adapts to the rail height and display scale on resize. Hover and pointer
+navigation resolve the same sampled message; keyboard navigation still reaches
+every message. The rail uses a fixed ordinal range independent of virtualized
+transcript height estimates, keeping its native ticks mounted during navigation.
+Streaming sender/preview updates retain existing labels when their sampled
+identities and row positions are unchanged. Visual updates are coalesced per
+rendered frame; unrelated window layout does not rescan the transcript.
+Hover previews show sender identity and up to 240 characters in
+three lines within 280 pixels, inside a native 12-pixel rounded tooltip.
+Click or drag resolves an ordinal position to the current keyed message, not
+its approximate pixel offset. Keyboard Up/Down, Home/End and Enter/Space provide
+the same destinations. After reading with the wheel or touch, Up/Down starts
+from the first visible message rather than an old rail selection. Consecutive
+rail keys retain their selection while navigation is pending. Touch previews
+use the actual pointer position; native tooltip placement must not shift which
+message is previewed. Native message realization retains bounded layout waits,
+identity checks and cancellation; it does not force synchronous ItemsView layout.
 The avatar is omitted below 960 pixels; at wider sizes its balanced side slots
-leave prose centered. Accessible sender and footer identity remain.
+leave prose centered. Its 36-pixel portrait has a 10-pixel gap to the prose,
+matching the pinned web chat's `startup-layout.css`; both side slots reserve
+46 pixels, so the portrait moves outward without shifting the reading column.
+Accessible sender and footer identity remain. Like the web
+transcript, one block of agent rows (assistant text, tool rows, tool groups and
+reasoning between user messages, status notices or a change of forwarded sender)
+shows one avatar, on its first row even when that row is a tool call, so tool
+calls and back-to-back runs such as heartbeats no longer repeat it. Inside a
+block, each run owns one actions footer; a run also ends where its recorded
+identity changes and at messages that start their own turn (turn boundaries and
+independent or background messages). Tool rows and groups keep one grid shape whether or not they
+carry the avatar, so they are never rebuilt when it moves.
 
 The writing surface uses a 20-pixel corner radius, 16-pixel editor inset, and a
-112-pixel minimum height. Message and code surfaces use 12-pixel corners.
+96-pixel minimum height. Its padding is 16,12,16,8 pixels and the editor-to-toolbar
+gap is 8 pixels. The editor retains its 44-pixel minimum height and grows with
+multiline input; action targets and text sizes are unchanged. Message surfaces
+use 12-pixel corners and code cards use the web's 10-pixel corners.
 These are chat surface tokens, not replacements for standard control radii.
 General layout spacing is on the 4-pixel grid. The question dock preserves the
 upstream 7/9/11/14-pixel option gaps, insets and typography instead.
 
-Prose uses native body type at 14 pixels with 21-pixel line height. Headings
-use 24/20/16 pixels for H1/H2/H3 and below. Top-level blocks use one uniform
-16-pixel gap (the native 4-pixel-grid approximation of Web's 14 pixels), with
-zero extra top/bottom block margins. List and quote interiors are unchanged.
-Text/media stacks use that same gap. The transcript has a 16-pixel lead-in. Comparisons
+Prose and composer input share Segoe UI Variable Text at 14 pixels through
+`ChatVisuals.BodyFontFamily` and `BodySize`. Prose keeps its 21-pixel line height;
+the editor retains native TextBox line metrics. Headings
+use 24/20/16 pixels for H1/H2/H3 and below. Top-level blocks follow the web's
+`--chat-block-gap`: one uniform 14-pixel gap (`ChatVisuals.MessageBlockGap`),
+with zero extra top/bottom block margins, except that a heading after another
+block adds 7 pixels for the web's 1.5x heading lead-in. Prose, tight list items
+and table cells use the softer web text tone (`ChatProseRichTextStyle`); headings
+and bold runs use the strong tone. List markers share the prose ramp, so each
+marker sits on its first line's baseline in tight and loose lists, and occupy a
+right-aligned 20-pixel column so item text starts 24 pixels in, as on the web.
+Bullets use the muted tone and numbers the prose tone. Items are 6 pixels apart
+(the web's 0.4em). Quote paragraphs follow the paragraph ramp. Table cells keep
+the Markdown control's 14-pixel metrics with a bold header, where the web uses
+13 pixels. Thematic breaks are a 1-pixel native divider. Inline code keeps its
+surrounding tone on a subtle fill chip; WinUI text highlighters cannot draw the
+web chip's border or padding. Bold, inline-code and syntax highlighter brushes
+are re-resolved when the element's theme changes.
+Text/media stacks use that same gap. The transcript has an 8-pixel lead-in.
+Assistant turns use 4-pixel outer spacing without extra body padding. User
+bubbles use 16-pixel horizontal and 12-pixel vertical insets, with an 8-pixel
+stack gap plus a 2-pixel top margin before their action footer. Tool details
+keep 12-pixel horizontal and 8-pixel vertical insets; opened thinking text
+aligns with its disclosure title, 24 pixels in.
+Related tool labels, details and action footers keep one 4-pixel gap. Comparisons
 normalize the released web header separately rather than adding fake app chrome.
 Code remains literal and selectable, with native horizontal and vertical
-scrolling rather than truncation. Its header exposes the supplied language and
-the existing Copy action. The code body uses native Consolas at 13 pixels with
+scrolling rather than truncation. The card follows the web `.code-block-wrapper`:
+a 1-pixel stroke over the existing native card fill, a header with the lowercase language
+(or the localized `code` fallback) and the existing Copy action at 8/8/4/14-pixel
+insets, and code 14 pixels from the side and bottom edges. The code body uses
+native Consolas at 13 pixels with
 18-pixel line height, matching the web's line rhythm while compensating for
 Consolas's smaller glyphs relative to the web's 12-pixel monospace face.
 The language label uses the same family at 12 pixels. Max-height line stacking
 allows larger or fallback glyphs to grow instead of clipping at text scales.
-The frame keeps 12-pixel horizontal and 8-pixel vertical padding so the more
-readable leading does not crowd compact conversations. Code text uses the
-native secondary text brush for a calmer tone, with system window text in HC.
+Code text uses the prose tone, with system window text in HC.
+`ChatCodeSyntax` classifies common fence languages (TypeScript/JavaScript, JSON,
+C#, C-family, Python, PowerShell, shell, YAML, TOML, SQL, CSS and XML/HTML) into
+the web's highlight.js roles. `ChatMarkdownPresentation.ApplyCodeSyntax` colors
+them with theme-resolved text highlighters over Reactor's single literal run, so
+reconcile never rebuilds unchanged code and selection survives re-renders. Colors
+refresh on load and theme change and are cleared on unmount, before Reactor pools
+the control. Comments use the muted color without italics. Unknown languages,
+blocks over 32,000 characters or 4,000 colored spans, and High Contrast stay plain.
+Compact thinking text keeps its tighter 8-pixel block and 2-pixel list rhythm.
+
+Chat text sizes are pinned by `ReactorChatLayoutProofTests.FontContract.cs`,
+`ReactorMarkdownReadingRampProofTests.cs` and the Worked header assertions in
+`ReactorChatLayoutProofTests.WorkAlignment.cs`. The web column is the pinned
+`ui/src/styles/chat` CSS at `b896457970bfa1b2cef23ea16f3731ba73436b0c`, which
+agrees with the 2026.9.4 and October builds. Reading content follows the web;
+chrome keeps the native WinUI ramp.
+
+| Role | Native (px) | Web (px) | Note |
+|---|---|---|---|
+| Prose, user bubble, quote, list item | 14/21 | 14/21 | Markers share the first-line baseline |
+| Headings H1, H2, H3 and below | 24/20/16, bold | 1.65, 1.35, 1.15em; H4 to H6 1em | One three-step ramp |
+| Code block, language label | Consolas 13/18, 12 | mono 12 | Consolas glyphs are smaller |
+| Table cell | 14, bold header | 13, 600 header | Markdown control metrics kept |
+| Thinking text, lists, headings | 12/18, secondary | 12, muted | Headings differ by weight only |
+| Tool and activity title, inline status, nested label | 13 | 13 | `ChatVisuals.ToolRowFontSize` |
+| Tool input and result code | Consolas 12 | mono 11 to 12 | |
+| Tool card outcome | 11 | 11 | Section names are accessible labels, not visible headings |
+| Row glyph, hover chevron | 14, 12 | 14, 14 | Fluent glyph sizes |
+| Footer, hover metadata, status, error | 12/18 | 12; error 13 | Error stays on the status ramp |
+| Permission card | 14 title, 12/18 body and decisions, 11 caption | not compared | Native card chrome |
+
+The provider-review card and the subagent pill and list keep stock WinUI
+body and caption sizes as native chrome.
 
 Additional shared glyph aliases live in `FluentIconCatalog`: `ChevronDown`
 (E70D) and `Stop` (E71A).
@@ -53,8 +156,10 @@ aliases. Other Send glyph aliases are unchanged.
 ## Theme resources
 
 `Themes/ChatResources.xaml` owns the following semantic aliases in Default
-(Dark), Light, and HighContrast. Chat retains native WinUI surfaces, text and
-Windows accent colors; the web reference supplies geometry and motion, not colors.
+(Dark), Light, and HighContrast. Chat retains native WinUI surfaces and Windows
+accent colors. Assistant prose uses primary ink, like user messages; bold and
+headings retain stronger weight, while bullets and metadata stay muted. Code
+syntax uses the web's highlight.js palette.
 
 | Resource | Source / mapping |
 |---|---|
@@ -62,20 +167,29 @@ Windows accent colors; the web reference supplies geometry and motion, not color
 | `ChatComposerBrush`, `ChatCardBrush` | `CardBackgroundFillColorDefault`; system window in HC |
 | `ChatStrokeBrush`, `ChatQuestionCardStrokeBrush` | `ControlStrokeColorDefault`; system window text in HC |
 | `ChatTextBrush`, `ChatStrongTextBrush` | `TextFillColorPrimary`; system window text in HC |
+| `ChatProseTextBrush` | `TextFillColorPrimary`, so assistant prose reads as strongly as user text; system window text in HC |
 | `ChatSecondaryTextBrush` | `TextFillColorSecondary`; system window text in HC |
+| `ChatMutedTextBrush` | `TextFillColorTertiary`; system window text in HC |
+| `ChatSyntax*Brush` | Web highlight.js keyword, string, number, title, type and attribute colors per theme; comments use the muted/secondary tone; system window text in HC |
 | `ChatClawBrush` | Light/dark Windows accent variants; system window text in HC |
 | `ChatQuestionOptionBrush`, `ChatQuestionOptionHoverBrush` | Native default/secondary control fills; system window in HC |
 | `ChatQuestionSelectedBrush`, `ChatQuestionSelectedStrokeBrush` | Windows accent tint and stroke; system window/highlight in HC |
 | `ChatQuestionSubmitStyle` | Native accent fill and text-on-accent brushes, including system HC mappings |
 | `ChatUserBrush` | Windows accent at low opacity; full system highlight in HC |
-| `ChatPendingUserBrush` | Transparent in every theme, revealing the conversation background |
 | `ChatUserTextBrush` | Primary text; system highlight text in HC |
-| `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush` |
+| `ChatRichTextStyle` | Native rich-text Foreground binding to `ChatTextBrush`, for headings |
+| `ChatProseRichTextStyle` | Native rich-text Foreground binding to `ChatProseTextBrush`, for Markdown prose |
+| `ChatSecondaryRichTextStyle` | Native rich-text Foreground binding to `ChatSecondaryTextBrush`, for thinking text |
+| `ChatCommandOutputRichTextStyle` | Native rich-text binding to `ChatCommandOutputBrush`, slightly muted command output |
+| `ChatCommandOutputBrush` | 82% primary / 18% secondary native text alpha; full system window text in HC |
+| `ChatToolActionHoverBrush` | 70% native subtle hover fill; system highlight in HC |
+| `ChatToolActionHoverForegroundBrush` | Primary text for hover/focus; system highlight text in HC |
 | `ChatCodeTextStyle` | Native code Foreground binding to `ChatSecondaryTextBrush` |
 | `ChatSecondaryTextStyle` | Native progress/result TextBlock binding to `ChatSecondaryTextBrush` |
+| `ChatMutedTextStyle` | Native TextBlock binding to `ChatMutedTextBrush`, for list bullets |
 | `ChatQuestionCardStyle` | Native question Border bindings to card fill and question-specific stroke |
 | `ChatCopySuccessBrush` | `SystemFillColorSuccess`; system window text in HC |
-| `ChatPickerAccentBrush` | Light/dark system accent variants; system window text in HC |
+| `ChatPickerAccentTextStyle` | Direct theme binding to native `AccentTextFillColorPrimaryBrush`, including its high-contrast mapping |
 | `ChatSandboxOnBrush` | Light/dark system accent variants; system window text in HC |
 
 HC maps surfaces, strokes and text to system window/button/highlight colors.
@@ -93,11 +207,504 @@ use the card fill above that content layer.
 
 ## Controls and states
 
-Initial transcript tail navigation retains its native layout gate. A viewport
-resize can arm one additional discrete tail request if realizing variable-height
+Tool disclosures use compact native Expander headers with a single-line,
+ellipsized command, path, query or supplied description. Non-success states
+remain visible; accessible names retain the tool and status. Accessible help
+retains the bounded preview; rows have no hover tooltip, as on the web.
+Expanded details keep the successful completion
+label visible and retain multiline commands,
+redacted structured arguments and literal output independently of that preview.
+Input envelopes retain the existing 64K character budget, individual strings
+use the shared safe-display bound, and output uses the 256KiB chat-entry budget.
+An oversized input is explicitly unavailable, not silently empty. This is not
+unbounded raw-payload disclosure or full-output retrieval beyond those limits.
+`filePath` and `notebook_path` retain their live/history aliases. Input and
+output have separate stable identities so late input does not replace an
+already-open output control.
+
+Native disclosure headers and action targets keep their existing sizing; compact
+spacing does not clip header content or shrink hit targets.
+
+When the provider pauses or stops the selected session, a warning card sits
+above the composer in the reading column, matching the web's
+`chat-provider-review` notice: an 18-DIP caution-icon column, 10-DIP gaps,
+12/10 insets, 16-DIP corners and a 52-DIP minimum height on the composer fill
+and chat stroke. Its semibold title is "Session paused as a precaution" or
+"Session stopped as a precaution", followed by the matching secondary-text
+explanation. Whether the session can continue comes only from the review's
+`CanContinue`; missing findings or continuation text never turn a paused review
+into a stopped one. When findings or a continuation message exist, **Review
+findings** opens a read-only dialog with the continuation message, web-chat
+guidance (when continuation is allowed) and the provider's findings. Clearing the
+review, for example on disconnect, also forgets an open dialog so a returning
+review never reopens it. The native card never acknowledges or resumes the run;
+continuation remains a web-chat action.
+
+Child-agent status instead opens through the **Subagents** pill above the
+composer. The pill appears while any of the selected chat's non-archived direct
+subagents in the Gateway's current session snapshot is running, waiting, or
+queued, and stays while the Subagents tab is open. Once every subagent has
+finished and the tab is closed, it hides; the parent agent reports the results
+in the transcript. Like GitHub's status pills,
+it shows "Subagents" followed by the total count in secondary text. A spinner
+replaces the robot glyph while any subagent is running; the accessible name and
+tooltip state the running and finished counts. Its label inherits the button's
+state foreground, and the count drops its secondary tint in High Contrast, so
+hover and pressed states stay legible. Its border stays neutral while its tab is
+selected. Selecting it opens or reselects the
+Subagents tab in the shared conversation panel. Subagent spinners run at a
+slower rate than the default ring and opt out of its 16-DIP minimum size.
+
+The tab is a status list only. **Running** (working, waiting, or queued) and
+**Finished** (done, stopped, failed, or an unknown outcome) sections show counts.
+Only a recorded successful run shows the success check; aborted runs show
+Stopped, and an unknown or stale status shows a neutral "Finished". Each row has a
+robot avatar with a spinner, check, or error badge; the title; status with the
+current activity; and elapsed time. Running rows count from the run start and
+refresh each second while the tab is selected; settled rows use the recorded
+runtime. A new run clears the previous run's start time. Rows are not
+interactive and do not load child history. `ChatSubagentPresentation` is the
+single status and count owner for the pill and list. Other parent-linked
+sessions are not classified as subagents. Disconnect or parent selection closes
+the tab.
+
+This version intentionally has no child transcript, separate child
+discovery/pagination, descendant tree, Stop, persisted layout, or docking
+controls. Its session-list scope is not a claim that every historical child has
+been discovered.
+
+The **Files** pill sits beside the Subagents pill in the same row. It appears
+once the selected chat's Gateway session file list has files, after a failed
+read, or while the
+Files tab is open, and shows "Files" with the file count in secondary text,
+using the same pill look (`ChatPanelPill`). Selecting it opens or reselects the
+Files tab. The tab lists the files the session edited or read, with the
+workspace root, the folder and size of each file, and an Edited, Read or
+Missing badge; untouched files from the workspace root are not shown or
+counted. Selecting a previewable row opens the read-only File tab using the
+Gateway's original request path, without normalizing it into another target.
+The list comes from the existing
+`sessions.files.list` read when the chat is selected or its history is
+replaced (for example by a checkpoint restore), after each run ends, and from
+the tab's refresh button. An unsupported Gateway or a failed read shows a
+status line instead of inventing files, and a failed refresh keeps the last
+list. An unsupported Gateway is asked again only by refresh or after
+reconnecting. Disconnect or another chat closes the tab, like Subagents.
+
+File targets in read, edit and write tool rows open a separate read-only file
+preview tab without toggling the row's disclosure. Only safe workspace-relative
+paths are linked; a patch links only one surviving, unmoved file. The preview
+uses the Gateway's existing `sessions.files.get` authorization, redacts secrets,
+escapes hidden characters and bounds displayed text. Missing, unsupported,
+non-text and unavailable reads have distinct states; retry is explicit.
+Reopening the same target reads it again. The preview survives history reloads,
+but disconnecting or changing chats closes it. The Files list remains separate.
+
+File attachment cards open the same sidebar preview when their name or icon
+is selected. Their separate Download button retains the browser-download action.
+Attachments use their session-scoped artifact ID and optional agent ID through
+`artifacts.download`, never a guessed workspace path derived from the filename.
+The existing media client bounds preview downloads to 1 MiB and keeps Gateway
+tickets out of presentation code. UTF-8 text is displayed as selectable,
+secret-redacted plain text, bounded to 64 KiB of characters. Binary and invalid
+UTF-8 content show the existing non-previewable state; unavailable reads offer
+an explicit retry. Reopening, cancellation and connection/session retirement
+use the same File tab lifecycle as workspace reads.
+
+`ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
+resizing, 440-DIP initial width and compact layout below 652 DIPs. The native
+`TabView` keeps its default drag reordering, and the state adopts the dragged
+order; unselected tabs show their close button on pointer hover. There is no
+second subagent split/focus owner. Compact presentation retains the hidden main
+conversation and uses the existing composer-visibility guard. The composer and question dock
+measure the remaining conversation column, not the full shell.
+
+In the Workspace window, the title bar mirrors the web Control UI's side-panel
+controls flush against the caption buttons while chat is shown, and uses tall
+caption buttons so both share one row. While the panel sits beside or over a
+wide conversation and leaves room for tabs beside the title-bar actions, the
+panel and its divider extend to the window's top edge:
+its tab strip (or launcher title) occupies the caption row, kept clear of the
+title-bar actions, and its tab list is registered as a title-bar pass-through
+region so it stays clickable while the rest of the row still drags the window.
+Expanded with the sidebar closed, the header also leaves the reopen-sidebar
+button clear. The panel stays below the title row while an operation or speech
+banner shows above chat, so the banner and its close button stay reachable. F6
+from an expanded panel restores the split and returns to the conversation.
+The **side panel
+toggle** (dock-right icon) minimizes a panel shown beside the conversation and
+keeps its tabs; selecting it again shows the panel. Opened with no tabs, the
+panel shows an **Explore panels** launcher listing Files, Subagents and the
+session Dashboard when each can open, and Escape closes it. Pills and other
+explicit opens show a minimized panel again; automatic dashboard reveals do not.
+While the panel is beside a wide conversation, **Expand** (full-screen icon)
+lets it fill the conversation area; the button then restores the split, as does
+the toggle. Expand is hidden in the compact layout, where the panel already
+fills the area. Closing the last tab or minimizing ends the expansion.
+
+Gateway-truncated tool results keep their typed truncation flag and canonical
+saved result-message/session/call identity, separately from invocation input.
+An expanded disclosure offers **Show full output** only when a read can be
+scoped. This explicit action uses the existing authenticated `chat.message.get`
+contract, not another tool invocation or chat send. Opening or rendering a row
+does not fetch. The loader rechecks connection, session, reset, history revision
+and exact result identity before dispatch and after completion. Collapse,
+cancel, disposal and scope replacement retire the view's pending result.
+Input and output controls retain their existing keys during hydration.
+
+Live structured tool results retain the loaded session identity too. When older
+history splits an invocation from its result, exact run/call matches reunite the
+input with the existing result row without changing its identity, outcome,
+recovery locator or active-run state. A Gateway `windowReset` keeps cached
+messages visible and exposes the existing history Retry action; an invalidated
+cursor is not treated as the end of history.
+
+The shared `ChatToolDetailsProfile` reader guard defaults to unknown/unavailable.
+It reuses the authenticated, epoch-bound `users.self` read and existing identity
+parser without loading avatars or exposing profile IDs. Every verification
+first advances an opaque revision and disables reads; only the same canonical
+profile can become available again at that new revision. A different profile
+retires details until a new connection. Unknown identity and failed verification
+deny reads. Recovery compares the captured profile snapshot before dispatch and
+completion, and includes it in cache identity. Thus a same-profile name edit can
+recover without accepting a previous revision's cached or pending output.
+After reconnect, saved-result reads also wait for history committed on the
+current connection; rebinding an old cached row to a new epoch is not admission.
+
+Recovery stays within the 256KiB UTF-8 display budget and requests at most
+262,144 characters from the Gateway. A server-retained cap or local UTF-8 cap
+remains explicitly **limited**, never complete. Unsupported Gateway versions,
+missing or invisible results, oversized responses, mismatched identities and
+transport failures have separate visible outcomes. Retry is an explicit action.
+The panel reuses `LoadToolOutputAsync`, `ChatToolOutputOperation`, and the same
+detail renderer. Recovery uses the canonical saved result's call and message
+identity, not the invocation's display identity. These rules follow the
+[pinned message-read handler](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/src/gateway/server-methods/chat-message-get-handler.ts).
+
+Like the web `coalesceActivityRuns`, tool rows and groups that nothing visible
+separates read as one log even across runs, so a burst of heartbeat calls is one
+group; recorded nesting still never crosses a run. Two or more such calls render
+as one collapsed summary row that counts operations per category in web order,
+then failures (errors only; a stopped call reads Interrupted on its row), for example
+`3 commands · 2 reads · 1 other operation · 1 subagent · 1 failed`. Raw snake_case
+tool names read as titles (`heartbeat_respond` is "Heartbeat Respond"), like the
+web `defaultTitle`. A launch counts as a
+subagent only when it started one; failed launches and launches that opened
+their own session count as other operations. Routine bookkeeping (yields, plan
+progress, process polls and message reactions) is left out of the counts unless
+nothing else remains. A single call keeps its own step row titled like the web
+`ToolRowContent`: `Read SKILL.md`, `Edited`/`Wrote`/`Created`/`Changed` for
+mutations (patches name one file or `N files`), `Searched` and `Fetched` with
+their target, a shell tool's own title or `$ command` with leading `cd`, `set`,
+`export` and `unset` stages removed, and a labeled `sessions_spawn` as its label
+with the subagent's state (running, failed, stopped or elapsed time), classified
+by the same `ChatSubagentPresentation` as the Subagents pill so both always agree.
+Known, unarchived direct-child subagent labels open their session independently
+of the row's expand/collapse action. Edit, write and patch rows show live or
+successful final `+N -M` line counts when exact facts are available. History
+reloads retain result-derived counts; redacted or incomplete input never
+supplies guessed counts.
+An unknown or stale subagent outcome shows no state rather than a duration. Only
+read, search and fetch rows add their dimmed directory or scope, capped at
+`ChatVisuals.ToolRowDetailMaxWidth`; long titles trim with an ellipsis. A patch
+whose text was cut for display shows its input preview instead of a partial file
+summary. Other calls show their input preview. Fields outside the persisted
+display arguments come from the redacted tool input. A row's accessible name is
+its displayed title and state. A single row the user opened stays open when the
+next call turns it into a group. Failed and interrupted steps stay
+inside their group, where the step row shows a muted inline `failed` instead of
+a trailing status. Calls with provider reviews or input still being prepared
+keep their standalone disclosure so the review and live diff stay visible.
+Each row shows its category glyph; hovering or focusing the row header swaps
+that glyph for an expand chevron, and the built-in Expander chevron is hidden.
+Row headers stay borderless in every state (rest, hover, pressed, disabled),
+like the web's inline disclosure.
+Headers retain a 32-pixel minimum target with vertically centered icons, titles
+and inline status; titles and status use the web summary's 13 pixels. The icon
+keeps its natural line height inside a 16-pixel-wide
+slot, so the category glyph and the hover or focus chevron share the title's
+center line instead of sitting at the top of a fixed box. The stock template's
+header padding, hidden-chevron margin and content-border insets are removed, so
+nested group layers do not drift from the prose edge. Commentary inside
+**Worked** uses that same reading column without reserving a second pair of
+avatar slots on wide viewports.
+A call the Gateway records as wrapping others (`parentToolCallId`, same run)
+lists its nested calls first when expanded, then its own input behind a
+collapsed **Tool input** disclosure, like the web `groupToolCalls` tree. Links
+are never inferred; ambiguous identities and cycles stay top-level. Group
+counts include nested calls instead of a completed wrapper, except when all its
+nested calls are routine, as in the web `resolveCompletedActivityWrappers`. Each layer keeps its own
+expansion key, so opening a group never opens its first row.
+The last transcript row keeps a 38-pixel bottom inset above the composer: the
+32-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
+settled tail is fully opaque. `ChatTranscriptFade` redirects only the bottom
+32-pixel band through a composition alpha mask, not a color overlay, so translucent
+Mica shows through. The real transcript remains opaque and scrolls normally;
+an inner host clips the copied band from its normal rendering. Child replacement,
+resize and detach update or release the surface, clip and brushes. High contrast
+omits the mask, including when switched on while the window stays open.
+While the mask is active, bring-into-view requests inside the transcript, such as
+a keyboard selection caret, extend their target by the band so they land fully
+readable above it. Pointer drag auto-scroll still starts only once the pointer
+leaves the transcript's layout bounds, below the band.
+The composer itself keeps a 12-pixel bottom margin, the same distance from the window edge as the Workspace owner footer buttons.
+Existing chronological messages, reasoning,
+partial-output updates, collapsed-by-default disclosures and explicit group
+expansion are unchanged. This is a focused adaptation of the default web tool
+row at `b896457970bfa1b2cef23ea16f3731ba73436b0c`, not full transcript parity.
+Dashboard sessions (`agent:<agent>:dashboard:<id>`, exactly four segments)
+collect completed tools, commentary, and reasoning in a collapsed **Worked**
+disclosure above preserved answers. The header reads **Worked for X** (or
+**Worked**); expanded, it appends the tool-call count (`Worked for 4s · 3 tool
+calls`) above a divider. Its body reuses the transcript rows, so tools appear as
+their own collapsed group summaries between commentary and reasoning.
+The policy follows the
+[pinned web turn presentation](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/pages/chat/chat-turn-presentation.ts).
+It is a projection of the native transcript, not a rewritten transcript or a
+WebView. Other session types retain their chronological presentation.
+
+The Shared parser retains supplied message and text-signature phases, execution
+identity, turn and steer boundaries, forwarding provenance, and automation
+identity. Mixed phases remain separate through history replay and live snapshot
+reconciliation. Unknown phases remain unknown. For unphased providers only,
+the last eligible visible reply is the presentation fallback; this never writes
+a phase or execution identity and is never used for send admission.
+
+Live and steered turns stay unfolded. Independent messages and structural rows
+bound reordering. Explicit answers, earlier other-run replies, and media remain
+visible; trailing failed work stays outside the disclosure. Tool-only turns
+retain their result rows. The disclosure key uses the terminal answer, session,
+and generation, so older-history prepends do not reset explicit expansion.
+Existing native tool controls, literal details, accents, and backplates are reused.
+
+Public `item/preamble` progress appears as commentary in this same disclosure,
+not as private reasoning or a second answer. Nonempty start/update drafts stay
+hidden until complete. Run/item identity and event sequence protect updates and
+empty-item retirement; saved commentary wins over its live copy. Clearing the
+accumulated answer preview does not erase keyed progress. This follows the
+[installed web preamble contract](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/pages/chat/tool-stream-preamble.ts)
+without changing thinking visibility preferences.
+
+Newly completed work settles with a 200-millisecond fade, and a changing live
+tool headline enters over 160 milliseconds. Reactor owns these enter-only
+animations; no transcript dimensions, scroll position or focus are animated.
+Initial/loading history, history revisions, session changes and generation
+resets do not replay completed-work entrances. A stable tool identity prevents
+partial-output updates from restarting its headline animation.
+Reactor's live reduced-motion hook disables both effects. Stock WinUI disclosure
+motion and the existing working-claw animation remain their respective owners.
+
+Confirmed `sessions_yield` and asynchronous `github_publish` receipts create
+handoff boundaries using the existing tool/run correlation. They do not become
+completed-work rollups after resuming. Yield calls show only the public
+acknowledgment, never private continuation input; failed, pending, malformed or
+mismatched receipts cannot establish a handoff. Typed receipt facts are read
+before display truncation, not recovered from rendered JSON.
+
+Native chat has no bubble-mode setting or in-conversation search control.
+The non-bubble default maps to the web default, with the bubble gate retained
+at the pure projection seam. Global search remains a separate surface and
+does not disable completed-work rollups. **Worked for** uses the
+Gateway's finite nonnegative `runtimeMs` only when the session and terminal
+`lastRunId` match the reply that owns the disclosure. Missing or unmatched
+facts and work without one owning reply stay untimed; message timestamps never
+fabricate a duration. Unsigned stream replacements clear stale block signatures,
+and matching cumulative text prefixes reconcile within their causal/run boundary.
+Conflicting unidentified text remains visible rather than being guessed away. Pixel-level parity
+requires current-build visible proof in addition to the offscreen control tests.
+
+Supplied assistant `thinking` blocks render as native Markdown inside a
+**Thinking** disclosure that starts collapsed. Its header is a tool row with an
+always-visible leading chevron (right while closed, down while open) and the
+native Expander chevron hidden, like the nested **Tool input** row. The open
+choice lives in the tool-row expansion store, so a recycled row never inherits
+another thought's state. Like tool rows, the disclosure is keyed by the
+collapse-all version, so collapse-all closes thinking and resets its chevron. The 12px title
+shimmers only while that thought is the stream's active item. The opened text
+aligns with the title and uses the web thinking block's 12/18 secondary tone in
+a scroller capped at 240 pixels, and its lists and headings share that ramp. Session
+`reasoningLevel` falls back to
+`reasoningDefault`: `on` shows saved reasoning and live previews; `stream`
+shows previews only; other or absent values hide both. The client default
+corresponds to web's enabled Show thinking preference. Settings > **Show
+thinking** (`ShowChatThinking`, default on) mirrors web's toggle: turning it
+off hides saved reasoning and live previews, but not the run-progress
+"Thinking" status. Encrypted/redacted blocks are not
+reconstructed. Live `thinking` events require supplied item/run identities and
+cumulative text. Exact non-imported publication acknowledges a persisted
+receipt; stream mode retains that preview until the run ends. Only the latest
+nonempty, receipt-free occurrence can transfer to its matching final reply,
+and existing saved thinking wins. Empty tails, resets and terminal outcomes
+cannot revive an earlier thought. These rules follow the
+[pinned reasoning owner](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/pages/chat/chat-reasoning.ts),
+not assumptions about older installed web builds.
+
+Explicit commentary does not receive a final-answer footer. Waiting,
+compaction and retry labels remain visibly present beside elapsed time rather
+than existing only in accessibility text. A `run_status` retry with a valid
+`retryAt` counts down ("Retrying in Ns") on the existing one-second progress
+timer, then falls back to the plain retry label; text, tool or turn events clear
+it. Progress reads "Thinking" only while a current-run thought is active: the
+Gateway's reasoning end event, a new in-progress tool call or changed text on any
+reply row ends it, while a replayed reply snapshot with unchanged text does not.
+A saved thought stays streaming until the turn ends, but only the reducer's
+active reasoning row shimmers. "Responding" appears only while the
+active reply is the newest row, so an earlier reply preamble does not relabel
+running tools. The footer shows the status and elapsed time on one line; the
+status trims before the elapsed time. When the phase changes, the old line rises
+one line height and fades out while the new line rises in from below, in 220 ms,
+on composition visuals clipped to the row, so layout, focus and the XAML tree do
+not move. The leaving line rests hidden between swaps. A phase change during a
+swap does not restart it: the leaving line continues out with its original text,
+and the arriving line moves on from its current position and opacity
+(`this.StartingValue`) with the newest label, so it never snaps back down or
+flashes the skipped label. Windows animation off skips the swap, and unmount resets the
+composition opacity, translation and clip before Reactor can reuse the controls.
+These changes do not alter send
+admission, terminal-run classification or the panel's typed detail action.
+
+While history loads, the transcript shows a skeleton
+(`ChatTimelineLoadingSkeleton`) whose opacity pulse is disabled by reduced
+motion and high contrast. The timeline stops that pulse when it leaves Loading,
+even if ItemsView retains the old row without raising Unloaded; delayed row
+mounts cannot restart a retired pulse. When history fails after its bounded retries on a
+connected Gateway, an empty transcript shows `ChatHistoryUnavailable` and a
+nonempty one shows a `ChatHistoryFailedStatus` banner, each with an explicit
+`ChatHistoryRetry` action. A failed thread is not reloaded implicitly on each
+render; Retry, reconnect or a committed reload clears it.
+
+If `chat.history` reports an `inFlightRun` for a session whose `sessionInfo`
+says the run is still active, opening that session adopts it like web's
+`applyHistoryRun`: the working state starts at the supplied `startedAt`, the
+retained matching run events replay through the live event path, and the
+buffered text becomes the streaming tail. Stop aborts that run. A live run,
+pending abort, reset or terminal outcome already known to this client wins, and
+the run's later live lifecycle end settles it.
+
+Terminal chat events settle their owning run even without visible content.
+An assistant's `openclawDisplayContent` overrides its original content, including
+an empty array; retirement removes only the owned unsaved preview, not saved
+answers or unrelated runs. Completed rows stop streaming while retaining the
+separate eligibility needed for a delayed final to repair the same row.
+Confirmed error/abort outcomes cannot become successful through a late final.
+A yielded parent stops executing without declaring its subagents finished.
+
+An idle session-list row is a recovery hint, not terminal authority: cached
+activity updates also publish session rows. The hint requests history through
+the existing loader. Recovery requires an explicit idle observation naming the
+captured run and session incarnation, with the connection, reset, replacement,
+and run-start fences still current. Missing identity leaves the outcome
+unresolved instead of inferring success from elapsed time.
+
+### Conversation details panel
+
+Expand a tool card and use its top-right panel-open icon to read its existing
+input/output presentation in a native, closable **Tool details** tab. The icon
+uses `FluentIconCatalog.OpenPane` (Segoe Fluent OpenPane, E8A0), with
+**Open details beside chat** as its localized tooltip and accessible name.
+The glyph is 14 pixels, sharing `ChatVisuals.ActionIconSize` with Copy.
+The action target remains 28 pixels in a generic card's title header, or 40
+pixels for commands and touch-capable devices. The generic header and its
+divider live inside the card border, with the supplied tool preview on the left.
+A command action overlays the inside top-right corner at 8 pixels from the top
+and 6 from the right, with no separate header row. Its first text section
+reserves 58 pixels on the right and a 56-pixel minimum height so even short or
+output-only commands cannot collide with the 40-pixel target.
+Command actions appear on whole-card hover or focus-within and stay visible on
+touch-capable devices. Idle icons use secondary text on a transparent,
+borderless target; pointer hover and keyboard focus use primary text with 70%
+of the native subtle hover fill. HC uses the system highlight/text pair instead.
+Clicking the main tool row still expands inline; there is
+no additional labeled button beneath its output. This follows the
+[web tool-card action](https://github.com/openclaw/openclaw/blob/63db5996914d3f629e8ff5c7f3eff9c02ec9a754/ui/src/pages/chat/components/chat-tool-expanded.solid.tsx#L329-L392)
+and its [pointer/focus presentation](https://github.com/openclaw/openclaw/blob/63db5996914d3f629e8ff5c7f3eff9c02ec9a754/ui/src/styles/chat/tool-cards.css#L620-L726).
+Opening a
+different tool replaces that slot's content, not the conversation or composer.
+Reopening the same tool retains its mounted reader. This follows the
+[web sidebar slot reuse contract](https://github.com/openclaw/openclaw/blob/8298d434d93bfb4f97bf8f4ed2087b4eca18ac22/ui/src/pages/chat/sidebar-layout.ts#L248-L300),
+not the Dashboard's separate document tabs.
+
+The wide layout has a full-height, one-DIP themed separator between the panes,
+with the existing draggable, keyboard-resizable handle. The separator does not
+intercept pointer input or add a keyboard stop. Both panes use `ChatCanvasStyle`
+and `ChatCanvasBrush`: Details has no additional layer tint, so it reveals the
+same host background as the conversation in Light and Dark and retains the
+system window fill in high contrast. The conversation and window backdrop
+remain unchanged. The separator is hidden in compact mode and when Details
+closes. Pointer handlers
+observe events handled by the native Button, and drag/key deltas begin at the
+displayed, viewport-clamped width. Arrow keys resize the focused divider; Home
+and End select the current viewport's width limits. In a narrow window,
+**Back to conversation** and **Show panel** switch the visible surface without
+remounting the composer. Hiding the conversation cancels voice capture through
+the existing composer session; later visible projections cannot restart hidden
+capture or append its late result. Returning to chat never starts recording
+automatically. F6 moves between the conversation and panel; Escape
+closes the active panel when focus is inside it, or when it occupies the compact
+surface. Focus returns to a usable opening control, or a current conversation
+control if the opener was collapsed or virtualized away. The native tab close
+control also dismisses it. The panel has one full-height scroll area; the
+240-pixel section limit remains only in inline transcript details.
+
+Only current-history identities are retained. Conversation, provider, connection,
+timeline generation and history revision changes invalidate the old request.
+Disconnected, removed or mismatched content is unavailable rather than a cached
+payload. A stronger display name for the same scoped tool does not retire its
+view. Details establishes the authenticated profile through the existing
+`users.self` read and revalidates it on profile events, bound to the original
+connection epoch and signing device. A same-profile name/avatar edit restores
+availability without reconnecting. Pending or failed verification hides the
+content; actual profile replacement retires it until reconnect because main's
+transcript does not yet carry account provenance. An explicit profile event
+before the first identity read succeeds also retires Details until reconnect,
+even for a same-profile edit: the existing history cannot be qualified without
+that baseline. Ordinary bootstrap retries can still establish initial identity.
+Superseded reads cannot
+restore availability, and failures log only a bounded category.
+Each revalidation advances an opaque admission revision. The root checks that
+revision against the live profile snapshot before an open action, even before
+the next render. A verified same-account refresh can retain the open tab, but
+callbacks captured before the refresh are retired. With a verified baseline and
+an unretired connection, failed revalidation can retry on another profile or
+connection event. An initial read failure has no verified baseline: ordinary
+bootstrap retries remain possible, but an explicit profile event retires
+Details until reconnect as described above.
+
+This first panel supports only read-only tool details. It is not complete
+multi-content sidebar parity. Files requires the session-file RPCs, canonical
+source/account admission, draft retention and safe download owners. Canvas and
+MCP Apps require their reviewed authenticated content boundary, host lifetime and
+permission adapters. None is represented by a placeholder tab or a new RPC here.
+
+Initial transcript tail navigation retains its native layout gate. Entering a
+transcript control through keyboard focus cancels pending automatic
+navigation just as pointer and keyboard input do. Focus at the tail can retain
+follow mode; moving away stops it. No renderer performs its own scroll loop.
+The owner observes synchronous `GettingFocus`, including handled events, and
+uses the event's requested focus state. A child control can consume `GotFocus`,
+and its asynchronous delivery can occur after focus has moved again.
+An explicit jump in an already laid-out view drains pending layout work before
+dispatch instead of waiting for a future layout-change event.
+Programmatic realization focus does not cancel navigation.
+Item-target navigation uses the existing `ItemsRepeater.GetOrCreateElement`,
+waits for stable rendered row geometry, then dispatches `UIElement.StartBringIntoView`
+after rechecking the row index, source identity and navigation generation.
+It never calls the synchronous `ItemsView.StartBringItemIntoView` path, whose
+recycled-container ancestor loop can hang the released runtime
+([upstream fix](https://github.com/microsoft/microsoft-ui-xaml/pull/12320)).
+Realization is bounded and is cancelled by input, completion, unload or replacement.
+A viewport resize can arm one additional discrete tail request if realizing variable-height
 rows moves the extent away from a followed tail. This correction waits for
-layout, a rendering boundary, and an idle scroll view. Resizing does not itself
-start a bring, and this is not a continuous extent-follow loop. A correction does
+layout, a rendering boundary, and an idle scroll view. It adjusts the offset to
+the current extent without synchronously realizing another item. Initial,
+new-message and explicit jump navigation retain index-based brings.
+Streaming extent growth can also arm one correction per immutable transcript
+content revision while following more than one DIP away from the exact bottom.
+It cannot arm while a disclosure, keyboard reader, or pending reader bring owns
+the native anchor, even when the reader remains within the follow threshold.
+Typing and tail-visibility rerenders retain that revision. Correction-induced
+remeasurement cannot replenish its budget, and reader input clears unused credit.
+Resizing does not itself start a bring, and this is not a continuous extent-follow loop. A correction does
 not start while initial positioning is still pending, so it cannot impose its
 follow requirement on that initial request. A reader who has scrolled up is not
 pulled back down. Pointer, keyboard, touch, and scrollbar interaction cancel
@@ -111,7 +718,37 @@ It schedules retries after the rendering callback returns and fences them agains
 cancellation or replacement. If rows or the native scroll view disappear during
 initial positioning, it rearms when they return. Normal follow cannot interrupt
 initial positioning.
-Native bottom anchoring and the existing follow threshold are unchanged.
+If a completed bring needs an offset correction, the current tail row remains
+the native anchor at an interior ratio until completion or cancellation.
+The anchor callback rechecks the navigation generation, row index and source
+identity without realizing another row. This avoids both disabled-anchor layout
+cycles and edge anchoring undoing the correction as the virtualized extent changes.
+Normal bottom anchoring uses the nearest representable ratio below `1.0`
+(`Math.BitDecrement(1.0)`). This selects native content anchoring at the bottom,
+not WinUI's special extent-edge mode at exactly `1.0`, which can undo an offset
+as variable-height virtualized rows remeasure. The native scrollbar-end proof
+uses the same 900/1300-DIP window widths at every display scale; it still requires
+the actual final message to be visible without invoking **Jump to latest**.
+Streaming follow retains its exact-bottom assertions and the bounded correction
+above, not an extent-follow loop. The existing follow threshold is unchanged.
+Anchoring differs during the bounded correction and while a reader toggles a disclosure header by pointer, Enter or Space: the
+transcript then anchors to the top, with the toggled header itself as the anchor, so the header stays put and its details
+grow downward, as on the web, even inside a tall message with later messages below it. Any other reader input or programmatic tail scroll
+restores bottom anchoring.
+Actual tail visibility is tracked separately from follow eligibility. The
+landing predicate uses absolute distance to the current bottom, so an offset
+beyond a reduced extent does not count as landed. The wider follow-intent
+threshold and the existing correction budget remain unchanged.
+**Jump to latest** button stays mounted as an overlay, so showing it does not
+shrink the transcript viewport or move the composer.
+It is a 32-pixel circular native button with a 16-pixel Fluent down arrow,
+not a text banner. Its localized tooltip and accessible name retain
+**Jump to latest** or **New messages. Jump to latest** as appropriate. The
+decorative glyph is excluded from the accessibility tree and does not scale
+with text size; native keyboard focus and activation remain available.
+At the tail, the button retains its overlay geometry with zero opacity and
+does not accept pointer input, keyboard focus or accessibility navigation.
+Tail visibility changes do not collapse a Grid child during native scrolling.
 
 Pending agent questions replace the writing surface visually, not structurally.
 The same mounted composer and unsent draft return when the question is collapsed
@@ -146,18 +783,31 @@ remain in timeline state, and late usage updates do not bring the row back.
 Pending questions or approvals keep their waiting indicator until resolved.
 OS reduced motion disables the moving presentation.
 
-Queued submissions leave the textbox and remain after the current turn as normal
-right-aligned user bubbles. A transparent `ChatPendingUserBrush`, subtle `ChatStrokeBrush`
-outline, and slightly faded `ChatSecondaryTextBrush` distinguish them from sent messages without
-reducing whole-bubble opacity. **Pending**, Copy, and Cancel appear underneath only
-while the message is hovered or contains keyboard focus. The footer reserves its
-space so revealing it never moves the message. Hidden actions do not accept
-pointer taps, but remain keyboard-focusable. Accessible item status stays
-available even when the visual footer is hidden.
-Text remains selectable and attachment chips remain visible.
-Cancel stays available until dispatch; failures keep their error and removal
-action visible without hovering. Provider promotion replaces the pending row with the normal sent message,
-without adding queue-only rows to history. This applies to Workspace's ChatPage.
+Queued submissions leave the textbox and appear in a single compact panel directly
+above the composer, separate from the virtualized transcript. `ReactorChatPendingMessages`
+owns this presentation; the provider still owns ordering, dispatch, cancellation and promotion.
+The panel uses `ChatCardBrush`, `ChatStrokeBrush`, the composer's 20px radius and
+the shared reading width and gutters. Rows use native outline list/return and trash icons
+at 14px, a 20px native `PersonPicture` (18px at widths <=560px),
+selectable 13/18 primary text and an always-visible 32px trash target. The 13,6,4,6
+row insets keep the trash center 20px from the right content edge while retaining
+the larger native hit target. Column gaps are 8px, or 6px on narrow layouts.
+The avatar uses the sidebar's current user image and profile name, with the same
+native initials fallback and generic person when no profile is known. It is
+decorative to accessibility, leaving the row's message and status unchanged.
+These proportions follow the [web queue reference](https://github.com/openclaw/openclaw/blob/fe12d0af7389290693346e816bc345e756168115/ui/src/styles/chat/composer-queue-content.css),
+not its queue editing or reordering behavior. Native text
+selection and its Copy context action remain available without a separate hover footer.
+Attachment chips remain visible, and each row retains its accessible **Pending** or
+**Failed** status. Sending disables removal without shifting the action column;
+failures keep their error and removal action visible. A native scrolling region caps
+the queue at 160px or one third of the viewport height, whichever is smaller, so
+larger queues do not displace the composer. Promotion removes the queued row and
+shows the provider's normal sent message once. Empty queues remove the panel,
+without remounting the composer. This applies to Workspace's ChatPage.
+If acceptance arrives after that run has completed, the conversation owner places
+the sent message before its matching live output without reopening the completed
+turn or disturbing a newer response. Remaining queued messages can then drain.
 See the [pending-message concept](design/reference/concepts/states/pending-chat-message.md).
 
 Chat responses are not read aloud by default. Enabling the Text-to-speech
@@ -282,56 +932,90 @@ A completed `/new` request cannot override a newer session or page navigation;
 the successful session remains discoverable without pulling the user back into chat.
 
 Workspace's sidebar owns session selection; the composer has no session picker.
-The footer has a leading Attach action, model/reasoning selectors, and
-quiet secondary actions beside the primary Send/Stop action. Every control stays
-in one bottom row: model text shrinks rather than moving the selectors above
-the actions. At viewport widths of 560 pixels or less, effort uses a gauge and
-chevron with a 44-pixel target, retaining the full textual automation name and
-tooltip. Attach, model, effort, Node Sandbox, voice and Send remain reachable in narrow
+The footer has a leading Attach ("+") action followed by the Node Sandbox shield,
+one model-name picker, and quiet secondary actions beside the primary
+Send/Stop action. Every control stays
+in one bottom row: model text shrinks rather than moving the picker above
+the actions. Its single flyout contains both the model list and the reasoning
+section, and the trigger's accessible name and tooltip retain the current model
+and reasoning value. Attach, model, Node Sandbox, voice and Send remain reachable in narrow
 layouts through actual-width observation rather than a compact-window mode.
 The [Node Sandbox icon](design/reference/concepts/states/node-sandbox.md) beside
-the microphone in the right-hand action group uses the Windows accent when the latest SDK probe
-supports containment and gray otherwise. It opens a compact native flyout with
-Available, Compatibility, Unavailable, Checking, or Tools off status and a Sandbox
+Attach in the leading group uses the Windows accent and a centered check when the latest SDK probe
+supports containment and a plain gray shield otherwise. It opens a compact native flyout with
+On, Compatibility, Unavailable, Checking, or Tools off status and a Sandbox
 settings action, not a toggle. Compatibility warns about approved uncontained
 execution on positively unsupported Windows. Failed/uncertain probes never imply
 compatibility; the runner independently admits each command. This does not describe
 Gateway tools or per-command results. Status and system-tools setting changes
 refresh the mounted native composer without replacing drafts or attachments.
-The compact effort trigger has a transparent idle background and the same
-4-pixel interaction corners as the other toolbar controls. Its gauge and
-chevron are vertically centered within the 44-pixel target. The shared toolbar
-resource overrides survive resizing between text and icon layouts without
+The model trigger has a transparent idle background and the same
+4-pixel interaction corners as the other toolbar controls. The shared toolbar
+resource overrides survive resizing without
 replacing native hover, pressed, disabled or keyboard-focus behavior. Picker anchor
 capture preserves existing target mount callbacks.
 There is no composer overflow menu. Voice preferences remain available in
 Settings > Voice, where "Read responses aloud" controls the same shared
 speaker mute state. Native focus, hover and disabled states remain.
+The composer exposes localized keyboard help: Enter sends, Shift+Enter adds a
+line. Its placeholder follows element-theme and system contrast changes, and its
+local brush is cleared on unmount before Reactor can reuse the TextBox.
 
-The context-usage footer shows the latest assistant request measurement, not
+The trailing controls are ordered model picker, context ring, Voice, then
+Send/Stop, with an equal 4-pixel gap between every adjacent button. The model
+picker caret sits 2 pixels below its centered position without shifting the label
+or changing the hit target. The composer context ring follows the web composer's `ContextNotice`. A 16px
+progress ring sits in a 32px toolbar target immediately after the model picker:
+a 2.5px track at 22% of `ChatSecondaryTextBrush` and a round-capped fill that
+sweeps clockwise from twelve o'clock. The fill uses the secondary tone below 85%,
+`SystemFillColorCautionBrush` from 85% and `SystemFillColorCriticalBrush` from 95%.
+Its accessible name is the localized session context summary. Activating it opens a
+300px native flyout (14px padding) with an uppercase 11px bold "Context window"
+label, a 13px semibold "used / limit · percent" value, a 5px rounded bar, a divider,
+an uppercase "Latest run tokens" label and 12px Input/Output values from the
+same measurement as the context value (an unavailable-value placeholder when
+absent, and a literal zero for measured zero output). If message metadata supplies
+the context snapshot, stale session-list counters never fill its missing fields.
+Without message usage, the whole session measurement is used. Header and counter
+columns wrap and grow vertically for translated or enlarged text. The value-equal
+indicator component keeps its arc geometry when only the draft changes.
+The web popover's cost
+and plan-usage sections need Gateway data this client does not receive, so they are
+omitted. The ring is hidden when the context window size is unknown. There is no
+separate throughput or context strip below the composer.
+
+The context ring shows the latest assistant request measurement, not
 the sum of overlapping requests. Newer session snapshots may lower that value,
 including after compaction, but require an explicit positive total. A missing
 total does not make input/output billing counters authoritative because they
 may omit cached context. Cached seeding retains its existing fallback behavior.
 Undated duplicates preserve the known measurement timestamp only when their
 effective usage fields are unchanged, so matching older history cannot rewind
-the footer. Changed undated usage does not inherit a measurement timestamp.
+the ring. Changed undated usage does not inherit a measurement timestamp.
 
-The compact effort gauge is an explicitly requested exception to the font-icon
+The effort gauge in the reasoning section is an explicitly requested exception to the font-icon
 convention: `ChatEffortGauge` renders the published web SVG geometry with native
 WinUI paths and an ellipse, not a font approximation or WebView. It preserves the
-24-unit viewbox, 20-pixel display size, 2-unit round strokes, dial opacity and
+24-unit viewbox, 16-pixel display size, 2-unit round strokes, dial opacity and
 needle rotation from -120 to +120 degrees according to the advertised stop index.
 Off and unanchored values use the minimum angle. An advertised inherited default
 may inform the gauge without becoming a persisted override. The icon remains
-decorative; the button keeps the textual accessible name and tooltip.
+decorative; the section retains its textual heading and current value.
 The source is pinned to 2026.9.4 and credited in `THIRD_PARTY_NOTICES.md`.
+
+`ChatReasoningPicker` retires menu callbacks and dismisses its native menu on
+host disposal using component effect cleanup. Reactor host disposal does not
+guarantee element `OnUnmount` callbacks.
 
 The model picker uses the standard native flyout presenter and an `AutoSuggestBox`
 above one grouped, single-selection `ListView`. Native list-item templates own
-hover, pressed, selected, selected-hover, disabled and keyboard-focus visuals,
-including the selection indicator. Model labels use normal body typography,
-metadata uses captions, and provider group headers use secondary captions.
+hover, pressed, selected, selected-hover, disabled and keyboard-focus visuals.
+Because WinUI's built-in checkmark is for multiselection, the model template's
+inline accent check binds directly to its native container's `IsSelected`;
+there is no separate selection state or custom row interaction template.
+Provider headers omit the native divider so only the Effort separator remains.
+Model labels use normal body typography,
+metadata uses captions, and provider group headers use semibold secondary captions.
 `NativeChatModelPicker` owns that native content through Reactor's generated
 control-wrapper API; `ChatModelPicker` owns its flyout lifetime. Highlighting a
 row does not change the model until activation. Search submission commits only
@@ -339,22 +1023,71 @@ a single unambiguous selectable result; otherwise it moves focus into the list.
 Unrelated composer rerenders preserve list navigation, and reopening restores
 the configured selection. The list has a bounded native scroll viewport.
 
-All footer pickers keep top-end placement. Effort retains its custom-content
-native flyout with 12-pixel corners and explicit compact padding, applying
-presenter styles through native setters on mount and update.
-Effort uses a native discrete slider over the
-advertised stops, a textual heading/current value, and Faster/Smarter captions.
-A single advertised stop uses a labeled button. The explicit Default reset
-remains separate from the slider; neither opening the flyout nor its initial
-value writes a setting. A Fast-mode switch is not displayed because that
+The combined flyout keeps top-end placement and a bounded scrolling content
+region. Model, usage and effort flyouts share `DesktopAcrylicBackdrop` and the
+native `LayerOnAcrylicFillColorDefaultBrush` resource, not a second in-app acrylic
+fill over the desktop backdrop. The shared `ChatVisuals.StylePicker` opts ordinary
+flyouts into windowed hosting with `ShouldConstrainToRootBounds=false`: WinUI
+does not connect a system backdrop for root-constrained popups. Menu flyouts
+are already windowed by default. Windows owns transparency settings, fallback
+and high-contrast rendering. `ChatModelPicker` composes the existing model list and inline
+`ChatReasoningPicker`; neither owner duplicates controller or metadata logic.
+The flyout is capped at 354 pixels wide, with an 8-pixel search inset and
+native rows that reproduce the account menu's `MenuFlyoutItem` geometry: a
+28-pixel hover pill 4 pixels from the flyout edge, text 11 pixels inside it, and
+`ControlCornerRadius` corners. Model rows are
+`ListViewItem`s, so search, grouping and virtualization stay native. WinUI draws
+a `ListViewItem` pill 4,2 inside the item bounds, so each row has no margin and
+15,6,15,7 padding (that inset plus the stock 11,4,11,5 padding). Each row has a
+28-pixel check slot (12-pixel check glyph) before a Body title and a Caption
+description in secondary text; provider headings and the No matching models
+caption share the rows' 15-pixel text edge,
+including when the catalog is empty.
+A stock-spaced separator (1 pixel above and below) precedes the Effort row, which
+is a 4-pixel-inset button with the same 28-pixel pill. Its label and current value use
+native Body typography; the current value is muted and right-aligned before
+the far-right chevron.
+The gauge occupies the same 28-pixel leading slot as the check, with a 12-pixel
+gap before the aligned model and Effort labels. The Effort button keeps its native
+1-pixel border inside the stock 11-pixel horizontal content inset. Activating
+it opens an unmodified stock `MenuFlyout` with default `ToggleMenuFlyoutItem`
+templates and the shared acrylic fill,
+containing only advertised choices, with the effective current option checked.
+The usage details flyout uses Body for its labels and values, Caption for the
+speed statistics, and the same 15-pixel text inset.
+There is no slider, Default/reset action or provider
+settings link. Neither opening the flyout nor its initial value writes a
+setting. A Fast-mode switch is not displayed because that
 workflow is not implemented by this composer. No decorative nonfunctional
 web-only controls are added.
 Native virtualization, scroll navigation and list lifetime remain with the
 existing timeline and scroll-controller owners. The visual refresh does not
 replace their navigation algorithm.
-Pending attachments use a bounded horizontal rail with 56-pixel chips, 32-pixel
-removal targets and room for focus visuals instead of growing the composer for
-every file. Video-specific previews are not invented by the native file rail.
+Pending attachments use a bounded, wrapping rail of compact pills, matching the
+GitHub Copilot app: at least 28 pixels tall (growing with Windows text scaling
+rather than clipping) with fully rounded ends, `ChatAttachmentChipBrush`
+(SubtleFillColorSecondary) and no visible border outside high contrast, where
+`ChatAttachmentChipStrokeBrush` outlines the pill. Each pill shows a 14-pixel
+Document glyph and the 12-pixel SemiBold file name, sizes to that name up to 216
+pixels (never wider than the rail's row) and sits 6 pixels from its neighbors. Its
+24-pixel removal target is named for the file ("Remove attachment {name}"), stays in
+layout and in keyboard and UI Automation order, and is visible on hover, keyboard
+focus or touch-capable devices; pointer focus alone does not reveal it.
+Pills are keyed to their attachment; removing one moves focus to the next file's
+removal target, else the previous file's, else the editor when no files remain.
+Raster image attachments render instead as 56-pixel square tiles, the web composer's
+thumbnail size (12-pixel corners,
+`ChatStrokeBrush` outline, cropped to fill) on their own wrapping row above the
+file pills, like the GitHub Copilot app. Their removal target is the same named
+24-pixel button drawn as an opaque `ChatAttachmentBadgeBrush` disc over the
+tile's top-right corner. Images that do not decode, and SVG, stay file pills.
+Focus order follows the visual order: tiles first, then pills.
+Pills wrap onto new rows and grow the composer; past 136 pixels (four rows at
+default text size; fewer when text is scaled), plus one tile row when images are
+attached, the rail scrolls vertically,
+keeping a trailing gutter for the overlaid scroll bar, so many files cannot push
+the transcript off screen. The rail also leaves room for focus visuals.
+Video-specific previews are not invented by the native file rail.
 
 On history reload, message-wide structured user attachments appear on the first
 nonempty text part only, not again on later text parts from that same message.
@@ -371,12 +1104,11 @@ display name or the original ID; grouping and wire identities keep the original 
 The picker contains concrete catalog models only, with no Default/reset action.
 An inherited model is shown by name when advertised, otherwise the trigger says
 "Model". Opening or filtering the picker never changes the existing override.
-The effort picker's separate Default reset and controller authorization paths
-are unchanged.
+Controller authorization remains unchanged for model and effort selections.
 No custom-ID, favorites, Fast, temperature or other gateway-backed setting is
 invented.
 Unknown nonempty thinking levels remain visible verbatim and do not check
-Default. Reasoning choices come only from advertised session metadata, compatible
+an unrelated option. Reasoning choices come only from advertised session metadata, compatible
 session defaults, or an exact provider/model catalog entry with no runtime conflict,
 in that order. The first profile owns the choices, including explicit empty lists.
 Structured IDs, labels and order are preserved; legacy `thinkingOptions` use
@@ -386,17 +1118,13 @@ Repeated profiles compare by their ordered options and default, not immutable-ar
 storage identity, so unchanged session/default/catalog metadata does not invalidate
 the composer. Unknown and explicitly empty profiles remain distinct.
 
-Without advertised choices the current value remains visible. A saved override
-can still be cleared with Default; an already-default selector is read-only.
-Default sends explicit JSON null, never an effective `thinkingDefault` value.
-With no override, the slider and gauge show the advertised default's position,
-while only the Default row is selected. Unknown explicit overrides are not
-replaced by an inherited default.
-Pointer previews commit only on release. Cancellation or capture loss while
-pressed restores the current advertised selection without writing an override.
-The native slider owns its value during the gesture, so unrelated snapshot
-refreshes do not overwrite the active preview.
-Deferred capture cleanup is gesture-fenced so it cannot cancel a newer input.
+Without advertised choices the current value remains visible and the Effort
+row is disabled. With no override, the menu checks the advertised default and
+the gauge reflects its position without persisting an override. Unknown explicit
+overrides are not replaced by an inherited default. Focus, opening and dismissal
+never commit a change; activating an advertised option submits its concrete ID.
+The controller's separate clear operation still sends explicit JSON null, but
+the composer picker does not expose a reset action.
 An authoritative session-list row that omits `thinkingLevel` clears the cached
 override, while sparse activity events preserve it. Prepared profile metadata
 may survive transient omissions only for the same identity and scope, and is
@@ -428,5 +1156,131 @@ Message-copy IDs remain based on the existing row identity.
 
 Attachment, queue, recording, loading, thinking and error presentations use the
 same resources and bounded layouts. Markdown sanitization, disabled HTML,
-blocked link navigation, inert images, list measurement, timeline keys and
-scroll-follow remain with their existing owners.
+inert images, list measurement, timeline keys and scroll-follow remain with
+their existing owners.
+
+Assistant Markdown opts into one Reactor text-selection scope per message,
+spanning paragraphs, headings, list content, tables, code and expanded
+disclosures. Reactor owns pointer and keyboard selection, geometry, scrolling
+and the UI Automation text provider. Neighboring message rows, code toolbar
+labels and buttons, and collapsed disclosure bodies are outside the selected
+document. OpenClaw registers the summary once and supplies disclosure visibility;
+it does not infer selectable text from Reactor's layout tree.
+
+Selection copy has one clipboard writer in Reactor. Its `OnCopyResult` callback
+only updates native localized Copied or Copy failed feedback outside the
+selection scope. Feedback resets after two seconds; content replacement and
+unmount fence stale callbacks and timers. The separate whole-message and code
+Copy buttons retain their existing clipboard and feedback paths. Native
+acceptance for cross-block selection and recycling is required in addition to
+the mounted typography and layout checks.
+
+Assistant Markdown accepts balanced, block-level `<details>` wrappers with a
+nonempty `<summary>` as an OpenClaw extension. The summary may follow the
+opening tag on the same line or the next nonblank line; `<details open>` starts
+expanded. The app recognizes these wrappers only outside Markdown code, quotes,
+lists and table cells. Unsupported attributes, empty or incomplete summaries,
+and unbalanced wrappers remain inert Markdown text. The extension supports
+nested disclosures to a maximum depth of 16 and summary text up to 4096
+characters. A native `Expander` renders each accepted disclosure, and its body
+uses the existing Markdown typography, list, table, quote, code and copy
+presentation. HTML in summary text is not executed; body links and images keep
+the existing sanitization policy.
+
+Assistant links follow the web chat's anchor policy: Markdown links, bare
+`http(s)://` and `www.` URLs become native WinUI hyperlinks in the Windows
+accent color without an underline, and open in the default browser. Inline
+code keeps its monospace run and gets a subtle `ControlFillColorSecondaryBrush`
+background through a text highlighter (high contrast keeps system styling).
+A rounded, bordered chip like the web needs a Reactor inline-code hook. Only
+absolute http/https destinations survive sanitization (Reactor additionally
+admits only http/https/mailto); any other scheme, relative path or image stays
+inert text. Expanded tool details put input above output or error text in one
+thin-bordered, transparent card. A full-width one-pixel `ChatStrokeBrush` divider
+separates input and output only when both exist; there are no visible section
+headings. Localized Tool input, Tool output and Tool error names remain on the
+scroll regions for screen readers. Each section retains selectable monospace
+text, 12,8 padding and its 240-pixel scroll cap. Input uses primary text with
+theme-bound syntax accents for explicit PowerShell tools, commands prefixed
+with PowerShell/pwsh, and JSON arguments. Unrecognized languages remain literal
+primary text rather than being guessed from the client OS. Generic output and
+errors use normal primary ink. Command output uses `ChatCommandOutputBrush`,
+an 82% primary / 18% secondary blend of native text alpha, not secondary ink or
+reduced element opacity. Fluent primary and secondary text share RGB within
+each theme, so the brush uses the primary theme color with derived opacity:
+`(0.82*228 + 0.18*158)/228` in Light and
+`(0.82*255 + 0.18*197)/255` in Dark. HC uses full system window text.
+This maps the web's hierarchy onto native Fluent colors, not its literal
+palette. Reused rich-text controls clear local foreground, opacity and Markdown
+highlighters before applying the appropriate style. The failed outcome
+remains explicit. ColorCode.Core parses only the already-sanitized display
+input, with a bounded regex match deadline. A timeout is logged and leaves the
+complete literal text visible. Syntax runs retain native selection and theme
+changes without reinterpreting markup or executing code.
+A settled call shows its outcome (**Completed** or **failed**)
+right-aligned under a divider. Tool rows have no hover tooltip. While work is
+active, the running tool title, running group headline and active **Thinking**
+label use the web's `text-shimmer`: a brighter band sweeps
+across the text in 0.9 seconds, repeating every 1.3 seconds. Activity titles and
+their dimmed details use quieter 12px text. The gradient's endpoints stay fixed to the
+label; its three interior stops move only between offsets 0 and 1 while the
+two edge stops retain readable base ink. Do not animate the text brush's
+`RelativeTransform`: on the tested native runtime that faded unrelated text
+and backgrounds in a rectangular shared rendering region, despite their XAML
+opacity remaining 1. `InteractiveWork_DoesNotFadeCompletedMessagePixels`
+checks real-window pixels before, during and after a synthetic tool run;
+offscreen control-property assertions alone do not catch that failure.
+The gradient uses the native secondary ink as its base and the primary ink for
+the brighter flare, in both Light and Dark, so the band reads as the same
+subtle highlight on quiet secondary text. The color stops retain at least
+4.5:1 contrast against the tested light and dark backdrops. Windows animation off or high
+contrast keeps static text, matching the web's reduced-motion and forced-colors
+gates. Ink is resolved through the native primary and secondary text styles on the actual
+label, with its current tree and Light/Dark override. Loaded and theme-change
+callbacks refresh the gradient from that native value. Copying a brush color
+directly out of application resources is not a substitute for native theme
+resolution.
+`ChatVisuals.WithTextShimmer` stops the storyboard and restores the original
+foreground on Reactor unmount, before a text control can be pooled for another
+message or footer. `ToolCallCardRenderer` additionally cleans its Expander's
+header slot, which Reactor preview.16 omits from native unmount traversal.
+Native `Unloaded` remains a second cleanup boundary.
+Completed tool labels, sender metadata, timestamps and copy/read-aloud glyphs
+never inherit the running animation. The working claw retains its own motion;
+its output-token count and ticking elapsed-time text stay static. The claw and
+clock row remain fully opaque, including entrance and timer updates. Entrance
+motion uses transforms only and does not restart on every clock tick.
+
+On desktop, sent user and assistant message footers reveal metadata and actions
+only while their own message is hovered or contains keyboard focus, including
+individual messages inside expanded Worked groups. Focusing a group header or
+a sibling message does not reveal other footers. They keep their
+measured space while hidden, so revealing a timestamp or Copy does not move the
+next message. The whole footer fades in and out over 160 ms using a native
+opacity transition; Windows animations off makes disclosure immediate. Hidden
+footers stop accepting pointer input as soon as fade-out begins.
+`NativeChatMessageFooter` hosts the transition outside Reactor's generic
+layout-control pool, preventing retired fades from affecting recycled rows.
+Footers show sender identity and the recorded message time, not model names
+or token/context usage. User footers keep their timestamp beside Copy.
+These details do not depend on the tool-call display setting. Existing Copy
+and read-aloud actions remain; Reply and emoji reactions are not added.
+In the main transcript only a run's final answer (its last
+non-commentary assistant message) owns the footer, as in the web run frame, and
+a run still generating has no footer yet (waiting for subagents or an answer
+does not count). A merged tool group that spans runs still ends each earlier run,
+and only the run holding a streaming message or running tool waits for its
+footer; earlier paragraphs interleaved with tool
+calls reserve no footer space. A message being read aloud keeps its Stop action
+until playback ends. Metadata and action glyphs share a vertical center, with Copy
+retaining its 32-pixel hit target. A failed queued message keeps its recovery
+actions visible; an active read-aloud operation keeps its Stop action visible. Commentary has
+no final-answer footer. Code-block Copy remains a separate, static header
+control, as in the web reference. Tool disclosure glyphs continue to switch
+to a chevron on hover or focus, independently of running state.
+These rules follow the pinned web
+[running-label gradient](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/base.css#L1276-L1310)
+and [message-footer disclosure](https://github.com/openclaw/openclaw/blob/be1e36290247b257945988fb873cd3ab00cc05fd/ui/src/styles/chat/grouped.css).
+
+The web's GitHub mark and issue/pull-request chips need a custom link renderer
+and remain a follow-up.

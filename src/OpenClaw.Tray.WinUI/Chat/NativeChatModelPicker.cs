@@ -42,16 +42,17 @@ public sealed class ChatModelPickerGroup(string label, IReadOnlyList<ChatModelPi
 /// </summary>
 internal sealed class NativeChatModelPicker : Control, IDisposable
 {
-    internal StackPanel Layout { get; } = new() { Spacing = 8 };
-    private readonly AutoSuggestBox _search = new() { QueryIcon = new SymbolIcon(Symbol.Find) };
+    internal StackPanel Layout { get; } = new();
+    private readonly AutoSuggestBox _search = new() { QueryIcon = new SymbolIcon(Symbol.Find), Margin = new Thickness(8) };
     private readonly ListView _list = new()
     {
         SelectionMode = ListViewSelectionMode.Single,
         IsItemClickEnabled = true,
         MaxHeight = 360,
+        Padding = new Thickness(0),
     };
     private readonly TextBlock _current = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly TextBlock _empty = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock _empty = new() { TextWrapping = TextWrapping.Wrap, Margin = new Thickness(15, 4, 15, 4) };
     private readonly HyperlinkButton _addProvider = new() { Padding = new Thickness(0) };
     private Action? _addProviderAction;
     private ChatModelPickerProps? _props;
@@ -73,9 +74,13 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         AutomationProperties.SetName(_list,
             ChatMarkdownPresentation.Localized("Chat_Composer_Accessibility_Model", "Model"));
         _list.ItemTemplate = (DataTemplate)resources["ChatModelItemTemplate"];
+        _list.ItemContainerStyle = (Style)resources["ChatModelItemStyle"];
+        foreach (var resource in (ResourceDictionary)resources["ChatModelListResources"])
+            _list.Resources[resource.Key] = resource.Value;
         _list.GroupStyle.Add(new GroupStyle
         {
             HeaderTemplate = (DataTemplate)resources["ChatModelGroupHeaderTemplate"],
+            HeaderContainerStyle = (Style)resources["ChatModelGroupHeaderStyle"],
             HidesIfEmpty = true,
         });
         _current.Style = _empty.Style = (Style)resources["CaptionTextBlockStyle"];
@@ -121,7 +126,7 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         _addProviderAction = addProvider;
         _addProvider.Visibility = addProvider is null ? Visibility.Collapsed : Visibility.Visible;
         AttachEvents();
-        Width = Math.Min(320, Math.Max(200, props.AvailableWidth - 56));
+        Width = Math.Min(354, Math.Max(200, props.AvailableWidth - 56));
         _list.IsEnabled = props.Enabled;
         var missingCurrent = !string.IsNullOrWhiteSpace(props.CurrentModel)
             && !props.Choices.Any(choice => choice.MatchesModel(props.CurrentModel, props.CurrentProvider));
@@ -179,6 +184,33 @@ internal sealed class NativeChatModelPicker : Control, IDisposable
         args.ItemContainer.IsEnabled = row.Choice.IsSelectable;
         AutomationProperties.SetAutomationId(args.ItemContainer, "ChatModelChoice_" + row.Choice.SelectionId);
         AutomationProperties.SetName(args.ItemContainer, $"{row.Title}. {row.Description}");
+        args.RegisterUpdateCallback(BindSelectionCheck);
+    }
+
+    private static void BindSelectionCheck(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (args.InRecycleQueue) return;
+        var root = (FrameworkElement)args.ItemContainer.ContentTemplateRoot;
+        var check = (FontIcon)root.FindName("ModelSelectedCheck");
+        // Single-selection ListView does not render its built-in multi-select checkmark.
+        check.SetBinding(VisibilityProperty, new Binding
+        {
+            Source = args.ItemContainer,
+            Path = new PropertyPath(nameof(ListViewItem.IsSelected)),
+            Mode = BindingMode.OneWay,
+            Converter = SelectionVisibilityConverter.Instance,
+        });
+    }
+
+    private sealed class SelectionVisibilityConverter : IValueConverter
+    {
+        internal static readonly SelectionVisibilityConverter Instance = new();
+
+        public object Convert(object value, Type targetType, object parameter, string language) =>
+            value is true ? Visibility.Visible : Visibility.Collapsed;
+
+        public object ConvertBack(object value, Type targetType, object parameter, string language) =>
+            throw new NotSupportedException();
     }
 
     private void OnItemClick(object sender, ItemClickEventArgs args)

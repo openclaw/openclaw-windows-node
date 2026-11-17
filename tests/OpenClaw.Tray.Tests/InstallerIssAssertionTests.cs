@@ -441,8 +441,16 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("return new MxcCommandRunner(", nodeService);
         var runner = File.ReadAllText(Path.Combine(repositoryRoot,
             "src", "OpenClaw.Shared", "Mxc", "MxcCommandRunner.cs"));
-        Assert.Contains("if (availability.IsWindowsUnsupported)", runner);
-        Assert.Contains("UnsupportedWindowsCommandExecutor.RunAsync", runner);
+        Assert.DoesNotContain("MxcContainer.SpawnAsync", runner);
+        Assert.DoesNotContain("Process.Start(", runner);
+        var hostAdapter = File.ReadAllText(Path.Combine(repositoryRoot,
+            "src", "OpenClaw.Shared", "Mxc", "UnsupportedWindowsCommandExecutor.cs"));
+        Assert.DoesNotContain("Process.Start(", hostAdapter);
+        var executor = File.ReadAllText(Path.Combine(repositoryRoot,
+            "src", "OpenClaw.Shared", "Mxc", "NodeSandboxExecutor.cs"));
+        Assert.Contains("if (availability.IsWindowsUnsupported)", executor);
+        Assert.Contains("UnsupportedWindowsCommandExecutor.CreateStartInfo", executor);
+        Assert.Contains("MxcContainer.SpawnAsync", executor);
         Assert.DoesNotContain("LocalCommandRunner", runner);
     }
 

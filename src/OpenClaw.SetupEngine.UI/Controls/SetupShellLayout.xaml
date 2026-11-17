@@ -1,0 +1,25 @@
+<UserControl
+    x:Class="OpenClaw.SetupEngine.UI.Controls.SetupShellLayout"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:OpenClaw.SetupEngine.UI.Controls"
+    xmlns:themes="using:OpenClaw.SetupEngine.UI.Themes"
+    IsTabStop="False">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <themes:SetupResources />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <Grid x:Name="Root">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="CompanionColumn" Width="472" />
+            <ColumnDefinition Width="*" MaxWidth="648" />
+            <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Rectangle Grid.ColumnSpan="3" IsHitTestVisible="False" Fill="{ThemeResource SetupBackdropTintBrush}" />
+        <local:SetupCompanion x:Name="CompanionControl" />
+        <Frame x:Name="ContentFrame" Grid.Column="1" />
+    </Grid>
+</UserControl>

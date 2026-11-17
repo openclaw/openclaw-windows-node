@@ -15,21 +15,44 @@ internal sealed record WindowsTcpPortState(
     IReadOnlyList<TcpPortRange> DynamicRanges,
     IReadOnlyList<TcpPortRange> ExcludedRanges)
 {
-    private static readonly TimeSpan NetshTimeout = TimeSpan.FromSeconds(20);
+    /// <summary>Overrides <see cref="DefaultNetshTimeout"/> in whole seconds up to
+    /// <see cref="MaxNetshTimeoutSeconds"/>; other values keep the default.</summary>
+    internal const string NetshTimeoutEnvironmentVariable = "OPENCLAW_E2E_NETSH_TIMEOUT_SECONDS";
+    internal const int MaxNetshTimeoutSeconds = 3600;
+    // Per-call hang guard. Hosted runners spent up to 10.2 s on all four calls before fixture
+    // initialization (63 passing runs), versus ~0.15 s per call locally, and one cold call exceeded 20 s.
+    internal static readonly TimeSpan DefaultNetshTimeout = TimeSpan.FromSeconds(60);
 
     public static WindowsTcpPortState Capture()
     {
         var dynamicRanges = new List<TcpPortRange>();
         var excludedRanges = new List<TcpPortRange>();
-
-        CaptureFamily("ipv4", dynamicRanges, excludedRanges);
-        if (Socket.OSSupportsIPv6)
-            CaptureFamily("ipv6", dynamicRanges, excludedRanges);
+        var timeout = ResolveNetshTimeout(Environment.GetEnvironmentVariable(NetshTimeoutEnvironmentVariable));
+        var callTimings = new List<string>(4);
+        var elapsed = Stopwatch.StartNew();
+        try
+        {
+            CaptureFamily("ipv4", dynamicRanges, excludedRanges, timeout, callTimings);
+            if (Socket.OSSupportsIPv6)
+                CaptureFamily("ipv6", dynamicRanges, excludedRanges, timeout, callTimings);
+        }
+        finally
+        {
+            Console.WriteLine($"[Port lease] netsh port-state capture took {elapsed.ElapsedMilliseconds}ms " +
+                $"(callMs={string.Join(',', callTimings)}; limitMs={(long)timeout.TotalMilliseconds}).");
+        }
 
         return new WindowsTcpPortState(
             dynamicRanges.Distinct().OrderBy(range => range.Start).ToArray(),
             excludedRanges.Distinct().OrderBy(range => range.Start).ToArray());
     }
+
+    internal static TimeSpan ResolveNetshTimeout(string? configuredSeconds) =>
+        int.TryParse(configuredSeconds, System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var seconds) &&
+        seconds is > 0 and <= MaxNetshTimeoutSeconds
+            ? TimeSpan.FromSeconds(seconds)
+            : DefaultNetshTimeout;
 
     public bool IsBlocked(int port) =>
         DynamicRanges.Any(range => range.Contains(port)) ||
@@ -38,12 +61,14 @@ internal sealed record WindowsTcpPortState(
     private static void CaptureFamily(
         string family,
         List<TcpPortRange> dynamicRanges,
-        List<TcpPortRange> excludedRanges)
+        List<TcpPortRange> excludedRanges,
+        TimeSpan timeout,
+        List<string> callTimings)
     {
         dynamicRanges.Add(ParseDynamicRange(RunNetsh(
-            "interface", family, "show", "dynamicport", "tcp")));
+            timeout, callTimings, $"{family}-dynamic", "interface", family, "show", "dynamicport", "tcp")));
         excludedRanges.AddRange(ParseExcludedRanges(RunNetsh(
-            "interface", family, "show", "excludedportrange", "protocol=tcp")));
+            timeout, callTimings, $"{family}-excluded", "interface", family, "show", "excludedportrange", "protocol=tcp")));
     }
 
     internal static TcpPortRange ParseDynamicRange(string output)
@@ -108,7 +133,7 @@ internal sealed record WindowsTcpPortState(
         return ranges;
     }
 
-    private static string RunNetsh(params string[] arguments)
+    private static string RunNetsh(TimeSpan timeout, List<string> callTimings, string callName, params string[] arguments)
     {
         var systemDirectory = Environment.SystemDirectory;
         if (string.IsNullOrWhiteSpace(systemDirectory))
@@ -130,7 +155,15 @@ internal sealed record WindowsTcpPortState(
         foreach (var argument in arguments)
             startInfo.ArgumentList.Add(argument);
 
-        return RunProcessAsync(startInfo, NetshTimeout, commandContext).GetAwaiter().GetResult();
+        var started = Stopwatch.StartNew();
+        try
+        {
+            return RunProcessAsync(startInfo, timeout, commandContext).GetAwaiter().GetResult();
+        }
+        finally
+        {
+            callTimings.Add($"{callName}:{started.ElapsedMilliseconds}");
+        }
     }
 
     internal static async Task<string> RunProcessAsync(

@@ -54,6 +54,7 @@ function Get-BinaryClassification {
         '^OpenClaw\.SetupEngine\.dll$' { return "OpenClawOwned" }
         '^OpenClaw\.Shared\.dll$' { return "OpenClawOwned" }
         '^OpenClawTray\.FunctionalUI\.dll$' { return "OpenClawOwned" }
+        '^Workers\\FileWorker\\win-(x64|arm64)\\[0-9a-f]{32}\\OpenClaw\.FileWorker\.(exe|dll)$' { return "OpenClawOwned" }
         '(^|\\)createdump\.exe$' { return "ThirdPartyExcluded" }
         '(^|\\)RestartAgent\.exe$' { return "ThirdPartyExcluded" }
         '^(plm|wxc-wslc-daemon)\.exe$' { return "ThirdPartyExcluded" }

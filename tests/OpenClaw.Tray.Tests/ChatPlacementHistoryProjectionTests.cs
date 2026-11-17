@@ -7,6 +7,80 @@ namespace OpenClaw.Tray.Tests;
 public sealed class ChatPlacementHistoryProjectionTests
 {
     [Fact]
+    public void ChildActivityRequiresLiveFactsAndKeepsExactParentIdentity()
+    {
+        var input = Input(ConnectionStatus.Connected) with
+        {
+            Sessions =
+            [
+                new() { Key = "parent", HasActiveRun = false, HasActiveSubagentRun = true },
+                new() { Key = "child", ParentSessionKey = "parent", HasActiveRun = true, CurrentActivity = "Checking results" },
+                new() { Key = "old", ParentSessionKey = "PARENT", HasActiveRun = false, CurrentActivity = "Stale activity" },
+            ],
+        };
+        var threads = ChatSnapshotProjector.Project(input).Threads;
+        Assert.True(threads[0].WaitingForSubagents);
+        Assert.Equal("parent", threads[1].ParentSessionKey);
+        Assert.Equal("Checking results", threads[1].CurrentActivity);
+        Assert.Null(threads[2].CurrentActivity);
+    }
+
+    [Theory]
+    [InlineData("agent:main:subagent:child", null, true)]
+    [InlineData("agent:research:worker", "subagent", true)]
+    [InlineData("agent:main:cron:job", "cron", false)]
+    [InlineData("agent:main:fork", "custom", false)]
+    public void ChildPanelDistinguishesSubagentsFromOtherParentLinkedSessions(
+        string key, string? classification, bool isSubagent)
+    {
+        var snapshot = ChatSnapshotProjector.Project(Input(ConnectionStatus.Connected) with
+        {
+            Sessions = [new() { Key = key, ParentSessionKey = "parent", Classification = classification }],
+        });
+        Assert.Equal(isSubagent, Assert.Single(snapshot.Threads).IsSubagent);
+    }
+
+    [Theory]
+    [InlineData("done", true, "Stopped")]
+    [InlineData("done", false, "Done")]
+    [InlineData("unknown", false, "Ended")]
+    public void SubagentOutcomeKeepsAbortedRunsOutOfSuccess(string status, bool aborted, string expected)
+    {
+        var snapshot = ChatSnapshotProjector.Project(Input(ConnectionStatus.Connected) with
+        {
+            Sessions = [new() { Key = "agent:main:subagent:child", ParentSessionKey = "parent",
+                HasActiveRun = false, Status = status, AbortedLastRun = aborted }],
+        });
+        Assert.Equal(expected, ChatSubagentPresentation.Classify(Assert.Single(snapshot.Threads)).ToString());
+    }
+
+    [Fact]
+    public void OlderHistoryPreservesActiveRowsAndRevisionWhileRetiringResetCursor()
+    {
+        var history = new ChatHistoryState();
+        var token = history.CreateCommitToken("main", 0);
+        history.MarkCommitted(token, "instance", "older-1");
+        Assert.Equal(new ChatHistoryPageRequest("older-1", "instance"), history.OlderPage("main"));
+        var revision = history.Revision("main");
+        history.MarkCommitted(token, "instance", "older-2", olderPage: true);
+        Assert.Equal(revision, history.Revision("main"));
+        history.ClearSessionForReset("main");
+        Assert.Null(history.OlderPage("main"));
+        Assert.Empty(history.SnapshotOlderHistoryThreads());
+
+        var prior = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatMessageDeltaEvent("Active answer"));
+        var active = Assert.Single(prior.Entries);
+        var earlier = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatUserMessageEvent("Older question"));
+        var (merged, _) = ChatHistoryState.PrependOlderPage(new("instance", earlier,
+            new Dictionary<string, ChatEntryMetadata>(), 0), prior, new Dictionary<string, ChatEntryMetadata>());
+        Assert.Equal(["Older question", "Active answer"], merged.Entries.Select(entry => entry.Text));
+        Assert.Same(active, merged.Entries[1]);
+        Assert.Equal(prior.ActiveAssistantId, merged.ActiveAssistantId);
+        Assert.True(merged.TurnActive);
+        Assert.Equal(2, merged.Entries.Select(entry => entry.Id).Distinct().Count());
+    }
+
+    [Fact]
     public void HistoryState_SnapshotDoesNotExposeMutableLoadedThreads()
     {
         var history = new ChatHistoryState();
@@ -86,7 +160,7 @@ public sealed class ChatPlacementHistoryProjectionTests
         Assert.Contains("string.Equals(snapshot.ComposeTarget.SessionKey, effectiveThread?.Id, StringComparison.Ordinal)", readiness);
         Assert.Contains("snapshot.CurrentHistoryThreads?.Contains(effectiveThread.Id) == true", readiness);
         Assert.DoesNotContain("HistoryLoaded", readiness);
-        Assert.Contains("ShowPlacementPickers = placementHistoryReady && mode == ReactorChatTimelineMode.Empty", root);
+        Assert.Contains("ShowPlacementPickers = !props.Compact && placementHistoryReady && mode == ReactorChatTimelineMode.Empty", root);
         Assert.Contains("PlacementHistoryReady = placementHistoryReady", root);
         Assert.Contains("PlacementTargetIsEmpty = isEmptyConversation", root);
         Assert.Contains("PlacementTargetIsNew = isComposeOnly", root);

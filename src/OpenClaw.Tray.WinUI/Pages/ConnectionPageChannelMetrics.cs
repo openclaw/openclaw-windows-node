@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using OpenClaw.Shared;
 
@@ -39,5 +40,20 @@ internal static class ConnectionPageChannelMetrics
                 count++;
         }
         return count;
+    }
+
+    /// <summary>Builds the per-channel status and redacted error lines shown in the chip tooltip.</summary>
+    internal static string BuildDetails(IReadOnlyList<ChannelHealth>? channels)
+    {
+        if (channels == null || channels.Count == 0) return string.Empty;
+        var lines = new List<string>(channels.Count);
+        foreach (var channel in channels)
+        {
+            var line = $"{channel.Name}: {channel.Status}";
+            if (!string.IsNullOrWhiteSpace(channel.Error))
+                line += $" ({TokenSanitizer.SanitizeLogMessage(channel.Error.Trim())})";
+            lines.Add(line);
+        }
+        return string.Join(Environment.NewLine, lines);
     }
 }

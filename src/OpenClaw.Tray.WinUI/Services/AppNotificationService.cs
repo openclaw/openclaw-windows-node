@@ -189,7 +189,39 @@ internal sealed class AppNotificationService
         RaiseChanged(snapshot);
     }
 
-    public void Dismiss(string notificationId)
+    /// <summary>
+    /// Opens the current action for an active reminder without dismissing it, matching the web Inbox.
+    /// The result reports native admission or a confirmed browser launch, not acknowledgment.
+    /// This does not approve, abort, or otherwise resolve the underlying Gateway action.
+    /// </summary>
+    public async Task<bool> NavigateActionAsync(string notificationId, Func<string, string?, Task<bool>> tryNavigate)
+    {
+        var notification = Snapshot.ActiveNotifications.FirstOrDefault(item => item.Id == notificationId);
+        if (notification?.ActionRoute is not { Length: > 0 } route)
+            return false;
+
+        try
+        {
+            var isChat = AppNotificationActionRoutes.TryGetChatSessionKey(route, out var sessionKey);
+            if (!await tryNavigate(isChat ? "chat" : route, sessionKey))
+            {
+                Logger.Info("[Notifications] Navigation was not admitted; reminder retained.");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Routes and exception messages can contain opaque session keys or credentials.
+            Logger.Warn($"[Notifications] Navigation failed ({ex.GetType().Name}); reminder retained.");
+            return false;
+        }
+
+        return true;
+    }
+
+    public void Dismiss(string notificationId) => TryDismiss(notificationId);
+
+    private void TryDismiss(string notificationId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(notificationId);
 

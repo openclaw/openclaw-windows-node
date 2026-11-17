@@ -585,6 +585,9 @@ function Build-Project($name, $path, $useRid = $false, $packageMsix = $false) {
             $dotnetArgs += "-p:MsixPackageBaseVersion=$effectiveMsixBaseVersion"
         }
     }
+    if ($name -eq "WinUI" -or $name -eq "Tray") {
+        & (Join-Path $repoRoot "scripts\Initialize-ReactorPackages.ps1")
+    }
     $result = Invoke-DotNetCaptured $dotnetArgs
     $exitCode = $LASTEXITCODE
     
