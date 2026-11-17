@@ -744,8 +744,9 @@ that does not answer that check in time, names that cause, and Companion keeps
 a start it requested instead of rolling it back on every retry. A start the
 package refuses with a typed error and no launch receipt reports the package's
 own reason. When the refusal is `native_stage_stale` (the agent's staged native
-files no longer match the installed package), or credential restore is refused
-that way, Companion runs `clawctl setup` once and retries once; the refused
+files no longer match the installed package), or credential restore or the
+setup wizard's configuration check is refused that way, Companion runs
+`clawctl setup` once and retries once; the refused
 attempt started nothing, so it is not rolled back. Its
 synchronous browser credential callback uses the last attributed identity
 plus fresh OS snapshots; it never starts a Gateway on the UI thread.

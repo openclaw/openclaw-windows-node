@@ -1120,6 +1120,37 @@ public sealed class NativeGatewaySetupTests
         Assert.Equal(["validate", "restart", "agent-check", "start", "inspect"], fixture.Events);
     }
 
+    [Fact]
+    public async Task StaleNativeStageDuringIsolatedAuthorizationRunsSetupAndRetriesOnce()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        await using var session = await fixture.Service.PrepareAsync(draft, default);
+        fixture.Events.Clear();
+        fixture.Host.StaleCheckRefusals = 1;
+
+        await session.AuthorizeAsync(default);
+
+        Assert.Equal(["agent-check-stale", "prepare", "agent-check", "start", "inspect"], fixture.Events);
+    }
+
+    [Fact]
+    public async Task StaleNativeStageThatSetupDoesNotRepairReportsThePackagesReason()
+    {
+        using var fixture = new Fixture();
+        fixture.Host.Contract = NativeGatewayContract.IsolatedSessionV1;
+        var draft = await fixture.Service.CreateDraftAsync(default);
+        await using var session = await fixture.Service.PrepareAsync(draft, default);
+        fixture.Events.Clear();
+        fixture.Host.StaleCheckRefusals = 2;
+
+        var error = await Assert.ThrowsAsync<NativeGatewayStageStaleException>(() => session.AuthorizeAsync(default));
+
+        Assert.Contains("staged native dependencies are stale", error.Message);
+        Assert.Equal(["agent-check-stale", "prepare", "agent-check-stale"], fixture.Events);
+    }
+
     internal sealed class Fixture : IDisposable
     {
         public TempDirectory Temp { get; } = new();
@@ -1181,9 +1212,17 @@ public sealed class NativeGatewaySetupTests
             NativeGatewayPackage package, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (StaleCheckRefusals > 0)
+            {
+                StaleCheckRefusals--;
+                events.Add("agent-check-stale");
+                throw new NativeGatewayStageStaleException("the isolated session's staged native dependencies are stale");
+            }
             events.Add("agent-check");
             return Task.FromResult(IsolatedConfiguration);
         }
+
+        public int StaleCheckRefusals { get; set; }
 
         public string PendingRequests { get; set; } = "{\"pending\":[]}";
         public Action OnList { get; set; } = () => { };
