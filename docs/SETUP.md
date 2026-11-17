@@ -9,7 +9,7 @@ Before installing, make sure you have:
 - **Windows 10 (20H2 or later)** or **Windows 11**
 - **WebView2 Runtime** - pre-installed on Windows 11 and most up-to-date Windows 10 systems. If missing, download from [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the install-new-WSL and connect-existing handoff flow.
+You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a local gateway for you: a native gateway when Windows supports it, or a dedicated WSL gateway otherwise. You can also connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the native, install-new-WSL, and connect-existing flows.
 
 New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local WSL gateway, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
 
@@ -50,11 +50,16 @@ The installer also creates a Start Menu group with shortcuts for **OpenClaw Comp
 
 ### 5. Onboarding Wizard
 
-On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The default flow installs and configures a dedicated app-owned local WSL gateway:
+On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The steps below follow the local WSL gateway flow:
 
 1. **Security notice** - Confirms this is a trusted PC before local setup starts.
 
-2. **Welcome** - Choose **Install a local gateway (WSL)** to install the app-owned WSL gateway, or **Connect to an existing gateway** to open the tray app's Connections tab.
+2. **Welcome** - The wizard first checks whether Windows supports the native gateway, then offers three choices:
+   - **Install a local native gateway** is marked **Recommended** when Windows supports it. It installs the OpenClaw Gateway from Microsoft Store and runs it directly on Windows in an isolated session, with no WSL. When Windows does not support it, the choice stays disabled and the wizard explains how to get support through Windows Update.
+   - **Install a local Gateway (WSL)** installs the app-owned WSL gateway. It is marked **Recommended** when native is unavailable.
+   - **Connect to an existing Gateway** connects without installing a gateway on this PC.
+
+   **Remote, local MCP or set up later** below the choices opens other connection options.
 
    For the role split behind these choices, see [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md).
 

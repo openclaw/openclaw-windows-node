@@ -22,7 +22,12 @@ For official OpenClaw support with installation, setup, or usage, visit [communi
 
 Requires Windows 10 20H2 or later, or Windows 11. No source build is required.
 
-On first launch, the setup wizard can install a dedicated local gateway in WSL or connect OpenClaw Companion to an existing gateway. If you do not have a gateway yet, choose **Install a local gateway (WSL)**.
+On first launch, the setup wizard can install a local gateway or connect OpenClaw Companion to an existing gateway. If you do not have a gateway yet, choose the local option marked **Recommended**:
+
+- **Install a local native gateway** is recommended when Windows supports it. It installs the OpenClaw Gateway from Microsoft Store and runs it directly on Windows in an isolated session, with no WSL.
+- **Install a local Gateway (WSL)** is recommended otherwise. It installs a dedicated gateway in an app-owned WSL distro.
+
+See [choosing a gateway on first launch](https://docs.openclaw.ai/platforms/windows#first-launch) for when to pick each option.
 
 ## Uninstall
 
