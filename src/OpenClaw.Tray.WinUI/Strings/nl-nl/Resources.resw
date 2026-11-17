@@ -5811,6 +5811,12 @@ Open Kanalen in het webdashboard.</value>
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>De gateway draait op meer dan één poort, maar heeft niet bevestigd welke listeners bij de geïsoleerde sessie horen. Companion heeft daarom geen referenties verzonden. Gatewayfuncties zoals MCP-apps of de lokale proxy van een plug-in openen extra poorten. Werk de gateway-MSIX bij en probeer het opnieuw. Bevestiging van listeners vereist ook Windows 11 26100.4770 of hoger.</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>De gateway draait, maar de listener op poort {0} reageerde niet op tijd op de gatewayprotocolcontrole van Companion. Companion heeft daarom geen referenties verzonden. Probeer het zo meteen opnieuw.</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>

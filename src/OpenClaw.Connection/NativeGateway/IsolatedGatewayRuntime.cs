@@ -15,6 +15,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private readonly Func<WindowsTcpListenerSnapshotResult> _capture;
     private readonly Func<IReadOnlyDictionary<int, ulong>> _captureSequences;
     private readonly Func<string, bool> _aliasExists;
+    private readonly Func<Uri, TimeSpan, CancellationToken, Task<GatewayProtocolProbeResult>> _probeGatewayProtocol;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly TimeSpan _inspectionTimeout;
     private readonly TimeProvider _timeProvider;
@@ -72,13 +73,15 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         Func<string, bool> aliasExists,
         TimeSpan? inspectionTimeout = null,
         TimeProvider? timeProvider = null,
-        IOpenClawLogger? logger = null)
+        IOpenClawLogger? logger = null,
+        Func<Uri, TimeSpan, CancellationToken, Task<GatewayProtocolProbeResult>>? probeGatewayProtocol = null)
     {
         _resolver = resolver;
         _client = client;
         _capture = capture;
         _captureSequences = captureSequences;
         _aliasExists = aliasExists;
+        _probeGatewayProtocol = probeGatewayProtocol ?? GatewayProtocolProbe.ProbeAsync;
         _inspectionTimeout = inspectionTimeout ?? InspectionTimeout;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _logger = logger ?? NullLogger.Instance;
@@ -150,9 +153,25 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 string? attemptId = status.SupportsLaunchReceipts ? Guid.NewGuid().ToString("N") : null;
                 _ownedStarts[package.PackageFamilyName] = attemptId;
                 _logger.Info($"Starting the package-managed Gateway on port {endpoint.Port}.");
-                status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
+                }
+                catch (NativeGatewayStageStaleException)
+                {
+                    // The package refused before starting anything and kept its previous launch record, so the
+                    // refused attempt owns nothing. Setup restages the native files; the start is retried once.
+                    _ownedStarts.Remove(package.PackageFamilyName);
+                    await RepairNativeStageAsync(package, cancellationToken).ConfigureAwait(false);
+                    attemptId = status.SupportsLaunchReceipts ? Guid.NewGuid().ToString("N") : null;
+                    _ownedStarts[package.PackageFamilyName] = attemptId;
+                    status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
+                }
             }
-            if (status.State != "running" || status.Port != endpoint.Port)
+            EndpointRole role = await ClassifyEndpointAsync(status, endpoint, cancellationToken).ConfigureAwait(false);
+            if (role == EndpointRole.Unconfirmed)
+                throw new NativeGatewayEndpointUnverifiedException(UnconfirmedEndpointMessage(endpoint.Port));
+            if (role == EndpointRole.NotServing)
             {
                 _logger.Warn($"The Gateway is not running on port {endpoint.Port}: {status.Describe()}.");
                 throw new NativeGatewayContractException(
@@ -170,13 +189,27 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             cancellationToken.ThrowIfCancellationRequested();
             _proofs[record.Id] = new(record, package, status);
         }
-        catch
+        catch (Exception error)
         {
             if (startedThisCall is not null && _ownedStarts.TryGetValue(startedThisCall.PackageFamilyName, out var attemptId))
             {
+                if (error is NativeGatewayStageStaleException)
+                {
+                    // Refused again after setup. The refusal started nothing, so there is nothing to roll back.
+                    _ownedStarts.Remove(startedThisCall.PackageFamilyName);
+                    throw;
+                }
+                if (error is NativeGatewayEndpointUnverifiedException)
+                {
+                    // The package reports this start running; only proof of Companion's endpoint is missing.
+                    // Stopping it would not supply that proof and would restart-loop the Gateway on every retry.
+                    _logger.Warn("Keeping the Gateway start requested by this attempt: the package reports it running " +
+                        "but Companion could not verify its endpoint. Credentials were not sent.");
+                    throw;
+                }
                 try
                 {
-                    _logger.Info("Rolling back the Gateway start requested by this attempt.");
+                    _logger.Info($"Rolling back the Gateway start requested by this attempt ({error.GetType().Name}).");
                     await StopLaunchAsync(startedThisCall, attemptId, CancellationToken.None).ConfigureAwait(false);
                     _ownedStarts.Remove(startedThisCall.PackageFamilyName);
                 }
@@ -188,6 +221,38 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             throw;
         }
     }
+
+    private enum EndpointRole { NotServing, Gateway, Unconfirmed }
+
+    /// <summary>
+    /// A status without a port attests several session-owned listeners, such as the MCP App sandbox
+    /// host beside the Gateway or a plugin's loopback proxy. Session ownership does not make
+    /// Companion's saved port the Gateway
+    /// endpoint, and saved configuration is not the running endpoint, so the listener there must
+    /// serve the Gateway protocol now. A reported port already identifies the endpoint.
+    /// </summary>
+    private async Task<EndpointRole> ClassifyEndpointAsync(
+        IsolatedGatewayStatus status, Uri endpoint, CancellationToken cancellationToken)
+    {
+        if (!status.IsRunningOn(endpoint.Port))
+            return EndpointRole.NotServing;
+        if (status.Port is not null)
+            return EndpointRole.Gateway;
+        switch (await _probeGatewayProtocol(endpoint, _inspectionTimeout, cancellationToken).ConfigureAwait(false))
+        {
+            case GatewayProtocolProbeResult.Gateway:
+                return EndpointRole.Gateway;
+            case GatewayProtocolProbeResult.Unavailable:
+                _logger.Warn($"The Gateway listener on port {endpoint.Port} did not answer the protocol check.");
+                return EndpointRole.Unconfirmed;
+            default:
+                _logger.Warn($"Port {endpoint.Port} belongs to the Gateway session but does not serve the Gateway protocol.");
+                return EndpointRole.NotServing;
+        }
+    }
+
+    private static string UnconfirmedEndpointMessage(int port) =>
+        NativeGatewayLocalization.Format(NativeGatewayLocalization.EndpointProbeUnansweredFormatKey, port);
 
     private async Task<IsolatedGatewayStatus> RepairConfigurationAsync(
         GatewayRecord record,
@@ -215,8 +280,19 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
 
         // A superseded attempt must not reach the package's persistent credential write.
         cancellationToken.ThrowIfCancellationRequested();
-        IsolatedGatewayConfiguration restored = await _client.RestoreAsync(
-            package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
+        IsolatedGatewayConfiguration restored;
+        try
+        {
+            restored = await _client.RestoreAsync(
+                package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
+        }
+        catch (NativeGatewayStageStaleException) when (!staleSession)
+        {
+            // Preparation refuses before writing anything when the staged native files are stale.
+            await RepairNativeStageAsync(package, cancellationToken).ConfigureAwait(false);
+            restored = await _client.RestoreAsync(
+                package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
+        }
         if (restored.Port != endpoint.Port ||
             !string.Equals(restored.Token, record.SharedGatewayToken, StringComparison.Ordinal))
         {
@@ -225,6 +301,18 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 "Remove this connection and add the local native Gateway again.");
         }
         return await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The package refused a launch because the agent's staged native files no longer match the installed
+    /// package. Its own remedy, <c>clawctl setup</c>, restages them in the same isolated session without
+    /// touching configuration or data; the caller retries the refused operation once.
+    /// </summary>
+    private async Task RepairNativeStageAsync(NativeGatewayPackage package, CancellationToken cancellationToken)
+    {
+        _logger.Info("The Gateway package's staged native files are out of date. Running clawctl setup, then retrying once.");
+        await _client.SetupAsync(package, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     private async Task<IsolatedGatewayStatus> StartAndWaitAsync(
@@ -360,7 +448,13 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                     Detail: "The Gateway package could not inspect its service. Check the package and retry. Credentials were not sent.",
                     FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
             }
-            if (status.State != "running" || status.Port != endpoint.Port)
+            EndpointRole role = await ClassifyEndpointAsync(status, endpoint, deadline.Token)
+                .WaitAsync(deadline.Token).ConfigureAwait(false);
+            if (role == EndpointRole.Unconfirmed)
+                return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
+                    Detail: UnconfirmedEndpointMessage(endpoint.Port),
+                    FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
+            if (role == EndpointRole.NotServing)
             {
                 return InspectSnapshot(endpoint.Port, null);
             }
@@ -383,7 +477,9 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         {
             Trace.TraceWarning($"Isolated Gateway ownership inspection failed ({ex.GetType().Name}). Credentials were not sent.");
             return new(GatewayEndpointProvenanceKind.UnknownListener, endpoint.Port,
-                Detail: "Gateway ownership inspection failed. Check the installed Gateway package and retry. Credentials were not sent.",
+                Detail: ex is NativeGatewayEndpointUnverifiedException unverified
+                    ? unverified.Message
+                    : "Gateway ownership inspection failed. Check the installed Gateway package and retry. Credentials were not sent.",
                 FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable);
         }
         finally
@@ -458,9 +554,12 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             _logger.Info("Restarting the package-managed Gateway.");
             NativeGatewayPackage package = await ResolveAsync(record, cancellationToken).ConfigureAwait(false);
             IsolatedGatewayStatus status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
-            var provenance = InspectSnapshot(endpoint.Port,
-                status.State == "running" && status.Port == endpoint.Port ? status : null);
-            if (status.State == "running" && status.Port != endpoint.Port ||
+            // A listener whose role could not be observed is still attested to the session; restarting
+            // it is the requested remedy, and the restart verifies the endpoint before credentials.
+            bool attested = await ClassifyEndpointAsync(status, endpoint, cancellationToken).ConfigureAwait(false)
+                is not EndpointRole.NotServing;
+            var provenance = InspectSnapshot(endpoint.Port, attested ? status : null);
+            if (status.State == "running" && !attested ||
                 provenance.Kind is not (GatewayEndpointProvenanceKind.ExpectedManagedGateway or GatewayEndpointProvenanceKind.NoListener))
                 throw new NativeGatewayListenerException(provenance);
 
@@ -476,7 +575,16 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 throw new NativeGatewayContractException(
                     "The Gateway package has not confirmed that its service stopped. Retry restart after checking its status.");
             _ownedStarts.Remove(package.PackageFamilyName);
-            await EnsureRunningCoreAsync(record, endpoint, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await EnsureRunningCoreAsync(record, endpoint, cancellationToken).ConfigureAwait(false);
+            }
+            catch (NativeGatewayEndpointUnverifiedException) when (!owned)
+            {
+                // The unverified restart is kept running; it still replaced a service Companion did not own.
+                _ownedStarts.Remove(package.PackageFamilyName);
+                throw;
+            }
             // An explicit restart must not turn a pre-existing service into a detach-owned start.
             if (!owned)
                 _ownedStarts.Remove(package.PackageFamilyName);

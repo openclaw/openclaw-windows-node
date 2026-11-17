@@ -268,8 +268,18 @@ public sealed class NativeGatewaySetupSession(
     {
         if (!IsIsolated)
             return;
-        IsolatedGatewayConfiguration configuration =
-            await host.CheckIsolatedPairingConfigurationAsync(package, cancellationToken);
+        IsolatedGatewayConfiguration configuration;
+        try
+        {
+            configuration = await host.CheckIsolatedPairingConfigurationAsync(package, cancellationToken);
+        }
+        catch (NativeGatewayStageStaleException)
+        {
+            // The package refuses session commands until setup restages the agent's native files.
+            // Setup leaves configuration and credentials alone; the check is retried once.
+            await host.PreparePackageAsync(package, environment, cancellationToken);
+            configuration = await host.CheckIsolatedPairingConfigurationAsync(package, cancellationToken);
+        }
         if (configuration.Port != new Uri(Record.Url).Port ||
             !string.Equals(configuration.Token, Record.SharedGatewayToken, StringComparison.Ordinal))
         {

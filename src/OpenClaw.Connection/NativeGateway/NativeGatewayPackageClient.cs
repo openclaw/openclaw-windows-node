@@ -162,6 +162,8 @@ public sealed class NativeGatewayPackageClient
         using JsonDocument document = Parse(result, command);
         JsonElement root = document.RootElement;
         RequireIntegration(root, "companion prepare");
+        if (TypedRefusal(root, result.ExitCode) is NativeGatewayStageStaleException staleStage)
+            throw staleStage;
         RequireSuccess(root, result.ExitCode);
         JsonElement prepared = RequiredObject(root, "companion");
         int selectedPort = RequiredInt(prepared, "port");
@@ -212,14 +214,16 @@ public sealed class NativeGatewayPackageClient
                 state, null, null, [], sessionState, readinessState, readinessReason)
                 { SupportsLaunchReceipts = supportsLaunch, Launch = launch };
 
-        int port = RequiredInt(gateway, "port");
+        // The package omits the port when several owned listeners leave its endpoint ambiguous.
+        int? port = gateway.TryGetProperty("port", out _) ? RequiredInt(gateway, "port") : null;
         if (!gateway.TryGetProperty("ownership", out JsonElement ownership) ||
             ownership.ValueKind != JsonValueKind.Object)
-            throw new NativeGatewayContractException(
-                "The Gateway is running, but Companion cannot verify isolated listener ownership, " +
-                "so it did not send credentials. Update Windows to a build supporting " +
-                "SystemBasicProcessInformation (Windows 11 26100.4770 or later), then retry. " +
-                "Running clawctl setup again cannot add this Windows capability.");
+            throw new NativeGatewayEndpointUnverifiedException(port is null
+                ? NativeGatewayLocalization.Text(NativeGatewayLocalization.UnattestedListenersKey)
+                : "The Gateway is running, but Companion cannot verify isolated listener ownership, " +
+                  "so it did not send credentials. Update Windows to a build supporting " +
+                  "SystemBasicProcessInformation (Windows 11 26100.4770 or later), then retry. " +
+                  "Running clawctl setup again cannot add this Windows capability.");
         _ = RequiredString(ownership, "sandboxId");
         string sid = RequiredString(ownership, "agentUserSid");
         if (string.IsNullOrWhiteSpace(sid) || port is < 1 or > 65535 ||
@@ -238,7 +242,7 @@ public sealed class NativeGatewayPackageClient
                 throw new InvalidOperationException("The Gateway package returned an invalid listener identity.");
             listeners.Add(new IsolatedGatewayListener(listenerPort, processId, created, sequence));
         }
-        if (!listeners.Any(listener => listener.Port == port))
+        if (listeners.Count == 0 || port is not null && !listeners.Any(listener => listener.Port == port))
             throw new InvalidOperationException("The Gateway package did not attribute the observed port to its session.");
         return new IsolatedGatewayStatus(
             state, port, sid, listeners, sessionState, readinessState, readinessReason)
@@ -256,6 +260,8 @@ public sealed class NativeGatewayPackageClient
         var root = document.RootElement;
         RequireIntegration(root, "gateway-service start");
         if (!SupportsLaunchReceipts(root)) throw Unsupported();
+        // A refusal before any launch carries no receipt; report the package's own reason.
+        if (!HasLaunchReceipt(root) && TypedRefusal(root, result.ExitCode) is { } refusal) throw refusal;
         var launch = ReadLaunch(root, true, requireDisposition: true) ?? throw Unsupported();
         if (launch.Disposition == "created" && launch.AttemptId != attemptId) throw Unsupported();
         RequireSuccess(root, result.ExitCode);
@@ -407,6 +413,25 @@ public sealed class NativeGatewayPackageClient
         if (exitCode != 0 || !root.TryGetProperty("ok", out JsonElement ok) ||
             ok.ValueKind != JsonValueKind.True)
             throw PackageError(root);
+    }
+
+    private static bool HasLaunchReceipt(JsonElement root) =>
+        root.TryGetProperty("gateway", out JsonElement gateway) &&
+        gateway.ValueKind == JsonValueKind.Object &&
+        gateway.TryGetProperty("launch", out _);
+
+    /// <summary>A failed command's typed error (<c>ok: false</c>, <c>error.type</c> and <c>error.message</c>), if any.</summary>
+    private static NativeGatewayCommandRefusedException? TypedRefusal(JsonElement root, int exitCode)
+    {
+        if (exitCode == 0 || !root.TryGetProperty("ok", out JsonElement ok) || ok.ValueKind != JsonValueKind.False ||
+            !root.TryGetProperty("error", out JsonElement error) || error.ValueKind != JsonValueKind.Object ||
+            !error.TryGetProperty("type", out JsonElement type) || type.ValueKind != JsonValueKind.String ||
+            !error.TryGetProperty("message", out JsonElement message) || message.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(type.GetString()) || string.IsNullOrWhiteSpace(message.GetString()))
+            return null;
+        return type.GetString() == NativeGatewayStageStaleException.ErrorTypeName
+            ? new NativeGatewayStageStaleException(message.GetString()!)
+            : new NativeGatewayCommandRefusedException(type.GetString()!, message.GetString()!);
     }
 
     private static InvalidOperationException PackageError(JsonElement root)

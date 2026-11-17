@@ -5816,6 +5816,12 @@ Open Channels in the web dashboard.</value>
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>The Gateway is running on more than one port but did not attest which listeners belong to its isolated session, so Companion did not send credentials. Gateway features such as MCP apps or a plugin's local proxy open additional ports. Update the Gateway MSIX, then retry. Listener attestation also requires Windows 11 26100.4770 or later.</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>The Gateway is running, but its listener on port {0} did not answer Companion's Gateway protocol check in time, so Companion did not send credentials. Retry in a moment.</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>
