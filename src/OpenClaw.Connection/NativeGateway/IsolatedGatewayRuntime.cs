@@ -153,7 +153,20 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 string? attemptId = status.SupportsLaunchReceipts ? Guid.NewGuid().ToString("N") : null;
                 _ownedStarts[package.PackageFamilyName] = attemptId;
                 _logger.Info($"Starting the package-managed Gateway on port {endpoint.Port}.");
-                status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
+                }
+                catch (NativeGatewayStageStaleException)
+                {
+                    // The package refused before starting anything and kept its previous launch record, so the
+                    // refused attempt owns nothing. Setup restages the native files; the start is retried once.
+                    _ownedStarts.Remove(package.PackageFamilyName);
+                    await RepairNativeStageAsync(package, cancellationToken).ConfigureAwait(false);
+                    attemptId = status.SupportsLaunchReceipts ? Guid.NewGuid().ToString("N") : null;
+                    _ownedStarts[package.PackageFamilyName] = attemptId;
+                    status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
+                }
             }
             EndpointRole role = await ClassifyEndpointAsync(status, endpoint, cancellationToken).ConfigureAwait(false);
             if (role == EndpointRole.Unconfirmed)
@@ -180,6 +193,12 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
         {
             if (startedThisCall is not null && _ownedStarts.TryGetValue(startedThisCall.PackageFamilyName, out var attemptId))
             {
+                if (error is NativeGatewayStageStaleException)
+                {
+                    // Refused again after setup. The refusal started nothing, so there is nothing to roll back.
+                    _ownedStarts.Remove(startedThisCall.PackageFamilyName);
+                    throw;
+                }
                 if (error is NativeGatewayEndpointUnverifiedException)
                 {
                     // The package reports this start running; only proof of Companion's endpoint is missing.
@@ -261,8 +280,19 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
 
         // A superseded attempt must not reach the package's persistent credential write.
         cancellationToken.ThrowIfCancellationRequested();
-        IsolatedGatewayConfiguration restored = await _client.RestoreAsync(
-            package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
+        IsolatedGatewayConfiguration restored;
+        try
+        {
+            restored = await _client.RestoreAsync(
+                package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
+        }
+        catch (NativeGatewayStageStaleException) when (!staleSession)
+        {
+            // Preparation refuses before writing anything when the staged native files are stale.
+            await RepairNativeStageAsync(package, cancellationToken).ConfigureAwait(false);
+            restored = await _client.RestoreAsync(
+                package, endpoint.Port, record.SharedGatewayToken, cancellationToken).ConfigureAwait(false);
+        }
         if (restored.Port != endpoint.Port ||
             !string.Equals(restored.Token, record.SharedGatewayToken, StringComparison.Ordinal))
         {
@@ -271,6 +301,18 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 "Remove this connection and add the local native Gateway again.");
         }
         return await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The package refused a launch because the agent's staged native files no longer match the installed
+    /// package. Its own remedy, <c>clawctl setup</c>, restages them in the same isolated session without
+    /// touching configuration or data; the caller retries the refused operation once.
+    /// </summary>
+    private async Task RepairNativeStageAsync(NativeGatewayPackage package, CancellationToken cancellationToken)
+    {
+        _logger.Info("The Gateway package's staged native files are out of date. Running clawctl setup, then retrying once.");
+        await _client.SetupAsync(package, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     private async Task<IsolatedGatewayStatus> StartAndWaitAsync(

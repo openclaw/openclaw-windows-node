@@ -67,6 +67,11 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private int[] _unansweredProtocolPorts = [];
     // Runs as each listener snapshot is taken, so a test can change the TCP table during verification.
     private Action? _onCapture;
+    // Upcoming start or companion-prepare calls the package refuses with native_stage_stale (#262 contract).
+    private int _staleStartRefusals;
+    private int _stalePrepareRefusals;
+    private const string StaleStageMessage =
+        "The staged native dependencies do not match the installed package. Run clawctl setup, then retry.";
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -83,6 +88,19 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             {
                 if (_duringStatus is not null) await _duringStatus(ct);
                 _beforeStatus?.Invoke();
+            }
+            bool refusedStart = args.Take(2).SequenceEqual(["gateway-service", "start"]) && _staleStartRefusals > 0;
+            bool refusedPrepare = args.Take(2).SequenceEqual(["companion", "prepare"]) && _stalePrepareRefusals > 0;
+            if (refusedStart || refusedPrepare)
+            {
+                // The package refuses before starting or writing anything and keeps its previous record.
+                if (refusedStart) _staleStartRefusals--; else _stalePrepareRefusals--;
+                return new NativeGatewayCommandResult(1, JsonSerializer.Serialize(new
+                {
+                    ok = false, schemaVersion = 1, command = string.Join(" ", args.Take(2)),
+                    error = new { type = "native_stage_stale", message = StaleStageMessage },
+                    integration = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } }
+                }));
             }
             if (args.Take(2).SequenceEqual(["gateway-service", "start"]))
             {
@@ -341,6 +359,55 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             $"companion prepare --port {Port} --restore-token-stdin --json", _calls);
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway,
             _runtime.Inspect(_record).Kind);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task StaleNativeStageRunsSetupAndRetriesTheStartOnce(int refusals)
+    {
+        // After a package update, openclaw-windows-packaging#262 refuses a new Gateway launch
+        // (native_stage_stale) before starting anything; clawctl setup restages the native files.
+        _state = "not-started";
+        _listeners = [];
+        _listenOnStart = true;
+        _supportsLaunchReceipts = true;
+        _staleStartRefusals = refusals;
+        bool recovers = refusals == 1;
+
+        EndpointCredentialAuthorization authorization =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+
+        Assert.Equal(recovers, authorization.Allowed);
+        if (!recovers)
+            Assert.Equal(StaleStageMessage, authorization.Detail);
+        Assert.Equal(1, _calls.Count(call => call == "setup --json"));
+        string[] starts = _calls.Where(call => call.StartsWith("gateway-service start", StringComparison.Ordinal)).ToArray();
+        Assert.Equal(2, starts.Length);
+        Assert.Equal(2, starts.Select(call => call.Split(' ')[3]).Distinct().Count());
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+
+        // Only a start that launched is Companion's to stop when it detaches.
+        await _runtime.StopAsync(CancellationToken.None);
+        Assert.Equal(recovers ? 1 : 0,
+            _calls.Count(call => call.StartsWith("gateway-service stop", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task StaleNativeStageDuringCredentialRestoreRunsSetupAndRetriesOnce()
+    {
+        _state = "not-started";
+        _sessionState = "running";
+        _configMissing = true;
+        _listeners = [];
+        _listenOnStart = true;
+        _stalePrepareRefusals = 1;
+
+        await _runtime.EnsureRunningAsync(_record, default);
+
+        Assert.Equal(1, _calls.Count(call => call == "setup --json"));
+        Assert.Equal(2, _calls.Count(call => call == $"companion prepare --port {Port} --restore-token-stdin --json"));
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
     }
 
     [Fact]

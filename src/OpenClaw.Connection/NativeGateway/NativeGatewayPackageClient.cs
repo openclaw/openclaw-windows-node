@@ -162,6 +162,8 @@ public sealed class NativeGatewayPackageClient
         using JsonDocument document = Parse(result, command);
         JsonElement root = document.RootElement;
         RequireIntegration(root, "companion prepare");
+        if (TypedRefusal(root, result.ExitCode) is NativeGatewayStageStaleException staleStage)
+            throw staleStage;
         RequireSuccess(root, result.ExitCode);
         JsonElement prepared = RequiredObject(root, "companion");
         int selectedPort = RequiredInt(prepared, "port");
@@ -258,6 +260,8 @@ public sealed class NativeGatewayPackageClient
         var root = document.RootElement;
         RequireIntegration(root, "gateway-service start");
         if (!SupportsLaunchReceipts(root)) throw Unsupported();
+        // A refusal before any launch carries no receipt; report the package's own reason.
+        if (!HasLaunchReceipt(root) && TypedRefusal(root, result.ExitCode) is { } refusal) throw refusal;
         var launch = ReadLaunch(root, true, requireDisposition: true) ?? throw Unsupported();
         if (launch.Disposition == "created" && launch.AttemptId != attemptId) throw Unsupported();
         RequireSuccess(root, result.ExitCode);
@@ -409,6 +413,25 @@ public sealed class NativeGatewayPackageClient
         if (exitCode != 0 || !root.TryGetProperty("ok", out JsonElement ok) ||
             ok.ValueKind != JsonValueKind.True)
             throw PackageError(root);
+    }
+
+    private static bool HasLaunchReceipt(JsonElement root) =>
+        root.TryGetProperty("gateway", out JsonElement gateway) &&
+        gateway.ValueKind == JsonValueKind.Object &&
+        gateway.TryGetProperty("launch", out _);
+
+    /// <summary>A failed command's typed error (<c>ok: false</c>, <c>error.type</c> and <c>error.message</c>), if any.</summary>
+    private static NativeGatewayCommandRefusedException? TypedRefusal(JsonElement root, int exitCode)
+    {
+        if (exitCode == 0 || !root.TryGetProperty("ok", out JsonElement ok) || ok.ValueKind != JsonValueKind.False ||
+            !root.TryGetProperty("error", out JsonElement error) || error.ValueKind != JsonValueKind.Object ||
+            !error.TryGetProperty("type", out JsonElement type) || type.ValueKind != JsonValueKind.String ||
+            !error.TryGetProperty("message", out JsonElement message) || message.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(type.GetString()) || string.IsNullOrWhiteSpace(message.GetString()))
+            return null;
+        return type.GetString() == NativeGatewayStageStaleException.ErrorTypeName
+            ? new NativeGatewayStageStaleException(message.GetString()!)
+            : new NativeGatewayCommandRefusedException(type.GetString()!, message.GetString()!);
     }
 
     private static InvalidOperationException PackageError(JsonElement root)

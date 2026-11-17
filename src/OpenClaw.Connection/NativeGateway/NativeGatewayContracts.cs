@@ -28,6 +28,27 @@ public class NativeGatewayContractException(string message) : InvalidOperationEx
 /// </summary>
 public sealed class NativeGatewayEndpointUnverifiedException(string message) : NativeGatewayContractException(message);
 
+/// <summary>
+/// A package command refused with a typed error (<c>error.type</c>). The message is the package's
+/// own explanation, so Companion shows it instead of a generic contract failure.
+/// </summary>
+public class NativeGatewayCommandRefusedException(string errorType, string message)
+    : NativeGatewayContractException(message)
+{
+    public string ErrorType { get; } = errorType;
+}
+
+/// <summary>
+/// The package refused a launch because the agent's staged native dependencies no longer match the
+/// installed package (<c>native_stage_stale</c>). It refuses before starting anything, and
+/// <c>clawctl setup</c> restages them in the same isolated session.
+/// </summary>
+public sealed class NativeGatewayStageStaleException(string message)
+    : NativeGatewayCommandRefusedException(NativeGatewayStageStaleException.ErrorTypeName, message)
+{
+    public const string ErrorTypeName = "native_stage_stale";
+}
+
 public sealed record IsolatedGatewayConfiguration(int Port, string Token);
 
 public sealed record IsolatedGatewayListener(

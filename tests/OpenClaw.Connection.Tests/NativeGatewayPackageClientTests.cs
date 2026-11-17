@@ -67,6 +67,46 @@ public sealed class NativeGatewayPackageClientTests
             client.StartAsync(s_package, "11111111111111111111111111111111", default));
     }
 
+    [Theory]
+    [InlineData("native_stage_stale", "The staged native dependencies are out of date. Run clawctl setup, then retry.")]
+    [InlineData("cli_error", "The agent session is not set up. Run clawctl setup, then retry.")]
+    public async Task ReceiptStartRefusedBeforeLaunchReportsThePackagesReason(string errorType, string message)
+    {
+        // A launch refused before anything starts (openclaw-windows-packaging#262) carries a typed
+        // error but no gateway.launch receipt.
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(new NativeGatewayCommandResult(1,
+            RefusalJson("gateway-service start", errorType, message))));
+
+        var error = await Assert.ThrowsAnyAsync<NativeGatewayCommandRefusedException>(() =>
+            client.StartAsync(s_package, "11111111111111111111111111111111", default));
+
+        Assert.Equal(message, error.Message);
+        Assert.Equal(errorType, error.ErrorType);
+        Assert.Equal(errorType == "native_stage_stale", error is NativeGatewayStageStaleException);
+    }
+
+    [Fact]
+    public async Task CompanionPrepareRefusedOnAStaleNativeStageIsTyped()
+    {
+        var client = new NativeGatewayPackageClient((_, _, _) => Task.FromResult(new NativeGatewayCommandResult(1,
+            RefusalJson("companion prepare", "native_stage_stale", "Run clawctl setup, then retry."))));
+
+        var error = await Assert.ThrowsAsync<NativeGatewayStageStaleException>(() =>
+            client.PrepareAsync(s_package, 19001, default));
+
+        Assert.Equal("Run clawctl setup, then retry.", error.Message);
+    }
+
+    private static string RefusalJson(string command, string errorType, string message) =>
+        JsonSerializer.Serialize(new
+        {
+            ok = false,
+            schemaVersion = 1,
+            command,
+            error = new { type = errorType, message },
+            integration = new { kind = "isolated-session", version = 1, gatewayLaunch = new { version = 1 } }
+        });
+
     [Fact]
     public async Task CapabilityAbsentStatusRemainsShippingV1WithoutReceipt()
     {
