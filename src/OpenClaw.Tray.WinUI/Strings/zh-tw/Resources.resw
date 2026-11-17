@@ -5810,6 +5810,12 @@
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>閘道正在多個連接埠上執行，但未證明哪些接聽程式屬於其隔離工作階段，因此 Companion 未傳送認證。MCP 應用程式或外掛程式的本機 Proxy 等閘道功能會開啟額外的連接埠。請更新閘道 MSIX，然後再試一次。接聽程式證明也需要 Windows 11 26100.4770 或更新版本。</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>閘道正在執行，但其連接埠 {0} 上的接聽程式未及時回應 Companion 的閘道通訊協定檢查，因此 Companion 未傳送認證。請稍後再試一次。</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>

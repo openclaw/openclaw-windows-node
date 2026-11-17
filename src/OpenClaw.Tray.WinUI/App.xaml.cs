@@ -359,6 +359,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         GatewayHostAccessLocalization.GetString = LocalizationHelper.GetString;
         SessionTitleFormatter.ConfigureLocalization(LocalizationHelper.GetString);
         GatewayHostAccessLocalization.Format = (key, args) => LocalizationHelper.Format(key, args);
+        OpenClaw.Connection.NativeGateway.NativeGatewayLocalization.GetString = LocalizationHelper.GetString;
 
         InitializeComponent();
         

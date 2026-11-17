@@ -5810,6 +5810,12 @@ Ouvrir Canaux dans le tableau de bord web.</value>
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>La passerelle s'exécute sur plusieurs ports, mais n'a pas attesté quels écouteurs appartiennent à sa session isolée. Companion n'a donc pas envoyé les identifiants. Des fonctionnalités de la passerelle, comme les applications MCP ou le proxy local d'un plug-in, ouvrent des ports supplémentaires. Mettez à jour le MSIX de la passerelle, puis réessayez. L'attestation des écouteurs nécessite aussi Windows 11 26100.4770 ou une version ultérieure.</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>La passerelle est en cours d'exécution, mais son écouteur sur le port {0} n'a pas répondu à temps à la vérification du protocole de passerelle de Companion. Companion n'a donc pas envoyé les identifiants. Réessayez dans un instant.</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>

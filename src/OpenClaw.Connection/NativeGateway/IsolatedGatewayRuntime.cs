@@ -233,8 +233,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     }
 
     private static string UnconfirmedEndpointMessage(int port) =>
-        $"The Gateway is running, but its listener on port {port} did not answer Companion's Gateway " +
-        "protocol check in time, so Companion did not send credentials. Retry in a moment.";
+        NativeGatewayLocalization.Format(NativeGatewayLocalization.EndpointProbeUnansweredFormatKey, port);
 
     private async Task<IsolatedGatewayStatus> RepairConfigurationAsync(
         GatewayRecord record,

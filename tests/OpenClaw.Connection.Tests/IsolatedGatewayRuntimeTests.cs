@@ -1033,6 +1033,39 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Fact]
+    public async Task EndpointVerificationReasonsUseTheAppLocalization()
+    {
+        // Companion shows these reasons in its UI, so they resolve through the app's resources.
+        NativeGatewayLocalization.GetString = key => key.EndsWith("_Format", StringComparison.Ordinal)
+            ? $"localized {key} {{0}}"
+            : $"localized {key}";
+        try
+        {
+            _auxiliaryPort = Port + 1;
+            _omitReportedPort = true;
+            _listeners =
+            [
+                new(IPAddress.Loopback, Port, ProcessId, "fixture", null),
+                new(IPAddress.Loopback, Port + 1, ProcessId, "fixture", null)
+            ];
+            _gatewayProtocolPorts = [];
+            _unansweredProtocolPorts = [Port];
+            EndpointCredentialAuthorization unanswered =
+                await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+            Assert.Equal($"localized NativeGateway_EndpointProbeUnanswered_Format {Port}", unanswered.Detail);
+
+            _omitOwnership = true;
+            EndpointCredentialAuthorization unattested =
+                await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+            Assert.Equal("localized NativeGateway_UnattestedListeners", unattested.Detail);
+        }
+        finally
+        {
+            NativeGatewayLocalization.GetString = null;
+        }
+    }
+
+    [Fact]
     public async Task CancellingPendingOwnedStartRollsBackAndReleasesGate()
     {
         _state = "stopped";
