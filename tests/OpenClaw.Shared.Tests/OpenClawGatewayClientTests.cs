@@ -1242,6 +1242,11 @@ public class OpenClawGatewayClientTests
 
         public void SetGrantedScopes(string[] scopes) => SetPrivateField("_grantedOperatorScopes", scopes);
         public void SetAdvertisedMethods(string[] methods) => SetPrivateField("_advertisedServerMethods", methods);
+        public void SetAgentRosterRefreshGuards(bool agentsListUnsupported, bool operatorReadScopeUnavailable)
+        {
+            SetPrivateField("_agentsListUnsupported", agentsListUnsupported);
+            SetPrivateField("_operatorReadScopeUnavailable", operatorReadScopeUnavailable);
+        }
 
         public void SetOperatorDeviceId(string? id) => SetPrivateField("_operatorDeviceId", id);
 
@@ -1542,6 +1547,134 @@ public class OpenClawGatewayClientTests
         using var fresh = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
         Assert.Equal("sessions.list", fresh.RootElement.GetProperty("method").GetString());
         Assert.False(fresh.RootElement.GetProperty("params").TryGetProperty("agentId", out _));
+    }
+
+    [Fact]
+    public async Task AgentIdentityAndConfigEvents_CoalesceIntoOneRosterRefresh()
+    {
+        using var refreshWindow = new EnvironmentScope("OPENCLAW_SESSION_REFRESH_WINDOW_MS", null);
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("agent-roster-refresh-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        for (var i = 0; i < 20; i++)
+            helper.ProcessRawMessage(i % 2 == 0
+                ? """{"type":"event","event":"agent.identity.changed","payload":{"agentId":"main"}}"""
+                : """{"type":"event","event":"config.changed","payload":{}}""");
+
+        using var refresh = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
+        Assert.Equal("agents.list", refresh.RootElement.GetProperty("method").GetString());
+
+        // test-timing-exception: negative probe that no second agents.list follows the coalesced one.
+        await Task.Delay(SessionRefreshQuietInterval);
+        await client.RequestSessionsAsync("barrier");
+        using var barrier = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
+        Assert.Equal("barrier", barrier.RootElement.GetProperty("params").GetProperty("agentId").GetString());
+    }
+
+    [Fact]
+    public async Task AgentRosterRefresh_DisconnectCancelsPendingWindow()
+    {
+        using var refreshWindow = new EnvironmentScope("OPENCLAW_SESSION_REFRESH_WINDOW_MS", null);
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("agent-roster-refresh-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        helper.ProcessRawMessage("""{"type":"event","event":"agent.identity.changed","payload":{"agentId":"main"}}""");
+        helper.OnDisconnected();
+        await helper.OnConnectedAsync();
+        helper.MarkHandshakeReady();
+
+        // test-timing-exception: negative probe that the cancelled window never sends agents.list.
+        await Task.Delay(SessionRefreshQuietInterval);
+        await client.RequestSessionsAsync("after-disconnect");
+        using var explicitFrame = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
+        Assert.Equal("after-disconnect", explicitFrame.RootElement.GetProperty("params").GetProperty("agentId").GetString());
+    }
+
+    [Fact]
+    public async Task AgentRosterRefresh_InFlightInvalidationSchedulesOneTrailingRefresh()
+    {
+        using var refreshWindow = new EnvironmentScope("OPENCLAW_SESSION_REFRESH_WINDOW_MS", null);
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("agent-roster-refresh-");
+        await server.StartAsync();
+        using var client = new DelayedAgentRosterRefreshClient(server.WebSocketUrl, identity.Path);
+        var helper = new GatewayClientTestHelper(client);
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        helper.ProcessRawMessage("""{"type":"event","event":"agent.identity.changed","payload":{"agentId":"main"}}""");
+        await client.FirstSendStarted.Task.WaitAsync(StepTimeout);
+        helper.ProcessRawMessage("""{"type":"event","event":"agent.identity.changed","payload":{"agentId":"main"}}""");
+
+        client.ReleaseFirstSend.TrySetResult();
+        using var first = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
+        Assert.Equal("agents.list", first.RootElement.GetProperty("method").GetString());
+        using var trailing = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
+        Assert.Equal("agents.list", trailing.RootElement.GetProperty("method").GetString());
+        Assert.Equal(2, Volatile.Read(ref client.AutomaticSends));
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task AgentRosterRefresh_RechecksGuardsBeforeDispatch(
+        bool agentsListUnsupported,
+        bool operatorReadScopeUnavailable)
+    {
+        using var refreshWindow = new EnvironmentScope("OPENCLAW_SESSION_REFRESH_WINDOW_MS", null);
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("agent-roster-refresh-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        helper.ProcessRawMessage("""{"type":"event","event":"agent.identity.changed","payload":{"agentId":"main"}}""");
+        helper.SetAgentRosterRefreshGuards(agentsListUnsupported, operatorReadScopeUnavailable);
+
+        // test-timing-exception: wait past the debounce window to prove the guarded refresh is suppressed.
+        await Task.Delay(SessionRefreshQuietInterval);
+        var barrierTask = client.SendWizardRequestAsync("health", new { }, 5000);
+        using var barrier = JsonDocument.Parse(await server.ReceiveTextAsync().WaitAsync(StepTimeout));
+        Assert.Equal("health", barrier.RootElement.GetProperty("method").GetString());
+        helper.ProcessRawMessage(JsonSerializer.Serialize(new
+        {
+            type = "res",
+            id = ReadRequestId(barrier.RootElement.GetRawText()),
+            ok = true,
+            payload = new { }
+        }));
+        await barrierTask.WaitAsync(StepTimeout);
+    }
+
+    private sealed class DelayedAgentRosterRefreshClient(string url, string identityPath)
+        : OpenClawGatewayClient(url, "test-token", identityPath: identityPath)
+    {
+        public TaskCompletionSource FirstSendStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource ReleaseFirstSend { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int AutomaticSends;
+
+        protected override async Task<bool> SendRawAsync(string message, long generation, CancellationToken cancellationToken)
+        {
+            using var frame = JsonDocument.Parse(message);
+            if (frame.RootElement.GetProperty("method").GetString() == "agents.list"
+                && Interlocked.Increment(ref AutomaticSends) == 1)
+            {
+                FirstSendStarted.TrySetResult();
+                await ReleaseFirstSend.Task.WaitAsync(cancellationToken);
+            }
+            return await base.SendRawAsync(message, generation, cancellationToken);
+        }
     }
 
     private sealed class DelayedRefreshClient(string url, string identityPath, IOpenClawLogger logger)
