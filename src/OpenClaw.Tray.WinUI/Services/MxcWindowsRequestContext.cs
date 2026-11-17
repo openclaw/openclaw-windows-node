@@ -11,6 +11,16 @@ internal static class MxcWindowsRequestContext
         MxcCompanionPackagePaths.Capture(
             MxcRequestContext.Capture(settingsDirectory), EnumeratePackages, UnredirectedLocalAppData);
 
+    internal static string? GetPackagedScratchRoot()
+    {
+        if (!OpenClawTray.Helpers.PackageHelper.IsPackaged)
+            return null;
+
+        var id = global::Windows.ApplicationModel.Package.Current.Id;
+        return MxcCompanionPackagePaths.ScratchRoot(
+            new(id.Name, id.Publisher, id.FamilyName), UnredirectedLocalAppData());
+    }
+
     private static IEnumerable<MxcCompanionPackage> EnumeratePackages()
     {
         foreach (var package in new PackageManager().FindPackagesForUser(string.Empty))

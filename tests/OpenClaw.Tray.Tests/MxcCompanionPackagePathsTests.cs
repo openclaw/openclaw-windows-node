@@ -34,6 +34,27 @@ public sealed class MxcCompanionPackagePathsTests
         new[] { "Roaming", "Local" }.Select(folder =>
             Path.Combine(local, "Packages", package.FamilyName, "LocalCache", folder, leaf)).ToArray();
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ScratchRoot_UsesCurrentPackagePhysicalCache(bool development)
+    {
+        var package = development ? Dev : Store;
+        Assert.Equal(Path.Combine(Local, "Packages", package.FamilyName, "LocalCache", "Local", "OpenClawMxc", "Runs"),
+            MxcCompanionPackagePaths.ScratchRoot(package, Local));
+    }
+
+    [Fact]
+    public void ScratchRoot_RejectsUnexpectedIdentityOrPath()
+    {
+        Assert.Throws<InvalidOperationException>(() => MxcCompanionPackagePaths.ScratchRoot(
+            Store with { Publisher = Dev.Publisher }, Local));
+        Assert.Throws<InvalidOperationException>(() => MxcCompanionPackagePaths.ScratchRoot(
+            Store with { FamilyName = @"..\foreign" }, Local));
+        Assert.Throws<InvalidOperationException>(() => MxcCompanionPackagePaths.ScratchRoot(Store, @"C:\"));
+        Assert.Throws<InvalidOperationException>(() => MxcCompanionPackagePaths.ScratchRoot(Store, "relative"));
+    }
+
     [Fact]
     public void EmptyInventory_PreservesDefaultProtectionWithoutRequiringAPackageOrLocalPath()
     {
@@ -250,7 +271,9 @@ public sealed class MxcCompanionPackagePathsTests
         Assert.Contains("new PackageManager().FindPackagesForUser(string.Empty)", adapter);
         Assert.Contains("MxcRequestContext.Capture(settingsDirectory), EnumeratePackages, UnredirectedLocalAppData", adapter);
         Assert.Contains("KF_FLAG_NO_PACKAGE_REDIRECTION = 0x00010000", adapter);
-        Assert.DoesNotContain("Package.Current", adapter);
+        var inventoryStart = adapter.IndexOf("private static IEnumerable<MxcCompanionPackage> EnumeratePackages()", StringComparison.Ordinal);
+        Assert.True(inventoryStart >= 0);
+        Assert.DoesNotContain("Package.Current", adapter[inventoryStart..]);
         var runner = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Shared", "Mxc", "NodeSandboxExecutor.cs"));
         Assert.DoesNotContain("Windows.Management.Deployment", runner);
         Assert.DoesNotContain("PackageManager", runner);
