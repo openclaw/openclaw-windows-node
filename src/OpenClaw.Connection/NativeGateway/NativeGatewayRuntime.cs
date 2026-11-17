@@ -72,6 +72,7 @@ public sealed class NativeGatewayRuntime : INativeGatewayRuntime
     public async Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
     {
         var generation = Interlocked.Read(ref _stopGeneration);
+        bool startedThisCall = false;
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
         await _gate.WaitAsync(linked.Token).ConfigureAwait(false);
         try
@@ -111,6 +112,7 @@ public sealed class NativeGatewayRuntime : INativeGatewayRuntime
                 package.OpenClawAliasPath, environment["OPENCLAW_STATE_DIR"], endpoint.Port,
                 environment, package.PackageFamilyName), linked.Token).ConfigureAwait(false);
             _record = record;
+            startedThisCall = true;
             var started = Stopwatch.StartNew();
             while (true)
             {
@@ -130,10 +132,13 @@ public sealed class NativeGatewayRuntime : INativeGatewayRuntime
                 await Task.Delay(TimeSpan.FromMilliseconds(100), linked.Token).ConfigureAwait(false);
             }
         }
-        catch
+        catch (Exception error)
         {
             // Cleanup is intentionally not cancellable: cancellation must not orphan a child.
             await StopOwnedAsync().ConfigureAwait(false);
+            // This call's own launch failed; a reconnect must not launch and stop it again.
+            if (startedThisCall && error is NativeGatewayListenerException { DuringOwnedStart: false } listener)
+                throw new NativeGatewayListenerException(listener.Provenance, duringOwnedStart: true);
             throw;
         }
         finally

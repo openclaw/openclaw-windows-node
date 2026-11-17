@@ -525,12 +525,23 @@ Companion uses a five-minute absolute startup budget from before the package sta
 request, with ten seconds for confirmation after a late acknowledgement, subject to
 the caller deadline (at most 310 seconds for start/status), then still requires
 fresh selected-port and process-sequence ownership proof. It never treats an
-`unhealthy`/`starting` observation as ready, waits for
-an unrelated pre-existing start, or retries the start command while polling.
-If a listener appears between a pending status and the host snapshot, one immediate
+`unhealthy`/`starting` observation as ready, or retries the start command while
+polling. A pre-existing `starting` service (for example after
+`clawctl gateway-service restart`) is observed within the same startup budget
+without taking start, stop or rollback ownership; it receives credentials only
+after a fresh `running` attestation and the full listener checks. A listener that
+appears before that attestation keeps the wait going but is not trusted, and a
+momentarily unreadable (`unknown`) state is reported as unavailable inspection.
+If the startup budget expires while the service is still starting, later reconnect
+attempts read status once per backoff step instead of waiting another full budget,
+until the state changes. Configuration is never repaired while the service is
+`starting`. A pre-existing `unhealthy` service is not waited on; reconnect
+observes it again after its normal capped backoff.
+For a start Companion requested (or still owns), if a listener appears between a
+pending status and the host snapshot, one immediate
 status recheck may admit only a fresh `running` attestation. The full selected-port,
 listener and process-sequence checks still run; another pending status or failed
-attribution rejects the start.
+attribution rejects that start.
 The startup budget defaults to five minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
 to whole seconds (30 to 3600) before starting Companion to change it; the published
 connection phase and credential handoff budgets follow it. Only the published connection

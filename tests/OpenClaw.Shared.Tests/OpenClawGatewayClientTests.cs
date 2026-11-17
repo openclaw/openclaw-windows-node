@@ -6984,6 +6984,33 @@ public class OpenClawGatewayClientTests
         Assert.Equal(500, client.StartupUnavailable?.RetryAfterMs);
     }
 
+    [Fact]
+    public void StartupUnavailable_DeferredReconnectAuthorizationRestoresNormalBackoff()
+    {
+        using var identity = new TempDirectory("startup-deferred-");
+        var helper = new GatewayClientTestHelper(identityPath: identity.Path);
+        using var client = helper.Client;
+        var failures = helper.CaptureConnectionFailures();
+        helper.TrackPendingRequest("startup", "connect");
+        helper.ProcessRawMessage("""
+            {"type":"res","id":"startup","ok":false,"error":{"code":"UNAVAILABLE","retryable":true,"details":{"reason":"startup-sidecars"}}}
+            """);
+        const System.Reflection.BindingFlags Instance =
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+        var owner = typeof(WebSocketClientBase).GetMethod("CaptureConnection", Instance)!.Invoke(client, null)!;
+        var generation = (long)owner.GetType().GetField("Item2")!.GetValue(owner)!;
+        int? ReconnectDelay() => (int?)typeof(OpenClawGatewayClient)
+            .GetMethod("GetReconnectDelayMs", Instance)!.Invoke(client, [generation]);
+        Assert.Equal(500, ReconnectDelay());
+
+        typeof(OpenClawGatewayClient).GetMethod("OnReconnectAuthorizationDeferred", Instance)!.Invoke(client,
+            [new ReconnectAuthorizationResult(false, GatewayErrorKind.Network, "restarting", Retryable: true)]);
+
+        Assert.Null(ReconnectDelay());
+        Assert.Null(client.StartupUnavailable);
+        Assert.Contains(GatewayErrorKind.Network, failures);
+    }
+
     [Theory]
     [InlineData("AUTH_TOKEN_MISMATCH", GatewayErrorKind.Auth)]
     [InlineData("AUTH_DEVICE_TOKEN_MISMATCH", GatewayErrorKind.DeviceTokenMismatch)]
