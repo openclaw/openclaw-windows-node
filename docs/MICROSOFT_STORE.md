@@ -1,44 +1,62 @@
-# Submit a release to Microsoft Store
+# Request Microsoft Store publication
 
-Use this guide to submit an already validated release bundle, retry a failed
-Store delivery without rebuilding, or enable automatic Store delivery. This
-workflow does not change signing, release approval, or install/upgrade acceptance.
-GitHub releases and the existing unsigned Store artifact handoff remain available.
+Use this guide to request central publication of an already validated Companion
+release bundle. This repository builds the unsigned x64/ARM64 Store inputs and
+records release evidence. The standalone
+[`windows-store-publish.yml` publisher in `openclaw/releases`](https://github.com/openclaw/releases/actions/workflows/windows-store-publish.yml)
+authorizes the exact source, obtains release-manager approval, and submits to
+Partner Center. It never runs publisher code from this repository.
 
-## Configure the publishing identity
+A successful native request is not approval, a Store commit, certification, or
+public rollout. The existing stable-promotion approval, signing, GitHub release,
+MSIX version reservation, and install/upgrade acceptance remain separate gates.
 
-1. Link the correct Microsoft Entra tenant to Partner Center. Add a dedicated
-   Entra application to Partner Center with the **Manager (Windows)** role.
-   The Store product must already have a completed, published first submission
-   and completed age ratings. Do not reuse the Azure code-signing identity.
-2. Add one federated credential to that Entra application:
-   - Issuer: `https://token.actions.githubusercontent.com`
-   - Audience: `api://AzureADTokenExchange`
-   - Subject: `repo:openclaw/openclaw-windows-node:environment:microsoft-store`
-   Verify the repository's current OIDC subject configuration before provisioning;
-   immutable-subject settings affect the exact subject. The dedicated application
-   must have no client secrets, certificates, or other federated writers.
-3. In the repository's **Settings > Environments > microsoft-store**, set these
-   environment variables (not secrets):
-   - `MSSTORE_TENANT_ID`: Entra tenant GUID.
-   - `MSSTORE_CLIENT_ID`: dedicated application's client GUID.
-   - `MSSTORE_APPLICATION_ID`: Partner Center Store product ID, not the client GUID.
-4. Allow deployments from the `main` **branch** in this environment. The submission
-   workflow always runs trusted main code, including when it consumes a tag's
-   bundle. Restrict the environment to main, and configure release-owner approval
-   if required by your publishing policy. Tag-only protection will block this job.
-5. Leave the repository variable `MSSTORE_ENABLED` unset until the first manual
-   submission and the required Store install/upgrade acceptance have succeeded.
-   No persistent Store password is required.
+## Required administrator cutover
 
-## Submit manually
+Complete the central publisher setup before merging or using this request-only
+workflow. These are administrator changes, not effects of merging this PR:
 
-Merge the workflow onto main first. Select the successful run ID for a stable/correction tag **Build and Test** run or an approved **Promote alpha to stable** run.
-The ID is the number after `/actions/runs/` in its URL. The source run must have
-completed successfully and retained its unexpired authorized Store bundle.
+1. Configure the central `microsoft-store-companion` environment to allow only
+   `main`, require `@openclaw/release-managers-openclaw` approval, prevent
+   self-review, and disallow administrator deployment bypass. Central release
+   code and its identity policy also need enforced release-manager review.
+2. Move the dedicated Companion Store application's Entra federation to the
+   approved central environment. Remove the old native-repository federated
+   credential and every other publishing writer. Removing the old workflow from
+   main does not revoke the identity available to historical workflow code.
+   Keep Store identifiers and the short-lived OIDC exchange in the central
+   publisher, not a native-repository environment. No new persistent Store
+   secret is required.
+3. Make the existing release GitHub App (ID `2729701`) and
+   `GH_APP_PRIVATE_KEY` available to this workflow, with its installation able
+   to request workflows in `openclaw/releases`. The minted installation token
+   selects only `releases` and requests only Actions write permission. It has no
+   Store authority. Verify the installation grant; do not assume the existing
+   key alone grants access. No new PAT is required.
+4. Enforce main's required release-manager code-owner review for the paths in
+   [CODEOWNERS](../.github/CODEOWNERS), including CODEOWNERS itself. Dismiss stale
+   approvals, require approval of the latest reviewable push, and prevent direct
+   push or actor bypass for protected automation changes. The file alone does
+   not turn on GitHub enforcement.
+5. Leave repository Actions variable `MSSTORE_ENABLED` unset or `false` until a
+   manual central request, the protected approval path, and required Store
+   install/upgrade acceptance have been verified. Do not re-enable the retired
+   native publisher as a fallback.
 
-From **Actions > Submit Microsoft Store > Run workflow**, select `main` and
-enter `run_id`. The equivalent CLI command is:
+The central publisher owns the fixed Companion product identity, Store policy,
+OIDC trust checks, source validation, artifact download, and evidence. An
+operator with write access here can request publication, but cannot approve the
+central publishing environment merely by having that access.
+
+## Request manually
+
+Select the successful run ID for a stable/correction-tag **Build and Test** run
+or an approved **Promote alpha to stable** run. The number follows
+`/actions/runs/` in its URL. The source must retain its unexpired authorized
+unsigned bundle and current-attempt release witness.
+
+From **Actions > Request Microsoft Store publication > Run workflow**, select
+`main` and enter `run_id`. The equivalent command is:
 
 ```powershell
 gh workflow run submit-microsoft-store.yml `
@@ -46,54 +64,60 @@ gh workflow run submit-microsoft-store.yml `
   -f run_id=RELEASE_RUN_ID
 ```
 
-Manual dispatch deliberately does not require `MSSTORE_ENABLED`. It uses the same
-source checks, protected environment, OIDC identity, and publisher as automatic
-submission. It never rebuilds a package or republishes the GitHub release.
+The main workflow sends exactly `product=companion` and the source `run_id` to
+`windows-store-publish.yml` on central `main`. It neither rebuilds the package
+nor republishes the GitHub release. Manual requests do not require
+`MSSTORE_ENABLED`, but always require central source authorization and
+release-manager publication approval.
 
-Only the multi-architecture Store `.msixbundle` is uploaded. The publisher checks
-its identity against repository policy and the actual Partner Center product
-before creating a draft. It preserves listing, pricing, availability, and other
-product metadata while replacing the packages with the selected bundle.
+Open the linked central Actions workflow, inspect the matching product and
+source run, and review its source commit, release version, run attempt,
+artifact identity, and bundle hash before approving publication. Approval of
+stable promotion here does not substitute for central Store approval.
 
-## Enable automatic delivery
+## Enable automatic requests
 
-After the manual rehearsal and release acceptance, set the **repository** Actions
-variable `MSSTORE_ENABLED` to `true`. It must be repository-scoped because the
-source job checks it before entering the protected environment. Successful eligible
-release runs then trigger **Submit Microsoft Store** through `workflow_run`.
-PRs, ordinary main builds, failed runs, and prereleases do not submit. Ineligible
-automatic runs are skipped; selecting an ineligible run manually fails explicitly.
+After the manual central path and release acceptance are verified, set the
+**repository** Actions variable `MSSTORE_ENABLED` to `true`. Its retained name
+now enables automatic requests, never automatic Store publishing. The main
+workflow cheaply filters successful stable/correction-tag CI runs and stable
+promotion runs with a current, unexpired release witness before minting the
+request token. Preview-only promotion, PR, alpha, ordinary-main, failed, and
+foreign-repository runs do not request publication. The central
+publisher still makes the authoritative release and artifact decision.
 
-Remove the variable or set it to `false` to pause future automatic submissions.
-This does not cancel a submission already in progress. Both manual and automatic
-runs share one concurrency group and never cancel an active Store upload.
+Unset the variable or set it to `false` to pause future automatic requests.
+This does not cancel an accepted central request or an active Store upload.
+Native request concurrency does not replace central per-product publication
+serialization or approval.
 
 ## Verify and recover
 
-A successful submission means Partner Center returned `CommitStarted`, not that
-certification or public rollout has finished. Retain the Store workflow URL and
-its 90-day submission evidence artifact. The evidence includes the bundle SHA-256,
-product ID, exact submission ID, metadata hashes, and commit acceptance. Follow
-certification and publication in Partner Center before declaring Store delivery
-complete. The current policy requests a 100% package rollout and preserves the
-product's publication mode, including manual or scheduled publication.
+The native workflow summary confirms only that GitHub accepted the central
+request. Retain that workflow URL and the corresponding central run URL. The
+central publisher owns the approval, submission receipt, exact bundle SHA-256,
+Store product and submission IDs, metadata-preservation evidence, and commit
+result. Partner Center's `CommitStarted` means commit accepted, not certification
+or public rollout completed. Follow those states in Partner Center.
 
-Before dispatch, finish or explicitly discard any existing draft in Partner
-Center. Automation rejects existing drafts and never replaces them. Do not edit
-an API-created draft in the portal while automation runs. A failure before commit
-can remove only the draft created by this run. A lost or ambiguous commit response
-preserves that draft: inspect Partner Center before retrying. Never blindly rerun
-a submission that may already have been accepted. If the release artifact expired,
-use the release process to produce and validate a new candidate.
+If request dispatch fails or its response is lost, inspect central Actions for
+an existing request before retrying. If central source verification fails,
+resolve the reported source, witness, or artifact issue rather than bypassing
+it. If a bundle expired, produce and validate a new candidate through the
+release process.
 
-See Microsoft's [submission API](https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions)
-and [application identity resource](https://learn.microsoft.com/en-us/windows/uwp/monetize/get-app-data).
+For Store draft or ambiguous-commit recovery, use the central publisher's
+runbook and Partner Center state. Do not rerun a possibly accepted submission
+or restore native Store credentials. A denied or waiting central approval is
+not a failed build and must not cause the native release to be rebuilt.
 
 ## Source binding
 
-The release pipeline records `store-release-source-<attempt>` only after stable
-GitHub publication and bundle validation succeed. The submission workflow checks
-that witness against the source run, its current attempt, the published stable
-tag and commit, and the downloaded bundle hash. Promotion keeps its product source
-separate from the main pipeline commit. Releases created before this witness was
-introduced cannot be used as manual submission sources.
+The native release pipeline still records `store-release-source-<attempt>` only
+after stable GitHub publication and bundle validation succeed. The central
+publisher verifies that witness against the canonical source run, its current
+attempt, the published stable tag and commit, and the downloaded bundle hash.
+Promotion keeps its product source separate from the main pipeline commit.
+Releases predating the witness cannot be selected. This request adapter does
+not duplicate that authorization policy or accept caller-supplied product
+identities, artifact hashes, scripts, or publishing credentials.
