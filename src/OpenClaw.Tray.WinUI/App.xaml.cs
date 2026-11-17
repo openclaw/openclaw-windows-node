@@ -117,6 +117,10 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
     private readonly Theming.AppThemeApplicator _themeApplicator = new();
     private Theming.GatewayThemeCatalog? _themeCatalog;
     private Theming.GatewayThemeFollower? _themeFollower;
+    private Theming.GatewayBuiltinThemeResolver? _builtinThemes;
+    private OpenClaw.Shared.Themes.ServedBuiltinThemeCache? _builtinThemeCache;
+    // Built-in palettes until the resolver exists: the last Gateway's cached ones over the table.
+    private OpenClaw.Shared.Themes.IBuiltinThemeSource? _startupBuiltinThemes;
     private SettingsWriteOrigin? _themeFollowerOrigin;
     private global::Windows.UI.ViewManagement.UISettings? _themeColorSettings;
     private bool _themeResourcesChanged;
@@ -558,11 +562,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
 
         var dispatcher = new WinUIDispatcher(_dispatcherQueue);
         _themeCatalog = new Theming.GatewayThemeCatalog(dispatcher);
+        // Built-in palettes come from the connected Gateway's own stylesheets, then the bundled table.
+        _builtinThemes = new Theming.GatewayBuiltinThemeResolver(
+            dispatcher,
+            _themeCatalog,
+            new Theming.WebViewBuiltinThemeProbe(dispatcher),
+            _builtinThemeCache ?? CreateBuiltinThemeCache());
         _themeFollower = new Theming.GatewayThemeFollower(
             _themeCatalog,
             () => _settings?.Appearance,
             PersistFollowedAppearance,
-            ApplyThemePreferenceToOpenWindows);
+            ApplyThemePreferenceToOpenWindows,
+            _builtinThemes);
+        _builtinThemes.Changed += (_, _) => ApplyThemePreferenceToOpenWindows();
         var context = new AppServiceContext(
             dispatcher,
             this,
@@ -577,6 +589,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var services = new ServiceCollection();
         services.AddOpenClawTrayCore(context);
         services.AddSingleton<Theming.IGatewayThemeCatalog>(_themeCatalog);
+        services.AddSingleton<Theming.IGatewayBuiltinThemes>(_builtinThemes);
 
         // WinUI-bound registrations are added here (not in the pure core) so the core
         // stays testable in a pure net10 project.
@@ -957,6 +970,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         // before the tray ever initializes.
         // Apply the saved Gateway theme before any window is themed, then follow system color and
         // contrast changes so an opaque (Mica-off) canvas switches to High Contrast colors too.
+        // The last Gateway's cached palettes resolve it, so its session-long control geometry matches them.
+        _builtinThemeCache = CreateBuiltinThemeCache();
+        _startupBuiltinThemes = Theming.GatewayBuiltinThemeResolver.LastCached(_builtinThemeCache);
         ApplyGatewayTheme();
         _themeColorSettings = new global::Windows.UI.ViewManagement.UISettings();
         _themeColorSettings.ColorValuesChanged += (_, _) => OnUiThread(ApplyThemePreferenceToOpenWindows);
@@ -1323,6 +1339,9 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _ => _settings?.AppTheme ?? SettingsManager.AppThemeSystem,
     };
 
+    private static OpenClaw.Shared.Themes.ServedBuiltinThemeCache CreateBuiltinThemeCache() =>
+        new(Path.Combine(AppIdentity.ResolveLocalDataDirectory(), "Themes", "gateway-builtin-themes.json"));
+
     private bool ApplyGatewayTheme()
     {
         if (_settings is null)
@@ -1332,7 +1351,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         {
             // Turning on "Follow Gateway theme" records the Gateway's current theme before it is resolved.
             SyncFollowedGatewayTheme();
-            var theme = OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_settings.Appearance);
+            var theme = OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_settings.Appearance,
+                (OpenClaw.Shared.Themes.IBuiltinThemeSource?)_builtinThemes ?? _startupBuiltinThemes);
             var mode = EffectiveColorMode();
             // The first call runs at startup, before any window: controls keep that theme's corner radii all session.
             _themeApplicator.DecideControlGeometry(theme, mode);
@@ -2558,6 +2578,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         _automationsOverview?.SetConnection(GatewayClient);
         SynchronizeUsageProviderConnection();
         _themeCatalog?.SetConnection(GatewayClient, _connectionManager?.CurrentSnapshot.GatewayId);
+        _builtinThemes?.SetConnection(GatewayClient, _connectionManager?.CurrentSnapshot.GatewayId);
         _inboxGatewaySource?.AttachClient(e.NewClient);
 
         // Configure new client
@@ -2623,6 +2644,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             _automationsOverview?.SetConnection(GatewayClient);
             SynchronizeUsageProviderConnection();
             _themeCatalog?.SetConnection(GatewayClient, snap.GatewayId);
+            _builtinThemes?.SetConnection(GatewayClient, snap.GatewayId);
             if (_appState != null) _appState.Status = mapped;
             _windowManager?.UpdateHubTitleBarStatus(snap, mapped);
             _trayController?.ApplyConnectionState(mapped, snap.OverallState);
