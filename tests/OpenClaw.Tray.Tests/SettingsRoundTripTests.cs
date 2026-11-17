@@ -7,6 +7,114 @@ namespace OpenClaw.Tray.Tests;
 
 public class SettingsRoundTripTests
 {
+    // Written by the released v2026.11.3 SettingsData.ToJson() (OpenClaw.Shared 2026.11.3+66b9b5a5) with a few
+    // non-default choices; that release has no ShowLobsterVisits.
+    private const string LatestStableSettingsJson = """
+        {
+          "SettingsSchemaVersion": 1,
+          "UseSshTunnel": false,
+          "SshTunnelSshPort": 22,
+          "SshTunnelRemotePort": 18789,
+          "SshTunnelLocalPort": 28789,
+          "AutoStart": false,
+          "GlobalHotkeyEnabled": true,
+          "HasInjectedFirstRunBootstrap": false,
+          "ShowNotifications": false,
+          "ShowDesktopCompanion": true,
+          "DesktopCompanionScalePercent": 100,
+          "NotificationSound": "Reminder",
+          "NotifyHealth": true,
+          "NotifyUrgent": true,
+          "NotifyReminder": true,
+          "NotifyEmail": true,
+          "NotifyCalendar": true,
+          "NotifyBuild": true,
+          "NotifyStock": true,
+          "NotifyInfo": true,
+          "ShowPairingApprovalDialog": true,
+          "EnableNodeMode": false,
+          "NodeCanvasEnabled": true,
+          "NodeScreenEnabled": true,
+          "NodeCameraEnabled": false,
+          "ScreenRecordingConsentGiven": false,
+          "CameraRecordingConsentGiven": false,
+          "NodeLocationEnabled": true,
+          "LocationConsentGiven": false,
+          "CaptureConsentTimeoutMs": 120000,
+          "NodeBrowserProxyEnabled": true,
+          "NodeSystemRunEnabled": true,
+          "NodeSttEnabled": false,
+          "SttLanguage": "fr-FR",
+          "SttModelName": "base",
+          "SttSilenceTimeout": 2.5,
+          "VoiceTtsEnabled": false,
+          "ShowChatToolCalls": true,
+          "ShowChatThinking": true,
+          "VoiceAudioFeedback": true,
+          "NodeTtsEnabled": false,
+          "NodeOllamaInferenceEnabled": false,
+          "UseGatewayVoice": false,
+          "TtsProvider": "kokoro",
+          "HubNavPaneOpen": true,
+          "TtsMiniMaxModel": "speech-2.8-hd",
+          "TtsMiniMaxRegion": "global_en",
+          "TtsPiperVoiceId": "en_US-amy-low",
+          "TtsKokoroVoiceId": "af_maple",
+          "TtsKokoroAutoDownload": true,
+          "EnableMcpServer": false,
+          "EnableManagedLocalGatewayAutoRepair": true,
+          "HasSeenActivityStreamTip": false,
+          "NotifyChatResponses": true,
+          "PreferStructuredCategories": true,
+          "UseLegacyWebChat": false,
+          "ShowCompletedSessions": false,
+          "AppTheme": "System",
+          "OpenTelemetryProtocol": "grpc",
+          "SystemRunFilesystemScope": null,
+          "SystemRunAllowOutbound": false,
+          "SandboxClipboard": 0,
+          "SandboxMaxTransferBytes": 52428800,
+          "SandboxTimeoutMs": 30000,
+          "SandboxMaxOutputBytes": 4194304
+        }
+        """;
+
+    [Fact]
+    public void LatestStableProfile_LoadsIntactAndKeepsTheLobsterVisitsChoiceAcrossRestart()
+    {
+        using var temp = new TempDirectory();
+        var path = temp.Combine("settings.json");
+        File.WriteAllText(path, LatestStableSettingsJson);
+
+        var settings = new SettingsManager(temp.Path);
+        Assert.True(settings.ShowLobsterVisits);
+        AssertLatestStableChoices(settings);
+
+        settings.ShowLobsterVisits = false;
+        settings.SaveOrThrow();
+        using (var saved = JsonDocument.Parse(File.ReadAllText(path)))
+        {
+            Assert.False(saved.RootElement.GetProperty("ShowLobsterVisits").GetBoolean());
+            using var original = JsonDocument.Parse(LatestStableSettingsJson);
+            Assert.All(original.RootElement.EnumerateObject(),
+                property => Assert.True(saved.RootElement.TryGetProperty(property.Name, out _), property.Name));
+        }
+
+        var restarted = new SettingsManager(temp.Path);
+        Assert.False(restarted.ShowLobsterVisits);
+        AssertLatestStableChoices(restarted);
+    }
+
+    private static void AssertLatestStableChoices(SettingsManager settings)
+    {
+        Assert.False(settings.AutoStart);
+        Assert.False(settings.ShowNotifications);
+        Assert.Equal("Reminder", settings.NotificationSound);
+        Assert.Equal(28789, settings.SshTunnelLocalPort);
+        Assert.False(settings.NodeCameraEnabled);
+        Assert.Equal("fr-FR", settings.SttLanguage);
+    }
+
     [Theory]
     [InlineData("windows")]
     [InlineData("piper")]

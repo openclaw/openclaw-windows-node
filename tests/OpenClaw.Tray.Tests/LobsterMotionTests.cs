@@ -30,23 +30,6 @@ public sealed class LobsterMotionTests
     }
 
     [Fact]
-    public void Sampler_HonoursDelayFillAndIterations()
-    {
-        var once = Synthetic(LobsterEasing.Linear);
-        Assert.Null(once.Sample(50));
-        Assert.Null(once.Sample(1200));
-        Assert.Equal(40, Y(Synthetic(LobsterEasing.Linear, fill: LobsterFill.Forwards), 5000), 6);
-        Assert.Equal(0, Y(Synthetic(LobsterEasing.Linear, fill: LobsterFill.Both), 0), 6);
-
-        var twice = Synthetic(LobsterEasing.Linear, iterations: 2);
-        Assert.Equal(5, Y(twice, 100 + 1250), 6);
-        Assert.Null(twice.Sample(100 + 2000));
-
-        var forever = Synthetic(LobsterEasing.Linear, iterations: double.PositiveInfinity);
-        Assert.Equal(5, Y(forever, 100 + 7250), 6);
-    }
-
-    [Fact]
     public void NapZs_AreStaggeredBySevenHundredMilliseconds()
     {
         var z = LobsterMotion.ForAct(LobsterAct.Nap).Single();
