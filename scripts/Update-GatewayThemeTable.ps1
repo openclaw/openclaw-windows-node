@@ -8,6 +8,8 @@ cascade in the Control UI (ui/src/styles/base.css plus ui/public/themes/<id>.css
 color-mix() derivations). This script fetches those stylesheets at -UpstreamRef, resolves every
 token the Companion uses (colors, the --font-body, --font-chat and --mono stacks, and the corner radii) in headless
 Microsoft Edge for each theme and mode, and writes src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs.
+The resolver is src/OpenClaw.Shared/Themes/ThemeProbe.js, the same probe the Companion runs against the connected
+Gateway's stylesheets, so the table and runtime resolution read the cascade identically.
 Each theme's mascot, brand icon and working indicator come from BUILTIN_THEMES, resolved with upstream's
 resolveThemeBranding defaults. The script fails when any token does not resolve or a branding value is unknown.
 
@@ -99,19 +101,19 @@ if (($builtinIds -join ',') -ne ($descriptorIds -join ',')) {
 }
 
 # Theme ids map to data-theme aliases exactly as ui/src/app/theme.ts resolveTheme() does.
-$css = [System.Text.StringBuilder]::new()
-[void]$css.AppendLine((Get-UpstreamText 'ui/src/styles/base.css'))
-# Engines that draw superellipse corners scale radii by 1.25 to look like the circular ones WinUI draws, so the
-# probe reads the circular geometry. A theme's own scale (CRT's near-square 0.25) outranks this :root rule.
-[void]$css.AppendLine('@supports (corner-shape: superellipse(1.5)) { :root { --openclaw-corner-radius-scale: 1; } }')
+# The core styles come first; each theme file is its own sheet, marked so ThemeProbe.js can place its geometry rule
+# between them exactly as the Companion's runtime probe document does.
+$sheets = [System.Collections.Generic.List[string]]::new()
+$sheets.Add((Get-UpstreamText 'ui/src/styles/base.css'))
+$themeSheets = [System.Collections.Generic.List[string]]::new()
 foreach ($theme in $themes) {
     if ($theme.Id -eq 'claw') { continue }
-    [void]$css.AppendLine((Get-UpstreamText "ui/public/themes/$($theme.Id).css"))
+    $themeSheets.Add((Get-UpstreamText "ui/public/themes/$($theme.Id).css"))
 }
 
 # A built-in whose stylesheet has no rule for its data-theme value would silently resolve to the base (claw)
 # palette, so each one must be targeted by name.
-$cssSource = $css.ToString()
+$cssSource = (@($sheets) + @($themeSheets)) -join "`n"
 foreach ($theme in $themes) {
     if ($theme.Id -eq 'claw') { continue }
     $family = if ($theme.Id -eq 'knot') { 'openknot' } else { $theme.Id }
@@ -121,79 +123,22 @@ foreach ($theme in $themes) {
         }
     }
 }
-$tokens = [ordered]@{
-    Canvas = 'bg'; Content = 'bg-content'; Surface = 'bg-accent'; Card = 'card'; Popover = 'popover'
-    Hover = 'bg-hover'; Text = 'text'; TextStrong = 'text-strong'; Muted = 'muted'; Border = 'border'
-    BorderStrong = 'border-strong'; Accent = 'accent'; AccentHover = 'accent-hover'
-    AccentForeground = 'accent-foreground'; Primary = 'primary'; PrimaryForeground = 'primary-foreground'
-    Ring = 'ring'; Destructive = 'destructive'; Danger = 'danger'; Ok = 'ok'; Warn = 'warn'; Info = 'info'
-    ComposerSurface = 'chat-composer-surface'; InlineCode = 'inline-code-bg'
-    Elevated = 'bg-elevated'; Panel = 'panel'; AccentSubtle = 'accent-subtle'
+function ConvertTo-StyleElement([string]$sheet, [string]$attributes) {
+    return "<style$attributes>`n" + ($sheet -replace '</style', '<\/style') + "`n</style>"
 }
-# Consumers read these through var() fallbacks (ui/src/styles/chat/text.css). Releases older than the root
-# definitions of bg-content and chat-composer-surface read var(--bg-content, var(--bg)) and give the composer
-# var(--popover) in chat/composer-surface.css, so the packaged Gateway's themes resolve the same way.
-$fallbacks = @{ 'inline-code-bg' = 'bg-muted'; 'bg-content' = 'bg'; 'chat-composer-surface' = 'popover' }
+$styleElements = @($sheets | ForEach-Object { ConvertTo-StyleElement $_ '' }) +
+    @($themeSheets | ForEach-Object { ConvertTo-StyleElement $_ ' data-openclaw-theme-sheet' })
+$probeScript = [System.IO.File]::ReadAllText((Join-Path $PSScriptRoot '..\src\OpenClaw.Shared\Themes\ThemeProbe.js'))
 $probeThemes = ($themes | ForEach-Object { "'$($_.Id)'" }) -join ','
-$probeTokens = ($tokens.GetEnumerator() | ForEach-Object {
-    $fallback = if ($fallbacks.ContainsKey($_.Value)) { "'$($fallbacks[$_.Value])'" } else { 'null' }
-    "['$($_.Key)','$($_.Value)',$fallback]"
-}) -join ','
-$cssText = $css.ToString() -replace '</style', '<\/style'
 
 $html = @"
 <!doctype html>
-<html><head><meta charset="utf-8"><style>
-$cssText
-</style></head><body><span id="probe"></span><pre id="out"></pre><script>
-const themes = [$probeThemes];
-const tokens = [$probeTokens];
-const root = document.documentElement;
-const probe = document.getElementById('probe');
-const hex = (n) => Math.round(Math.min(1, Math.max(0, n)) * 255).toString(16).padStart(2, '0');
-function toHex(value) {
-  let m = value.match(/^rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)$/);
-  let r, g, b, a;
-  if (m) { r = +m[1] / 255; g = +m[2] / 255; b = +m[3] / 255; a = m[4] === undefined ? 1 : +m[4]; }
-  else {
-    m = value.match(/^color\(srgb\s+([-\d.e]+)\s+([-\d.e]+)\s+([-\d.e]+)(?:\s*\/\s*([\d.e]+))?\)$/);
-    if (!m) return null;
-    r = +m[1]; g = +m[2]; b = +m[3]; a = m[4] === undefined ? 1 : +m[4];
-  }
-  return '#' + hex(r) + hex(g) + hex(b) + (a >= 1 ? '' : hex(a));
-}
-const result = {};
-const failures = [];
-for (const id of themes) {
-  result[id] = {};
-  for (const mode of ['light', 'dark']) {
-    const family = id === 'claw' ? null : id === 'knot' ? 'openknot' : id;
-    root.setAttribute('data-theme', family === null ? mode : mode === 'light' ? family + '-light' : family);
-    root.setAttribute('data-theme-mode', mode);
-    const palette = {};
-    for (const [name, primary, fallback] of tokens) {
-      const style = getComputedStyle(root);
-      const variable = style.getPropertyValue('--' + primary).trim() || !fallback ? primary : fallback;
-      const raw = style.getPropertyValue('--' + variable).trim();
-      probe.style.color = '';
-      probe.style.color = 'rgb(from var(--' + variable + ') r g b / alpha)';
-      const value = raw ? toHex(getComputedStyle(probe).color) : null;
-      if (!value) failures.push(id + '/' + mode + '/' + variable + '=' + raw);
-      palette[name] = value;
-    }
-    for (const [name, variable] of [['RadiusSm', 'radius-sm'], ['RadiusMd', 'radius-md'], ['CornerScale', 'openclaw-corner-radius-scale']]) {
-      const value = parseFloat(getComputedStyle(root).getPropertyValue('--' + variable));
-      if (!Number.isFinite(value) || value < 0) failures.push(id + '/' + mode + '/' + variable);
-      palette[name] = value;
-    }
-    for (const [name, variable] of [['Body', 'font-body'], ['Chat', 'font-chat'], ['Mono', 'mono']]) {
-      palette[name] = getComputedStyle(root).getPropertyValue('--' + variable).trim().replace(/\s+/g, ' ');
-      if (!palette[name]) failures.push(id + '/' + mode + '/' + variable);
-    }
-    result[id][mode] = palette;
-  }
-}
-document.getElementById('out').textContent = JSON.stringify({ result, failures });
+<html><head><meta charset="utf-8">
+$($styleElements -join "`n")
+</head><body><pre id="out"></pre><script>
+$probeScript
+</script><script>
+document.getElementById('out').textContent = JSON.stringify(openclawThemeProbe.resolve([$probeThemes]));
 </script></body></html>
 "@
 
@@ -244,9 +189,12 @@ foreach ($theme in $themes) {
     foreach ($mode in @('light', 'dark')) {
         $palette = $parsed.result.($theme.Id).$mode
         $label = if ($mode -eq 'light') { 'Light' } else { 'Dark' }
-        $values = @($tokens.Keys | ForEach-Object { "$($_): $(ConvertTo-CSharpString $palette.$_)" })
-        $values += @('RadiusSm', 'RadiusMd', 'CornerScale' | ForEach-Object { "$($_): $(([double]$palette.$_).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture))" })
-        $values += @('Body', 'Chat', 'Mono' | ForEach-Object { "$($_): $(ConvertTo-CSharpString $palette.$_)" })
+        # Fields in ThemeProbe.js order (colors, radii, fonts); radii are its only numbers.
+        $values = @($palette.PSObject.Properties | ForEach-Object {
+            $value = if ($_.Value -is [string]) { ConvertTo-CSharpString $_.Value }
+                else { ([double]$_.Value).ToString('0.###', [Globalization.CultureInfo]::InvariantCulture) }
+            "$($_.Name): $value"
+        })
         $terminator = if ($mode -eq 'light') { ',' } else { '),' }
         [void]$out.AppendLine("            $($label): new(")
         [void]$out.AppendLine("                " + ($values -join ",`n                ") + ")$terminator")

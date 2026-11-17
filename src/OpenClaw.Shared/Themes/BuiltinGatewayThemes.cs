@@ -8,6 +8,8 @@ namespace OpenClaw.Shared.Themes;
 /// class (<c>BuiltinGatewayThemes.g.cs</c>) captures them from a pinned upstream ref. Regenerate with
 /// <c>scripts/Update-GatewayThemeTable.ps1 -UpstreamRef &lt;sha&gt;</c>; the daily
 /// <c>gateway-theme-sync.yml</c> workflow does this when the latest stable packaged Gateway ships a new openclaw release.
+/// While connected, the Companion prefers the connected Gateway's own palettes (<see cref="ServedBuiltinThemeSet"/>);
+/// this table is the fallback when those are unavailable.
 /// <example><code>
 /// if (BuiltinGatewayThemes.TryGet("tide", out var tide)) Apply(tide.PaletteFor(ThemeColorMode.Dark));
 /// </code></example>
@@ -24,6 +26,14 @@ public static partial class BuiltinGatewayThemes
 
     /// <summary>The built-in themes in upstream catalog order.</summary>
     public static ImmutableArray<ResolvedTheme> All => s_themes.Value;
+
+    /// <summary>This table as an <see cref="IBuiltinThemeSource"/>: the fallback when the connected Gateway's palettes are unknown.</summary>
+    public static IBuiltinThemeSource Table { get; } = new TableSource();
+
+    private sealed class TableSource : IBuiltinThemeSource
+    {
+        public bool TryGet(string? id, out ResolvedTheme theme) => BuiltinGatewayThemes.TryGet(id, out theme);
+    }
 
     public static bool TryGet(string? id, out ResolvedTheme theme)
     {

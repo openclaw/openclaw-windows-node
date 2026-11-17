@@ -15,4 +15,10 @@
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Real Gateway Control UI theme recordings; see Themes/ControlUiRecordings/README.md. -->
+    <EmbeddedResource Include="Themes\ControlUiRecordings\*.zip"
+                      LogicalName="OpenClaw.TestSupport.Themes.ControlUiRecordings.%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

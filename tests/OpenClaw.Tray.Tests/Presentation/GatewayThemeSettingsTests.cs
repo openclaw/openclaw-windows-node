@@ -360,6 +360,67 @@ public sealed class GatewayThemeSettingsTests
         public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    [Fact]
+    public void PickerOffersTheConnectedGatewaysBuiltins_ByItsNames()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        var builtins = new StaticBuiltins();
+        var vm = new SettingsPageViewModel(new SettingsStore(settings, new RecordingUiDispatcher()), new FakeAppCommands(),
+            new StaticCatalog(), builtins);
+        vm.Activate(null);
+        Assert.DoesNotContain(vm.ThemeChoices, choice => choice.Key == "aurora");
+
+        // The Gateway's palettes arrive with a built-in this Companion's table does not have, and its own names.
+        Assert.True(BuiltinGatewayThemes.TryGet("tide", out var tide));
+        builtins.Themes = [tide with { Name = "Tide (Gateway)" }, tide with { Id = "aurora", Name = "Aurora" }];
+        builtins.Raise();
+
+        Assert.Contains(vm.ThemeChoices, choice => choice.Key == "tide" && choice.Name == "Tide (Gateway)");
+        Assert.Contains(vm.ThemeChoices, choice => choice.Key == "aurora" && choice.Name == "Aurora");
+        vm.SelectedThemeKey = "aurora";
+        Assert.Equal("aurora", settings.Appearance.Theme?.Id);
+        Assert.Equal("aurora", AppearanceResolver.ResolveTheme(settings.Appearance, builtins)?.Id);
+    }
+
+    [Fact]
+    public void ASavedBuiltinOnlyTheGatewayStyles_IsShownSelectedOnceItsPalettesArrive()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path)
+        {
+            Appearance = new AppearanceSettings { Theme = new ThemeSelection { Id = "aurora", Name = "Aurora" } },
+        };
+        settings.Save();
+        var builtins = new StaticBuiltins();
+        var vm = new SettingsPageViewModel(new SettingsStore(settings, new RecordingUiDispatcher()), new FakeAppCommands(),
+            new StaticCatalog(), builtins);
+        vm.Activate(null);
+        Assert.Equal("", vm.SelectedThemeKey);
+
+        Assert.True(BuiltinGatewayThemes.TryGet("tide", out var tide));
+        builtins.Themes = [.. BuiltinGatewayThemes.All, tide with { Id = "aurora", Name = "Aurora" }];
+        builtins.Raise();
+        Assert.Equal("aurora", vm.SelectedThemeKey);
+
+        // Choosing the Windows default now clears the theme App applies.
+        vm.SelectedThemeKey = "";
+        Assert.Null(settings.Appearance.Theme);
+    }
+
+    private sealed class StaticBuiltins : IGatewayBuiltinThemes
+    {
+        public IReadOnlyList<ResolvedTheme> Themes { get; set; } = BuiltinGatewayThemes.All;
+        public IReadOnlyList<ResolvedTheme> Available => Themes;
+        public event EventHandler? Changed;
+        public bool TryGet(string? id, out ResolvedTheme theme)
+        {
+            theme = Themes.FirstOrDefault(entry => entry.Id == id)!;
+            return theme is not null || BuiltinGatewayThemes.TryGet(id, out theme);
+        }
+        public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     // Mica belongs to Windows default; a Gateway theme is opaque like the dashboard, except under High Contrast.
     [Theory]
     [InlineData(true, false, false, "System")]
