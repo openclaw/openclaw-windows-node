@@ -70,6 +70,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private static TimeSpan SessionRefreshWindow => TimeSpan.FromMilliseconds(
         int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_SESSION_REFRESH_WINDOW_MS"), out var milliseconds)
         && milliseconds is > 0 and <= 5000 ? milliseconds : DefaultSessionRefreshWindowMs);
+    private readonly object _agentRosterRefreshLock = new();
+    private CancellationTokenSource? _agentRosterRefreshCancellation;
+    private bool _agentRosterRefreshDirty;
     private readonly DeviceIdentity _deviceIdentity;
     private sealed record SigningIdentity(string RequestId, long Generation, string DeviceId);
     private SigningIdentity? _pendingSigningIdentity;
@@ -326,6 +329,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         Volatile.Write(ref _startupRejection, null);
         CancelScheduledSessionRefresh();
+        CancelScheduledAgentRosterRefresh();
         lock (_sessionsLock)
         {
             _sessionThinkingDefaults = null;
@@ -383,6 +387,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     protected override void OnDisconnected()
     {
         CancelScheduledSessionRefresh();
+        CancelScheduledAgentRosterRefresh();
         // Invalidate the handshake snapshot — the next hello-ok must
         // re-establish the canonical session key, scopes, etc. Without this,
         // a reconnect-after-server-restart could leave the tray sending to a
@@ -408,6 +413,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     {
         Volatile.Write(ref _startupRejection, null);
         CancelScheduledSessionRefresh();
+        CancelScheduledAgentRosterRefresh();
         Volatile.Write(ref _pendingSigningIdentity, null);
         Volatile.Write(ref _authenticatedSigningIdentity, null);
         _pendingRequests.Drain();
@@ -4002,6 +4008,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 ConfigurationChanged?.Invoke(this, EventArgs.Empty);
                 ModelCatalogInvalidated?.Invoke(this, EventArgs.Empty);
                 SystemsInventoryChanged?.Invoke(this, "config.changed");
+                // Config writes (agents.update, set-identity) change names/avatars, as in the web UI.
+                ScheduleAgentRosterRefresh(sourceConnectionGeneration);
+                break;
+            case "agent.identity.changed":
+                // Event is an invalidation hint; agents.list plus agent.identity.get are authoritative.
+                ScheduleAgentRosterRefresh(sourceConnectionGeneration);
                 break;
             case "board.changed":
             case "board.command":
@@ -5182,6 +5194,74 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             var cancellation = _sessionRefreshCancellation;
             _sessionRefreshCancellation = null;
             _sessionRefreshDirty = false;
+            cancellation?.Cancel();
+        }
+    }
+
+    // Coalesces agent.identity.changed / config.changed bursts into one agents.list per window.
+    private void ScheduleAgentRosterRefresh(long sourceConnectionGeneration)
+    {
+        lock (_agentRosterRefreshLock)
+        {
+            if (IsDisposed || _operatorReadScopeUnavailable || _agentsListUnsupported
+                || !TryGetReadyConnectionGeneration(out var generation)
+                || generation != sourceConnectionGeneration)
+                return;
+
+            if (_agentRosterRefreshCancellation is not null)
+            {
+                _agentRosterRefreshDirty = true;
+                return;
+            }
+            var cancellation = new CancellationTokenSource();
+            _agentRosterRefreshCancellation = cancellation;
+            _agentRosterRefreshDirty = false;
+            _ = RefreshAgentRosterAfterWindowAsync(sourceConnectionGeneration, cancellation);
+        }
+    }
+
+    private async Task RefreshAgentRosterAfterWindowAsync(long generation, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(SessionRefreshWindow, cancellation.Token).ConfigureAwait(false);
+            lock (_agentRosterRefreshLock)
+            {
+                if (!ReferenceEquals(_agentRosterRefreshCancellation, cancellation)) return;
+                _agentRosterRefreshDirty = false;
+            }
+            if (_operatorReadScopeUnavailable || _agentsListUnsupported || cancellation.IsCancellationRequested) return;
+            await SendTrackedRequestAsync("agents.list", null, generation).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            // Disconnect/disposal canceled this connection's pending refresh.
+        }
+        catch (Exception ex)
+        {
+            _logger.Warn($"Agent roster event refresh failed: {ex.GetType().Name}");
+        }
+        finally
+        {
+            lock (_agentRosterRefreshLock)
+            {
+                if (ReferenceEquals(_agentRosterRefreshCancellation, cancellation))
+                {
+                    _agentRosterRefreshCancellation = null;
+                    if (_agentRosterRefreshDirty) ScheduleAgentRosterRefresh(generation);
+                }
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private void CancelScheduledAgentRosterRefresh()
+    {
+        lock (_agentRosterRefreshLock)
+        {
+            var cancellation = _agentRosterRefreshCancellation;
+            _agentRosterRefreshCancellation = null;
+            _agentRosterRefreshDirty = false;
             cancellation?.Cancel();
         }
     }
