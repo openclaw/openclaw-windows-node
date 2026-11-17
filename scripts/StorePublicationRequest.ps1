@@ -8,7 +8,8 @@ function Get-CompanionStoreRequestRunId {
         [Parameter(Mandatory)][string]$Ref,
         [Parameter(Mandatory)][string]$EventName,
         [string]$RunId,
-        [string]$EventPath
+        [string]$EventPath,
+        [ValidateSet('production', 'development')][string]$Channel = 'production'
     )
 
     $canonicalRepository = 'openclaw/openclaw-windows-node'
@@ -34,10 +35,11 @@ function Get-CompanionStoreRequestRunId {
 
     # This is only a cheap event filter. The central publisher owns provenance,
     # artifact authorization, and release-manager approval.
+    $tagPattern = if ($Channel -ieq 'development') { '\Av[0-9]+\.[0-9]+\.[0-9]+-alpha\.(?:0|[1-9][0-9]*)\z' } else { '\Av[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?\z' }
     $tagRun = $run.path -ceq '.github/workflows/ci.yml' -and
         $run.event -cin @('push', 'workflow_dispatch') -and
-        $run.head_branch -cmatch '\Av[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9]+)?\z'
-    $promotionRun = $run.path -ceq '.github/workflows/promote-alpha-release.yml' -and
+        $run.head_branch -cmatch $tagPattern
+    $promotionRun = $Channel -ieq 'production' -and $run.path -ceq '.github/workflows/promote-alpha-release.yml' -and
         $run.event -ceq 'workflow_dispatch' -and $run.head_branch -ceq 'main'
     if (-not ($tagRun -or $promotionRun)) { return $null }
 
@@ -66,11 +68,17 @@ function Request-CompanionStorePublication {
     param(
         [Parameter(Mandatory)]
         [ValidatePattern('\A[1-9][0-9]*\z')]
-        [string]$RunId
+        [string]$RunId,
+        [ValidateSet('production', 'development')][string]$Channel = 'production',
+        [switch]$Automatic
     )
 
+    $destination = @()
+    if ($Channel -ieq 'development') {
+        $destination = @('-f', 'channel=development', '-f', "automatic=$($Automatic.IsPresent.ToString().ToLowerInvariant())")
+    }
     & gh workflow run windows-store-publish.yml --repo openclaw/releases --ref main `
-        -f product=companion -f "run_id=$RunId" | Out-Null
+        -f product=companion -f "run_id=$RunId" @destination | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw 'The central publication request was not confirmed. Inspect openclaw/releases Actions before retrying.'
     }

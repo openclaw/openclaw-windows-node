@@ -64,7 +64,7 @@ gh workflow run submit-microsoft-store.yml `
   -f run_id=RELEASE_RUN_ID
 ```
 
-The main workflow sends exactly `product=companion` and the source `run_id` to
+For production, the main workflow sends exactly `product=companion` and the source `run_id` to
 `windows-store-publish.yml` on central `main`. It neither rebuilds the package
 nor republishes the GitHub release. Manual requests do not require
 `MSSTORE_ENABLED`, but always require central source authorization and
@@ -82,7 +82,7 @@ After the manual central path and release acceptance are verified, set the
 now enables automatic requests, never automatic Store publishing. The main
 workflow cheaply filters successful stable/correction-tag CI runs and stable
 promotion runs with a current, unexpired release witness before minting the
-request token. Preview-only promotion, PR, alpha, ordinary-main, failed, and
+request token. Preview-only promotion, PR, ordinary-main, failed, and
 foreign-repository runs do not request publication. The central
 publisher still makes the authoritative release and artifact decision.
 
@@ -90,6 +90,32 @@ Unset the variable or set it to `false` to pause future automatic requests.
 This does not cancel an accepted central request or an active Store upload.
 Native request concurrency does not replace central per-product publication
 serialization or approval.
+
+## Development flight
+
+Companion alphas use the same central publisher, not a native Store identity.
+Land central Companion Development support before using this path; a central
+publisher that only supports Gateway flights will reject the request safely.
+Select a published alpha's successful **Build and Test** run and request:
+
+```powershell
+gh workflow run submit-microsoft-store.yml `
+  --repo openclaw/openclaw-windows-node --ref main `
+  -f run_id=ALPHA_RUN_ID -f channel=development
+```
+
+Central repository variables `MSSTORE_COMPANION_DEVELOPMENT_FLIGHT_ID` and
+`MSSTORE_COMPANION_DEVELOPMENT_ENABLED` own the destination and activation.
+The former native `MSSTORE_DEVELOPMENT_FLIGHT_ID` is not consumed. Production
+remains the default; stable releases and promotions cannot select the alpha flight.
+
+Keep native repository `MSSTORE_DEVELOPMENT_ENABLED` and central activation off
+until the configured flight, initial draft, protected approval, certification and
+tester install/upgrade with retained data are qualified. Enroll tester Microsoft
+accounts in the flight's known-user group. Leaving a flight does not downgrade an
+installed package. The native flag enables only automatic alpha requests; central
+approval and its independent activation check remain required. No settings change
+or activation occurs merely by merging code.
 
 ## Verify and recover
 
@@ -114,9 +140,9 @@ not a failed build and must not cause the native release to be rebuilt.
 ## Source binding
 
 The native release pipeline still records `store-release-source-<attempt>` only
-after stable GitHub publication and bundle validation succeed. The central
+after GitHub publication and bundle validation succeed. The central
 publisher verifies that witness against the canonical source run, its current
-attempt, the published stable tag and commit, and the downloaded bundle hash.
+attempt, the selected channel's published tag and commit, and the downloaded bundle hash.
 Promotion keeps its product source separate from the main pipeline commit.
 Releases predating the witness cannot be selected. This request adapter does
 not duplicate that authorization policy or accept caller-supplied product

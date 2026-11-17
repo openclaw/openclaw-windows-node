@@ -7,6 +7,12 @@ on:
         description: Successful release workflow run containing the authorized Store bundle
         type: string
         required: true
+      channel:
+        description: Central Store destination
+        type: choice
+        options: [production, development]
+        default: production
+        required: true
   workflow_run:
     workflows: [Build and Test, Promote alpha to stable]
     types: [completed]
@@ -25,7 +31,7 @@ jobs:
       github.repository == 'openclaw/openclaw-windows-node' &&
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||
-       (vars.MSSTORE_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success'))
+       ((vars.MSSTORE_ENABLED == 'true' || vars.MSSTORE_DEVELOPMENT_ENABLED == 'true') && github.event.workflow_run.conclusion == 'success'))
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -37,16 +43,27 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         SOURCE_RUN_ID: ${{ inputs.run_id }}
+        REQUESTED_CHANNEL: ${{ inputs.channel }}
+        PRODUCTION_ENABLED: ${{ vars.MSSTORE_ENABLED }}
+        DEVELOPMENT_ENABLED: ${{ vars.MSSTORE_DEVELOPMENT_ENABLED }}
       run: |
         . ./scripts/StorePublicationRequest.ps1
+        $channel = $env:REQUESTED_CHANNEL
+        if ($env:GITHUB_EVENT_NAME -eq 'workflow_run') {
+          $event = Get-Content $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json
+          $channel = if ($event.workflow_run.head_branch -cmatch '\Av[0-9]+\.[0-9]+\.[0-9]+-alpha\.(?:0|[1-9][0-9]*)\z') { 'development' } else { 'production' }
+          $enabled = if ($channel -eq 'development') { $env:DEVELOPMENT_ENABLED } else { $env:PRODUCTION_ENABLED }
+          if ($enabled -cne 'true') { exit 0 }
+        }
         $runId = Get-CompanionStoreRequestRunId -Repository $env:GITHUB_REPOSITORY `
           -Ref $env:GITHUB_REF -EventName $env:GITHUB_EVENT_NAME `
-          -RunId $env:SOURCE_RUN_ID -EventPath $env:GITHUB_EVENT_PATH
+          -RunId $env:SOURCE_RUN_ID -EventPath $env:GITHUB_EVENT_PATH -Channel $channel
         if ($null -eq $runId) {
-          'This completed workflow is not a stable-release publication request.' >> $env:GITHUB_STEP_SUMMARY
+          'This completed workflow is not an eligible publication request for the selected channel.' >> $env:GITHUB_STEP_SUMMARY
           exit 0
         }
         "run_id=$runId" >> $env:GITHUB_OUTPUT
+        "channel=$channel" >> $env:GITHUB_OUTPUT
 
     - name: Mint central request token
       if: steps.source.outputs.run_id != ''
@@ -65,9 +82,11 @@ jobs:
       env:
         GH_TOKEN: ${{ steps.request-token.outputs.token }}
         SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+        STORE_CHANNEL: ${{ steps.source.outputs.channel }}
       run: |
         . ./scripts/StorePublicationRequest.ps1
-        Request-CompanionStorePublication -RunId $env:SOURCE_RUN_ID
+        Request-CompanionStorePublication -RunId $env:SOURCE_RUN_ID -Channel $env:STORE_CHANNEL `
+          -Automatic:($env:GITHUB_EVENT_NAME -eq 'workflow_run')
         @(
           '## Central Store publication requested'
           "Source: https://github.com/openclaw/openclaw-windows-node/actions/runs/$env:SOURCE_RUN_ID"

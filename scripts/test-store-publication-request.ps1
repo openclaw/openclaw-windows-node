@@ -42,19 +42,21 @@ function Invoke-Request {
         [string]$Repository = 'openclaw/openclaw-windows-node',
         [string]$Ref = 'refs/heads/main',
         [string]$EventName = 'workflow_run',
-        [string]$RunId
+        [string]$RunId,
+        [string]$Channel = 'production'
     )
     [IO.File]::WriteAllText($eventPath, ($script:event | ConvertTo-Json -Depth 10))
     $selected = Get-CompanionStoreRequestRunId -Repository $Repository -Ref $Ref `
-        -EventName $EventName -RunId $RunId -EventPath $eventPath
-    if ($null -ne $selected) { Request-CompanionStorePublication -RunId $selected }
+        -EventName $EventName -RunId $RunId -EventPath $eventPath -Channel $Channel
+    if ($null -ne $selected) { Request-CompanionStorePublication -RunId $selected -Channel $Channel -Automatic:($EventName -eq 'workflow_run') }
     return $selected
 }
 
 function Assert-Requested {
-    param([string]$RunId)
+    param([string]$RunId, [switch]$Development, [switch]$Automatic)
     $expected = @('workflow', 'run', 'windows-store-publish.yml', '--repo', 'openclaw/releases',
         '--ref', 'main', '-f', 'product=companion', '-f', "run_id=$RunId")
+    if ($Development) { $expected += @('-f', 'channel=development', '-f', "automatic=$($Automatic.IsPresent.ToString().ToLowerInvariant())") }
     if ($script:calls.Count -ne 1 -or
         ($script:calls[0] -join '|') -cne ($expected -join '|')) {
         throw 'The request did not dispatch the fixed central main publisher with the exact source run ID.'
@@ -81,6 +83,30 @@ function Assert-Rejected {
 }
 
 try {
+    foreach ($channel in @('development', 'Development', 'DEVELOPMENT')) {
+        Reset-Fixture
+        Invoke-Request -EventName workflow_dispatch -RunId 456 -Channel $channel | Out-Null
+        Assert-Requested 456 -Development
+        foreach ($tag in @('v2026.10.21-alpha.0', 'v2026.10.21-alpha.1')) {
+            Reset-Fixture
+            $script:event.workflow_run.head_branch = $tag
+            Invoke-Request -Channel $channel | Out-Null
+            Assert-Requested 123 -Development -Automatic
+        }
+    }
+    foreach ($tag in @('v2026.10.21', 'v2026.10.21-beta.1', 'v2026.10.21-alpha.01', "v2026.10.21-alpha.1`n")) {
+        Reset-Fixture
+        $script:event.workflow_run.head_branch = $tag
+        if ($null -ne (Invoke-Request -Channel development) -or $script:calls.Count) { throw 'Non-alpha request reached Development.' }
+        $script:checks++
+    }
+    Reset-Fixture
+    $script:event.workflow_run.path = '.github/workflows/promote-alpha-release.yml'
+    $script:event.workflow_run.event = 'workflow_dispatch'
+    $script:event.workflow_run.head_branch = 'main'
+    if ($null -ne (Invoke-Request -Channel development) -or $script:calls.Count) { throw 'Stable promotion reached Development.' }
+    $script:checks++
+
     Reset-Fixture
     Invoke-Request -EventName workflow_dispatch -RunId 456 | Out-Null
     Assert-Requested 456
