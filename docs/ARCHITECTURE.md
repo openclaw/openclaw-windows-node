@@ -731,7 +731,10 @@ process-sequence API; unsupported builds fail closed with update guidance.
 A port alone, a stale process ID, an unrelated listener, or a
 replaced listener is denied. When several session-owned listeners leave the
 package unable to name the Gateway port, such as OpenClaw's MCP App sandbox
-host beside it, status omits `gateway.port` but still attests every listener.
+host beside it or a plugin's loopback proxy that opens after Companion
+connected, status omits `gateway.port` but still attests every listener.
+Each credential handoff reads status again, and listener snapshots consider
+only Companion's port, so another owned listener does not change that proof.
 Companion then requires its saved port among them and a live, credential-free
 `connect.challenge` from that port (connected directly, never through a proxy)
 before treating it as the Gateway, so an attested sandbox listener on that

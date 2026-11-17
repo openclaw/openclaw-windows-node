@@ -207,7 +207,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
 
     /// <summary>
     /// A status without a port attests several session-owned listeners, such as the MCP App sandbox
-    /// host beside the Gateway. Session ownership does not make Companion's saved port the Gateway
+    /// host beside the Gateway or a plugin's loopback proxy. Session ownership does not make
+    /// Companion's saved port the Gateway
     /// endpoint, and saved configuration is not the running endpoint, so the listener there must
     /// serve the Gateway protocol now. A reported port already identifies the endpoint.
     /// </summary>

@@ -65,6 +65,8 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     // Ports whose live listener answers with the Gateway protocol's connect.challenge, or not at all.
     private int[] _gatewayProtocolPorts = [Port];
     private int[] _unansweredProtocolPorts = [];
+    // Runs as each listener snapshot is taken, so a test can change the TCP table during verification.
+    private Action? _onCapture;
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -189,7 +191,11 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 JsonSerializer.Serialize(response));
         });
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
-            () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
+            () =>
+            {
+                _onCapture?.Invoke();
+                return new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true);
+            },
             () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
             _ => true, timeProvider: _clock, logger: _log,
             probeGatewayProtocol: (endpoint, _, _) => Task.FromResult(
@@ -851,6 +857,55 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
         Assert.Equal(startedByCompanion ? 1 : 0, _calls.Count(call => call == "gateway-service start --json"));
         Assert.DoesNotContain("gateway-service stop --json", _calls);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OwnedListenerOpenedAfterConnectingDoesNotChangeTheVerifiedEndpoint(bool packageAttestsListeners)
+    {
+        // #260: on its first agent turn the Codex plugin opens a loopback inference proxy on an
+        // OS-assigned port in the Gateway process, after Companion has connected and paired.
+        const int ProxyPort = 52535;
+        EndpointCredentialAuthorization connected =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+        Assert.True(connected.Allowed, connected.Detail);
+        int callsBeforeReconnect = _calls.Count;
+
+        // The proxy opens between the two listener snapshots of the next credential handoff, so only
+        // that handoff's later status read reports it.
+        int captures = 0;
+        _onCapture = () =>
+        {
+            if (++captures != 2)
+                return;
+            _listeners = [.. _listeners, new(IPAddress.Loopback, ProxyPort, ProcessId, "fixture", null)];
+            _auxiliaryPort = ProxyPort;
+            _omitReportedPort = true;
+            _omitOwnership = !packageAttestsListeners;
+        };
+        for (int handoff = 0; handoff < 2; handoff++)
+        {
+            EndpointCredentialAuthorization reconnect =
+                await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+            if (packageAttestsListeners)
+            {
+                Assert.True(reconnect.Allowed, reconnect.Detail);
+            }
+            else
+            {
+                Assert.False(reconnect.Allowed);
+                Assert.Contains("running on more than one port", reconnect.Detail, StringComparison.Ordinal);
+            }
+        }
+
+        Assert.Equal(packageAttestsListeners
+                ? GatewayEndpointProvenanceKind.ExpectedManagedGateway
+                : GatewayEndpointProvenanceKind.UnknownListener,
+            _runtime.Inspect(_record).Kind);
+        Assert.DoesNotContain(_calls.Skip(callsBeforeReconnect), call =>
+            call.StartsWith("gateway-service start", StringComparison.Ordinal) ||
+            call.StartsWith("gateway-service stop", StringComparison.Ordinal));
     }
 
     [Theory]

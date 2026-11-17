@@ -218,8 +218,9 @@ public sealed class NativeGatewayPackageClient
             ownership.ValueKind != JsonValueKind.Object)
             throw new NativeGatewayEndpointUnverifiedException(port is null
                 ? "The Gateway is running on more than one port but did not attest which listeners " +
-                  "belong to its isolated session, so Companion did not send credentials. A Gateway " +
-                  "feature such as MCP apps opens the additional port. Update the Gateway MSIX, then " +
+                  "belong to its isolated session, so Companion did not send credentials. Gateway " +
+                  "features such as MCP apps or a plugin's local proxy open additional ports. " +
+                  "Update the Gateway MSIX, then " +
                   "retry. Listener attestation also requires Windows 11 26100.4770 or later."
                 : "The Gateway is running, but Companion cannot verify isolated listener ownership, " +
                   "so it did not send credentials. Update Windows to a build supporting " +

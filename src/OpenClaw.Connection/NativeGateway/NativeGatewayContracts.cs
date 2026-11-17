@@ -54,7 +54,8 @@ public sealed record IsolatedGatewayStatus(
     /// <summary>
     /// Whether the package reports the Gateway running on <paramref name="port"/>. A package that
     /// cannot name one endpoint among several owned listeners (for example the MCP App sandbox
-    /// beside the Gateway port) omits <see cref="Port"/>; <paramref name="port"/> must then be one
+    /// beside the Gateway port, or a plugin's loopback proxy opened later) omits
+    /// <see cref="Port"/>; <paramref name="port"/> must then be one
     /// of the attested listeners, and the caller must still confirm it is the Gateway endpoint.
     /// Live listener identity is verified separately.
     /// </summary>
