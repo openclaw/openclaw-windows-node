@@ -19,6 +19,7 @@ file sealed record ItemsViewVerticalScrollControllerElement(
     int InitialTailIndex,
     int ItemCount,
     int JumpRevision,
+    int SendRevision,
     string InitialTailRequestKey,
     string? DisplayedTailKey,
     object ContentRevision,
@@ -102,6 +103,12 @@ file sealed class ItemsViewVerticalScrollControllerHandler
                     newElement.InitialTailRequestKey,
                     newElement.DisplayedTailKey,
                     explicitJump: oldElement.JumpRevision != newElement.JumpRevision);
+            else if (oldElement.SendRevision != newElement.SendRevision)
+                positioner.FollowSend(
+                    newElement.InitialTailIndex,
+                    newElement.ItemCount,
+                    $"{newElement.InitialTailRequestKey}|send:{newElement.SendRevision}",
+                    newElement.DisplayedTailKey);
             else
                 positioner.UpdateTail(
                     newElement.InitialTailIndex,
@@ -154,6 +161,13 @@ file sealed class InitialTailPositioner : IDisposable
     private bool _disclosureAnchored;
     private bool _readerAnchored;
     private int? _readerBringCorrelationId;
+    private int? _tailCorrectionCorrelationId;
+    private bool _tailCorrectionPending;
+    // Set by a send at the tail until its rows land there. Appending can re-estimate
+    // virtual rows above and move the offset before the extent grows; those layout moves
+    // must not end follow or reveal the jump control. Reader input still ends it.
+    private bool _sendLanding;
+    private string? _sendFromTailKey;
     private FrameworkElement? _tailBringTarget;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _offsetCorrectionAnchorRequested;
     private TypedEventHandler<WinUIScrollView, ScrollingAnchorRequestedEventArgs>? _disclosureAnchorRequested;
@@ -208,6 +222,9 @@ file sealed class InitialTailPositioner : IDisposable
         _requestKey = requestKey;
         _version++;
         _reflowCorrection.Clear();
+        _tailCorrectionPending = false;
+        _tailCorrectionCorrelationId = null;
+        _sendLanding = false;
         DetachLayout();
         _tailIndex = tailIndex;
         _itemCount = itemCount;
@@ -226,6 +243,62 @@ file sealed class InitialTailPositioner : IDisposable
         _initialPending = true;
         if (itemsView.IsLoaded)
             AwaitLayout(renderAfterLayout: explicitJump);
+    }
+
+    // A prompt sent at the tail joins it like any appended row, so follow lands it within a
+    // few frames. The initial landing waits for settled frames and is for a send that travels.
+    public void FollowSend(int tailIndex, int itemCount, string requestKey, string? displayedTailKey)
+    {
+        if (!_disposed && _following && _historyRequest is null
+            && _scrollView is { IsLoaded: true } scrollView && ReferenceEquals(scrollView, itemsView.ScrollView)
+            && IsNearBottom(scrollView))
+        {
+            if (_initialPending)
+            {
+                // An opened chat confirms its landing over several settled frames. A prompt sent
+                // meanwhile from the idle tail joins it, so restarting navigation would jump away.
+                if (_explicitJumpPending || scrollView.State != ScrollingInteractionState.Idle
+                    || !IsAtBottom(scrollView))
+                {
+                    Request(tailIndex, itemCount, requestKey, displayedTailKey, explicitJump: false);
+                    return;
+                }
+
+                _version++;
+                DetachLayout();
+                CompleteInitialLanding();
+            }
+
+            // The prompt's row can arrive with this update or a later one.
+            _sendLanding = true;
+            _sendFromTailKey = _displayedTailKey;
+            UpdateTail(tailIndex, itemCount, displayedTailKey);
+            CorrectSendLanding(scrollView);
+            return;
+        }
+
+        Request(tailIndex, itemCount, requestKey, displayedTailKey, explicitJump: false);
+    }
+
+    private void CorrectSendLanding(WinUIScrollView scrollView)
+    {
+        // The view can still read as the tail before the prompt's row is laid out, so only a
+        // correction dispatched after that layout ends the send.
+        if (!_sendLanding || !_following || _tailCorrectionPending || _tailCorrectionCorrelationId is not null
+            || (!SendRowArrived && IsAtBottom(scrollView)))
+            return;
+
+        _tailCorrectionPending = true;
+        AwaitLayout(renderAfterLayout: true);
+    }
+
+    private bool SendRowArrived => !string.Equals(_displayedTailKey, _sendFromTailKey, StringComparison.Ordinal);
+
+    private void SettleSendLanding(WinUIScrollView scrollView)
+    {
+        if (SendRowArrived)
+            _sendLanding = false;
+        ReportTailVisibility(IsAtBottom(scrollView));
     }
 
     public void UpdateTail(int tailIndex, int itemCount, string? displayedTailKey)
@@ -270,6 +343,8 @@ file sealed class InitialTailPositioner : IDisposable
         {
             QueueTailRequest(_version, request);
         }
+        if (changed && _scrollView is { } scrollView)
+            CorrectSendLanding(scrollView);
     }
 
     public void UpdateContentRevision(object revision) => _reflowCorrection.ContentChanged(revision);
@@ -369,8 +444,13 @@ file sealed class InitialTailPositioner : IDisposable
     {
         if (!itemsView.DispatcherQueue.TryEnqueue(() =>
         {
-            if (_disposed || !_valid || !itemsView.IsLoaded || initialRequest.Version != _version
-                || !TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
+            if (_disposed || !_valid || !itemsView.IsLoaded || initialRequest.Version != _version)
+                return;
+
+            // This dispatch ends a pending correction unless it has to wait for layout again.
+            var correctionPending = renderAfterLayout && _tailCorrectionPending;
+            _tailCorrectionPending = false;
+            if (!TailNavigationPolicy.CanDispatch(renderAfterLayout, _following))
                 return;
 
             if (!initialRequest.TryResolve(
@@ -389,14 +469,45 @@ file sealed class InitialTailPositioner : IDisposable
                 {
                     // Reflow needs an offset correction, not another synchronous item realization.
                     RestoreTailAnchor();
-                    scrollView.ScrollTo(scrollView.HorizontalOffset, scrollView.ScrollableHeight,
-                        new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                    // At the tail already, the landing settles now instead of after a correction.
+                    if (!IsAtBottom(scrollView))
+                    {
+                        // Moving the realization window can swap a virtual row's estimate for its real
+                        // height. Without a pinned tail that layout shift is lost to the in-flight
+                        // correction, which then settles one estimate short of the new tail.
+                        PinCorrectionAnchor(scrollView, request);
+                        _tailCorrectionCorrelationId = scrollView.ScrollTo(scrollView.HorizontalOffset, scrollView.ScrollableHeight,
+                            new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
+                    }
+                    else
+                        SettleSendLanding(scrollView);
                 }
             }
             else
+            {
+                _tailCorrectionPending = correctionPending;
                 AwaitLayout(renderAfterLayout);
+            }
         }))
             OpenClawTray.Services.Logger.Warn("Chat tail navigation could not be dispatched.");
+    }
+
+    private void PinCorrectionAnchor(WinUIScrollView scrollView, TailNavigationRequest request)
+    {
+        var targetItem = GetRequestItem(request);
+        _offsetCorrectionAnchorRequested = (sender, args) =>
+        {
+            if (ReferenceEquals(sender, _scrollView)
+                && TailNavigationPolicy.CanExecute(request, _tailIndex, _displayedTailKey, _itemCount)
+                && sender.Content is ItemsRepeater repeater
+                && repeater.TryGetElement(request.Index) is FrameworkElement { IsLoaded: true, Visibility: Visibility.Visible } target
+                && ReferenceEquals(target.DataContext, targetItem))
+            {
+                args.AnchorElement = target;
+            }
+        };
+        scrollView.AnchorRequested += _offsetCorrectionAnchorRequested;
+        scrollView.VerticalAnchorRatio = OffsetCorrectionAnchorRatio;
     }
 
     private void ConfirmInitialLanding(int version, TailNavigationRequest request)
@@ -732,7 +843,10 @@ file sealed class InitialTailPositioner : IDisposable
         var atBottom = IsAtBottom(scrollView);
         ReportTailVisibility(atBottom);
         if (_reflowCorrection.TryConsume(_following, atBottom, _initialPending))
+        {
+            _tailCorrectionPending = true;
             AwaitLayout(renderAfterLayout: true);
+        }
     }
 
     private void OnBringingIntoView(WinUIScrollView sender, ScrollingBringingIntoViewEventArgs args)
@@ -807,6 +921,17 @@ file sealed class InitialTailPositioner : IDisposable
         {
             _tailBringCorrelationId = null;
             _verification.GeometryChanged();
+        }
+
+        if (ReferenceEquals(sender, _scrollView) && _tailCorrectionCorrelationId == args.CorrelationId)
+        {
+            _tailCorrectionCorrelationId = null;
+            if (_offsetCorrectionAnchorRequested is not null)
+                RestoreTailAnchor();
+            if (_reflowCorrection.ArmAfterLanding(_following, IsAtBottom(sender)))
+                ObserveGeometry(sender);
+            else
+                SettleSendLanding(sender);
         }
 
         if (ReferenceEquals(sender, _scrollView) && _readerBringCorrelationId == args.CorrelationId)
@@ -954,6 +1079,9 @@ file sealed class InitialTailPositioner : IDisposable
         RestoreTailAnchor();
         StopLandingVerification();
         _historyRequest = null;
+        _tailCorrectionCorrelationId = null;
+        _tailCorrectionPending = false;
+        _sendLanding = false;
         _version++;
         _initialPending = false;
         _explicitJumpPending = false;
@@ -970,12 +1098,22 @@ file sealed class InitialTailPositioner : IDisposable
     private void OnViewChanged(WinUIScrollView sender, object args)
     {
         HistoryNavigation.Refresh();
+        var correcting = _following && (_tailCorrectionPending || _tailCorrectionCorrelationId is not null || _sendLanding);
         _following = _readerBringCorrelationId is null && IsNearBottom(sender) && _historyRequest is null;
+        // A tail correction waits for layout and then lands at an absolute offset, so
+        // growth can surface transient views short of the tail meanwhile. The correction's
+        // completion, not those views, decides whether follow continues.
+        if (correcting && _readerBringCorrelationId is null && _historyRequest is null)
+            _following = true;
+        else
+            _sendLanding = false;
         if (!_following)
             StopLandingVerification();
         else if (IsAtBottom(sender))
             ReachLandingTail();
         ReportTailVisibility(IsAtBottom(sender));
+        if (ReferenceEquals(sender, _scrollView))
+            CorrectSendLanding(sender);
         _confirmation.GeometryChanged();
         _verification.GeometryChanged();
         if (_initialPending && ReferenceEquals(sender, _scrollView))
@@ -987,6 +1125,9 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void ReportTailVisibility(bool atTail)
     {
+        // A send still landing owns the tail, so the jump control does not flash meanwhile.
+        if (!atTail && _sendLanding)
+            return;
         if (_reportedAtTail != atTail)
         {
             _reportedAtTail = atTail;
@@ -1193,6 +1334,7 @@ file sealed class InitialTailPositioner : IDisposable
         _initialPending = false;
         StopLandingVerification();
         _reflowCorrection.Clear();
+        _tailCorrectionPending = false;
         _tailNavigationQueue.Clear();
         _tailBringTarget = null;
         DetachLayout();
@@ -1261,6 +1403,8 @@ file sealed class InitialTailPositioner : IDisposable
         _disclosureAnchored = false;
         _readerAnchored = false;
         _readerBringCorrelationId = null;
+        _tailCorrectionCorrelationId = null;
+        _tailCorrectionPending = false;
         _historyRequest = null;
         _offsetCorrectionAnchorRequested = null;
         _disclosureAnchorRequested = null;
@@ -1301,6 +1445,7 @@ internal static class ItemsViewScrollControllerExtensions
         int initialTailIndex,
         int itemCount,
         int jumpRevision,
+        int sendRevision,
         string initialTailRequestKey,
         string? displayedTailKey,
         object contentRevision,
@@ -1312,6 +1457,7 @@ internal static class ItemsViewScrollControllerExtensions
             initialTailIndex,
             itemCount,
             jumpRevision,
+            sendRevision,
             initialTailRequestKey,
             displayedTailKey,
             contentRevision,

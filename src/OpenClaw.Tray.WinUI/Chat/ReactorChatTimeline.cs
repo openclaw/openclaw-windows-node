@@ -43,7 +43,9 @@ public sealed record ReactorChatTimelineProps(
     string? AssistantAgentId = null,
     OpenClaw.Shared.ChatPlacementCatalog? AssistantCatalog = null,
     IChatAgentAvatarImageSource? AssistantAvatarImageSource = null,
-    ChatAgentPresentation? AssistantRosterAgent = null);
+    ChatAgentPresentation? AssistantRosterAgent = null,
+    bool ReducedMotion = false,
+    bool AdmitInitialEntrances = false);
 
 /// <summary>
 /// Reactor-owned production timeline. Reactor's keyed ItemsView handles row
@@ -52,6 +54,22 @@ public sealed record ReactorChatTimelineProps(
 public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 {
     private static readonly TimeSpan MessageFooterFadeDuration = TimeSpan.FromMilliseconds(160);
+    private const int TranscriptRevealMilliseconds = 150;
+    // Like web, only a newly sent prompt enters: its bubble rises into place, fully opaque.
+    // Replies, tool, thinking and status rows never enter, since a fade or rise would hide or
+    // snap text that is still arriving. History, recycling and session switches never animate.
+    private const int UserEntranceMilliseconds = 180;
+    private const float UserEntranceRise = 8;
+    // The working indicator settles in like web's.
+    private const int WorkingIndicatorMilliseconds = 200;
+    private const float WorkingIndicatorRise = 4;
+    // A row admitted for an entrance keeps it this long, so an item the list realizes a render
+    // or two later (for example between streaming deltas) still animates.
+    private const long EntranceAdmissionWindowMilliseconds = 500;
+    // Rises 16px into place and grows from 80% while fading in; leaves the same way in reverse.
+    private const int JumpLatestRevealMilliseconds = 240;
+    private const float JumpLatestHiddenScale = .8f;
+    private const float JumpLatestHiddenOffset = 16;
 
     public override Element Render()
     {
@@ -61,7 +79,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         // Enter and exit can both arrive before the preceding state update renders.
         var hoverTarget = UseRef<string?>(null);
         var (focusedEntryKey, setFocusedEntryKey) = UseState<string?>(null);
-        var (viewportWidth, setViewportWidth) = UseState(800d);
+        // Start from the parent's measured width, so a timeline mounted by the first send does not
+        // lay out at a default width and then jump sideways once its own measurement arrives.
+        var (viewportWidth, setViewportWidth) = UseState(props.ViewportWidth);
         var (atTail, setAtTail) = UseState(true);
         var (jumpRevision, setJumpRevision) = UseState(0);
         var (loadingOlder, setLoadingOlder) = UseState(false, threadSafe: true);
@@ -83,9 +103,16 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var mounted = UseRef(true);
         var toolActivityExpansionState = UseRef<ChatToolActivityExpansionState>(new());
         var toolActivityMotionState = UseRef<ChatToolActivityMotionState>(new());
+        // The same admit-once rule gives new rows their entrance, never history replays.
+        var messageMotionState = UseRef<ChatToolActivityMotionState>(new());
+        var entranceDeadlines = UseRef(new Dictionary<string, long>(StringComparer.Ordinal));
+        var reflowRef = UseRef<ChatTranscriptReflow?>(null);
+        var reflow = reflowRef.Current ??= new ChatTranscriptReflow();
+        var messageMotionScope = UseRef<string?>(null);
         var annotatedScrollBarRef = this.UseElementRef<WinUIAnnotatedScrollBar>();
+        var reducedMotion = UseReducedMotion();
         // Web's history skeleton is static under reduced motion or forced colors.
-        var animateLoading = !UseReducedMotion() && UseColorScheme() != ColorScheme.HighContrast;
+        var animateLoading = !reducedMotion && UseColorScheme() != ColorScheme.HighContrast;
         var loadingPulse = UseRef<FrameworkElement?>(null);
         var loadingPulseAllowed = UseRef(false);
         loadingPulseAllowed.Current = props.Mode == ReactorChatTimelineMode.Loading && animateLoading;
@@ -122,12 +149,29 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 }
             }
         }
-        props = props with { Timeline = props.Timeline with
+        props = props with
         {
-            LoadingOlderHistory = loadingOlder,
-            OnLoadMoreHistory = LoadOlderAsync,
-            ToolExpansionState = toolActivityExpansionState.Current,
-        } };
+            ReducedMotion = reducedMotion,
+            Timeline = props.Timeline with
+            {
+                LoadingOlderHistory = loadingOlder,
+                OnLoadMoreHistory = LoadOlderAsync,
+                ToolExpansionState = toolActivityExpansionState.Current,
+            },
+        };
+
+        // History arriving after the loading skeleton fades in instead of swapping in one frame.
+        var transcriptHostRef = this.UseElementRef<ChatMotionHost>();
+        var previousMode = UseRef<ReactorChatTimelineMode?>(null);
+        var revealTranscript = previousMode.Current == ReactorChatTimelineMode.Loading
+            && props.Mode == ReactorChatTimelineMode.Timeline && !reducedMotion;
+        previousMode.Current = props.Mode;
+        UseEffect((Func<Action>)(() =>
+        {
+            if (revealTranscript && transcriptHostRef.Current is { } host)
+                ChatMotion.FadeIn(host, TranscriptRevealMilliseconds);
+            return static () => { };
+        }), props.Mode);
 
         UseEffect((Func<Action>)(() =>
         {
@@ -185,8 +229,31 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             props.Timeline.TimelineGeneration,
             props.HistoryRevision,
             historyReady: props.Mode == ReactorChatTimelineMode.Timeline);
+        var enteringPromptKeys = messageMotionState.Current.Update(
+            rows.Select(row => row.Key),
+            props.Timeline.SessionId,
+            props.Timeline.TimelineGeneration,
+            props.HistoryRevision,
+            historyReady: props.Mode == ReactorChatTimelineMode.Timeline,
+            admitInitial: props.AdmitInitialEntrances,
+            eligibleKeys: rows.Where(row => row.Entry?.Kind == ChatTimelineItemKind.User).Select(row => row.Key));
+        var now = Environment.TickCount64;
+        var deadlines = entranceDeadlines.Current;
+        var rowScope = $"{props.Timeline.SessionId}|{props.Timeline.TimelineGeneration}";
+        if (messageMotionScope.Current != rowScope)
+            deadlines.Clear();
+        foreach (var expired in deadlines.Where(pair => pair.Value < now).Select(pair => pair.Key).ToList())
+            deadlines.Remove(expired);
+        foreach (var key in enteringWorkKeys.Concat(enteringPromptKeys))
+            deadlines[key] = now + EntranceAdmissionWindowMilliseconds;
+        // Checked when the list builds the row, which can be after this render.
+        bool AnimatesEntrance(string key) =>
+            !reducedMotion && deadlines.TryGetValue(key, out var deadline) && deadline >= Environment.TickCount64;
+        // Existing rows never glide when a message arrives or a reply streams. Tail follow is
+        // immediate; only newly admitted rows animate. Explicit reader reflows use CaptureAll.
+        messageMotionScope.Current = rowScope;
         var initialTailRequestKey =
-            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{props.Timeline.ScrollToBottomToken}|{jumpRevision}";
+            $"{props.Timeline.SessionId ?? "none"}|{props.Timeline.TimelineGeneration}|{props.HistoryRevision}|{jumpRevision}";
         var displayedTailKey = rows.Count > 0 ? rows[^1].Key : null;
         var contentRevision = props.Timeline.Entries;
         if (atTail)
@@ -212,7 +279,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             rows,
             static row => row.Key,
             (row, _) => ItemContainer(
-                    Border(BuildRow(
+                    Border(ChatMotion.Host(BuildRow(
                             row,
                             speakingEntryId,
                             hoveredEntryKey,
@@ -221,8 +288,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                             SetEntryHovered,
                             setFocusedEntryKey,
                             toolActivityExpansionState.Current,
-                            enteringWorkKeys.Contains(row.Key),
+                            AnimatesEntrance(row.Key),
                             MountLoadingPulse))
+                            .Set(host => reflow.Track(host, row.Key))
+                            .OnUnmountAdd(reflow.Untrack))
                         .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
                         .MaxWidth(ChatVisuals.ReadingWidth - 2 * ChatVisuals.ProseInset + 2 * AvatarGutter(row))
                         .Margin(
@@ -250,6 +319,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 {
                     itemContainer.IsSelected = false;
                     itemContainer.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+                    // The template's rounded root clips its child, which would cut a row gliding
+                    // or held outside its slot (ChatTranscriptReflow) at the slot edge.
+                    itemContainer.CornerRadius = new CornerRadius(0);
                 })
                 .HAlign(HorizontalAlignment.Stretch)
                 .WithKey(row.Key)) with
@@ -261,12 +333,13 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         return Grid(
             [GridSize.Star()],
             [GridSize.Auto, GridSize.Star()],
-            Border(Border(itemsView
+            ChatMotion.Host(Border(Border(itemsView
                     .BindVerticalScrollController(
                         annotatedScrollBarRef,
                         rows.Count - 1,
                         rows.Count,
                         jumpRevision,
+                        props.Timeline.ScrollToBottomToken,
                         initialTailRequestKey,
                         displayedTailKey,
                         contentRevision,
@@ -275,12 +348,18 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .AutomationName("Chat messages")
                     .HAlign(HorizontalAlignment.Stretch)
                     .VAlign(VerticalAlignment.Stretch)))
-                .Grid(row: 1, column: 0)
                 .Margin(0, ChatVisuals.TranscriptTopInset, 0, 0)
                 .HAlign(HorizontalAlignment.Stretch)
                 .VAlign(VerticalAlignment.Stretch)
                 .OnMount(control => ChatTranscriptFade.Attach((Microsoft.UI.Xaml.Controls.Border)control))
-                .OnUnmount(control => ChatTranscriptFade.Detach((Microsoft.UI.Xaml.Controls.Border)control)),
+                .OnUnmount(control => ChatTranscriptFade.Detach((Microsoft.UI.Xaml.Controls.Border)control)))
+                .Grid(row: 1, column: 0)
+                .HAlign(HorizontalAlignment.Stretch)
+                .VAlign(VerticalAlignment.Stretch)
+                .OnUnmountAdd(ChatMotion.Reset)
+                .OnMountAdd(control => reflow.Attach(control))
+                .OnUnmountAdd(_ => reflow.Detach())
+                .Ref(transcriptHostRef),
             AnnotatedScrollBar()
                 .Ref(annotatedScrollBarRef)
                 .Width(ChatVisuals.RailWidth(viewportWidth))
@@ -303,7 +382,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     ? BuildHistoryFailedBanner(props, viewportWidth)
                     : Empty())
                 .Grid(row: 0, column: 0),
-            Button(TextBlock(FluentIconCatalog.ChatJumpLatest)
+            // The reveal (fade, rise and scale) lives on an unpooled motion host; the button itself
+            // keeps its native focus, enabled and accessibility state. Its disabled look matches its
+            // rest look, so leaving the tail does not swap colors while it fades out.
+            ChatMotion.Host(Button(TextBlock(FluentIconCatalog.ChatJumpLatest)
                         .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
                         .FontSize(16)
                         .AccessibilityView(AccessibilityView.Raw)
@@ -316,7 +398,10 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                     .Resources(resources => resources
                         .Set("ButtonBackground", Theme.Ref("LayerFillColorDefaultBrush"))
-                        .Set("ButtonBorderBrush", Theme.Ref("ChatStrokeBrush")))
+                        .Set("ButtonBorderBrush", Theme.Ref("ChatStrokeBrush"))
+                        .Set("ButtonBackgroundDisabled", Theme.Ref("LayerFillColorDefaultBrush"))
+                        .Set("ButtonBorderBrushDisabled", Theme.Ref("ChatStrokeBrush"))
+                        .Set("ButtonForegroundDisabled", Theme.Ref("ChatSecondaryTextBrush")))
                     .HAlign(HorizontalAlignment.Center).AutomationId("ChatJumpLatest")
                     .AutomationName(contentRevision != lastReadTail.Current
                         ? LocalizedOrDefault("Chat_NewMessages", "New messages. Jump to latest")
@@ -324,12 +409,24 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .ToolTip(contentRevision != lastReadTail.Current
                         ? LocalizedOrDefault("Chat_NewMessages", "New messages. Jump to latest")
                         : LocalizedOrDefault("Chat_JumpLatest", "Jump to latest"))
-                    .Opacity(atTail ? 0 : 1)
                     .IsEnabled(!atTail).IsTabStop(!atTail)
                     .AccessibilityView(atTail ? AccessibilityView.Raw : AccessibilityView.Content)
-                    .Set(button => button.IsHitTestVisible = !atTail)
-                    .VAlign(VerticalAlignment.Bottom).Margin(0, 0, 0, ChatVisuals.BlockGap)
-                    .Grid(row: 1, column: 0))
+                    .Set(button => button.IsHitTestVisible = !atTail))
+                .Opacity(atTail ? 0 : 1)
+                .Translation(0, atTail && !reducedMotion ? JumpLatestHiddenOffset : 0, 0)
+                .Set(host =>
+                {
+                    var scale = atTail && !reducedMotion ? JumpLatestHiddenScale : 1f;
+                    host.CenterPoint = new System.Numerics.Vector3(
+                        (float)ChatVisuals.JumpLatestSize / 2, (float)ChatVisuals.JumpLatestSize / 2, 0);
+                    host.Scale = new System.Numerics.Vector3(scale, scale, 1);
+                    host.IsHitTestVisible = !atTail;
+                })
+                .DeferredRevealTransitions(JumpLatestRevealMilliseconds)
+                .AutomationId("ChatJumpLatestReveal")
+                .HAlign(HorizontalAlignment.Center)
+                .VAlign(VerticalAlignment.Bottom).Margin(0, 0, 0, ChatVisuals.BlockGap)
+                .Grid(row: 1, column: 0))
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
@@ -429,11 +526,11 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         Action<string, bool> setEntryHovered,
         Action<string?> setFocusedEntryKey,
         ChatToolActivityExpansionState toolActivityExpansionState,
-        bool animateWorkEntrance,
+        bool animateEntrance,
         Action<FrameworkElement> mountLoadingPulse)
     {
         var content = BuildRowContent(row, speakingEntryId, hoveredEntryKey, focusedEntryKey, toggleSpeechAsync,
-            setEntryHovered, setFocusedEntryKey, toolActivityExpansionState, animateWorkEntrance, mountLoadingPulse);
+            setEntryHovered, setFocusedEntryKey, toolActivityExpansionState, animateEntrance, mountLoadingPulse);
         // Assistant messages place their own avatar. Tool rows, groups and reasoning keep one grid
         // shape, so gaining or losing the run's avatar never remounts the row and its state.
         if (row.Entry?.Kind == ChatTimelineItemKind.Assistant ||
@@ -464,7 +561,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         Action<string, bool> setEntryHovered,
         Action<string?> setFocusedEntryKey,
         ChatToolActivityExpansionState toolActivityExpansionState,
-        bool animateWorkEntrance,
+        bool animateEntrance,
         Action<FrameworkElement> mountLoadingPulse) => row.Kind switch
     {
         ReactorTimelineRowKind.Loading => BuildLoading(row, mountLoadingPulse),
@@ -481,7 +578,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     entry, speakingEntryId, hoveredEntryKey, focusedEntryKey, toggleSpeechAsync,
                     setEntryHovered, setFocusedEntryKey,
                     includeAvatar: false),
-                animateEntrance: animateWorkEntrance),
+                animateEntrance: animateEntrance),
         _ when row.Entry is { } entry => BuildEntry(
             row,
             entry,
@@ -490,7 +587,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             focusedEntryKey,
             toggleSpeechAsync,
             setEntryHovered,
-            setFocusedEntryKey),
+            setFocusedEntryKey,
+            animateEntrance: animateEntrance),
         _ => Empty(),
     };
 
@@ -646,14 +744,15 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         if (row.Props.Timeline.RunProgress is { } progress)
             return Component<ReactorRunProgress, ReactorRunProgressProps>(new(progress));
         var format = LocalizedOrDefault("Chat_Timeline_AssistantThinkingFormat", "{0} is thinking…");
-        return Text(
+        return ChatMotion.Host(Text(
                 string.Format(format, row.Props.Timeline.AssistantSenderLabel),
                 12,
                 FontWeights.Normal,
                 "TextFillColorSecondaryBrush")
             .FontStyle(global::Windows.UI.Text.FontStyle.Italic)
             .WithTextShimmer(true)
-            .Margin(0, 12);
+            .Margin(0, 12))
+            .EnterOnMount(WorkingIndicatorRise, WorkingIndicatorMilliseconds, fade: true, enabled: !row.Props.ReducedMotion);
     }
 
     private static Element BuildEntry(
@@ -665,13 +764,14 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         Func<ChatTimelineItem, Task> toggleSpeechAsync,
         Action<string, bool> setEntryHovered,
         Action<string?> setFocusedEntryKey,
-        bool includeAvatar = true)
+        bool includeAvatar = true,
+        bool animateEntrance = false)
     {
         var isHovered = string.Equals(hoveredEntryKey, row.Key, StringComparison.Ordinal);
         var isFocused = string.Equals(focusedEntryKey, row.Key, StringComparison.Ordinal);
         var content = entry.Kind switch
         {
-            ChatTimelineItemKind.User => BuildUser(row, entry, isHovered, isFocused),
+            ChatTimelineItemKind.User => BuildUser(row, entry, isHovered, isFocused, animateEntrance),
             ChatTimelineItemKind.Assistant => BuildAssistant(
                 row,
                 entry,
@@ -705,7 +805,8 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         ReactorTimelineRow row,
         ChatTimelineItem entry,
         bool isHovered,
-        bool isFocused)
+        bool isFocused,
+        bool animateEntrance)
     {
         var (messageText, legacyAttachments) = ParseAttachments(entry.Text);
         var attachments = row.Props.Timeline.EntryMetadata?.TryGetValue(entry.Id, out var metadata) == true &&
@@ -735,14 +836,18 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Padding(16, 12)
             .MaxWidth(720)
             .HAlign(HorizontalAlignment.Right);
+        // Like web, only the bubble of a newly sent prompt rises in; it stays opaque and its row
+        // geometry never moves.
+        var bubbleHost = ChatMotion.Host(bubble)
+            .EnterOnMount(UserEntranceRise, UserEntranceMilliseconds, fade: false, enabled: animateEntrance);
 
         return VStack(
                 8,
-                bubble,
+                bubbleHost,
                 WithMessageFooterFade(HStack(
                         8,
                         UserMetadata(row, entry),
-                        CopyAction(accessibleText, row.Key, row.Props.TryCopyText)), showFooter)
+                        CopyAction(accessibleText, row.Key, row.Props.TryCopyText)), showFooter, row.Props.ReducedMotion)
                     .AutomationId($"ChatMessageFooter_{entry.Id}")
                     .Margin(16, 2, 4, 0)
                     .HAlign(HorizontalAlignment.Right))
@@ -794,6 +899,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .HAlign(HorizontalAlignment.Stretch);
 
         var turnInset = ChatVisuals.TurnGap;
+        // A reply never enters: like web, its text is visible on its first frame and extends in place.
         return Grid(
                 [GridSize.Auto, GridSize.Star(), GridSize.Auto],
                 [GridSize.Auto],
@@ -981,16 +1087,15 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                     .ToolTip(identity)
                     .Grid(column: 0),
                 HStack(4, children.ToArray()).Margin(8, 0, 0, 0)
-                    .HAlign(HorizontalAlignment.Left).Grid(column: 1)), showFooter)
+                    .HAlign(HorizontalAlignment.Left).Grid(column: 1)), showFooter, row.Props.ReducedMotion)
             .AutomationId($"ChatMessageFooter_{entry.Id}")
             .HAlign(HorizontalAlignment.Stretch);
     }
 
-    private static NativeChatMessageFooterElement WithMessageFooterFade(Element content, bool visible) =>
+    private static NativeChatMessageFooterElement WithMessageFooterFade(Element content, bool visible, bool reducedMotion) =>
         NativeChatMessageFooterElement.NativeChatMessageFooter(content: content)
             .Opacity(visible ? 1 : 0)
-            .OpacityTransition(new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled
-                ? MessageFooterFadeDuration : TimeSpan.Zero)
+            .OpacityTransition(reducedMotion ? TimeSpan.Zero : MessageFooterFadeDuration)
             .Set(footer => footer.IsHitTestVisible = visible);
 
     private static Element CopyAction(
@@ -1176,28 +1281,40 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         }
     }
 
-    internal static Element BuildReasoning(ChatTimelineItem entry, bool active, bool expanded, Action<bool> onExpanded)
+    internal static Element BuildReasoning(ChatTimelineItem entry, bool active, bool expanded, Action<bool> onExpanded,
+        bool revealDetails = false, bool closing = false)
     {
         var header = LocalizedOrDefault("Chat_Run_Thinking", "Thinking");
-        return Expander(
-                header,
-                ScrollViewer(BuildSafeMarkdown(entry.Text, compactSecondaryReading: true))
+        // Like a tool row, the Expander carries only the header and the thought renders below it.
+        // It is built only while it shows, grows open when the reader opens it, and shrinks away
+        // on close, so the rows below follow with layout instead of the stock content slide.
+        Element details = expanded || closing
+            ? ChatMotion.Host(ScrollViewer(BuildSafeMarkdown(entry.Text, compactSecondaryReading: true))
                     .MaxHeight(240).Margin(ChatVisuals.ToolRowTitleInset, 4, 0, 8)
-                    .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled),
+                    .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled))
+                .ExpandOnMount(ChatMotion.DisclosureRevealMilliseconds, revealDetails && expanded)
+                .ShrinkWhen(closing && !expanded, ChatMotion.DisclosureCloseMilliseconds)
+                .MinWidth(ChatVisuals.DisclosureDetailsMinWidth)
+            : Empty();
+        var expander = Expander(
+                header,
+                Empty(),
                 (Optional<bool>)expanded,
                 onExpanded)
             .HeaderContent(ToolCallCardRenderer.BuildDisclosureHeader(expanded, ChatVisuals.ActivityText(header, active)))
             .OnUnmount(ChatVisuals.StopToolRowShimmers)
+            .OnUnmountAdd(ChatVisuals.RestoreHeaderOnlyExpander)
             .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
             .Resources(ChatVisuals.ToolRowExpanderResources)
-            .Set(ChatVisuals.FlushToolRowExpander)
+            .Set(ChatVisuals.FlushHeaderOnlyExpander)
             .HAlign(HorizontalAlignment.Stretch)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .AutomationName(header)
-            .AutomationId("ChatReasoning")
+            .AutomationId("ChatReasoning");
+        return VStack(0, expander.WithKey("reasoning-header"), details.WithKey("reasoning-details"))
             .Margin(0, 4, 0, 0);
     }
 
@@ -1519,14 +1636,35 @@ internal sealed class ReactorReasoningDisclosure : Component<ReactorReasoningDis
     public override Element Render()
     {
         var (localExpanded, setLocalExpanded) = UseState(false, threadSafe: true);
+        var (_, setRenderVersion) = UseState(0, threadSafe: true);
+        var renderVersion = UseRef(0);
+        var revealDetails = UseRef(false);
+        var closing = UseRef(false);
+        var closeVersion = UseRef(0);
+        var reducedMotion = UseReducedMotion();
         var timeline = Props.Timeline;
         var key = "reasoning|" + ChatToolActivityPresentation.ToolRowKey(
             timeline.SessionId, timeline.TimelineGeneration, Props.Entry.Id);
         var expanded = timeline.ToolExpansionState?.IsExpanded(key, timeline.ToolCallsCollapseVersion) ?? localExpanded;
         return ReactorChatTimeline.BuildReasoning(Props.Entry, Props.Active, expanded, value =>
         {
+            revealDetails.Current = true;
             timeline.ToolExpansionState?.SetExplicit(key, value, timeline.ToolCallsCollapseVersion);
+            // Closing keeps the thought mounted while it shrinks, then releases it.
+            var version = ++closeVersion.Current;
+            closing.Current = !value && !reducedMotion && ChatMotion.AnimationsEnabled;
+            if (closing.Current)
+            {
+                _ = Task.Delay(ChatMotion.DisclosureCloseHoldMilliseconds).ContinueWith(_ =>
+                {
+                    if (closeVersion.Current != version)
+                        return;
+                    closing.Current = false;
+                    setRenderVersion(++renderVersion.Current);
+                }, TaskScheduler.Default);
+            }
             setLocalExpanded(value);
-        });
+            setRenderVersion(++renderVersion.Current);
+        }, revealDetails.Current && !reducedMotion, closing.Current);
     }
 }

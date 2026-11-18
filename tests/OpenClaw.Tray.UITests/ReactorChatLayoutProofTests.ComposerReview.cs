@@ -339,13 +339,19 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(async () =>
             {
                 var sprite = Assert.IsType<SpriteVisual>(ElementCompositionPreview.GetElementChildVisual(host!));
-                Assert.Equal(32, sprite.Size.Y);
+                var band = (float)ChatVisuals.TranscriptFadeHeight;
+                Assert.Equal(band, sprite.Size.Y);
                 var mask = Assert.IsType<CompositionMaskBrush>(sprite.Brush);
                 var source = Assert.IsType<CompositionVisualSurface>(Assert.IsType<CompositionSurfaceBrush>(mask.Source).Surface);
-                Assert.Equal(32, source.SourceSize.Y);
-                Assert.InRange(source.SourceOffset.Y, 367.999f, 368.001f);
+                Assert.Equal(band, source.SourceSize.Y);
+                Assert.InRange(source.SourceOffset.Y, 400 - band - .001f, 400 - band + .001f);
+                // The mask eases in, so its top edge does not start with a visible step.
+                var stops = Assert.IsType<CompositionLinearGradientBrush>(mask.Mask).ColorStops;
+                Assert.Equal(255, stops.First().Color.A);
+                Assert.Equal(0, stops.Last().Color.A);
+                Assert.InRange(stops.ElementAt(1).Color.A, 250, 255);
                 Assert.Equal(1, ElementCompositionPreview.GetElementVisual(content!).Opacity);
-                Assert.Equal(32, Assert.IsType<InsetClip>(ElementCompositionPreview.GetElementVisual(clipper!).Clip).BottomInset);
+                Assert.Equal(band, Assert.IsType<InsetClip>(ElementCompositionPreview.GetElementVisual(clipper!).Clip).BottomInset);
                 var bitmap = new RenderTargetBitmap();
                 await bitmap.RenderAsync(host);
                 var pixels = (await bitmap.GetPixelsAsync()).ToArray();
@@ -414,9 +420,10 @@ public sealed partial class ReactorChatLayoutProofTests
                 () => scroll!.ScrollableHeight > 0, "fade probe scroller laid out"));
             await ui.RunOnUIAsync(() => target!.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }));
             // Minimal downward bring would align the target's bottom (620) with the viewport
-            // bottom (offset 220), inside the 32-pixel fade; it must clear the band instead.
+            // bottom (offset 220), inside the fade; it must clear the band instead.
+            var clearedOffset = 220 + ChatVisuals.TranscriptFadeHeight;
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => Math.Abs(scroll!.VerticalOffset - 252) <= 1, "bring clears the fade band",
+                () => Math.Abs(scroll!.VerticalOffset - clearedOffset) <= 1, "bring clears the fade band",
                 () => $"offset={scroll!.VerticalOffset}"));
 
             await ui.RunOnUIAsync(() =>
@@ -493,7 +500,8 @@ public sealed partial class ReactorChatLayoutProofTests
                     using var first = new System.Drawing.Bitmap(System.IO.Path.Combine(captureDirectory, "fade-scroll-red.png"));
                     using var second = new System.Drawing.Bitmap(System.IO.Path.Combine(captureDirectory, "fade-scroll-blue.png"));
                     var root = Assert.IsAssignableFrom<FrameworkElement>(ui.TestWindow.Content);
-                    var point = host!.TransformToVisual(root).TransformPoint(new(host.ActualWidth / 2, host.ActualHeight - 16));
+                    var point = host!.TransformToVisual(root).TransformPoint(new(host.ActualWidth / 2,
+                        host.ActualHeight - ChatVisuals.TranscriptFadeHeight / 2));
                     var scale = root.XamlRoot.RasterizationScale;
                     var client = ui.TestWindow.AppWindow.ClientSize;
                     var border = (first.Width - client.Width) / 2d;

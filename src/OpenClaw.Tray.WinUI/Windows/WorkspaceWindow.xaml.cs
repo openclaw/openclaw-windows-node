@@ -27,6 +27,12 @@ public sealed partial class WorkspaceWindow : WindowEx
     private const string SettingsShortcutText = "Ctrl+,";
     private const double SidebarMinContentWidth = 480;
     private const double SidebarMaxWidth = 480;
+    private const int TitleBarActionsFadeMilliseconds = 150;
+    // Matches ReopenPaneSlot's Height in WorkspaceWindow.xaml.
+    private const double ReopenPaneSlotHeight = 56;
+    private readonly WorkspacePaneAnimator _paneAnimator;
+    // The open state an animated pane toggle is heading to; null when the pane is at rest.
+    private bool? _paneTarget;
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
@@ -84,6 +90,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         InitializeComponent();
         _state = state;
+        _paneAnimator = new WorkspacePaneAnimator(ApplyAnimatedPaneWidth);
         WorkspaceSearchFlyout.FlyoutPresenterStyle = SearchHost.CreatePresenterStyle();
         _search = new(CaptureSearch, new Presentation.Adapters.WinUIDispatcher(DispatcherQueue),
             category => Logger.Warn($"[Search] {category}"));
@@ -1349,17 +1356,120 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnTogglePane(object sender, RoutedEventArgs e)
     {
         var open = !NavView.IsPaneOpen;
+        if (_paneTarget is { } heading)
+            open = !heading;
+        if (TryAnimatePane(open))
+            return;
         if (open)
         {
+            NavView.OpenPaneLength = SidebarColumn.ActualWidth;
             NavView.IsPaneVisible = true;
         }
         NavView.IsPaneOpen = open;
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (!IsClosed)
-                (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
-        });
+        FocusPaneToggle();
     }
+
+    private void FocusPaneToggle() => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (!IsClosed)
+            (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
+    });
+
+    // With Windows animations on, the pane width eases frame by frame and the content beside it
+    // follows, while the reopen row grows or shrinks in step. The pane stays logically open until
+    // a close lands at zero width. Returns false when animations are off, so the pane changes at once.
+    private bool TryAnimatePane(bool open)
+    {
+        if (!OpenClawTray.Chat.ChatMotion.AnimationsEnabled)
+        {
+            if (_paneTarget is not null)
+                SettlePane();
+            return false;
+        }
+        var length = SidebarColumn.ActualWidth;
+        if (length <= 0)
+            return false;
+        var from = _paneAnimator.IsRunning ? _paneAnimator.Current : open ? 0 : length;
+        _paneTarget = open;
+        PinPaneContent(length);
+        SidebarSplitter.Visibility = Visibility.Collapsed;
+        ReopenPaneSlot.Visibility = Visibility.Visible;
+        if (open && !NavView.IsPaneOpen)
+        {
+            NavView.OpenPaneLength = from;
+            NavView.IsPaneVisible = true;
+            NavView.IsPaneOpen = true;
+            FocusPaneToggle();
+        }
+        _paneAnimator.Run(from, open ? length : 0, () =>
+        {
+            if (IsClosed)
+                return;
+            var closing = _paneTarget == false;
+            SettlePane();
+            if (closing)
+                FinishAnimatedPaneClose();
+        });
+        return true;
+    }
+
+    private void ApplyAnimatedPaneWidth(double width)
+    {
+        NavView.OpenPaneLength = Math.Max(0, width);
+        // The reopen row grows as the pane leaves (and shrinks as it returns), so the content
+        // below it moves down with the slide instead of dropping 56 DIP when the close lands.
+        var length = SidebarColumn.ActualWidth;
+        ReopenPaneSlot.Height = length > 0
+            ? ReopenPaneSlotHeight * Math.Clamp(1 - width / length, 0, 1)
+            : ReopenPaneSlotHeight;
+        if (_settings is { } settings && IsSettingsVisible)
+            UpdateEmbeddedPageTopAllocation(settings);
+    }
+
+    // Ends an animated toggle at its target width and returns the reopen row and pane content
+    // to their layout values.
+    private void SettlePane()
+    {
+        _paneAnimator.Cancel();
+        var open = _paneTarget != false;
+        _paneTarget = null;
+        PinPaneContent(null);
+        ReopenPaneSlot.Height = ReopenPaneSlotHeight;
+        NavView.OpenPaneLength = open ? SidebarColumn.ActualWidth : 0;
+        UpdatePanePresentation();
+    }
+
+    // While the width animates, the pane's content keeps its full width and slides with the
+    // pane's trailing edge instead of re-wrapping at every intermediate width.
+    private void PinPaneContent(double? width)
+    {
+        if (FindTemplatePart(NavView, "PaneContentGrid") is not FrameworkElement content)
+            return;
+        if (width is { } pinned)
+        {
+            content.Width = pinned;
+            content.HorizontalAlignment = HorizontalAlignment.Right;
+        }
+        else
+        {
+            content.ClearValue(FrameworkElement.WidthProperty);
+            content.ClearValue(FrameworkElement.HorizontalAlignmentProperty);
+        }
+    }
+
+    private static DependencyObject? FindTemplatePart(DependencyObject root, string name)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is FrameworkElement { Name: var childName } && childName == name)
+                return child;
+            if (FindTemplatePart(child, name) is { } match)
+                return match;
+        }
+        return null;
+    }
+
     private void UpdateWorkspaceContentTopAllocation()
     {
         var top = Destination.Page == WorkspacePageId.Notifications
@@ -1370,10 +1480,12 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdatePanePresentation()
     {
-        SidebarSplitter.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        // An animated toggle keeps the splitter hidden and the reopen row present until it lands.
+        var atRest = _paneTarget is null;
+        SidebarSplitter.Visibility = NavView.IsPaneOpen && atRest ? Visibility.Visible : Visibility.Collapsed;
         UpdateWorkspaceContentTopAllocation();
         ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
-        ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
+        ReopenPaneSlot.Visibility = NavView.IsPaneOpen && atRest ? Visibility.Collapsed : Visibility.Visible;
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         if (_settings is { } settings && IsSettingsVisible)
             ApplySettingsPresentation(settings);
@@ -1466,8 +1578,29 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             if (visibility == Visibility.Collapsed) TitleBarFooter.HideFlyouts();
             TitleBarFooter.Visibility = visibility;
+            if (visibility == Visibility.Visible)
+                FadeInTitleBarFooter();
         }
         QueueTitleRowLayout();
+    }
+
+    // Dashboard and the bell move to the title bar as the pane closes; they fade in there instead
+    // of popping. Windows animations off shows them at once.
+    private void FadeInTitleBarFooter()
+    {
+        if (!OpenClawTray.Chat.ChatMotion.AnimationsEnabled)
+            return;
+        TitleBarFooter.OpacityTransition = null;
+        TitleBarFooter.Opacity = 0;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsClosed) return;
+            TitleBarFooter.OpacityTransition = new ScalarTransition
+            {
+                Duration = TimeSpan.FromMilliseconds(TitleBarActionsFadeMilliseconds),
+            };
+            TitleBarFooter.Opacity = 1;
+        });
     }
 
     private void OnTitleBarRightActionsSizeChanged(object sender, SizeChangedEventArgs e) => QueueTitleRowLayout();
@@ -1556,6 +1689,16 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         if (NavView.IsPaneOpen || IsClosed) return;
         NavView.IsPaneVisible = false;
+        // An animated close lands at zero width; the hidden pane gets its length back for the next open.
+        NavView.OpenPaneLength = SidebarColumn.ActualWidth;
+    }
+
+    // An animated close has already slid the pane to zero width, so the native close that follows
+    // has nothing left to slide; PaneClosed then hides the pane as it does for any close.
+    private void FinishAnimatedPaneClose()
+    {
+        NavView.IsPaneOpen = false;
+        FocusPaneToggle();
     }
     internal void NavigateBack()
     {
@@ -1899,6 +2042,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        _paneAnimator.Cancel();
         WorkspaceSearchFlyout.Hide();
         _search.Dispose();
         _profileAutoFill.ProfileChanged -= OnProfileAutoFilled;

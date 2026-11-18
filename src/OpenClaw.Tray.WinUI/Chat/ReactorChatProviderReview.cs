@@ -84,10 +84,11 @@ internal sealed class ReactorChatProviderReview : Component<ReactorChatProviderR
             IsOpen = canReview && dialogFor == review.Id,
             OnClosed = _ => setDialogFor(null),
         };
-        return Grid([GridSize.Star()], [GridSize.Auto], card, dialog)
-            .MaxWidth(ChatVisuals.ReadingWidth)
-            .Margin(gutter, ChatVisuals.BlockGap, gutter, 0)
-            .HAlign(HorizontalAlignment.Stretch);
+        return ChatMotion.Host(Grid([GridSize.Star()], [GridSize.Auto], card, dialog)
+                .MaxWidth(ChatVisuals.ReadingWidth)
+                .Margin(gutter, ChatVisuals.BlockGap, gutter, 0)
+                .HAlign(HorizontalAlignment.Stretch))
+            .EnterOnMount(0, ChatVisuals.PanelRevealMilliseconds, fade: true);
     }
 
     private static Element Findings(SessionProviderReviewInfo review)

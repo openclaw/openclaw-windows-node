@@ -48,6 +48,72 @@ public sealed class ChatToolActivityPresentationTests
         Assert.Empty(state.Update(["history", "backfilled"], "s", 1, 1));
     }
 
+    [Fact]
+    public void MessageMotion_FirstSendFromAnEmptyConversationEntersButLoadedHistoryDoesNot()
+    {
+        var firstSend = new ChatToolActivityMotionState();
+        Assert.Equal(["prompt"], firstSend.Update(["prompt"], "s", 1, 1, admitInitial: true));
+        Assert.Equal(["reply"], firstSend.Update(["prompt", "reply"], "s", 1, 1, admitInitial: true));
+        Assert.Empty(firstSend.Update(["prompt", "reply"], "s", 1, 1));
+
+        var loadedHistory = new ChatToolActivityMotionState();
+        Assert.Empty(loadedHistory.Update(["older", "prompt"], "s", 1, 1));
+        // The flag only matters for the first ready update; a replaced history stays quiet.
+        Assert.Empty(loadedHistory.Update(["compacted", "summary"], "s", 1, 2, admitInitial: true));
+    }
+
+    [Fact]
+    public void MessageMotion_OnlyRowsAppendedAtTheTailEnter()
+    {
+        var state = new ChatToolActivityMotionState();
+        Assert.Empty(state.Update(["prompt", "reply"], "s", 1, 1));
+        // An older page lands above the rows already shown.
+        Assert.Empty(state.Update(["older", "prompt", "reply"], "s", 1, 1));
+        // A history refresh that keeps the shown rows still admits the reply it recovered.
+        Assert.Equal(["recovered"], state.Update(["older", "prompt", "reply", "recovered"], "s", 1, 2));
+        Assert.Equal(["tool", "next"], state.Update(["older", "prompt", "reply", "recovered", "tool", "next"], "s", 1, 2));
+    }
+
+    [Fact]
+    public void MessageMotion_PrependedUserRowsAreNotMistakenForNewPromptsInAssistantOnlyHistory()
+    {
+        var state = new ChatToolActivityMotionState();
+        Assert.Empty(state.Update(["assistant", "tool"], "s", 1, 1, eligibleKeys: []));
+
+        Assert.Empty(state.Update(
+            ["older-prompt", "assistant", "tool"],
+            "s",
+            1,
+            1,
+            eligibleKeys: ["older-prompt"]));
+    }
+
+    [Fact]
+    public void ToolDetailsClose_HoldsAndReleasesEachDisclosureIndependently()
+    {
+        var state = new ChatToolDetailsCloseState();
+        var outputClose = state.SetClosing("output", closing: true);
+        state.SetClosing("input", closing: false);
+
+        Assert.Contains("output", state.Snapshot());
+        Assert.True(state.CompleteClose("output", outputClose));
+        Assert.Empty(state.Snapshot());
+    }
+
+    [Fact]
+    public void ToolDetailsClose_ReopeningInvalidatesOnlyThatDisclosureClose()
+    {
+        var state = new ChatToolDetailsCloseState();
+        var staleClose = state.SetClosing("output", closing: true);
+        state.SetClosing("output", closing: false);
+        var currentClose = state.SetClosing("output", closing: true);
+
+        Assert.False(state.CompleteClose("output", staleClose));
+        Assert.Contains("output", state.Snapshot());
+        Assert.True(state.CompleteClose("output", currentClose));
+        Assert.Empty(state.Snapshot());
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]

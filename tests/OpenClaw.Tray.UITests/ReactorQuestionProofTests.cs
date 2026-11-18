@@ -390,6 +390,7 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
             });
             var animated = new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
             var changed = false;
+            var angles = new List<string>();
             // Observe longer than the 2.4-second cycle, including its deliberate rest.
             for (var frame = 0; frame < 12; frame++)
             {
@@ -397,15 +398,25 @@ public sealed class ReactorQuestionProofTests(UIThreadFixture ui)
                 await ui.YieldToRenderAsync();
                 await ui.RunOnUIAsync(async () =>
                 {
-                    changed |= Math.Abs(((RotateTransform)jaw!.RenderTransform).Angle - firstAngle) > .5;
+                    var angle = ((RotateTransform)jaw!.RenderTransform).Angle;
+                    changed |= Math.Abs(angle - firstAngle) > .5;
+                    angles.Add(claw!.IsLoaded ? $"{angle:0.#}" : $"{angle:0.#} (not loaded)");
                     await VisualTestCapture.CaptureAsync(surface!, $"Claw-motion-frame-{frame}");
                 });
             }
-            Assert.Equal(animated, changed);
+            Assert.True(animated == changed,
+                $"Animations enabled: {animated}; jaw angles from {firstAngle:0.#}: {string.Join(", ", angles)}");
+            // Unloaded is raised after removal; the claw's own handler (subscribed first) stops its clock.
+            var unloaded = false;
+            await ui.RunOnUIAsync(() =>
+            {
+                claw!.Unloaded += (_, _) => unloaded = true;
+                surface!.Child = null;
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => unloaded, "working claw unloads"));
             double stoppedAngle = 0;
             await ui.RunOnUIAsync(() =>
             {
-                surface!.Child = null;
                 stoppedAngle = ((RotateTransform)jaw!.RenderTransform).Angle;
             });
             await SettleAsync();

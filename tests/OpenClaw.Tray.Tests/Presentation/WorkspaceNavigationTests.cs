@@ -948,6 +948,11 @@ public sealed class WorkspaceNavigationTests
             code.IndexOf("private void UpdatePanePresentation", StringComparison.Ordinal)];
         Assert.DoesNotContain("IsPaneVisible = false", toggle);
         Assert.DoesNotContain("LeftMinimal", toggle);
+        // The animated width honors Windows animation settings, and the reopen row returns to its
+        // XAML height: clearing the local value would leave it at zero and let content overlap.
+        Assert.Contains("UISettings().AnimationsEnabled", toggle);
+        Assert.Contains("ReopenPaneSlot.Height = ReopenPaneSlotHeight;", toggle);
+        Assert.DoesNotContain("ReopenPaneSlot.ClearValue", code);
     }
 
     [Fact]

@@ -540,6 +540,199 @@ public sealed class ReactorToolActivityProofTests
     }
 
     [Fact]
+    public async Task ChatMotion_UnmountRestoresNeutralStateBeforeAControlCanBeReused()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var host = new ReactorHostControl();
+            var element = ChatMotion.Host(TextBlock("motion"))
+                .EnterOnMount(8, 180, fade: true)
+                .DeferredRevealTransitions(180)
+                .Set(border => border.Scale = new System.Numerics.Vector3(.9f, .9f, 1));
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            await DrainReactorQueueAsync();
+            // Motion lives on a dedicated host type that Reactor's layout-control pool never recycles.
+            var border = Assert.IsType<ChatMotionHost>(root);
+            ChatMotion.RotateDisclosure(border, "\uE76C");
+            ChatMotion.RotateDisclosure(border, "\uE70D");
+
+            host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+            host.Content = null;
+
+            // Pooled controls must not carry a rise, fade, turn, scale or implicit transition to another row.
+            Assert.Equal(1, border.Opacity);
+            Assert.Equal(System.Numerics.Vector3.Zero, border.Translation);
+            Assert.Equal(System.Numerics.Vector3.One, border.Scale);
+            Assert.Equal(0, border.Rotation);
+            Assert.Null(border.OpacityTransition);
+            Assert.Null(border.ScaleTransition);
+            Assert.Null(border.TranslationTransition);
+            Assert.Null(border.RotationTransition);
+        });
+    }
+
+    [Fact]
+    public void TranscriptReflow_OnlyMovesRowsThatWereAlreadyRealized()
+    {
+        (double Now, double? Was)[] rows = [(100, 160), (-20, 40), (240, null), (-90, null)];
+        Assert.Equal(new float?[] { 60, 60, null, null }, ChatTranscriptReflow.PlanOffsets(rows));
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_ReaderInputStopsAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow();
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                reflow.CancelForReaderInput();
+                Assert.Equal(System.Numerics.Vector3.Zero, row.Translation);
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_ExpiredCaptureDoesNotResetAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            long now = 0;
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow(() => now);
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                now = 601;
+                ChatTranscriptReflow.CaptureAll();
+                Assert.NotEqual(System.Numerics.Vector3.Zero, row.Translation);
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_DisablingAnimationsStopsAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow();
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                ChatMotion.AnimationsOverride = false;
+                await WaitForRenderedConditionAsync(
+                    () => row.Translation == System.Numerics.Vector3.Zero,
+                    "the disabled animation resets the row");
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+            Assert.Null(row.TranslationTransition);
+        });
+    }
+
+    [Fact]
+    public async Task ChatMotion_HoldTakesOverAGlideWhoseEndNeverOverwritesIt()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            var clock = new ChatMotionHost { Content = new Border { Height = 40 } };
+            var panel = new StackPanel();
+            panel.Children.Add(row);
+            panel.Children.Add(clock);
+            _ui.Container.Children.Add(panel);
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded && clock.IsLoaded, "the rows load");
+                ChatMotion.SlideBy(row, 60, 100);
+                // The glide's start is drawn in the frame that shows the new layout.
+                Assert.Equal(new System.Numerics.Vector3(0, 60, 0), row.Translation);
+                // A longer glide started now has landed only after the row's glide would have.
+                ChatMotion.SlideBy(clock, 60, 300);
+                ChatMotion.HoldAt(row, 25);
+
+                await WaitForRenderedConditionAsync(
+                    () => clock.Translation == System.Numerics.Vector3.Zero, "the longer glide lands at rest");
+                Assert.Equal(new System.Numerics.Vector3(0, 25, 0), row.Translation);
+            }
+            finally
+            {
+                ChatMotion.Reset(row);
+                ChatMotion.Reset(clock);
+                _ui.Container.Children.Remove(panel);
+            }
+            Assert.Equal(System.Numerics.Vector3.Zero, row.Translation);
+            Assert.Null(row.TranslationTransition);
+        });
+    }
+
+    [Fact]
     public async Task CompletedWork_ReusesNativeDisclosureAndToolDetailsWithoutHidingAnswer()
     {
         await _ui.ResetContainerAsync();

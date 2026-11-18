@@ -4031,6 +4031,28 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     private static T FindControl<T>(DependencyObject root, string id) where T : FrameworkElement =>
         Assert.Single(FindDescendants<T>(root), control => AutomationProperties.GetAutomationId(control) == id);
 
+    // Tool and thinking disclosures render their details below a header-only Expander in one
+    // panel, so that panel is the disclosure. Any other Expander holds its own details.
+    private static DependencyObject Disclosure(Expander header) =>
+        header.Content is null && VisualTreeHelper.GetParent(header) is StackPanel panel &&
+            panel.Children.Count > 0 && ReferenceEquals(panel.Children[0], header)
+            ? panel : header;
+
+    // The disclosure an element belongs to: its nearest Expander, or the header-only Expander
+    // whose panel holds it below the header.
+    private static Expander? DisclosureOwner(DependencyObject element)
+    {
+        for (DependencyObject child = element; VisualTreeHelper.GetParent(child) is { } parent; child = parent)
+        {
+            if (parent is Expander expander)
+                return expander;
+            if (parent is StackPanel { Children.Count: > 0 } panel && panel.Children[0] is Expander header &&
+                !ReferenceEquals(header, child) && ReferenceEquals(Disclosure(header), panel))
+                return header;
+        }
+        return null;
+    }
+
     private static T? FindControlOrNull<T>(DependencyObject root, string id) where T : FrameworkElement =>
         FindDescendants<T>(root).SingleOrDefault(control => AutomationProperties.GetAutomationId(control) == id);
 
@@ -4085,6 +4107,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 $"Copy target {Bounds(button, surface)} overlaps navigation {railBounds}");
     }
 
+    private const double ComposerGapTolerance = 0.01;
+
     private static void AssertComposerBounds(Border surface)
     {
         var controls = FindDescendants<Button>(surface)
@@ -4100,7 +4124,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Assert.DoesNotContain(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerReasoningPicker");
         var attachBounds = Bounds(FindControl<Button>(surface, "ChatComposerAttach"), surface);
         var sandboxBounds = Bounds(FindControl<Button>(surface, "ChatComposerSandbox"), surface);
-        Assert.InRange(sandboxBounds.Left - attachBounds.Right, 0, 4);
+        // At fractional DPI the transformed edges carry float error (4.00003 for a 4-pixel gap).
+        Assert.InRange(sandboxBounds.Left - attachBounds.Right, -ComposerGapTolerance, 4 + ComposerGapTolerance);
         foreach (var control in controls)
         {
             var bounds = Bounds(control, surface);

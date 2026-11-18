@@ -280,7 +280,7 @@ into a stopped one. When findings or a continuation message exist, **Review
 findings** opens a read-only dialog with the continuation message, web-chat
 guidance (when continuation is allowed) and the provider's findings. Clearing the
 review, for example on disconnect, also forgets an open dialog so a returning
-review never reopens it. The native card never acknowledges or resumes the run;
+review never reopens it. The card fades in over 140 ms when it appears. The native card never acknowledges or resumes the run;
 continuation remains a web-chat action.
 
 Child-agent status instead opens through the **Subagents** pill above the
@@ -512,11 +512,12 @@ are never inferred; ambiguous identities and cycles stay top-level. Group
 counts include nested calls instead of a completed wrapper, except when all its
 nested calls are routine, as in the web `resolveCompletedActivityWrappers`. Each layer keeps its own
 expansion key, so opening a group never opens its first row.
-The last transcript row keeps a 38-pixel bottom inset above the composer: the
-32-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
+The last transcript row keeps a 70-pixel bottom inset above the composer: the
+64-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
 settled tail is fully opaque. `ChatTranscriptFade` redirects only the bottom
-32-pixel band through a composition alpha mask, not a color overlay, so translucent
-Mica shows through. The real transcript remains opaque and scrolls normally;
+64-pixel band through a composition alpha mask, not a color overlay, so translucent
+Mica shows through. The mask follows a smoothstep curve (flat at both ends) rather
+than a linear ramp, whose top edge read as a line across text scrolling under it. The real transcript remains opaque and scrolls normally;
 an inner host clips the copied band from its normal rendering. Child replacement,
 resize and detach update or release the surface, clip and brushes. High contrast
 omits the mask, including when switched on while the window stays open.
@@ -569,14 +570,93 @@ accumulated answer preview does not erase keyed progress. This follows the
 [installed web preamble contract](https://github.com/openclaw/openclaw/blob/4ffdd2047d192dd65554de3c8c46c0e0197c6e2a/ui/src/pages/chat/tool-stream-preamble.ts)
 without changing thinking visibility preferences.
 
-Newly completed work settles with a 200-millisecond fade, and a changing live
-tool headline enters over 160 milliseconds. Reactor owns these enter-only
-animations; no transcript dimensions, scroll position or focus are animated.
+Newly completed work settles with a 200-millisecond fade and 6-pixel rise, and
+a changing live tool headline enters over 160 milliseconds with a 3-pixel rise,
+matching the web `chat-work-settle-in` and `chat-activity-headline-enter`
+keyframes. Reactor owns the fades and the composition visual of these two
+elements; `ChatMotion` adds the rises on that visual's Translation. No transcript dimensions, scroll position or focus are animated.
 Initial/loading history, history revisions, session changes and generation
 resets do not replay completed-work entrances. A stable tool identity prevents
 partial-output updates from restarting its headline animation.
-Reactor's live reduced-motion hook disables both effects. Stock WinUI disclosure
-motion and the existing working-claw animation remain their respective owners.
+Reactor's live reduced-motion hook disables both effects. The existing
+working-claw animation remains its own owner.
+Disclosure details (tool rows, wrapper rows and their **Tool input**, activity
+groups and thinking) render below a header-only native Expander instead of in
+its content area, whose height is removed. The stock content slide and two-step
+collapse therefore never run; the Expander keeps the header, keyboard,
+expand/collapse automation pattern and chevron state. Groups, wrapper rows and
+thinking build their details only while they show; a single tool row keeps its
+details built (hidden) after the first open, so reopening shows the same output
+and any recovered text. Below a header-only Expander the details keep the stock
+Expander's minimum width, so a squeezed conversation never measures them
+narrower than before. When a user opens one, its height grows from zero to its
+natural height (cubic ease-out) while it fades in over 200 ms, then the height
+is released so streamed output can still resize it. When a user closes one, the
+details stay mounted for 240 ms while their height shrinks to zero (cubic
+ease-in-out) and they fade out over 180 ms, then they are removed. The rows
+below follow with real layout every frame, so nothing overlaps or jumps.
+Details shown at rest, from history or a re-realized row, do not animate.
+Without an expansion store (offscreen tests), tool rows keep the stock content.
+When a tool-row chevron changes between right and down, it turns into place
+over 150 ms; the glyph itself still states the expansion.
+Hover-revealed tool and attachment actions keep their immediate show and hide:
+Reactor pools buttons, and its pool cannot recycle a control that carries an
+app-set implicit transition.
+
+Every other chat motion is render-only and runs on a `ChatMotionHost`, a
+transparent content host that Reactor never pools, through the XAML
+`Translation`, `Opacity` and `Rotation` properties with implicit transitions.
+Glides (a sent prompt's rise, the welcome composer's slide and transcript
+reflow) instead start an explicit keyframe animation on the host's
+`Translation` in the same UI tick, along the web's ease-out curve
+(`cubic-bezier(.16,1,.3,1)`). The first frame that draws the new layout already
+shows the glide's start, without a dispatcher turn or an implicit transition's
+slow start.
+Reactor pools layout controls and buttons: its pool clears transforms on reuse,
+which WinUI rejects while an implicit transition is in use, and
+`ElementCompositionPreview.GetElementVisual` permanently costs a control those
+APIs without Reactor knowing. `ChatMotion` stops motion on unmount. A list child
+that is removed must not carry mount or unmount actions in Reactor preview.18,
+because the sibling added in the same update is then misplaced; the queue panel
+and question cards keep their motion inside a stable wrapper. Windows animation
+off skips all of it.
+When the reader shows or hides tools or collapses all, the
+rows that stay glide from their previous position to their new one over 220 ms
+(`ChatTranscriptReflow`, a FLIP on each row's host), compared once per drawn
+frame. Layout, scroll offset and focus are already final; only the drawing
+catches up, and rows realized by the change appear in place. Rows that the
+conversation itself adds, replaces or folds (a reply, a tool row, a run
+settling into **Worked**) never move the rows around them: only the new or
+changed row animates, with the settle, and tail follow moves the transcript
+instantly. Gliding every row on top of tail follow made the whole conversation
+look like it was re-entering. Sending a prompt animates only that new row; the
+existing transcript and tail-follow scroll remain immediate. Reader-initiated
+reflows still glide rows that were already realized, and a row whose slot moves
+again mid-glide continues from where it is drawn instead of jumping back.
+A pointer press or wheel cancels a reader reflow and restores each row to its
+new slot. Disabling Windows animations during a glide also stops it immediately.
+A gliding row draws outside its list slot, so the row's `ItemContainer` drops
+the template's rounded corner, which would otherwise clip the row to its slot
+and hide it mid-glide.
+Session switches, history loads and
+disclosure toggles never glide: a disclosure's own height reveal already
+moves the rows below it, and a glide on top would overlap rows.
+A tool row's title or state that changes in place (Editing to Edited, Running
+to failed) and a settling group's headline fade in over 150 ms. In a wide
+layout, opening, closing, expanding and collapsing the side panel ease its
+column's width over 220 ms with a cubic ease-in-out, like the Workspace
+sidebar. The moving panel or conversation keeps its resting width at the start
+of its column, which clips it, so its content never reflows mid-motion. A
+closing panel stays drawn while its column shuts but no longer takes input;
+state and focus change at once. Reversing a toggle mid-motion continues from
+the drawn width, and resizing the window ends the motion at its resting
+layout. With Windows animations off, the panel changes width at once. Over a
+narrow conversation the panel instead rises 24 pixels in over
+200 ms when it opens, and closing it stays immediate. A tab body that becomes
+selected or opens fades in with a 4-pixel rise over 150 ms; closing a tab
+stays immediate.
+Scroll position, tail follow, streaming text, item heights, dragging the side
+panel's divider, theme changes and focus are never animated.
 
 Confirmed `sessions_yield` and asynchronous `github_publish` receipts create
 handoff boundaries using the existing tool/run correlation. They do not become
@@ -651,7 +731,8 @@ While history loads, the transcript shows a skeleton
 (`ChatTimelineLoadingSkeleton`) whose opacity pulse is disabled by reduced
 motion and high contrast. The timeline stops that pulse when it leaves Loading,
 even if ItemsView retains the old row without raising Unloaded; delayed row
-mounts cannot restart a retired pulse. When history fails after its bounded retries on a
+mounts cannot restart a retired pulse. When history replaces the skeleton, the
+transcript fades in over 150 ms instead of swapping in one frame. When history fails after its bounded retries on a
 connected Gateway, an empty transcript shows `ChatHistoryUnavailable` and a
 nonempty one shows a `ChatHistoryFailedStatus` banner, each with an explicit
 `ChatHistoryRetry` action. A failed thread is not reloaded implicitly on each
@@ -788,6 +869,11 @@ It cannot arm while a disclosure, keyboard reader, or pending reader bring owns
 the native anchor, even when the reader remains within the follow threshold.
 Typing and tail-visibility rerenders retain that revision. Correction-induced
 remeasurement cannot replenish its budget, and reader input clears unused credit.
+The correction's absolute target is applied after later layout, so streaming
+growth can surface transient views short of the tail before it lands. Until the
+correction completes, those views do not end follow; reader input still does.
+A correction that is already at the tail does not scroll. One that lands short
+re-corrects from the new geometry at most twice per content revision.
 Resizing does not itself start a bring, and this is not a continuous extent-follow loop. A correction does
 not start while initial positioning is still pending, so it cannot impose its
 follow requirement on that initial request. A reader who has scrolled up is not
@@ -807,6 +893,11 @@ the native anchor at an interior ratio until completion or cancellation.
 The anchor callback rechecks the navigation generation, row index and source
 identity without realizing another row. This avoids both disabled-anchor layout
 cycles and edge anchoring undoing the correction as the virtualized extent changes.
+A streaming or send reflow correction pins the current tail row the same way
+until it completes. Near the tail, a row can leave the realization window and
+fall back to an estimated height that differs from its measured one; without the
+pin, that swap could park the view a row short of the bottom and show
+**Jump to latest** after a send.
 Normal bottom anchoring uses the nearest representable ratio below `1.0`
 (`Math.BitDecrement(1.0)`). This selects native content anchoring at the bottom,
 not WinUI's special extent-edge mode at exactly `1.0`, which can undo an offset
@@ -832,6 +923,11 @@ decorative glyph is excluded from the accessibility tree and does not scale
 with text size; native keyboard focus and activation remain available.
 At the tail, the button retains its overlay geometry with zero opacity and
 does not accept pointer input, keyboard focus or accessibility navigation.
+Like the web scroll-to-bottom button, it fades in while rising into place and
+growing, here 16 pixels from 80% scale over 240 ms so the reveal reads at a
+glance, and reverses when the reader returns to the tail. Its disabled colors
+match its rest colors, so it fades out without first dimming. Windows
+animation off shows and hides it immediately.
 Tail visibility changes do not collapse a Grid child during native scrolling.
 
 Pending agent questions replace the writing surface visually, not structurally.
@@ -849,6 +945,9 @@ reusing an earlier render's values. The dock is bounded by `min(58% of viewport 
 scrolls rather than clipping actions. Native automation peers and high-contrast
 colors remain in use. The coordinator alone owns answer and cancellation RPCs.
 A confirmed answer dismisses the dock without leaving a persistent success row.
+A newly asked question card fades in and rises 6 pixels over 160 ms, like the
+web question card; paging between pending questions and the composer's hide
+and return stay immediate, so focus moves exactly as before.
 Pending or unconfirmed questions and cancellation, expiry, and unavailable
 feedback retain their existing presentation.
 
@@ -888,7 +987,8 @@ failures keep their error and removal action visible. A native scrolling region 
 the queue at 160px or one third of the viewport height, whichever is smaller, so
 larger queues do not displace the composer. Promotion removes the queued row and
 shows the provider's normal sent message once. Empty queues remove the panel,
-without remounting the composer. This applies to Workspace's ChatPage.
+without remounting the composer. The panel fades in over 140 ms when the first
+message queues; later rows and removal are immediate. This applies to Workspace's ChatPage.
 If acceptance arrives after that run has completed, the conversation owner places
 the sent message before its matching live output without reopening the completed
 turn or disturbing a newer response. Remaining queued messages can then drain.
@@ -941,6 +1041,23 @@ chats or starter prompts. It shares the 768-pixel reading width and responsive
 gutters. A native ScrollViewer makes the entire block reachable at short heights
 and large text scales. Existing transcripts keep the composer at the bottom.
 The composer's parent and input control survive the transition to a transcript.
+On that first send the composer's input box slides from its centered welcome
+position to the bottom over 260 ms through the composer area's XAML Translation;
+focus, caret and flyouts stay on the same control. The input box, not the welcome
+block around it, is measured, because the welcome header leaves on the same send.
+Like the web chat, only a newly sent prompt enters: its bubble rises 8 pixels
+into place over 180 ms and stays fully opaque. Replies, tool calls, live tool
+groups, status and permission rows never enter, because a fade or rise would
+hide or snap text that is still arriving; a reply's text is visible on its
+first frame and streamed text extends the same row in place. The working
+indicator ("is thinking") fades in with a 4-pixel rise over 200 ms, like the
+web working indicator. Only prompts appended below the newest prompt already
+shown enter, so an older page never animates.
+The first send from an
+authoritatively empty conversation counts as new even though it mounts the
+transcript; loaded history, history replacements, recycled rows, the
+optimistic prompt's acknowledgement and session switches never animate. The transcript starts from the conversation's measured
+width, so its first rows do not shift sideways once its own measurement arrives.
 The editor and toolbar keep stable sibling keys when status, recording or
 attachment rows appear above them, preserving native input, caret and picker identity.
 The selected Gateway agent's `identity.name`, then `name`, then ID supplies the

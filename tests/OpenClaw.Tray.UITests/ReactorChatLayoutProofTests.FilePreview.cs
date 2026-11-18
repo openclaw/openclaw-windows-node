@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Chat;
+using Microsoft.UI.Xaml.Media;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
 using Windows.Foundation;
@@ -253,6 +254,175 @@ public sealed partial class ReactorChatLayoutProofTests
                 theme?.Dispose();
                 _captureWindow = null;
             });
+        }
+    }
+
+    // Wide-mode close, expand and collapse ease the panel column like its open. While it moves, the moving
+    // part keeps its resting width at the start of its column and a closing panel stays drawn without
+    // taking input. Intermediate widths depend on frame timing, so the proof samples every frame and
+    // layout pass and asserts only states that exist solely during the motion, plus the settled layout.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PanelColumn_EasesCloseExpandAndCollapseLikeOpen(bool animate)
+    {
+        await ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(animate);
+        ReactorHostControl? host = null;
+        Border? surface = null;
+        ChatThemeProofScope? theme = null;
+        var panels = new ChatConversationPanelState();
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                theme = new ChatThemeProofScope("Light");
+                panels.Bind(this, "main", 1, 1, 1, [], () => true, subagentsCurrent: () => true);
+                panels.OpenFiles(panels.Revision);
+                panels.OpenFile(new("main", "hello.txt"), panels.Revision);
+                host = new ReactorHostControl { RequestedTheme = theme.ElementTheme };
+                host.Mount(_ => Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(new(
+                    TextBlock("Conversation"), panels, Files: TextBlock("Files body"),
+                    LoadWorkspaceFile: (_, _) =>
+                        Task.FromResult(new ChatWorkspaceFileResult(ChatWorkspaceFileStatus.Loaded, "Body")))));
+                surface = new Border { Child = host, Width = 1100, Height = 640, RequestedTheme = theme.ElementTheme };
+                ui.Container.Children.Add(surface);
+                _captureWindow = ui.TestWindow;
+            });
+            double area = 0, split = 0;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () =>
+                {
+                    if (FindOptional<TabView>(surface!, "ConversationPanelTabs") is not { TabItems.Count: 2 })
+                        return false;
+                    var probe = new PanelColumnProbe(surface!);
+                    area = probe.Root.ActualWidth;
+                    split = panels.EffectiveWidth(area);
+                    return area > 1000 && IsSplit(probe.Sample());
+                },
+                "the split panel mounts at its resting width"));
+
+            bool Near(double value, double expected) => Math.Abs(value - expected) < 0.5;
+            bool Unpinned(PanelColumnSample s) => !s.PanelPinned && !s.ConversationPinned;
+            bool IsSplit(PanelColumnSample s) =>
+                Near(s.Divider, ChatConversationPanelState.DividerWidth) && Near(s.Panel, split) &&
+                s.PanelShown && s.PanelTakesInput && s.ConversationShown && s.ResizeShown && Unpinned(s);
+            // At rest, a panel that fills the area takes the star column and the panel column closes.
+            bool IsExpanded(PanelColumnSample s) =>
+                Near(s.Divider, 0) && Near(s.Panel, 0) && s.PanelShown && s.PanelTakesInput &&
+                !s.ConversationShown && !s.ResizeShown && Unpinned(s);
+            bool IsHidden(PanelColumnSample s) =>
+                Near(s.Divider, 0) && Near(s.Panel, 0) && !s.PanelShown && s.ConversationShown && Unpinned(s);
+
+            Func<PanelColumnSample, bool> resting = IsSplit;
+            async Task StepAsync(string name, Action change, double from, double to,
+                Func<PanelColumnSample, bool> settled, Func<PanelColumnSample, bool> moving)
+            {
+                var before = resting;
+                resting = settled;
+                var samples = new List<PanelColumnSample>();
+                await ui.RunOnUIAsync(async () =>
+                {
+                    var probe = new PanelColumnProbe(surface!);
+                    void Take(object? sender, object args) => samples.Add(probe.Sample());
+                    CompositionTarget.Rendering += Take;
+                    probe.Root.LayoutUpdated += Take;
+                    try
+                    {
+                        change();
+                        await WaitForRenderedConditionAsync(() => settled(probe.Sample()), name + " settles",
+                            () => probe.Sample().ToString());
+                    }
+                    finally
+                    {
+                        CompositionTarget.Rendering -= Take;
+                        probe.Root.LayoutUpdated -= Take;
+                    }
+                    samples.Add(probe.Sample());
+                });
+                Assert.True(settled(samples[^1]), $"{name}: {samples[^1]}");
+                // Between its resting layouts, the column only travels between the two extents and the
+                // divider never widens.
+                Assert.All(samples.Where(s => !before(s) && !settled(s)), s =>
+                {
+                    Assert.InRange(s.Panel, Math.Min(from, to) - 0.5, Math.Max(from, to) + 0.5);
+                    Assert.InRange(s.Divider, -0.5, ChatConversationPanelState.DividerWidth + 0.5);
+                });
+                if (animate)
+                    Assert.Contains(samples, s => moving(s));
+                else
+                    Assert.DoesNotContain(samples, s => s.PanelPinned || s.ConversationPinned || !s.PanelTakesInput);
+            }
+
+            // Expanding pins the conversation while the panel grows over it; collapsing reverses that.
+            await StepAsync("expand", panels.ToggleExpanded, split, area, IsExpanded,
+                s => s.ConversationPinned && s.ConversationShown && !s.ResizeShown);
+            await StepAsync("collapse", panels.ToggleExpanded, area, split, IsSplit,
+                s => s.ConversationPinned && !s.ResizeShown);
+            // Closing keeps the panel drawn at its width while the column hides it, without taking input.
+            await StepAsync("close", panels.Hide, split, 0, IsHidden,
+                s => s.PanelPinned && s.PanelShown && !s.PanelTakesInput);
+            await StepAsync("open", panels.ToggleOpen, 0, split, IsSplit,
+                s => s.PanelPinned && s.PanelShown && s.PanelTakesInput && !s.ResizeShown);
+            // Closing from the expanded panel shrinks it from the full area.
+            await StepAsync("expand again", panels.ToggleExpanded, split, area, IsExpanded,
+                s => s.ConversationPinned && s.ConversationShown && !s.ResizeShown);
+            await StepAsync("close expanded", panels.Hide, area, 0, IsHidden,
+                s => s.PanelPinned && s.ConversationPinned && s.PanelShown && !s.PanelTakesInput);
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                host?.Dispose();
+                if (surface is not null)
+                    ui.Container.Children.Remove(surface);
+                theme?.Dispose();
+                _captureWindow = null;
+            });
+        }
+    }
+
+    private sealed record PanelColumnSample(
+        double Divider, double Panel, bool PanelShown, bool PanelTakesInput, bool ConversationShown,
+        bool PanelPinned, bool ConversationPinned, bool ResizeShown);
+
+    // Reads the panel host's columns and the motion-only state of the elements beside them.
+    private sealed class PanelColumnProbe
+    {
+        private readonly Grid _panel;
+        private readonly Border _conversation;
+        private readonly Button _resize;
+        private readonly FrameworkElement _panelSlot;
+        private readonly FrameworkElement _conversationSlot;
+
+        internal PanelColumnProbe(DependencyObject surface)
+        {
+            Root = (Grid)VisualTreeHelper.GetParent(FindControl<Border>(surface, "ConversationPanelDivider"));
+            _panel = FindControl<Grid>(surface, "ConversationPanel");
+            _conversation = FindControl<Border>(surface, "ChatConversation");
+            _resize = FindControl<Button>(surface, "ConversationPanelResize");
+            _panelSlot = RootChild(_panel);
+            _conversationSlot = RootChild(_conversation);
+        }
+
+        internal Grid Root { get; }
+
+        internal PanelColumnSample Sample() => new(
+            Root.ColumnDefinitions[1].Width.Value, Root.ColumnDefinitions[2].Width.Value,
+            _panel.Visibility == Visibility.Visible, _panel.IsHitTestVisible,
+            _conversation.Visibility == Visibility.Visible,
+            Pinned(_panelSlot), Pinned(_conversationSlot), _resize.Visibility == Visibility.Visible);
+
+        private static bool Pinned(FrameworkElement slot) =>
+            slot.ReadLocalValue(FrameworkElement.WidthProperty) != DependencyProperty.UnsetValue;
+
+        // The host's slot for an element is its ancestor that sits directly in the root grid.
+        private FrameworkElement RootChild(DependencyObject element)
+        {
+            while (VisualTreeHelper.GetParent(element) is { } parent && !ReferenceEquals(parent, Root))
+                element = parent;
+            return (FrameworkElement)element;
         }
     }
 
