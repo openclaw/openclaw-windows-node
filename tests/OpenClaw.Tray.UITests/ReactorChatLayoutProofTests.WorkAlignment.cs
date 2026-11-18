@@ -977,13 +977,32 @@ public sealed partial class ReactorChatLayoutProofTests
             WorkEdgeTolerance);
         AssertWorkAligned($"{label} input/output divider right", sectionDivider.Right, Bounds(sections[0], surface).Right,
             WorkEdgeTolerance);
+        var last = Bounds(sections[^1], surface);
+        var outcomeTop = last.Bottom;
+        var remaining = panel.Children.OfType<TextBlock>().Where(text =>
+            AutomationProperties.GetAutomationId(text).StartsWith("ChatToolMoreLines_", StringComparison.Ordinal)).ToList();
+        if (label == "ChatToolCall_execTool")
+        {
+            var more = Assert.Single(remaining);
+            Assert.Equal("+28 more lines", more.Text);
+            Assert.Equal(new Thickness(12, 0, 12, 8), more.Margin);
+            Assert.Equal(12, more.FontSize);
+            var moreBounds = Bounds(more, surface);
+            AssertWorkAligned($"{label} remaining lines top", moreBounds.Top, last.Bottom, WorkEdgeTolerance);
+            AssertWorkAligned($"{label} remaining lines left", moreBounds.Left, last.Left + WorkDetailInsetX,
+                WorkEdgeTolerance);
+            AssertWorkAligned($"{label} remaining lines right", moreBounds.Right, last.Right - WorkDetailInsetX,
+                WorkEdgeTolerance);
+            outcomeTop = moreBounds.Bottom + WorkDetailInsetY;
+        }
+        else
+            Assert.Empty(remaining);
         if (footers.Count == 0)
             return new WorkCardSummary(null, scrolls);
 
-        var last = Bounds(sections[^1], surface);
         var divider = Bounds(dividers[^1], surface);
         var footer = Bounds(footers[0], surface);
-        AssertWorkAligned($"{label} divider top", divider.Top, last.Bottom, WorkEdgeTolerance);
+        AssertWorkAligned($"{label} divider top", divider.Top, outcomeTop, WorkEdgeTolerance);
         AssertWorkAligned($"{label} divider left", divider.Left, last.Left, WorkEdgeTolerance);
         AssertWorkAligned($"{label} divider right", divider.Right, last.Right, WorkEdgeTolerance);
         AssertWorkAligned($"{label} footer top", footer.Top, divider.Bottom + WorkStatusGap, WorkEdgeTolerance);

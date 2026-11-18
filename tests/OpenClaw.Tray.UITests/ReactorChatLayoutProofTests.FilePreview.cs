@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
+using Windows.Foundation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
 
@@ -340,11 +341,34 @@ public sealed partial class ReactorChatLayoutProofTests
                     FindDescendants<RepeatButton>(view).Any(button =>
                         button.Name == "ScrollIncreaseButton" && button.ActualWidth > 0),
                 "five bounded tabs overflow into the native horizontal scroll controls"));
+            // The native ItemsStackPanel can virtualize offscreen tabs. Select each before measuring it.
+            for (var index = 0; index < 5; index++)
+            {
+                var tabIndex = index;
+                await ui.RunOnUIAsync(() =>
+                    FindControl<TabView>(surface!, "ConversationPanelTabs").SelectedIndex = tabIndex);
+                Rect? previous = null;
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                {
+                    if (FindOptional<TabView>(surface!, "ConversationPanelTabs") is not { TabItems.Count: 5 } view ||
+                        view.SelectedIndex != tabIndex ||
+                        view.TabItems[tabIndex] is not TabViewItem { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } item)
+                        return false;
+                    var bounds = Bounds(item, view);
+                    var stable = previous == bounds;
+                    previous = bounds;
+                    return stable;
+                }, $"overflow tab {tabIndex} is realized and has stable bounds"));
+                await ui.RunOnUIAsync(() =>
+                {
+                    var view = FindControl<TabView>(surface!, "ConversationPanelTabs");
+                    Assert.InRange(Assert.IsType<TabViewItem>(view.TabItems[tabIndex]).ActualWidth, 99.5, 200.5);
+                    Assert.Equal(5, panels.Tabs.Count);
+                });
+            }
             await ui.RunOnUIAsync(() =>
             {
                 var view = FindControl<TabView>(surface!, "ConversationPanelTabs");
-                Assert.All(view.TabItems.Cast<TabViewItem>(),
-                    item => Assert.InRange(item.ActualWidth, 99.5, 200.5));
                 var scroll = Assert.Single(FindDescendants<ScrollViewer>(view),
                     candidate => candidate.ScrollableWidth > 0);
                 scroll.ChangeView(0, null, null, disableAnimation: true);
