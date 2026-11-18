@@ -35,7 +35,6 @@ public sealed record ReactorChatTimelineProps(
     ReactorChatTimelineMode Mode,
     ChatTimelinePresentationContext Timeline,
     ChatAgentIdentity? AssistantIdentity = null,
-    Action<string>? OnOpenCheckpoints = null,
     long HistoryRevision = 0,
     double ViewportWidth = 800,
     Func<string, bool>? TryCopyText = null,
@@ -1299,12 +1298,9 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var presentation = ChatCompactionPresenter.TryCreateForEntry(
             entry,
             row.Props.Timeline.EntryMetadata,
-            LocalizedOrDefault("Chat_Compaction_Title", "COMPACTED HISTORY"),
+            LocalizedOrDefault("Chat_Compaction_Title", "Context compacted"),
             LocalizedOrDefault(
-                "Chat_Compaction_FallbackDetail",
-                "The compacted transcript is preserved as a checkpoint. " +
-                "Open session checkpoints to branch or restore from that compacted view."),
-            LocalizedOrDefault("Chat_Compaction_OpenCheckpoints", "Open checkpoints"));
+                "Chat_Compaction_MetricsFormat", "saved {0} tokens ({1}%)"));
         return presentation is null
             ? BuildGenericStatus(entry)
             : BuildCompaction(row, presentation);
@@ -1328,37 +1324,11 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     private static Element BuildCompaction(
         ReactorTimelineRow row,
-        ChatCompactionPresentation presentation)
-    {
-        var sessionKey = row.Props.Timeline.SessionId;
-        var canOpenCheckpoints = !string.IsNullOrWhiteSpace(sessionKey)
-            && row.Props.OnOpenCheckpoints is not null;
-        var labelWidth = ReactorChatNotices.LabelMaxWidth(row);
-        return VStack(
-                4,
-                ReactorChatNotices.SystemLine(FluentIconCatalog.Check, presentation.Title, labelWidth).WithKey("line"),
-                ReactorChatNotices.Muted(presentation.Detail)
-                    .TextAlignment(TextAlignment.Center)
-                    .HAlign(HorizontalAlignment.Center)
-                    .MaxWidth(labelWidth)
-                    .WithKey("detail"),
-                Button(
-                        ReactorChatNotices.Muted(presentation.ActionLabel, "AccentTextFillColorPrimaryBrush"),
-                        () =>
-                        {
-                            if (canOpenCheckpoints)
-                                row.Props.OnOpenCheckpoints!(sessionKey!);
-                        })
-                    .SubtleButton()
-                    .Padding(6, 2)
-                    .MinHeight(0)
-                    .IsEnabled(canOpenCheckpoints)
-                    .HAlign(HorizontalAlignment.Center)
-                    .AutomationName(presentation.ActionLabel)
-                    .WithKey("action"))
+        ChatCompactionPresentation presentation) =>
+        ReactorChatNotices.SystemLine(
+                FluentIconCatalog.Check, presentation.Title, ReactorChatNotices.LabelMaxWidth(row), presentation.Detail)
             .Margin(0, 8)
             .AutomationName(presentation.AutomationName);
-    }
 
     internal static string FooterText(
         ReactorTimelineRow row,

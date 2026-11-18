@@ -2849,16 +2849,10 @@ Use uma destas opções:
     <value>Concluído</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>HISTÓRICO COMPACTADO</value>
+    <value>Contexto compactado</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} tokens · {2} economizados</value>
-  </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>A transcrição compactada é preservada como um checkpoint. Abra os checkpoints da sessão para ramificar ou restaurar a partir dessa visão compactada.</value>
-  </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>Abrir checkpoints</value>
+    <value>{0} tokens economizados ({1}%)</value>
   </data>
   <data name="Chat_Notice_System" xml:space="preserve">
     <value>Sistema</value>

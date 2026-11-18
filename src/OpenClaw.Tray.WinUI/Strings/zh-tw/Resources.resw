@@ -2830,16 +2830,10 @@
     <value>完成</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>已壓縮的歷程記錄</value>
+    <value>上下文已壓縮</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} 個權杖 · 節省 {2}</value>
-  </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>壓縮後的對話記錄會保留為檢查點。開啟工作階段檢查點，以便從該壓縮檢視建立分支或還原。</value>
-  </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>開啟檢查點</value>
+    <value>節省了 {0} 個權杖（{1}%）</value>
   </data>
   <data name="Chat_Notice_System" xml:space="preserve">
     <value>系統</value>

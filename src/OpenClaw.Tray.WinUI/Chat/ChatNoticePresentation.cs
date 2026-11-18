@@ -6,7 +6,8 @@
 //   var kind = ChatNoticePresentation.Classify(message.Presentation, text);
 //   if (kind == ChatNoticeKind.Hidden) return;                       // drop the row
 //   if (kind != ChatNoticeKind.None)
-//       apply(new ChatStatusEvent(ChatNoticePresentation.EntryText(kind, message.Presentation, text), ChatTone.Dim));
+//       apply(new ChatStatusEvent(ChatNoticePresentation.EntryText(kind, message.Presentation, text),
+//           ChatTone.Dim, StartsTurn: ChatNoticePresentation.StartsTurn(message.Presentation)));
 //   // Rendering a status entry whose metadata carries the presentation:
 //   var view = ChatNoticePresentation.ResolveSystem(presentation, entry.Text, LocalizedOrDefault);
 
@@ -19,7 +20,7 @@ public enum ChatNoticeKind
 {
     /// <summary>An ordinary transcript row.</summary>
     None,
-    /// <summary>A typed notice with nothing to show, such as a Gateway restart sentinel.</summary>
+    /// <summary>A typed notice with nothing to show, such as source tool "restart".</summary>
     Hidden,
     RunFailure,
     SkillLearned,

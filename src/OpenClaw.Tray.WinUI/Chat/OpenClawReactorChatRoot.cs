@@ -27,7 +27,6 @@ public sealed record OpenClawReactorChatRootProps(
     string? InitialThreadId = null,
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
-    Action<string>? OnOpenCheckpoints = null,
     Func<string, bool>? TryCopyText = null,
     bool InitialThreadIsExplicitSelection = true,
     IChatAgentRosterSource? AgentRosterSource = null,
@@ -551,7 +550,6 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var timelineElement = Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
             mode,
             timelineProps,
-            OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision,
             TryCopyText: props.TryCopyText,
             HistoryFailed: historyFailed,

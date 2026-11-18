@@ -746,14 +746,13 @@ internal sealed class ChatHistoryLoader : IDisposable
                 routedNotice = message;
                 if (notice == ChatNoticeKind.Hidden)
                     continue;
-                if (ChatNoticePresentation.StartsTurn(message.Presentation))
-                    timeline = timeline with { ActiveAssistantId = null, ActiveReasoningId = null };
                 timeline = Apply(
                     timeline,
                     new ChatStatusEvent(
                         ChatContentFormatting.TruncateForChatEntry(
                             ChatNoticePresentation.EntryText(notice, message.Presentation, message.Text)),
-                        ChatTone.Dim),
+                        ChatTone.Dim,
+                        StartsTurn: ChatNoticePresentation.StartsTurn(message.Presentation)),
                     entryMetadata with { Presentation = message.Presentation, AssistantContent = null });
                 continue;
             }

@@ -1434,15 +1434,14 @@ internal sealed class ChatConversationState
             }
             if (message.Presentation.RunFailure is { } failure)
                 timeline = RemoveRunErrorRow(timeline, threadMeta, failure.RunId);
-            if (ChatNoticePresentation.StartsTurn(message.Presentation))
-                timeline = timeline with { ActiveAssistantId = null, ActiveReasoningId = null };
             _timelines[threadId] = timeline;
             ApplyEventLocked(
                 threadId,
                 new ChatStatusEvent(
                     ChatContentFormatting.TruncateForChatEntry(
                         ChatNoticePresentation.EntryText(kind, message.Presentation, message.Text)),
-                    ChatTone.Dim),
+                    ChatTone.Dim,
+                    StartsTurn: ChatNoticePresentation.StartsTurn(message.Presentation)),
                 metadata);
             return BuildSnapshotLocked(context);
         }

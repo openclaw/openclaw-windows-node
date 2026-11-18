@@ -2830,16 +2830,10 @@ Utilisez l'une de ces options :
     <value>Terminé</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>HISTORIQUE COMPACTÉ</value>
+    <value>Contexte compacté</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} jetons · {2} économisés</value>
-  </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>La transcription compactée est conservée en tant que point de contrôle. Ouvrez les points de contrôle de la session pour créer une branche ou restaurer cette vue compactée.</value>
-  </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>Ouvrir les points de contrôle</value>
+    <value>{0} jetons économisés ({1} %)</value>
   </data>
   <data name="Chat_Notice_System" xml:space="preserve">
     <value>Système</value>

@@ -66,7 +66,9 @@ internal static class ReactorChatNotices
         var glyph = view.Icon == ChatSystemNoticeIcon.Compass ? FluentIconCatalog.Compass : FluentIconCatalog.Cpu;
         var time = view.ShowTimestamp ? ReactorChatTimeline.FooterText(row, entry) : string.Empty;
         if (!view.Collapsed || string.IsNullOrWhiteSpace(view.Text))
-            return Notice(SystemLine(glyph, view.Label, labelWidth, time), Body(row, view.Text));
+            return Notice(
+                SystemLine(glyph, view.Label, labelWidth, time),
+                Body(row, view.Text)?.MaxWidth(labelWidth).HAlign(HorizontalAlignment.Center));
 
         return Disclosure(row, entry, (expanded, onExpanded) =>
         {
@@ -149,11 +151,12 @@ internal static class ReactorChatNotices
 
         return DisclosureFrame(
             HStack(6, titleParts.ToArray()),
-            VStack(8, details.ToArray()).Margin(ChatVisuals.ToolRowTitleInset, 4, 0, 8),
+            VStack(8, details.ToArray()).Margin(0, 4, 0, 8),
             automationName,
             "ChatRunFailure_" + AutomationSuffix(entry.Id),
             expanded,
-            onExpanded);
+            onExpanded,
+            ruledLabelWidth: LabelMaxWidth(row));
     }
 
     private static Element Disclosure(
@@ -163,9 +166,12 @@ internal static class ReactorChatNotices
             .WithKey($"notice:{entry.Id}:collapse:{row.Props.Timeline.ToolCallsCollapseVersion}");
 
     internal static Element DisclosureFrame(
-        Element title, Element body, string automationName, string automationId, bool expanded, Action<bool> onExpanded) =>
-        Expander(automationName, body, (Optional<bool>)expanded, onExpanded)
-            .HeaderContent(ToolCallCardRenderer.BuildDisclosureHeader(expanded, title))
+        Element title, Element body, string automationName, string automationId, bool expanded, Action<bool> onExpanded,
+        double? ruledLabelWidth = null)
+    {
+        var header = ToolCallCardRenderer.BuildDisclosureHeader(expanded, title);
+        return Expander(automationName, body, (Optional<bool>)expanded, onExpanded)
+            .HeaderContent(ruledLabelWidth is { } width ? Ruled(header.MaxWidth(width)) : header)
             .OnUnmount(ChatVisuals.StopToolRowShimmers)
             .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
@@ -178,6 +184,7 @@ internal static class ReactorChatNotices
             .AutomationName(automationName)
             .AutomationId(automationId)
             .Margin(0, 4, 0, 0);
+    }
 
     private static Element Notice(Element line, Element? body) =>
         body is null

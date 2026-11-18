@@ -236,15 +236,21 @@ Gateway metadata (`openclawDeliveryMirror`, `openclawRunError` and
 | Skill Workshop `skills-changed` | `SystemLine` with a lightbulb, semibold "Learned", then "· Created/Updated/Archived/Restored `name`" per skill in the code font (176-DIP ellipsis, full name and summary in the tooltip). Undo appears only when the Gateway advertises `skills.workshop.undo` and the connection holds `operator.admin`. Pending shows a spinner and "Undoing…"; success strikes through the names and shows a green "Undone" (sticky per agent and run); failure shows a critical-color retry message. Requests never retry automatically |
 | Legacy skill notice | "Learned" line with the saved text below; an empty one is hidden |
 | Model fallback | Plain line "Model fallback: from → to" (or "Returned to selected model: from → to") with an optional centered "Reason: …" |
-| Internal system context | CPU-glyph line labeled "System", "System · injected context", "System · background task", "System · Gateway restarted" or "Automation". Injected, background and older automation bodies collapse into a disclosure. A short `cron_failure_repair` summary becomes one label ("System · automation recovery: Automation failed."). Plugin steering uses the plugin's name, a compass glyph and the row time. The `restart` sentinel and empty context rows are hidden |
-| Run failure | Disclosure titled "Couldn't finish this reply" (or a provider credential or billing title) with a critical status glyph. Expanded, it shows a short lead and a scrollable, selectable code-font error box with Copy. Consecutive identical failures before the next real operator message fold into the latest row with "· N times" |
+| Internal system context | CPU-glyph line labeled "System", "System · injected context", "System · background task", "System · Gateway restarted" or "Automation". Non-collapsible bodies, including the restart subtitle, are centered under the line. Injected, background and older automation bodies collapse into a disclosure. A short `cron_failure_repair` summary becomes one label ("System · automation recovery: Automation failed."). Plugin steering uses the plugin's name, a compass glyph and the row time. The `restart` sentinel and empty context rows are hidden |
+| Run failure | Centered disclosure header between hairlines, titled "Couldn't finish this reply" (or a provider credential or billing title) with a critical status glyph. Expanded, it shows a short lead and a scrollable, selectable code-font error box with Copy. Consecutive identical failures before the next real operator message fold into the latest row with "· N times" |
 
 Each line is centered between two `DividerStrokeColorDefaultBrush` hairlines;
 the label column leaves at least 24 DIPs of hairline plus an 8-DIP gap on each
 side of the prose width. Notice disclosures share the tool-row expansion store,
 so recycled rows never inherit another notice's state and collapse-all closes
-them. Compaction uses the same `SystemLine` (check glyph and title) with its
-detail and its checkpoints action as a subtle accent-text button instead of a card.
+them. Compaction uses the same `SystemLine` with a check glyph, "Context compacted"
+and measured savings, for example "saved 158.2k tokens (86.8%)". Missing or
+inconsistent counts show the title alone. There is no explanatory subtitle or
+checkpoint action in the transcript; checkpoints remain available through session actions.
+
+Turn-starting system notices retain the original user-turn boundary for history
+and live reconciliation, even though they render as status rows. Injected context
+and plugin steering remain within the current turn.
 
 Terminal errors and structured failure notices reconcile by run identity in
 either arrival order. A delayed notice never removes another run's error.

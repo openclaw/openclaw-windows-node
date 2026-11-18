@@ -187,7 +187,8 @@ public record ChatTimelineItem(
     int ToolFeedbackSequence = 0,
     System.Collections.Immutable.ImmutableList<ChatToolReview>? ToolReviews = null,
     string? ToolParentCallId = null,
-    ChatToolResultDiffFacts? ToolResultDiffFacts = null)
+    ChatToolResultDiffFacts? ToolResultDiffFacts = null,
+    bool StartsTurn = false)
 {
     public ChatToolHandoffReceipt? ConfirmedHandoff =>
         ToolResult == ChatToolCallStatus.Success && !string.IsNullOrWhiteSpace(ToolCallId) &&
@@ -374,7 +375,8 @@ public record ChatToolErrorEvent(
     ChatToolResultReference? ResultReference = null) : ChatEvent;
 public record ChatToolReplayResetEvent : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
-public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
+/// <summary>StartsTurn preserves a system user's turn boundary without admitting a live run.</summary>
+public record ChatStatusEvent(string Text, ChatTone Tone, bool StartsTurn = false) : ChatEvent;
 public record ChatErrorEvent(string Text) : ChatEvent;
 public record ChatRestoredEvent(string Text) : ChatEvent;
 public record ChatPermissionRequestEvent(string RequestId, string PermissionKind, string ToolName, string Detail, IReadOnlyList<string>? Actions = null) : ChatEvent;

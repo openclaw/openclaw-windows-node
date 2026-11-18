@@ -8,6 +8,7 @@ using OpenClawTray.Services;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Runtime.ExceptionServices;
@@ -681,6 +682,53 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             Assert.Equal(4, live.Count);
             Assert.Equal("review-2", provider.GetEntryMetadata("main")[live[^1].Id].Presentation?.SkillChanges?.RunId);
         }
+    }
+
+    [Theory]
+    [InlineData(false, "cron", "Routine completed successfully.", "Routine completed successfully.")]
+    [InlineData(true, "cron", "Routine completed successfully.", "Routine completed successfully.")]
+    [InlineData(false, "cron", "Routine completed successfully. Additional details.", "Routine completed successfully. Additional details.")]
+    [InlineData(true, "cron", "Routine completed successfully. Additional details.", "Routine completed successfully. Additional details.")]
+    [InlineData(false, "cli_harness_context", "Routine completed successfully. Additional details.", " Additional details.")]
+    [InlineData(true, "cli_harness_context", "Routine completed successfully. Additional details.", " Additional details.")]
+    [InlineData(false, "plugin:focus", "Routine completed successfully. Additional details.", " Additional details.")]
+    [InlineData(true, "plugin:focus", "Routine completed successfully. Additional details.", " Additional details.")]
+    public async Task TypedSystemNotices_PreserveTurnBoundariesInHistoryAndLive(
+        bool live, string sourceTool, string secondReply, string expectedSecondReply)
+    {
+        using var json = JsonDocument.Parse($$$"""
+            {"messages":[
+              {"role":"assistant","content":"Routine completed successfully."},
+              {"role":"user","content":"[System] Run routine again",
+               "provenance":{"kind":"internal_system","sourceTool":"{{{sourceTool}}}"}},
+              {"role":"assistant","content":"{{{secondReply}}}"}
+            ]}
+            """);
+        var history = ParseHistoryPayload(json.RootElement);
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        if (live)
+        {
+            await provider.LoadAsync();
+            foreach (var message in history.Messages)
+            {
+                message.IsTranscriptSnapshot = true;
+                bridge.RaiseChat(message);
+            }
+        }
+        else
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(history);
+            bridge.IsConnected = true;
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+        }
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries;
+        Assert.Equal(["Routine completed successfully.", expectedSecondReply],
+            entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).Select(entry => entry.Text));
+        Assert.Equal("Run routine again", Assert.Single(entries, entry => entry.Kind == ChatTimelineItemKind.Status).Text);
+        Assert.DoesNotContain(entries, entry => entry.Kind == ChatTimelineItemKind.User);
     }
 
     [Theory]
@@ -1395,29 +1443,22 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal(expected, command.ToString());
     }
 
-    [Fact]
-    public void CompactionPresenter_WithTokenCounts_FormatsSavings()
-    {
-        var presentation = ChatCompactionPresenter.Create(42000, 12000);
-
-        Assert.Equal("Context compacted", presentation.Title);
-        Assert.Contains("42", presentation.Detail);
-        Assert.Contains("12", presentation.Detail);
-        Assert.Contains("30", presentation.Detail);
-        Assert.Contains("saved", presentation.Detail);
-    }
-
-    [Fact]
-    public void CompactionPresenter_WithoutTokenCounts_ExplainsCheckpoint()
-    {
-        var presentation = ChatCompactionPresenter.Create(null, null);
-
-        Assert.Contains("checkpoint", presentation.Detail);
-        Assert.Contains(presentation.Title, presentation.AutomationName);
-    }
-
-    [Fact]
-    public void CompactionPresenter_CreatesPresentationForStructuredStatusEntry()
+    [Theory]
+    [InlineData(182340L, 24110L, "saved 158.2k tokens (86.8%)")]
+    [InlineData(80000L, 20000L, "saved 60k tokens (75%)")]
+    [InlineData(1000L, 1L, "saved 999 tokens (99.9%)")]
+    [InlineData(2000000L, 500000L, "saved 1.5M tokens (75%)")]
+    [InlineData(2000000000L, 500000000L, "saved 1.5B tokens (75%)")]
+    [InlineData(100L, 0L, "saved 100 tokens (100%)")]
+    [InlineData(100L, 100L, "saved 0 tokens (0%)")]
+    [InlineData(null, 10L, null)]
+    [InlineData(100L, null, null)]
+    [InlineData(0L, 0L, null)]
+    [InlineData(-1L, 0L, null)]
+    [InlineData(100L, -1L, null)]
+    [InlineData(10L, 100L, null)]
+    public void CompactionPresenter_StructuredStatusShowsOnlyMeasuredSavings(
+        long? before, long? after, string? expectedDetail)
     {
         var entry = new ChatTimelineItem("compaction-1", ChatTimelineItemKind.Status, "Compacted");
         var metadata = new Dictionary<string, ChatEntryMetadata>
@@ -1426,21 +1467,43 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 Timestamp: null,
                 Model: null,
                 OpenClawKind: "compaction",
-                CompactionTokensBefore: 42000,
-                CompactionTokensAfter: 12000),
+                CompactionTokensBefore: before,
+                CompactionTokensAfter: after),
         };
 
-        var presentation = ChatCompactionPresenter.TryCreateForEntry(entry, metadata);
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            var presentation = ChatCompactionPresenter.TryCreateForEntry(entry, metadata);
+            Assert.NotNull(presentation);
+            Assert.Equal("Context compacted", presentation.Title);
+            Assert.Equal(expectedDetail, presentation.Detail);
+            Assert.Equal(expectedDetail is null ? "Context compacted" : $"Context compacted, {expectedDetail}",
+                presentation.AutomationName);
+        }
+        finally { CultureInfo.CurrentCulture = previousCulture; }
+    }
 
-        Assert.NotNull(presentation);
-        Assert.Equal("COMPACTED HISTORY", presentation.Title);
-        Assert.Equal(
-            "The compacted transcript is preserved as a checkpoint. " +
-            "Open session checkpoints to branch or restore from that compacted view.",
-            presentation.Detail);
-        Assert.Equal("Open checkpoints", presentation.ActionLabel);
-        Assert.DoesNotContain("42", presentation.Detail);
-        Assert.DoesNotContain(presentation.ActionLabel, presentation.AutomationName);
+    [Fact]
+    public void CompactionPresenter_LocalizesSavingsAndDecimalSeparator()
+    {
+        var entry = new ChatTimelineItem("compaction-1", ChatTimelineItemKind.Status, "Compacted");
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            [entry.Id] = new(null, null, OpenClawKind: "compaction",
+                CompactionTokensBefore: 182340, CompactionTokensAfter: 24110),
+        };
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var presentation = ChatCompactionPresenter.TryCreateForEntry(
+                entry, metadata, "Contexte compacté", "{0} jetons économisés ({1} %)");
+            Assert.NotNull(presentation);
+            Assert.Equal("Contexte compacté, 158,2k jetons économisés (86,8 %)", presentation.AutomationName);
+        }
+        finally { CultureInfo.CurrentCulture = previousCulture; }
     }
 
     [Theory]

@@ -105,7 +105,8 @@ public static class ChatTimelineReducer
             ChatToolErrorEvent e => ApplyToolError(state, e),
             ChatToolReplayResetEvent => ClearToolReplayState(state),
             ChatErrorEvent e => PushEntry(ApplyTurnEnd(state), ChatTimelineItemKind.Status, e.Text, ChatTone.Error),
-            ChatStatusEvent e => PushEntry(state, ChatTimelineItemKind.Status, e.Text, e.Tone),
+            ChatStatusEvent e => PushEntry(e.StartsTurn ? ClearStreamingAtTurnBoundary(state) : state,
+                ChatTimelineItemKind.Status, e.Text, e.Tone, startsTurn: e.StartsTurn),
             ChatRestoredEvent e => PushEntry(state, ChatTimelineItemKind.Status, e.Text, ChatTone.Info),
             ChatContextChangedEvent => state,
             ChatModelChangedEvent e => PushEntry(state, ChatTimelineItemKind.Status, $"Model -> {e.Model}", ChatTone.Success),
@@ -286,9 +287,11 @@ public static class ChatTimelineReducer
         return state with { TurnActive = true, TurnStartedAt = timestamp, TurnEndedAt = null, ProgressText = null, ProgressRetryAtMs = null };
     }
 
-    // Hard turn boundary cleanup shared by both user-message entry points
-    // (AddLocalUser for typed input, ApplyUserMessage for gateway-injected
-    // events). Clears ActiveAssistantId/ActiveReasoningId and demotes any
+    private static bool IsUserTurnBoundary(ChatTimelineItem entry) =>
+        entry.Kind == ChatTimelineItemKind.User || entry is { Kind: ChatTimelineItemKind.Status, StartsTurn: true };
+
+    // Hard turn boundary cleanup shared by user messages and turn-starting
+    // system notices. Clears ActiveAssistantId/ActiveReasoningId and demotes any
     // still-streaming assistant entry so the next reconcile-flagged final
     // cannot silently overwrite the prior turn's reply when ChatTurnEndEvent
     // is dropped or delayed by the gateway.
@@ -347,7 +350,7 @@ public static class ChatTimelineReducer
     {
         if (string.IsNullOrWhiteSpace(runId))
             return state;
-        var start = state.Entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User) + 1;
+        var start = state.Entries.FindLastIndex(IsUserTurnBoundary) + 1;
         var retiredIds = state.Entries.Skip(start)
             .Where(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
                 entry.Presentation is { MessageId: null, StreamItemId: null } presentation && presentation.RunId == runId)
@@ -1338,7 +1341,7 @@ public static class ChatTimelineReducer
         text ??= string.Empty;
         if (replacesStreamText && presentation?.RunId is { } replacementRun)
         {
-            var start = state.Entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User ||
+            var start = state.Entries.FindLastIndex(entry => IsUserTurnBoundary(entry) ||
                 entry.Presentation is { TurnBoundary: true } or { IsIndependent: true } ||
                 (entry.Presentation?.RunId ?? entry.ToolRunId) is { } run && run != replacementRun) + 1;
             var replaced = state.Entries.Skip(start).Where(entry =>
@@ -1364,7 +1367,7 @@ public static class ChatTimelineReducer
             state.Entries.LastOrDefault(entry => entry.Kind == ChatTimelineItemKind.Assistant)?.Presentation?.Phase
                 is { } lastPhase && lastPhase != presentation.Phase)
         {
-            var start = state.Entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User ||
+            var start = state.Entries.FindLastIndex(entry => IsUserTurnBoundary(entry) ||
                 entry.Presentation is { TurnBoundary: true } or { IsIndependent: true } ||
                 (entry.Presentation?.RunId ?? entry.ToolRunId) is { } run && run != presentation.RunId) + 1;
             var incomingText = text.Trim();
@@ -1420,7 +1423,7 @@ public static class ChatTimelineReducer
             for (var index = state.Entries.Count - 1; index >= 0; index--)
             {
                 var candidate = state.Entries[index];
-                if (candidate.Kind == ChatTimelineItemKind.User)
+                if (IsUserTurnBoundary(candidate))
                     break;
                 var adoptsPreamble = candidate.Presentation is
                     { MessageId: null, StreamItemId: not null, RunId: not null, IsImported: false } live &&
@@ -1572,10 +1575,8 @@ public static class ChatTimelineReducer
                         })
                     };
                 }
-                // Stop scanning once we hit a User entry — that's a turn
-                // boundary, the assistant entry above it belongs to a
-                // previous turn and must not be reconciled into.
-                if (candidate.Kind == ChatTimelineItemKind.User ||
+                // A user row or turn-starting notice separates the previous reply.
+                if (IsUserTurnBoundary(candidate) ||
                     candidate.Presentation is { TurnBoundary: true } or { IsIndependent: true })
                     break;
             }
@@ -1660,7 +1661,7 @@ public static class ChatTimelineReducer
         // Only the current turn can be peeled. Earlier turns' runs must not disable
         // the duplicate-resend no-op for this turn's own saved reply.
         if (presentation?.RunId is not null &&
-            entries.Skip(entries.FindLastIndex(entry => entry.Kind == ChatTimelineItemKind.User) + 1)
+            entries.Skip(entries.FindLastIndex(IsUserTurnBoundary) + 1)
                 .Any(entry => entry.Kind == ChatTimelineItemKind.Assistant &&
                     entry.Presentation?.RunId is { } run && run != presentation.RunId))
             return text;
@@ -1746,8 +1747,8 @@ public static class ChatTimelineReducer
         // A1.Text + A2.Text + A3.Text instead of just A3.Text).
         //
         // Iterate prior assistants in chronological order (oldest-first)
-        // within the current turn and peel each in sequence. The User
-        // entry marks the start of the turn.
+        // within the current turn and peel each in sequence. A user row or
+        // turn-starting system notice marks the start of the turn.
         //
         // DUPLICATE-RESEND DETECTION: when the gateway re-emits an
         // unchanged final chat.message after appending more tool calls,
@@ -1761,7 +1762,7 @@ public static class ChatTimelineReducer
         var turnStart = 0;
         for (var i = entries.Count - 1; i >= 0; i--)
         {
-            if (entries[i].Kind == ChatTimelineItemKind.User)
+            if (IsUserTurnBoundary(entries[i]))
             {
                 turnStart = i + 1;
                 break;
@@ -1857,12 +1858,13 @@ public static class ChatTimelineReducer
         };
     }
 
-    static ChatTimelineState PushEntry(ChatTimelineState state, ChatTimelineItemKind kind, string text, ChatTone? tone = null)
+    static ChatTimelineState PushEntry(ChatTimelineState state, ChatTimelineItemKind kind, string text,
+        ChatTone? tone = null, bool startsTurn = false)
     {
         var id = $"e{state.NextId}";
         return state with
         {
-            Entries = state.Entries.Add(new(id, kind, text, Tone: tone)),
+            Entries = state.Entries.Add(new(id, kind, text, Tone: tone, StartsTurn: startsTurn)),
             NextId = state.NextId + 1
         };
     }

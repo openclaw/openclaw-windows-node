@@ -82,12 +82,8 @@ public sealed class SessionActionsWiringTests
     }
 
     [Fact]
-    public void ChatCompactionAction_OpensTheCurrentSessionsCheckpoints()
+    public void SessionCheckpoints_RemainAvailableOutsideTheTranscript()
     {
-        var root = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "OpenClawReactorChatRoot.cs");
-        var host = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatHostExtensions.cs");
-        var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
-        var chatPage = ReadSource("src", "OpenClaw.Tray.WinUI", "Pages", "ChatPage.xaml.cs");
         var sessions = ReadSource("src", "OpenClaw.Tray.WinUI", "Sessions", "SessionsHubController.cs");
         var checkpoints = ReadSource(
             "src",
@@ -95,14 +91,8 @@ public sealed class SessionActionsWiringTests
             "Dialogs",
             "SessionCheckpointDialogCoordinator.cs");
 
-        Assert.Contains("Action<string>? OnOpenCheckpoints", root);
-        Assert.Contains("Action<string>? onOpenCheckpoints", host);
-        Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
-        Assert.Contains("onOpenCheckpoints: OpenSessionCheckpoints", chatPage);
-        Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", chatPage);
         Assert.Contains("SessionCheckpointDialogCoordinator.ShowAsync", sessions);
         Assert.Contains("XamlRoot = _xamlRoot", checkpoints);
-        Assert.DoesNotContain("ShowHub(\"sessions\")", chatPage);
     }
 
     [Fact]
