@@ -26,6 +26,7 @@
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Taille du homard</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Redimensionnez le homard sans modifier le texte du chat ni des notifications.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Paramètres du homard de bureau</value></data>
+  <data name="DesktopCompanion_CloseCompanion" xml:space="preserve"><value>Quitter Companion</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Le homard de bureau n'a pas pu être affiché. Désactivez puis réactivez Homard de bureau dans les paramètres pour réessayer. Vos notifications restent disponibles dans OpenClaw.</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>CONNEXION</value>

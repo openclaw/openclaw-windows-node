@@ -26,6 +26,7 @@
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Grootte van de kreeft</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Pas de grootte van de kreeft aan zonder de chat- of meldingstekst te wijzigen.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Instellingen voor bureaubladkreeft</value></data>
+  <data name="DesktopCompanion_CloseCompanion" xml:space="preserve"><value>Companion afsluiten</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>De bureaubladkreeft kon niet worden weergegeven. Schakel Bureaubladkreeft uit en weer in via Instellingen om het opnieuw te proberen. Je meldingen blijven beschikbaar in OpenClaw.</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>VERBINDING</value>

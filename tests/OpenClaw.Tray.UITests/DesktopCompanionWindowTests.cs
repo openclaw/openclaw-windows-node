@@ -152,10 +152,13 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             }
         });
 
-    [Fact]
-    public Task OptionsMenu_SettingsInvokesNavigationWithoutHidingLobster()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public Task OptionsMenu_SettingsAndExitRemainAvailableWithoutWorkspace(bool closeCompanion)
     {
         var settingsRequests = 0;
+        var exitRequests = 0;
         return WithWindowAsync(async window =>
         {
             var root = (FrameworkElement)window.Content;
@@ -177,16 +180,20 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 {
                     OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_Open"),
                     OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_Notifications"),
-                    OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_Settings")
+                    OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_Settings"),
+                    OpenClawTray.Helpers.LocalizationHelper.GetString("DesktopCompanion_CloseCompanion")
                 }, items.Select(item => item.Text));
-                var peer = FrameworkElementAutomationPeer.CreatePeerForElement(items[2]);
+                var peer = FrameworkElementAutomationPeer.CreatePeerForElement(items[closeCompanion ? 3 : 2]);
                 ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
-                Assert.Equal(1, settingsRequests);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => settingsRequests + exitRequests == 1, "selected lobster action");
+                Assert.Equal(closeCompanion ? 0 : 1, settingsRequests);
+                Assert.Equal(closeCompanion ? 1 : 0, exitRequests);
                 Assert.Equal(0, hideRequests);
                 Assert.Same(root, window.Content);
             }
             finally { foreach (var popup in popups) popup.IsOpen = false; }
-        }, openSettings: () => settingsRequests++);
+        }, openSettings: () => settingsRequests++, closeCompanion: () => exitRequests++);
     }
 
     [Fact]
@@ -875,11 +882,11 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
     }
 
     private Task WithWindowAsync(Func<DesktopCompanionWindow, Task> test, Action? openNotifications = null,
-        Action? openSettings = null) =>
+        Action? openSettings = null, Action? closeCompanion = null) =>
         ui.RunOnUIAsync(async () =>
         {
             var window = new DesktopCompanionWindow(openNotifications ?? (() => { }), () => { },
-                openSettings ?? (() => { }));
+                openSettings ?? (() => { }), closeCompanion ?? (() => { }));
             try
             {
                 s_bubbleRoot = window.BubbleHostForTests;

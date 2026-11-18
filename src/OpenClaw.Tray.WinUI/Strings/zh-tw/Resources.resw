@@ -26,6 +26,7 @@
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>龍蝦大小</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>調整龍蝦大小，不改變聊天或通知文字的大小。</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龍蝦設定</value></data>
+  <data name="DesktopCompanion_CloseCompanion" xml:space="preserve"><value>結束 Companion</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>無法顯示桌面龍蝦。請在設定中關閉再開啟「桌面龍蝦」以重試。你仍然可以在 OpenClaw 中查看通知。</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>連線</value>
