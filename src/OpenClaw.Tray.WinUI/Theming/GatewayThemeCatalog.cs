@@ -17,6 +17,8 @@ internal interface IGatewayThemeCatalog
     IReadOnlyList<GatewayThemeOption> Options { get; }
     /// <summary>The theme the connected Gateway has selected for this connection, or null when unknown.</summary>
     GatewayThemeOption? GatewayCurrent { get; }
+    /// <summary>The person's saved dashboard appearance, or null when unknown (no profile, older Gateway, failed read).</summary>
+    GatewayAppearancePreferences? GatewayPreferences { get; }
     event EventHandler? Changed;
     Task RefreshAsync();
 }
@@ -26,7 +28,8 @@ internal interface IGatewayThemeCatalog
 /// <c>themes.get</c>, operator.read, Gateway 2026.9+). The Companion's built-in table is always offered;
 /// plugin and imported themes from the connected Gateway are appended while connected, and
 /// <see cref="GatewayCurrent"/> reports the theme the Gateway has selected (<c>themes.list</c>'s
-/// <c>theme</c>). It never calls <c>themes.set</c> or <c>themes.import</c>.
+/// <c>theme</c>), and <see cref="GatewayPreferences"/> the person's saved accent (<c>users.prefs.get</c>).
+/// It never calls <c>themes.set</c>, <c>themes.import</c> or <c>users.prefs.set</c>.
 /// <example><code>
 /// var catalog = new GatewayThemeCatalog(dispatcher);
 /// catalog.SetConnection(client, gatewayId); // on every operator connection change
@@ -46,10 +49,21 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     private int _generation;
     private int _refreshSequence;
     private int _appliedSequence;
+    private int _appliedPreferencesSequence;
     private IReadOnlyList<GatewayThemeOption> _gatewayOptions = [];
     private GatewayThemeOption? _gatewayCurrent;
+    private GatewayAppearancePreferences? _gatewayPreferences;
 
     public event EventHandler? Changed;
+
+    public GatewayAppearancePreferences? GatewayPreferences
+    {
+        get
+        {
+            lock (_gate)
+                return _gatewayPreferences;
+        }
+    }
 
     public IReadOnlyList<GatewayThemeOption> Options
     {
@@ -100,9 +114,10 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             _generation++;
             if (!sameBinding)
             {
-                changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null;
+                changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null || _gatewayPreferences is not null;
                 _gatewayOptions = [];
                 _gatewayCurrent = null;
+                _gatewayPreferences = null;
             }
         }
         if (!ReferenceEquals(previous, next))
@@ -145,6 +160,10 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         if (client is not { IsConnectedToGateway: true } || !Supports(client))
             return;
 
+        // The accent publishes on its own: a stalled users.prefs.get must not hold back the selected theme, and a
+        // slow or failed theme list must not hold back the accent.
+        _ = PublishPreferencesAsync(generation, sequence, ReadPreferencesAsync(client));
+
         GatewayThemeList list;
         IReadOnlyList<GatewayThemeOption> options;
         try
@@ -183,6 +202,42 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         }
         RaiseChanged();
         return true;
+    }
+
+    private async Task PublishPreferencesAsync(int generation, int sequence, Task<GatewayAppearancePreferences?> read)
+    {
+        var preferences = await read.ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (generation != _generation || sequence < _appliedPreferencesSequence)
+                return;
+            _appliedPreferencesSequence = sequence;
+            if (Equals(preferences, _gatewayPreferences))
+                return;
+            _gatewayPreferences = preferences;
+        }
+        RaiseChanged();
+    }
+
+    // Unknown (null) when the Gateway predates the method, the connection has no durable profile, or the read fails:
+    // following keeps the last accent it saw rather than dropping it.
+    private static async Task<GatewayAppearancePreferences?> ReadPreferencesAsync(IOperatorGatewayClient client)
+    {
+        if (!client.AdvertisedServerMethods.Contains(GatewayAppearancePreferences.Method, StringComparer.Ordinal))
+            return null;
+        try
+        {
+            var result = await client.SendWizardRequestAsync(
+                GatewayAppearancePreferences.Method, GatewayAppearancePreferences.Request, TimeoutMs()).ConfigureAwait(false);
+            if (GatewayAppearancePreferences.TryParse(result, out var preferences))
+                return preferences;
+            Services.Logger.Info("[Themes] The Gateway has no profile preferences for this connection.");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Services.Logger.Warn($"[Themes] Gateway appearance preferences unavailable ({ex.GetType().Name}).");
+        }
+        return null;
     }
 
     internal static bool Supports(IOperatorGatewayClient client) =>

@@ -186,6 +186,30 @@ public sealed class GatewayThemeSettingsTests
     });
 
     [Fact]
+    public Task SelectionIsPublishedBeforeSlowProfilePreferencesArrive() => Task.Run(() =>
+    {
+        var (client, proxy) = Gateway();
+        proxy.Methods = ["themes.list", "themes.get", "users.prefs.get"];
+        var preferences = new TaskCompletionSource<JsonElement>();
+        proxy.ReplyAsync = (method, _) => method == "themes.list"
+            ? Task.FromResult(Json("""
+                { "themes": [ { "id": "manuscript", "name": "Manuscript", "description": "", "source": "builtin", "modes": ["light", "dark"] } ],
+                  "theme": { "id": "manuscript", "name": "Manuscript", "description": "", "source": "builtin", "modes": ["light", "dark"] } }
+                """))
+            : preferences.Task;
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+
+        catalog.SetConnection(client, "gw-1");
+
+        // Following switches to the Gateway's theme while the profile read stalls; its accent arrives afterwards.
+        Assert.Equal("manuscript", catalog.GatewayCurrent?.Id);
+        Assert.Null(catalog.GatewayPreferences);
+        preferences.SetResult(Json("""{ "status": "ok", "entries": { "ui.accent": "#3A9B9B" } }"""));
+        Assert.Equal("#3a9b9b", catalog.GatewayPreferences?.Accent);
+        Assert.Equal("manuscript", catalog.GatewayCurrent?.Id);
+    });
+
+    [Fact]
     public Task PushedCatalogChangeIsReadAndWinsOverAnOlderReadThatFinishesLater() => Task.Run(async () =>
     {
         // No synchronization context here, so the catalog's ConfigureAwait(false) continuations run inline
@@ -268,10 +292,59 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(0, applied);
     }
 
+    // The dashboard accent follows live through users.prefs.changed, survives a read that can't see the person's
+    // profile, and gives way to the theme's own accent when the person picks it again. Nothing is written back.
+    [Fact]
+    public Task FollowingTracksTheDashboardAccentLiveAndKeepsItWhenPreferencesAreUnknown() => Task.Run(() =>
+    {
+        var (client, proxy) = Gateway();
+        proxy.Methods = ["themes.list", "themes.get", "users.prefs.get"];
+        var preferences = """{ "status": "ok", "entries": { "ui.accent": "#3A9B9B" } }""";
+        proxy.Reply = (method, _) => method switch
+        {
+            "themes.list" => Json("""
+                { "themes": [ { "id": "manuscript", "name": "Manuscript", "description": "", "source": "builtin", "modes": ["light", "dark"] } ],
+                  "theme": { "id": "manuscript", "name": "Manuscript", "description": "", "source": "builtin", "modes": ["light", "dark"] } }
+                """),
+            "users.prefs.get" => Json(preferences),
+            _ => throw new InvalidOperationException(method),
+        };
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+        var appearance = new AppearanceSettings { FollowGatewayTheme = true };
+        var applied = 0;
+        using var follower = new GatewayThemeFollower(catalog, () => appearance, next => appearance = next, () => applied++);
+        Assert.True(BuiltinGatewayThemes.TryGet("manuscript", out var manuscript));
+        var dashboardAccent = ThemeColor.FromHex("#3a9b9b");
+
+        catalog.SetConnection(client, "gw-1");
+        var appliedOnConnect = applied;
+        var followed = AppearanceResolver.ResolveTheme(appearance)!;
+        Assert.Equal("manuscript", followed.Id);
+        Assert.Equal(dashboardAccent, followed.Dark!.Accent);
+        Assert.Equal(dashboardAccent.WithAlpha(0.16), followed.Dark.AccentSubtle);
+        Assert.Equal(manuscript.Dark!.Canvas, followed.Dark.Canvas);
+        // Turning following off shows the manual choice with its own accent.
+        var manual = appearance with { FollowGatewayTheme = false, Theme = new ThemeSelection { Id = "manuscript" } };
+        Assert.Equal(manuscript.Dark.Accent, AppearanceResolver.ResolveTheme(manual)!.Dark!.Accent);
+
+        preferences = """{ "status": "no_durable_identity" }""";
+        proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
+        Assert.Equal("#3a9b9b", appearance.FollowedAccent);
+
+        preferences = """{ "status": "ok", "entries": { "ui.accent": "theme" } }""";
+        proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
+        Assert.Null(appearance.FollowedAccent);
+        Assert.Equal(manuscript.Dark.Accent, AppearanceResolver.ResolveTheme(appearance)!.Dark!.Accent);
+        // Unknown preferences applied nothing; returning to the theme's accent applied once.
+        Assert.Equal(appliedOnConnect + 1, applied);
+        Assert.All(proxy.Calls, call => Assert.Matches("^(themes\\.list|users\\.prefs\\.get):", call));
+    });
+
     private sealed class StaticCatalog : IGatewayThemeCatalog
     {
         public IReadOnlyList<GatewayThemeOption> Options { get; init; } = [];
         public GatewayThemeOption? GatewayCurrent { get; init; }
+        public GatewayAppearancePreferences? GatewayPreferences { get; init; }
         public event EventHandler? Changed;
         public Task RefreshAsync() => Task.CompletedTask;
         public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
