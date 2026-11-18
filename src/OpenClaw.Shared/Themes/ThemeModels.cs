@@ -166,7 +166,7 @@ public sealed record ThemeRadii(double Small, double Medium, double Scale)
     public static ThemeRadii Default { get; } = new(6, 10, 1);
 }
 
-/// <summary>A theme the Companion can apply: its identity plus a resolved palette for each mode it provides.</summary>
+/// <summary>A theme the Companion can apply: its identity, branding, and a resolved palette for each mode it provides.</summary>
 public sealed record ResolvedTheme(
     string Id,
     string Name,
@@ -175,6 +175,9 @@ public sealed record ResolvedTheme(
     ResolvedThemePalette? Light,
     ResolvedThemePalette? Dark)
 {
+    /// <summary>The mascot, brand icon and working indicator the theme asks for.</summary>
+    public ThemeBranding Branding { get; init; } = ThemeBranding.Default;
+
     public IReadOnlyList<ThemeColorMode> Modes =>
         [.. (Light is null ? Array.Empty<ThemeColorMode>() : [ThemeColorMode.Light]),
          .. (Dark is null ? Array.Empty<ThemeColorMode>() : [ThemeColorMode.Dark])];

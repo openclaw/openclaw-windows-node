@@ -239,6 +239,9 @@
     <Style x:Key="ChatClawSparkStyle" TargetType="TextBlock">
         <Setter Property="Foreground" Value="{ThemeResource ChatClawBrush}" />
     </Style>
+    <Style x:Key="ChatWorkingDotStyle" TargetType="Ellipse">
+        <Setter Property="Fill" Value="{ThemeResource ChatClawBrush}" />
+    </Style>
     <Style x:Key="ChatCanvasStyle" TargetType="Grid">
         <Setter Property="Background" Value="{ThemeResource ChatCanvasBrush}" />
     </Style>

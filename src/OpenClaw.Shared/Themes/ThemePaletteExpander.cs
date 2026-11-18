@@ -20,7 +20,10 @@ public static class ThemePaletteExpander
     public static ResolvedTheme Resolve(GatewayThemeDescriptor descriptor, GatewayThemeDefinition definition) =>
         new(descriptor.Id, descriptor.Name, descriptor.Description, descriptor.Source,
             definition.Light is { } light ? Expand(light, ThemeColorMode.Light) : null,
-            definition.Dark is { } dark ? Expand(dark, ThemeColorMode.Dark) : null);
+            definition.Dark is { } dark ? Expand(dark, ThemeColorMode.Dark) : null)
+        {
+            Branding = descriptor.Branding,
+        };
 
     public static ResolvedThemePalette Expand(GatewayThemeTokens tokens, ThemeColorMode mode)
     {
