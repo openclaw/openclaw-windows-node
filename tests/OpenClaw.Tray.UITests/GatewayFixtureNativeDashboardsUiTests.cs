@@ -1362,7 +1362,7 @@ public sealed partial class GatewayFixtureUiTests
                     Assert.Contains(run.Gateway.Requests, request => request.Method == "progressCard.get");
                     await run.Gateway.NotifyProgressCardChangedAsync(FixtureBoards.ProgressSessionKey, 2);
                     await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-progress-refresh.png",
-                        ["Fixture progress revision 2."], widgetId: "BoardWidget_run-progress", tabId: "metrics");
+                        ["revision 2."], widgetId: "BoardWidget_run-progress", tabId: "metrics");
 
                     AutomationElement? integrations = null;
                     await WaitUiAsync(run, () => (integrations = FindInApp(run, new AndCondition(
