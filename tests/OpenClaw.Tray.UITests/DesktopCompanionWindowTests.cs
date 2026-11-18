@@ -9,11 +9,15 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics;
+using Windows.UI.ViewManagement;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI.Controls;
+using OpenClaw.Shared.Themes;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
+using OpenClawTray.Theming;
 using OpenClawTray.Windows;
+using FunctionalTheme = OpenClawTray.FunctionalUI.Core.Theme;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -425,6 +429,178 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 Assert.Equal(0, Assert.IsType<WinUIEx.TransparentTintBackdrop>(window.SystemBackdrop).TintColor.A);
             }
         });
+
+    // App reconfigures BackdropPolicy on every appearance, theme and High Contrast change; the open bubble must follow
+    // without reopening. A Gateway theme paints the dashboard toast (--popover, --border) opaque with the acrylic removed,
+    // whatever the Mica setting, like Gateway-themed windows. Clearing the theme restores Fluent's acrylic look and the
+    // same backdrop. High Contrast keeps Fluent's colors and acrylic. With OPENCLAW_UI_PROOF_DIR set on an interactive
+    // desktop, each state is captured over a stand-in canvas in the theme's shell color.
+    [Fact]
+    public Task OpenBubble_FollowsGatewayThemeMicaAndLightDarkLive() =>
+        WithWindowAsync(async window =>
+        {
+            var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+            var highContrast = new AccessibilitySettings().HighContrast;
+            var faults = new List<Exception>();
+            void OnUnhandled(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs args)
+            {
+                faults.Add(args.Exception);
+                args.Handled = true;
+            }
+            Application.Current.UnhandledException += OnUnhandled;
+            using var canvas = ProofCanvas.Create(window);
+            try
+            {
+                var root = (FrameworkElement)window.Content;
+                window.ApplyTheme("Dark");
+                window.Present(new() { Title = "Rosé", Message = "The bubble follows the dashboard theme." });
+                var bubble = Control<StackPanel>(root, "DesktopCompanionBubble");
+                await TestSupport.WaitForRenderedConditionAsync(() => bubble.ActualHeight > 0, "notification bubble");
+                var frame = Assert.IsType<Border>(bubble.Children[0]);
+                var popup = Assert.Single(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot),
+                    candidate => ReferenceEquals(candidate.Child, BubbleRoot));
+                var acrylic = Assert.IsType<PopoverAcrylicBackdrop>(popup.SystemBackdrop);
+                // The acrylic takes the bubble's theme, not the Windows app mode the application theme follows.
+                Assert.Equal(ElementTheme.Dark, acrylic.Theme);
+                var windowsFill = ColorOf(frame.Background);
+                var windowsStroke = ColorOf(frame.BorderBrush);
+                await canvas.CaptureAsync("windows-default-acrylic", Rgb(0x20, 0x20, 0x20));
+
+                BackdropPolicy.Configure(useMica: true, rose);
+                if (highContrast)
+                {
+                    await WaitForFillAsync(frame, windowsFill, "High Contrast keeps the Fluent fill");
+                    Assert.Same(acrylic, popup.SystemBackdrop);
+                }
+                else
+                {
+                    await TestSupport.WaitForRenderedConditionAsync(() => popup.SystemBackdrop is null, "acrylic removed under the theme");
+                    await WaitForFillAsync(frame, Rgb(0x26, 0x23, 0x3A), "opaque dark popover");
+                    Assert.Equal(Rgb(0x29, 0x26, 0x3C), ColorOf(frame.BorderBrush));
+                }
+                await canvas.CaptureAsync("rose-dark-mica-on", Rgb(0x19, 0x17, 0x24));
+
+                // Light and dark palettes differ; switching the mode re-paints the open bubble.
+                window.ApplyTheme("Light");
+                await WaitForFillAsync(frame, highContrast ? ColorOf(frame.Background) : Rgb(0xFF, 0xFA, 0xF3),
+                    "opaque light popover");
+                if (!highContrast)
+                    Assert.Equal(Rgb(0xE3, 0xD9, 0xCB), ColorOf(frame.BorderBrush));
+                await TestSupport.WaitForRenderedConditionAsync(() => acrylic.Theme == ElementTheme.Light, "light acrylic");
+                await canvas.CaptureAsync("rose-light-mica-on", Rgb(0xF6, 0xEF, 0xE6));
+
+                window.ApplyTheme("Dark");
+                BackdropPolicy.Configure(useMica: false, rose);
+                await TestSupport.WaitForRenderedConditionAsync(() => popup.SystemBackdrop is null, "acrylic removed");
+                if (!highContrast)
+                {
+                    await WaitForFillAsync(frame, Rgb(0x26, 0x23, 0x3A), "opaque dark popover");
+                    Assert.Equal(Rgb(0x29, 0x26, 0x3C), ColorOf(frame.BorderBrush));
+                }
+                await canvas.CaptureAsync("rose-dark-mica-off", Rgb(0x19, 0x17, 0x24));
+
+                BackdropPolicy.Configure(useMica: true, null);
+                await WaitForFillAsync(frame, windowsFill, "Windows acrylic fill");
+                Assert.Same(acrylic, popup.SystemBackdrop);
+                Assert.Equal(windowsStroke, ColorOf(frame.BorderBrush));
+                await canvas.CaptureAsync("windows-default-restored", Rgb(0x20, 0x20, 0x20));
+
+                // With Mica off the Windows look paints Fluent's opaque flyout fill in the bubble's own mode, not the
+                // app's: a dark Companion on light Windows (or the reverse) must not get the other mode's fill.
+                if (!highContrast)
+                {
+                    var (otherTheme, otherSetting, otherShell) = Application.Current.RequestedTheme == ApplicationTheme.Dark
+                        ? (ElementTheme.Light, "Light", Rgb(0xF3, 0xF3, 0xF3))
+                        : (ElementTheme.Dark, "Dark", Rgb(0x20, 0x20, 0x20));
+                    window.ApplyTheme(otherSetting);
+                    BackdropPolicy.Configure(useMica: false, null);
+                    await TestSupport.WaitForRenderedConditionAsync(() => popup.SystemBackdrop is null, "opaque Windows look");
+                    await WaitForFillAsync(frame, FunctionalTheme.ResolveColor("SolidBackgroundFillColorQuarternary", otherTheme),
+                        "opaque Windows fill in the bubble's mode");
+                    Assert.Equal(FunctionalTheme.ResolveColor("SurfaceStrokeColorFlyout", otherTheme), ColorOf(frame.BorderBrush));
+                    await canvas.CaptureAsync("windows-default-mica-off-other-mode", otherShell);
+                    window.ApplyTheme("Dark");
+                    BackdropPolicy.Configure(useMica: true, null);
+                    await WaitForFillAsync(frame, windowsFill, "Windows acrylic fill");
+                }
+
+                // Removing and restoring the popup's backdrop while it is open must not fault the framework later.
+                foreach (var (useMica, theme) in new (bool, ResolvedTheme?)[]
+                    { (false, rose), (true, rose), (false, null), (true, null), (false, rose), (true, null) })
+                {
+                    BackdropPolicy.Configure(useMica, theme);
+                    await OnboardingNativeProof.NextCompositionAsync();
+                }
+                await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromSeconds(1));
+                Assert.Empty(faults);
+                Assert.Same(acrylic, popup.SystemBackdrop);
+            }
+            finally
+            {
+                BackdropPolicy.Configure(useMica: true, null);
+                Application.Current.UnhandledException -= OnUnhandled;
+            }
+        });
+
+    private static global::Windows.UI.Color ColorOf(Brush brush) => Assert.IsType<SolidColorBrush>(brush).Color;
+    private static global::Windows.UI.Color Rgb(byte r, byte g, byte b) => Argb(0xFF, r, g, b);
+    private static global::Windows.UI.Color Argb(byte a, byte r, byte g, byte b) => global::Windows.UI.Color.FromArgb(a, r, g, b);
+
+    private static Task WaitForFillAsync(Border frame, global::Windows.UI.Color expected, string description) =>
+        TestSupport.WaitForRenderedConditionAsync(
+            () => frame.Background is SolidColorBrush brush && brush.Color == expected, description,
+            () => $"Fill: {(frame.Background as SolidColorBrush)?.Color}; expected {expected}.");
+
+    /// <summary>
+    /// With OPENCLAW_UI_PROOF_DIR set, a plain window in a shell color behind the overlay stands in for the themed
+    /// Workspace, and each capture saves the overlay's screen rectangle (the bubble popup included).
+    /// </summary>
+    private sealed class ProofCanvas : IDisposable
+    {
+        private readonly DesktopCompanionWindow _overlay;
+        private readonly Window? _canvas;
+        private readonly Grid? _fill;
+
+        private ProofCanvas(DesktopCompanionWindow overlay, Window? canvas, Grid? fill)
+        {
+            _overlay = overlay;
+            _canvas = canvas;
+            _fill = fill;
+        }
+
+        private static string? Directory => Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR");
+
+        public static ProofCanvas Create(DesktopCompanionWindow overlay)
+        {
+            if (string.IsNullOrWhiteSpace(Directory))
+                return new(overlay, null, null);
+            var fill = new Grid();
+            var canvas = new Window { Content = fill };
+            var position = overlay.AppWindow.Position;
+            var size = overlay.AppWindow.Size;
+            canvas.AppWindow.MoveAndResize(new(position.X - 40, position.Y - 40, size.Width + 80, size.Height + 80));
+            canvas.Activate();
+            return new(overlay, canvas, fill);
+        }
+
+        public async Task CaptureAsync(string name, global::Windows.UI.Color shell)
+        {
+            if (_canvas is null || _fill is null)
+                return;
+            _fill.Background = new SolidColorBrush(shell);
+            await OnboardingNativeProof.NextCompositionAsync(TimeSpan.FromSeconds(1));
+            var position = _overlay.AppWindow.Position;
+            var size = _overlay.AppWindow.Size;
+            using var bitmap = new System.Drawing.Bitmap(size.Width, size.Height);
+            using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+                graphics.CopyFromScreen(position.X, position.Y, 0, 0, new System.Drawing.Size(size.Width, size.Height));
+            System.IO.Directory.CreateDirectory(Directory!);
+            var suffix = new AccessibilitySettings().HighContrast ? "-high-contrast" : "";
+            bitmap.Save(Path.Combine(Directory!, $"desktop-lobster-{name}{suffix}.png"), System.Drawing.Imaging.ImageFormat.Png);
+        }
+
+        public void Dispose() => _canvas?.Close();
+    }
 
     [Fact]
     public Task LongMessage_RemainsScrollable_AndClearRemovesSensitiveText() =>
