@@ -71,7 +71,9 @@ public sealed partial class ReactorChatLayoutProofTests
     private static ImmutableList<ChatTimelineItem> ExpandedWorkEntries()
     {
         var command = "dotnet test " + string.Join(" ", Enumerable.Repeat("Synthetic.Project.Tests.csproj", 8));
-        var longOutput = string.Join("\n", Enumerable.Range(1, 40).Select(line => $"Synthetic output line {line:00}"));
+        // Wrapped lines keep the twelve-line inline preview taller than its scroll cap at both widths.
+        var longOutput = string.Join("\n", Enumerable.Range(1, 40)
+            .Select(line => $"Synthetic output line {line:00}: {new string('x', 160)}"));
         var longPath = @"C:\Synthetic\Workspace\Projects\Alignment\Source\Components\Presentation\Nested\Folders\Deliberately\Long\ToolInputPath.cs";
         return ImmutableList.Create(
             new ChatTimelineItem("user", ChatTimelineItemKind.User, "Inspect the synthetic project."),
