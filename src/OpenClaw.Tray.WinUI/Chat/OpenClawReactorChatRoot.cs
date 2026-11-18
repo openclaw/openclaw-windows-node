@@ -581,7 +581,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 CurrentThread: effectiveThread,
                 AvailableModels: snapshot.AvailableModels,
                 ModelChoices: snapshot.ModelChoices,
-                MessageOptionsDisabled: timeline.TurnActive || hasPendingQueuedSend,
+                MessageOptionsDisabled: hasPendingQueuedSend,
                 QueuedMessages: queuedMessages,
                 AvailableCommands: snapshot.AvailableCommands,
                 CommandsSupported: snapshot.CommandsSupported,
