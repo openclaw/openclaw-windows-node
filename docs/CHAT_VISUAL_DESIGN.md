@@ -1200,7 +1200,8 @@ Assistant links follow the web chat's anchor policy: Markdown links, bare
 accent color without an underline, and open in the default browser. Inline
 code keeps its monospace run. A text highlighter uses the
 `ControlFillColorSecondary` color for the chat element's theme, even when it
-differs from the app theme. High Contrast keeps system styling.
+differs from the app theme; a Gateway theme paints that chip with its `InlineCode`
+color for the chat's own mode. High Contrast keeps system styling.
 A rounded, bordered chip like the web needs a Reactor inline-code hook. Only
 absolute http/https destinations survive sanitization (Reactor additionally
 admits only http/https/mailto); any other scheme, relative path or image stays
