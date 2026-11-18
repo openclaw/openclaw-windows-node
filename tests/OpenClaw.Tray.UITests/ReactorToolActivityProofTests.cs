@@ -29,6 +29,170 @@ public sealed class ReactorToolActivityProofTests
 
     public ReactorToolActivityProofTests(UIThreadFixture ui) => _ui = ui;
 
+    [Theory]
+    [InlineData(false, 43, true, "exec", "+31 more lines", false)]
+    [InlineData(false, 13, true, "read_file", "+1 more line", false)]
+    [InlineData(true, 14, true, "exec", "More output available", false)]
+    [InlineData(false, 12, true, "exec", null, false)]
+    [InlineData(false, 43, false, "exec", null, false)]
+    [InlineData(true, 14, false, "exec", "Full output requires the saved result identity and a verified current account.", false)]
+    [InlineData(false, 43, true, "exec", null, true)]
+    public async Task ToolPreview_ShowsPassiveLineCountInsideCardAndKeepsTopPanelAction(
+        bool truncated, int lines, bool canOpen, string tool, string? label, bool whitespace)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("preview", tool,
+                whitespace ? new string('\n', lines) :
+                    string.Join("\n", Enumerable.Range(1, lines).Select(index => index == 1 ? "Notes" : $"line {index}")),
+                ChatToolCallStatus.Success) with
+            {
+                ToolResultReference = new("result", truncated, SessionId: "saved", CallId: "call"),
+            };
+            ChatToolDetailRequest? opened = null;
+            var reads = 0;
+            var profile = new ChatToolDetailsProfileState(1, true);
+            var context = BuildTimeline([entry], 1) with
+            {
+                OnOpenToolDetails = canOpen ? request => opened = request : null,
+                ToolDetailsProfileState = profile,
+                ReadToolDetailsProfileState = () => profile,
+                ToolOutputConnectionEpoch = 1,
+                LoadToolOutputAsync = (_, _) =>
+                {
+                    reads++;
+                    return Task.FromResult(new ChatToolOutputResult(ChatToolOutputStatus.Loaded, "full"));
+                },
+            };
+            var element = ToolCallCardRenderer.BuildStandalone(context, entry);
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
+                var outputs = FindLogical<RichTextBlock>(root!).ToArray();
+                if (whitespace)
+                {
+                    Assert.Empty(outputs);
+                    Assert.DoesNotContain(FindLogical<TextBlock>(root!), text =>
+                        AutomationProperties.GetAutomationId(text) == "ChatToolMoreLines_preview");
+                    return;
+                }
+                var output = Assert.Single(outputs);
+                Assert.Contains("line 12", CollectText(output));
+                if (canOpen)
+                    Assert.DoesNotContain("line 13", CollectText(output));
+                else
+                    Assert.Contains($"line {lines}", CollectText(output));
+                var card = Assert.Single(FindLogical<Border>(root!), border =>
+                    AutomationProperties.GetAutomationId(border) == "ChatToolDetailsCard_preview");
+                var markers = FindLogical<TextBlock>(card).Where(text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatToolMoreLines_preview").ToArray();
+                if (label is null)
+                    Assert.Empty(markers);
+                else
+                {
+                    var more = Assert.Single(markers);
+                    Assert.Equal(label, more.Text);
+                    var sections = Assert.Single(FindLogical<StackPanel>(card),
+                        stack => stack.Children.Contains(more));
+                    var index = sections.Children.IndexOf(more);
+                    Assert.True(index > 0);
+                    Assert.Same(output, Assert.Single(FindLogical<RichTextBlock>(sections.Children[index - 1])));
+                    Assert.DoesNotContain(FindLogical<Button>(root!), button =>
+                        AutomationProperties.GetName(button) == label);
+                }
+                Assert.Null(opened);
+                var actions = FindLogical<Button>(root!).Where(button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatToolDetails_preview").ToArray();
+                if (canOpen)
+                {
+                    var action = Assert.Single(actions);
+                    var invoke = Assert.IsAssignableFrom<Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider>(
+                        new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(action)
+                            .GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke));
+                    invoke.Invoke();
+                    Assert.Equal(ChatToolDetailRequest.Capture(
+                        context.SessionId!, context.TimelineGeneration, context.HistoryRevision, entry), opened);
+                }
+                else
+                    Assert.DoesNotContain(actions, action => action.Visibility == Visibility.Visible);
+                Assert.Equal(0, reads);
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolPanel_HiddenReaderDefersRevalidationAndCancelsPendingRead()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("active-reader", "exec", "preview", ChatToolCallStatus.Success) with
+            {
+                ToolResultReference = new("result", true, SessionId: "saved", CallId: "call"),
+            };
+            var profile = new ChatToolDetailsProfileState(1, true);
+            var reads = 0;
+            CancellationToken firstRead = default;
+            var delayed = new TaskCompletionSource<ChatToolOutputResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task<ChatToolOutputResult> Load(ChatToolOutputRequest request, CancellationToken token)
+            {
+                reads++;
+                if (reads != 1)
+                    return Task.FromResult(new ChatToolOutputResult(ChatToolOutputStatus.Loaded, "full output"));
+                firstRead = token;
+                return delayed.Task;
+            }
+            Element Render(bool active) => ToolCallCardRenderer.BuildPanelDetails(BuildTimeline([entry], 1) with
+            {
+                ToolDetailsProfileState = profile,
+                ReadToolDetailsProfileState = () => profile,
+                ToolOutputConnectionEpoch = 1,
+                LoadToolOutputAsync = Load,
+            }, entry, active);
+            var element = Render(false);
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            void Update(bool active)
+            {
+                var next = Render(active);
+                root = host.Reconciler.Reconcile(element, next, root!, static () => { });
+                element = next;
+                host.Content = root;
+            }
+            try
+            {
+                Assert.Equal(0, reads);
+                Update(true);
+                await WaitForRenderedConditionAsync(() => reads == 1, "visible Details starts the saved-result read");
+                Update(false);
+                Assert.True(firstRead.IsCancellationRequested);
+                profile = new(2, true);
+                Update(false);
+                delayed.SetResult(new(ChatToolOutputStatus.Loaded, "retired output"));
+                await _ui.YieldToRenderAsync();
+                Assert.Equal(1, reads);
+                Assert.DoesNotContain(FindLogical<RichTextBlock>(root!), text => CollectText(text).Contains("retired output"));
+                Update(true);
+                await WaitForRenderedConditionAsync(() => reads == 2, "reopened Details reads under the new profile revision");
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
     [Fact]
     public async Task ToolRow_RecyclingBetweenActivityAndStandaloneDoesNotReuseIncompatibleProps()
     {
@@ -534,9 +698,10 @@ public sealed class ReactorToolActivityProofTests
                     AutomationProperties.GetName(expander) == "Tool input"));
                 Assert.Equal(hasOwnDetails, FindLogical<Button>(root!).Any(button =>
                     AutomationProperties.GetAutomationId(button) == "ChatToolDetails_wrapper"));
-                if (truncated)
-                    Assert.Contains(FindLogical<TextBlock>(root!), text =>
-                        AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
+                Assert.DoesNotContain(FindLogical<TextBlock>(root!), text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
+                Assert.DoesNotContain(FindLogical<Button>(root!), button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatToolOutputLoad");
                 if (input)
                     Assert.Contains(FindLogical<RichTextBlock>(root!), text => CollectText(text) == "Inspect the file");
                 if (output.Length > 0)

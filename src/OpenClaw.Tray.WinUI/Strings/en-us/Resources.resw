@@ -7823,6 +7823,9 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Full output could not be loaded.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>Full output requires the saved result identity and a verified current account.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Show full output</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>More output available</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} more lines</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} more line</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>New messages. Jump to latest</value></data>

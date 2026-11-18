@@ -7805,6 +7805,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Não foi possível carregar a saída completa.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>A saída completa requer a identidade do resultado salvo e uma conta atual verificada.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Mostrar saída completa</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>Mais saída disponível</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} linhas adicionais</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} linha adicional</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancelar</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Novas mensagens. Ir para as mais recentes</value></data>

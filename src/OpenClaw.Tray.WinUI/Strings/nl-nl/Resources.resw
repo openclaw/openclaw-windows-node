@@ -7753,6 +7753,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>De volledige uitvoer kon niet worden geladen.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>Volledige uitvoer vereist de opgeslagen resultaatidentiteit en een geverifieerd huidig account.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Volledige uitvoer tonen</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>Meer uitvoer beschikbaar</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} extra regels</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} extra regel</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>

@@ -7752,6 +7752,9 @@
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>無法載入完整輸出。</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>載入完整輸出需要已儲存的結果識別碼及已驗證的目前帳戶。</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>顯示完整輸出</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>還有更多輸出</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>還有 {0} 行</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>還有 {0} 行</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新訊息。跳至最新訊息</value></data>

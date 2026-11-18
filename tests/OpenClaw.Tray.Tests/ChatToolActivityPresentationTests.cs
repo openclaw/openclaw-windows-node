@@ -7,6 +7,24 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatToolActivityPresentationTests
 {
+    [Theory]
+    [InlineData(0, "\n", false, 0)]
+    [InlineData(12, "\n", true, 0)]
+    [InlineData(13, "\n", false, 1)]
+    [InlineData(14, "\r\n", true, 2)]
+    public void OutputPreview_CountsOnlyOmittedLinesAndPreservesShortOutput(
+        int count, string newline, bool trailingNewline, int hidden)
+    {
+        var output = string.Join(newline, Enumerable.Range(1, count).Select(index => $"line {index}"));
+        if (trailingNewline)
+            output += newline;
+        var preview = ChatToolRowPresentation.PreviewOutput(output);
+
+        Assert.Equal(hidden, preview.HiddenLines);
+        Assert.Equal(hidden == 0 ? output :
+            string.Join(newline, Enumerable.Range(1, 12).Select(index => $"line {index}")), preview.Text);
+    }
+
     [Fact]
     public void WorkMotion_OnlyNewCompletedWorkEntersOnceWithinTheCurrentHistory()
     {
