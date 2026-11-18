@@ -1129,7 +1129,8 @@ An authoritative session-list row that omits `thinkingLevel` clears the cached
 override, while sparse activity events preserve it. Prepared profile metadata
 may survive transient omissions only for the same identity and scope, and is
 invalidated on a new connection. Model changes never replay the old override.
-Model/reasoning changes require a connected, idle option-editing state;
+Model/reasoning controls remain available during an active response. Changes
+require a connected state with no queued or sending follow-up;
 the controller rechecks it for stale open-menu actions. Session browsing is not
 disabled solely because the gateway is offline.
 Context descriptions avoid repeating the group name.
