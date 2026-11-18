@@ -16,3 +16,10 @@
 /scripts/Resolve-MsixPackageVersion.ps1 @openclaw/release-managers-openclaw
 /src/OpenClaw.Tray.WinUI/Package.appxmanifest @openclaw/release-managers-openclaw
 /src/OpenClaw.Tray.WinUI/OpenClaw.Tray.WinUI.csproj @openclaw/release-managers-openclaw
+
+# Chat transcript scroll owner (staged single-owner migration). Auto-requests review; enforcement needs a code-owner ruleset.
+/src/OpenClaw.Tray.WinUI/Chat/ReactorItemsViewScrollController.cs @bkudiess
+/src/OpenClaw.Tray.WinUI/Chat/TailNavigationPolicy.cs @bkudiess
+/src/OpenClaw.Tray.WinUI/Chat/ChatScrollPolicy.cs @bkudiess
+/tests/OpenClaw.Tray.Tests/ChatScrollOwnerGuardTests.cs @bkudiess
+/tests/OpenClaw.Tray.Tests/ChatScrollOwnerAllowance.txt @bkudiess

@@ -676,6 +676,15 @@ source/account admission, draft retention and safe download owners. Canvas and
 MCP Apps require their reviewed authenticated content boundary, host lifetime and
 permission adapters. None is represented by a placeholder tab or a new RPC here.
 
+Transcript scrolling is moving to one owner in stages (ARCHITECTURE row
+`chat-scroll-owner`). Until a decision family has moved, layout and feature
+changes adjust that family's existing ledger row and test; they never edit the
+logic of `ReactorItemsViewScrollController.cs` or add movement, focus, bring,
+anchor or tail-jump sites to other chat files. Each stage moves one family into
+the scroll policy and removes its entries from the guard's reviewed allowance
+(`ChatScrollOwnerAllowance.txt`), so a broken rule is fixed in the policy with
+a new test case, not patched in the controller.
+
 Initial transcript tail navigation retains its native layout gate. Entering a
 transcript control through keyboard focus cancels pending automatic
 navigation just as pointer and keyboard input do. Focus at the tail can retain
