@@ -211,7 +211,6 @@
     "tests/OpenClaw.Tray.Tests/NativeRestartAdmissionTests.cs": 2,
     "tests/OpenClaw.Tray.Tests/OpenClawChatDataProviderTests.cs": 17,
     "tests/OpenClaw.Tray.Tests/OpenTelemetryEndpointConnectionTests.cs": 7,
-    "tests/OpenClaw.Tray.Tests/PlaybackMuteStateTests.cs": 2,
     "tests/OpenClaw.Tray.Tests/Presentation/LocalAiPageViewModelTests.cs": 3,
     "tests/OpenClaw.Tray.Tests/ProfileAutoFillCoordinatorTests.cs": 1,
     "tests/OpenClaw.Tray.Tests/SettingsManagerIsolationTests.cs": 4,
