@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Markup;
 
@@ -22,12 +23,30 @@ internal sealed class ChatThemeProofScope : IDisposable
 
         _previous = Application.Current.Resources;
         ElementTheme = theme == "Dark" ? ElementTheme.Dark : ElementTheme.Light;
-        Application.Current.Resources = theme == "HighContrast"
+        Use(theme == "HighContrast"
             ? s_highContrastResources.Value
-            : s_lightDarkResources.Value;
+            : s_lightDarkResources.Value);
     }
 
-    public void Dispose() => Application.Current.Resources = _previous;
+    public void Dispose() => Use(_previous);
+
+    // Replacing the dictionaries is not a theme change, so Reactor keeps two caches from the previous scope:
+    // ThemeRef brushes keyed by resource and theme name, and the synthesized {ThemeResource} Styles behind
+    // .Background(Theme.Ref(...)), whose setters stay bound to the dictionary they were parsed against.
+    // High Contrast is injected under the Light theme name, so either cache leaks it into a Light case.
+    private static void Use(ResourceDictionary resources)
+    {
+        Application.Current.Resources = resources;
+        ClearReactorStyleCache();
+        Theme.NotifyResourcesChanged();
+    }
+
+    private static void ClearReactorStyleCache() =>
+        (typeof(Reconciler).GetMethod("ClearStyleCache",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException(
+                "Reactor no longer exposes Reconciler.ClearStyleCache; theme proof scopes cannot isolate cached Styles."))
+        .Invoke(null, null);
 
     private static ResourceDictionary LoadResources(bool highContrast)
     {
