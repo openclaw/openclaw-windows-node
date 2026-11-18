@@ -1,6 +1,6 @@
 // Proves plugin and imported Gateway themes reach the Companion's theme catalog through the real
 // authenticated fixture socket, and that plugins.changed and users.prefs.changed re-read it, including the dashboard
-// accent a following Companion takes from users.prefs.get.
+// accent and background a following Companion takes from users.prefs.get.
 // Run with dotnet test --filter FullyQualifiedName~GatewayThemeCatalogWireTests.
 using OpenClaw.Shared;
 using OpenClaw.Shared.Themes;
@@ -101,11 +101,21 @@ public sealed class GatewayThemeCatalogWireTests
             Assert.Equal(ThemeColor.FromHex("#3a9b9b"), AppearanceResolver.ResolveTheme(appearance)!.Dark!.Accent);
             Assert.Equal(3, applied);
 
+            // So does the dashboard background choice (ui.background).
+            scenario.Themes.SetBackground("""
+                { "source": { "kind": "theme" }, "presentation": "full-bleed", "showOnNewSession": true, "showInSessions": true, "visibility": 1 }
+                """);
+            await server.PublishUserPrefsChangedAsync();
+            await WaitForAsync(catalog, () => appearance.FollowedBackground is not null);
+            Assert.Equal(BackgroundPresentation.FullBleed, AppearanceResolver.ActiveBackground(appearance)!.Presentation);
+            Assert.Equal(1, appearance.FollowedBackground!.Visibility);
+            Assert.Equal(4, applied);
+
             scenario.Themes.SelectTheme("nebula");
             await server.PublishUserPrefsChangedAsync();
             await WaitForAsync(catalog, () => catalog.GatewayCurrent?.Id == "nebula");
             Assert.Equal(ThemesFixture.NeonThemeId, AppearanceResolver.ResolveTheme(appearance)?.Id);
-            Assert.Equal(3, applied);
+            Assert.Equal(4, applied);
 
             Assert.DoesNotContain(server.Requests, request => request.Method is "themes.set" or "themes.import" or "users.prefs.set");
             Assert.Empty(server.UnexpectedRequests);

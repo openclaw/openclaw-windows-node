@@ -1,6 +1,7 @@
 // <summary>
 // Reads the dashboard appearance preferences a person saved to their Gateway profile (users.prefs.get,
-// operator.read, Gateway 2026.8+) and applies a personal accent to a theme the way the Control UI does.
+// operator.read, Gateway 2026.8+): the accent and background artwork. It also applies a personal accent to a theme
+// the way the Control UI does.
 // Values are normalized exactly as upstream normalizeUiAppearancePreference does; anything else reads as unset.
 // Usage:
 //   var result = await client.SendWizardRequestAsync(GatewayAppearancePreferences.Method, GatewayAppearancePreferences.Request);
@@ -15,16 +16,17 @@ namespace OpenClaw.Shared.Themes;
 
 /// <summary>
 /// The person's saved dashboard appearance. <see cref="Accent"/> is <c>#rrggbb</c> (lower case), <c>theme</c> for an
-/// explicit theme accent, or null when unset.
+/// explicit theme accent, or null when unset. <see cref="Background"/> is null when unset (or malformed, which the
+/// Control UI also treats as unset).
 /// </summary>
-public sealed record GatewayAppearancePreferences(string? Accent)
+public sealed record GatewayAppearancePreferences(string? Accent, BackgroundPreference? Background = null)
 {
     public const string Method = "users.prefs.get";
     public const string AccentKey = "ui.accent";
     public const string ThemeAccent = "theme";
 
     /// <summary>The request parameters: only the keys the Companion follows.</summary>
-    public static object Request { get; } = new { keys = new[] { AccentKey } };
+    public static object Request { get; } = new { keys = new[] { AccentKey, BackgroundPreference.Key } };
 
     // \z, not $: $ also matches before a final newline, which ThemeColor.FromHex rejects.
     private static readonly Regex s_hex = new(@"^#[0-9a-f]{6}\z", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -44,7 +46,11 @@ public sealed record GatewayAppearancePreferences(string? Accent)
             status.GetString() != "ok" ||
             !result.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Object)
             return false;
-        preferences = new GatewayAppearancePreferences(NormalizeAccent(entries));
+        var background = entries.TryGetProperty(BackgroundPreference.Key, out var raw) &&
+            BackgroundPreference.TryParse(raw, out var parsed)
+                ? parsed
+                : null;
+        preferences = new GatewayAppearancePreferences(NormalizeAccent(entries), background);
         return true;
     }
 

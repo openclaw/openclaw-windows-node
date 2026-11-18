@@ -33,6 +33,15 @@ public sealed record AppearanceSettings
     /// </summary>
     public string? FollowedAccent { get; init; }
 
+    /// <summary>The Companion's own background artwork choice when not following; null is the dashboard default.</summary>
+    public BackgroundPreference? Background { get; init; }
+
+    /// <summary>
+    /// The person's dashboard background choice last read while following; null when they have not set one, which
+    /// the dashboard draws as theme artwork everywhere.
+    /// </summary>
+    public BackgroundPreference? FollowedBackground { get; init; }
+
     public static AppearanceSettings Default { get; } = new();
 }
 
@@ -94,6 +103,8 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         return new AppearanceSettings
         {
             Theme = theme, UseMica = useMica, FollowGatewayTheme = follow, FollowedTheme = followed, FollowedAccent = accent,
+            Background = ReadBackground(root, nameof(AppearanceSettings.Background)),
+            FollowedBackground = ReadBackground(root, nameof(AppearanceSettings.FollowedBackground)),
         };
     }
 
@@ -105,7 +116,20 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         writer.WriteBoolean(nameof(AppearanceSettings.FollowGatewayTheme), value.FollowGatewayTheme);
         WriteSelection(writer, nameof(AppearanceSettings.FollowedTheme), value.FollowedTheme);
         WriteOptional(writer, nameof(AppearanceSettings.FollowedAccent), value.FollowedAccent);
+        WriteBackground(writer, nameof(AppearanceSettings.Background), value.Background);
+        WriteBackground(writer, nameof(AppearanceSettings.FollowedBackground), value.FollowedBackground);
         writer.WriteEndObject();
+    }
+
+    private static BackgroundPreference? ReadBackground(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && BackgroundPreference.TryParse(value, out var preference) ? preference : null;
+
+    private static void WriteBackground(Utf8JsonWriter writer, string name, BackgroundPreference? preference)
+    {
+        if (preference is null)
+            return;
+        writer.WritePropertyName(name);
+        preference.WriteTo(writer);
     }
 
     private static void WriteSelection(Utf8JsonWriter writer, string name, ThemeSelection? selection)
@@ -177,15 +201,24 @@ public static class AppearanceResolver
     }
 
     /// <summary>
-    /// Records the person's dashboard accent while following. Unknown preferences (no profile, an older Gateway, a
-    /// failed read) leave the last followed accent in place; a <c>theme</c> or unset accent clears it.
+    /// The background artwork choice in effect: the person's dashboard choice while following (null when unset, drawn
+    /// as theme artwork everywhere), otherwise the Companion's own choice or the dashboard default.
     /// </summary>
-    public static AppearanceSettings FollowAccent(AppearanceSettings appearance, GatewayAppearancePreferences? preferences)
+    public static BackgroundPreference? ActiveBackground(AppearanceSettings appearance) =>
+        appearance.FollowGatewayTheme ? appearance.FollowedBackground : appearance.Background ?? BackgroundPreference.Default;
+
+    /// <summary>
+    /// Records the person's dashboard accent and background while following. Unknown preferences (no profile, an older
+    /// Gateway, a failed read) leave the last followed values in place; a <c>theme</c> or unset accent clears it.
+    /// </summary>
+    public static AppearanceSettings FollowPreferences(AppearanceSettings appearance, GatewayAppearancePreferences? preferences)
     {
         if (!appearance.FollowGatewayTheme || preferences is null)
             return appearance;
         var accent = GatewayAppearancePreferences.NormalizeHex(preferences.Accent);
-        return accent == appearance.FollowedAccent ? appearance : appearance with { FollowedAccent = accent };
+        return accent == appearance.FollowedAccent && preferences.Background == appearance.FollowedBackground
+            ? appearance
+            : appearance with { FollowedAccent = accent, FollowedBackground = preferences.Background };
     }
 
     /// <summary>The selection in effect: the followed Gateway theme when following and renderable, else the manual choice.</summary>
