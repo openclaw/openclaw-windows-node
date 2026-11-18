@@ -10,6 +10,7 @@ namespace OpenClaw.TestSupport.Gateway;
 /// <summary>
 /// Synthetic session dashboards for the <c>dashboards</c> fixture scenario:
 /// dashboard <c>sessions.list</c> rows, <c>board.get</c> snapshots with
+/// read-only <c>progressCard.get</c> data,
 /// minted view tickets, ticketed widget documents on the Gateway origin, and
 /// a sandbox proxy on a separate loopback port that follows the Gateway's
 /// <c>/mcp-app-sandbox</c> handshake. No real board or capability is touched.
@@ -17,6 +18,7 @@ namespace OpenClaw.TestSupport.Gateway;
 public sealed class FixtureBoards
 {
     public const string OpsSessionKey = "agent:main:dashboard:ops";
+    public const string ProgressSessionKey = "agent:main:main";
     public const string ReleaseSessionKey = "agent:main:dashboard:release";
     public const string ResearchSessionKey = "agent:research:dashboard:study";
     public const string EmptySessionKey = "agent:main:dashboard:empty";
@@ -24,12 +26,13 @@ public sealed class FixtureBoards
     public const string SandboxPath = "/mcp-app-sandbox";
     public const int TicketTtlMs = 20 * 60_000;
 
-    public static readonly string[] Methods = ["board.get"];
-    public static readonly string[] Events = ["board.changed", "board.command"];
+    public static readonly string[] Methods = ["board.get", "progressCard.get"];
+    public static readonly string[] Events = ["board.changed", "board.command", "progressCard.changed"];
 
     // Relative to the run so gallery cards show recent relative times; never part of the scenario hash.
     private static readonly long s_now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 60_000 * 60_000;
     private readonly ConcurrentDictionary<string, (string SessionKey, string Name)> _tickets = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, ProgressCardDefinition> _progressCards = new(StringComparer.Ordinal);
     private readonly Dictionary<string, BoardDefinition> _boards;
     private int _documentRequests;
 
@@ -44,6 +47,11 @@ public sealed class FixtureBoards
                 OpsRow(EmptySessionKey, "main", "Fixture: empty board", "fixture-owner", "Fixture Owner", s_now - 86_400_000, "idle", "Nothing pinned yet."),
                 [new Tab("main", "Main", 0)], []),
         };
+        _progressCards[ProgressSessionKey] = new(
+            1, s_now, "The fixture gateway reports this session progress card.",
+            [new ProgressStep("Load the session board", "completed"),
+             new ProgressStep("Render progress natively", "in_progress"),
+             new ProgressStep("Verify refresh behavior", "pending")]);
         foreach (var (key, title) in new[] { ("reading", "Reading list"), ("travel", "Travel plans"), ("energy", "Home energy") })
         {
             var session = "agent:main:dashboard:" + key;
@@ -75,6 +83,13 @@ public sealed class FixtureBoards
     }
 
     public IReadOnlyCollection<string> SessionKeys => _boards.Keys;
+
+    public void SetProgressCard(string sessionKey, int revision, string markdown)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(revision);
+        _progressCards[sessionKey] = new(revision, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), markdown, []);
+    }
 
     internal static object HelloWidgetKinds() => new object[]
     {
@@ -138,6 +153,34 @@ public sealed class FixtureBoards
             revision = board.Revision,
             tabs = board.Tabs.Select(tab => new { tabId = tab.Id, title = tab.Title, position = tab.Position, chatDock = "right" }).ToArray(),
             widgets,
+        };
+    }
+
+    /// <summary>
+    /// Returns the current read-only progress snapshot for the requested session. Like the
+    /// Gateway, the reply names the agent-scoped key, so a bare or aliased request still
+    /// answers with <c>agent:&lt;agent&gt;:&lt;key&gt;</c>.
+    /// </summary>
+    public object GetProgressCard(JsonElement p)
+    {
+        GatewayScenario.ValidateProperties(p, "sessionKey", "agentId");
+        var requested = GatewayScenario.RequiredString(p, "sessionKey").Trim();
+        var agent = (GatewayScenario.OptionalString(p, "agentId") ?? "main").Trim().ToLowerInvariant();
+        var sessionKey = requested.StartsWith("agent:", StringComparison.OrdinalIgnoreCase)
+            ? requested.ToLowerInvariant()
+            : $"agent:{agent}:{requested.ToLowerInvariant()}";
+        if (!_progressCards.TryGetValue(sessionKey, out var card))
+            return new { card = (object?)null };
+        return new
+        {
+            card = new
+            {
+                sessionKey,
+                revision = card.Revision,
+                updatedAt = card.UpdatedAt,
+                markdown = card.Markdown,
+                steps = card.Steps.Select(step => new { step = step.Text, status = step.Status }).ToArray(),
+            },
         };
     }
 
@@ -359,6 +402,8 @@ public sealed class FixtureBoards
     };
 
     private sealed record Tab(string Id, string Title, int Position);
+    private sealed record ProgressCardDefinition(int Revision, long UpdatedAt, string Markdown, ProgressStep[] Steps);
+    private sealed record ProgressStep(string Text, string Status);
 
     private sealed record BoardDefinition(JsonObject Row, Tab[] Tabs, Widget[] Widgets)
     {

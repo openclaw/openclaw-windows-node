@@ -571,6 +571,8 @@ public sealed partial class GatewayScenario
             return hubResponse;
         if (_boards is not null && method == "board.get")
             return _boards.GetBoard(parameters);
+        if (_boards is not null && method == "progressCard.get")
+            return _boards.GetProgressCard(parameters);
         if (_boards is not null && method == "sessions.list" && OptionalString(parameters, "source") == "dashboard")
             return _boards.ListSessions(parameters);
         if (_inboxFeed is not null)

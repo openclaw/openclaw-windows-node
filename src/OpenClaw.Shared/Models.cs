@@ -223,8 +223,8 @@ public sealed class SessionWorktreeInfo
     public string? RepoRoot { get; set; }
 }
 
-/// <summary>A <c>sessions.changed</c> push: its <c>reason</c> and <c>sessionKey</c>, each null when absent.</summary>
-public sealed record SessionListChange(string? Reason, string? SessionKey);
+/// <summary>A <c>sessions.changed</c> push: its <c>reason</c>, <c>sessionKey</c>, and owning <c>agentId</c>, each null when absent.</summary>
+public sealed record SessionListChange(string? Reason, string? SessionKey, string? AgentId = null);
 
 /// <summary>Assignable session owner projected by the Gateway (<c>owner.actor</c>).</summary>
 public sealed record SessionOwnerInfo(string Type, string? Id, string? Label);
