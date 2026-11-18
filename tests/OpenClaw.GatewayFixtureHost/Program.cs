@@ -14,7 +14,7 @@ internal static class Program
             return await ListenForControlAsync(int.Parse(args[1]), args[2]);
         if (args.Length == 0 || args.Contains("--help"))
         {
-            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|sessions-hub|sessions-hub-readonly|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
+            Console.WriteLine("Usage: dotnet OpenClaw.GatewayFixtureHost.dll --app <built-app.exe> [--scenario multi-session-browse|sessions-hub|sessions-hub-readonly|chat-interactive|automations|context-usage-snapshots|dashboards|usage-analytics|systems-inventory|systems-empty|gateway-themes] [--interaction <name>] [--usage-mode populated|empty|partial|legacy|released] [--artifacts <directory>] [--duration-seconds <1..86400>] [--theme Light|Dark] [--browser-proxy] [--browser-proxy-foreign]");
             Console.WriteLine("Starts a synthetic Gateway and an isolated real app. Ctrl+C stops only this run.");
             return args.Length == 0 ? 2 : 0;
         }
@@ -75,7 +75,7 @@ internal static class Program
         if (scenarioName is not (GatewayScenario.BrowseName or GatewayScenario.InteractiveName or GatewayScenario.AutomationsName
             or GatewayScenario.DashboardsName or ContextUsageFixture.Name
             or UsageAnalyticsFixture.Name or SystemsFixture.InventoryName or SystemsFixture.EmptyName
-            or GatewayScenario.SessionsHubName or GatewayScenario.SessionsHubReadOnlyName))
+            or GatewayScenario.SessionsHubName or GatewayScenario.SessionsHubReadOnlyName or ThemesFixture.ScenarioName))
         {
             Console.Error.WriteLine("Unknown fixture scenario.");
             return 2;
@@ -137,6 +137,12 @@ internal static class Program
                 await run.InvokeAsync("app.navigate", new { page = "usage" });
                 Console.WriteLine("Synthetic usage analytics. Enter populated, empty, partial, legacy or released to switch replies. 'stop' ends this run.");
                 controls = Task.Run(() => ReadUsageAnalyticsControlsAsync(scenario.UsageAnalytics, stop));
+            }
+            else if (scenario.Themes is { } themes)
+            {
+                await run.InvokeAsync("app.navigate", new { page = "settings" });
+                Console.WriteLine("Synthetic theme catalog. Enter 'reveal' to add a plugin theme and publish plugins.changed. 'stop' ends this run.");
+                controls = Task.Run(() => ReadThemeControlsAsync(run, themes, stop));
             }
             if (durationSeconds is { } seconds)
                 stop.CancelAfter(TimeSpan.FromSeconds(seconds));
@@ -234,6 +240,34 @@ internal static class Program
         {
             Console.Error.WriteLine($"Fixture control rejected: {ex.Message}");
         }
+    }
+
+    private static async Task ReadThemeControlsAsync(GatewayFixtureRun run, ThemesFixture themes, CancellationTokenSource stop)
+    {
+        try
+        {
+            while (!stop.IsCancellationRequested &&
+                await Console.In.ReadLineAsync(stop.Token) is { } command)
+            {
+                if (command == "stop") { stop.Cancel(); return; }
+                if (command.StartsWith("select ", StringComparison.Ordinal) && command[7..].Trim() is { Length: > 0 } id)
+                {
+                    themes.SelectTheme(id);
+                    await run.Gateway.PublishUserPrefsChangedAsync();
+                    Console.WriteLine($"Selected {id} and published users.prefs.changed.");
+                    continue;
+                }
+                if (command != "reveal")
+                {
+                    Console.WriteLine("Unknown fixture control. No state changed.");
+                    continue;
+                }
+                themes.RevealPluginTheme();
+                await run.Gateway.PublishPluginsChangedAsync();
+                Console.WriteLine($"Revealed {ThemesFixture.RevealedThemeId} and published plugins.changed.");
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
     }
 
     private static async Task ReadUsageAnalyticsControlsAsync(UsageAnalyticsFixture usage, CancellationTokenSource stop)

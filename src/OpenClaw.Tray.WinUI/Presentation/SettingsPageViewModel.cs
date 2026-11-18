@@ -34,6 +34,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private readonly ISettingsStore _store;
     private readonly IAppCommands _appCommands;
     private readonly SettingsWriteOrigin _origin;
+    private readonly Theming.IGatewayThemeCatalog? _themes;
 
     private bool _loading;
     private bool _subscribed;
@@ -44,6 +45,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private string _selectedThemeKey = "";
     private string _defaultThemeLabel = "Windows default";
     private bool _useMica = true;
+    private bool _followGatewayTheme;
 
     private bool _autoStart;
     private bool _globalHotkeyEnabled;
@@ -65,10 +67,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _showChatToolCalls;
     private bool _showChatThinking = true;
 
-    public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
+    public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands, Theming.IGatewayThemeCatalog? themes = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _appCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
+        _themes = themes;
         _origin = _store.CreateOrigin();
     }
 
@@ -179,7 +182,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
-    /// <summary>Theme picker items: the Windows default first, then the built-in Gateway themes.</summary>
+    /// <summary>Theme picker items: the Windows default first, then built-in, plugin and imported Gateway themes.</summary>
     public IReadOnlyList<ThemeChoice> ThemeChoices
     {
         get => _themeChoices;
@@ -197,14 +200,17 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
-    /// <summary>Selected theme id, or empty for the Windows default.</summary>
+    /// <summary>Selected theme id, or empty for the Windows default. While following the Gateway it shows the followed theme.</summary>
     public string SelectedThemeKey
     {
-        get => _selectedThemeKey;
+        get => _followGatewayTheme
+            ? OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_appearance)?.Id ?? ""
+            : _selectedThemeKey;
         set
         {
             // Replacing ThemeChoices makes the ComboBox write null before it reselects; keep the saved key.
-            if (_loading)
+            // The picker is disabled while following, so a write then can only come from that reselection.
+            if (_loading || _followGatewayTheme)
                 return;
             var key = value ?? "";
             if (!SetField(ref _selectedThemeKey, key))
@@ -227,7 +233,23 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
-    // Edits the stored appearance rather than this page's copy, so a stale copy never overwrites a newer change.
+    /// <summary>Show the connected Gateway's selected dashboard theme; the manual picker is disabled meanwhile.</summary>
+    public bool FollowGatewayTheme
+    {
+        get => _followGatewayTheme;
+        set
+        {
+            if (!SetField(ref _followGatewayTheme, value) || _loading)
+                return;
+            PersistAppearance(appearance => appearance with { FollowGatewayTheme = value });
+            RaiseThemePickerState();
+        }
+    }
+
+    public bool IsManualThemeEnabled => !_followGatewayTheme;
+
+    // Edits the stored appearance rather than this page's copy: App records followed Gateway themes in the
+    // same object, and a stale copy would overwrite them.
     private void PersistAppearance(Func<OpenClaw.Shared.Themes.AppearanceSettings, OpenClaw.Shared.Themes.AppearanceSettings> change)
     {
         var next = change(_store.Current.Appearance);
@@ -238,22 +260,38 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private void RaiseThemePickerState()
     {
         RebuildThemeChoices();
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsManualThemeEnabled)));
     }
 
     private OpenClaw.Shared.Themes.ThemeSelection? SelectionFor(string key)
     {
         if (key.Length == 0)
             return null;
-        return OpenClaw.Shared.Themes.BuiltinGatewayThemes.TryGet(key, out var builtin)
-            ? new OpenClaw.Shared.Themes.ThemeSelection { Id = builtin.Id, Name = builtin.Name }
+        if (_themes?.Options.FirstOrDefault(option => option.Id == key) is { } option)
+            return OpenClaw.Shared.Themes.AppearanceResolver.Select(option.Descriptor, option.Definition, option.GatewayId);
+        if (OpenClaw.Shared.Themes.BuiltinGatewayThemes.TryGet(key, out var builtin))
+            return new OpenClaw.Shared.Themes.ThemeSelection { Id = builtin.Id, Name = builtin.Name };
+        // An offline imported or followed theme stays selectable from its saved snapshot.
+        return _appearance.Theme?.Id == key ? _appearance.Theme
+            : _appearance.FollowedTheme?.Id == key ? _appearance.FollowedTheme
             : null;
     }
 
     private void RebuildThemeChoices()
     {
         var choices = new List<ThemeChoice> { new("", _defaultThemeLabel) };
-        choices.AddRange(OpenClaw.Shared.Themes.BuiltinGatewayThemes.All.Select(theme => new ThemeChoice(theme.Id, theme.Name)));
-        // Replacing the items closes an open picker, so an unchanged list keeps them.
+        if (_themes is null)
+            choices.AddRange(OpenClaw.Shared.Themes.BuiltinGatewayThemes.All.Select(theme => new ThemeChoice(theme.Id, theme.Name)));
+        else
+            choices.AddRange(_themes.Options.Select(option => new ThemeChoice(option.Id, option.Name)));
+        // Offline plugin or imported themes stay listed from their saved snapshots, if they can still be applied.
+        foreach (var saved in new[] { _appearance.Theme, _appearance.FollowedTheme })
+        {
+            if (saved is not null && OpenClaw.Shared.Themes.AppearanceResolver.Resolve(saved) is not null &&
+                choices.All(choice => choice.Key != saved.Id))
+                choices.Add(new ThemeChoice(saved.Id, saved.Name ?? saved.Id));
+        }
+        // Replacing the items closes an open picker, so an unchanged list (most catalog refreshes) keeps them.
         if (choices.SequenceEqual(_themeChoices))
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedThemeKey)));
@@ -270,6 +308,12 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         {
             _loading = false;
         }
+    }
+
+    private void OnThemesChanged(object? sender, EventArgs e)
+    {
+        if (IsActive)
+            RebuildThemeChoices();
     }
 
     /// <summary>Bound to the diagnostics toggle: reads the effective value, writes the override.</summary>
@@ -365,10 +409,13 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         if (!_subscribed)
         {
             _store.Changed += OnStoreChanged;
+            if (_themes is not null)
+                _themes.Changed += OnThemesChanged;
             _subscribed = true;
         }
 
         LoadCurrentFromStore();
+        _ = _themes?.RefreshAsync();
     }
 
     public void Deactivate()
@@ -377,6 +424,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         if (_subscribed)
         {
             _store.Changed -= OnStoreChanged;
+            if (_themes is not null)
+                _themes.Changed -= OnThemesChanged;
             _subscribed = false;
         }
     }
@@ -456,6 +505,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _appTheme, NormalizeTag(s.AppTheme, ThemeTags, DefaultAppTheme), nameof(AppTheme));
             _appearance = s.Appearance;
             SetField(ref _useMica, s.Appearance.UseMica, nameof(UseMica));
+            SetField(ref _followGatewayTheme, s.Appearance.FollowGatewayTheme, nameof(FollowGatewayTheme));
             // A saved theme that can no longer be applied (for example one now below the contrast floor) shows the
             // Windows default it falls back to.
             SetField(ref _selectedThemeKey,

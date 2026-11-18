@@ -72,6 +72,7 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
                 (string Label, string Control)[] rows =
                 [
                     ("GatewayThemeLabel", "GatewayThemeComboBox"),
+                    ("FollowGatewayThemeLabel", "FollowGatewayThemeToggle"),
                     ("UseMicaLabel", "UseMicaToggle"),
                 ];
                 // LabeledBy is an ElementName binding, so it resolves once the page has loaded.
