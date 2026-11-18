@@ -55,7 +55,7 @@ On first launch, Molty opens the onboarding wizard when there is no usable saved
 1. **Security notice** - Confirms this is a trusted PC before local setup starts.
 
 2. **Welcome** - The wizard first checks whether Windows supports the native gateway, then offers three choices:
-   - **Install a local native gateway** is marked **Recommended** when Windows supports it. It installs the OpenClaw Gateway from Microsoft Store and runs it directly on Windows in an isolated session, with no WSL. When Windows does not support it, the choice stays disabled and the wizard explains how to get support through Windows Update.
+   - **Install a local native gateway** is marked **Recommended** when Windows supports it. It installs the OpenClaw Gateway from Microsoft Store and runs it directly on Windows in an isolated session, with no WSL. When native support is unavailable or cannot be verified, the choice stays disabled. The wizard shows guidance for the detected condition, including Windows Update when the required capability is unavailable.
    - **Install a local Gateway (WSL)** installs the app-owned WSL gateway. It is marked **Recommended** when native is unavailable.
    - **Connect to an existing Gateway** connects without installing a gateway on this PC.
 
