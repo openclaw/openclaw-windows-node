@@ -4009,7 +4009,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 // Re-request the full sessions list so we pick up model/thinking changes.
                 var changed = root.TryGetProperty("payload", out var changedPayload)
                     && changedPayload.ValueKind == JsonValueKind.Object
-                    ? new SessionListChange(GetString(changedPayload, "reason"), GetString(changedPayload, "sessionKey"))
+                    ? new SessionListChange(
+                        GetString(changedPayload, "reason"),
+                        GetString(changedPayload, "sessionKey"),
+                        GetString(changedPayload, "agentId"))
                     : new SessionListChange(null, null);
                 SessionListChanged?.Invoke(this, changed);
                 ScheduleSessionRefresh(sourceConnectionGeneration);
@@ -4027,6 +4030,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 break;
             case "board.changed":
             case "board.command":
+            case "progressCard.changed":
                 HandleBoardEvent(eventType!, root);
                 break;
             case "chat.metadata.changed":

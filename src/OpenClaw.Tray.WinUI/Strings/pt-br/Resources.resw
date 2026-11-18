@@ -9035,6 +9035,54 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>Os widgets {0} ainda não estão disponíveis no Windows.</value>
   </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>Progresso da sessão</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>Você não tem mais acesso ao progresso desta sessão.</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>Nenhum progresso ainda</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>Os detalhes aparecerão aqui quando a sessão os informar.</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>Não foi possível atualizar o progresso.</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>Carregando progresso</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>Mostrando o último progresso recebido. A atualização mais recente falhou.</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>Concluído</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>Em andamento</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>Pendente</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>Etapa {0}: {1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>{0} de {1} etapas concluídas</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>Progresso indisponível</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>Esta conexão não pode ler os dados de progresso do Gateway.</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>Atualizado em {0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>Horário de atualização indisponível</value>
+  </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>Este relatório tem dados inválidos.</value>
   </data>

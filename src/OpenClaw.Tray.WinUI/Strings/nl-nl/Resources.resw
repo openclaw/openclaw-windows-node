@@ -8983,6 +8983,54 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>{0}-widgets zijn nog niet beschikbaar in Windows.</value>
   </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>Sessievoortgang</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>Geen toegang meer tot de voortgang van deze sessie.</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>Nog geen voortgang</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>Voortgangsdetails verschijnen hier zodra de sessie deze meldt.</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>De voortgang kon niet worden vernieuwd.</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>Voortgang laden</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>De laatst ontvangen voortgang wordt weergegeven. De laatste vernieuwing is mislukt.</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>Voltooid</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>Bezig</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>In afwachting</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>Stap {0}: {1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>{0} van {1} stappen voltooid</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>Voortgang niet beschikbaar</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>Deze verbinding kan geen voortgangsgegevens van de Gateway lezen.</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>Bijgewerkt op {0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>Tijdstip van bijwerken niet beschikbaar</value>
+  </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>Dit rapport bevat ongeldige gegevens.</value>
   </data>

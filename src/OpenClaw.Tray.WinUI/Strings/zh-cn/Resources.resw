@@ -8982,6 +8982,54 @@
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>{0} 小组件尚不可在 Windows 上使用。</value>
   </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>会话进度</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>您已无权查看此会话的进度。</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>暂无进度</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>会话报告进度后，详细信息会显示在这里。</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>无法刷新进度。</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>正在加载进度</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>正在显示最后收到的进度。最近一次刷新失败。</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>进行中</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>待处理</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>已完成 {0}/{1} 个步骤</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>进度不可用</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>此连接无法从 Gateway 读取进度卡片数据。</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>更新时间：{0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>更新时间不可用</value>
+  </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>此报告包含无效数据。</value>
   </data>

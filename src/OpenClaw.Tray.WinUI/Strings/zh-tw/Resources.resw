@@ -8982,6 +8982,54 @@
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>{0} 小工具尚無法在 Windows 上使用。</value>
   </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>工作階段進度</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>您已無權檢視此工作階段的進度。</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>尚無進度</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>工作階段回報進度後，詳細資料會顯示在這裡。</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>無法重新整理進度。</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>正在載入進度</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>正在顯示最後收到的進度。最近一次重新整理失敗。</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>進行中</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>待處理</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>已完成 {0}/{1} 個步驟</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>進度無法使用</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>此連線無法從 Gateway 讀取進度卡片資料。</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>更新時間：{0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>更新時間無法使用</value>
+  </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>此報告包含無效資料。</value>
   </data>
