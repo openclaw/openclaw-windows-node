@@ -225,6 +225,37 @@ already-open output control.
 Native disclosure headers and action targets keep their existing sizing; compact
 spacing does not clip header content or shrink hit targets.
 
+Gateway transcript notices render like the web Control UI's system lines instead of plain
+dim status text. `ChatNoticePresentation` selects the kind only from typed
+Gateway metadata (`openclawDeliveryMirror`, `openclawRunError` and
+`internal_system` provenance), never from English text or emoji, and
+`ReactorChatNotices` lays it out with native theme resources:
+
+| Notice | Native presentation |
+|---|---|
+| Skill Workshop `skills-changed` | `SystemLine` with a lightbulb, semibold "Learned", then "· Created/Updated/Archived/Restored `name`" per skill in the code font (176-DIP ellipsis, full name and summary in the tooltip). Undo appears only when the Gateway advertises `skills.workshop.undo` and the connection holds `operator.admin`. Pending shows a spinner and "Undoing…"; success strikes through the names and shows a green "Undone" (sticky per agent and run); failure shows a critical-color retry message. Requests never retry automatically |
+| Legacy skill notice | "Learned" line with the saved text below; an empty one is hidden |
+| Model fallback | Plain line "Model fallback: from → to" (or "Returned to selected model: from → to") with an optional centered "Reason: …" |
+| Internal system context | CPU-glyph line labeled "System", "System · injected context", "System · background task", "System · Gateway restarted" or "Automation". Injected, background and older automation bodies collapse into a disclosure. A short `cron_failure_repair` summary becomes one label ("System · automation recovery: Automation failed."). Plugin steering uses the plugin's name, a compass glyph and the row time. The `restart` sentinel and empty context rows are hidden |
+| Run failure | Disclosure titled "Couldn't finish this reply" (or a provider credential or billing title) with a critical status glyph. Expanded, it shows a short lead and a scrollable, selectable code-font error box with Copy. Consecutive identical failures before the next real operator message fold into the latest row with "· N times" |
+
+Each line is centered between two `DividerStrokeColorDefaultBrush` hairlines;
+the label column leaves at least 24 DIPs of hairline plus an 8-DIP gap on each
+side of the prose width. Notice disclosures share the tool-row expansion store,
+so recycled rows never inherit another notice's state and collapse-all closes
+them. Compaction uses the same `SystemLine` (check glyph and title) with its
+detail and its checkpoints action as a subtle accent-text button instead of a card.
+
+Terminal errors and structured failure notices reconcile by run identity in
+either arrival order. A delayed notice never removes another run's error.
+
+Not ported: the web's open-skill link (the web selects the notice's agent in
+application state before navigating; an equivalent agent-scoped external
+Dashboard route has not been verified), the
+run-failure retry, edit, model and report-issue actions, and provider icons in
+the fallback line. Skill names stay noninteractive rather than opening the
+wrong agent's Workshop.
+
 When the provider pauses or stops the selected session, a warning card sits
 above the composer in the reading column, matching the web's
 `chat-provider-review` notice: an 18-DIP caution-icon column, 10-DIP gaps,

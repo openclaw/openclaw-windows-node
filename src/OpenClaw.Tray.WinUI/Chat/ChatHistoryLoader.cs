@@ -565,6 +565,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             new HashSet<string>(StringComparer.Ordinal);
         var syntheticToolCallSequence = 0;
         ChatMessageInfo? suppressedAbortedAssistant = null;
+        ChatMessageInfo? routedNotice = null;
 
         ChatTimelineState Apply(
             ChatTimelineState current,
@@ -679,6 +680,12 @@ internal sealed class ChatHistoryLoader : IDisposable
                     continue;
                 suppressedAbortedAssistant = null;
             }
+            if (routedNotice is not null)
+            {
+                if (ReferenceEquals(routedNotice, message))
+                    continue;
+                routedNotice = null;
+            }
 
             var role = message.Role?.ToLowerInvariant() ?? string.Empty;
             var rawText = replayPart.Text;
@@ -730,6 +737,26 @@ internal sealed class ChatHistoryLoader : IDisposable
                     userProjection?.HasMediaEnvelope == true
                         ? userProjection.ReconciliationText
                         : rawText));
+            // Typed Gateway notices replace the whole message with one status row.
+            var notice = replayPart.IsFirstPart
+                ? ChatNoticePresentation.Classify(message.Presentation, message.Text)
+                : ChatNoticeKind.None;
+            if (notice != ChatNoticeKind.None)
+            {
+                routedNotice = message;
+                if (notice == ChatNoticeKind.Hidden)
+                    continue;
+                if (ChatNoticePresentation.StartsTurn(message.Presentation))
+                    timeline = timeline with { ActiveAssistantId = null, ActiveReasoningId = null };
+                timeline = Apply(
+                    timeline,
+                    new ChatStatusEvent(
+                        ChatContentFormatting.TruncateForChatEntry(
+                            ChatNoticePresentation.EntryText(notice, message.Presentation, message.Text)),
+                        ChatTone.Dim),
+                    entryMetadata with { Presentation = message.Presentation, AssistantContent = null });
+                continue;
+            }
             if (role == "assistant" && replayPart.IsReasoning)
             {
                 timeline = Apply(timeline, new ChatReasoningEvent(text, replayPart.Presentation), entryMetadata);

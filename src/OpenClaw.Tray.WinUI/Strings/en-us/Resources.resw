@@ -2891,6 +2891,81 @@ Use one of these options:
   <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
     <value>Open checkpoints</value>
   </data>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>System</value>
+  </data>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>Automation</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>System · automation recovery</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>Automation failed.</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>System · Gateway restarted</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>System · injected context</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>System · background task</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>Model fallback: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>Returned to selected model: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>Reason: {0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>Couldn’t finish this reply</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} didn’t accept the saved credentials</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} reports a billing problem</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} times</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>Copy error</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>Error details</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>Updated</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>Archived</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>Restored</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>Learned</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>Undoing…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>Undone</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>Couldn’t undo the skill change. Try again.</value>
+  </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>New session</value>
   </data>

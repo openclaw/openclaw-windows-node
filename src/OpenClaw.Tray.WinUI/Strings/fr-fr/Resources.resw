@@ -2841,6 +2841,81 @@ Utilisez l'une de ces options :
   <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
     <value>Ouvrir les points de contrôle</value>
   </data>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>Système</value>
+  </data>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>Automatisation</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>Système · récupération de l’automatisation</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>Échec de l’automatisation.</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>Système · Gateway redémarré</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>Système · contexte injecté</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>Système · tâche en arrière-plan</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>Modèle de secours : {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>Retour au modèle sélectionné : {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>Raison : {0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>Impossible de terminer cette réponse</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} n’a pas accepté les identifiants enregistrés</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} signale un problème de facturation</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} fois</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>Copier l’erreur</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>Détails de l’erreur</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>Créée</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>Mise à jour</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>Archivée</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>Restaurée</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>Appris</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>Annulation…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>Annulée</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>Impossible d’annuler la modification de la compétence. Réessayez.</value>
+  </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>Nouvelle session</value>
   </data>

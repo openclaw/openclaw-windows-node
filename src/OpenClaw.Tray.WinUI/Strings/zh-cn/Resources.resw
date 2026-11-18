@@ -2841,6 +2841,81 @@
   <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
     <value>打开检查点</value>
   </data>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>系统</value>
+  </data>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>自动化</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>系统 · 自动化恢复</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>自动化失败。</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>系统 · 网关已重启</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>系统 · 注入的上下文</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>系统 · 后台任务</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>模型回退：{0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>已恢复为所选模型：{0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>原因：{0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>无法完成此回复</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} 未接受已保存的凭据</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} 报告了账单问题</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} 次</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>复制错误</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>错误详情</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>已创建</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>已更新</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>已归档</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>已恢复</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>已学习</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>撤销</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>正在撤销…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>已撤销</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>无法撤销技能更改。请重试。</value>
+  </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>新会话</value>
   </data>

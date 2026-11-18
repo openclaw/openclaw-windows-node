@@ -635,6 +635,118 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task TypedNotices_BecomeDimStatusRowsAndHiddenNoticesDisappear()
+    {
+        const string skillNotice =
+            """{"role":"assistant","content":[],"openclawDeliveryMirror":{"kind":"plugin-notice","pluginId":"skill-workshop","type":"skills-changed","data":{"agentId":"main","runId":"review-1","skills":[{"name":"pdf","action":"created"}]}}}""";
+        using var json = JsonDocument.Parse("""
+            {"messages":[
+              {"role":"user","content":"[System] Gateway restarted","provenance":{"kind":"internal_system","sourceTool":"restart"}},
+              {"role":"user","content":"[System] Workspace rules","provenance":{"kind":"internal_system","sourceTool":"cli_harness_context"}},
+            """ + skillNotice + """
+            ,
+              {"role":"user","content":"Hi"}
+            ]}
+            """);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(ParseHistoryPayload(json.RootElement));
+            bridge.IsConnected = true;
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+            var history = (await provider.LoadAsync()).Timelines["main"].Entries;
+            Assert.Collection(history,
+                entry => Assert.Equal((ChatTimelineItemKind.Status, ChatTone.Dim, "Workspace rules"), (entry.Kind, entry.Tone, entry.Text)),
+                entry => Assert.Equal((ChatTimelineItemKind.Status, ChatTone.Dim, "pdf"), (entry.Kind, entry.Tone, entry.Text)),
+                entry => Assert.Equal(ChatTimelineItemKind.User, entry.Kind));
+
+            // A replayed live copy of the same review notice adds nothing; a new one adds one row.
+            ChatMessageInfo Live(string runId)
+            {
+                using var message = JsonDocument.Parse(skillNotice.Replace("review-1", runId, StringComparison.Ordinal));
+                return new ChatMessageInfo
+                {
+                    SessionKey = "main", Role = "assistant", Text = "", IsTranscriptSnapshot = true,
+                    Presentation = OpenClawGatewayClient.ReadChatPresentation(message.RootElement),
+                };
+            }
+            var published = snapshots.Count;
+            bridge.RaiseChat(Live("review-1"));
+            Assert.Equal(published, snapshots.Count);
+            var fresh = Live("review-2");
+            bridge.RaiseChat(fresh);
+            Assert.True(fresh.IsNotificationSuppressed);
+            var live = snapshots[^1].Timelines["main"].Entries;
+            Assert.Equal(4, live.Count);
+            Assert.Equal("review-2", provider.GetEntryMetadata("main")[live[^1].Id].Presentation?.SkillChanges?.RunId);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunFailureNotice_ReplacesOnlyItsTerminalErrorInEitherArrivalOrder(bool noticeFirst)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "failed-run"));
+        var notice = new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", IsTranscriptSnapshot = true,
+            Presentation = new(RunFailure: new("failed-run", "Detailed failure")),
+        };
+        var terminal = new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", RunId = "failed-run",
+            State = "error", ErrorMessage = "Raw terminal error",
+        };
+
+        bridge.RaiseChat(noticeFirst ? notice : terminal);
+        bridge.RaiseChat(noticeFirst ? terminal : notice);
+        bridge.RaiseChat(terminal);
+        bridge.RaiseChat(notice);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(timeline.Entries, entry => entry.Text == "Raw terminal error");
+        var row = Assert.Single(timeline.Entries, entry => entry.Text == "Detailed failure");
+        Assert.Equal("failed-run", provider.GetEntryMetadata("main")[row.Id].Presentation?.RunFailure?.RunId);
+    }
+
+    [Fact]
+    public async Task RunFailureNotice_DoesNotRemoveAnotherRunsError()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        foreach (var run in new[] { "first", "second" })
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: run));
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "assistant", RunId = run,
+                State = "error", ErrorMessage = run + " failed",
+            });
+        }
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries, entry => entry.Text == "second failed");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", IsTranscriptSnapshot = true,
+            Presentation = new(RunFailure: new("first", "First run details")),
+        });
+
+        var entries = snapshots[^1].Timelines["main"].Entries;
+        Assert.Contains(entries, entry => entry.Text == "second failed");
+        Assert.DoesNotContain(entries, entry => entry.Text == "first failed");
+        Assert.Single(entries, entry => entry.Text == "First run details");
+    }
+
+    [Fact]
     public void ToolDiffFacts_MergeKeepsTheCopyThatCarriedResultDetails()
     {
         var bare = new ChatTimelineItem("h", ChatTimelineItemKind.ToolCall, "", ToolName: "write",

@@ -438,7 +438,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     ChatAssistantMediaRenderer.DisplayName(media), media.Reference.ArtifactId, media.Reference.AgentId,
                     media.MimeType ?? media.Reference.MimeType, media.Reference.SizeBytes), panelRevision)
                 : null,
-            ActiveReasoningId: timeline.ActiveReasoningId);
+            ActiveReasoningId: timeline.ActiveReasoningId,
+            SkillUndo: dataProvider?.SkillUndo);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);

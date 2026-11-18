@@ -118,6 +118,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     private readonly ChatConversationState _state;
     private readonly ChatHistoryLoader _historyLoader;
     internal ChatQuestionCoordinator? Questions { get; }
+    internal ChatSkillUndoTracker SkillUndo { get; }
     private readonly Action<Action>? _post;
     private readonly Func<Func<Task>, Task> _deferredAbortScheduler;
     private readonly Func<Func<Task>, Task> _queueDrainScheduler;
@@ -202,6 +203,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         Questions = bridge is IChatQuestionGateway questionGateway
             ? new ChatQuestionCoordinator(questionGateway) : null;
+        SkillUndo = new ChatSkillUndoTracker(() => bridge.CanUndoSkillChanges, bridge.UndoSkillChangesAsync);
         _post = post;
         _throughput = new ChatThroughputTracker(throughputTimeProvider ?? TimeProvider.System);
         _deferredAbortScheduler =
@@ -1697,6 +1699,20 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                     compactionTokensBefore: message.CompactionTokensBefore,
                     compactionTokensAfter: message.CompactionTokensAfter));
             return;
+        }
+
+        // A terminal chat event still completes its run below; typed notices arrive as transcript rows.
+        if (message.IsTranscriptSnapshot || !message.IsTerminal)
+        {
+            var noticeKind = ChatNoticePresentation.Classify(message.Presentation, rawText);
+            if (noticeKind != ChatNoticeKind.None)
+            {
+                message.SuppressNotification();
+                if (noticeKind != ChatNoticeKind.Hidden &&
+                    _state.ApplyNotice(message, noticeKind, ProjectionContext()) is { } noticeSnapshot)
+                    Publish(noticeSnapshot);
+                return;
+            }
         }
 
         if (role == "user")
