@@ -1220,6 +1220,26 @@ Subagents and Tool details use the same native conversation tab strip and split
 owner, `ChatConversationPanelState` / `ReactorConversationPanelHost`: 440-DIP
 initial panel width, 280-DIP minimum, 800-DIP maximum, 360-DIP conversation
 minimum and a 12-DIP splitter. Below 652 DIPs the selected tab shows in place.
+Conversation tabs share the available strip width, capped at 200 DIPs per tab.
+Long titles use ellipsis; the full title remains available in the native tooltip.
+The strip uses `ChatCanvasBrush` so it shares the window's native layer and tint,
+instead of painting an opaque rectangular band. Tabs are 32-DIP floating
+rounded rectangles with `OverlayCornerRadius` (radius `md`), 2-DIP horizontal and
+4-DIP internal vertical insets inside 40-DIP tab items, a 16-DIP semantic icon and
+13-DIP text. The strip has no extra browser-tab top padding, leaving both rounded
+edges fully inside its scrolling viewport. Inactive tabs are
+transparent with secondary text; selection uses `SubtleFillColorSecondary` and
+primary text instead of an accent outline or a browser-tab baseline.
+High contrast uses the system highlight fill and highlight text. Native close,
+hover, pressed, keyboard focus and tab interactions are retained.
+Overflow stays in one row with WinUI's horizontal scroll arrows and keyboard tab
+selection, rather than wrapping tabs or expanding the panel.
+The Workspace caption row shows the active session title in `bodyStrong` primary
+text, capped at 200 DIPs with ellipsis and a full-title tooltip. Expanded panel tabs
+reserve its measured width; collapsing the sidebar also leaves its reopen button
+clear. The title is hidden outside chat or while no session title is available.
+The title receives pointer hover for its tooltip; only the unused caption area
+acts as a window drag region.
 The Subagents pill above the composer is 28 DIPs tall, fully rounded, with a
 14-DIP spinner or robot glyph, 13-DIP primary label followed by a secondary-text
 count, `ChatCardBrush` fill and
@@ -1285,6 +1305,10 @@ The chat transcript and composer ship via Reactor and follow the native chat vis
 Tool disclosures use the shared 32px minimum header target. Their icons and inline status are vertically centered, with no stock-template header or content inset. Expanded **Worked** commentary stays on the prose column even above the avatar breakpoint; it does not reserve avatar space inside an already aligned disclosure.
 
 Expanded tool cards show input and output without visible section headings.
+A quiet 12px `ChatSecondaryTextBrush` line-count label sits inside the card
+under the output/notes and before the outcome footer, with the same 12px side
+insets. It is informational, not another action; the top side-panel button
+opens the full reader.
 A one-pixel `ChatStrokeBrush` line separates them only when both are present.
 The sections retain 12,8 padding, selectable monospace text and accessible
 input/output/error names. The existing outcome footer keeps its own divider.

@@ -36,6 +36,15 @@
                     <!-- The bar has no background so clicks reach the panel tabs beneath it. This transparent,
                          non-hit-testable fill keeps its automation bounds covering the whole bar. -->
                     <Rectangle Fill="Transparent" IsHitTestVisible="False"/>
+                    <Border x:Name="SessionTitleHost" Margin="16,0,8,0" Height="48"
+                            HorizontalAlignment="Left" VerticalAlignment="Top" Visibility="Collapsed"
+                            TitleBar.IsDragRegion="False" SizeChanged="OnSessionTitleSizeChanged">
+                        <TextBlock x:Name="SessionTitleText" MaxWidth="200" VerticalAlignment="Center"
+                                   Style="{StaticResource BodyStrongTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorPrimaryBrush}"
+                                   TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                                   AutomationProperties.AutomationId="WorkspaceSessionTitle"/>
+                    </Border>
                     <!-- Tracks the side panel's tab list so it stays clickable; the rest of the bar stays draggable. -->
                     <Canvas x:Name="TitleBarPassthroughCanvas">
                         <Border x:Name="SidePanelTabsPassthrough" TitleBar.IsDragRegion="False" Visibility="Collapsed"/>

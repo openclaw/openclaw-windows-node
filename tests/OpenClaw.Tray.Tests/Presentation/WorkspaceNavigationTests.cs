@@ -994,11 +994,15 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("1", (string?)title.Attribute("Grid.Column"));
         var homeIcon = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "HomeIcon");
         Assert.Null(homeIcon.Parent!.Attribute("Margin"));
-        // Navigation stays in the pane toolbar; the title bar hosts only the chat side-panel controls.
+        // Navigation stays in the pane toolbar; the title bar shows session identity, not app branding.
         Assert.Equal(["ExpandSidePanelButton", "ToggleSidePanelButton"], title.Descendants()
             .Where(element => element.Name.LocalName == "Button")
             .Select(element => (string?)element.Attribute(x + "Name")));
-        Assert.DoesNotContain(title.Descendants(), element => element.Name.LocalName == "TextBlock");
+        var sessionTitle = Assert.Single(title.Descendants(), element => element.Name.LocalName == "TextBlock");
+        Assert.Equal("WorkspaceSessionTitle", (string?)sessionTitle.Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal("False", (string?)sessionTitle.Parent!.Attribute("TitleBar.IsDragRegion"));
+        Assert.Null(sessionTitle.Attribute("Text"));
+        Assert.Null(sessionTitle.Attribute(x + "Uid"));
         foreach (var name in new[] { "BackButton", "ForwardButton" })
         {
             var button = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
@@ -1312,7 +1316,7 @@ public sealed class WorkspaceNavigationTests
         // Title-row placement owns the pass-through refresh after every show/hide or panel geometry change,
         // and withdraws the row while a banner above chat would sit under a joined panel.
         var layoutPass = code[code.IndexOf("private void UpdateTitleRowLayout()", StringComparison.Ordinal)..];
-        layoutPass = layoutPass[..layoutPass.IndexOf(";", StringComparison.Ordinal)];
+        layoutPass = layoutPass[..layoutPass.IndexOf("\n    }", StringComparison.Ordinal)];
         Assert.Contains("!OperationInfo.IsOpen && !_chat.HasBannerAboveChat", layoutPass);
         var titleRow = File.ReadAllText(Source("Windows", "WorkspaceTitleRow.cs"));
         var rowUpdate = titleRow[titleRow.IndexOf("internal void Update(", StringComparison.Ordinal)..];

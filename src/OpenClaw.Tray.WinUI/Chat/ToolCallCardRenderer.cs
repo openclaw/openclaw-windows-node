@@ -49,7 +49,8 @@ internal static class ToolCallCardRenderer
         bool showChevron = false, Action<bool>? onHeaderHover = null, Action<bool>? onHeaderFocus = null,
         Action? onExpansionChanged = null, IReadOnlyList<ChatToolCallNode>? children = null)
     {
-        var details = BuildDetails(entry, recovered, reserveActionSpace: IsCommand(entry));
+        var details = BuildDetails(entry, recovered, reserveActionSpace: IsCommand(entry),
+            preview: props.OnOpenToolDetails is not null && props.SessionId is not null);
         var hasDetails = details.Count > 0 || entry.ToolResultReference?.IsTruncated == true;
         var toolName = string.IsNullOrWhiteSpace(entry.ToolName)
             ? LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool")
@@ -229,8 +230,10 @@ internal static class ToolCallCardRenderer
                 VStack(0, rows.ToArray()).Grid(column: 1));
     }
 
-    internal static Element BuildPanelDetails(ChatTimelinePresentationContext context, ChatTimelineItem entry) =>
-        Component<ToolResultCard, ToolResultCardProps>(new(context, entry, IsNested: false, IsPanel: true));
+    internal static Element BuildPanelDetails(
+        ChatTimelinePresentationContext context, ChatTimelineItem entry, bool isActive = true) =>
+        Component<ToolResultCard, ToolResultCardProps>(
+            new(context, entry, IsNested: false, IsPanel: true, IsActive: isActive));
 
     internal static Element BuildPanelDetailsCore(
         ChatTimelineItem entry, ChatToolOutputResult? recovered, Element recovery) =>
@@ -258,6 +261,12 @@ internal static class ToolCallCardRenderer
             var command = IsCommand(entry);
             var touch = new TouchCapabilities().TouchPresent != 0;
             var canOpen = context.OnOpenToolDetails is not null && context.SessionId is not null;
+            void OpenDetails()
+            {
+                if (context.OnOpenToolDetails is { } open && context.SessionId is { } session)
+                    open(ChatToolDetailRequest.Capture(
+                        session, context.TimelineGeneration, context.HistoryRevision, entry));
+            }
             var label = LocalizationHelper.GetString("Chat_Panel_OpenDetails");
             var size = command || touch ? ToolDetailsCommandActionSize : ToolDetailsActionSize;
             var action = Button(
@@ -266,12 +275,7 @@ internal static class ToolCallCardRenderer
                         .FontSize(ChatVisuals.ActionIconSize)
                         .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                         .Set(text => text.IsTextScaleFactorEnabled = false),
-                    () =>
-                    {
-                        if (context.OnOpenToolDetails is { } open && context.SessionId is { } session)
-                            open(ChatToolDetailRequest.Capture(
-                                session, context.TimelineGeneration, context.HistoryRevision, entry));
-                    })
+                    OpenDetails)
                 .SubtleButton()
                 .Resources(resources =>
                 {
@@ -328,7 +332,8 @@ internal static class ToolCallCardRenderer
     }
 
     private static List<Element> BuildDetails(
-        ChatTimelineItem entry, ChatToolOutputResult? recovered, bool panel = false, bool reserveActionSpace = false)
+        ChatTimelineItem entry, ChatToolOutputResult? recovered, bool panel = false,
+        bool reserveActionSpace = false, bool preview = true)
     {
         var details = new List<Element>();
         var fullInput = entry.ToolName == "sessions_yield" ? null : entry.ToolInputDetails;
@@ -367,8 +372,26 @@ internal static class ToolCallCardRenderer
                     entry.ToolResult == ChatToolCallStatus.Error
                         ? "Tool error"
                         : "Tool output"),
-                output, panel: panel, commandOutput: IsCommand(entry),
+                panel || !preview ? output : ChatToolRowPresentation.PreviewOutput(output).Text,
+                panel: panel, commandOutput: IsCommand(entry),
                 reserveActionSpace: reserveActionSpace && details.Count == 0).WithKey("output"));
+            var hiddenLines = preview ? ChatToolRowPresentation.PreviewOutput(output).HiddenLines : 0;
+            var truncated = entry.ToolResultReference?.IsTruncated == true;
+            if (!panel && (truncated || hiddenLines > 0))
+            {
+                var label = truncated
+                    ? LocalizationHelper.GetString(preview ? "Chat_Tool_MoreOutput" : "Chat_ToolRecovery_Missing")
+                    : string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                        LocalizationHelper.GetString(hiddenLines == 1
+                            ? "Chat_Tool_MoreLineFormat" : "Chat_Tool_MoreLinesFormat"), hiddenLines);
+                details.Add(TextBlock(label)
+                    .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                    .TextWrapping(TextWrapping.Wrap)
+                    .Margin(ChatVisuals.DetailHorizontalInset, 0,
+                        ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
+                    .AutomationId($"ChatToolMoreLines_{SanitizeAutomationId(entry.Id)}")
+                    .WithKey("more-lines"));
+            }
         }
 
         // Inline and panel readers share the sanitized input, literal output and outcome.
@@ -962,7 +985,8 @@ internal sealed record ToolResultCardProps(
     ChatTimelineItem Entry,
     bool IsNested,
     IReadOnlyList<ChatToolCallNode>? Children = null,
-    bool IsPanel = false);
+    bool IsPanel = false,
+    bool IsActive = true);
 
 internal sealed class ToolResultCard : Component<ToolResultCardProps>
 {
@@ -981,7 +1005,8 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
         var entry = Props.Entry;
         var reference = entry.ToolResultReference;
         var currentProfile = timeline.ReadToolDetailsProfileState?.Invoke() ?? default;
-        ChatToolOutputRequest? request = reference is { MessageId: { Length: > 0 }, SessionId: { Length: > 0 }, IsTruncated: true } &&
+        ChatToolOutputRequest? request = Props.IsPanel &&
+            reference is { MessageId: { Length: > 0 }, SessionId: { Length: > 0 }, IsTruncated: true } &&
             currentProfile.IsAvailable && currentProfile == timeline.ToolDetailsProfileState &&
             timeline.SessionId is { } sessionKey && timeline.ToolOutputConnectionEpoch is { } epoch &&
             reference.CallId is { Length: > 0 } callId
@@ -989,11 +1014,21 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
                     entry.Id, entry.ToolRunId, callId, reference.SessionId, reference.MessageId, timeline.ToolDetailsProfileState)
                 : null;
         var loader = timeline.LoadToolOutputAsync;
-        UseEffect(() => operation.SetTarget(request, loader), request, loader, timeline.ToolCallsCollapseVersion);
-        UseEffect(operation.Close, timeline.ToolCallsCollapseVersion);
+        UseEffect(() => operation.SetTarget(request, loader), request, loader);
+        UseEffect(() =>
+        {
+            if (!Props.IsPanel) operation.Close();
+        }, timeline.ToolCallsCollapseVersion);
+        UseEffect(() =>
+        {
+            if (!Props.IsActive)
+                operation.Close();
+            else if (request is not null && loader is not null)
+                _ = operation.LoadAsync(request, loader);
+        }, request, loader, Props.IsActive);
         var (loading, result) = operation.Snapshot(request, loader, currentProfile);
         Element recovery = Empty();
-        if (reference?.IsTruncated == true)
+        if (Props.IsPanel && reference?.IsTruncated == true)
         {
             var status = loading ? "Loading" : result?.Status.ToString() ??
                 (request is null || loader is null ? "Missing" : "Preview");

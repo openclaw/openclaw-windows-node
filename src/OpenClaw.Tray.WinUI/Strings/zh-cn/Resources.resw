@@ -7758,6 +7758,9 @@
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>无法加载完整输出。</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>加载完整输出需要已保存的结果标识和已验证的当前帐户。</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>显示完整输出</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>还有更多输出</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>还有 {0} 行</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>还有 {0} 行</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>重试</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新消息。跳到最新消息</value></data>

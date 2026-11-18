@@ -115,7 +115,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             () => OpenCompanion(CompanionPageId.Connection),
             () => ((IAppCommands)CurrentApp).Reconnect());
         Title = Text("Title");
-        // The bar shows no caption text, but its automation peer keeps the localized window name.
+        // The window keeps its localized name while the content shows the active session title.
         AutomationProperties.SetName(WorkspaceTitleBar, Title);
         this.SetWindowSize(1280, 860);
         ExtendsContentIntoTitleBar = true;
@@ -128,7 +128,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
         WorkspaceTitleBar.SizeChanged += (_, _) => QueueTitleRowLayout();
         _titleRow = new WorkspaceTitleRow(AppWindow, WorkspaceTitleBar, TitleBarRightActions,
-            TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
+            SessionTitleHost, TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
         // A joined side panel would cover the operation banner above chat, so the row is withdrawn while it shows.
         OperationInfo.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) => QueueTitleRowLayout());
         NewAgentLabel.Text = LocalizationHelper.GetString("AgentCreation_Title");
@@ -687,6 +687,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNavigationSelection()
     {
+        QueueTitleRowLayout();
         UpdateWorkspaceContentTopAllocation();
         var wasUpdating = _updating;
         _updating = true;
@@ -1471,6 +1472,8 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnTitleBarRightActionsSizeChanged(object sender, SizeChangedEventArgs e) => QueueTitleRowLayout();
 
+    private void OnSessionTitleSizeChanged(object sender, SizeChangedEventArgs e) => QueueTitleRowLayout();
+
     // Coalesces geometry updates after the triggering layout pass.
     private void QueueTitleRowLayout()
     {
@@ -1482,10 +1485,20 @@ public sealed partial class WorkspaceWindow : WindowEx
         });
     }
 
-    private void UpdateTitleRowLayout() =>
+    private void UpdateTitleRowLayout()
+    {
+        var key = Destination.Page == WorkspacePageId.Home
+            ? Destination.SessionKey ?? _chat.CurrentSessionKey : null;
+        var session = _agentSelection.HasSessionAccess
+            ? _state.Sessions.FirstOrDefault(session => session.Key == key) : null;
+        var title = session is null ? "" : SessionTitleFormatter.Format(session, _state.Sessions);
+        SessionTitleText.Text = title;
+        ToolTipService.SetToolTip(SessionTitleText, title);
+        SessionTitleHost.Visibility = string.IsNullOrWhiteSpace(title) ? Visibility.Collapsed : Visibility.Visible;
         _titleRow.Update(_sidePanel, IsChatSurfaceShown() && !OperationInfo.IsOpen && !_chat.HasBannerAboveChat,
-            // Expanded, the panel starts at the leading edge under the reopen-sidebar button.
+            // Expanded tabs also leave the session title and reopen-sidebar button clear.
             NavView.IsPaneOpen ? 0 : PaneToggleChrome.ActualWidth);
+    }
 
     private void OnChatPanelsChanged()
     {

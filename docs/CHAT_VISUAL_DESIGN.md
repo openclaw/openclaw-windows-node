@@ -97,7 +97,12 @@ are re-resolved when the element's theme changes.
 Text/media stacks use that same gap. The transcript has an 8-pixel lead-in.
 Assistant turns use 4-pixel outer spacing without extra body padding. User
 bubbles use 16-pixel horizontal and 12-pixel vertical insets, with an 8-pixel
-stack gap plus a 2-pixel top margin before their action footer. Tool details
+stack gap plus a 2-pixel top margin before their action footer. Their text uses
+natural first/last-line font bounds and native automatic line spacing, so extra
+leading does not add apparent bottom padding and larger text cannot overlap.
+Text stays left-aligned, wrapped
+and selectable, with full ascent/descent bounds for accents and fallback fonts.
+Tool details
 keep 12-pixel horizontal and 8-pixel vertical insets; opened thinking text
 aligns with its disclosure title, 24 pixels in.
 Related tool labels, details and action footers keep one 4-pixel gap. Comparisons
@@ -132,7 +137,8 @@ chrome keeps the native WinUI ramp.
 
 | Role | Native (px) | Web (px) | Note |
 |---|---|---|---|
-| Prose, user bubble, quote, list item | 14/21 | 14/21 | Markers share the first-line baseline |
+| Prose, quote, list item | 14/21 | 14/21 | Markers share the first-line baseline |
+| User bubble | 14/21 | 14/native | Native font bounds follow text scaling |
 | Headings H1, H2, H3 and below | 24/20/16, bold | 1.65, 1.35, 1.15em; H4 to H6 1em | One three-step ramp |
 | Code block, language label | Consolas 13/18, 12 | mono 12 | Consolas glyphs are smaller |
 | Table cell | 14, bold header | 13, 600 header | Markdown control metrics kept |
@@ -314,14 +320,33 @@ use the same File tab lifecycle as workspace reads.
 `ChatConversationPanelState` and `ReactorConversationPanelHost` own the shared
 resizing, 440-DIP initial width and compact layout below 652 DIPs. The native
 `TabView` keeps its default drag reordering, and the state adopts the dragged
-order; unselected tabs show their close button on pointer hover. There is no
-second subagent split/focus owner. Compact presentation retains the hidden main
+order; unselected tabs show their close button on pointer hover.
+Tabs share the strip and stop at 200 DIPs, with ellipsis
+and native full-title tooltips. Tabs use compact, fully rounded floating headers
+with semantic icons. Selection has a soft neutral fill and primary text, not an
+accent outline; inactive tabs are transparent with secondary text. High contrast
+uses system highlight colors. The native TabView still owns selection, closing,
+drag reordering, horizontal overflow arrows and keyboard interaction.
+The strip shares `ChatCanvasBrush` with its parent instead of painting a solid
+band over the window tint. Each 32-DIP rounded header sits inside a 40-DIP item
+with 4-DIP top/bottom insets and no extra strip padding, keeping both corners
+inside the native scrolling viewport, including in the caption row.
+The five reusable slots (Details, Subagents, Dashboard, Files and File) replace
+their own content when reopened, rather than adding an unbounded set of tabs.
+There is no second subagent split/focus owner. Compact presentation retains the hidden main
 conversation and uses the existing composer-visibility guard. The composer and question dock
 measure the remaining conversation column, not the full shell.
 
 In the Workspace window, the title bar mirrors the web Control UI's side-panel
 controls flush against the caption buttons while chat is shown, and uses tall
-caption buttons so both share one row. While the panel sits beside or over a
+caption buttons so both share one row. The active session's existing formatted
+title appears at the leading edge, updates on selection and session-name changes,
+and is hidden outside chat or without a known session. It uses primary semibold
+text, a 200-DIP cap, ellipsis and a full-title tooltip. Expanded panel tabs reserve
+the title's measured width as well as the reopen-sidebar button.
+The title itself is a non-drag region so its tooltip can receive pointer hover;
+the unused caption area remains draggable.
+While the panel sits beside or over a
 wide conversation and leaves room for tabs beside the title-bar actions, the
 panel and its divider extend to the window's top edge:
 its tab strip (or launcher title) occupies the caption row, kept clear of the
@@ -344,13 +369,28 @@ fills the area. Closing the last tab or minimizing ends the expansion.
 
 Gateway-truncated tool results keep their typed truncation flag and canonical
 saved result-message/session/call identity, separately from invocation input.
-An expanded disclosure offers **Show full output** only when a read can be
-scoped. This explicit action uses the existing authenticated `chat.message.get`
-contract, not another tool invocation or chat send. Opening or rendering a row
-does not fetch. The loader rechecks connection, session, reset, history revision
+When the side-panel reader is available, inline disclosures show up to twelve
+output lines. Otherwise they retain all locally available output in the bounded
+scroll area, without starting a recovery read; a Gateway-truncated result explains
+the missing saved-result/account requirement.
+A passive **+N more lines**
+label sits inside the card below the output (including any Notes text), before
+the outcome footer. It is not clickable or a keyboard stop. Gateway-truncated
+previews use **More output available** because the remaining count is unknown.
+The existing button at the top of the card opens the side panel.
+Opening the side panel automatically reads the saved result when the preview
+is Gateway-truncated and the read can be scoped. This uses the existing
+authenticated `chat.message.get` contract, not another tool invocation or chat
+send. Opening or rendering an inline row does not fetch. The loader rechecks connection, session, reset, history revision
 and exact result identity before dispatch and after completion. Collapse,
 cancel, disposal and scope replacement retire the view's pending result.
 Input and output controls retain their existing keys during hydration.
+Automatic reads only run while Details is selected and the panel is shown.
+Hiding it or selecting another tab cancels its pending read and retires recovered
+text; reopening reads under the current identity. Hidden account revalidation
+never starts another read. Changing inline tool visibility does not clear an open
+Details reader. Whitespace-only output has neither an output section nor a
+remaining-lines label.
 
 Live structured tool results retain the loaded session identity too. When older
 history splits an invocation from its result, exact run/call matches reunite the

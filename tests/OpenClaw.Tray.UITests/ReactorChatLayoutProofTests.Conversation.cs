@@ -512,7 +512,7 @@ public sealed partial class ReactorChatLayoutProofTests
     [InlineData(480, "close")]
     [InlineData(480, "profile-same")]
     [InlineData(480, "profile-different")]
-    public async Task ConversationParity_RecoveryReadsTheSavedResultOnlyAfterTheDetailsAction(int width, string action)
+    public async Task ConversationParity_RecoveryReadsTheSavedResultOnlyFromTheSidePanel(int width, string action)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         Assert.Equal(Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")!, "openclaw-tray.log"),
@@ -627,14 +627,18 @@ public sealed partial class ReactorChatLayoutProofTests
                 await SettleAsync();
                 await RevealHeaderAsync(surface, expander);
                 Assert.DoesNotContain(server.Requests, request => request.Method == "chat.message.get");
-                var output = await ui.RunOnUIAsync(() => Task.FromResult(FindDescendants<RichTextBlock>(expander).Last()));
-                await CaptureAsync(surface, $"ToolRecovery-{width}-{action}-preview");
                 await ui.RunOnUIAsync(() =>
                 {
-                    var load = FindControl<Button>(expander, "ChatToolOutputLoad");
-                    Invoke(load);
-                    Invoke(load);
+                    Assert.DoesNotContain(FindDescendants<TextBlock>(expander), text =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
+                    Assert.DoesNotContain(FindDescendants<Button>(expander), button =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "ChatToolOutputLoad");
+                    Invoke(FindControl<Button>(expander, $"ChatToolDetails_{entry.Id}"));
                 });
+                await SettleAsync();
+                var reader = await ui.RunOnUIAsync(() =>
+                    Task.FromResult(FindControl<ScrollViewer>(surface, "ConversationToolDetailsReader")));
+                var output = await ui.RunOnUIAsync(() => Task.FromResult(FindDescendants<RichTextBlock>(reader).Last()));
                 await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 await SettleAsync();
                 await CaptureAsync(surface, $"ToolRecovery-{width}-{action}-loading");
@@ -656,9 +660,12 @@ public sealed partial class ReactorChatLayoutProofTests
                     await ui.RunOnUIAsync(() =>
                     {
                         if (action == "cancel")
-                            Invoke(FindControl<Button>(expander, "ChatToolOutputCancel"));
+                            Invoke(FindControl<Button>(reader, "ChatToolOutputCancel"));
                         else
-                            expander.IsExpanded = false;
+                        {
+                            var item = (TabViewItem)FindControl<TabView>(surface, "ConversationPanelTabs").TabItems[0];
+                            Invoke(FindDescendants<Button>(item).Single(button => button.Name == "CloseButton"));
+                        }
                     });
                     await SettleAsync();
                 }
@@ -670,8 +677,8 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.False(bridge.ToolDetailsProfileState.IsAvailable);
                     await ui.RunOnUIAsync(() =>
                     {
-                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
-                        Assert.DoesNotContain(FindDescendants<Button>(expander), button =>
+                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(reader));
+                        Assert.DoesNotContain(FindDescendants<Button>(reader), button =>
                             Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "ChatToolOutputLoad");
                     });
                     Assert.Single(server.Requests, request => request.Method == "chat.message.get");
@@ -683,14 +690,22 @@ public sealed partial class ReactorChatLayoutProofTests
                     await SettleAsync();
                     await ui.RunOnUIAsync(() =>
                     {
-                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
-                        expander.IsExpanded = true;
+                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(reader));
+                        if (action == "close")
+                            Invoke(FindControl<Button>(expander, $"ChatToolDetails_{entry.Id}"));
                     });
                     await SettleAsync();
-                    Assert.Single(server.Requests, request => request.Method == "chat.message.get");
-                    await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(expander, "ChatToolOutputLoad")));
+                    reader = await ui.RunOnUIAsync(() =>
+                        Task.FromResult(FindControl<ScrollViewer>(surface, "ConversationToolDetailsReader")));
+                    output = await ui.RunOnUIAsync(() =>
+                        Task.FromResult(FindDescendants<RichTextBlock>(reader).Last()));
+                    if (action == "cancel")
+                    {
+                        Assert.Single(server.Requests, request => request.Method == "chat.message.get");
+                        await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(reader, "ChatToolOutputLoad")));
+                    }
                 }
-                await WaitForRecoveryAsync(expander);
+                await WaitForRecoveryAsync(reader);
                 if (action == "profile-same")
                 {
                     previousProfile = bridge.ToolDetailsProfileState;
@@ -699,20 +714,15 @@ public sealed partial class ReactorChatLayoutProofTests
                     await ProfileSettled(previousProfile.Revision);
                     Assert.True(bridge.ToolDetailsProfileState.IsAvailable);
                     Assert.NotEqual(previousProfile, bridge.ToolDetailsProfileState);
-                    await ui.RunOnUIAsync(() =>
-                    {
-                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
-                        Invoke(FindControl<Button>(expander, "ChatToolOutputLoad"));
-                    });
-                    await WaitForRecoveryAsync(expander);
+                    await WaitForRecoveryAsync(reader);
                 }
                 await ui.RunOnUIAsync(() =>
                 {
-                    Assert.Contains(output, FindDescendants<RichTextBlock>(expander));
-                    Assert.Contains("RECOVERED OUTPUT TAIL", ReadToolText(expander));
+                    Assert.Contains(output, FindDescendants<RichTextBlock>(reader));
+                    Assert.Contains("RECOVERED OUTPUT TAIL", ReadToolText(reader));
+                    Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
                     Assert.Equal("Preserve this draft.", FindControl<TextBox>(surface, "ChatComposerInput").Text);
-                    var scroll = FindDescendants<ScrollViewer>(expander).Last();
-                    scroll.ChangeView(null, scroll.ScrollableHeight, null, true);
+                    reader.ChangeView(null, reader.ScrollableHeight, null, true);
                 });
                 await SettleAsync();
                 await CaptureAsync(surface, $"ToolRecovery-{width}-{action}-recovered");
@@ -733,10 +743,10 @@ public sealed partial class ReactorChatLayoutProofTests
         finally { release.Set(); }
     }
 
-    private async Task WaitForRecoveryAsync(Expander expander)
+    private async Task WaitForRecoveryAsync(DependencyObject reader)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(expander).Contains("RECOVERED OUTPUT TAIL"))))
+        while (!await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(reader).Contains("RECOVERED OUTPUT TAIL"))))
         {
             Assert.True(DateTime.UtcNow < deadline, "The recovered result was not displayed.");
             await SettleAsync();
@@ -823,6 +833,26 @@ public sealed partial class ReactorChatLayoutProofTests
             await SettleAsync();
             await RevealHeaderAsync(surface, commandControl);
             var commandText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(commandControl)));
+            Assert.DoesNotContain("PARITY OUTPUT TAIL", commandText);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("+99 more lines", FindControl<TextBlock>(commandControl,
+                    $"ChatToolMoreLines_{command.Id}").Text);
+                Invoke(FindControl<Button>(commandControl, $"ChatToolDetails_{command.Id}"));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindOptional<ScrollViewer>(surface, "ConversationToolDetailsReader") is { } reader &&
+                    ReadToolText(reader).Contains("PARITY OUTPUT TAIL", StringComparison.Ordinal),
+                "full retained output remains readable through the Details panel"));
+            var panelText = await ui.RunOnUIAsync(() => Task.FromResult(
+                ReadToolText(FindControl<ScrollViewer>(surface, "ConversationToolDetailsReader"))));
+            Assert.Contains("PARITY OUTPUT TAIL", panelText);
+            await ui.RunOnUIAsync(() =>
+            {
+                var tabs = FindControl<TabView>(surface, "ConversationPanelTabs");
+                var selected = Assert.IsType<TabViewItem>(tabs.SelectedItem);
+                Invoke(Assert.Single(FindDescendants<Button>(selected), button => button.Name == "CloseButton"));
+            });
             await CaptureAsync(surface, $"ConversationParity-{width}-command-expanded");
             await ui.RunOnUIAsync(() =>
             {
@@ -852,11 +882,11 @@ public sealed partial class ReactorChatLayoutProofTests
                     inputSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(wire.RootElement.GetRawText()))),
                     commandText, genericText,
                     hasCommandTail = commandText.Contains("PARITY COMMAND TAIL"),
-                    hasOutputTail = commandText.Contains("PARITY OUTPUT TAIL"),
+                    hasOutputTail = panelText.Contains("PARITY OUTPUT TAIL"),
                     hasGenericOptions = genericText.Contains("includeDocs"),
                 }, new JsonSerializerOptions { WriteIndented = true }));
             Assert.Contains("PARITY COMMAND TAIL", commandText);
-            Assert.Contains("PARITY OUTPUT TAIL", commandText);
+            Assert.Contains("PARITY OUTPUT TAIL", panelText);
             Assert.Contains("includeDocs", genericText);
         }, initialThreadId: key, renderProvider: source, interactiveKeyboard: true);
     }
@@ -1130,6 +1160,7 @@ public sealed partial class ReactorChatLayoutProofTests
         }
         public System.Collections.Concurrent.ConcurrentQueue<string> HistoryRequests { get; } = new();
         public bool IsConnected => true;
+        public ChatToolDetailsProfileState ToolDetailsProfileState => new(1, true);
         public ConnectionStatus CurrentStatus => ConnectionStatus.Connected;
         public string MainSessionKey => history.SessionKey;
         public bool HasHandshakeSnapshot => true;

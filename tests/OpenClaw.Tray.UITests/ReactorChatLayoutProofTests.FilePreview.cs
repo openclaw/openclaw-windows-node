@@ -4,8 +4,11 @@ using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
+using OpenClaw.Chat;
 using OpenClaw.Shared;
 using OpenClawTray.Chat;
+using Windows.Foundation;
 using static Microsoft.UI.Reactor.Factories;
 using static OpenClaw.Tray.UITests.TestSupport;
 
@@ -249,6 +252,155 @@ public sealed partial class ReactorChatLayoutProofTests
                     ui.Container.Children.Remove(surface);
                 theme?.Dispose();
                 _captureWindow = null;
+            });
+        }
+    }
+
+    [Theory]
+    [InlineData("Light", false)]
+    [InlineData("Dark", false)]
+    [InlineData("HighContrast", false)]
+    [InlineData("Light", true)]
+    [InlineData("Dark", true)]
+    [InlineData("HighContrast", true)]
+    public async Task PanelTabs_LongTitlesStayBoundedAndNativeOverflowScrollsWithoutDroppingTabs(
+        string themeName, bool joinsCaptionRow)
+    {
+        await ui.ResetContainerAsync();
+        ReactorHostControl? host = null;
+        Border? surface = null;
+        ChatThemeProofScope? theme = null;
+        var panels = new ChatConversationPanelState();
+        var name = new string('w', 180) + ".txt";
+        var entry = new ChatTimelineItem("tool", ChatTimelineItemKind.ToolCall, "read",
+            ToolName: "read", ToolOutput: "Tool output");
+        try
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                theme = new ChatThemeProofScope(themeName);
+                panels.Bind(this, "main", 1, 1, 1, [entry], () => true, subagentsCurrent: () => true);
+                panels.OpenFiles(panels.Revision);
+                panels.OpenFile(new("main", name), panels.Revision);
+                if (joinsCaptionRow)
+                    panels.SetTitleRow(56, endInset: 120, captionHeight: 48);
+                host = new ReactorHostControl { RequestedTheme = theme.ElementTheme };
+                host.Mount(_ => Component<ReactorConversationPanelHost, ReactorConversationPanelHostProps>(new(
+                    TextBlock("Conversation"), panels, Files: TextBlock("Files body"),
+                    Subagents: TextBlock("Subagents body"),
+                    LoadWorkspaceFile: (_, _) => Task.FromResult(
+                        new ChatWorkspaceFileResult(ChatWorkspaceFileStatus.Loaded, "File body")))));
+                surface = new Border { Child = host, Width = 1100, Height = 640, RequestedTheme = theme.ElementTheme };
+                ui.Container.Children.Add(surface);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindOptional<TabView>(surface!, "ConversationPanelTabs") is { TabItems.Count: 2 } view &&
+                    view.TabItems.Cast<TabViewItem>().All(item => item.ActualWidth is > 0 and <= 200.5),
+                "long filename cannot grow its tab beyond 200 DIPs"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var view = FindControl<TabView>(surface!, "ConversationPanelTabs");
+                Assert.Equal(joinsCaptionRow, panels.JoinsTitleRow);
+                var panel = FindControl<Grid>(surface!, "ConversationPanel");
+                Assert.Equal(
+                    Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(panel.Background).Color,
+                    Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(view.Background).Color);
+                if (themeName != "HighContrast")
+                    Assert.Equal(0, Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(view.Background).Color.A);
+                var selected = Assert.IsType<TabViewItem>(view.SelectedItem);
+                Assert.Equal(name, selected.Header);
+                var title = Assert.Single(FindDescendants<TextBlock>(selected), text => text.Text == name);
+                Assert.Equal(TextTrimming.CharacterEllipsis, title.TextTrimming);
+                var primary = themeName == "HighContrast"
+                    ? (Microsoft.UI.Xaml.Media.SolidColorBrush)Application.Current.Resources["ChatPanelTabSelectedTextBrush"]
+                    : Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(
+                        Assert.Single(FindDescendants<TextBlock>(surface!), text => text.Text == "Conversation").Foreground);
+                Assert.Equal(primary.Color,
+                    Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(title.Foreground).Color);
+                Assert.Equal("\uE8A5", Assert.IsType<FontIconSource>(selected.IconSource).Glyph);
+                var shell = Assert.Single(FindDescendants<Grid>(selected), grid => grid.Name == "TabContainer");
+                Assert.True(shell.CornerRadius.TopLeft > 0 && shell.CornerRadius.BottomLeft > 0 &&
+                    shell.CornerRadius.TopRight > 0 && shell.CornerRadius.BottomRight > 0);
+                var viewport = Assert.Single(FindDescendants<ScrollContentPresenter>(view));
+                var shellBounds = Bounds(shell, viewport);
+                Assert.InRange(shell.ActualHeight, 31.5, 32.5);
+                Assert.InRange(shellBounds.Top, 3.5, 4.5);
+                Assert.InRange(viewport.ActualHeight - shellBounds.Bottom, 3.5, 4.5);
+                Assert.True(Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(shell.Background).Color.A > 0);
+                var inactive = Assert.Single(FindDescendants<Grid>((TabViewItem)view.TabItems[0]),
+                    grid => grid.Name == "TabContainer");
+                Assert.Equal(0, Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(inactive.Background).Color.A);
+                panels.Open(ChatToolDetailRequest.Capture("main", 1, 1, entry), panels.Revision);
+                panels.OpenSubagents(panels.Revision);
+                panels.OpenDashboard(new("main", "main"));
+                panels.Resize(280);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindOptional<TabView>(surface!, "ConversationPanelTabs") is { TabItems.Count: 5 } view &&
+                    FindDescendants<ScrollViewer>(view).Any(scroll => scroll.ScrollableWidth > 0) &&
+                    FindDescendants<RepeatButton>(view).Any(button =>
+                        button.Name == "ScrollIncreaseButton" && button.ActualWidth > 0),
+                "five bounded tabs overflow into the native horizontal scroll controls"));
+            // The native ItemsStackPanel can virtualize offscreen tabs. Select each before measuring it.
+            for (var index = 0; index < 5; index++)
+            {
+                var tabIndex = index;
+                await ui.RunOnUIAsync(() =>
+                    FindControl<TabView>(surface!, "ConversationPanelTabs").SelectedIndex = tabIndex);
+                Rect? previous = null;
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                {
+                    if (FindOptional<TabView>(surface!, "ConversationPanelTabs") is not { TabItems.Count: 5 } view ||
+                        view.SelectedIndex != tabIndex ||
+                        view.TabItems[tabIndex] is not TabViewItem { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } item)
+                        return false;
+                    var bounds = Bounds(item, view);
+                    var stable = previous == bounds;
+                    previous = bounds;
+                    return stable;
+                }, $"overflow tab {tabIndex} is realized and has stable bounds"));
+                await ui.RunOnUIAsync(() =>
+                {
+                    var view = FindControl<TabView>(surface!, "ConversationPanelTabs");
+                    Assert.InRange(Assert.IsType<TabViewItem>(view.TabItems[tabIndex]).ActualWidth, 99.5, 200.5);
+                    Assert.Equal(5, panels.Tabs.Count);
+                });
+            }
+            await ui.RunOnUIAsync(() =>
+            {
+                var view = FindControl<TabView>(surface!, "ConversationPanelTabs");
+                var scroll = Assert.Single(FindDescendants<ScrollViewer>(view),
+                    candidate => candidate.ScrollableWidth > 0);
+                scroll.ChangeView(0, null, null, disableAnimation: true);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindDescendants<RepeatButton>(FindControl<TabView>(surface!, "ConversationPanelTabs"))
+                    .Any(button => button.Name == "ScrollIncreaseButton" && button.IsEnabled),
+                "native overflow can scroll toward the hidden tabs"));
+            await ui.RunOnUIAsync(() => Invoke(
+                FindDescendants<RepeatButton>(FindControl<TabView>(surface!, "ConversationPanelTabs"))
+                    .Single(button => button.Name == "ScrollIncreaseButton")));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindDescendants<ScrollViewer>(FindControl<TabView>(surface!, "ConversationPanelTabs"))
+                    .Any(scroll => scroll.HorizontalOffset > 0),
+                "native overflow arrow scrolls the tab strip"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var view = FindControl<TabView>(surface!, "ConversationPanelTabs");
+                Assert.Equal(5, view.TabItems.Count);
+                Assert.Equal(5, panels.Tabs.Count);
+                view.SelectedItem = view.TabItems[0];
+                Assert.Equal("files", panels.Selected);
+            });
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                host?.Dispose();
+                if (surface is not null)
+                    ui.Container.Children.Remove(surface);
+                theme?.Dispose();
             });
         }
     }

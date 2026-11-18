@@ -1702,6 +1702,67 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Theory]
+    [InlineData(320, "do you have GitHub now", 14)]
+    [InlineData(800, "First line\nSecond line", 14)]
+    [InlineData(320, "\u00c1\u00e9 gyp \u6f22\u5b57 \ud83d\ude00", 14)]
+    [InlineData(800, "First gyp line\nSecond \u00c1\u00e9 line", 28)]
+    public async Task UserBubble_KeepsBalancedInsetsWithoutTrailingLineLeading(int width, string message, double fontSize)
+    {
+        await WithChatAsync(width, async (surface, host, _, provider) =>
+        {
+            var snapshot = await provider.LoadAsync();
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState>
+                {
+                    ["proof"] = ChatTimelineState.Initial() with
+                    {
+                        Entries = ImmutableList.Create(new ChatTimelineItem("user", ChatTimelineItemKind.User, message)),
+                    },
+                },
+            }));
+            TextBlock? text = null;
+            Rect? previous = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                text = FindDescendants<TextBlock>(host).SingleOrDefault(block => block.Text == message);
+                if (text is not { ActualHeight: > 0 }) return false;
+                var bounds = Bounds(text, surface);
+                var stable = previous == bounds;
+                previous = bounds;
+                return stable;
+            }, "user bubble text reaches stable layout"));
+            await ui.RunOnUIAsync(() => text!.FontSize = fontSize);
+            previous = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var bounds = Bounds(text!, surface);
+                var stable = previous == bounds;
+                previous = bounds;
+                return stable;
+            }, "user bubble accommodates enlarged native font metrics"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var bubble = Ancestors(text!).OfType<Border>().First();
+                var bounds = Bounds(text!, bubble);
+                Assert.InRange(Math.Abs(bounds.Left - (bubble.ActualWidth - bounds.Right)), 0, 1);
+                Assert.InRange(Math.Abs(bounds.Top - (bubble.ActualHeight - bounds.Bottom)), 0, 1);
+                Assert.InRange(bounds.Left, 15, 17);
+                Assert.InRange(bounds.Top, 11, 13);
+                // Native auto-height includes accents, descenders and fallback fonts, without extra line leading.
+                var native = new TextBlock { Text = message, FontSize = fontSize,
+                    FontFamily = new FontFamily("Segoe UI Variable Text") };
+                native.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var expected = native.DesiredSize.Height;
+                Assert.InRange(text!.ActualHeight, expected - 1, expected + 1);
+                Assert.True(text.IsTextSelectionEnabled);
+                Assert.Equal(message, text.Text);
+            });
+            await CaptureAsync(surface, $"UserBubble-{width}-{fontSize}-font");
+        }, "empty");
+    }
+
+    [Theory]
     [InlineData(320)]
     [InlineData(480)]
     [InlineData(560)]

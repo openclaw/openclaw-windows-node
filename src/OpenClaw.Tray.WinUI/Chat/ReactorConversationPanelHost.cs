@@ -25,6 +25,8 @@ internal sealed record ReactorConversationPanelHostProps(
 /// <summary>Applies native tab selection, split or expanded sizing, compact presentation and focus.</summary>
 internal sealed class ReactorConversationPanelHost : Component<ReactorConversationPanelHostProps>
 {
+    private const double TabMaximumWidth = 200;
+
     public override Element Render()
     {
         var state = Props.State;
@@ -52,6 +54,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         var adoptNativeOrderRef = UseRef<TypedEventHandler<TabView, global::Windows.Foundation.Collections.IVectorChangedEventArgs>?>(null);
         var adoptNativeOrder = adoptNativeOrderRef.Current ??= (view, args) =>
         {
+            ApplyTabAppearance(view);
             // Reactor removes a closed tab after state already dropped it; a native move removes a rendered one.
             if (args.CollectionChange == global::Windows.Foundation.Collections.CollectionChange.ItemRemoved &&
                 view.TabItems.Count == renderedTabCount.Current - 1)
@@ -144,7 +147,12 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     Border(null).IsVisible(false).Set(marker => marker.Tag = tab)) with { IsClosable = true }).ToArray())
             .IsAddTabButtonVisible(false)
             .CanDragTabs(false).CanReorderTabs(true)
-            .TabWidthMode(TabViewWidthMode.SizeToContent)
+            .TabWidthMode(TabViewWidthMode.Equal)
+            .Padding(0)
+            .Background(Theme.Ref("ChatCanvasBrush"))
+            .Resources(resources => resources
+                .Set("TabViewItemMaxWidth", TabMaximumWidth)
+                .Set("TabViewBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
             .CloseButtonOverlayMode(TabViewCloseButtonOverlayMode.OnPointerOver)
             .TabCloseRequested(index =>
             {
@@ -159,12 +167,19 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             {
                 var view = (TabView)control;
                 tabView.Current = view;
+                ApplyTabAppearance(view);
                 view.TabItemsChanged += adoptNativeOrder;
                 state.SetTabStrip(view);
             })
             .OnUnmount(control =>
             {
-                ((TabView)control).TabItemsChanged -= adoptNativeOrder;
+                var view = (TabView)control;
+                view.TabItemsChanged -= adoptNativeOrder;
+                foreach (var item in view.TabItems.OfType<TabViewItem>())
+                {
+                    item.ClearValue(FrameworkElement.StyleProperty);
+                    item.IconSource = null;
+                }
                 tabView.Current = null;
                 if (ReferenceEquals(state.TabStrip, control)) state.SetTabStrip(null);
             });
@@ -180,7 +195,8 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                         : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16),
                     _ => state.Details is { } request && state.Resolve(request) is { } entry
                         ? ToolCallCardRenderer.BuildPanelDetails(
-                            Props.Timeline ?? new(request.SessionKey, [], false, null), entry)
+                            Props.Timeline ?? new(request.SessionKey, [], false, null), entry,
+                            isActive: presented && slot == selected)
                         : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16),
                 })
                 .WithKey(slot switch
@@ -207,7 +223,12 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     : (joinsTitleRow
                         ? tabStrip.VAlign(VerticalAlignment.Center).Margin(0, 0, 0, captionBand)
                         : tabStrip.VAlign(VerticalAlignment.Top).Margin(0))
-                        .Set(control => ReserveTabStripEdges((TabView)control, startInset, endInset))
+                        .Set(control =>
+                        {
+                            var view = (TabView)control;
+                            ReserveTabStripEdges(view, startInset, endInset);
+                            ApplyTabAppearance(view);
+                        })
                         .Grid(row: 0),
                 launcher
                     ? Border(Props.Launcher ?? Empty()).WithKey("panel-launcher").Grid(row: 1)
@@ -319,6 +340,31 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
 
     private static string? SlotOf(object item) =>
         item is TabViewItem { Content: FrameworkElement { Tag: string slot } } ? slot : null;
+
+    private static void ApplyTabAppearance(TabView view)
+    {
+        var style = (Style)Application.Current.Resources["ChatPanelTabStyle"];
+        foreach (var item in view.TabItems.OfType<TabViewItem>())
+        {
+            item.Style = style;
+            item.MaxWidth = TabMaximumWidth;
+            var glyph = SlotOf(item) switch
+            {
+                ChatConversationPanelState.SubagentsSlot => FluentIconCatalog.Subagent,
+                ChatConversationPanelState.DashboardSlot => FluentIconCatalog.DashboardView,
+                ChatConversationPanelState.FilesSlot => FluentIconCatalog.Folder,
+                ChatConversationPanelState.FileSlot => FluentIconCatalog.Document,
+                _ => FluentIconCatalog.Terminal,
+            };
+            if (item.IconSource is not FontIconSource icon || icon.Glyph != glyph)
+                item.IconSource = new FontIconSource
+                {
+                    Glyph = glyph,
+                    FontFamily = FluentIconCatalog.SymbolThemeFontFamily,
+                    FontSize = 16,
+                };
+        }
+    }
 
     private static string TabTitle(string slot, ChatConversationPanelState state) => slot switch
     {

@@ -711,12 +711,15 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var content = attachments.Select(BuildAttachment).ToList();
         if (messageText.Length > 0)
         {
-            content.Add(Text(
-                    messageText,
-                    ChatVisuals.BodySize,
-                    FontWeights.Normal,
-                    "ChatUserTextBrush")
+            content.Add(TextBlock(messageText)
+                .TextWrapping(TextWrapping.Wrap)
+                .FontSize(ChatVisuals.BodySize)
+                .FontWeight(FontWeights.Normal)
+                .Foreground(Theme.Ref("ChatUserTextBrush"))
                 .FontFamily(ChatVisuals.BodyFontFamily)
+                // Natural font metrics scale with accessibility text size and add no trailing leading.
+                .LineHeight(0)
+                .Set(block => block.LineStackingStrategy = LineStackingStrategy.MaxHeight)
                 .IsTextSelectionEnabled(true));
         }
 
