@@ -1286,6 +1286,126 @@ public sealed class ChatTimelinePresentationTests
         Assert.Equal(InitialTailLanding.GiveUp, confirmation.Observe(idle: true, nearBottom: false));
     }
 
+    private static InitialTailVerdict SettleVerification(InitialTailVerification verification, bool atBottom)
+    {
+        for (var frame = 1; frame < InitialTailConfirmation.SettledFramesBeforeDecision; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom));
+        return verification.Observe(idle: true, operationPending: false, following: true, atBottom);
+    }
+
+    // The landing confirmed a two-row projection; four rows arrived and the follow path left the view behind.
+    [Fact]
+    public void InitialTailVerification_ReissuesWhenTheTailGrewAfterALandingAndTheViewSettlesAway()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: true));
+
+        verification.TailGrew();
+        for (var frame = 0; frame < 10; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: true, following: true, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+
+        // Nothing else is decided until the re-issue has been dispatched and its work has settled.
+        for (var frame = 0; frame < 10; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+        verification.ReissueDispatched();
+        Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: true, following: true, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: true));
+    }
+
+    // Without growth, a following view a little above the tail is where the reader (or UIA) put it.
+    [Fact]
+    public void InitialTailVerification_LeavesAReaderPositionNearTheTailAloneWithoutGrowth()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+
+        for (var frame = 0; frame < 120; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+    }
+
+    // Follow reached the grown tail; the reader then moved a little up before the view settled.
+    [Fact]
+    public void InitialTailVerification_ArrivingAtTheTailSpendsTheGrowth()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: false, operationPending: true, following: true, atBottom: true));
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: false));
+
+        verification.TailGrew();
+        verification.ReachedTail();
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: false));
+
+        // A re-issue admitted before the arrival no longer owes anything when its dispatch runs.
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+        Assert.True(verification.OwesReissue);
+        verification.ReachedTail();
+        Assert.False(verification.OwesReissue);
+    }
+
+    [Fact]
+    public void InitialTailVerification_BudgetIsFixedAndSelfInducedChangesNeverReplenishIt()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        verification.TailGrew();
+
+        for (var reissue = 0; reissue < 2; reissue++)
+        {
+            Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+            verification.ReissueDispatched();
+            verification.GeometryChanged();
+            verification.TailGrew();
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: false, operationPending: true, following: true, atBottom: false));
+        }
+
+        Assert.Equal(InitialTailVerdict.Exhausted, SettleVerification(verification, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+    }
+
+    [Fact]
+    public void InitialTailVerification_ReaderIntentEndsTheWindowAndRevokesItsDispatch()
+    {
+        var verification = new InitialTailVerification();
+        var generation = verification.Start();
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: false, atBottom: false));
+        Assert.False(verification.IsCurrent(generation));
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+
+        var next = verification.Start();
+        verification.Stop();
+        Assert.False(verification.IsCurrent(next));
+    }
+
+    [Fact]
+    public void InitialTailVerification_NeverChasesAMovingExtentAndEndsAtItsFrameLimit()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        verification.TailGrew();
+
+        for (var frame = 0; frame < 120; frame++)
+        {
+            verification.GeometryChanged();
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+        }
+        Assert.Equal(InitialTailVerdict.Exhausted, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+
+        verification.Start();
+        for (var frame = 0; frame < 120; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: true));
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: true));
+    }
+
     [Fact]
     public void ReactorTimeline_TracksOnlyTheCurrentTailBringAndDetachesNativeEvents()
     {

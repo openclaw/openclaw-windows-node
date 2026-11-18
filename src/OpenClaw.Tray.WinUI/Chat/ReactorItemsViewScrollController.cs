@@ -144,6 +144,10 @@ file sealed class InitialTailPositioner : IDisposable
     private EventHandler<object>? _realizing;
     private int _realizationVersion;
     private readonly InitialTailConfirmation _confirmation = new();
+    private readonly InitialTailVerification _verification = new();
+    private EventHandler<object>? _verifying;
+    private int? _verificationRealization;
+    private int? _tailBringCorrelationId;
     private readonly PointerEventHandler _cancelPointerNavigation;
     private readonly PointerEventHandler _readerPointerPressed;
     private readonly TypedEventHandler<UIElement, GettingFocusEventArgs> _readerGettingFocus;
@@ -198,6 +202,8 @@ file sealed class InitialTailPositioner : IDisposable
 
         HistoryNavigation.ResetSelection();
         RestoreTailAnchor();
+        StopLandingVerification();
+        _tailBringCorrelationId = null;
         _historyRequest = null;
         _requestKey = requestKey;
         _version++;
@@ -232,6 +238,7 @@ file sealed class InitialTailPositioner : IDisposable
         if (!_valid)
         {
             _tailNavigationQueue.Clear();
+            StopLandingVerification();
             if (_initialPending)
             {
                 _version++;
@@ -242,6 +249,9 @@ file sealed class InitialTailPositioner : IDisposable
             }
             return;
         }
+
+        if (changed)
+            _verification.TailGrew();
 
         // The first rows of a request that started empty take the initial path, so
         // the bring waits for layout and its landing is confirmed. Input clears this.
@@ -434,6 +444,7 @@ file sealed class InitialTailPositioner : IDisposable
             {
                 case InitialTailLanding.Landed:
                     CompleteInitialLanding();
+                    VerifyLanding(version);
                     break;
                 case InitialTailLanding.Retry:
                     DetachConfirmation();
@@ -552,6 +563,104 @@ file sealed class InitialTailPositioner : IDisposable
         }
     }
 
+    // Watches the settled view for one bounded window after a confirmed landing. See InitialTailVerification.
+    private void VerifyLanding(int version)
+    {
+        StopLandingVerification();
+        if (_scrollView is not { } ownedScrollView)
+            return;
+
+        var generation = _verification.Start();
+        _verifying = (_, _) =>
+        {
+            if (!IsLandingVerificationCurrent(version, generation, ownedScrollView))
+            {
+                StopLandingVerification();
+                return;
+            }
+
+            var atBottom = IsAtBottom(ownedScrollView);
+            if (atBottom)
+                ReachLandingTail();
+            switch (_verification.Observe(
+                ownedScrollView.State == ScrollingInteractionState.Idle, LandingWorkPending(), _following, atBottom))
+            {
+                case InitialTailVerdict.Reissue:
+                    QueueLandingReissue(version, generation, ownedScrollView);
+                    break;
+                case InitialTailVerdict.Exhausted:
+                    StopLandingVerification();
+                    ReportTailVisibility(atBottom);
+                    OpenClawTray.Services.Logger.Warn(FormattableString.Invariant(
+                        $"Chat initial tail landing did not reach the current tail. itemCount={_itemCount} tailIndex={_tailIndex} offset={ownedScrollView.VerticalOffset} scrollableHeight={ownedScrollView.ScrollableHeight}"));
+                    break;
+                case InitialTailVerdict.Done:
+                    StopLandingVerification();
+                    break;
+            }
+        };
+        CompositionTarget.Rendering += _verifying;
+    }
+
+    private bool IsLandingVerificationCurrent(int version, int generation, WinUIScrollView ownedScrollView) =>
+        !_disposed && version == _version && _valid && itemsView.IsLoaded && !_initialPending && _following
+        && _verification.IsCurrent(generation) && ownedScrollView.IsLoaded
+        && ReferenceEquals(ownedScrollView, _scrollView) && ReferenceEquals(ownedScrollView, itemsView.ScrollView);
+
+    // Layout, render, confirmation, realization, queued follow work, or a dispatched tail
+    // bring that has not completed. The window's frame limit bounds a missing completion.
+    private bool LandingWorkPending() =>
+        _realizing is not null || _rendering is not null || _confirming is not null
+        || _awaitingLayout || _awaitingScrollView is not null || _awaitingIdle
+        || _tailNavigationQueue.IsScheduled || _tailBringTarget is not null || _tailBringCorrelationId is not null;
+
+    private void QueueLandingReissue(int version, int generation, WinUIScrollView ownedScrollView)
+    {
+        // Starting a native bring from Rendering can deadlock the WinUI layout pass.
+        if (!itemsView.DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_verification.IsCurrent(generation))
+                return;
+
+            _verification.ReissueDispatched();
+            // Work admitted after the rendering decision keeps its owner; the spent credit is not returned.
+            if (IsLandingVerificationCurrent(version, generation, ownedScrollView) && _verification.OwesReissue
+                && ownedScrollView.State == ScrollingInteractionState.Idle && !LandingWorkPending()
+                && !IsAtBottom(ownedScrollView)
+                && TailNavigationPolicy.TryCapture(_tailIndex, _displayedTailKey, _itemCount, out var request)
+                && StartTailRequest(request))
+                _verificationRealization = _realizationVersion;
+        }))
+        {
+            StopLandingVerification();
+            OpenClawTray.Services.Logger.Warn("Chat initial tail verification could not be dispatched.");
+        }
+    }
+
+    // Ends the window and revokes its queued dispatch and its own unfinished re-issue.
+    private void StopLandingVerification()
+    {
+        _verification.Stop();
+        if (_verifying is not null)
+            CompositionTarget.Rendering -= _verifying;
+        _verifying = null;
+        CancelLandingReissue();
+    }
+
+    // Arrival at the tail spends the growth and revokes the window's unfinished re-issue,
+    // so a reader who then moves slightly away is not pulled back. The window stays open.
+    private void ReachLandingTail()
+    {
+        _verification.ReachedTail();
+        CancelLandingReissue();
+    }
+
+    private void CancelLandingReissue()
+    {
+        if (_verificationRealization == _realizationVersion)
+            CancelRealization();
+        _verificationRealization = null;
+    }
     private void CompleteInitialLanding()
     {
         RestoreTailAnchor();
@@ -606,9 +715,12 @@ file sealed class InitialTailPositioner : IDisposable
         HistoryNavigation.Refresh();
         var extentHeight = sender.ExtentHeight;
         if (extentHeight > _extentHeight)
+        {
+            _verification.TailGrew();
             _reflowCorrection.ArmForExtentGrowth(
                 _following, IsAtBottom(sender), _initialPending,
                 _disclosureAnchored || _readerAnchored || _readerBringCorrelationId is not null);
+        }
         _extentHeight = extentHeight;
         ObserveGeometry(sender);
     }
@@ -616,6 +728,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void ObserveGeometry(WinUIScrollView scrollView)
     {
         _confirmation.GeometryChanged();
+        _verification.GeometryChanged();
         var atBottom = IsAtBottom(scrollView);
         ReportTailVisibility(atBottom);
         if (_reflowCorrection.TryConsume(_following, atBottom, _initialPending))
@@ -626,7 +739,10 @@ file sealed class InitialTailPositioner : IDisposable
     {
         var requested = args.RequestEventArgs?.TargetElement;
         if (requested is not null && ReferenceEquals(requested, _tailBringTarget))
+        {
             _tailBringTarget = null;
+            _tailBringCorrelationId = args.CorrelationId;
+        }
         else if (ReferenceEquals(sender, _scrollView) && !args.Cancel && IsStaleCurrentItemReveal(sender, requested))
         {
             // ItemsView re-reveals its last keyboard-current row without focus when it is resized or
@@ -687,6 +803,12 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void OnScrollCompleted(WinUIScrollView sender, ScrollingScrollCompletedEventArgs args)
     {
+        if (ReferenceEquals(sender, _scrollView) && _tailBringCorrelationId == args.CorrelationId)
+        {
+            _tailBringCorrelationId = null;
+            _verification.GeometryChanged();
+        }
+
         if (ReferenceEquals(sender, _scrollView) && _readerBringCorrelationId == args.CorrelationId)
         {
             _readerBringCorrelationId = null;
@@ -830,6 +952,7 @@ file sealed class InitialTailPositioner : IDisposable
     private void CancelPendingNavigation()
     {
         RestoreTailAnchor();
+        StopLandingVerification();
         _historyRequest = null;
         _version++;
         _initialPending = false;
@@ -848,8 +971,13 @@ file sealed class InitialTailPositioner : IDisposable
     {
         HistoryNavigation.Refresh();
         _following = _readerBringCorrelationId is null && IsNearBottom(sender) && _historyRequest is null;
+        if (!_following)
+            StopLandingVerification();
+        else if (IsAtBottom(sender))
+            ReachLandingTail();
         ReportTailVisibility(IsAtBottom(sender));
         _confirmation.GeometryChanged();
+        _verification.GeometryChanged();
         if (_initialPending && ReferenceEquals(sender, _scrollView))
         {
             try { _confirmation.ObserveOffset(sender.VerticalOffset); }
@@ -1063,6 +1191,7 @@ file sealed class InitialTailPositioner : IDisposable
     {
         _version++;
         _initialPending = false;
+        StopLandingVerification();
         _reflowCorrection.Clear();
         _tailNavigationQueue.Clear();
         _tailBringTarget = null;
@@ -1109,6 +1238,7 @@ file sealed class InitialTailPositioner : IDisposable
 
     private void DetachScrollView()
     {
+        StopLandingVerification();
         if (_inputScrollController is not null)
             _inputScrollController.IsScrollingWithMouseChanged -= OnControllerMouseChanged;
         _inputScrollController = null;
@@ -1127,6 +1257,7 @@ file sealed class InitialTailPositioner : IDisposable
         }
 
         _scrollView = null;
+        _tailBringCorrelationId = null;
         _disclosureAnchored = false;
         _readerAnchored = false;
         _readerBringCorrelationId = null;
@@ -1149,6 +1280,7 @@ file sealed class InitialTailPositioner : IDisposable
         _tailNavigationQueue.Clear();
         _explicitJumpPending = false;
         _tailBringTarget = null;
+        StopLandingVerification();
         DetachLayout();
         DetachScrollView();
         itemsView.Loaded -= OnLoaded;
