@@ -171,7 +171,7 @@ internal static class ToolCallCardRenderer
         return Border(VStack(4, [expander, .. reviews]))
             .Padding(0)
             .BorderThickness(0)
-            .CornerRadius(ChatVisuals.SurfaceRadius)
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"));
     }
 
@@ -400,7 +400,7 @@ internal static class ToolCallCardRenderer
 
     private static BorderElement BuildDetailsCard(Element content) =>
         Border(content)
-                .CornerRadius(ChatVisuals.SurfaceRadius)
+                .ThemedCorner(() => ChatVisuals.SurfaceRadius)
                 .BorderThickness(1)
                 .BorderBrush(Theme.Ref("ChatStrokeBrush"))
                 .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -590,7 +590,7 @@ internal static class ToolCallCardRenderer
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderThickness(0)
-            .CornerRadius(ChatVisuals.SurfaceRadius);
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius);
         // Like the web work group, a line sits under the Worked header. Once open, the body's own
         // separator takes that place, so the line is never doubled. The line stays outside the rounded
         // card so its corners do not clip the ends.

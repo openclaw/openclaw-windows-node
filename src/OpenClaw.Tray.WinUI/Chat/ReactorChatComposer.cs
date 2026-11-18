@@ -755,7 +755,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                         sandboxAnchor.Current?.Flyout?.Hide();
                         props.Session.HostActions.SandboxSettingsNavigation?.Invoke();
                     })
-                    .SubtleButton().MinHeight(36).Padding(12, 8).CornerRadius(8).Margin(4)
+                    .SubtleButton().MinHeight(36).Padding(12, 8).ThemedCorner(8).Margin(4)
                     .AutomationId("ChatSandboxOpenSettings")
                     .AutomationName(sandboxSettingsLabel)
                     .IsEnabled(props.Session.HostActions.SandboxSettingsNavigation is not null)
@@ -912,7 +912,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             VStack(props.Compact ? ChatVisuals.CompactGap : 8, composerChildren.ToArray())
             .Padding(props.Compact ? new Thickness(8) : new Thickness(ChatVisuals.ProseInset, 12, ChatVisuals.ProseInset, 8)))
             .BorderThickness(1)
-            .CornerRadius(ChatVisuals.ComposerRadius)
+            .ThemedCorner(() => ChatVisuals.ComposerRadius)
             .MinHeight(props.Compact ? 50 : ChatVisuals.ComposerMinHeight)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
@@ -1128,14 +1128,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 () => onPick(choice))
             .Padding(8, 7, 8, 7)
             .HAlign(HorizontalAlignment.Stretch)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .AutomationName($"Choose {label} for {command.DisplayName()}")
             .Resources(resources => resources
                 .Set("ButtonBackground", background)
                 .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
             .HorizontalContentAlignment(HorizontalAlignment.Left)
             .BorderThickness(0)
-            .OnMount(element =>
+            .OnMountAdd(element =>
             {
                 if (selected)
                     element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
@@ -1146,7 +1146,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
     {
         return Border(child)
             .Padding(4)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .Background(Theme.Ref("AcrylicBackgroundFillColorDefaultBrush"))
             .WithBorder(Theme.Ref("SurfaceStrokeColorFlyoutBrush"), 1)
             .Translation(0, 0, 32)
@@ -1221,14 +1221,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 () => onPick(command))
             .Padding(8, 7, 8, 7)
             .HAlign(HorizontalAlignment.Stretch)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .AutomationName($"Insert {command.DisplayName()}")
             .Resources(resources => resources
                 .Set("ButtonBackground", background)
                 .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .BorderThickness(0)
-            .OnMount(element =>
+            .OnMountAdd(element =>
             {
                 if (selected)
                     element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });

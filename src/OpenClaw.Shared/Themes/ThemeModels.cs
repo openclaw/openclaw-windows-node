@@ -132,6 +132,8 @@ public sealed record ResolvedThemePalette
     public required ThemeFontStack ChatFont { get; init; }
     /// <summary>Code (<c>--mono</c>).</summary>
     public required ThemeFontStack MonoFont { get; init; }
+    /// <summary>Corner radii (<c>--radius-sm</c>, <c>--radius-md</c>, <c>--openclaw-corner-radius-scale</c>).</summary>
+    public ThemeRadii Radii { get; init; } = ThemeRadii.Default;
     /// <summary>The light or dark mode this palette belongs to; the derived surfaces below depend on it.</summary>
     public required ThemeColorMode Mode { get; init; }
 
@@ -152,6 +154,16 @@ public sealed record ResolvedThemePalette
 
     /// <summary>The composer fill (<c>color-mix(--chat-composer-surface 78%, transparent)</c>).</summary>
     public ThemeColor ComposerFill => ComposerSurface.WithAlpha(0.78);
+}
+
+/// <summary>
+/// A theme's corner geometry in the Control UI's circular-corner terms: the small (controls) and medium (menus and
+/// panels) radii in pixels, and the factor its fixed-size surface radii (composer, cards) are scaled by.
+/// Plugin and user theme definitions carry no geometry, so they get the Control UI defaults.
+/// </summary>
+public sealed record ThemeRadii(double Small, double Medium, double Scale)
+{
+    public static ThemeRadii Default { get; } = new(6, 10, 1);
 }
 
 /// <summary>A theme the Companion can apply: its identity plus a resolved palette for each mode it provides.</summary>
