@@ -605,9 +605,14 @@ last package status) and offers recovery actions:
 - **Collect Gateway diagnostics** runs `clawctl collect-logs --json` and reveals the
   package's redacted diagnostics ZIP.
 - **Open terminal** opens `clawctl pwsh` inside the isolated Gateway.
-- **View setup log** reveals `Logs\Setup\native-setup-<utc>.jsonl` under the Companion
-  data folder. It records setup steps, sanitized package commands and the runtime's
-  startup timeline, and the Debug page diagnostics bundle includes it.
+- **Open log file**, inside **Detailed activity**, selects the current native log
+  in File Explorer. The default release-profile path is
+  `%APPDATA%\OpenClawTray\Logs\Setup\native-setup-<utc>.jsonl` in the roaming
+  profile, with `<utc>` formatted as `yyyyMMdd-HHmmss`. It records setup steps,
+  sanitized package commands and the runtime's startup timeline, and the Debug
+  page diagnostics bundle includes it. The action is hidden if setup could not
+  create the log file. See [setup log locations and preservation](SETUP.md#local-setup-fails)
+  for Dev/custom profiles, WSL and legacy logs, and what to save before uninstall.
 
 The timeout guidance names the override variable. **Retry setup** reruns the full flow.
 
