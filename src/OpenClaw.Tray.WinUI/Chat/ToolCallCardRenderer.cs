@@ -518,8 +518,7 @@ internal static class ToolCallCardRenderer
                 ? VStack(
                     0,
                     [
-                        Border(Empty()).Height(1).Margin(0, 2, 0, 4)
-                            .Background(Theme.Ref("DividerStrokeColorDefaultBrush")).WithKey("work-separator"),
+                        WorkDivider("work-separator"),
                         .. ChatToolActivityPresentation.ProjectWork(work, props.SessionId, props.TimelineGeneration)
                             .Select(row => (row.IsActivityGroup
                                     ? BuildActivity(props, row, props.ToolExpansionState ?? new(), buildWorkEntry)
@@ -548,15 +547,17 @@ internal static class ToolCallCardRenderer
             headline = headline.Transition(
                 Transition.Enter(Transition.Fade), Curve.Ease(LiveHeadlineMilliseconds, Easing.EaseOut));
 
-        var header = BuildRowHeader(
-            FluentIconCatalog.BulletedList,
-            showChevron,
-            isExpanded,
-            headline,
-            runningStatus is null
-                ? null
-                : TextBlock(runningStatus).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-            onHeaderHover);
+        var header = activity.IsCompletedWork
+            ? BuildWorkHeader(showChevron, isExpanded, headline, onHeaderHover)
+            : BuildRowHeader(
+                FluentIconCatalog.BulletedList,
+                showChevron,
+                isExpanded,
+                headline,
+                runningStatus is null
+                    ? null
+                    : TextBlock(runningStatus).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+                onHeaderHover);
         var expander = Expander(
                 summaryText,
                 details)
@@ -585,11 +586,16 @@ internal static class ToolCallCardRenderer
             .AutomationName(isExpanded ? expandedAutomationName : collapsedAutomationName)
             .WithKey(activity.Key);
 
-        var card = Border(expander)
+        Element card = Border(expander)
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderThickness(0)
             .CornerRadius(ChatVisuals.SurfaceRadius);
+        // Like the web work group, a line sits under the Worked header. Once open, the body's own
+        // separator takes that place, so the line is never doubled. The line stays outside the rounded
+        // card so its corners do not clip the ends.
+        if (activity.IsCompletedWork)
+            card = VStack(0, card, isExpanded ? Empty() : WorkDivider("work-divider"));
         return activity.IsCompletedWork && animateEntrance && !reducedMotion
             ? card.Transition(Transition.Enter(Transition.Fade), Curve.Ease(WorkSettleMilliseconds, Easing.EaseOut))
             : card;
@@ -788,6 +794,27 @@ internal static class ToolCallCardRenderer
             .OnPointerEntered((_, _) => onHover?.Invoke(true))
             .OnPointerExited((_, _) => onHover?.Invoke(false));
     }
+
+    /// <summary>
+    /// Completed-work header, like the web work-group summary: the label with no leading glyph and a
+    /// trailing chevron shown only while hovered or focused. The chevron keeps its slot while hidden,
+    /// so showing it never moves or re-trims the label.
+    /// </summary>
+    private static Element BuildWorkHeader(bool showChevron, bool isExpanded, Element title, Action<bool>? onHover) =>
+        Border(
+                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                    title.Grid(column: 0).VAlign(VerticalAlignment.Center),
+                    ToolIcon(isExpanded ? FluentIconCatalog.ChevronDown : FluentIconCatalog.ChevronR, 12)
+                        .Opacity(showChevron ? 1 : 0)
+                        .Grid(column: 1).Margin(4, 0, 0, 0).VAlign(VerticalAlignment.Center))
+                .HAlign(HorizontalAlignment.Left))
+            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .OnPointerEntered((_, _) => onHover?.Invoke(true))
+            .OnPointerExited((_, _) => onHover?.Invoke(false));
+
+    private static Element WorkDivider(string key) =>
+        Border(Empty()).Height(1).Margin(0, 2, 0, 4)
+            .Background(Theme.Ref("DividerStrokeColorDefaultBrush")).WithKey(key);
 
     /// <summary>A disclosure-only row header (no category icon): an always-visible leading chevron and the title.</summary>
     internal static Element BuildDisclosureHeader(bool isExpanded, Element title) =>
