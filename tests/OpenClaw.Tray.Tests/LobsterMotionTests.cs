@@ -4,58 +4,23 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class LobsterMotionTests
 {
-    private static LobsterAnimation Synthetic(LobsterEasing easing, double iterations = 1, LobsterFill fill = LobsterFill.None) =>
-        new("t", LobsterMotionTarget.Body, 1000, easing,
-            [new(LobsterMotionProperty.TranslateY,
-                [new(0, 0), new(.5, 10), new(.5, 20), new(.6, 20), new(1, 40)])],
-            iterations, DelayMs: 100, Fill: fill);
-
-    private static double Y(LobsterAnimation a, double t, int index = 0) =>
-        a.Sample(t, index)!.Get(LobsterMotionProperty.TranslateY);
-
     [Fact]
-    public void Sampler_AppliesEasingPerSegmentAndHoldsDuplicateOffsets()
+    public void TrackValues_ApplyEasingPerSegmentAndHoldDuplicateOffsets()
     {
-        var linear = Synthetic(LobsterEasing.Linear);
-        Assert.Equal(5, Y(linear, 100 + 250), 6);
+        // The player samples rotateY tracks through ValueAt, so these CSS semantics reach the screen.
+        var track = new LobsterMotionTrack(LobsterMotionProperty.TranslateY,
+            [new(0, 0), new(.5, 10), new(.5, 20), new(.6, 20), new(1, 40)]);
+
+        Assert.Equal(5, track.ValueAt(.25, LobsterEasing.Linear), 6);
         // Later keyframe at a duplicated offset wins from that offset on, then holds until 60%.
-        Assert.Equal(20, Y(linear, 100 + 500), 6);
-        Assert.Equal(20, Y(linear, 100 + 550), 6);
-        Assert.Equal(30, Y(linear, 100 + 800), 6);
+        Assert.Equal(20, track.ValueAt(.5, LobsterEasing.Linear), 6);
+        Assert.Equal(20, track.ValueAt(.55, LobsterEasing.Linear), 6);
+        Assert.Equal(30, track.ValueAt(.8, LobsterEasing.Linear), 6);
 
         // ease-in at segment midpoint: y(0.5) of cubic-bezier(.42,0,1,1) is about 0.3153.
-        var easeIn = Synthetic(LobsterEasing.EaseIn);
-        Assert.Equal(10 * .3153, Y(easeIn, 100 + 250), 2);
-        Assert.Equal(20 + 20 * .3153, Y(easeIn, 100 + 800), 2);
+        Assert.Equal(10 * .3153, track.ValueAt(.25, LobsterEasing.EaseIn), 2);
+        Assert.Equal(20 + 20 * .3153, track.ValueAt(.8, LobsterEasing.EaseIn), 2);
     }
-
-    [Fact]
-    public void NapZs_AreStaggeredBySevenHundredMilliseconds()
-    {
-        var z = LobsterMotion.ForAct(LobsterAct.Nap).Single();
-
-        Assert.Null(z.Sample(500, index: 1));
-        Assert.Equal(z.Sample(300, 0)!.Get(LobsterMotionProperty.Opacity), z.Sample(1000, 1)!.Get(LobsterMotionProperty.Opacity), 9);
-        Assert.Equal(z.Sample(300, 0)!.Get(LobsterMotionProperty.Opacity), z.Sample(1700, 2)!.Get(LobsterMotionProperty.Opacity), 9);
-    }
-
-    [Fact]
-    public void Breathe_NegativeDelayStartsMidCycle()
-    {
-        var breathe = LobsterMotion.Breathe(-1.7);
-
-        Assert.Equal(.96, breathe.Sample(0)!.Get(LobsterMotionProperty.ScaleY), 6);
-    }
-
-    [Fact]
-    public void Wave_RaisesTheRightClawAtTwentyPercent()
-    {
-        var pose = LobsterMotion.ForAct(LobsterAct.Wave).Single().Sample(280)!;
-
-        Assert.Equal(-30, pose.Get(LobsterMotionProperty.Rotate), 6);
-        Assert.Equal(-6, pose.Get(LobsterMotionProperty.TranslateY), 6);
-    }
-
     [Fact]
     public void ActDelay_ShiftsTheBodyButNotTheDecorations()
     {

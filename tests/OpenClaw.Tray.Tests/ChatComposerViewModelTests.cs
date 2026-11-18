@@ -32,16 +32,16 @@ public sealed class ChatComposerViewModelTests
     {
         using var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), false);
         var snapshot = new SettingsSnapshot { Version = 2, NodeSystemRunEnabled = true };
-        vm.ApplySandboxSettings(snapshot);
+        vm.ApplySettings(snapshot);
         vm.ApplySandboxStatus(new(1, SandboxStatus.Available));
         var revision = vm.RenderRevision;
 
-        vm.ApplySandboxSettings(new SettingsSnapshot { Version = 1 });
-        vm.ApplySandboxSettings(snapshot with { Version = 3, AutoStart = true });
+        vm.ApplySettings(new SettingsSnapshot { Version = 1 });
+        vm.ApplySettings(snapshot with { Version = 3, AutoStart = true });
 
         Assert.Equal(SandboxStatus.Available, vm.SandboxStatus);
         Assert.Equal(revision, vm.RenderRevision);
-        vm.ApplySandboxSettings(snapshot with { Version = 4, NodeSystemRunEnabled = false });
+        vm.ApplySettings(snapshot with { Version = 4, NodeSystemRunEnabled = false });
         Assert.Equal(SandboxStatus.Disabled, vm.SandboxStatus);
         Assert.Equal(revision + 1, vm.RenderRevision);
     }
@@ -70,10 +70,10 @@ public sealed class ChatComposerViewModelTests
         vm.ApplySandboxStatus(new(3, SandboxStatus.Unavailable));
         vm.ApplySandboxStatus(new(2, SandboxStatus.Available));
         Assert.Equal(SandboxStatus.Unavailable, vm.SandboxStatus);
-        vm.ApplySandboxSettings(new() { Version = 1, NodeSystemRunEnabled = false });
+        vm.ApplySettings(new() { Version = 1, NodeSystemRunEnabled = false });
         vm.ApplySandboxStatus(new(4, SandboxStatus.Compatibility));
         Assert.Equal(SandboxStatus.Disabled, vm.SandboxStatus);
-        vm.ApplySandboxSettings(new() { Version = 2, NodeSystemRunEnabled = true });
+        vm.ApplySettings(new() { Version = 2, NodeSystemRunEnabled = true });
         Assert.Equal(SandboxStatus.Compatibility, vm.SandboxStatus);
     }
 

@@ -45,8 +45,7 @@ public sealed class ChatComposerSession : IDisposable
         _sandboxStatus = sandboxStatus ?? throw new ArgumentNullException(nameof(sandboxStatus));
         _settingsStore.Changed += OnSettingsChanged;
         _sandboxStatus.Changed += OnSandboxStatusChanged;
-        ViewModel.ApplySandboxSettings(_settingsStore.Current);
-        ViewModel.ApplyLobsterVisitsSetting(_settingsStore.Current.ShowLobsterVisits);
+        ViewModel.ApplySettings(_settingsStore.Current);
         ViewModel.ApplySandboxStatus(_sandboxStatus.Current);
     }
 
@@ -57,11 +56,8 @@ public sealed class ChatComposerSession : IDisposable
     internal ChatComposerHostActions HostActions { get; }
     internal ChatPlacementController? Placement { get; }
 
-    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs args)
-    {
-        ViewModel.ApplySandboxSettings(args.Snapshot);
-        ViewModel.ApplyLobsterVisitsSetting(args.Snapshot.ShowLobsterVisits);
-    }
+    private void OnSettingsChanged(object? sender, SettingsChangedEventArgs args) =>
+        ViewModel.ApplySettings(args.Snapshot);
 
     /// <summary>The visitor's "Dismiss and don't show again": turns the device-local Lobster visits setting off.</summary>
     internal void DisableLobsterVisits()

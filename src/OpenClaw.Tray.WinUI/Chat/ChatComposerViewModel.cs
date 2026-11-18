@@ -94,7 +94,7 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     private ChatComposerInputs? _inputs;
     private ChatSessionModelCatalog? _sessionModelCatalog;
     private long _latestInputsRevision;
-    private long _sandboxSettingsVersion = -1;
+    private long _settingsVersion = -1;
     private long _sandboxStatusVersion = -1;
     private bool _systemRunEnabled = true;
     private bool _lobsterVisitsEnabled = true;
@@ -143,15 +143,6 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     /// <summary>Whether the composer hosts the lobster visitor; see <see cref="LobsterComposerVisits.ShowVisitor"/>.</summary>
     public bool ShowsLobsterVisitor => _showsLobsterVisitor;
 
-    public void ApplyLobsterVisitsSetting(bool enabled) =>
-        MutateIfChanged(() =>
-        {
-            if (_lobsterVisitsEnabled == enabled)
-                return false;
-            _lobsterVisitsEnabled = enabled;
-            return true;
-        });
-
     /// <summary>Re-evaluates the visitor from the committed composer inputs, keeping it sticky for an empty session.</summary>
     public void ApplyLobsterVisitorInputs(ChatComposerInputs inputs)
     {
@@ -168,18 +159,23 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
         });
     }
 
-    public void ApplySandboxSettings(SettingsSnapshot snapshot)
+    /// <summary>
+    /// Applies the composer's settings (system tools and Lobster visits). Snapshots can arrive out of order, so one
+    /// older than the last applied is ignored for every setting it carries.
+    /// </summary>
+    public void ApplySettings(SettingsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         MutateIfChanged(() =>
         {
-            if (snapshot.Version <= _sandboxSettingsVersion)
+            if (snapshot.Version <= _settingsVersion)
                 return false;
-            _sandboxSettingsVersion = snapshot.Version;
-            if (_systemRunEnabled == snapshot.NodeSystemRunEnabled)
+            _settingsVersion = snapshot.Version;
+            if (_systemRunEnabled == snapshot.NodeSystemRunEnabled && _lobsterVisitsEnabled == snapshot.ShowLobsterVisits)
                 return false;
 
             _systemRunEnabled = snapshot.NodeSystemRunEnabled;
+            _lobsterVisitsEnabled = snapshot.ShowLobsterVisits;
             return true;
         });
     }

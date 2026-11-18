@@ -1,15 +1,14 @@
-// CSS keyframe animations for the composer lobster, ported as data plus a pure sampler with CSS semantics:
-// per-property keyframes (a property missing at 0%/100% interpolates from its identity value), the animation timing
-// function applied per segment between that property's keyframes, grouped offsets ("0%, 14%") as holds, iteration
-// counts, begin delays, per-index stagger and fill modes. Renderers turn the same tables into storyboards.
+// CSS keyframe animations for the composer lobster, ported as data with CSS semantics: per-property keyframes (a
+// property missing at 0%/100% interpolates from its identity value), the animation timing function applied per segment
+// between that property's keyframes, grouped offsets ("0%, 14%") as holds, iteration counts, begin delays, per-index
+// stagger and fill modes. LobsterMotionPlayer turns the tables into storyboards.
 // OpenClaw 4cffd43ee043275f6a4c693aaacee8d8e5a61288: ui/src/styles/lobster-pet.css (travel, entrances, acts,
 // breathe, blink, vigil and away rules) and ui/src/components/lobster-pet-scene-view.tsx (MIT; see
 // THIRD_PARTY_NOTICES.md).
 //
 // Usage:
 //   var act = LobsterMotion.ForAct(LobsterAct.Wave);                 // animations to start together
-//   var pose = act[0].Sample(timeMs: 280, index: 0);                  // null when inactive (fill none)
-//   double y = pose?.Get(LobsterMotionProperty.TranslateY) ?? 0;     // resolve Percent against the target box
+//   var y = act[0].Track(LobsterMotionProperty.TranslateY)?.ValueAt(.2, act[0].Easing);
 //   var walk = LobsterMotion.TravelWalk(fromX: -120, fromY: 0, durationMs: 1800);
 namespace OpenClawTray.Chat.LobsterVisits;
 
@@ -126,19 +125,6 @@ internal sealed record LobsterMotionTrack(LobsterMotionProperty Property, IReadO
     }
 }
 
-/// <summary>Sampled property values of one animation at one instant.</summary>
-internal sealed class LobsterMotionPose
-{
-    private readonly Dictionary<LobsterMotionProperty, double> _values;
-
-    internal LobsterMotionPose(Dictionary<LobsterMotionProperty, double> values) => _values = values;
-
-    internal IReadOnlyDictionary<LobsterMotionProperty, double> Values => _values;
-
-    internal double Get(LobsterMotionProperty property) =>
-        _values.TryGetValue(property, out var v) ? v : LobsterMotionTrack.Identity(property);
-}
-
 /// <summary>
 /// A CSS animation on one target. <see cref="Iterations"/> may be <see cref="double.PositiveInfinity"/>.
 /// <see cref="StaggerMs"/> adds <c>index * StaggerMs</c> to the delay for repeated elements (z's, bubbles).
@@ -165,36 +151,6 @@ internal sealed record LobsterAnimation(
     internal double DelayFor(int index) => DelayMs + index * StaggerMs;
 
     internal LobsterMotionTrack? Track(LobsterMotionProperty property) => Tracks.FirstOrDefault(t => t.Property == property);
-
-    /// <summary>
-    /// Values at <paramref name="timeMs"/> after the animation was applied, or null when the animation has no effect
-    /// at that instant (before the delay or after the end without the matching fill mode). Negative delays start
-    /// mid-cycle, as in CSS.
-    /// </summary>
-    internal LobsterMotionPose? Sample(double timeMs, int index = 0)
-    {
-        var local = timeMs - DelayFor(index);
-        double progress;
-        if (local < 0)
-        {
-            if (Fill != LobsterFill.Both) return null;
-            progress = 0;
-        }
-        else if (local >= ActiveMs)
-        {
-            if (Fill == LobsterFill.None) return null;
-            var whole = Iterations % 1 == 0;
-            progress = whole ? 1 : Iterations % 1;
-        }
-        else
-        {
-            var cycles = local / DurationMs;
-            progress = cycles - Math.Floor(cycles);
-        }
-        var values = new Dictionary<LobsterMotionProperty, double>(Tracks.Count);
-        foreach (var track in Tracks) values[track.Property] = track.ValueAt(progress, Easing);
-        return new LobsterMotionPose(values);
-    }
 }
 
 /// <summary>The upstream animation tables.</summary>
@@ -374,9 +330,6 @@ internal static class LobsterMotion
     private static LobsterAnimation Snip(double durationMs) => new(
         "snip", LobsterMotionTarget.ClawLeft, durationMs, LobsterEasing.EaseInOut,
         [T(SX, (0, 1), (50, 1.3), (100, 1)), T(SY, (0, 1), (50, .78), (100, 1))], 2, Origin: ClawLeftOrigin);
-
-    /// <summary>Static vigil pose on the body (applied while no act runs). TranslateY is a percent of the body box.</summary>
-    internal static LobsterMotionPose VigilPose() => new(new() { [Y] = 6, [SY] = .94 });
 
     /// <summary>
     /// The away transition on the sprite: translateY from rest down 55% of the sprite height (CSS -100% to -45%)
