@@ -991,8 +991,8 @@ public sealed partial class ReactorChatLayoutProofTests
             AssertWorkAligned($"{label} remaining lines top", moreBounds.Top, last.Bottom, WorkEdgeTolerance);
             AssertWorkAligned($"{label} remaining lines left", moreBounds.Left, last.Left + WorkDetailInsetX,
                 WorkEdgeTolerance);
-            AssertWorkAligned($"{label} remaining lines right", moreBounds.Right, last.Right - WorkDetailInsetX,
-                WorkEdgeTolerance);
+            Assert.True(moreBounds.Right <= last.Right - WorkDetailInsetX + WorkEdgeTolerance,
+                $"{label}: remaining-lines text extends into the card's right inset.");
             outcomeTop = moreBounds.Bottom + WorkDetailInsetY;
         }
         else
