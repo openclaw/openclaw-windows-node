@@ -100,6 +100,7 @@ public sealed class ReactorChatMarkdownContractTests
         Assert.Contains("Chat_Copy_Failed", message, StringComparison.Ordinal);
         Assert.Contains("MarkdownTextSelection.Surface(code, codeBody)", presentation, StringComparison.Ordinal);
         Assert.Contains("MarkdownTextSelection.Visibility(expanded,", presentation, StringComparison.Ordinal);
-        Assert.Contains("HeaderContent = MarkdownTextSelection.Surface(disclosure.Summary,", presentation, StringComparison.Ordinal);
+        Assert.Contains("ToolCallCardRenderer.BuildDisclosureHeader(expanded,", presentation, StringComparison.Ordinal);
+        Assert.Contains("MarkdownTextSelection.Surface(disclosure.Summary,", presentation, StringComparison.Ordinal);
     }
 }

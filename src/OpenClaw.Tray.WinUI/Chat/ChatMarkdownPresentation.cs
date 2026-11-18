@@ -688,14 +688,21 @@ internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclos
                 disclosure.Summary,
                 MarkdownTextSelection.Visibility(expanded,
                     ChatMarkdownPresentation.Disclosures(
-                        disclosure.Body, Props.RenderMarkdown, Props.SelectionOptions)),
+                        disclosure.Body, Props.RenderMarkdown, Props.SelectionOptions))
+                    .Margin(ChatVisuals.ToolRowTitleInset, 4, 0, 8),
                 expanded,
                 setExpanded) with
             {
-                HeaderContent = MarkdownTextSelection.Surface(disclosure.Summary,
-                    TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)
-                        .FontFamily(ChatVisuals.BodyFontFamily)),
+                HeaderContent = ToolCallCardRenderer.BuildDisclosureHeader(expanded,
+                    MarkdownTextSelection.Surface(disclosure.Summary,
+                        TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)
+                            .FontFamily(ChatVisuals.BodyFontFamily))),
             })
+            .Padding(0)
+            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Resources(ChatVisuals.ToolRowExpanderResources)
+            .Set(ChatVisuals.FlushToolRowExpander)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationName(disclosure.Summary);
