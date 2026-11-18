@@ -269,7 +269,7 @@ public sealed partial class NativeGatewaySetupPage : Page
         _log?.Info($"Gateway package {package.PackageFamilyName} {package.Version} is registered.");
         var log = _log ?? throw new InvalidOperationException("The native setup log is unavailable.");
         if (acquiredMissingPackage)
-            await GatewayPackageCleanup.RegisterAsync(new CommandRunner(log), ownNativePackage: true, ct: CancellationToken.None);
+            await GatewayPackageCleanup.RegisterAsync(new CommandRunner(log), ownNativePackage: true, ct: CancellationToken.None, dataDir: window.DataDir);
         cancellationToken.ThrowIfCancellationRequested();
         SetCurrentStep(2);
         var appLogger = new SetupOpenClawLogger(log, prefix: "");
