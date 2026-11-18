@@ -14,6 +14,10 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private const string Sid = "S-1-5-21-fixture";
     private const string Family = "OpenClaw.Gateway_123456789abcd";
     private const string OtherFamily = "OpenClawFoundation.OpenClawGateway_123456789abcd";
+    // Hang guard for one event-driven step; only absorbs CI scheduling delay.
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
     private static readonly DateTime s_startTime =
         new(2026, 9, 29, 12, 0, 0, DateTimeKind.Utc);
 
@@ -36,6 +40,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private string _state = "running";
     private bool _listenOnStart;
     private ulong _hostSequence = 77;
+    private Func<ulong>? _sequenceSource;
     private bool _snapshotComplete = true;
     private Exception? _statusFailure;
     private Exception? _stopFailure;
@@ -189,7 +194,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         });
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
             () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
-            () => new Dictionary<int, ulong> { [ProcessId] = _hostSequence, [4567] = 88 },
+            () => new Dictionary<int, ulong> { [ProcessId] = _sequenceSource?.Invoke() ?? _hostSequence, [4567] = 88 },
             _ => true, timeProvider: _clock, logger: _log);
     }
 
@@ -822,16 +827,329 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     }
 
     [Theory]
-    [InlineData("starting")]
     [InlineData("unhealthy")]
     [InlineData("unknown")]
     public async Task PreexistingUnreadyServiceIsNeverAdoptedOrStopped(string state)
     {
         _state = state;
         _listeners = [];
-        await Assert.ThrowsAsync<NativeGatewayContractException>(() => _runtime.EnsureRunningAsync(_record, default));
+        var error = await Assert.ThrowsAsync<NativeGatewayContractException>(() => _runtime.EnsureRunningAsync(_record, default));
+        Assert.True(error.AwaitingExternalLifecycle);
         Assert.DoesNotContain("gateway-service start --json", _calls);
         Assert.DoesNotContain("gateway-service stop --json", _calls);
+    }
+
+    [Fact]
+    public async Task ExternallyStartingServiceIsAwaitedWithoutTakingOwnership()
+    {
+        // clawctl gateway-service restart leaves the service starting when Companion reconnects.
+        _state = "starting";
+        _listeners = [];
+        // A config that looks missing mid-restart is not rewritten underneath the other owner.
+        _sessionState = "running";
+        _configMissing = true;
+        var ensure = _runtime.EnsureRunningAsync(_record, default);
+        Assert.False(ensure.IsCompleted);
+
+        _beforeStatus = () =>
+        {
+            _state = "running";
+            _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+        };
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await ensure.WaitAsync(StepTimeout);
+        _beforeStatus = null;
+
+        Assert.DoesNotContain(_calls, call => call.StartsWith("companion prepare", StringComparison.Ordinal));
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service start", StringComparison.Ordinal));
+        await _runtime.StopAsync(default);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExternalRestartListenerBeforeRunningKeepsWaitingForFullProof(bool companionStartedFirst)
+    {
+        if (companionStartedFirst)
+        {
+            // A completed owned start keeps detach ownership, but a later clawctl restart is external.
+            _state = "stopped";
+            _listeners = [];
+            _listenOnStart = true;
+            await _runtime.EnsureRunningAsync(_record, default);
+            _calls.Clear();
+        }
+        // The restarted process can bind its port while clawctl still reports starting.
+        _state = "starting";
+        _listeners = [];
+        var reads = 0;
+        var sawUntrustedListener = false;
+        _beforeStatus = () =>
+        {
+            reads++;
+            if (reads == 3)
+                _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+            if (reads == 4)
+                sawUntrustedListener = _state == "starting" && _listeners.Length == 1;
+            if (reads >= 5)
+                _state = "running";
+        };
+        // Advance only when the poll loop has scheduled its next delay, so no read races the clock.
+        _clock.TimerScheduled += due =>
+        {
+            if (due == TimeSpan.FromSeconds(2))
+                _ = Task.Run(() => _clock.Advance(due));
+        };
+
+        await _runtime.EnsureRunningAsync(_record, default).WaitAsync(StepTimeout);
+        _beforeStatus = null;
+
+        Assert.True(sawUntrustedListener);
+        Assert.True(reads >= 5);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service start", StringComparison.Ordinal));
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("listener-then-stopped")]
+    [InlineData("listener-then-unknown")]
+    [InlineData("stopped")]
+    [InlineData("timeout")]
+    public async Task ExternallyStartingServiceNeverGainsTrustOrOwnership(string outcome)
+    {
+        _state = "starting";
+        _listeners = [];
+        var ensure = _runtime.EnsureRunningAsync(_record, default);
+        if (outcome is "listener-then-stopped" or "listener-then-unknown")
+        {
+            var reads = 0;
+            _beforeStatus = () =>
+            {
+                _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+                if (++reads > 1) _state = outcome == "listener-then-stopped" ? "stopped" : "unknown";
+            };
+        }
+        if (outcome == "stopped")
+            _beforeStatus = () => _state = "stopped";
+        _clock.Advance(outcome == "timeout" ? IsolatedGatewayRuntime.StartupTimeout : TimeSpan.FromSeconds(2));
+
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => ensure.WaitAsync(StepTimeout));
+        _beforeStatus = null;
+        switch (outcome)
+        {
+            case "listener-then-stopped":
+                Assert.IsType<NativeGatewayListenerException>(error);
+                break;
+            case "listener-then-unknown":
+                // A momentary unreadable state during a restart is an unavailable inspection.
+                Assert.Equal(GatewayEndpointProvenanceFailureReason.InspectionUnavailable,
+                    Assert.IsType<NativeGatewayListenerException>(error).Provenance.FailureReason);
+                break;
+            case "stopped":
+                Assert.True(Assert.IsType<NativeGatewayContractException>(error).AwaitingExternalLifecycle);
+                break;
+            default:
+                var timeout = Assert.IsType<NativeGatewayStartupTimeoutException>(error);
+                Assert.True(timeout.ExternalStart);
+                Assert.Contains("already starting", timeout.Message);
+                break;
+        }
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service start", StringComparison.Ordinal));
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ForeignListenerDuringExternalStartIsRejectedOnceRunningIsReported()
+    {
+        // A foreign process binds the port while the package restarts; the wait tolerates the
+        // listener only until running, then full ownership proof rejects the foreign process.
+        _state = "starting";
+        _listeners = [];
+        var reads = 0;
+        var observedSquatter = false;
+        _beforeStatus = () =>
+        {
+            reads++;
+            if (reads == 2)
+                _listeners = [new(IPAddress.Loopback, Port, 999, "squatter", null)];
+            if (reads == 4)
+            {
+                observedSquatter = true;
+                _state = "running";
+            }
+        };
+        _clock.TimerScheduled += due =>
+        {
+            if (due == TimeSpan.FromSeconds(2))
+                _ = Task.Run(() => _clock.Advance(due));
+        };
+
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.EnsureRunningAsync(_record, default).WaitAsync(StepTimeout));
+        _beforeStatus = null;
+
+        Assert.True(observedSquatter);
+        Assert.Contains("PID 999", error.Provenance.Detail);
+        var authorization = await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, default, allowStart: false);
+        Assert.False(authorization.Allowed);
+        Assert.False(authorization.Retryable);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service start", StringComparison.Ordinal));
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ExternalStartThatExhaustedItsBudgetIsReportedWithoutAnotherFullWait()
+    {
+        _state = "starting";
+        _listeners = [];
+        var first = _runtime.EnsureRunningAsync(_record, default);
+        _clock.Advance(IsolatedGatewayRuntime.StartupTimeout);
+        Assert.True((await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(
+            () => first.WaitAsync(StepTimeout))).ExternalStart);
+
+        _calls.Clear();
+        var second = await Assert.ThrowsAsync<NativeGatewayContractException>(
+            () => _runtime.EnsureRunningAsync(_record, default).WaitAsync(StepTimeout));
+        Assert.True(second.AwaitingExternalLifecycle);
+        Assert.Single(_calls, "gateway-service status --json");
+
+        // A later state change starts a fresh observation.
+        _state = "running";
+        _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+        await _runtime.EnsureRunningAsync(_record, default).WaitAsync(StepTimeout);
+        _state = "starting";
+        _listeners = [];
+        var fresh = _runtime.EnsureRunningAsync(_record, default);
+        Assert.False(fresh.IsCompleted);
+        _beforeStatus = () =>
+        {
+            _state = "running";
+            _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+        };
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await fresh.WaitAsync(StepTimeout);
+        _beforeStatus = null;
+    }
+
+    [Fact]
+    public async Task CallerDeadlineWhileAnotherCallObservesIsAnObservationCancellation()
+    {
+        _state = "starting";
+        _listeners = [];
+        var holder = _runtime.EnsureRunningAsync(_record, default);
+        Assert.False(holder.IsCompleted);
+
+        using var deadline = new CancellationTokenSource();
+        var waiter = _runtime.EnsureRunningAsync(_record, deadline.Token);
+        deadline.Cancel();
+        var canceled = await Assert.ThrowsAsync<NativeGatewayObservationCanceledException>(() => waiter.WaitAsync(StepTimeout));
+        Assert.IsAssignableFrom<OperationCanceledException>(canceled);
+
+        _beforeStatus = () =>
+        {
+            _state = "running";
+            _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+        };
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        await holder.WaitAsync(StepTimeout);
+        _beforeStatus = null;
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service start", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RetainedOwnedStartIsNeverReclassifiedAsExternal()
+    {
+        // A lost acknowledgement whose rollback failed leaves Companion owning a still-pending start.
+        _state = "stopped";
+        _listeners = [];
+        _startState = "starting";
+        _loseStartAcknowledgement = true;
+        _stopFailure = new IOException("fixture stop failure");
+        await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => _runtime.EnsureRunningAsync(_record, default));
+        Assert.Equal("starting", _state);
+
+        var ensure = _runtime.EnsureRunningAsync(_record, default);
+        _clock.Advance(IsolatedGatewayRuntime.StartupTimeout);
+        var timeout = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => ensure.WaitAsync(StepTimeout));
+        Assert.False(timeout.ExternalStart);
+
+        var reads = 0;
+        _beforeStatus = () => { if (++reads > 1) _state = "unknown"; };
+        var ended = _runtime.EnsureRunningAsync(_record, default);
+        _clock.Advance(TimeSpan.FromSeconds(2));
+        var stopped = await Assert.ThrowsAsync<NativeGatewayContractException>(() => ended.WaitAsync(StepTimeout));
+        _beforeStatus = null;
+        Assert.False(stopped.AwaitingExternalLifecycle);
+    }
+
+    [Fact]
+    public async Task SnapshotChangeEndingOwnedStartIsTerminalForCredentialAuthorization()
+    {
+        // The final listener proof of Companion's own start races a listener change, so the start
+        // is rolled back. Reconnect must not start it again; passive inspection stays retryable.
+        _state = "stopped";
+        _listeners = [];
+        _listenOnStart = true;
+        var sequenceReads = 0;
+        _sequenceSource = () => ++sequenceReads == 1 ? 77UL : 78UL;
+
+        var result = await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, default);
+        _sequenceSource = null;
+
+        Assert.False(result.Allowed);
+        Assert.False(result.Retryable);
+        Assert.Equal(GatewayErrorKind.Network, result.FailureKind);
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DeadlineBeforeStatusIsObservationOnlyWithoutARetainedOwnedStart(bool retainedOwnedStart)
+    {
+        if (retainedOwnedStart)
+        {
+            // A lost acknowledgement whose rollback failed leaves Companion owning a pending start.
+            _state = "stopped";
+            _listeners = [];
+            _startState = "starting";
+            _loseStartAcknowledgement = true;
+            _stopFailure = new IOException("fixture stop failure");
+            await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => _runtime.EnsureRunningAsync(_record, default));
+        }
+        else
+        {
+            _state = "starting";
+            _listeners = [];
+        }
+
+        using var deadline = new CancellationTokenSource();
+        _duringStatus = async ct =>
+        {
+            deadline.Cancel();
+            await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+        };
+        var error = await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => _runtime.EnsureRunningAsync(_record, deadline.Token).WaitAsync(StepTimeout));
+        _duringStatus = null;
+
+        Assert.Equal(!retainedOwnedStart, error is NativeGatewayObservationCanceledException);
+    }
+
+    [Fact]
+    public async Task InitialStatusTimeoutIsUnavailableInspectionWithoutLifecycleChange()
+    {
+        _state = "starting";
+        _statusFailure = new TimeoutException("fixture status timeout");
+        var error = await Assert.ThrowsAsync<NativeGatewayListenerException>(() => _runtime.EnsureRunningAsync(_record, default));
+        Assert.Equal(GatewayEndpointProvenanceFailureReason.InspectionUnavailable, error.Provenance.FailureReason);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service start", StringComparison.Ordinal));
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
     }
 
     [Theory]

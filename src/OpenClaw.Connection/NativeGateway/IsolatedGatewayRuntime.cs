@@ -55,6 +55,11 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     // Null retains shipping v1's legacy lifecycle behavior. Receipt-capable starts
     // retain the caller-selected ID before dispatch, including a lost acknowledgement.
     private readonly Dictionary<string, string?> _ownedStarts = new(StringComparer.Ordinal);
+    // Owned starts not yet verified running. A completed start keeps detach ownership in
+    // _ownedStarts, but a later external restart of it is not Companion's pending lifecycle.
+    private readonly HashSet<string> _pendingOwnedStarts = new(StringComparer.Ordinal);
+    // External starts whose observation already spent a full startup budget while still starting.
+    private readonly HashSet<string> _expiredExternalStarts = new(StringComparer.Ordinal);
     private bool _disposed;
     private sealed record VerifiedGateway(GatewayRecord Record, NativeGatewayPackage Package, IsolatedGatewayStatus Status);
 
@@ -115,7 +120,16 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     public async Task EnsureRunningAsync(GatewayRecord record, CancellationToken cancellationToken)
     {
         Uri endpoint = RequireRecord(record);
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException error)
+        {
+            // Another role held the lifecycle (for example while observing an external restart).
+            // Nothing was started, so the caller may observe again later.
+            throw new NativeGatewayObservationCanceledException(error, cancellationToken);
+        }
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -130,14 +144,25 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     private async Task EnsureRunningCoreAsync(GatewayRecord record, Uri endpoint, CancellationToken cancellationToken)
     {
         NativeGatewayPackage? startedThisCall = null;
+        // Decided before any await: a deadline during resolution, status or repair must not turn a
+        // retained Companion-owned start into a retryable observation. ResolveAsync later verifies
+        // that the package family matches the record.
+        string family = record.NativePackageFamilyName!;
+        bool ownsPendingStart = _ownedStarts.ContainsKey(family) && _pendingOwnedStarts.Contains(family);
         _proofs.Remove(record.Id);
         try
         {
             NativeGatewayPackage package = await ResolveAsync(record, cancellationToken).ConfigureAwait(false);
-            IsolatedGatewayStatus status = await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+            IsolatedGatewayStatus status = await ReadInitialStatusAsync(package, endpoint.Port, cancellationToken).ConfigureAwait(false);
             _logger.Info($"Gateway service status: {status.Describe()}.");
-            status = await RepairConfigurationAsync(
-                record, endpoint, package, status, cancellationToken).ConfigureAwait(false);
+            if (status.State != "starting")
+                _expiredExternalStarts.Remove(package.PackageFamilyName);
+            // Never rewrite configuration underneath a start that another owner is running.
+            if (status.State != "starting")
+                status = await RepairConfigurationAsync(
+                    record, endpoint, package, status, cancellationToken).ConfigureAwait(false);
+            // A retained start (lost acknowledgement or failed rollback) is still Companion's own
+            // lifecycle; it is never reclassified as an external start that may be retried.
             if (status.State is "not-started" or "stopped")
             {
                 var conflict = InspectSnapshot(endpoint.Port, null);
@@ -149,15 +174,31 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                 startedThisCall = package;
                 string? attemptId = status.SupportsLaunchReceipts ? Guid.NewGuid().ToString("N") : null;
                 _ownedStarts[package.PackageFamilyName] = attemptId;
+                _pendingOwnedStarts.Add(package.PackageFamilyName);
                 _logger.Info($"Starting the package-managed Gateway on port {endpoint.Port}.");
                 status = await StartAndWaitAsync(package, endpoint.Port, attemptId, cancellationToken).ConfigureAwait(false);
+            }
+            else if (status.State == "starting" && !ownsPendingStart &&
+                _expiredExternalStarts.Contains(package.PackageFamilyName))
+            {
+                // The previous observation already spent a full startup budget on this external
+                // start. Report it once per reconnect backoff instead of polling for another budget.
+                _logger.Info("The external Gateway start is still pending after a full startup budget.");
+            }
+            else if (status.State == "starting")
+            {
+                status = await WaitForExistingStartAsync(
+                    package, endpoint.Port, external: !ownsPendingStart, cancellationToken).ConfigureAwait(false);
             }
             if (status.State != "running" || status.Port != endpoint.Port)
             {
                 _logger.Warn($"The Gateway is not running on port {endpoint.Port}: {status.Describe()}.");
+                // Another owner (for example clawctl restart) may still be changing a lifecycle this
+                // call never requested. Companion's own failed start and a wrong port stay terminal.
                 throw new NativeGatewayContractException(
                     "The package-managed Gateway is not running on Companion's selected port. " +
-                    "Check clawctl gateway-service status before connecting.");
+                    "Check clawctl gateway-service status before connecting.",
+                    awaitingExternalLifecycle: startedThisCall is null && !ownsPendingStart && status.State != "running");
             }
 
             var provenance = InspectSnapshot(endpoint.Port, status);
@@ -169,8 +210,9 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             _logger.Info($"Verified the Gateway listener on port {endpoint.Port} (PID {provenance.ProcessId}).");
             cancellationToken.ThrowIfCancellationRequested();
             _proofs[record.Id] = new(record, package, status);
+            _pendingOwnedStarts.Remove(package.PackageFamilyName);
         }
-        catch
+        catch (Exception error)
         {
             if (startedThisCall is not null && _ownedStarts.TryGetValue(startedThisCall.PackageFamilyName, out var attemptId))
             {
@@ -179,12 +221,22 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
                     _logger.Info("Rolling back the Gateway start requested by this attempt.");
                     await StopLaunchAsync(startedThisCall, attemptId, CancellationToken.None).ConfigureAwait(false);
                     _ownedStarts.Remove(startedThisCall.PackageFamilyName);
+                    _pendingOwnedStarts.Remove(startedThisCall.PackageFamilyName);
                 }
                 catch (Exception cleanupFailure) when (IsInspectionFailure(cleanupFailure))
                 {
                     _logger.Warn($"Isolated Gateway start rollback failed ({cleanupFailure.GetType().Name}); stop ownership retained.");
                 }
             }
+            // A listener failure that ended this call's own start must not invite a reconnect to
+            // start and roll back again, even when the same observation is retryable passively.
+            if (startedThisCall is not null && error is NativeGatewayListenerException { DuringOwnedStart: false } listener)
+                throw new NativeGatewayListenerException(listener.Provenance, duringOwnedStart: true);
+            // A deadline that expired while only observing (no start of Companion's own was
+            // involved) leaves nothing to retry dangerously; it is distinguishable from a rollback.
+            if (startedThisCall is null && !ownsPendingStart &&
+                error is OperationCanceledException and not NativeGatewayObservationCanceledException)
+                throw new NativeGatewayObservationCanceledException(error, cancellationToken);
             throw;
         }
     }
@@ -232,8 +284,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
     {
         var startedAt = _timeProvider.GetTimestamp();
         bool acknowledged = false;
-        IsolatedGatewayStatus? lastStatus = null;
-        string? lastSummary = null;
+        var progress = new StartupProgress();
         using var deadline = new CancellationTokenSource(StartupTimeout, _timeProvider);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
         try
@@ -256,45 +307,122 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             // This can extend the total startup ceiling by at most ten seconds.
             var remaining = StartupTimeout - _timeProvider.GetElapsedTime(startedAt);
             deadline.CancelAfter(remaining > StartupConfirmationTimeout ? remaining : StartupConfirmationTimeout);
-            while (true)
-            {
-                var status = await _client.StatusAsync(package, linked.Token).ConfigureAwait(false);
-                linked.Token.ThrowIfCancellationRequested();
-                lastStatus = status;
-                var summary = status.Describe();
-                if (summary != lastSummary)
-                {
-                    _logger.Info($"Native Gateway startup status: {summary}.");
-                    lastSummary = summary;
-                }
-                if (status.State is not ("starting" or "unhealthy"))
-                    return status;
-
-                // Only this call's acknowledged start may wait without listener proof.
-                // Recheck a transition racing the status snapshot once. Only a fresh
-                // Running attestation may proceed to the full listener identity checks.
-                var provenance = InspectSnapshot(port, null);
-                if (provenance.Kind != GatewayEndpointProvenanceKind.NoListener)
-                {
-                    var confirmation = await _client.StatusAsync(package, linked.Token).ConfigureAwait(false);
-                    linked.Token.ThrowIfCancellationRequested();
-                    lastStatus = confirmation;
-                    if (confirmation.State == "running")
-                        return confirmation;
-                    throw new NativeGatewayListenerException(provenance);
-                }
-                await Task.Delay(StartupPollInterval, _timeProvider, linked.Token).ConfigureAwait(false);
-            }
+            return await PollPendingStartAsync(
+                package, port, progress, listenerMayPrecedeRunning: false, linked.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException error) when (
             deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
-            throw await CreateTimeoutAsync(package, acknowledged, lastStatus, error, cancellationToken).ConfigureAwait(false);
+            throw await CreateTimeoutAsync(package, acknowledged, progress.LastStatus, error, cancellationToken).ConfigureAwait(false);
         }
         catch (TimeoutException error)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            throw await CreateTimeoutAsync(package, acknowledged, lastStatus, error, cancellationToken).ConfigureAwait(false);
+            throw await CreateTimeoutAsync(package, acknowledged, progress.LastStatus, error, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Observes a start this call did not request within the same startup budget, without taking start,
+    /// stop or rollback ownership. <paramref name="external"/> is false for a start Companion still owns,
+    /// whose timeout stays terminal. Only a fresh running attestation followed by the caller's full
+    /// listener proof can authorize credentials.
+    /// </summary>
+    private async Task<IsolatedGatewayStatus> WaitForExistingStartAsync(
+        NativeGatewayPackage package, int port, bool external, CancellationToken cancellationToken)
+    {
+        var progress = new StartupProgress();
+        using var deadline = new CancellationTokenSource(StartupTimeout, _timeProvider);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, deadline.Token);
+        _logger.Info($"The Gateway is already starting; waiting for it on port {port} " +
+            $"(budget {(int)StartupTimeout.TotalSeconds}s) without taking ownership.");
+        try
+        {
+            return await PollPendingStartAsync(
+                package, port, progress, listenerMayPrecedeRunning: external, linked.Token).ConfigureAwait(false);
+        }
+        catch (Exception error) when (
+            error is OperationCanceledException && deadline.IsCancellationRequested && !cancellationToken.IsCancellationRequested ||
+            error is TimeoutException && !cancellationToken.IsCancellationRequested)
+        {
+            var timeout = new NativeGatewayStartupTimeoutException(
+                NativeGatewayStartupTimeoutPhase.Readiness, StartupTimeout, progress.LastStatus, error,
+                existingStart: true)
+            { ExternalStart = external };
+            if (external)
+                _expiredExternalStarts.Add(package.PackageFamilyName);
+            _logger.Warn(timeout.Message);
+            throw timeout;
+        }
+    }
+
+    /// <summary>
+    /// A status read that times out before Companion decides anything is an unavailable inspection,
+    /// the same result a passive ownership inspection reports. It never authorizes or starts anything.
+    /// </summary>
+    private async Task<IsolatedGatewayStatus> ReadInitialStatusAsync(
+        NativeGatewayPackage package, int port, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _client.StatusAsync(package, cancellationToken).ConfigureAwait(false);
+        }
+        catch (TimeoutException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.Warn("The Gateway package status read timed out. Credentials were not sent.");
+            throw new NativeGatewayListenerException(new GatewayEndpointProvenance(
+                GatewayEndpointProvenanceKind.UnknownListener, port,
+                Detail: "Gateway ownership inspection timed out. Retry after checking the package. Credentials were not sent.",
+                FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable));
+        }
+    }
+
+    private sealed class StartupProgress
+    {
+        public IsolatedGatewayStatus? LastStatus;
+        public string? LastSummary;
+    }
+
+    private async Task<IsolatedGatewayStatus> PollPendingStartAsync(
+        NativeGatewayPackage package, int port, StartupProgress progress, bool listenerMayPrecedeRunning,
+        CancellationToken token)
+    {
+        while (true)
+        {
+            var status = await _client.StatusAsync(package, token).ConfigureAwait(false);
+            token.ThrowIfCancellationRequested();
+            progress.LastStatus = status;
+            var summary = status.Describe();
+            if (summary != progress.LastSummary)
+            {
+                _logger.Info($"Native Gateway startup status: {summary}.");
+                progress.LastSummary = summary;
+            }
+            if (status.State is not ("starting" or "unhealthy"))
+                return status;
+
+            // A pending start never receives listener trust. Recheck a transition racing the
+            // status snapshot once. Only a fresh Running attestation may proceed to the full
+            // listener identity checks.
+            var provenance = InspectSnapshot(port, null);
+            if (provenance.Kind != GatewayEndpointProvenanceKind.NoListener)
+            {
+                var confirmation = await _client.StatusAsync(package, token).ConfigureAwait(false);
+                token.ThrowIfCancellationRequested();
+                progress.LastStatus = confirmation;
+                if (confirmation.State == "running")
+                    return confirmation;
+                // An external restart can bind its port before the package reports running. Keep
+                // observing within the same budget; the listener stays untrusted until full proof.
+                if (listenerMayPrecedeRunning && confirmation.State == "unknown")
+                    throw new NativeGatewayListenerException(new GatewayEndpointProvenance(
+                        GatewayEndpointProvenanceKind.UnknownListener, port,
+                        Detail: "The Gateway package could not report its service state during a restart. Credentials were not sent.",
+                        FailureReason: GatewayEndpointProvenanceFailureReason.InspectionUnavailable));
+                if (!listenerMayPrecedeRunning || confirmation.State is not ("starting" or "unhealthy"))
+                    throw new NativeGatewayListenerException(provenance);
+            }
+            await Task.Delay(StartupPollInterval, _timeProvider, token).ConfigureAwait(false);
         }
     }
 
@@ -596,7 +724,8 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             current.Any(listener => !secondSequences.TryGetValue(listener.ProcessId, out ulong sequence) ||
                 !firstSequences.TryGetValue(listener.ProcessId, out ulong initial) ||
                 initial != sequence))
-            return Unknown("The Gateway listener changed during ownership verification.");
+            return Unknown("The Gateway listener changed during ownership verification.",
+                GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged);
         WindowsTcpListenerInfo owner = listeners.First();
         IsolatedGatewayListener identity = status.Listeners.First(listener =>
             listener.Port == port && listener.ProcessId == owner.ProcessId);

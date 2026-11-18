@@ -862,7 +862,10 @@ public class WindowsNodeClient : WebSocketClientBase
                         return;
                     _logger.Warn(
                         $"[HANDSHAKE] Node credential handoff blocked: {authorization.Detail}");
-                    ConnectionFailure?.Invoke(this, authorization.FailureKind);
+                    // A retryable denial is recovered by the reconnect loop after this abort, like a
+                    // transport failure. A terminal failure here would re-arm a competing node start.
+                    if (!authorization.Retryable)
+                        ConnectionFailure?.Invoke(this, authorization.FailureKind);
                     AbortCurrentWebSocket(sourceConnectionGeneration);
                     RaiseStatusChanged(ConnectionStatus.Error);
                     return;

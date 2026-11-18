@@ -30,6 +30,9 @@ public class TestWebSocketClient : WebSocketClientBase
     public int OnDisposingCallCount { get; private set; }
     public ConcurrentQueue<(long Generation, GatewayHandshakePhase Phase)> TransportObservations { get; } = new();
     public bool AutoReconnectEnabled { get; set; } = true;
+    public int? TestReconnectDelayMs { get; set; }
+    protected override int? GetReconnectDelayMs(long sourceConnectionGeneration) =>
+        TestReconnectDelayMs ?? base.GetReconnectDelayMs(sourceConnectionGeneration);
     public TimeSpan? TestConnectAttemptTimeout { get; set; }
     public Exception? MessageError { get; set; }
     public Exception? LossNotificationError { get; set; }
@@ -78,6 +81,13 @@ public class TestWebSocketClient : WebSocketClientBase
         OnErrorCallCount++;
         LastError = ex;
     }
+
+    public int DeniedReconnectCount { get; private set; }
+    public int DeferredReconnectCount { get; private set; }
+    protected override void OnReconnectAuthorizationDenied(ReconnectAuthorizationResult authorization) =>
+        DeniedReconnectCount++;
+    protected override void OnReconnectAuthorizationDeferred(ReconnectAuthorizationResult authorization) =>
+        DeferredReconnectCount++;
 
     protected override void OnDisposing()
     {
@@ -231,6 +241,39 @@ public class WebSocketClientBaseTests(ITestOutputHelper output)
 
         Assert.Equal(1, authorizationCalls);
         Assert.Equal(0, client.OnConnectedCallCount);
+    }
+
+    [Fact]
+    public async Task AutoReconnect_RetryableDenial_WithholdsSocketUntilEndpointIsReady()
+    {
+        using var server = new LoopbackWebSocketServer();
+        await server.StartAsync();
+        using var client = new TestWebSocketClient(server.WebSocketUrl, "strong-token", _logger)
+        {
+            TestReconnectDelayMs = 0,
+        };
+        var statuses = new ConcurrentQueue<ConnectionStatus>();
+        client.StatusChanged += (_, status) => statuses.Enqueue(status);
+        var authorizationCalls = 0;
+        client.ReconnectAuthorizationAsync = _ =>
+        {
+            authorizationCalls++;
+            Assert.Equal(0, server.AcceptedCount);
+            return Task.FromResult(authorizationCalls < 3
+                ? new ReconnectAuthorizationResult(false, GatewayErrorKind.Network, "starting", Retryable: true)
+                : ReconnectAuthorizationResult.AllowedResult);
+        };
+
+        await client.TestReconnectWithBackoffAsync().WaitAsync(StepTimeout);
+
+        Assert.Equal(3, authorizationCalls);
+        Assert.Equal(1, client.OnConnectedCallCount);
+        // Client connect completion can precede the server accept continuation.
+        await server.WaitForAcceptedCountAsync(1, StepTimeout);
+        Assert.Equal(1, server.AcceptedCount);
+        Assert.Equal(2, statuses.Count(status => status == ConnectionStatus.Error));
+        Assert.Equal(2, client.DeferredReconnectCount);
+        Assert.Equal(0, client.DeniedReconnectCount);
     }
 
     [Fact]

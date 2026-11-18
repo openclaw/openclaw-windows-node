@@ -636,7 +636,8 @@ public sealed class GatewayConnectionManager :
 
             var operatorOperationCancellation = _operationCts!.Token;
             async Task<ReconnectAuthorizationResult> AuthorizeLiveCredentialHandoffAsync(
-                CancellationToken cancellationToken)
+                CancellationToken cancellationToken,
+                bool allowRuntimeStart)
             {
                 // Clear the assistant-media HTTP credential up front so any
                 // in-flight media request never outlives this handoff attempt;
@@ -651,7 +652,8 @@ public sealed class GatewayConnectionManager :
                             IsAutomaticReconnectAllowed(record.Id),
                         operatorOperationCancellation,
                         cancellationToken,
-                        "operator")
+                        "operator",
+                        allowRuntimeStart)
                     .ConfigureAwait(false);
                 if (!authorization.Allowed &&
                     authorization.FailureKind != GatewayErrorKind.Unknown)
@@ -694,7 +696,8 @@ public sealed class GatewayConnectionManager :
                             var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
                                     currentRecord,
                                     reconnectHttpCredential,
-                                    cancellationToken)
+                                    cancellationToken,
+                                    allowRuntimeStart: allowRuntimeStart)
                                 .ConfigureAwait(false);
                             if (IsCurrentGatewayAttempt(gen, record.Id) &&
                                 IsAutomaticReconnectAllowed(record.Id))
@@ -719,10 +722,12 @@ public sealed class GatewayConnectionManager :
                 return authorization;
             }
 
+            // The handshake runs on an already-open socket, so it may only re-inspect ownership.
+            // Starting or waiting for the Gateway happens before the reconnect opens a new socket.
             lifecycle.DataClient.HandshakeAuthorizationAsync =
-                AuthorizeLiveCredentialHandoffAsync;
+                cancellationToken => AuthorizeLiveCredentialHandoffAsync(cancellationToken, allowRuntimeStart: false);
             lifecycle.DataClient.ReconnectAuthorizationAsync =
-                AuthorizeLiveCredentialHandoffAsync;
+                cancellationToken => AuthorizeLiveCredentialHandoffAsync(cancellationToken, allowRuntimeStart: true);
             _activeLifecycle = lifecycle;
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs
             {
@@ -2459,12 +2464,13 @@ public sealed class GatewayConnectionManager :
         GatewayRecord record,
         GatewayCredential credential,
         CancellationToken cancellationToken,
-        bool requireSshTunnelOwnership = false)
+        bool requireSshTunnelOwnership = false,
+        bool allowRuntimeStart = true)
     {
         if (record.NativePackageFamilyName is not null)
         {
             return await NativeGatewayEndpointSecurity.AuthorizeAsync(
-                _nativeGatewayRuntime, record, cancellationToken).ConfigureAwait(false);
+                _nativeGatewayRuntime, record, cancellationToken, allowRuntimeStart).ConfigureAwait(false);
         }
         if (record.SshTunnel is not null)
         {
@@ -2549,7 +2555,8 @@ public sealed class GatewayConnectionManager :
         Func<bool> isCurrentAttempt,
         CancellationToken operationCancellationToken,
         CancellationToken handshakeCancellationToken,
-        string role)
+        string role,
+        bool allowRuntimeStart = true)
     {
         var budget = expectedRecord.NativePackageFamilyName is not null
             ? NativeGatewayEndpointSecurity.CredentialHandoffTimeout : _credentialHandoffTimeout;
@@ -2584,7 +2591,8 @@ public sealed class GatewayConnectionManager :
                     currentRecord,
                     credential,
                     linkedCts.Token,
-                    requireSshTunnelOwnership: true)
+                    requireSshTunnelOwnership: true,
+                    allowRuntimeStart: allowRuntimeStart)
                 .ConfigureAwait(false);
             if (!isCurrentAttempt())
             {
@@ -2618,9 +2626,10 @@ public sealed class GatewayConnectionManager :
             return new ReconnectAuthorizationResult(
                 authorization.Allowed,
                 authorization.FailureKind,
-                authorization.Detail);
+                authorization.Detail,
+                authorization.Retryable);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException error)
         {
             if (!isCurrentAttempt() || operationCancellationToken.IsCancellationRequested)
             {
@@ -2630,12 +2639,16 @@ public sealed class GatewayConnectionManager :
                     $"{role} connection attempt was superseded or canceled.");
             }
 
+            // The outer budget can expire during Companion's own start, which the runtime rolls back.
+            // Retrying would repeat that start, so that timeout stays terminal. A budget spent only
+            // observing (waiting for the lifecycle gate or an external start) started nothing.
             return new ReconnectAuthorizationResult(
                 false,
                 GatewayErrorKind.Network,
                 expectedRecord.NativePackageFamilyName is not null
                     ? $"Timed out starting or re-verifying the owned native Gateway before the {role} credential handoff."
-                    : $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.");
+                    : $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.",
+                Retryable: error is NativeGatewayObservationCanceledException);
         }
     }
 
@@ -3330,7 +3343,8 @@ public sealed class GatewayConnectionManager :
             Func<bool> isCurrentAttempt,
             CancellationToken operationCancellationToken,
             CancellationToken handshakeCancellationToken,
-            string role) =>
+            string role,
+            bool allowRuntimeStart) =>
         AuthorizeCredentialHandoffAsync(
             expectedRecord,
             credential,
@@ -3338,7 +3352,8 @@ public sealed class GatewayConnectionManager :
             isCurrentAttempt,
             operationCancellationToken,
             handshakeCancellationToken,
-            role);
+            role,
+            allowRuntimeStart);
 
     Task<bool> IEndpointCredentialSecurity.IsRecoverySafeEndpointAsync(
         GatewayRecord record,

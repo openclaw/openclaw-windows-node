@@ -472,7 +472,15 @@ attempt owns a new generation, including while its HTTP upgrade is pending.
 Successful handshakes and failed transport attempts clear stored startup state
 rather than relabeling a network error as startup.
 Reconnect and pre-credential handshake authorization still run on every fresh
-socket. Native setup retains its existing 20-second handshake wait and linked
+socket. A denial is terminal unless the endpoint owner marks
+`ReconnectAuthorizationResult.Retryable` for a structured temporary cause, such
+as a package-managed native Gateway that is restarting. The reconnect loop then
+reports `Error`, sends no credential, and authorizes again after its normal
+capped backoff. Setup flows never mark denials retryable. For native Gateways only
+reconnect authorization, before a new socket opens, may start or wait for the
+Gateway; handshake authorization on an already-accepted socket only re-inspects
+ownership, so a peer that accepted the socket cannot receive credentials after
+the real Gateway takes the port. Native setup retains its existing 20-second handshake wait and linked
 cancellation lifetime. If that deadline expires while a typed startup rejection
 is current, it throws `GatewayStartupUnavailableException`, not an auth or
 pairing failure, without extending the deadline or changing credentials.

@@ -18,7 +18,16 @@ public enum NativeGatewayContract
 }
 
 /// <summary>A safe-to-display failure of the qualified Gateway integration contract.</summary>
-public sealed class NativeGatewayContractException(string message) : InvalidOperationException(message);
+/// <param name="awaitingExternalLifecycle">
+/// True only when Companion did not request the current lifecycle change and the package still
+/// reports a non-running state on the selected endpoint (for example an external restart). A later
+/// attempt may observe it again; it never grants credentials or lifecycle ownership.
+/// </param>
+public sealed class NativeGatewayContractException(string message, bool awaitingExternalLifecycle = false)
+    : InvalidOperationException(message)
+{
+    public bool AwaitingExternalLifecycle { get; } = awaitingExternalLifecycle;
+}
 
 public sealed record IsolatedGatewayConfiguration(int Port, string Token);
 
@@ -30,6 +39,14 @@ public sealed record IsolatedGatewayLaunch(string AttemptId, string? Disposition
 /// <summary>A conditional stop was refused; it must never fall back to an unconditional stop.</summary>
 public sealed class NativeGatewayLaunchOwnershipException(string reason)
     : InvalidOperationException($"The Gateway package refused attempt-owned cleanup ({reason}). No unconditional stop was requested.");
+
+/// <summary>
+/// The caller's deadline or cancellation ended a call that only observed the Gateway: it waited for
+/// the lifecycle gate or for a start Companion did not request, and started nothing to roll back.
+/// It remains an <see cref="OperationCanceledException"/> for every existing caller.
+/// </summary>
+public sealed class NativeGatewayObservationCanceledException(Exception innerException, CancellationToken token)
+    : OperationCanceledException("The native Gateway was still being observed when the caller's deadline ended.", innerException, token);
 
 public sealed record IsolatedGatewayStatus(
     string State,

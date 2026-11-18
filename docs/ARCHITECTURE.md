@@ -678,7 +678,51 @@ default; `OPENCLAW_NATIVE_GATEWAY_INSPECT_TIMEOUT` (whole seconds, 5 to 120, rea
 once per process) overrides it. Expiry reports inspection unavailable and sends no
 credential. The default fits inside the twenty-second admission margin; a larger
 override remains subordinate to the caller's deadline. Cancellation/deadline failure retains the existing
-owned-start rollback rules; pre-existing pending services are not adopted.
+owned-start rollback rules; pre-existing pending services are not adopted. A
+pre-existing `starting` service is observed without ownership until it reports
+`running` (then full listener proof) or the startup budget expires. Because an
+external restart can bind its port before the package reports `running`, that
+observation keeps waiting while a listener exists; the listener stays untrusted.
+A start Companion still owns (for example after a lost acknowledgement whose
+rollback failed) is waited on the same way but is never reclassified as external,
+even when the user later restarts it; such a failure needs a manual reconnect.
+A completed owned start keeps only its detach ownership, so a later external
+restart of it is external. A listener failure that ends and rolls back a start
+the same call requested stays terminal, so reconnect cannot start it again.
+A status read that times out before any lifecycle decision reports unavailable
+inspection. An external start that exhausted a full startup budget is then read
+once per reconnect attempt rather than polled for another budget, and
+configuration repair never runs while the service is `starting`.
+Only reconnect authorization, which runs before a new socket is opened, may start
+or wait for the Gateway. Per-socket handshake authorization runs after a peer has
+already accepted the socket, so it only re-inspects current ownership: a foreign
+process could otherwise keep that accepted socket while the real Gateway later
+takes the listening port.
+Endpoint denials carry a typed retry disposition that defaults to terminal.
+`NativeGatewayEndpointSecurity` marks only temporary causes retryable and reports
+them as `Network`, never port-conflict guidance: no
+listener, unavailable or busy inspection, a listener snapshot that changed during
+verification, and a not-running state or startup timeout for a lifecycle
+Companion did not request. A pre-existing `unhealthy` or `unknown` service is not
+waited on within one attempt, but it is such a state, so reconnect keeps
+observing it until it recovers or the user disconnects. Each role then reads
+`clawctl` status once per reconnect attempt; the delay grows from one second to
+a 60-second cap, plus jitter. Untyped timeouts and the credential handoff's own
+outer deadline stay terminal because both can end Companion's own start. The
+outer deadline is retryable only when the runtime reports that the call merely
+observed (waited for the lifecycle gate or an external start) and started nothing.
+A user disconnect still waits for an in-flight initial connect to finish, which
+can include one startup wait. The `WebSocketClientBase` reconnect
+loop is the single retry owner: a retryable denial reports `Error` like a
+transport failure and observes again after the normal capped backoff, while
+terminal denials (unattributed listeners, missing process identity, contract
+failures, Companion's own failed start, changed records) still stop it. A
+deferral also discards any retained `startup-sidecars` retry hint, so the
+normal backoff grows instead of repeating the Gateway's short hint. No
+denied attempt sends a credential. For a retryable denial the node client raises
+no terminal `ConnectionFailure` and the node coordinator publishes no terminal
+block, so the automatic node-start guard stays armed and cannot replace a node
+that recovers first.
 See [native startup contract limitations](ONBOARDING_WIZARD.md#native-startup-and-completion-deadlines)
 for the older package's ambiguous failed-start response, which is not admitted.
 The pending-start fixtures are conditional client-contract tests, not proof that
