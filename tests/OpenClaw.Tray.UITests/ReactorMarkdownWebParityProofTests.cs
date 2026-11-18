@@ -244,6 +244,61 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task InlineCodeChip_FollowsTheChatThemeRatherThanTheApplicationTheme()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            const string sample = "Run `openclaw status` to check the connection.";
+            const string code = "openclaw status";
+            const int codeStart = 4;
+            var appTheme = Application.Current.RequestedTheme;
+            var chatTheme = appTheme == ApplicationTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+            using var theme = new ChatThemeProofScope(chatTheme.ToString());
+            using var host = new ReactorHostControl();
+            var root = host.Reconciler.Mount(ReactorChatTimeline.BuildSafeMarkdown(sample), static () => { });
+            Assert.NotNull(root);
+            host.Content = root;
+            var surface = (Border)Microsoft.UI.Xaml.Markup.XamlReader.Load(
+                """
+                <Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                        Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+                        HorizontalAlignment="Left" VerticalAlignment="Top" Width="360" Padding="16">
+                    <Border.Resources>
+                        <SolidColorBrush xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                                         x:Key="ChipReference" Color="{ThemeResource ControlFillColorSecondary}" />
+                    </Border.Resources>
+                </Border>
+                """);
+            surface.RequestedTheme = chatTheme;
+            surface.Child = host;
+            ui.Container.Children.Add(surface);
+            try
+            {
+                RichTextBlock? text = null;
+                await WaitForRenderedConditionAsync(
+                    () => (text = FindDescendants<RichTextBlock>(root).SingleOrDefault()) is
+                              { IsLoaded: true, ActualTheme: var actual, ActualWidth: > 0 } &&
+                          actual == chatTheme && text.TextHighlighters.Count > 0,
+                    $"inline code painted in {chatTheme} with the application in {appTheme}");
+                var chip = Assert.Single(text!.TextHighlighters, highlighter =>
+                    highlighter.Ranges.Any(range =>
+                        range.StartIndex == codeStart && range.Length == code.Length));
+                var actualColor = Assert.IsType<SolidColorBrush>(chip.Background).Color;
+                var expectedColor = Assert.IsType<SolidColorBrush>(surface.Resources["ChipReference"]).Color;
+                await VisualTestCapture.CaptureAsync(surface, $"InlineCode-App{appTheme}-Chat{chatTheme}");
+                Assert.Equal(expectedColor, actualColor);
+            }
+            finally
+            {
+                ui.Container.Children.Remove(surface);
+                surface.Child = null;
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
     public async Task SelectableListMarker_RestylesWhenItsRowUpdatesInPlace()
     {
         await ui.ResetContainerAsync();

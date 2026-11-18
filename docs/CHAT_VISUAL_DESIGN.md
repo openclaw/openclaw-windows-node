@@ -1190,8 +1190,9 @@ the existing sanitization policy.
 Assistant links follow the web chat's anchor policy: Markdown links, bare
 `http(s)://` and `www.` URLs become native WinUI hyperlinks in the Windows
 accent color without an underline, and open in the default browser. Inline
-code keeps its monospace run and gets a subtle `ControlFillColorSecondaryBrush`
-background through a text highlighter (high contrast keeps system styling).
+code keeps its monospace run. A text highlighter uses the
+`ControlFillColorSecondary` color for the chat element's theme, even when it
+differs from the app theme. High Contrast keeps system styling.
 A rounded, bordered chip like the web needs a Reactor inline-code hook. Only
 absolute http/https destinations survive sanitization (Reactor additionally
 admits only http/https/mailto); any other scheme, relative path or image stays
