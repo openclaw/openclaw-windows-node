@@ -63,6 +63,15 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
     private bool _adoptStart;
     private bool _loseStartAcknowledgement;
     private bool _refuseConditionalStop;
+    // Models the MCP App sandbox listener beside the Gateway port and the package projections of it.
+    private int? _auxiliaryPort;
+    private bool _omitReportedPort;
+    private bool _omitOwnership;
+    // Ports whose live listener answers with the Gateway protocol's connect.challenge, or not at all.
+    private int[] _gatewayProtocolPorts = [Port];
+    private int[] _unansweredProtocolPorts = [];
+    // Runs as each listener snapshot is taken, so a test can change the TCP table during verification.
+    private Action? _onCapture;
 
     public IsolatedGatewayRuntimeTests()
     {
@@ -92,8 +101,13 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 if (other) _otherState = "running";
                 else _state = _startState;
                 if (_listenOnStart)
+                {
                     _listeners = [.. _listeners.Where(l => l.Port != port),
                         new(IPAddress.Loopback, port, processId, "fixture", null)];
+                    if (_auxiliaryPort is int auxiliary && !other)
+                        _listeners = [.. _listeners.Where(l => l.Port != auxiliary),
+                            new(IPAddress.Loopback, auxiliary, processId, "fixture", null)];
+                }
                 if (_loseStartAcknowledgement)
                     throw new TimeoutException("fixture lost start acknowledgement");
             }
@@ -149,18 +163,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             }
             string state = other ? _otherState : _state;
             object gateway = state == "running"
-                ? new
-                {
-                    state,
-                    port,
-                    ownership = new
-                    {
-                        sandboxId = "iso:fixture",
-                        agentUserSid = Sid,
-                        listeners = new[] { new { port, processId,
-                            processStartTimeUtc = s_startTime, sequenceNumber = other ? (ulong)88 : 77 } }
-                    }
-                }
+                ? RunningGateway(state, port, processId, other ? (ulong)88 : 77, other)
                 : _configMissing
                     ? new { state, readiness = new
                         { state = "absent", reason = "config-file-missing" } }
@@ -193,9 +196,43 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
                 JsonSerializer.Serialize(response));
         });
         _runtime = new IsolatedGatewayRuntime(new Resolver(_package, FixturePackage(OtherFamily)), client,
-            () => new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true),
+            () =>
+            {
+                _onCapture?.Invoke();
+                return new WindowsTcpListenerSnapshotResult(_listeners, _snapshotComplete, true);
+            },
             () => new Dictionary<int, ulong> { [ProcessId] = _sequenceSource?.Invoke() ?? _hostSequence, [4567] = 88 },
-            _ => true, timeProvider: _clock, logger: _log);
+            _ => true, timeProvider: _clock, logger: _log,
+            probeGatewayProtocol: (endpoint, _, _) => Task.FromResult(
+                _gatewayProtocolPorts.Contains(endpoint.Port) ? GatewayProtocolProbeResult.Gateway
+                : _unansweredProtocolPorts.Contains(endpoint.Port) ? GatewayProtocolProbeResult.Unavailable
+                : GatewayProtocolProbeResult.OtherProtocol));
+    }
+
+    private JsonObject RunningGateway(string state, int port, int processId, ulong sequence, bool other)
+    {
+        var listeners = new JsonArray(Listener(port));
+        if (_auxiliaryPort is int auxiliary && !other)
+            listeners.Add(Listener(auxiliary));
+        var gateway = new JsonObject { ["state"] = state };
+        if (!_omitReportedPort)
+            gateway["port"] = port;
+        if (!_omitOwnership)
+            gateway["ownership"] = new JsonObject
+            {
+                ["sandboxId"] = "iso:fixture",
+                ["agentUserSid"] = Sid,
+                ["listeners"] = listeners
+            };
+        return gateway;
+
+        JsonObject Listener(int listenerPort) => new()
+        {
+            ["port"] = listenerPort,
+            ["processId"] = processId,
+            ["processStartTimeUtc"] = s_startTime,
+            ["sequenceNumber"] = sequence
+        };
     }
 
     [Theory]
@@ -794,6 +831,247 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         Assert.DoesNotContain("fixture", error.Provenance.Detail, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AttestedAuxiliaryListenerDoesNotBlockCompanionsEndpoint(bool startedByCompanion)
+    {
+        // #260: with MCP apps the Gateway also serves its sandbox host on port + 1, so the package
+        // cannot name one endpoint. It omits gateway.port and attests both listeners instead.
+        _auxiliaryPort = Port + 1;
+        _omitReportedPort = true;
+        if (startedByCompanion)
+        {
+            _state = "not-started";
+            _listeners = [];
+            _listenOnStart = true;
+        }
+        else
+        {
+            _listeners =
+            [
+                new(IPAddress.Loopback, Port, ProcessId, "fixture", null),
+                new(IPAddress.Loopback, Port + 1, ProcessId, "fixture", null)
+            ];
+        }
+
+        EndpointCredentialAuthorization authorization =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+
+        Assert.True(authorization.Allowed, authorization.Detail);
+        Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
+        Assert.Equal(startedByCompanion ? 1 : 0, _calls.Count(call => call == "gateway-service start --json"));
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OwnedListenerOpenedAfterConnectingDoesNotChangeTheVerifiedEndpoint(bool packageAttestsListeners)
+    {
+        // #260: on its first agent turn the Codex plugin opens a loopback inference proxy on an
+        // OS-assigned port in the Gateway process, after Companion has connected and paired.
+        const int ProxyPort = 52535;
+        EndpointCredentialAuthorization connected =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+        Assert.True(connected.Allowed, connected.Detail);
+        int callsBeforeReconnect = _calls.Count;
+
+        // The proxy opens between the two listener snapshots of the next credential handoff, so only
+        // that handoff's later status read reports it.
+        int captures = 0;
+        _onCapture = () =>
+        {
+            if (++captures != 2)
+                return;
+            _listeners = [.. _listeners, new(IPAddress.Loopback, ProxyPort, ProcessId, "fixture", null)];
+            _auxiliaryPort = ProxyPort;
+            _omitReportedPort = true;
+            _omitOwnership = !packageAttestsListeners;
+        };
+        for (int handoff = 0; handoff < 2; handoff++)
+        {
+            EndpointCredentialAuthorization reconnect =
+                await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+            if (packageAttestsListeners)
+            {
+                Assert.True(reconnect.Allowed, reconnect.Detail);
+            }
+            else
+            {
+                Assert.False(reconnect.Allowed);
+                Assert.Contains("running on more than one port", reconnect.Detail, StringComparison.Ordinal);
+            }
+        }
+
+        Assert.Equal(packageAttestsListeners
+                ? GatewayEndpointProvenanceKind.ExpectedManagedGateway
+                : GatewayEndpointProvenanceKind.UnknownListener,
+            _runtime.Inspect(_record).Kind);
+        Assert.DoesNotContain(_calls.Skip(callsBeforeReconnect), call =>
+            call.StartsWith("gateway-service start", StringComparison.Ordinal) ||
+            call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("unattested-endpoint", "not running on Companion's selected port")]
+    [InlineData("impostor", "impostor (PID 4567)")]
+    [InlineData("reassigned-endpoint", "not running on Companion's selected port")]
+    public async Task UnresolvedPackagePortStillRequiresAttestedIdentityOnCompanionsEndpoint(
+        string scenario, string expectedDetail)
+    {
+        _omitReportedPort = true;
+        switch (scenario)
+        {
+            case "unattested-endpoint":
+                // The session's own listeners are attested, but neither is Companion's endpoint.
+                _reportedPort = Port + 1;
+                _auxiliaryPort = Port + 2;
+                _listeners = [new(IPAddress.Loopback, Port, ProcessId, "fixture", null)];
+                break;
+            case "impostor":
+                _auxiliaryPort = Port + 1;
+                _listeners =
+                [
+                    new(IPAddress.Loopback, Port, 4567, "impostor", null),
+                    new(IPAddress.Loopback, Port + 1, ProcessId, "fixture", null)
+                ];
+                break;
+            default:
+                ArrangeSandboxOnCompanionsPort();
+                break;
+        }
+
+        EndpointCredentialAuthorization authorization =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+
+        Assert.False(authorization.Allowed);
+        Assert.Contains(expectedDetail, authorization.Detail, StringComparison.Ordinal);
+        Assert.NotEqual(GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+            (await _runtime.InspectAsync(_record, CancellationToken.None)).Kind);
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
+    }
+
+    [Fact]
+    public async Task UnansweredProtocolCheckKeepsCompanionsStartAndSucceedsOnRetry()
+    {
+        _state = "not-started";
+        _listeners = [];
+        _listenOnStart = true;
+        _auxiliaryPort = Port + 1;
+        _omitReportedPort = true;
+        _gatewayProtocolPorts = [];
+        _unansweredProtocolPorts = [Port];
+
+        EndpointCredentialAuthorization first =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+        Assert.False(first.Allowed);
+        Assert.True(first.Retryable);
+        Assert.Contains("did not answer", first.Detail, StringComparison.Ordinal);
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+
+        _gatewayProtocolPorts = [Port];
+        _unansweredProtocolPorts = [];
+        EndpointCredentialAuthorization retry =
+            await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+
+        Assert.True(retry.Allowed, retry.Detail);
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RestartRefusesBeforeStoppingWhenCompanionsPortIsOnlyTheSandbox()
+    {
+        ArrangeSandboxOnCompanionsPort();
+
+        await Assert.ThrowsAsync<NativeGatewayListenerException>(
+            () => _runtime.RestartAsync(_record, CancellationToken.None));
+
+        Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
+        Assert.Equal("running", _state);
+    }
+
+    // The Gateway moved to Port - 1, leaving its session-owned sandbox host on Companion's saved
+    // port. Ownership alone must not make that listener the Gateway endpoint.
+    private void ArrangeSandboxOnCompanionsPort()
+    {
+        _omitReportedPort = true;
+        _gatewayProtocolPorts = [Port - 1];
+        _reportedPort = Port - 1;
+        _auxiliaryPort = Port;
+        _listeners =
+        [
+            new(IPAddress.Loopback, Port - 1, ProcessId, "fixture", null),
+            new(IPAddress.Loopback, Port, ProcessId, "fixture", null)
+        ];
+    }
+
+    [Fact]
+    public async Task UnattestedRunningGatewayNamesTheCauseWithoutRestartLooping()
+    {
+        // Store 2026.11.100.0 omits both gateway.port and ownership when the Gateway owns two listeners.
+        _state = "not-started";
+        _listeners = [];
+        _listenOnStart = true;
+        _auxiliaryPort = Port + 1;
+        _omitReportedPort = true;
+        _omitOwnership = true;
+
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            EndpointCredentialAuthorization authorization =
+                await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+            Assert.False(authorization.Allowed);
+            Assert.False(authorization.Retryable);
+            Assert.Contains("running on more than one port", authorization.Detail, StringComparison.Ordinal);
+            Assert.Contains("Update the Gateway MSIX", authorization.Detail, StringComparison.Ordinal);
+        }
+        Assert.Contains("running on more than one port",
+            (await _runtime.InspectAsync(_record, CancellationToken.None)).Detail, StringComparison.Ordinal);
+
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service start --json"));
+        Assert.DoesNotContain("gateway-service stop --json", _calls);
+        Assert.Equal(GatewayEndpointProvenanceKind.UnknownListener, _runtime.Inspect(_record).Kind);
+
+        // The start stays Companion-owned, so detaching still stops it exactly once.
+        await _runtime.StopAsync(CancellationToken.None);
+        Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+    }
+
+    [Fact]
+    public async Task EndpointVerificationReasonsUseTheAppLocalization()
+    {
+        // Companion shows these reasons in its UI, so they resolve through the app's resources.
+        NativeGatewayLocalization.GetString = key => key.EndsWith("_Format", StringComparison.Ordinal)
+            ? $"localized {key} {{0}}"
+            : $"localized {key}";
+        try
+        {
+            _auxiliaryPort = Port + 1;
+            _omitReportedPort = true;
+            _listeners =
+            [
+                new(IPAddress.Loopback, Port, ProcessId, "fixture", null),
+                new(IPAddress.Loopback, Port + 1, ProcessId, "fixture", null)
+            ];
+            _gatewayProtocolPorts = [];
+            _unansweredProtocolPorts = [Port];
+            EndpointCredentialAuthorization unanswered =
+                await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+            Assert.Equal($"localized NativeGateway_EndpointProbeUnanswered_Format {Port}", unanswered.Detail);
+
+            _omitOwnership = true;
+            EndpointCredentialAuthorization unattested =
+                await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
+            Assert.Equal("localized NativeGateway_UnattestedListeners", unattested.Detail);
+        }
+        finally
+        {
+            NativeGatewayLocalization.GetString = null;
+        }
+    }
+
     [Fact]
     public async Task CancellingPendingOwnedStartRollsBackAndReleasesGate()
     {
@@ -1324,6 +1602,33 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         Assert.Equal(GatewayEndpointProvenanceKind.ExpectedManagedGateway, _runtime.Inspect(_record).Kind);
         await _runtime.StopAsync(default);
         Assert.Equal(1, _calls.Count(call => call == "gateway-service stop --json"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnverifiedRestartKeepsTheServiceButOnlyCompanionsOwnStartIsStoppedOnDetach(bool companionOwned)
+    {
+        if (companionOwned)
+        {
+            _state = "not-started";
+            _listeners = [];
+        }
+        _listenOnStart = true;
+        await _runtime.EnsureRunningAsync(_record, default);
+        int stopsBefore = _calls.Count(call => call == "gateway-service stop --json");
+        _auxiliaryPort = Port + 1;
+        _omitReportedPort = true;
+        _gatewayProtocolPorts = [];
+        _unansweredProtocolPorts = [Port];
+
+        await Assert.ThrowsAsync<NativeGatewayEndpointUnverifiedException>(
+            () => _runtime.RestartAsync(_record, default));
+        Assert.Equal("running", _state);
+
+        await _runtime.StopAsync(default);
+        Assert.Equal(stopsBefore + 1 + (companionOwned ? 1 : 0),
+            _calls.Count(call => call == "gateway-service stop --json"));
     }
 
     [Fact]

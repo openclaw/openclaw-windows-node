@@ -5787,6 +5787,12 @@ Abrir Canais no painel web.</value>
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>O Gateway está em execução em mais de uma porta, mas não atestou quais listeners pertencem à sua sessão isolada. Por isso, o Companion não enviou as credenciais. Recursos do Gateway, como aplicativos MCP ou o proxy local de um plugin, abrem portas adicionais. Atualize o MSIX do Gateway e tente novamente. A atestação de listeners também requer o Windows 11 26100.4770 ou posterior.</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>O Gateway está em execução, mas o listener na porta {0} não respondeu a tempo à verificação do protocolo do Gateway feita pelo Companion. Por isso, o Companion não enviou as credenciais. Tente novamente em instantes.</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>

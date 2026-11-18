@@ -695,6 +695,8 @@ public class GatewayConnectionManagerTests : IDisposable
     [InlineData("process-identity-unavailable", false)]
     [InlineData("owned-start-failed", false)]
     [InlineData("owned-start-timeout", false)]
+    [InlineData("unanswered-protocol-check", true)]
+    [InlineData("unattested-listeners", false)]
     [InlineData("unexpected", false)]
     public async Task NativeEndpointDenialIsRetryableOnlyForTemporaryStates(string cause, bool retryable)
     {
@@ -715,6 +717,8 @@ public class GatewayConnectionManagerTests : IDisposable
             {
                 "external-lifecycle" => new NativeGatewayContractException("starting", awaitingExternalLifecycle: true),
                 "owned-start-failed" => new NativeGatewayContractException("not running"),
+                "unanswered-protocol-check" => new NativeGatewayEndpointUnverifiedException("no challenge yet", transient: true),
+                "unattested-listeners" => new NativeGatewayEndpointUnverifiedException("listeners not attested"),
                 "external-start-timeout" => new NativeGatewayStartupTimeoutException(
                     NativeGatewayStartupTimeoutPhase.Readiness, TimeSpan.FromSeconds(30), null) { ExternalStart = true },
                 "owned-start-timeout" => new NativeGatewayStartupTimeoutException(

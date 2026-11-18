@@ -5810,6 +5810,12 @@
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>网关正在多个端口上运行，但未证明哪些侦听器属于其隔离会话，因此 Companion 未发送凭据。MCP 应用或插件的本地代理等网关功能会打开额外的端口。请更新网关 MSIX，然后重试。侦听器证明还需要 Windows 11 26100.4770 或更高版本。</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>网关正在运行，但其端口 {0} 上的侦听器未及时响应 Companion 的网关协议检查，因此 Companion 未发送凭据。请稍后重试。</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>
