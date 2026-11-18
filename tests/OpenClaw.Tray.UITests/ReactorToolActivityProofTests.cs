@@ -24,6 +24,18 @@ public sealed class ReactorToolActivityProofTests
 {
     private const string DocumentGlyph = "\uE8A5";
     private const string ListGlyph = "\uE8FD";
+    private const string ChevronRightGlyph = "\uE76C";
+    private const string ChevronDownGlyph = "\uE70D";
+
+    private static int WorkDividerCount(DependencyObject root) =>
+        FindLogical<Border>(root).Count(border => border.Height == 1);
+
+    // One header line, outside the rounded card whose corners would otherwise clip its ends.
+    private static void AssertWorkDividerOutsideCard(DependencyObject root)
+    {
+        var divider = Assert.Single(FindLogical<Border>(root), border => border.Height == 1);
+        Assert.Contains(divider, Assert.IsType<StackPanel>(root).Children);
+    }
 
     private readonly UIThreadFixture _ui;
 
@@ -398,18 +410,38 @@ public sealed class ReactorToolActivityProofTests
                 Assert.Contains("Worked", AutomationProperties.GetName(disclosure));
                 Assert.Empty(FindLogical<RichTextBlock>(root!));
                 var header = Assert.IsAssignableFrom<DependencyObject>(disclosure.Header);
-                Assert.Contains(FindLogical<TextBlock>(header),
-                    text => text.Text == ListGlyph);
-                Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "Worked");
+                // Like the web work group: no leading glyph, the label first, and a line under the header.
+                // The trailing chevron keeps its slot while hidden, so showing it never re-trims the label.
+                var restTexts = FindLogical<TextBlock>(header).ToList();
+                Assert.Equal(["Worked", ChevronRightGlyph], restTexts.Select(text => text.Text));
+                var chevron = restTexts[1];
+                Assert.Equal(0, chevron.Opacity);
+                Assert.Equal(0, Microsoft.UI.Xaml.Controls.Grid.GetColumn(restTexts[0]));
+                Assert.Equal(1, Microsoft.UI.Xaml.Controls.Grid.GetColumn(chevron));
+                AssertWorkDividerOutsideCard(root!);
+                var hovered = ToolCallCardRenderer.BuildActivityCore(timeline, work, false, _ => { },
+                    entry => TextBlock(entry.Text), showChevron: true);
+                root = host.Reconciler.Reconcile(element, hovered, root!, static () => { });
+                element = hovered;
+                host.Content = root;
+                Assert.Same(disclosure, Assert.Single(FindLogical<Expander>(root!)));
+                var hoverTexts = FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)).ToList();
+                Assert.Equal(["Worked", ChevronRightGlyph], hoverTexts.Select(text => text.Text));
+                Assert.Same(chevron, hoverTexts[1]);
+                Assert.Equal(1, chevron.Opacity);
                 var expanded = ToolCallCardRenderer.BuildActivityCore(timeline, work, true, _ => { },
-                    entry => TextBlock(entry.Text));
+                    entry => TextBlock(entry.Text), showChevron: true);
                 root = host.Reconciler.Reconcile(element, expanded, root!, static () => { });
                 element = expanded;
                 host.Content = root;
                 Assert.Contains(disclosure, FindLogical<Expander>(root!));
                 Assert.True(disclosure.IsExpanded);
-                Assert.Contains(FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)),
-                    text => text.Text == "Worked · 1 tool call");
+                Assert.Equal(["Worked · 1 tool call", ChevronDownGlyph],
+                    FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)).Select(text => text.Text));
+                // The body's separator replaces the header line, so the open disclosure still shows one line.
+                Assert.Equal(1, WorkDividerCount(root!));
+                Assert.DoesNotContain(FindLogical<Border>(root!).Single(border => border.Height == 1),
+                    Assert.IsType<StackPanel>(root).Children);
                 Assert.Contains(FindLogical<TextBlock>(root!), text => text.Text == "Checking");
                 // A lone tool keeps its own step row, as the web Worked body renders single-call groups.
                 // Its output is built only once the row opens.
@@ -418,6 +450,19 @@ public sealed class ReactorToolActivityProofTests
                 Assert.Equal("ChatToolCall_read", AutomationProperties.GetAutomationId(row));
                 Assert.Empty(FindLogical<RichTextBlock>(root!));
                 Assert.DoesNotContain(FindLogical<TextBlock>(root!), text => text.Text == "Preserved answer");
+
+                // Closing again reuses the same disclosure, so its keyboard focus survives, and the header line returns.
+                var collapsed = ToolCallCardRenderer.BuildActivityCore(timeline, work, false, _ => { },
+                    entry => TextBlock(entry.Text));
+                root = host.Reconciler.Reconcile(element, collapsed, root!, static () => { });
+                element = collapsed;
+                host.Content = root;
+                Assert.Same(disclosure, Assert.Single(FindLogical<Expander>(root!)));
+                Assert.False(disclosure.IsExpanded);
+                Assert.Same(chevron, FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)).Last());
+                Assert.Equal(ChevronRightGlyph, chevron.Text);
+                Assert.Equal(0, chevron.Opacity);
+                AssertWorkDividerOutsideCard(root!);
             }
             finally
             {

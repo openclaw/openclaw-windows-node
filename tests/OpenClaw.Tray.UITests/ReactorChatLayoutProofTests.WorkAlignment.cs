@@ -491,8 +491,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 surface.Height = 1300;
             });
             await AwaitWorkRowsAsync(surface, "the collapsed Worked row", rows => rows.Count == 1 && !rows[0].IsExpanded);
-            var worked = await ui.RunOnUIAsync(() => Task.FromResult(
-                WorkLabel(Assert.Single(RealizedTimelineElements<Expander>(surface)))));
+            var worked = await ui.RunOnUIAsync(() =>
+            {
+                var row = Assert.Single(RealizedTimelineElements<Expander>(surface));
+                Assert.True(IsCompletedWorkRow(row), $"{WorkLabel(row)} is not recognized as the completed-work row.");
+                return Task.FromResult(WorkLabel(row));
+            });
             const string activity = "ChatToolActivity_execTool";
             string[] leaves =
                 ["ChatToolCall_execTool", "ChatToolCall_readTool", "ChatToolCall_editTool", "ChatToolCall_grepTool"];
@@ -687,6 +691,12 @@ public sealed partial class ReactorChatLayoutProofTests
         return id.Length > 0 ? id : AutomationProperties.GetName(row);
     }
 
+    // The completed-work rollup is identified by its sanitized "thread:…|generation:…|work:…" key, not by its
+    // localized "Worked" label.
+    private static bool IsCompletedWorkRow(Expander row) =>
+        System.Text.RegularExpressions.Regex.IsMatch(AutomationProperties.GetAutomationId(row),
+            "^ChatToolActivity_thread_.+_generation_[0-9]+_work_");
+
     private static Expander WorkRow(Border surface, string label) =>
         Assert.Single(RealizedTimelineElements<Expander>(surface), row => WorkLabel(row) == label);
 
@@ -862,6 +872,30 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} header right", headerBounds.Right, rowBounds.Right, WorkEdgeTolerance);
 
         var texts = WorkHeaderTexts(surface, row);
+        // The completed-work header follows the web work group: its label starts the row with no leading glyph,
+        // and a trailing chevron keeps its slot, shown only while the header is hovered or focused.
+        if (IsCompletedWorkRow(row))
+        {
+            Assert.True(texts.Count == 2, $"{label}: expected the label and its chevron, found {texts.Count} text blocks.");
+            var (workTitle, chevron) = (texts[0], texts[1]);
+            AssertWorkAligned($"{label} title left", Bounds(workTitle, surface).Left, rowBounds.Left, WorkEdgeTolerance);
+            AssertWorkAligned($"{label} title font size", workTitle.FontSize, WorkActivityTitleSize, 0.1);
+            Assert.True(FluentIconCatalog.IsPuaGlyph(chevron.Text), $"{label}: the trailing header text is not an icon glyph.");
+            Assert.True(chevron.Text is FluentIconCatalog.ChevronR or FluentIconCatalog.ChevronDown,
+                $"{label}: only a disclosure chevron may follow the Worked label.");
+            Assert.False(chevron.IsTextScaleFactorEnabled, $"{label}: the chevron must not scale with the text size.");
+            AssertWorkAligned($"{label} chevron font size", chevron.FontSize, WorkDisclosureGlyphSize, 0.1);
+            Assert.True(Bounds(chevron, surface).Left >= Bounds(workTitle, surface).Right - WorkEdgeTolerance,
+                $"{label}: the chevron must follow the label.");
+            var workCenter = headerBounds.Top + headerBounds.Height / 2;
+            foreach (var text in texts)
+            {
+                var bounds = Bounds(text, surface);
+                AssertWorkAligned($"{label} header text vertical centre", bounds.Top + bounds.Height / 2,
+                    workCenter, WorkCenterTolerance);
+            }
+            return;
+        }
         Assert.True(texts.Count is >= 2 and <= 4,
             $"{label}: expected an icon, a title, an optional detail and an optional status, found {texts.Count} text blocks.");
         var icon = texts[0];
