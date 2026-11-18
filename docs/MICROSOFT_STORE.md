@@ -13,13 +13,16 @@ MSIX version reservation, and install/upgrade acceptance remain separate gates.
 
 ## Required administrator cutover
 
-Complete the central publisher setup before merging or using this request-only
-workflow. These are administrator changes, not effects of merging this PR:
+Verify the central [administrator cutover](https://github.com/openclaw/releases/blob/main/docs/windows-store-publishing.md#administrator-cutover)
+before using this request-only workflow. Merged code does not establish that
+live settings or publication have been qualified:
 
 1. Configure the central `microsoft-store-companion` environment to allow only
-   `main`, require `@openclaw/release-managers-openclaw` approval, prevent
-   self-review, and disallow administrator deployment bypass. Central release
-   code and its identity policy also need enforced release-manager review.
+   `main`, require `@openclaw/release-managers-openclaw` approval, and disallow
+   administrator deployment bypass. Verify the team's deployment-review access.
+   The central templates allow an initiating release manager to approve;
+   prevent self-review only if a separate initiator and approver is desired.
+   An App-dispatched request does not itself prove two distinct upstream humans.
 2. Move the dedicated Companion Store application's Entra federation to the
    approved central environment. Remove the old native-repository federated
    credential and every other publishing writer. Removing the old workflow from
@@ -32,12 +35,15 @@ workflow. These are administrator changes, not effects of merging this PR:
    to request workflows in `openclaw/releases`. The minted installation token
    selects only `releases` and requests only Actions write permission. It has no
    Store authority. Verify the installation grant; do not assume the existing
-   key alone grants access. No new PAT is required.
-4. Enforce main's required release-manager code-owner review for the paths in
-   [CODEOWNERS](../.github/CODEOWNERS), including CODEOWNERS itself. Dismiss stale
-   approvals, require approval of the latest reviewable push, and prevent direct
-   push or actor bypass for protected automation changes. The file alone does
-   not turn on GitHub enforcement.
+   key alone grants access. The token restriction does not constrain the private
+   key itself: audit the App's installation grants and key availability
+   separately. No new PAT is required.
+4. Leave existing branch rules, [CODEOWNERS](../.github/CODEOWNERS), and
+   required-CI settings unchanged. The cutover does not require PR-only `main`
+   or release-manager code review. Repository writers remain trusted to change
+   publisher code; environment approval gates the credential-bearing job, not
+   changes to its implementation. Migrating central release-evidence workflows
+   to PRs is not a Store-publishing prerequisite.
 5. Leave repository Actions variable `MSSTORE_ENABLED` unset or `false` until a
    manual central request, the protected approval path, and required Store
    install/upgrade acceptance have been verified. Do not re-enable the retired
@@ -64,7 +70,7 @@ gh workflow run submit-microsoft-store.yml `
   -f run_id=RELEASE_RUN_ID
 ```
 
-The main workflow sends exactly `product=companion` and the source `run_id` to
+For production, the main workflow sends exactly `product=companion` and the source `run_id` to
 `windows-store-publish.yml` on central `main`. It neither rebuilds the package
 nor republishes the GitHub release. Manual requests do not require
 `MSSTORE_ENABLED`, but always require central source authorization and
@@ -82,7 +88,7 @@ After the manual central path and release acceptance are verified, set the
 now enables automatic requests, never automatic Store publishing. The main
 workflow cheaply filters successful stable/correction-tag CI runs and stable
 promotion runs with a current, unexpired release witness before minting the
-request token. Preview-only promotion, PR, alpha, ordinary-main, failed, and
+request token. Preview-only promotion, PR, ordinary-main, failed, and
 foreign-repository runs do not request publication. The central
 publisher still makes the authoritative release and artifact decision.
 
@@ -90,6 +96,32 @@ Unset the variable or set it to `false` to pause future automatic requests.
 This does not cancel an accepted central request or an active Store upload.
 Native request concurrency does not replace central per-product publication
 serialization or approval.
+
+## Development flight
+
+Companion alphas use the same central publisher, not a native Store identity.
+The central publisher owns Companion Development source authorization and flight
+selection; the native adapter only requests publication.
+Select a published alpha's successful **Build and Test** run and request:
+
+```powershell
+gh workflow run submit-microsoft-store.yml `
+  --repo openclaw/openclaw-windows-node --ref main `
+  -f run_id=ALPHA_RUN_ID -f channel=development
+```
+
+Central repository variables `MSSTORE_COMPANION_DEVELOPMENT_FLIGHT_ID` and
+`MSSTORE_COMPANION_DEVELOPMENT_ENABLED` own the destination and activation.
+The former native `MSSTORE_DEVELOPMENT_FLIGHT_ID` is not consumed. Production
+remains the default; stable releases and promotions cannot select the alpha flight.
+
+Keep native repository `MSSTORE_DEVELOPMENT_ENABLED` and central activation off
+until the configured flight, initial draft, protected approval, certification and
+tester install/upgrade with retained data are qualified. Enroll tester Microsoft
+accounts in the flight's known-user group. Leaving a flight does not downgrade an
+installed package. The native flag enables only automatic alpha requests; central
+approval and its independent activation check remain required. No settings change
+or activation occurs merely by merging code.
 
 ## Verify and recover
 
@@ -114,9 +146,9 @@ not a failed build and must not cause the native release to be rebuilt.
 ## Source binding
 
 The native release pipeline still records `store-release-source-<attempt>` only
-after stable GitHub publication and bundle validation succeed. The central
+after GitHub publication and bundle validation succeed. The central
 publisher verifies that witness against the canonical source run, its current
-attempt, the published stable tag and commit, and the downloaded bundle hash.
+attempt, the selected channel's published tag and commit, and the downloaded bundle hash.
 Promotion keeps its product source separate from the main pipeline commit.
 Releases predating the witness cannot be selected. This request adapter does
 not duplicate that authorization policy or accept caller-supplied product

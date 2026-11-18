@@ -456,7 +456,14 @@ Dashboard sessions (`agent:<agent>:dashboard:<id>`, exactly four segments)
 collect completed tools, commentary, and reasoning in a collapsed **Worked**
 disclosure above preserved answers. The header reads **Worked for X** (or
 **Worked**); expanded, it appends the tool-call count (`Worked for 4s · 3 tool
-calls`) above a divider. Its body reuses the transcript rows, so tools appear as
+calls`). Like the
+[web work-group summary](https://github.com/openclaw/openclaw/blob/main/ui/src/pages/chat/components/chat-work-group-summary.tsx),
+the header has no leading glyph: the label starts at the prose edge and a
+trailing chevron appears only while the header is hovered or focused. The
+chevron keeps its slot while hidden, so showing it never moves or re-trims the
+label. A thin divider sits under the header; once open, the body's own
+separator takes its place, so the line is never doubled. Its body reuses the
+transcript rows, so tools appear as
 their own collapsed group summaries between commentary and reasoning.
 The policy follows the
 [pinned web turn presentation](https://github.com/openclaw/openclaw/blob/b896457970bfa1b2cef23ea16f3731ba73436b0c/ui/src/pages/chat/chat-turn-presentation.ts).
@@ -1129,7 +1136,8 @@ An authoritative session-list row that omits `thinkingLevel` clears the cached
 override, while sparse activity events preserve it. Prepared profile metadata
 may survive transient omissions only for the same identity and scope, and is
 invalidated on a new connection. Model changes never replay the old override.
-Model/reasoning changes require a connected, idle option-editing state;
+Model/reasoning controls remain available during an active response. Changes
+require a connected state with no queued or sending follow-up;
 the controller rechecks it for stale open-menu actions. Session browsing is not
 disabled solely because the gateway is offline.
 Context descriptions avoid repeating the group name.

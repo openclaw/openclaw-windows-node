@@ -3262,6 +3262,49 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task SessionOptionControls_RemainUsableDuringAnActiveResponse()
+    {
+        await WithChatAsync(480, async (surface, _, session, provider) =>
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(session.ViewModel.Inputs!.TurnActive);
+                Assert.True(FindControl<Button>(surface, "ChatComposerModelPicker").IsEnabled);
+                Assert.True(FindControl<Button>(surface, "ChatComposerAttach").IsEnabled);
+                Assert.True(FindControl<Button>(surface, "ChatComposerVoice").IsEnabled);
+                Assert.Equal("Stop", AutomationProperties.GetName(
+                    FindControl<Button>(surface, "ChatComposerPrimaryAction")));
+            });
+            await OpenReasoningAsync(surface);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(FindControl<Button>(ReasoningPopup(surface), "ChatReasoningPicker").IsEnabled);
+                Invoke(ReasoningMenu(surface).Items[4]);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => provider.SelectedThinkingLevel == "high",
+                "reasoning selection reaches the provider during an active response"));
+            await ChangeModelFlyoutAsync(surface, open: false);
+            await ChangeModelFlyoutAsync(surface, open: true);
+            await ChangeModelFlyoutAsync(surface, open: false, () =>
+                Invoke(FindControl<ListViewItem>(ModelPopup(surface), "ChatModelChoice_second/shared-model")));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => provider.SelectedModel == "second/shared-model",
+                "model selection reaches the provider during an active response"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("second/shared-model", provider.SelectedModel);
+                Assert.True(session.ViewModel.Inputs!.TurnActive);
+                Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                Assert.Equal("Stop", AutomationProperties.GetName(
+                    FindControl<Button>(surface, "ChatComposerPrimaryAction")));
+                Assert.Empty(provider.SentMessages);
+            });
+            await CaptureAsync(surface, "Composer-options-during-active-response");
+        }, "streaming");
+    }
+
+    [Fact]
     public async Task SessionOptionControls_AreDisabledOffline()
     {
         await WithChatAsync(480, async (surface, _, session, provider) =>

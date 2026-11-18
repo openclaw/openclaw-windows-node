@@ -7,10 +7,17 @@ using System.Threading.Tasks;
 
 namespace OpenClaw.Shared;
 
+/// <summary>
+/// Pre-credential endpoint decision for one reconnect or handshake. <paramref name="Retryable"/>
+/// defaults to false (terminal). Only an endpoint owner that has classified a structured, temporary
+/// cause (for example a Gateway that is still starting) may set it. The reconnect loop then
+/// withholds credentials for this attempt and observes again after its normal backoff.
+/// </summary>
 public readonly record struct ReconnectAuthorizationResult(
     bool Allowed,
     GatewayErrorKind FailureKind = GatewayErrorKind.Unknown,
-    string? Detail = null)
+    string? Detail = null,
+    bool Retryable = false)
 {
     public static ReconnectAuthorizationResult AllowedResult { get; } = new(true);
 }
@@ -789,9 +796,18 @@ public abstract class WebSocketClientBase : IDisposable
                     {
                         OnTransportObservation(ownerGeneration, GatewayHandshakePhase.ReconnectAuthorizationDenied,
                             failureKind: authorization.FailureKind);
-                        _logger.Warn(
-                            $"{ClientRole} reconnect blocked by endpoint authorization policy: " +
-                            (authorization.Detail ?? authorization.FailureKind.ToString()));
+                        var reason = authorization.Detail ?? authorization.FailureKind.ToString();
+                        _logger.Warn(authorization.Retryable
+                            ? $"{ClientRole} reconnect deferred until the endpoint is ready: {reason}"
+                            : $"{ClientRole} reconnect blocked by endpoint authorization policy: {reason}");
+                        // A temporary endpoint state is retried like a transport failure, with the
+                        // same capped backoff. Credentials are never sent for a denied attempt.
+                        if (authorization.Retryable)
+                        {
+                            OnReconnectAuthorizationDeferred(authorization);
+                            RaiseStatusChanged(ConnectionStatus.Error);
+                            continue;
+                        }
                         OnReconnectAuthorizationDenied(authorization);
                         RaiseStatusChanged(ConnectionStatus.Error);
                         break;
@@ -865,6 +881,15 @@ public abstract class WebSocketClientBase : IDisposable
     }
 
     protected virtual void OnReconnectAuthorizationDenied(
+        ReconnectAuthorizationResult authorization)
+    {
+    }
+
+    /// <summary>
+    /// A retryable denial; the reconnect loop keeps ownership of recovery. Report it the way this
+    /// client reports a failed transport attempt, not as a terminal failure.
+    /// </summary>
+    protected virtual void OnReconnectAuthorizationDeferred(
         ReconnectAuthorizationResult authorization)
     {
     }

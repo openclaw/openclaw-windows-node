@@ -3003,7 +3003,7 @@ jobs:
     name: Record authorized Store release source
     needs: [metadata, release, publish-promotion, build-msix-bundle]
     if: >-
-      ${{ !cancelled() && needs.metadata.outputs.isPrerelease == 'false' &&
+      ${{ !cancelled() &&
           needs.release.result == 'success' && needs.build-msix-bundle.result == 'success' &&
           (needs.publish-promotion.result == 'success' || needs.publish-promotion.result == 'skipped') }}
     runs-on: ubuntu-latest
