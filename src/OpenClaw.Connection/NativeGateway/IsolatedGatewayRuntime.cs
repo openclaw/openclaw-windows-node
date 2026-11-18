@@ -195,7 +195,7 @@ public sealed class IsolatedGatewayRuntime : INativeGatewayRuntime
             }
             EndpointRole role = await ClassifyEndpointAsync(status, endpoint, cancellationToken).ConfigureAwait(false);
             if (role == EndpointRole.Unconfirmed)
-                throw new NativeGatewayEndpointUnverifiedException(UnconfirmedEndpointMessage(endpoint.Port));
+                throw new NativeGatewayEndpointUnverifiedException(UnconfirmedEndpointMessage(endpoint.Port), transient: true);
             if (role == EndpointRole.NotServing)
             {
                 _logger.Warn($"The Gateway is not running on port {endpoint.Port}: {status.Describe()}.");

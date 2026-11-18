@@ -966,6 +966,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
         EndpointCredentialAuthorization first =
             await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
         Assert.False(first.Allowed);
+        Assert.True(first.Retryable);
         Assert.Contains("did not answer", first.Detail, StringComparison.Ordinal);
         Assert.DoesNotContain(_calls, call => call.StartsWith("gateway-service stop", StringComparison.Ordinal));
 
@@ -1022,6 +1023,7 @@ public sealed class IsolatedGatewayRuntimeTests : IAsyncDisposable
             EndpointCredentialAuthorization authorization =
                 await NativeGatewayEndpointSecurity.AuthorizeAsync(_runtime, _record, CancellationToken.None);
             Assert.False(authorization.Allowed);
+            Assert.False(authorization.Retryable);
             Assert.Contains("running on more than one port", authorization.Detail, StringComparison.Ordinal);
             Assert.Contains("Update the Gateway MSIX", authorization.Detail, StringComparison.Ordinal);
         }

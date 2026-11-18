@@ -785,7 +785,9 @@ before treating it as the Gateway, so an attested sandbox listener on that
 port is denied. A running status with no listener attestation (older packages
 with a second listener, or Windows without process sequences), or a listener
 that does not answer that check in time, names that cause, and Companion keeps
-a start it requested instead of rolling it back on every retry. Its
+a start it requested instead of rolling it back on every retry. Automatic
+reconnect keeps observing an unanswered check, which can clear on its own, but
+stops for missing attestation, which needs a newer package. Its
 synchronous browser credential callback uses the last attributed identity
 plus fresh OS snapshots; it never starts a Gateway on the UI thread.
 

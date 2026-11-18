@@ -35,7 +35,16 @@ public class NativeGatewayContractException(string message, bool awaitingExterna
 /// port did not answer the Gateway protocol check. Credentials are never sent; the running
 /// service itself is kept.
 /// </summary>
-public sealed class NativeGatewayEndpointUnverifiedException(string message) : NativeGatewayContractException(message);
+/// <param name="transient">
+/// True only for an attested listener that did not answer the protocol check in time, which can
+/// recover on its own; a later reconnect re-verifies it without starting or stopping anything.
+/// Unattested listeners need a newer package, so they stay terminal.
+/// </param>
+public sealed class NativeGatewayEndpointUnverifiedException(string message, bool transient = false)
+    : NativeGatewayContractException(message)
+{
+    public bool Transient { get; } = transient;
+}
 
 public sealed record IsolatedGatewayConfiguration(int Port, string Token);
 
