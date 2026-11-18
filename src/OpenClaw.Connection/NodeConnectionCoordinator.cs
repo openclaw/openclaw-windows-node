@@ -594,7 +594,8 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
         if (_nodeConnector is INodeConnectorReconnectPolicy reconnectPolicy)
         {
             async Task<ReconnectAuthorizationResult> AuthorizeNodeCredentialHandoffAsync(
-                CancellationToken authorizationCancellationToken)
+                CancellationToken authorizationCancellationToken,
+                bool allowRuntimeStart)
             {
                 var authorization = await _endpointSecurity.AuthorizeCredentialHandoffAsync(
                         target.Record,
@@ -603,9 +604,19 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
                         () => IsCurrentNodeAttempt(attempt),
                         cancellationToken,
                         authorizationCancellationToken,
-                        "node")
+                        "node",
+                        allowRuntimeStart)
                     .ConfigureAwait(false);
-                if (!authorization.Allowed &&
+                if (!authorization.Allowed && authorization.Retryable)
+                {
+                    // The node client retries this temporary endpoint state with its own backoff and
+                    // reports Error like a transport failure; do not publish a terminal block.
+                    _diagnostics.Record(
+                        "node",
+                        "Node credential handoff deferred until the endpoint is ready",
+                        authorization.Detail);
+                }
+                else if (!authorization.Allowed &&
                     authorization.FailureKind != GatewayErrorKind.Unknown)
                 {
                     await _stateSink.PublishNodeBlockedAsync(
@@ -616,16 +627,14 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
                             authorizationCancellationToken)
                         .ConfigureAwait(false);
                 }
-                return new ReconnectAuthorizationResult(
-                    authorization.Allowed,
-                    authorization.FailureKind,
-                    authorization.Detail);
+                return authorization;
             }
 
+            // The handshake runs on an already-open socket, so it may only re-inspect ownership.
             reconnectPolicy.HandshakeAuthorizationAsync =
-                AuthorizeNodeCredentialHandoffAsync;
+                token => AuthorizeNodeCredentialHandoffAsync(token, allowRuntimeStart: false);
             reconnectPolicy.ReconnectAuthorizationAsync =
-                AuthorizeNodeCredentialHandoffAsync;
+                token => AuthorizeNodeCredentialHandoffAsync(token, allowRuntimeStart: true);
         }
 
         try

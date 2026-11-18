@@ -568,6 +568,16 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         RaiseConnectionFailure(authorization.FailureKind);
     }
 
+    // Operator transport failures already publish their kind; a deferred handoff matches them.
+    // A deferral opens no socket, so a retained startup retry hint would otherwise keep
+    // replacing the growing backoff with its short delay on every authorization attempt.
+    protected override void OnReconnectAuthorizationDeferred(
+        ReconnectAuthorizationResult authorization)
+    {
+        Volatile.Write(ref _startupRejection, null);
+        RaiseConnectionFailure(authorization.FailureKind);
+    }
+
     protected void RaiseConnectionFailure(GatewayErrorKind kind) =>
         ConnectionFailure?.Invoke(this, kind);
 
