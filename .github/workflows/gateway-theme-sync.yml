@@ -1,0 +1,115 @@
+name: Gateway theme table sync
+
+# Keeps the Companion's built-in Gateway theme table (src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs) on the
+# openclaw commit that the latest stable packaged Gateway ships, read from the release's verified payload. When that
+# commit moves, it regenerates the table, runs the theme tests and opens or updates one pull request from a fixed bot
+# branch. A theme that names a font the
+# Companion does not bundle fails the theme tests; adding a font and its license stays a human step
+# (scripts/Update-ThemeFonts.ps1).
+#
+# Maintainer setup: create a GitHub App with Contents and Pull requests read/write on this repository, then set the
+# repository variable GATEWAY_THEME_SYNC_APP_ID, the secret GATEWAY_THEME_SYNC_APP_PRIVATE_KEY and the variable
+# GATEWAY_THEME_SYNC_ENABLED=true. Until it is enabled, runs still regenerate and test a stale table but publish nothing.
+# The App token is required because pull requests opened with GITHUB_TOKEN do not start CI.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: gateway-theme-sync-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # The full ref, so a tag that shares the default branch's name cannot reach the publishing credentials.
+    if: ${{ github.repository == 'openclaw/openclaw-windows-node' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      SYNC_BRANCH: automation/gateway-theme-sync
+      THEME_TABLE: src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # GitVersion.MsBuild needs full history to build the test projects.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Test release resolution without network
+        shell: pwsh
+        run: ./scripts/test-gateway-theme-upstream.ps1
+
+      - name: Resolve the latest stable packaged Gateway's openclaw commit
+        id: upstream
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $state = ./scripts/Resolve-GatewayThemeUpstream.ps1 -CacheDirectory $env:RUNNER_TEMP -GitHubOutput $env:GITHUB_OUTPUT
+          $verdict = if ($state.upToDate) { 'is current' } else { "needs $($state.upstreamRef)" }
+          "Packaging $($state.packagingRelease) ships openclaw $($state.gatewayVersion) ($($state.upstreamRef)). The theme table ($($state.currentRef)) $verdict." |
+            Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Regenerate the built-in theme table
+        if: ${{ steps.upstream.outputs.up_to_date != 'true' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REF: ${{ steps.upstream.outputs.upstream_ref }}
+        run: ./scripts/Update-GatewayThemeTable.ps1 -UpstreamRef $env:UPSTREAM_REF
+
+      - name: Setup .NET 10
+        if: ${{ steps.upstream.outputs.up_to_date != 'true' }}
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Build and run the theme tests
+        if: ${{ steps.upstream.outputs.up_to_date != 'true' }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./scripts/Initialize-ReactorPackages.ps1
+          dotnet test tests/OpenClaw.Shared.Tests -c Debug --filter "FullyQualifiedName~GatewayTheme"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet test tests/OpenClaw.Tray.Tests -c Debug -r win-x64 --filter "FullyQualifiedName~GatewayTheme"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Explain a failed regeneration
+        if: ${{ failure() && steps.upstream.outputs.up_to_date == 'false' }}
+        shell: pwsh
+        run: |
+          @(
+            ''
+            'Regenerating, building or testing the theme table failed. No pull request was opened.'
+            'If EveryBuiltinThemeTypefaceIsBundledWithTheCompanion failed, a theme names a font the Companion does not bundle:'
+            'add it with scripts/Update-ThemeFonts.ps1 (including its license notice), then rerun this workflow.'
+          ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+      - name: Create the sync App token
+        id: app-token
+        if: ${{ steps.upstream.outputs.up_to_date != 'true' && vars.GATEWAY_THEME_SYNC_ENABLED == 'true' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.GATEWAY_THEME_SYNC_APP_ID }}
+          private-key: ${{ secrets.GATEWAY_THEME_SYNC_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Open or update the sync pull request
+        if: ${{ steps.app-token.outcome == 'success' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          PACKAGING_RELEASE: ${{ steps.upstream.outputs.packaging_release }}
+          GATEWAY_VERSION: ${{ steps.upstream.outputs.gateway_version }}
+          UPSTREAM_REF: ${{ steps.upstream.outputs.upstream_ref }}
+        run: ./scripts/Publish-GatewayThemeSync.ps1
