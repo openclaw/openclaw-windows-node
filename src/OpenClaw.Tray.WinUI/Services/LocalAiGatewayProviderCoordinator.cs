@@ -24,22 +24,19 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
     public LocalAiGatewayProviderCoordinator(
         IWslCommandRunner commands,
         ILocalAiGatewayDistroResolver distroResolver,
-        IOpenClawLogger logger,
-        Func<string, string>? getString = null)
+        IOpenClawLogger logger)
         : this(new WslLocalAiGatewayConfigurationTransport(
             commands ?? throw new ArgumentNullException(nameof(commands)),
-            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger, getString)
+            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger)
     {
     }
 
     public LocalAiGatewayProviderCoordinator(
         ILocalAiGatewayConfigurationTransport configuration,
-        IOpenClawLogger logger,
-        Func<string, string>? getString = null)
+        IOpenClawLogger logger)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _getString = getString;
     }
 
     public LocalAiGatewayProviderCoordinator(
@@ -185,11 +182,25 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return admission;
         if (current.ProviderExists)
         {
-            // Admission accepted the current shape or the exact pre-effort shape;
-            // only the latter needs its owned model array upgraded.
-            return MatchesProvider(current.ProviderJson!, install)
-                ? admission
-                : await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
+            // Admission accepted the current shape or the exact pre-effort shape.
+            if (MatchesProvider(current.ProviderJson!, install))
+                return admission;
+            // Native endpoint recovery keeps a verified live route, so only the
+            // owned model array of a pre-effort provider is upgraded in place.
+            if (_atomicConfiguration is not null)
+                return await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
+            // WSL always quiesces before publishing, so a pre-effort provider is
+            // withdrawn like an endpoint cycle and published from scratch.
+            LocalAiEndpointLifecycleResult withdrawn = await QuiesceAsync(
+                install, LocalAiQuiesceReason.EndpointCycle, cancellationToken).ConfigureAwait(false);
+            if (!withdrawn.Success)
+                return withdrawn;
+            current = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
+            admission = CheckPublication(current, install);
+            if (!admission.Success)
+                return admission;
+            if (current.ProviderExists)
+                return Failed("The Local AI gateway route changed outside the companion; preserving it instead of publishing the managed endpoint.");
         }
 
         if (_atomicConfiguration is not null)
@@ -305,42 +316,15 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         // Change the owned model array only. The provider readback may redact
         // the API key, so replaying the entire provider would destroy a secret.
         string models = LocalAiGatewayProviderDefinition.BuildProviderModelsJson(install);
-        if (_atomicConfiguration is not null)
+        var patch = new JsonObject { ["models"] = new JsonObject
         {
-            var patch = new JsonObject { ["models"] = new JsonObject
+            ["providers"] = new JsonObject { ["llamacpp"] = new JsonObject
             {
-                ["providers"] = new JsonObject { ["llamacpp"] = new JsonObject
-                {
-                    ["models"] = JsonNode.Parse(models),
-                } },
-            } };
-            LocalAiEndpointLifecycleResult applied = await ApplyAtomicAsync(current, patch, ct).ConfigureAwait(false);
-            if (!applied.Success) return applied;
-        }
-        else
-        {
-            using JsonDocument oldProvider = ParseBounded(current.ProviderJson!);
-            string oldModels = oldProvider.RootElement.GetProperty("models").GetRawText();
-            string[] args = ["config", "set", LocalAiGatewayProviderDefinition.ProviderModelsPath,
-                models, "--strict-json", "--replace", "--expect-current-json", oldModels];
-            // The CLI does not allow conditional expectations on dry runs.
-            // Validate the proposed array first; the actual write remains guarded.
-            LocalAiGatewayCommandOutcome dryRun = await _configuration!.RunAsync(
-                ["config", "set", LocalAiGatewayProviderDefinition.ProviderModelsPath,
-                    models, "--strict-json", "--replace", "--dry-run"], ct).ConfigureAwait(false);
-            if (!dryRun.Routed || !dryRun.Result!.Success)
-                return Failed(Localized("LocalAi_GatewayLegacyMigrationValidation", "The legacy Local AI model settings could not be validated for migration. No Gateway configuration was changed."));
-            LocalAiGatewayCommandOutcome applied = await _configuration.RunAsync(args, ct).ConfigureAwait(false);
-            if (!applied.Routed || !applied.Result!.Success)
-                return Failed(Localized("LocalAi_GatewayLegacyMigrationChanged", "The legacy Local AI model settings changed before migration could be confirmed. Reconnect the original Gateway to reconcile."));
-            // The conditional write has landed; drain the restart despite
-            // cancellation so the running Gateway can adopt this revision.
-            LocalAiGatewayCommandOutcome restarted = await _configuration.RunAsync(
-                ["gateway", "restart"], CancellationToken.None).ConfigureAwait(false);
-            if (!restarted.Routed || !restarted.Result!.Success)
-                return Failed(Localized("LocalAi_GatewayLegacyMigrationRestart", "The Local AI model settings were saved, but the WSL Gateway restart was not confirmed. Reconcile the original Gateway before retrying."));
-        }
-
+                ["models"] = JsonNode.Parse(models),
+            } },
+        } };
+        LocalAiEndpointLifecycleResult applied = await ApplyAtomicAsync(current, patch, ct).ConfigureAwait(false);
+        if (!applied.Success) return applied;
         return await VerifyMigratedProviderAsync(install).ConfigureAwait(false);
     }
 
