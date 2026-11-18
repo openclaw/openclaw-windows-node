@@ -276,18 +276,24 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
             try
             {
                 RichTextBlock? text = null;
+                SolidColorBrush? chip = null;
+                var reference = Assert.IsType<SolidColorBrush>(surface.Resources["ChipReference"]);
+                // ActualTheme can flip before the queued inline styling pass replaces the chip.
                 await WaitForRenderedConditionAsync(
-                    () => (text = FindDescendants<RichTextBlock>(root).SingleOrDefault()) is
-                              { IsLoaded: true, ActualTheme: var actual, ActualWidth: > 0 } &&
-                          actual == chatTheme && text.TextHighlighters.Count > 0,
-                    $"inline code painted in {chatTheme} with the application in {appTheme}");
-                var chip = Assert.Single(text!.TextHighlighters, highlighter =>
-                    highlighter.Ranges.Any(range =>
-                        range.StartIndex == codeStart && range.Length == code.Length));
-                var actualColor = Assert.IsType<SolidColorBrush>(chip.Background).Color;
-                var expectedColor = Assert.IsType<SolidColorBrush>(surface.Resources["ChipReference"]).Color;
+                    () =>
+                    {
+                        text = FindDescendants<RichTextBlock>(root).SingleOrDefault();
+                        chip = text?.TextHighlighters.SingleOrDefault(highlighter =>
+                            highlighter.Ranges.Any(range =>
+                                range.StartIndex == codeStart && range.Length == code.Length))
+                            ?.Background as SolidColorBrush;
+                        return text is { IsLoaded: true, ActualWidth: > 0 } && text.ActualTheme == chatTheme &&
+                            chip?.Color == reference.Color;
+                    },
+                    $"inline code painted in {chatTheme} with the application in {appTheme}",
+                    () => $"ActualTheme: {text?.ActualTheme}; expected: {reference.Color}; actual: {chip?.Color}.");
                 await VisualTestCapture.CaptureAsync(surface, $"InlineCode-App{appTheme}-Chat{chatTheme}");
-                Assert.Equal(expectedColor, actualColor);
+                Assert.Equal(reference.Color, chip!.Color);
             }
             finally
             {
