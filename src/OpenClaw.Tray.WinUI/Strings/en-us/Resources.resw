@@ -4510,6 +4510,12 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
     <value>Windows default</value>
   </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Mica backdrop</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>With the Windows default theme, let the desktop show through window backgrounds. Gateway themes always use solid colors.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>System</value>
   </data>

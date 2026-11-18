@@ -4461,6 +4461,12 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
     <value>Windows-standaard</value>
   </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Mica-achtergrond</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>Laat bij het Windows-standaardthema het bureaublad door vensterachtergronden heen schijnen. Gateway-thema's gebruiken altijd effen kleuren.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Systeem</value>
   </data>

@@ -119,6 +119,29 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="UseMicaLabel" x:Uid="SettingsRow_UseMica_Header" Text="Mica backdrop" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_UseMica_Description"
+                                       Text="With the Windows default theme, let the desktop show through window backgrounds. Gateway themes always use solid colors."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="UseMicaToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding UseMica, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="SettingsPageUseMica"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=UseMicaLabel}"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
                             <TextBlock x:Uid="SettingsRow_GlobalHotkey_Header" Text="Global hotkeys" Style="{StaticResource BodyTextBlockStyle}"/>
                             <TextBlock x:Uid="SettingsRow_GlobalHotkey_Description"
                                        Text="Enable global hotkeys (Ctrl+Alt+Shift+V for voice, Ctrl+Alt+; for settings)."
