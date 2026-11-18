@@ -1362,7 +1362,7 @@ public sealed partial class GatewayFixtureUiTests
                     Assert.Contains(run.Gateway.Requests, request => request.Method == "progressCard.get");
                     await run.Gateway.NotifyProgressCardChangedAsync(FixtureBoards.ProgressSessionKey, 2);
                     await WaitForDashboardPixelsAsync(run, hub, $"dashboards-{theme}-progress-refresh.png",
-                        ["Fixture progress revision 2."], widgetId: "BoardWidget_run-progress");
+                        ["Fixture progress revision 2."], widgetId: "BoardWidget_run-progress", tabId: "metrics");
 
                     AutomationElement? integrations = null;
                     await WaitUiAsync(run, () => (integrations = FindInApp(run, new AndCondition(
@@ -1507,7 +1507,7 @@ public sealed partial class GatewayFixtureUiTests
     }
 
     private static async Task<AutomationElement> RevealDashboardWidgetAsync(
-        GatewayFixtureRun run, AutomationElement hub, string widgetId, string imageName)
+        GatewayFixtureRun run, AutomationElement hub, string widgetId, string imageName, string tabId)
     {
         AutomationElement? measuredWidget = null;
         object? firstObservation = null;
@@ -1525,7 +1525,7 @@ public sealed partial class GatewayFixtureUiTests
             {
                 probes++;
                 var hasBounds = false;
-                measuredWidget = FindDashboardWidget(run, "overview", widgetId);
+                measuredWidget = FindDashboardWidget(run, tabId, widgetId);
                 if (measuredWidget is null)
                 {
                     missing++;
@@ -1649,7 +1649,8 @@ public sealed partial class GatewayFixtureUiTests
             new System.Windows.Rect(0, 0, 100, 100), percent, viewSize));
 
     private static async Task WaitForDashboardPixelsAsync(GatewayFixtureRun run, AutomationElement hub,
-        string imageName, string[] expectedText, bool requireDeploymentPlot = false, string? widgetId = null)
+        string imageName, string[] expectedText, bool requireDeploymentPlot = false, string? widgetId = null,
+        string tabId = "overview")
     {
         var engine = OcrEngine.TryCreateFromLanguage(new Windows.Globalization.Language("en-US"))
             ?? throw new InvalidOperationException("English Windows OCR is required to verify the sandbox's rendered pixels.");
@@ -1658,7 +1659,7 @@ public sealed partial class GatewayFixtureUiTests
             await run.WaitForAsync(async () =>
             {
                 await DismissDashboardContainmentNoticeAsync(run, hub, imageName);
-                var widget = widgetId is null ? null : await RevealDashboardWidgetAsync(run, hub, widgetId, imageName);
+                var widget = widgetId is null ? null : await RevealDashboardWidgetAsync(run, hub, widgetId, imageName, tabId);
                 OwnedWindowCapture.Save(run, hub, imageName, widget is null ? [] : [widget]);
                 var path = Path.Combine(run.ArtifactsDirectory, imageName);
                 var file = await StorageFile.GetFileFromPathAsync(path);
