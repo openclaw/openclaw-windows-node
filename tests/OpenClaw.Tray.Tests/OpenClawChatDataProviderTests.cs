@@ -8,6 +8,7 @@ using OpenClawTray.Services;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Runtime.ExceptionServices;
@@ -632,6 +633,165 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 entry => entry.Kind == ChatTimelineItemKind.ToolCall);
             Assert.Equal(liveCounts, ChatToolDiffStats.Resolve(history));
         }
+    }
+
+    [Fact]
+    public async Task TypedNotices_BecomeDimStatusRowsAndHiddenNoticesDisappear()
+    {
+        const string skillNotice =
+            """{"role":"assistant","content":[],"openclawDeliveryMirror":{"kind":"plugin-notice","pluginId":"skill-workshop","type":"skills-changed","data":{"agentId":"main","runId":"review-1","skills":[{"name":"pdf","action":"created"}]}}}""";
+        using var json = JsonDocument.Parse("""
+            {"messages":[
+              {"role":"user","content":"[System] Gateway restarted","provenance":{"kind":"internal_system","sourceTool":"restart"}},
+              {"role":"user","content":"[System] Workspace rules","provenance":{"kind":"internal_system","sourceTool":"cli_harness_context"}},
+            """ + skillNotice + """
+            ,
+              {"role":"user","content":"Hi"}
+            ]}
+            """);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using (provider)
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(ParseHistoryPayload(json.RootElement));
+            bridge.IsConnected = true;
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+            var history = (await provider.LoadAsync()).Timelines["main"].Entries;
+            Assert.Collection(history,
+                entry => Assert.Equal((ChatTimelineItemKind.Status, ChatTone.Dim, "Workspace rules"), (entry.Kind, entry.Tone, entry.Text)),
+                entry => Assert.Equal((ChatTimelineItemKind.Status, ChatTone.Dim, "pdf"), (entry.Kind, entry.Tone, entry.Text)),
+                entry => Assert.Equal(ChatTimelineItemKind.User, entry.Kind));
+
+            // A replayed live copy of the same review notice adds nothing; a new one adds one row.
+            ChatMessageInfo Live(string runId)
+            {
+                using var message = JsonDocument.Parse(skillNotice.Replace("review-1", runId, StringComparison.Ordinal));
+                return new ChatMessageInfo
+                {
+                    SessionKey = "main", Role = "assistant", Text = "", IsTranscriptSnapshot = true,
+                    Presentation = OpenClawGatewayClient.ReadChatPresentation(message.RootElement),
+                };
+            }
+            var published = snapshots.Count;
+            bridge.RaiseChat(Live("review-1"));
+            Assert.Equal(published, snapshots.Count);
+            var fresh = Live("review-2");
+            bridge.RaiseChat(fresh);
+            Assert.True(fresh.IsNotificationSuppressed);
+            var live = snapshots[^1].Timelines["main"].Entries;
+            Assert.Equal(4, live.Count);
+            Assert.Equal("review-2", provider.GetEntryMetadata("main")[live[^1].Id].Presentation?.SkillChanges?.RunId);
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "cron", "Routine completed successfully.", "Routine completed successfully.")]
+    [InlineData(true, "cron", "Routine completed successfully.", "Routine completed successfully.")]
+    [InlineData(false, "cron", "Routine completed successfully. Additional details.", "Routine completed successfully. Additional details.")]
+    [InlineData(true, "cron", "Routine completed successfully. Additional details.", "Routine completed successfully. Additional details.")]
+    [InlineData(false, "cli_harness_context", "Routine completed successfully. Additional details.", " Additional details.")]
+    [InlineData(true, "cli_harness_context", "Routine completed successfully. Additional details.", " Additional details.")]
+    [InlineData(false, "plugin:focus", "Routine completed successfully. Additional details.", " Additional details.")]
+    [InlineData(true, "plugin:focus", "Routine completed successfully. Additional details.", " Additional details.")]
+    public async Task TypedSystemNotices_PreserveTurnBoundariesInHistoryAndLive(
+        bool live, string sourceTool, string secondReply, string expectedSecondReply)
+    {
+        using var json = JsonDocument.Parse($$$"""
+            {"messages":[
+              {"role":"assistant","content":"Routine completed successfully."},
+              {"role":"user","content":"[System] Run routine again",
+               "provenance":{"kind":"internal_system","sourceTool":"{{{sourceTool}}}"}},
+              {"role":"assistant","content":"{{{secondReply}}}"}
+            ]}
+            """);
+        var history = ParseHistoryPayload(json.RootElement);
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        if (live)
+        {
+            await provider.LoadAsync();
+            foreach (var message in history.Messages)
+            {
+                message.IsTranscriptSnapshot = true;
+                bridge.RaiseChat(message);
+            }
+        }
+        else
+        {
+            bridge.HistoryBehavior = _ => Task.FromResult(history);
+            bridge.IsConnected = true;
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true);
+        }
+
+        var entries = (await provider.LoadAsync()).Timelines["main"].Entries;
+        Assert.Equal(["Routine completed successfully.", expectedSecondReply],
+            entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).Select(entry => entry.Text));
+        Assert.Equal("Run routine again", Assert.Single(entries, entry => entry.Kind == ChatTimelineItemKind.Status).Text);
+        Assert.DoesNotContain(entries, entry => entry.Kind == ChatTimelineItemKind.User);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunFailureNotice_ReplacesOnlyItsTerminalErrorInEitherArrivalOrder(bool noticeFirst)
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "failed-run"));
+        var notice = new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", IsTranscriptSnapshot = true,
+            Presentation = new(RunFailure: new("failed-run", "Detailed failure")),
+        };
+        var terminal = new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", RunId = "failed-run",
+            State = "error", ErrorMessage = "Raw terminal error",
+        };
+
+        bridge.RaiseChat(noticeFirst ? notice : terminal);
+        bridge.RaiseChat(noticeFirst ? terminal : notice);
+        bridge.RaiseChat(terminal);
+        bridge.RaiseChat(notice);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.False(timeline.TurnActive);
+        Assert.DoesNotContain(timeline.Entries, entry => entry.Text == "Raw terminal error");
+        var row = Assert.Single(timeline.Entries, entry => entry.Text == "Detailed failure");
+        Assert.Equal("failed-run", provider.GetEntryMetadata("main")[row.Id].Presentation?.RunFailure?.RunId);
+    }
+
+    [Fact]
+    public async Task RunFailureNotice_DoesNotRemoveAnotherRunsError()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        foreach (var run in new[] { "first", "second" })
+        {
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: run));
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main", Role = "assistant", RunId = run,
+                State = "error", ErrorMessage = run + " failed",
+            });
+        }
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries, entry => entry.Text == "second failed");
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", IsTranscriptSnapshot = true,
+            Presentation = new(RunFailure: new("first", "First run details")),
+        });
+
+        var entries = snapshots[^1].Timelines["main"].Entries;
+        Assert.Contains(entries, entry => entry.Text == "second failed");
+        Assert.DoesNotContain(entries, entry => entry.Text == "first failed");
+        Assert.Single(entries, entry => entry.Text == "First run details");
     }
 
     [Fact]
@@ -1283,29 +1443,22 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal(expected, command.ToString());
     }
 
-    [Fact]
-    public void CompactionPresenter_WithTokenCounts_FormatsSavings()
-    {
-        var presentation = ChatCompactionPresenter.Create(42000, 12000);
-
-        Assert.Equal("Context compacted", presentation.Title);
-        Assert.Contains("42", presentation.Detail);
-        Assert.Contains("12", presentation.Detail);
-        Assert.Contains("30", presentation.Detail);
-        Assert.Contains("saved", presentation.Detail);
-    }
-
-    [Fact]
-    public void CompactionPresenter_WithoutTokenCounts_ExplainsCheckpoint()
-    {
-        var presentation = ChatCompactionPresenter.Create(null, null);
-
-        Assert.Contains("checkpoint", presentation.Detail);
-        Assert.Contains(presentation.Title, presentation.AutomationName);
-    }
-
-    [Fact]
-    public void CompactionPresenter_CreatesPresentationForStructuredStatusEntry()
+    [Theory]
+    [InlineData(182340L, 24110L, "saved 158.2k tokens (86.8%)")]
+    [InlineData(80000L, 20000L, "saved 60k tokens (75%)")]
+    [InlineData(1000L, 1L, "saved 999 tokens (99.9%)")]
+    [InlineData(2000000L, 500000L, "saved 1.5M tokens (75%)")]
+    [InlineData(2000000000L, 500000000L, "saved 1.5B tokens (75%)")]
+    [InlineData(100L, 0L, "saved 100 tokens (100%)")]
+    [InlineData(100L, 100L, "saved 0 tokens (0%)")]
+    [InlineData(null, 10L, null)]
+    [InlineData(100L, null, null)]
+    [InlineData(0L, 0L, null)]
+    [InlineData(-1L, 0L, null)]
+    [InlineData(100L, -1L, null)]
+    [InlineData(10L, 100L, null)]
+    public void CompactionPresenter_StructuredStatusShowsOnlyMeasuredSavings(
+        long? before, long? after, string? expectedDetail)
     {
         var entry = new ChatTimelineItem("compaction-1", ChatTimelineItemKind.Status, "Compacted");
         var metadata = new Dictionary<string, ChatEntryMetadata>
@@ -1314,21 +1467,43 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
                 Timestamp: null,
                 Model: null,
                 OpenClawKind: "compaction",
-                CompactionTokensBefore: 42000,
-                CompactionTokensAfter: 12000),
+                CompactionTokensBefore: before,
+                CompactionTokensAfter: after),
         };
 
-        var presentation = ChatCompactionPresenter.TryCreateForEntry(entry, metadata);
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            var presentation = ChatCompactionPresenter.TryCreateForEntry(entry, metadata);
+            Assert.NotNull(presentation);
+            Assert.Equal("Context compacted", presentation.Title);
+            Assert.Equal(expectedDetail, presentation.Detail);
+            Assert.Equal(expectedDetail is null ? "Context compacted" : $"Context compacted, {expectedDetail}",
+                presentation.AutomationName);
+        }
+        finally { CultureInfo.CurrentCulture = previousCulture; }
+    }
 
-        Assert.NotNull(presentation);
-        Assert.Equal("COMPACTED HISTORY", presentation.Title);
-        Assert.Equal(
-            "The compacted transcript is preserved as a checkpoint. " +
-            "Open session checkpoints to branch or restore from that compacted view.",
-            presentation.Detail);
-        Assert.Equal("Open checkpoints", presentation.ActionLabel);
-        Assert.DoesNotContain("42", presentation.Detail);
-        Assert.DoesNotContain(presentation.ActionLabel, presentation.AutomationName);
+    [Fact]
+    public void CompactionPresenter_LocalizesSavingsAndDecimalSeparator()
+    {
+        var entry = new ChatTimelineItem("compaction-1", ChatTimelineItemKind.Status, "Compacted");
+        var metadata = new Dictionary<string, ChatEntryMetadata>
+        {
+            [entry.Id] = new(null, null, OpenClawKind: "compaction",
+                CompactionTokensBefore: 182340, CompactionTokensAfter: 24110),
+        };
+        var previousCulture = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("fr-FR");
+            var presentation = ChatCompactionPresenter.TryCreateForEntry(
+                entry, metadata, "Contexte compacté", "{0} jetons économisés ({1} %)");
+            Assert.NotNull(presentation);
+            Assert.Equal("Contexte compacté, 158,2k jetons économisés (86,8 %)", presentation.AutomationName);
+        }
+        finally { CultureInfo.CurrentCulture = previousCulture; }
     }
 
     [Theory]

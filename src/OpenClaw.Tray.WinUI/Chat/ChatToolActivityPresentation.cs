@@ -105,6 +105,7 @@ public static class ChatToolActivityPresentation
         foreach (var entry in entries)
         {
             if (turns.Count == 0 || entry.Kind == ChatTimelineItemKind.User ||
+                entry.Kind == ChatTimelineItemKind.Status && ChatNoticePresentation.StartsTurn(Facts(entry)) ||
                 Facts(entry)?.TurnBoundary == true || Independent(entry) ||
                 Facts(entry)?.SenderSession is not null || Facts(entry)?.SenderAgentId is not null)
                 turns.Add([]);

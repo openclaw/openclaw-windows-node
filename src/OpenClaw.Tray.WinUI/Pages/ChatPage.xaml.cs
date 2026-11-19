@@ -605,7 +605,6 @@ public sealed partial class ChatPage : Page
             initialThreadId: threadIdToMount,
             onReadAloud: readAloud,
             onStopSpeaking: () => app?.StopChatSpeaking(),
-            onOpenCheckpoints: OpenSessionCheckpoints,
             initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey),
             userDisplayName: _userDisplayName,
             userProfilePicture: _userProfilePicture,
@@ -619,15 +618,6 @@ public sealed partial class ChatPage : Page
 
         ConsumePendingVoice();
     }
-
-    private void OpenSessionCheckpoints(string sessionKey) =>
-        AsyncEventHandlerGuard.Run(
-            () => SessionCheckpointDialogCoordinator.ShowAsync(
-                XamlRoot,
-                sessionKey,
-                isHostAvailable: () => _pageActive && XamlRoot is not null),
-            new OpenClawTray.AppLogger(),
-            nameof(OpenSessionCheckpoints));
 
     private IChatDataProvider? ResolveChatProvider(App? app)
     {

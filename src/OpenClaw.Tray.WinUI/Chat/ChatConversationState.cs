@@ -1405,6 +1405,72 @@ internal sealed class ChatConversationState
         }
     }
 
+    /// <summary>
+    /// Adds one typed Gateway notice as a status row, at most once per Gateway identity or notice fact.
+    /// A run-failure notice supersedes the live error row that the same run's chat terminal produced.
+    /// Returns null when the notice is already present.
+    /// </summary>
+    internal ChatDataSnapshot? ApplyNotice(
+        ChatMessageInfo message,
+        ChatNoticeKind kind,
+        ChatProjectionContext context)
+    {
+        var threadId = message.SessionKey!;
+        lock (_gate)
+        {
+            var metadata = BuildLiveMetaLocked(
+                threadId,
+                message.Ts,
+                message.OpenClawId,
+                message.OpenClawSeq) with { Presentation = message.Presentation };
+            var timeline = GetOrCreateTimelineLocked(threadId);
+            var threadMeta = GetOrCreateThreadMetaLocked(threadId);
+            foreach (var entry in timeline.Entries)
+            {
+                if (ChatNoticePresentation.KindOf(entry, threadMeta) != ChatNoticeKind.None &&
+                    threadMeta.TryGetValue(entry.Id, out var existing) &&
+                    (HasMatchingGatewayIdentity(existing, metadata) || SameNoticeFact(existing.Presentation, message.Presentation)))
+                    return null;
+            }
+            if (message.Presentation.RunFailure is { } failure)
+                timeline = RemoveRunErrorRow(timeline, threadMeta, failure.RunId);
+            _timelines[threadId] = timeline;
+            ApplyEventLocked(
+                threadId,
+                new ChatStatusEvent(
+                    ChatContentFormatting.TruncateForChatEntry(
+                        ChatNoticePresentation.EntryText(kind, message.Presentation, message.Text)),
+                    ChatTone.Dim,
+                    StartsTurn: ChatNoticePresentation.StartsTurn(message.Presentation)),
+                metadata);
+            return BuildSnapshotLocked(context);
+        }
+    }
+
+    private static bool SameNoticeFact(ChatMessagePresentation? existing, ChatMessagePresentation incoming) =>
+        existing is not null &&
+        (incoming.RunFailure is not null && Equals(existing.RunFailure, incoming.RunFailure) ||
+         incoming.SkillChanges is not null && Equals(existing.SkillChanges, incoming.SkillChanges) ||
+         incoming.ModelFallback is not null && Equals(existing.ModelFallback, incoming.ModelFallback));
+
+    private static ChatTimelineState RemoveRunErrorRow(
+        ChatTimelineState timeline,
+        Dictionary<string, ChatEntryMetadata> threadMeta,
+        string runId)
+    {
+        for (var index = timeline.Entries.Count - 1; index >= 0; index--)
+        {
+            var entry = timeline.Entries[index];
+            if (entry is { Kind: ChatTimelineItemKind.Status, Tone: ChatTone.Error } &&
+                threadMeta.TryGetValue(entry.Id, out var metadata) && metadata.LiveRunId == runId)
+            {
+                threadMeta.Remove(entry.Id);
+                return timeline with { Entries = timeline.Entries.RemoveAt(index) };
+            }
+        }
+        return timeline;
+    }
+
     internal ChatDataSnapshot ClearPendingPermission(
         string threadId,
         string? expectedRequestId,
@@ -2100,9 +2166,14 @@ internal sealed class ChatConversationState
                 if (hasContent || !message.IsFinal || message.HasDisplayContentOverride)
                     _timelines[threadId] = _timelines[threadId] with { ReconcilableAssistantId = null };
                 if (string.Equals(message.State, "error", StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(message.ErrorMessage))
+                    !string.IsNullOrWhiteSpace(message.ErrorMessage) &&
+                    !_timelines[threadId].Entries.Any(entry =>
+                        entry.Kind == ChatTimelineItemKind.Status &&
+                        GetOrCreateThreadMetaLocked(threadId).GetValueOrDefault(entry.Id)?
+                            .Presentation?.RunFailure?.RunId == message.RunId))
                     ApplyEventLocked(threadId, new ChatErrorEvent(
-                        NativeToolProjector.SanitizeToolDisplayValue(message.ErrorMessage) ?? ""), null);
+                        NativeToolProjector.SanitizeToolDisplayValue(message.ErrorMessage) ?? ""),
+                        BuildLiveMetaLocked(threadId, message.Ts) with { LiveRunId = message.RunId });
             }
             return new(true, !hasContent || !message.IsFinal || message.Yielded ||
                 message.IsTranscriptSnapshot && !isTerminal,

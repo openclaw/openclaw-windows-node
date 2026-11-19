@@ -2890,6 +2890,93 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task TranscriptNotices_CenterRestartAndFailure_AndShowCompactionSavings()
+    {
+        const string subtitle = "Gateway restarted. The conversation has been restored.";
+        const string summary = "The model provider is overloaded.\nHTTP 529 overloaded_error";
+        const string failureTitle = "Couldn’t finish this reply";
+        var copied = new List<string>();
+        await WithChatAsync(1000, async (surface, host, _, _) =>
+        {
+            await ui.RunOnUIAsync(async () =>
+            {
+                var restart = new ChatTimelineItem("restart", ChatTimelineItemKind.Status, subtitle)
+                {
+                    Presentation = new(SourceRole: "user", ProvenanceKind: "internal_system",
+                        SourceTool: "restart-sentinel"),
+                };
+                var failureEntry = new ChatTimelineItem("failure", ChatTimelineItemKind.Status, summary)
+                {
+                    Presentation = new(RunFailure: new("failed-run", summary)),
+                };
+                var compaction = new ChatTimelineItem("compaction", ChatTimelineItemKind.Status, "Compaction");
+                var context = new ChatTimelinePresentationContext("notices", [restart, failureEntry, compaction],
+                    false, null, EntryMetadata: new Dictionary<string, ChatEntryMetadata>
+                    {
+                        [compaction.Id] = new(null, null, OpenClawKind: "compaction",
+                            CompactionTokensBefore: 182340, CompactionTokensAfter: 24110),
+                    });
+                host.Mount(_ => Component<ReactorChatTimeline, ReactorChatTimelineProps>(
+                    new(ReactorChatTimelineMode.Timeline, context, TryCopyText: text => { copied.Add(text); return true; })));
+
+                foreach (var width in new[] { 1000, 480 })
+                {
+                    surface.Width = width;
+                    Expander? failure = null;
+                    RichTextBlock? restartText = null;
+                    Rect[]? previous = null;
+                    await WaitForRenderedConditionAsync(() =>
+                    {
+                        failure = FindDescendants<Expander>(host).FirstOrDefault(element =>
+                            AutomationProperties.GetAutomationId(element) == "ChatRunFailure_failure");
+                        restartText = FindDescendants<RichTextBlock>(host).FirstOrDefault(element =>
+                            CollectText(element) == subtitle);
+                        if (failure?.Header is not FrameworkElement header || restartText is null
+                            || !FindDescendants<TextBlock>(host).Any(text => text.Text == "saved 158.2k tokens (86.8%)"))
+                            return false;
+                        var current = new[] { Bounds(failure, surface), Bounds(restartText, surface) }
+                            .Concat(FindDescendants<TextBlock>(header).Select(text => Bounds(text, surface))).ToArray();
+                        var stable = current.All(rect => rect.Width > 0 && rect.Height > 0)
+                            && previous is not null && previous.SequenceEqual(current);
+                        previous = current;
+                        return stable;
+                    }, "restart subtitle and failure header have stable rendered bounds");
+
+                    var row = Bounds(failure!, surface);
+                    var center = row.X + row.Width / 2;
+                    var body = Bounds(restartText!, surface);
+                    Assert.InRange(Math.Abs(body.X + body.Width / 2 - center), 0, 1);
+                    var headerText = FindDescendants<TextBlock>((FrameworkElement)failure!.Header)
+                        .Select(text => Bounds(text, surface)).ToArray();
+                    var headerCenter = (headerText.Min(rect => rect.Left) + headerText.Max(rect => rect.Right)) / 2;
+                    Assert.InRange(Math.Abs(headerCenter - center), 0, 1);
+                    Assert.All(headerText, rect => Assert.True(rect.Left >= row.Left - 1 && rect.Right <= row.Right + 1));
+                    Assert.Equal(failureTitle, AutomationProperties.GetName(failure));
+                    Assert.False(failure.IsExpanded);
+                    Assert.DoesNotContain(FindDescendants<Button>(host), button =>
+                        AutomationProperties.GetName(button) == "Open checkpoints");
+                    Assert.DoesNotContain(FindDescendants<TextBlock>(host), text =>
+                        text.Text.Contains("preserved as a checkpoint", StringComparison.Ordinal));
+
+                    var peer = FrameworkElementAutomationPeer.CreatePeerForElement(failure);
+                    var expandCollapse = Assert.IsAssignableFrom<IExpandCollapseProvider>(
+                        peer.GetPattern(PatternInterface.ExpandCollapse));
+                    expandCollapse.Expand();
+                    Button? copy = null;
+                    await WaitForRenderedConditionAsync(() =>
+                        failure.IsExpanded && (copy = FindDescendants<Button>(failure).FirstOrDefault(button =>
+                            AutomationProperties.GetName(button) == "Copy error")) is not null,
+                        "centered failure disclosure opens its copyable details");
+                    Invoke(copy!);
+                    Assert.Equal(summary, copied[^1]);
+                    expandCollapse.Collapse();
+                    await WaitForRenderedConditionAsync(() => !failure.IsExpanded, "failure details collapse");
+                }
+            });
+        });
+    }
+
+    [Fact]
     public async Task LocalImageAttachment_FitsCompactReadingColumn()
     {
         await WithChatAsync(320, async (surface, host, _, _) =>

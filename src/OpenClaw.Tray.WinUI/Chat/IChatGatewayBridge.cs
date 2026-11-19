@@ -127,6 +127,14 @@ public interface IChatGatewayBridge : IDisposable
         ChatMediaContentInfo media,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(AssistantFileDownloadStatus.Unavailable);
+    /// <summary>True when the current connection advertises <c>skills.workshop.undo</c> with <c>operator.admin</c>.</summary>
+    bool CanUndoSkillChanges => false;
+    /// <summary>
+    /// Reverts one learned-skill notice's review as a unit. A timeout, disconnect or Gateway error reports
+    /// <see cref="ChatSkillUndoOutcome.Failed"/>; the Gateway's idempotent Undo makes a manual retry safe.
+    /// </summary>
+    Task<ChatSkillUndoOutcome> UndoSkillChangesAsync(ChatSkillChangeNotice notice, CancellationToken cancellationToken) =>
+        Task.FromResult(ChatSkillUndoOutcome.Unavailable);
     Task SendChatAbortAsync(string runId, string? sessionKey = null);
     Task ResolveExecApprovalAsync(string approvalId, string decision);
 
@@ -389,6 +397,27 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
             ct => _client.ResolveAssistantFileDownloadUriAsync(sessionKey, media, ct),
             _launchUri,
             cancellationToken);
+
+    public bool CanUndoSkillChanges => _client.CanUndoSkillWorkshopReview;
+
+    public async Task<ChatSkillUndoOutcome> UndoSkillChangesAsync(
+        ChatSkillChangeNotice notice, CancellationToken cancellationToken)
+    {
+        if (_client.SessionMutationConnectionEpoch is not { } epoch)
+            return ChatSkillUndoOutcome.Failed;
+        try
+        {
+            return await _client.UndoSkillWorkshopReviewAsync(notice.AgentId, notice.RunId, epoch, cancellationToken)
+                    .ConfigureAwait(false) == SkillWorkshopUndoStatus.Undone
+                ? ChatSkillUndoOutcome.Undone
+                : ChatSkillUndoOutcome.Unavailable;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+        {
+            Logger.Warn($"[ChatBridge] skills.workshop.undo failed ({ex.GetType().Name}).");
+            return ChatSkillUndoOutcome.Failed;
+        }
+    }
 
     public Task SendChatAbortAsync(string runId, string? sessionKey = null) => _client.SendChatAbortAsync(runId, sessionKey);
 

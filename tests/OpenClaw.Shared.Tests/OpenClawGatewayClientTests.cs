@@ -545,6 +545,83 @@ public class OpenClawGatewayClientTests
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task SkillWorkshopUndo_WithoutAdvertisedMethodOrAdminScopeSendsNothing(bool advertised, bool admin)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("skill-undo-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        helper.SetAdvertisedMethods(advertised ? ["skills.workshop.undo", "chat.message.get"] : ["chat.message.get"]);
+        helper.SetGrantedScopes(admin ? ["operator.read", "operator.admin"] : ["operator.read", "operator.write"]);
+
+        Assert.False(client.CanUndoSkillWorkshopReview);
+        Assert.Equal(SkillWorkshopUndoStatus.Unsupported, await client.UndoSkillWorkshopReviewAsync(
+            "main", "review-1", client.SessionMutationConnectionEpoch!.Value).WaitAsync(StepTimeout));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+        await AssertChatMessageReadConnectionUsable(client, server);
+    }
+
+    [Theory]
+    [InlineData("\"ok\":true,\"payload\":{\"status\":\"undone\"}", SkillWorkshopUndoStatus.Undone)]
+    [InlineData("\"ok\":true,\"payload\":{\"status\":\"already-undone\"}", SkillWorkshopUndoStatus.Undone)]
+    [InlineData("\"ok\":false,\"error\":{\"message\":\"unknown method: skills.workshop.undo\"}", SkillWorkshopUndoStatus.Unsupported)]
+    [InlineData("\"ok\":true,\"payload\":{\"status\":\"pending\"}", null)]
+    [InlineData("\"ok\":true,\"payload\":{}", null)]
+    public async Task SkillWorkshopUndo_AcceptsOnlyConfirmedUndoReplies(string reply, SkillWorkshopUndoStatus? expected)
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("skill-undo-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        helper.SetAdvertisedMethods(["skills.workshop.undo"]);
+        helper.SetGrantedScopes(["operator.admin"]);
+
+        var undo = client.UndoSkillWorkshopReviewAsync("main", "review-1", client.SessionMutationConnectionEpoch!.Value);
+        var frame = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        using (var request = JsonDocument.Parse(frame))
+        {
+            Assert.Equal("skills.workshop.undo", request.RootElement.GetProperty("method").GetString());
+            var parameters = request.RootElement.GetProperty("params");
+            Assert.Equal("main", parameters.GetProperty("agentId").GetString());
+            Assert.Equal("review-1", parameters.GetProperty("runId").GetString());
+        }
+        await server.SendTextAsync("{\"type\":\"res\",\"id\":\"" + ReadRequestId(frame) + "\"," + reply + "}");
+
+        if (expected is { } status)
+            Assert.Equal(status, await undo.WaitAsync(StepTimeout));
+        else
+            await Assert.ThrowsAsync<InvalidDataException>(() => undo.WaitAsync(StepTimeout));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task SkillWorkshopUndo_StaleConnectionEpochSendsNothing()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("skill-undo-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+        helper.SetAdvertisedMethods(["skills.workshop.undo"]);
+        helper.SetGrantedScopes(["operator.admin"]);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.UndoSkillWorkshopReviewAsync(
+            "main", "review-1", client.SessionMutationConnectionEpoch!.Value - 1));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+        await AssertChatMessageReadConnectionUsable(client, server);
+    }
+
     [Fact]
     public void ReasoningHistory_PreservesOnlySuppliedAssistantThinkingAndSessionGates()
     {
@@ -588,6 +665,164 @@ public class OpenClawGatewayClientTests
         var facts = OpenClawGatewayClient.ReadChatPresentation(json.RootElement);
         Assert.Equal(imported, facts.IsImported);
         Assert.Equal("assistant", facts.SourceRole);
+    }
+
+    private const string SkillNoticeMirror =
+        """{"kind":"plugin-notice","pluginId":"skill-workshop","type":"skills-changed","data":{"agentId":"main","runId":"review-1","skills":[%SKILLS%]}}""";
+
+    [Theory]
+    [InlineData("""{"name":"pdf","action":"created","summary":"Extract tables"},{"name":"git","action":"archived","summary":""}""", true)]
+    [InlineData("""{"name":"pdf","action":"created"},{"name":"git","action":"deleted"}""", false)]
+    [InlineData("""{"name":"pdf","action":"Created"}""", false)]
+    [InlineData("""{"name":"","action":"created"}""", false)]
+    [InlineData("""{"name":"pdf","action":"created"},"git" """, false)]
+    [InlineData("", false)]
+    public void StructuredNotice_SkillChangesRejectWholeNoticeForAnyMalformedSkill(string skills, bool valid)
+    {
+        using var json = JsonDocument.Parse(
+            """{"role":"assistant","content":"Learned pdf","openclawDeliveryMirror":""" +
+            SkillNoticeMirror.Replace("%SKILLS%", skills, StringComparison.Ordinal) + "}");
+
+        var facts = OpenClawGatewayClient.ReadChatPresentation(json.RootElement);
+
+        Assert.Equal(valid, facts.HasStructuredNotice);
+        if (!valid)
+        {
+            Assert.Null(facts.SkillChanges);
+            return;
+        }
+        Assert.Equal(new ChatSkillChangeNotice("main", "review-1",
+        [
+            new ChatSkillChange("pdf", ChatSkillChangeAction.Created, "Extract tables"),
+            new ChatSkillChange("git", ChatSkillChangeAction.Archived),
+        ]), facts.SkillChanges);
+        Assert.False(facts.LegacySkillNotice);
+    }
+
+    [Theory]
+    [InlineData("assistant", "openclaw", "delivery-mirror", "skill-workshop-notice:review-1", true)]
+    [InlineData("assistant", "openclaw", "delivery-mirror", "skill-workshop-notice:", false)]
+    [InlineData("assistant", "openclaw", "gateway-injected", "skill-workshop-notice:review-1", false)]
+    [InlineData("user", "openclaw", "delivery-mirror", "skill-workshop-notice:review-1", false)]
+    public void StructuredNotice_LegacySkillNoticeRequiresDeliveryMirrorAndWorkshopKey(
+        string role, string provider, string model, string key, bool expected)
+    {
+        using var json = JsonDocument.Parse(
+            "{\"role\":\"" + role + "\",\"provider\":\"" + provider + "\",\"model\":\"" + model +
+            "\",\"content\":\"Learned pdf\",\"__openclaw\":{\"idempotencyKey\":\"" + key + "\"}}");
+
+        var facts = OpenClawGatewayClient.ReadChatPresentation(json.RootElement);
+
+        Assert.Equal(expected, facts.LegacySkillNotice);
+        Assert.Null(facts.SkillChanges);
+    }
+
+    [Theory]
+    [InlineData("assistant", """{"kind":"model-fallback","runId":"r","fromModel":"a/x","toModel":"b/y","reason":"rate_limit"}""", "rate_limit", false)]
+    [InlineData("assistant", """{"kind":"model-fallback","phase":"restored","runId":"r","fromModel":"b/y","toModel":"a/x","reason":""}""", null, true)]
+    [InlineData("assistant", """{"kind":"model-fallback","phase":"started","runId":"r","fromModel":"a","toModel":"b"}""", null, null)]
+    [InlineData("assistant", """{"kind":"model-fallback","runId":"r","fromModel":"a","toModel":"b","reason":7}""", null, null)]
+    [InlineData("assistant", """{"kind":"model-fallback","runId":"","fromModel":"a","toModel":"b"}""", null, null)]
+    [InlineData("user", """{"kind":"model-fallback","runId":"r","fromModel":"a","toModel":"b"}""", null, null)]
+    public void StructuredNotice_ModelFallbackKeepsOnlyBoundedAssistantMarkers(
+        string role, string marker, string? reason, bool? restored)
+    {
+        using var json = JsonDocument.Parse(
+            "{\"role\":\"" + role + "\",\"content\":\"\",\"openclawDeliveryMirror\":" + marker + "}");
+
+        var fallback = OpenClawGatewayClient.ReadChatPresentation(json.RootElement).ModelFallback;
+
+        if (restored is null)
+        {
+            Assert.Null(fallback);
+            return;
+        }
+        Assert.NotNull(fallback);
+        Assert.Equal("r", fallback.RunId);
+        Assert.Equal(reason, fallback.Reason);
+        Assert.Equal(restored, fallback.Restored);
+    }
+
+    [Fact]
+    public void StructuredNotice_ModelFallbackRejectsOversizedModelIdentifiers()
+    {
+        var model = new string('m', 513);
+        using var json = JsonDocument.Parse(
+            """{"role":"assistant","openclawDeliveryMirror":{"kind":"model-fallback","runId":"r","fromModel":""" +
+            "\"" + model + "\"" + ""","toModel":"b"}}""");
+
+        Assert.Null(OpenClawGatewayClient.ReadChatPresentation(json.RootElement).ModelFallback);
+    }
+
+    [Theory]
+    [InlineData("""{"runId":"r","summary":"Gateway summary","desktopSummary":"Desktop summary","cause":{"provider":" anthropic ","failoverReason":"auth"}}""",
+        "Desktop summary", "anthropic", "auth")]
+    [InlineData("""{"runId":"r","summary":"Gateway summary","desktopSummary":"  ","cause":{"failoverReason":"billing"}}""",
+        "Gateway summary", null, null)]
+    [InlineData("""{"runId":"r","summary":"Gateway summary","cause":{"provider":"   ","failoverReason":"auth"}}""",
+        "Gateway summary", null, null)]
+    [InlineData("""{"runId":"  ","summary":"Gateway summary"}""", null, null, null)]
+    [InlineData("""{"runId":"r","summary":" "}""", null, null, null)]
+    public void StructuredNotice_RunFailurePrefersDesktopSummaryAndBoundsCause(
+        string notice, string? summary, string? provider, string? reason)
+    {
+        using var json = JsonDocument.Parse(
+            """{"role":"custom","customType":"run-failed-before-reply","content":"Gateway summary","openclawRunError":""" + notice + "}");
+
+        var failure = OpenClawGatewayClient.ReadChatPresentation(json.RootElement).RunFailure;
+
+        if (summary is null)
+        {
+            Assert.Null(failure);
+            return;
+        }
+        Assert.Equal(new ChatRunFailureNotice("r", summary, provider, reason), failure);
+    }
+
+    [Fact]
+    public void StructuredNotice_RunFailureDropsOverlongCauseIdentifiers()
+    {
+        var provider = new string('p', 121);
+        using var json = JsonDocument.Parse(
+            """{"role":"custom","openclawRunError":{"runId":"r","summary":"s","cause":{"provider":""" +
+            "\"" + provider + "\"}}}");
+
+        Assert.Equal(new ChatRunFailureNotice("r", "s"),
+            OpenClawGatewayClient.ReadChatPresentation(json.RootElement).RunFailure);
+    }
+
+    [Theory]
+    [InlineData("""{"pluginName":"Focus Coach","pluginId":"focus"}""", "Focus Coach")]
+    [InlineData("""{"pluginName":"  ","pluginId":"focus"}""", "focus")]
+    [InlineData("{}", null)]
+    public void StructuredNotice_PluginSteeringNamePrefersDisplayName(string steering, string? expected)
+    {
+        using var json = JsonDocument.Parse(
+            """{"role":"user","provenance":{"kind":"internal_system","sourceTool":"plugin:focus"},"__openclaw":{"pluginSteering":""" +
+            steering + "}}");
+
+        Assert.Equal(expected, OpenClawGatewayClient.ReadChatPresentation(json.RootElement).PluginSteeringName);
+    }
+
+    [Fact]
+    public void StructuredNotice_EmptyTextRowsSurviveHistoryAndLiveTranscriptEvents()
+    {
+        var mirror = SkillNoticeMirror.Replace("%SKILLS%", """{"name":"pdf","action":"created"}""", StringComparison.Ordinal);
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var history = helper.ParseChatHistoryPayload(
+            """{"messages":[{"role":"assistant","content":[],"openclawDeliveryMirror":""" + mirror + "}]}");
+        ChatMessageInfo? received = null;
+        client.ChatMessageReceived += (_, message) => received = message;
+
+        helper.ProcessRawMessage(
+            """{"type":"event","event":"session.message","payload":{"sessionKey":"main","message":{"role":"assistant","content":[],"openclawDeliveryMirror":""" +
+            mirror + "}}}");
+
+        Assert.NotNull(Assert.Single(history.Messages).Presentation.SkillChanges);
+        Assert.NotNull(received);
+        Assert.Equal("", received.Text);
+        Assert.NotNull(received.Presentation.SkillChanges);
     }
 
     [Fact]

@@ -2108,7 +2108,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_RendersStructuredCompactionCard()
+    public void ReactorTimeline_RendersLocalizedCompactionWithoutCheckpointAction()
     {
         var timeline = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -2120,10 +2120,10 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatTimelineItemKind.Status => BuildStatus(row, entry)", timeline);
         Assert.Contains("ChatCompactionPresenter.TryCreateForEntry(", timeline);
         Assert.Contains("Chat_Compaction_Title", timeline);
-        Assert.Contains("Chat_Compaction_FallbackDetail", timeline);
-        Assert.Contains("Chat_Compaction_OpenCheckpoints", timeline);
-        Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
-        Assert.Contains(".BorderThickness(1)", timeline);
+        Assert.Contains("Chat_Compaction_MetricsFormat", timeline);
+        Assert.DoesNotContain("Chat_Compaction_FallbackDetail", timeline);
+        Assert.DoesNotContain("Chat_Compaction_OpenCheckpoints", timeline);
+        Assert.DoesNotContain("OnOpenCheckpoints", timeline);
         Assert.DoesNotContain("ReactorChatComposer.IsHighContrast", timeline);
         Assert.Contains(".AutomationName(presentation.AutomationName)", timeline);
     }

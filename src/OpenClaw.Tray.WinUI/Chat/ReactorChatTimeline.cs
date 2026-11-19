@@ -35,7 +35,6 @@ public sealed record ReactorChatTimelineProps(
     ReactorChatTimelineMode Mode,
     ChatTimelinePresentationContext Timeline,
     ChatAgentIdentity? AssistantIdentity = null,
-    Action<string>? OnOpenCheckpoints = null,
     long HistoryRevision = 0,
     double ViewportWidth = 800,
     Func<string, bool>? TryCopyText = null,
@@ -374,6 +373,13 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var chronologicalEntries = ChatReasoningPresentation.Project(
             props.Timeline.Entries, props.Timeline.ReasoningStream,
             props.Timeline.ShowReasoning, props.Timeline.ShowReasoningPreview, props.Timeline.EntryMetadata);
+        // Repeated identical run failures collapse into the latest row before turn projection.
+        var failureStreaks = ChatNoticePresentation.ProjectRunFailureStreaks(
+            chronologicalEntries, props.Timeline.EntryMetadata);
+        if (failureStreaks.HiddenEntryIds.Count > 0)
+            chronologicalEntries = chronologicalEntries
+                .Where(entry => !failureStreaks.HiddenEntryIds.Contains(entry.Id))
+                .ToList();
         var latestAssistantEntryId = chronologicalEntries
             .LastOrDefault(static entry => entry.Kind == ChatTimelineItemKind.Assistant)
             ?.Id;
@@ -405,7 +411,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 props,
                 entry,
                 string.Equals(entry.Id, latestAssistantEntryId, StringComparison.Ordinal),
-                assistantRunPositions[index]));
+                assistantRunPositions[index]) with { NoticeRepeatCount = failureStreaks.RepeatCount(entry.Id) });
         }
 
         if (props.Timeline.ShowThinkingIndicator || props.Timeline.RunProgress is not null)
@@ -1288,21 +1294,22 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     private static Element BuildStatus(ReactorTimelineRow row, ChatTimelineItem entry)
     {
+        var noticeKind = ChatNoticePresentation.KindOf(entry, row.Props.Timeline.EntryMetadata);
+        if (noticeKind != ChatNoticeKind.None)
+            return ReactorChatNotices.Build(row, entry, noticeKind);
+
         var presentation = ChatCompactionPresenter.TryCreateForEntry(
             entry,
             row.Props.Timeline.EntryMetadata,
-            LocalizedOrDefault("Chat_Compaction_Title", "COMPACTED HISTORY"),
+            LocalizedOrDefault("Chat_Compaction_Title", "Context compacted"),
             LocalizedOrDefault(
-                "Chat_Compaction_FallbackDetail",
-                "The compacted transcript is preserved as a checkpoint. " +
-                "Open session checkpoints to branch or restore from that compacted view."),
-            LocalizedOrDefault("Chat_Compaction_OpenCheckpoints", "Open checkpoints"));
+                "Chat_Compaction_MetricsFormat", "saved {0} tokens ({1}%)"));
         return presentation is null
             ? BuildGenericStatus(entry)
             : BuildCompaction(row, presentation);
     }
 
-    private static Element BuildGenericStatus(ChatTimelineItem entry)
+    internal static Element BuildGenericStatus(ChatTimelineItem entry)
     {
         var isError = entry.Tone == ChatTone.Error;
         return Border(Text(
@@ -1320,40 +1327,13 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
 
     private static Element BuildCompaction(
         ReactorTimelineRow row,
-        ChatCompactionPresentation presentation)
-    {
-        var sessionKey = row.Props.Timeline.SessionId;
-        var canOpenCheckpoints = !string.IsNullOrWhiteSpace(sessionKey)
-            && row.Props.OnOpenCheckpoints is not null;
-        return Border(
-                VStack(
-                    8,
-                    Text(presentation.Title, 13, FontWeights.SemiBold)
-                        .HAlign(HorizontalAlignment.Center),
-                    Text(presentation.Detail, 12, FontWeights.Normal, "TextFillColorSecondaryBrush")
-                        .TextAlignment(TextAlignment.Center)
-                        .HAlign(HorizontalAlignment.Center),
-                    Button(
-                            presentation.ActionLabel,
-                            () =>
-                            {
-                                if (canOpenCheckpoints)
-                                    row.Props.OnOpenCheckpoints!(sessionKey!);
-                            })
-                        .IsEnabled(canOpenCheckpoints)
-                        .HAlign(HorizontalAlignment.Center)
-                        .AutomationName(presentation.ActionLabel)))
-            .Margin(36, 8, 24, 8)
-            .Padding(16, 10)
-            .HAlign(HorizontalAlignment.Stretch)
-            .CornerRadius(8)
-            .Background(Theme.Ref("CardBackgroundFillColorDefaultBrush"))
-            .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
-            .BorderThickness(1)
+        ChatCompactionPresentation presentation) =>
+        ReactorChatNotices.SystemLine(
+                FluentIconCatalog.Check, presentation.Title, ReactorChatNotices.LabelMaxWidth(row), presentation.Detail)
+            .Margin(0, 8)
             .AutomationName(presentation.AutomationName);
-    }
 
-    private static string FooterText(
+    internal static string FooterText(
         ReactorTimelineRow row,
         ChatTimelineItem entry)
     {
@@ -1378,7 +1358,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             .Set(border => border.IsHitTestVisible = false);
     }
 
-    private static TextBlockElement Text(
+    internal static TextBlockElement Text(
         string text,
         double fontSize = 14,
         global::Windows.UI.Text.FontWeight? weight = null,
@@ -1411,7 +1391,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         _ => LocalizedOrDefault("Chat_Permission_DecisionExpired", "Expired"),
     };
 
-    private static string LocalizedOrDefault(string key, string fallback)
+    internal static string LocalizedOrDefault(string key, string fallback)
     {
         var value = LocalizationHelper.GetString(key);
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, key, StringComparison.Ordinal)
@@ -1456,6 +1436,9 @@ internal sealed record ReactorTimelineRow(
 {
     /// <summary>A message inside an expanded Worked group, which keeps its own hover footer.</summary>
     public bool IsWorkEntry { get; init; }
+
+    /// <summary>Identical consecutive run failures this row stands for; earlier rows are hidden.</summary>
+    public int NoticeRepeatCount { get; init; } = 1;
 
     public static ReactorTimelineRow FromEntry(
         ReactorChatTimelineProps props,
