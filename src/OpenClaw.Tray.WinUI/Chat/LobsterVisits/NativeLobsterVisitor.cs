@@ -15,6 +15,7 @@
 //           session.DisableLobsterVisits)));
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Reactor.Wrappers;
@@ -145,6 +146,7 @@ internal sealed class NativeLobsterVisitor : Control
     private (LobsterLook Look, bool Grumpy, bool Offline, string Accent)? _artKey;
     private LobsterArtworkCanvas? _art;
     private LobsterVisitSnapshot? _shown;
+    private LobsterLook? _recordedLook;
     private bool _idleHoldsEyes;
     private LobsterMotionPlayer? _idle, _act, _travel, _entrance, _leave;
     private Control? _focusReturn;
@@ -307,6 +309,7 @@ internal sealed class NativeLobsterVisitor : Control
         StopAll();
         _sprite.Visibility = Visibility.Collapsed;
         _shown = null;
+        _recordedLook = null;
     }
 
     private LobsterVisitInputs Inputs(LobsterVisitorInputs inputs)
@@ -452,6 +455,7 @@ internal sealed class NativeLobsterVisitor : Control
                 _menu.Hide();
             }
             _shown = null;
+            _recordedLook = null;
             return;
         }
 
@@ -466,6 +470,12 @@ internal sealed class NativeLobsterVisitor : Control
         var previous = _shown;
         _shown = s;
         _sprite.Visibility = Visibility.Visible;
+        if (_hostVisible && s.Presence == LobsterPresence.In && _recordedLook != s.Look && _applied is { } inputs)
+        {
+            _recordedLook = s.Look;
+            _ = RecordSightingAsync(s.Look, inputs.Seed, DateTimeOffset.Now);
+        }
+
         var holdsEyes = LobsterMotion.HoldsEyesClosed(s.Act);
         ApplyBase(s, width, height, holdsEyes);
         if (!_animationsEnabled || !_hostVisible)
@@ -530,6 +540,21 @@ internal sealed class NativeLobsterVisitor : Control
                     animations = animations.Where(animation => animation.Target != LobsterMotionTarget.Body).ToArray();
                 _act = Play(animations, width, height);
             }
+        }
+    }
+
+    private static async Task RecordSightingAsync(LobsterLook look, uint seed, DateTimeOffset seenAt)
+    {
+        try
+        {
+            await LobsterdexFile.ForProfile(AppIdentity.ResolveLocalDataDirectory())
+                .RecordAsync(look.Palette.Id, LobsterLooks.Name(look, seed), look.Shiny, seenAt)
+                .ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            // A collection failure must not block or change visits. Log only the failure category.
+            Services.Logger.Warn($"Could not record a Lobsterdex sighting ({ex.GetType().Name}).");
         }
     }
 

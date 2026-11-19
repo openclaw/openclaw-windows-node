@@ -1,13 +1,18 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClawTray.Chat.LobsterVisits;
 using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -20,6 +25,8 @@ public sealed partial class SettingsPage : Page
     private bool _localGatewayInstalled;
     private bool _uninstallInitiatedThisSession;
     private CancellationTokenSource? _uninstallCts;
+    private LobsterdexFile? _lobsterdex;
+    private int _lobsterdexRead;
 
 
     private enum UninstallUiState { Idle, InProgress, Success, Failure }
@@ -35,6 +42,8 @@ public sealed partial class SettingsPage : Page
             $"Launches setup to install the app-owned {AppIdentity.SetupDistroName} WSL distro or re-run provider and model setup for an existing one. Existing local gateways are only replaced after confirmation.";
         GatewayBodyText.Text = GatewayIdleBodyText;
         DataContextChanged += OnDataContextChanged;
+        Loaded += OnSettingsLoaded;
+        Unloaded += OnSettingsUnloaded;
     }
 
     public void Initialize()
@@ -131,6 +140,124 @@ public sealed partial class SettingsPage : Page
     private void OnOpenGatewayWizard(object sender, RoutedEventArgs e)
     {
         ((IAppCommands)CurrentApp).ShowGatewayWizard();
+    }
+
+    private void OnSettingsLoaded(object sender, RoutedEventArgs args)
+    {
+        if (LobsterdexExpander.IsExpanded)
+            ShowLobsterdex();
+    }
+
+    private void OnSettingsUnloaded(object sender, RoutedEventArgs args)
+    {
+        if (_lobsterdex is { } store)
+            store.Changed -= OnLobsterdexChanged;
+        _lobsterdex = null;
+        ++_lobsterdexRead;
+    }
+
+    private void OnLobsterdexExpanding(Expander sender, ExpanderExpandingEventArgs args) => ShowLobsterdex();
+
+    private void ShowLobsterdex()
+    {
+        if (_lobsterdex is null)
+        {
+            _lobsterdex = LobsterdexFile.ForProfile(AppIdentity.ResolveLocalDataDirectory());
+            _lobsterdex.Changed += OnLobsterdexChanged;
+        }
+
+        LobsterdexEntries.Children.Clear();
+        SetLobsterdexStatus("Lobsterdex_Loading");
+        RefreshLobsterdex();
+    }
+
+    private void OnLobsterdexChanged() => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (LobsterdexExpander.IsExpanded && IsLoaded)
+            RefreshLobsterdex();
+    });
+
+    private void RefreshLobsterdex() => AsyncEventHandlerGuard.Run(
+        RefreshLobsterdexAsync, new AppLogger(), nameof(RefreshLobsterdex));
+
+    private async Task RefreshLobsterdexAsync()
+    {
+        if (_lobsterdex is not { } store)
+            return;
+        var request = ++_lobsterdexRead;
+        try
+        {
+            var entries = await store.ReadAsync();
+            if (!IsCurrent())
+                return;
+
+            LobsterdexEntries.Children.Clear();
+            if (entries.Count == 0)
+            {
+                SetLobsterdexStatus("Lobsterdex_Empty");
+                return;
+            }
+
+            LobsterdexStatus.Visibility = Visibility.Collapsed;
+            foreach (var (paletteId, sighting) in entries.OrderBy(entry => entry.Value.FirstSeenAt).ThenBy(entry => entry.Key, StringComparer.Ordinal))
+                LobsterdexEntries.Children.Add(BuildLobsterdexRow(paletteId, sighting));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+        {
+            Logger.Warn($"Could not read the Lobsterdex ({ex.GetType().Name}).");
+            if (IsCurrent())
+            {
+                LobsterdexEntries.Children.Clear();
+                SetLobsterdexStatus("Lobsterdex_Unavailable");
+            }
+        }
+
+        bool IsCurrent() => request == _lobsterdexRead && LobsterdexExpander.IsExpanded && IsLoaded;
+    }
+
+    private void SetLobsterdexStatus(string key)
+    {
+        LobsterdexStatus.Visibility = Visibility.Visible;
+        LobsterdexStatus.Text = LocalizationHelper.GetString(key);
+        FrameworkElementAutomationPeer.FromElement(LobsterdexStatus)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
+
+    private static Grid BuildLobsterdexRow(string paletteId, LobsterSighting sighting)
+    {
+        var resources = Application.Current.Resources;
+        var row = new Grid { ColumnSpacing = 12 };
+        row.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) });
+
+        if (LobsterLooks.PaletteWeights.FirstOrDefault(entry => entry.Value.Id == paletteId).Value is { } palette
+            && !new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+        {
+            // A palette portrait, not a reconstruction of the visitor's seasonal costume or pose.
+            var look = new LobsterLook(palette, 2, LobsterAccessory.None, LobsterAntennae.Perky, 50, 1,
+                LobsterPersonality.Friendly, 0, LobsterClawSize.Regular, false, false, null, false, null, null);
+            var artwork = LobsterArtwork.Compose(look, grumpy: false, offline: false, sighting.FirstSeenAt, "#7f77dd", "#9a93e8");
+            var portrait = new Viewbox { Width = 32, Height = 32, Child = LobsterArtworkCanvas.Build(artwork).Root };
+            AutomationProperties.SetAccessibilityView(portrait, AccessibilityView.Raw);
+            row.Children.Add(portrait);
+        }
+
+        var name = new TextBlock { Text = sighting.Name, Style = (Style)resources["BodyStrongTextBlockStyle"], TextWrapping = TextWrapping.Wrap };
+        AutomationProperties.SetAutomationId(name, "LobsterdexSighting:" + paletteId);
+        var text = new StackPanel { Spacing = 2 };
+        text.Children.Add(name);
+        text.Children.Add(DateLabel("Lobsterdex_FirstSeen", sighting.FirstSeenAt));
+        if (sighting.ShinySeenAt is { } shiny)
+            text.Children.Add(DateLabel("Lobsterdex_ShinySeen", shiny));
+        Grid.SetColumn(text, 1);
+        row.Children.Add(text);
+        return row;
+
+        TextBlock DateLabel(string key, DateTimeOffset date) => new()
+        {
+            Text = LocalizationHelper.Format(key, date),
+            Style = (Style)resources["CaptionTextBlockStyle"],
+            TextWrapping = TextWrapping.Wrap,
+        };
     }
 
     private void OnRemoveGateway(object sender, RoutedEventArgs e) =>

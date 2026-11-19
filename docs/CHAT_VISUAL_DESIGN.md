@@ -808,6 +808,11 @@ the visit state, and `NativeLobsterVisitor` owns rendering, input and Windows se
 Isolated runs may pin the cast with `OPENCLAW_LOBSTER_VISITS_SEED` (the fixture host's
 `--lobster-seed`).
 
+Settings > General > Chat > Lobsterdex remembers the first displayed visitor per
+palette and the first shiny sighting. It stays available when lobster visits are off.
+The collection lives in this Hub profile, separately from the visit and shoo counters;
+older counts do not create entries and the browser's collection is not shared.
+
 Queued submissions leave the textbox and appear in a single compact panel directly
 above the composer, separate from the virtualized transcript. `ReactorChatPendingMessages`
 owns this presentation; the provider still owns ordering, dispatch, cancellation and promotion.

@@ -13,7 +13,7 @@
     </Page.Resources>
 
     <Grid>
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" AutomationProperties.AutomationId="GeneralSettingsScroll">
             <!--
                 Grid wrapper is required: ScrollViewer measures its direct
                 child with infinite available width, which makes
@@ -359,6 +359,22 @@
                                       AutomationProperties.LabeledBy="{Binding ElementName=ShowLobsterVisitsLabel}"/>
                     </Grid>
                 </Border>
+
+                <Expander x:Name="LobsterdexExpander" x:Uid="SettingsLobsterdex" Header="Lobsterdex"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                          Expanding="OnLobsterdexExpanding"
+                          AutomationProperties.AutomationId="SettingsLobsterdex">
+                    <StackPanel x:Name="LobsterdexContent" Padding="{StaticResource SettingsRowPadding}" Spacing="8">
+                        <TextBlock x:Uid="SettingsLobsterdexIntro"
+                                   Text="Lobsters that have visited this Hub profile."
+                                   Style="{StaticResource CaptionTextBlockStyle}"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="LobsterdexStatus" TextWrapping="Wrap"
+                                   AutomationProperties.AutomationId="SettingsLobsterdexStatus"
+                                   AutomationProperties.LiveSetting="Polite"/>
+                        <StackPanel x:Name="LobsterdexEntries" Spacing="12"/>
+                    </StackPanel>
+                </Expander>
 
                 <!-- ═════════ Local Gateway ═════════ -->
                 <TextBlock x:Uid="SettingsPage_LocalGateway" x:Name="LocalGatewaySectionHeader" Text="Local Gateway"
