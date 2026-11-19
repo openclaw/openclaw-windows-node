@@ -111,12 +111,15 @@ Notes:
   Build workflows must use `fetch-depth: 0`; a source-only guest sync is not a
   build-ready checkout. For guest builds, prepare a full-history clone at the
   intended revision before overlaying task-owned source changes.
+  See [#896 (Preflight GitVersion repository history before build)](https://github.com/openclaw/openclaw-windows-node/pull/896).
 - Keep focused-test and suite results as separate receipts, qualified by head,
   command/filter, execution host, and pass/fail/skip counts. An isolated pass does
   not clear a failure in the containing suite or shard. Investigate shared-state
   or ordering effects in the failing batch, rerun the affected suite or shard,
   and preserve the original failure alongside later results. If the required
   lane remains unverified, report that gap rather than calling it green.
+  For a recorded Tray suite failure with an isolated pass, see
+  [#2183 (test(ui): prove search focus and keep the reconnect failure receipts)](https://github.com/openclaw/openclaw-windows-node/pull/2183).
 - If a build/test is blocked by a file lock, stop only a verified task-owned process and rerun. Do not stop another session's app or service; report that lock as a blocker.
 - For missing local Windows prerequisites, start with `.\scripts\setup-dev.ps1 -CheckOnly`. Install with `.\scripts\setup-dev.ps1` only when authorized, then rerun validation. `-AgentReadiness` separately reports optional agent tooling and unverified runtime-proof capabilities without installing or authenticating.
 - **First-run gotcha**: `dotnet test --no-restore` silently no-ops in a fresh worktree where the test `bin/` doesn't exist yet (reports "Build succeeded in 0.5s" then exits 0 with no tests run). For first-run validation, either omit `--no-restore` OR run `dotnet build` on the test project first. Subsequent reruns honor `--no-restore` correctly.
