@@ -61,6 +61,29 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
+    public async Task RpcPublish_LegacyMigrationThatFailsReadbackKeepsTheUpgradedRouteAndReportsLocalizedFailure()
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("{}") { DropThinkingLevelMapOnApply = true };
+        transport.SetManaged(install);
+        StripEffortMetadata((JsonObject)transport.Config["models"]!["providers"]!["llamacpp"]!["models"]![0]!);
+        var coordinator = new LocalAiGatewayProviderCoordinator(
+            transport, () => "actual-local-secret", NullLogger.Instance, key => $"localized:{key}");
+
+        var result = await coordinator.PublishAsync(install);
+
+        // The write landed but its readback does not match: report it, never retry or withdraw the route.
+        Assert.False(result.Success);
+        Assert.Equal("localized:LocalAi_GatewaySavedRouteVerification", result.Detail);
+        Assert.Single(transport.Patches);
+        Assert.Equal([LocalAiGatewayProviderDefinition.ProviderModelsPath], Assert.Single(transport.ReplacementPaths));
+        Assert.Equal("actual-local-secret", (string?)transport.Config["models"]?["providers"]?["llamacpp"]?["apiKey"]);
+        Assert.NotNull(transport.Config["models"]?["providers"]?["llamacpp"]?["models"]?[0]?["compat"]?["supportedReasoningEfforts"]);
+        Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(install),
+            (string?)transport.Config["agents"]?["defaults"]?["model"]?["primary"]);
+    }
+
+    [Fact]
     public async Task WslPublish_WithdrawsLegacyProviderThenPublishesCurrentShape()
     {
         var install = Install(28_765);
@@ -258,6 +281,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public bool DriftOnApply { get; init; }
         public bool FailRead { get; init; }
         public bool FailAfterApply { get; init; }
+        public bool DropThinkingLevelMapOnApply { get; init; }
         private int _version;
 
         public Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct)
@@ -288,6 +312,11 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
                 throw new InvalidOperationException("Destructive model array change requires its exact replacePaths entry.");
             Merge(Config, JsonNode.Parse(patch.GetRawText())!.AsObject());
             _version++;
+            if (DropThinkingLevelMapOnApply &&
+                Config["models"]?["providers"]?["llamacpp"]?["models"] is JsonArray written)
+            {
+                foreach (var model in written.OfType<JsonObject>()) model.Remove("thinkingLevelMap");
+            }
             if (FailAfterApply) throw new IOException("UNAVAILABLE: configuration persisted but restart did not complete.");
             return Task.CompletedTask;
         }

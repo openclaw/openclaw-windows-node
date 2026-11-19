@@ -3628,6 +3628,17 @@ public sealed partial class LocalAiPortLifecycleTests
         Assert.DoesNotContain("spec-type", launch.PresetContent);
         using var provider = JsonDocument.Parse(LocalAiGatewayProviderDefinition.BuildProviderJson(install));
         Assert.Equal(2048, provider.RootElement.GetProperty("models")[0].GetProperty("maxTokens").GetInt32());
+        // A model without a reasoning profile gets no effort vocabulary, so the Gateway never asks it for "none".
+        // llama-server's auto mode then keeps a thinking template reasoning, as the old forced preset did, and
+        // the provider entry is unchanged from the pre-upgrade shape.
+        JsonElement bonsaiModel = provider.RootElement.GetProperty("models")[0];
+        Assert.DoesNotContain("reasoning =", launch.PresetContent);
+        Assert.Contains("reasoning-format = deepseek", launch.PresetContent.Split(Environment.NewLine));
+        Assert.False(bonsaiModel.GetProperty("compat").TryGetProperty("supportedReasoningEfforts", out _));
+        Assert.False(bonsaiModel.GetProperty("compat").TryGetProperty("reasoningEffortMap", out _));
+        Assert.False(bonsaiModel.TryGetProperty("thinkingLevelMap", out _));
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(
+            provider.RootElement.GetRawText(), install));
 
         // Even a structurally valid stock-runtime receipt cannot launch ternary weights.
         var stock = LlamaRuntimeCatalog.Find(System.Runtime.InteropServices.Architecture.X64)!;
