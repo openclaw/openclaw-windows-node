@@ -12,8 +12,41 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using static Microsoft.UI.Reactor.Factories;
+using Windows.Foundation;
 
 namespace OpenClawTray.Chat;
+
+internal sealed class ChatDisclosureCloseTimerSet
+{
+    private readonly Dictionary<string, IDisposable> _timers = new(StringComparer.Ordinal);
+
+    internal void Schedule(string key, TimeSpan delay, Action action)
+    {
+        Cancel(key);
+        IDisposable? timer = null;
+        timer = DispatcherQueue.GetForCurrentThread().Schedule(delay, () =>
+        {
+            if (timer is null || !_timers.TryGetValue(key, out var current) || !ReferenceEquals(current, timer))
+                return;
+            _timers.Remove(key);
+            action();
+        });
+        _timers[key] = timer;
+    }
+
+    internal void Cancel(string key)
+    {
+        if (_timers.Remove(key, out var timer))
+            timer.Dispose();
+    }
+
+    internal void CancelAll()
+    {
+        foreach (var timer in _timers.Values)
+            timer.Dispose();
+        _timers.Clear();
+    }
+}
 
 /// <summary>
 /// Mounts the native Reactor chat tree into the existing XAML chat target.
@@ -33,14 +66,35 @@ public static class ReactorChatHostExtensions
         var timer = dispatcher.CreateTimer();
         timer.Interval = delay;
         timer.IsRepeating = false;
-        timer.Tick += (_, _) => action();
-        timer.Start();
-        return new TimerLease(timer);
+        return new TimerLease(timer, action);
     }
 
-    private sealed class TimerLease(DispatcherQueueTimer timer) : IDisposable
+    private sealed class TimerLease : IDisposable
     {
-        public void Dispose() => timer.Stop();
+        private readonly DispatcherQueueTimer _timer;
+        private readonly TypedEventHandler<DispatcherQueueTimer, object> _tick;
+        private bool _disposed;
+
+        internal TimerLease(DispatcherQueueTimer timer, Action action)
+        {
+            _timer = timer;
+            _tick = (_, _) =>
+            {
+                Dispose();
+                action();
+            };
+            timer.Tick += _tick;
+            timer.Start();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            _timer.Stop();
+            _timer.Tick -= _tick;
+        }
     }
 
     /// <summary>Builds the reset-confirmation dialog closure and creates one

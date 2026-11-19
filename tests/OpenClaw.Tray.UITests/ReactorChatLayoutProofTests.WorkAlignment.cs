@@ -470,7 +470,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 var worked = Assert.Single(FindDescendants<Expander>(surface),
-                    row => !Ancestors(row).OfType<Expander>().Any());
+                    row => DisclosureOwner(row) is null);
                 Assert.True(Assert.Single(OwnWorkDescendants<ToggleButton>(worked)).Focus(FocusState.Keyboard));
             });
             await SettleAsync();
@@ -702,14 +702,20 @@ public sealed partial class ReactorChatLayoutProofTests
     private static Expander WorkRow(Border surface, string label) =>
         Assert.Single(RealizedTimelineElements<Expander>(surface), row => WorkLabel(row) == label);
 
-    // Descendants whose nearest Expander is the owner, so a row never inherits its nested rows' elements.
+    // Descendants whose disclosure is the owner, so a row never inherits its nested rows' elements.
     private static IEnumerable<T> OwnWorkDescendants<T>(Expander owner) where T : DependencyObject =>
-        FindDescendants<T>(owner).Where(element =>
-            ReferenceEquals(Ancestors(element).OfType<Expander>().FirstOrDefault(), owner));
+        FindDescendants<T>(Disclosure(owner)).Where(element => ReferenceEquals(DisclosureOwner(element), owner));
 
     // Collapsed rows keep their content in the tree with stale geometry, so only measure rows every ancestor shows.
-    private static bool IsWorkRowShown(Expander row) =>
-        Ancestors(row).OfType<Expander>().All(owner => owner.IsExpanded);
+    private static bool IsWorkRowShown(Expander row)
+    {
+        for (var owner = DisclosureOwner(row); owner is not null; owner = DisclosureOwner(owner))
+        {
+            if (!owner.IsExpanded)
+                return false;
+        }
+        return true;
+    }
 
     private static bool IsWorkGuide(Border border) =>
         border.Width == 1 && AutomationProperties.GetAccessibilityView(border) == AccessibilityView.Raw;
@@ -828,7 +834,8 @@ public sealed partial class ReactorChatLayoutProofTests
         foreach (var row in RealizedTimelineElements<Expander>(surface).Where(IsWorkRowShown).ToList())
         {
             var label = WorkLabel(row);
-            var bounds = Bounds(row, surface);
+            // A row spans its header and the details rendered below it.
+            var bounds = Bounds((FrameworkElement)Disclosure(row), surface);
             AssertWorkRowEdges(surface, row, bounds, column, label);
             AssertWorkHeader(surface, row, bounds, label);
             var hasGuide = row.IsExpanded && AssertWorkGuide(surface, row, bounds, label);
@@ -841,7 +848,7 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private static void AssertWorkRowEdges(Border surface, Expander row, Rect bounds, Rect column, string label)
     {
-        if (Ancestors(row).OfType<Expander>().FirstOrDefault() is { } owner)
+        if (DisclosureOwner(row) is { } owner)
         {
             var ownerBounds = Bounds(owner, surface);
             var guide = OwnWorkDescendants<Border>(owner).SingleOrDefault(IsWorkGuide);

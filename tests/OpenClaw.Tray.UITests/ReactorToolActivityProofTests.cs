@@ -206,6 +206,299 @@ public sealed class ReactorToolActivityProofTests
     }
 
     [Fact]
+    public async Task DisclosureCloseTimer_RunsOnUiThreadAndCanBeCancelled()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var timers = new ChatDisclosureCloseTimerSet();
+            var cancelledCallbackRan = false;
+            var callbackRan = false;
+            var callbackRanOnUiThread = false;
+            var delay = TimeSpan.FromMilliseconds(ChatMotion.DisclosureCloseHoldMilliseconds);
+
+            try
+            {
+                timers.Schedule("cancelled", delay, () => cancelledCallbackRan = true);
+                timers.Cancel("cancelled");
+                timers.Schedule("active", delay, () =>
+                {
+                    callbackRanOnUiThread = _ui.Dispatcher.HasThreadAccess;
+                    callbackRan = true;
+                });
+                await WaitForRenderedConditionAsync(() => callbackRan, "the disclosure close timer fires");
+
+                Assert.True(callbackRanOnUiThread);
+                Assert.False(cancelledCallbackRan);
+            }
+            finally
+            {
+                timers.CancelAll();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolActivityIdentityChange_ClearsPendingDisclosureClose()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: false);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var timeline = BuildTimeline(
+                [
+                    Tool("tool-1", "read_file", "first output", ChatToolCallStatus.Success),
+                    Tool("tool-2", "read_file", "second output", ChatToolCallStatus.Success),
+                ],
+                generation: 1) with { SessionId = "agent:first" };
+            var activity = Assert.Single(ChatToolActivityPresentation.Project(
+                timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+            var expansion = new ChatToolActivityExpansionState();
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => Component<ToolActivityCard, ToolActivityCardProps>(
+                new(timeline, activity, expansion, entry => TextBlock(entry.Text)))
+                .WithKey("reused-activity");
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            try
+            {
+                Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
+                await DrainReactorQueueAsync();
+
+                var activityDisclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
+                Assert.Contains(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+
+                activityDisclosure.IsExpanded = false;
+                reconcile();
+                Assert.Contains(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+
+                timeline = timeline with { SessionId = "agent:second", TimelineGeneration = 2 };
+                activity = Assert.Single(ChatToolActivityPresentation.Project(
+                    timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+                reconcile();
+
+                Assert.DoesNotContain(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolResultCardIdentityChange_ResetsDisclosureStateWhenEntryIsReused()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: false);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("reused-tool", "read_file", "first output", ChatToolCallStatus.Success);
+            var timeline = BuildTimeline([entry], generation: 1) with
+            {
+                SessionId = "agent:first",
+                ToolExpansionState = new ChatToolActivityExpansionState(),
+            };
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => ToolCallCardRenderer.BuildStandalone(timeline, entry);
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            bool OutputDetailsVisible()
+            {
+                var detailsHost = FindLogical<ChatMotionHost>(root!).FirstOrDefault(motionHost =>
+                    FindLogical<RichTextBlock>(motionHost).Any(text => CollectText(text) == "first output"));
+                return detailsHost?.Visibility == Visibility.Visible;
+            }
+            try
+            {
+                var disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reused_tool");
+                disclosure.IsExpanded = true;
+                await WaitForRenderedConditionAsync(OutputDetailsVisible, "standalone tool details open");
+
+                disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reused_tool");
+                disclosure.IsExpanded = false;
+                reconcile();
+                Assert.True(OutputDetailsVisible());
+
+                timeline = timeline with { SessionId = "agent:second", TimelineGeneration = 2 };
+                reconcile();
+                timeline = timeline with { SessionId = "agent:first", TimelineGeneration = 1 };
+                reconcile();
+
+                Assert.False(OutputDetailsVisible());
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolResultCardClose_HidesImmediatelyWhenReducedMotionIsOverriddenOn()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("reduced-motion-tool", "read_file", "tool output", ChatToolCallStatus.Success);
+            var timeline = BuildTimeline([entry], generation: 1) with
+            {
+                ToolExpansionState = new ChatToolActivityExpansionState(),
+            };
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => ToolCallCardRenderer.BuildStandalone(timeline, entry);
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            bool OutputDetailsVisible() =>
+                FindLogical<ChatMotionHost>(root!).FirstOrDefault(motionHost =>
+                    FindLogical<RichTextBlock>(motionHost).Any(text => CollectText(text) == "tool output"))
+                    ?.Visibility == Visibility.Visible;
+            try
+            {
+                var disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reduced_motion_tool");
+                disclosure.IsExpanded = true;
+                await WaitForRenderedConditionAsync(OutputDetailsVisible, "tool details open");
+
+                disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reduced_motion_tool");
+                disclosure.IsExpanded = false;
+                reconcile();
+
+                Assert.False(OutputDetailsVisible());
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolActivityDisclosure_OpensAndClosesWithoutMotionWhenReducedMotionIsOverriddenOn()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var timeline = BuildTimeline(
+                [
+                    Tool("tool-1", "read_file", "first output", ChatToolCallStatus.Success),
+                    Tool("tool-2", "edit_file", "second output", ChatToolCallStatus.Success),
+                ],
+                generation: 1) with { SessionId = "agent:activity" };
+            var activity = Assert.Single(ChatToolActivityPresentation.Project(
+                timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+            var expansion = new ChatToolActivityExpansionState();
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => Component<ToolActivityCard, ToolActivityCardProps>(
+                new(timeline, activity, expansion, entry => TextBlock(entry.Text)))
+                .WithKey("reduced-motion-activity");
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            try
+            {
+                Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
+                reconcile();
+                await WaitForRenderedConditionAsync(() => FindLogical<Expander>(root!).Any(expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal)),
+                    "nested tool rows appear");
+                Assert.DoesNotContain(FindLogical<ChatMotionHost>(root!), motionHost => motionHost.Height == 0);
+
+                var activityDisclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
+                activityDisclosure.IsExpanded = false;
+                reconcile();
+
+                Assert.DoesNotContain(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
     public async Task ToolRow_RecyclingBetweenActivityAndStandaloneDoesNotReuseIncompatibleProps()
     {
         await _ui.RunOnUIAsync(() =>
@@ -536,6 +829,161 @@ public sealed class ReactorToolActivityProofTests
             var history = ToolCallCardRenderer.BuildActivityCore(
                 timeline, activity, false, _ => { }, animateEntrance: false, reducedMotion: false);
             Assert.Null(history.ElementTransition);
+        });
+    }
+
+    [Fact]
+    public async Task ChatMotion_UnmountRestoresNeutralStateBeforeAControlCanBeReused()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var host = new ReactorHostControl();
+            var element = ChatMotion.Host(TextBlock("motion"))
+                .EnterOnMount(8, 180, fade: true)
+                .DeferredRevealTransitions(180)
+                .Set(border => border.Scale = new System.Numerics.Vector3(.9f, .9f, 1));
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            await DrainReactorQueueAsync();
+            // Motion lives on a dedicated host type that Reactor's layout-control pool never recycles.
+            var border = Assert.IsType<ChatMotionHost>(root);
+            ChatMotion.RotateDisclosure(border, "\uE76C");
+            ChatMotion.RotateDisclosure(border, "\uE70D");
+
+            host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+            host.Content = null;
+
+            // Pooled controls must not carry a rise, fade, turn, scale or implicit transition to another row.
+            Assert.Equal(1, border.Opacity);
+            Assert.Equal(System.Numerics.Vector3.Zero, border.Translation);
+            Assert.Equal(System.Numerics.Vector3.One, border.Scale);
+            Assert.Equal(0, border.Rotation);
+            Assert.Null(border.OpacityTransition);
+            Assert.Null(border.ScaleTransition);
+            Assert.Null(border.TranslationTransition);
+            Assert.Null(border.RotationTransition);
+        });
+    }
+
+    [Fact]
+    public void TranscriptReflow_OnlyMovesRowsThatWereAlreadyRealized()
+    {
+        (double Now, double? Was)[] rows = [(100, 160), (-20, 40), (240, null), (-90, null)];
+        Assert.Equal(new float?[] { 60, 60, null, null }, ChatTranscriptReflow.PlanOffsets(rows));
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_ReaderInputStopsAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow();
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                reflow.CancelForReaderInput();
+                Assert.Equal(System.Numerics.Vector3.Zero, row.Translation);
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_ExpiredCaptureDoesNotResetAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            long now = 0;
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow(() => now);
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                now = 601;
+                ChatTranscriptReflow.CaptureAll();
+                Assert.NotEqual(System.Numerics.Vector3.Zero, row.Translation);
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_DisablingAnimationsStopsAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow();
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                ChatMotion.AnimationsOverride = false;
+                await WaitForRenderedConditionAsync(
+                    () => row.Translation == System.Numerics.Vector3.Zero,
+                    "the disabled animation resets the row");
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+            Assert.Null(row.TranslationTransition);
         });
     }
 
