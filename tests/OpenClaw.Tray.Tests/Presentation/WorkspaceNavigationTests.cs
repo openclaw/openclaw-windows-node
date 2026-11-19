@@ -431,6 +431,50 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void PromotedDraft_ReplacesItsIdentityInCurrentAndBackHistory()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "agent:main:existing"));
+        Assert.True(history.SelectChatSession("draft:local"));
+        Assert.True(history.SelectChatSession("agent:main:created", "draft:local"));
+
+        Assert.True(history.PromoteSession("draft:local", "agent:main:created"));
+
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:created"), history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:existing"), history.Current);
+    }
+
+    [Fact]
+    public void PromotedDraftAfterNavigatingAway_ReplacesRetainedHistoryWithoutChangingCurrent()
+    {
+        var history = new WorkspaceNavigationHistory();
+        Assert.True(history.SelectChatSession("draft:local"));
+        Assert.True(history.SelectChatSession("agent:main:newer"));
+
+        Assert.True(history.PromoteSession("draft:local", "agent:main:created"));
+
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:newer"), history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:created"), history.Current);
+    }
+
+    [Fact]
+    public void CurrentDraftPromotion_ReplacesAndRendersTheMaterializedDestination()
+    {
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var promotion = workspace[workspace.IndexOf("private void OnChatSessionPromoted", StringComparison.Ordinal)..
+            workspace.IndexOf("internal void NavigateNativeSetup", StringComparison.Ordinal)];
+        var currentDraft = promotion.IndexOf("if (_navigation.Current.SessionKey == draftKey)", StringComparison.Ordinal);
+        var promote = promotion.IndexOf("_navigation.PromoteSession(draftKey, sessionKey)", StringComparison.Ordinal);
+        var render = promotion.IndexOf("RenderDestination();", StringComparison.Ordinal);
+
+        Assert.True(currentDraft >= 0);
+        Assert.True(promote > currentDraft);
+        Assert.True(render > promote);
+    }
+
+    [Fact]
     public void BackToApp_ReturnsToTheAppDestinationSettingsWasOpenedFrom()
     {
         var history = new WorkspaceNavigationHistory();
@@ -1529,7 +1573,9 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("if (!_navigation.Navigate(destination)", workspace);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
         var legacy = chat[chat.IndexOf("private void ShowWebViewSurface", StringComparison.Ordinal)..];
-        Assert.Contains("var pendingSessionKey = _pendingSessionKey ?? (App.Current as App)?.PendingChatSessionKey", legacy);
+        Assert.Contains("var pendingSessionKey = _pendingSessionKey", legacy);
+        Assert.Contains("_deferredWebViewSessionKey", legacy);
+        Assert.Contains("(App.Current as App)?.PendingChatSessionKey", legacy);
         Assert.DoesNotContain("_hub", chat);
         Assert.Contains("_pendingSessionKey = threadIdToMount", chat);
         Assert.Contains("_pendingVoice.Request(nativeSurface: !_webViewMode)", chat);

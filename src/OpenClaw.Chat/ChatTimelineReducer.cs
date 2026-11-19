@@ -116,6 +116,7 @@ public static class ChatTimelineReducer
         };
         if (!state.TurnActive && next.TurnActive)
         {
+            next = next with { TurnGeneration = state.TurnGeneration + 1 };
             if (timestamp is not null)
                 next = next with { TurnStartedAt = timestamp, TurnEndedAt = null };
             if (evt is not ChatThinkingEvent started || string.IsNullOrWhiteSpace(started.RunId))
@@ -252,6 +253,7 @@ public static class ChatTimelineReducer
         // User message = hard turn boundary. Must apply BEFORE appending the
         // new user entry so a future reconcile-flagged final can't fast-path-
         // overwrite the prior turn's assistant reply.
+        var turnGeneration = state.TurnGeneration + (state.TurnActive ? 0 : 1);
         state = ClearStreamingAtTurnBoundary(state);
 
         var id = $"e{state.NextId}";
@@ -271,6 +273,7 @@ public static class ChatTimelineReducer
             LocalNonces = localNonces.Add(nonce),
             NextId = state.NextId + 1,
             TurnActive = true,
+            TurnGeneration = turnGeneration,
             TurnStartedAt = timestamp,
             TurnEndedAt = null,
             ProgressText = null,
@@ -284,7 +287,15 @@ public static class ChatTimelineReducer
     public static ChatTimelineState BeginLocalUserTurn(ChatTimelineState state, DateTimeOffset? timestamp)
     {
         state = ClearStreamingAtTurnBoundary(state);
-        return state with { TurnActive = true, TurnStartedAt = timestamp, TurnEndedAt = null, ProgressText = null, ProgressRetryAtMs = null };
+        return state with
+        {
+            TurnActive = true,
+            TurnGeneration = state.TurnGeneration + 1,
+            TurnStartedAt = timestamp,
+            TurnEndedAt = null,
+            ProgressText = null,
+            ProgressRetryAtMs = null
+        };
     }
 
     private static bool IsUserTurnBoundary(ChatTimelineItem entry) =>
@@ -477,6 +488,7 @@ public static class ChatTimelineReducer
             return state with { LocalNonces = state.LocalNonces.Remove(nonce) };
         }
 
+        var turnGeneration = state.TurnGeneration + (state.TurnActive ? 1 : 0);
         // User message = hard turn boundary (see ClearStreamingAtTurnBoundary).
         state = ClearStreamingAtTurnBoundary(state);
 
@@ -485,7 +497,8 @@ public static class ChatTimelineReducer
         {
             Entries = state.Entries.Add(new(id, ChatTimelineItemKind.User, e.Text)),
             NextId = state.NextId + 1,
-            TurnActive = true
+            TurnActive = true,
+            TurnGeneration = turnGeneration
         };
     }
 

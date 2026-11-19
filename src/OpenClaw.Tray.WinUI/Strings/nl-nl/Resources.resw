@@ -3314,6 +3314,12 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>De verbinding werd verbroken voordat de gateway dit bericht accepteerde.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Kan niet bevestigen of het bericht is verzonden. Controleer het gesprek voordat u het opnieuw probeert.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>Dit gesprek is bezig. Uw concept staat hier nog; probeer het opnieuw zodra het weer beschikbaar is.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Afbreken mislukt</value>
   </data>
@@ -3324,7 +3330,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Assistent heeft geantwoord</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Verbinding verbroken: antwoord onderbroken.</value>
+    <value>Verbinding verbroken tijdens het wachten op het antwoord. Controleer het gesprek voordat u het bericht opnieuw verstuurt.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Gateway-tijdlijngebeurtenis genegeerd</value>
@@ -7344,6 +7350,19 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>De Gateway heeft het gekozen model of de redeneeropties niet bevestigd. Controleer ze en probeer het opnieuw.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>De Gateway kon de nieuwe chat niet maken. Controleer de verbinding en probeer het opnieuw.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>De Gateway heeft deze chat mogelijk gemaakt, maar de reactie is niet bevestigd. Dit concept kan daarom niet worden verzonden. Open de chat vanuit de sessielijst als deze daar verschijnt, of start een nieuwe chat.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>Locatiekeuze is niet beschikbaar. Deze chat gebruikt de standaardlocatie van de Gateway.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Stuur een bericht om deze chat te maken voordat u levenscyclusopdrachten gebruikt.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Vragen vernieuwen</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Vraag beantwoord</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Vraag geannuleerd</value></data>

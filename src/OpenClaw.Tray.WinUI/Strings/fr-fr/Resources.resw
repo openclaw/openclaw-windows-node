@@ -3313,6 +3313,12 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>La connexion a été interrompue avant que la passerelle accepte ce message.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Impossible de confirmer si le message a été envoyé. Vérifiez la conversation avant de réessayer.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>Cette conversation est occupée. Votre brouillon est toujours là ; réessayez lorsqu'elle sera disponible.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Échec de l'abandon</value>
   </data>
@@ -3323,7 +3329,7 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
     <value>L'assistant a répondu</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Connexion perdue: réponse interrompue.</value>
+    <value>Connexion perdue pendant l’attente de la réponse. Vérifiez la conversation avant de renvoyer le message.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Événement de chronologie de passerelle ignoré</value>
@@ -7343,6 +7349,19 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Cette session n'est plus vide, donc le choix d'emplacement en attente a été annulé. Vérifiez la session et envoyez à nouveau pour continuer à son emplacement actuel.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>Le Gateway n'a pas confirmé le modèle ou les options de raisonnement sélectionnés. Vérifiez-les et réessayez.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>Le Gateway n'a pas pu créer la nouvelle conversation. Vérifiez la connexion et réessayez.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>Le Gateway a peut-être créé cette conversation, mais sa réponse n'a pas été confirmée. Ce brouillon ne peut donc pas être envoyé. Ouvrez la conversation depuis la liste des sessions si elle y apparaît, ou démarrez une nouvelle conversation.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>Le choix de l'emplacement n'est pas disponible. Cette conversation utilisera l'emplacement par défaut du Gateway.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Envoyez un message pour créer cette conversation avant d'utiliser les commandes de cycle de vie.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Actualiser les questions</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Réponse envoyée</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Question annulée</value></data>

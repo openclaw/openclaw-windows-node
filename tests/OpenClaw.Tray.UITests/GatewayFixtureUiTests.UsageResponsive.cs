@@ -298,12 +298,12 @@ public sealed partial class GatewayFixtureUiTests
                 {
                     await WaitUiAsync(run, () => FindById(run, "WorkspaceSessionsAdd") is { Current.IsOffscreen: false },
                         "available sidebar session creation while Usage is pinned");
-                    Invoke(FindById(run, "WorkspaceSessionsAdd")!);
+                    await TriggerReadOnlySessionErrorAsync(run);
                     await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false },
                         "explicit read-only operation error on pinned Usage");
                     Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
                 }
-                // Existing fixture rejects session creation through the ordinary sidebar action.
+                // Use an explicit mutation: New Chat now creates only a local draft.
                 await TriggerError();
                 var contentIdentity = FindById(run, "UsagePageRoot")!.GetRuntimeId();
                 await NativeKeyboardProof.ActivateAsync(handle);
@@ -500,7 +500,7 @@ public sealed partial class GatewayFixtureUiTests
                             viewport = content.Current.BoundingRectangle,
                             button = button.Current.BoundingRectangle,
                             feedback = feedback.Current.BoundingRectangle,
-                            errorTrigger = "WorkspaceSessionsAdd UI invocation; fixture rejects sessions.create",
+                            errorTrigger = "Workspace session archive UI invocation; fixture rejects sessions.patch",
                             expectedFeedbackId = "WorkspaceEmbeddedOperationFeedback",
                         }, new JsonSerializerOptions { WriteIndented = true }));
                 }

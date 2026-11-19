@@ -1232,13 +1232,14 @@ public sealed partial class ReactorChatLayoutProofTests
         });
         try { await completion.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
         finally { await ui.RunOnUIAsync(() => scroll!.ScrollCompleted -= Completed); }
-        await SettleAsync();
-        await ui.RunOnUIAsync(() =>
-        {
-            var top = control.TransformToVisual(surface).TransformPoint(default).Y;
-            Assert.True(top >= 0 && top <= surface.ActualHeight - 40,
-                $"Header top={top}; requested={targetOffset}; scroll offset={scroll!.VerticalOffset}; maximum={scroll.ScrollableHeight}; request={requestId}");
-        });
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () =>
+            {
+                var top = control.TransformToVisual(surface).TransformPoint(default).Y;
+                return top >= 0 && top <= surface.ActualHeight - 40;
+            },
+            "the disclosure header to be visible after scrolling",
+            () => $"Header top={control.TransformToVisual(surface).TransformPoint(default).Y}; requested={targetOffset}; scroll offset={scroll!.VerticalOffset}; maximum={scroll.ScrollableHeight}; request={requestId}"));
     }
 
     // Thinking starts collapsed behind a tool-row disclosure whose leading chevron tracks its state;

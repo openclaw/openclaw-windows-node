@@ -3332,6 +3332,12 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>A conexão caiu antes que o Gateway aceitasse esta mensagem.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Não foi possível confirmar se a mensagem foi enviada. Verifique a conversa antes de tentar novamente.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>Esta conversa está ocupada. Seu rascunho continua aqui; tente novamente quando ela estiver disponível.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Falha ao abortar</value>
   </data>
@@ -3342,7 +3348,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
     <value>O Assistant respondeu</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Conexão perdida: resposta interrompida.</value>
+    <value>Conexão perdida enquanto aguardava a resposta. Verifique a conversa antes de enviar a mensagem novamente.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Evento de linha do tempo do Gateway descartado</value>
@@ -7396,6 +7402,19 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Esta sessão não está mais vazia, então a seleção de local pendente foi cancelada. Verifique a sessão e envie novamente para continuar no local atual.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>O Gateway não confirmou o modelo ou as opções de raciocínio selecionadas. Verifique-as e tente novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>O Gateway não conseguiu criar o novo chat. Verifique a conexão e tente novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>O Gateway pode ter criado este chat, mas a resposta não foi confirmada. Por isso, este rascunho não pode ser enviado. Abra o chat na lista de sessões, se ele aparecer, ou inicie um novo chat.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>A seleção de local não está disponível. Este chat usará o local padrão do Gateway.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Envie uma mensagem para criar este chat antes de usar comandos de ciclo de vida.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Atualizar perguntas</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Pergunta respondida</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Pergunta cancelada</value></data>

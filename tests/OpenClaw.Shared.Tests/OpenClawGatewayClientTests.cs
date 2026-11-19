@@ -443,7 +443,10 @@ public class OpenClawGatewayClientTests
     {
         public TaskCompletionSource SendStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        protected override async Task<bool> SendRawAsync(string message, long generation, CancellationToken cancellationToken)
+        protected override async Task<GenerationBoundSendOutcome> SendRawWithOutcomeAsync(
+            string message,
+            long generation,
+            CancellationToken cancellationToken)
         {
             if (message.Contains("\"sessions.files.get\"", StringComparison.Ordinal))
             {
@@ -451,7 +454,7 @@ public class OpenClawGatewayClientTests
                 // A send stuck behind the shared socket: only the caller's deadline can end the wait.
                 await Task.Delay(Timeout.Infinite, cancellationToken);
             }
-            return await base.SendRawAsync(message, generation, cancellationToken);
+            return await base.SendRawWithOutcomeAsync(message, generation, cancellationToken);
         }
     }
 
@@ -540,7 +543,7 @@ public class OpenClawGatewayClientTests
         var helper = new GatewayClientTestHelper(gatewayUrl: server.WebSocketUrl, identityPath: identity.Path);
         using var client = helper.Client;
         await client.ConnectAsync();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ReadSessionFileAsync(
+        await Assert.ThrowsAsync<GatewayRequestNotSentException>(() => client.ReadSessionFileAsync(
             "main", "a.txt", client.SessionMutationConnectionEpoch ?? 0));
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
@@ -2071,7 +2074,10 @@ public class OpenClawGatewayClientTests
             "wizard" => client.SendWizardRequestOnConnectionAsync("config.get", new { }, stale),
             _ => client.PatchConfigOnConnectionAsync(emptyConfig.RootElement, "h1", stale),
         };
-        await Assert.ThrowsAsync<InvalidOperationException>(() => send);
+        if (request is "delete" or "wizard")
+            await Assert.ThrowsAsync<GatewayRequestNotSentException>(() => send);
+        else
+            await Assert.ThrowsAsync<InvalidOperationException>(() => send);
         Assert.Equal(0, helper.GetPendingRequestCount());
     }
 
@@ -2559,6 +2565,166 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public async Task CreateSessionAsync_TransportDisconnectAfterSend_ReturnsUncertainOutcome()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-create-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var createTask = client.CreateSessionAsync(new SessionCreateRequest());
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        using (var document = JsonDocument.Parse(request))
+            Assert.Equal("sessions.create", document.RootElement.GetProperty("method").GetString());
+
+        await server.CloseSocketAsync(0);
+
+        var result = await createTask.WaitAsync(StepTimeout);
+
+        Assert.False(result.Ok);
+        Assert.True(result.OutcomeUncertain);
+        Assert.Contains("Check the session list", result.Error);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task CreateSessionAsync_PlainPendingRequestCancellation_ReturnsUncertainOutcome()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-create-canceled-");
+        await server.StartAsync();
+        var helper = new GatewayClientTestHelper(
+            gatewayUrl: server.WebSocketUrl,
+            identityPath: identity.Path);
+        using var client = helper.Client;
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var createTask = client.CreateSessionAsync(new SessionCreateRequest());
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        using (var document = JsonDocument.Parse(request))
+            Assert.Equal("sessions.create", document.RootElement.GetProperty("method").GetString());
+
+        helper.ClearPendingRequests();
+        var result = await createTask.WaitAsync(StepTimeout);
+
+        Assert.False(result.Ok);
+        Assert.True(result.OutcomeUncertain);
+        Assert.Contains("Check the session list", result.Error);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    private sealed class PostWriteDisconnectGatewayClient(
+        string url,
+        string identityPath,
+        string targetMethod = "sessions.create")
+        : OpenClawGatewayClient(url, "test-token", new TestLogger(), identityPath: identityPath)
+    {
+        protected override async Task<GenerationBoundSendOutcome> SendRawWithOutcomeAsync(
+            string message,
+            long generation,
+            CancellationToken cancellationToken)
+        {
+            var outcome = await base.SendRawWithOutcomeAsync(message, generation, cancellationToken);
+            using var frame = JsonDocument.Parse(message);
+            if (frame.RootElement.GetProperty("method").GetString() == targetMethod &&
+                outcome == GenerationBoundSendOutcome.Sent)
+            {
+                AbortCurrentWebSocket(generation);
+                return GenerationBoundSendOutcome.Unconfirmed;
+            }
+
+            return outcome;
+        }
+    }
+
+    private sealed class NotSentGatewayClient(string url, string identityPath)
+        : OpenClawGatewayClient(url, "test-token", new TestLogger(), identityPath: identityPath)
+    {
+        protected override Task<GenerationBoundSendOutcome> SendRawWithOutcomeAsync(
+            string message,
+            long generation,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(GenerationBoundSendOutcome.NotSent);
+    }
+
+    [Fact]
+    public async Task NotSentTransportOutcome_IsReportedAsDefiniteForMutationRequests()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("not-sent-request-");
+        await server.StartAsync();
+        using var client = new NotSentGatewayClient(server.WebSocketUrl, identity.Path);
+        var helper = new GatewayClientTestHelper(client);
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var createResult = await client.CreateSessionAsync(new SessionCreateRequest())
+            .WaitAsync(StepTimeout);
+        var sendException = await Assert.ThrowsAsync<GatewayRequestNotSentException>(
+            () => client.SendChatMessageForRunAsync("message", sessionKey: "main"));
+
+        Assert.False(createResult.Ok);
+        Assert.False(createResult.OutcomeUncertain);
+        Assert.Contains("could be sent", createResult.Error);
+        Assert.Contains("could be sent", sendException.Message);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task CreateSessionAsync_ConnectionChangesAfterFrameWrite_ReturnsUncertainOutcome()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("session-create-post-write-");
+        await server.StartAsync();
+        using var client = new PostWriteDisconnectGatewayClient(server.WebSocketUrl, identity.Path);
+        var helper = new GatewayClientTestHelper(client);
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var createTask = client.CreateSessionAsync(new SessionCreateRequest());
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        using (var document = JsonDocument.Parse(request))
+            Assert.Equal("sessions.create", document.RootElement.GetProperty("method").GetString());
+
+        var result = await createTask.WaitAsync(StepTimeout);
+
+        Assert.False(result.Ok);
+        Assert.True(result.OutcomeUncertain);
+        Assert.Contains("Check the session list", result.Error);
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
+    public async Task SendChatMessageForRunAsync_ConnectionChangesAfterFrameWrite_ReportsUnknownOutcome()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var identity = new TempDirectory("chat-send-post-write-");
+        await server.StartAsync();
+        using var client = new PostWriteDisconnectGatewayClient(
+            server.WebSocketUrl,
+            identity.Path,
+            "chat.send");
+        var helper = new GatewayClientTestHelper(client);
+        await client.ConnectAsync();
+        helper.MarkHandshakeReady();
+
+        var sendTask = client.SendChatMessageForRunAsync("message", sessionKey: "main");
+        var request = await server.ReceiveTextAsync().WaitAsync(StepTimeout);
+        using (var document = JsonDocument.Parse(request))
+            Assert.Equal("chat.send", document.RootElement.GetProperty("method").GetString());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => sendTask.WaitAsync(StepTimeout));
+        Assert.Equal(0, helper.GetPendingRequestCount());
+    }
+
+    [Fact]
     public async Task SendWizardRequestAsync_ServiceRestartClose_PreservesCloseStatus()
     {
         using var server = new LoopbackWebSocketServer(useManagedWebSocket: true);
@@ -2686,7 +2852,10 @@ public class OpenClawGatewayClientTests
 
         public void AbortTransport() => AbortCurrentWebSocket(CurrentConnectionGeneration);
 
-        protected override async Task<bool> SendRawAsync(string message, long generation, CancellationToken cancellationToken)
+        protected override async Task<GenerationBoundSendOutcome> SendRawWithOutcomeAsync(
+            string message,
+            long generation,
+            CancellationToken cancellationToken)
         {
             if (DelayHealthSend && Interlocked.Increment(ref _healthSends) == 1)
             {
@@ -2694,7 +2863,7 @@ public class OpenClawGatewayClientTests
                 await ReleaseHealthSend.Task.WaitAsync(cancellationToken);
                 throw new IOException("synthetic delayed health send failure");
             }
-            return await base.SendRawAsync(message, generation, cancellationToken);
+            return await base.SendRawWithOutcomeAsync(message, generation, cancellationToken);
         }
     }
 
@@ -2773,7 +2942,7 @@ public class OpenClawGatewayClientTests
         await client.ConnectAsync();
         Assert.False(client.IsConnectedToGateway);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+        var exception = await Assert.ThrowsAsync<GatewayRequestNotSentException>(
             () => client.SendWizardRequestAsync("wizard.start", timeoutMs: 1_000));
 
         // Distinct from the closed-socket message: the transport is healthy,
@@ -5389,6 +5558,29 @@ public class OpenClawGatewayClientTests
     }
 
     [Fact]
+    public void ParseChatSendResponse_ReadsCachedInFlightAdmission()
+    {
+        var helper = new GatewayClientTestHelper();
+
+        var result = helper.ParseChatSendResponse("""
+        {
+            "type": "res",
+            "id": "chat-1",
+            "ok": true,
+            "payload": {
+                "runId": "run-1",
+                "status": "in_flight"
+            },
+            "meta": { "cached": true }
+        }
+        """);
+
+        Assert.Equal("run-1", result.RunId);
+        Assert.Equal("in_flight", result.Status);
+        Assert.True(result.Cached);
+    }
+
+    [Fact]
     public void ParseChatSendResponse_ReadsTerminalFailureStatus()
     {
         var helper = new GatewayClientTestHelper();
@@ -5427,6 +5619,36 @@ public class OpenClawGatewayClientTests
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () => await task);
         Assert.Contains("operator.write", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task PendingChatSend_PreservesTerminalFailurePayloadWithAcceptedRunId()
+    {
+        var helper = new GatewayClientTestHelper();
+        var task = helper.RegisterPendingChatSend("chat-terminal-failure");
+
+        helper.ProcessRawMessage("""
+            {
+                "type": "res",
+                "id": "chat-terminal-failure",
+                "ok": false,
+                "payload": {
+                    "runId": "accepted-run",
+                    "status": "error",
+                    "summary": "The run failed after admission."
+                },
+                "error": {
+                    "code": "UNAVAILABLE",
+                    "message": "chat.send returned after admission"
+                }
+            }
+            """);
+
+        var result = await task;
+        Assert.Equal("accepted-run", result.RunId);
+        Assert.Equal("error", result.Status);
+        Assert.Equal("The run failed after admission.", result.Error);
+        Assert.True(result.IsTerminalFailure);
     }
 
     [Fact]

@@ -224,7 +224,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var selectedModel = catalogModels.FirstOrDefault(
             model => model.MatchesModel(inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider));
         var thinkingLevels = vm.ThinkingProfile?.Levels?.ToArray() ?? [];
-        var canChangeThinking = inputs.CanChangeSessionOptions
+        var canChangeSessionOptions = inputs.CanChangeSessionOptions
+            && !controller.IsSendInProgress;
+        var canChangeThinking = canChangeSessionOptions
             && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                 and not ChatModelCatalogStatus.Unavailable
             && (thinkingLevels.Length > 0 || !string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel));
@@ -670,12 +672,12 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 modelPickerLabel,
                 $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}. {Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}",
                 "ChatComposerModelPicker",
-                inputs.CanChangeSessionOptions
+                    canChangeSessionOptions
                     && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                         and not ChatModelCatalogStatus.Unavailable,
                 200),
             catalogModels, inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider,
-            inputs.CanChangeSessionOptions
+                canChangeSessionOptions
                 && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                     and not ChatModelCatalogStatus.Unavailable,
             choice => controller.SetModel(choice.SelectionId),
@@ -862,6 +864,12 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             composerChildren.Add(TextBlock(Localized("Chat_Placement_Preparing", "Preparing chat location..."))
                 .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .AutomationId("ChatPlacementProgress")
+                .LiveRegion(AutomationLiveSetting.Polite));
+        if (placement?.State.DraftStatusMessage is { Length: > 0 } draftStatusMessage)
+            composerChildren.Add(TextBlock(draftStatusMessage)
+                .FontSize(12).TextWrapping(TextWrapping.Wrap)
+                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                .AutomationId("ChatDraftSendStatus")
                 .LiveRegion(AutomationLiveSetting.Polite));
         if (imageTiles.Length + filePills.Length > 0)
         {
