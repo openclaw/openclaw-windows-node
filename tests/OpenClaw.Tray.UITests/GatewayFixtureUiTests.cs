@@ -886,8 +886,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 && FindById(run, "SessionsHubList") is not null, "Sessions redesign loaded");
             CaptureSessionsWindow(run, "sessions-top.png");
 
-            CaptureSessionsWidths(run);
-            RestoreBaselineWindow(run);
+            await CaptureSessionsWidthsAsync(run);
+            await RestoreBaselineWindowAsync(run);
 
             var manifest = new List<CaptureStateResult>();
             await CaptureStateAsync(run, manifest, "messages", async () =>
@@ -2510,7 +2510,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             window.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, "WorkspaceTitleBar")) is not null);
 
-    private static void CaptureSessionsWidths(GatewayFixtureRun run)
+    private static async Task CaptureSessionsWidthsAsync(GatewayFixtureRun run)
     {
         try
         {
@@ -2544,16 +2544,18 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
             var shellExpandedSizing = new WindowSizingResult(shellWidthPx, shellWidthPx, shellExpandedHost, 0);
             metrics.Add(CaptureWidth(run, "sessions-width-shell-min-expanded", null, "Medium",
                 "1000 DIP shell minimum with pane expanded", shellExpandedSizing));
-            var paneToggle = FindById(run, "SettingsTogglePane")!;
-            AssertVisibleInHub(run, paneToggle, "Settings pane toggle");
-            Invoke(paneToggle);
+            await InvokeWhenEnabledAsync(run,
+                () => FindById(run, "SettingsTogglePane") is { } toggle && IsVisibleInHub(run, toggle) ? toggle : null,
+                "visible Settings pane toggle before collapsing");
+            await WaitUiAsync(run, () => !SettingsPaneOpen(run), "Settings pane collapsed");
             var shellHost = WaitForStableHostWidth(run, requireStableNavWidth: true);
             var shellSizing = new WindowSizingResult(shellWidthPx, shellWidthPx, shellHost, 0);
             metrics.Add(CaptureWidth(run, "sessions-width-shell-min-collapsed", null, "Medium",
                 "1000 DIP shell minimum with pane collapsed", shellSizing));
 
             Assert.True(metrics.Select(metric => metric.WindowWidthPx).Distinct().Count() >= 4);
-            Assert.Equal(metrics.Count, metrics.Select(metric => metric.Sha256).Distinct(StringComparer.Ordinal).Count());
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                Assert.Equal(metrics.Count, metrics.Select(metric => metric.Sha256).Distinct(StringComparer.Ordinal).Count());
             File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "sessions-widths.json"),
                 JsonSerializer.Serialize(metrics, new JsonSerializerOptions { WriteIndented = true }));
         }
@@ -2565,10 +2567,15 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         }
     }
 
-    private static void RestoreBaselineWindow(GatewayFixtureRun run)
+    // The toolbar search button is collapsed with the pane, so its visibility reports the pane state.
+    private static bool SettingsPaneOpen(GatewayFixtureRun run) =>
+        FindById(run, "SettingsSearch") is { Current.IsOffscreen: false };
+
+    // CI saw one UIA lookup miss the toggle right after the collapse relayout, so wait for it.
+    private static async Task RestoreBaselineWindowAsync(GatewayFixtureRun run)
     {
-        Invoke(FindById(run, "SettingsTogglePane")!);
-        Thread.Sleep(250);
+        await InvokeWhenEnabledAsync(run, "SettingsTogglePane", "enabled Settings pane toggle before expanding");
+        await WaitUiAsync(run, () => SettingsPaneOpen(run), "Settings pane expanded");
 
         var window = SettingsWindow(run);
         var handle = new IntPtr(window.Current.NativeWindowHandle);
@@ -2655,8 +2662,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         var contentWidth = Math.Min(Math.Max(0, hostWidth - 2 * (hostWidth < 720 ? 20 : 32)), 1200);
         var tier = hostWidth >= 1000 ? "Wide" : hostWidth >= 720 ? "Medium" : "Narrow";
         CaptureSessionsWindow(run, captureName + ".png");
-        var imagePath = Path.Combine(run.ArtifactsDirectory, captureName + ".png");
-        var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(imagePath)));
+        // The new-test soak disables screenshots; geometry is still measured and asserted.
+        var sha = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1"
+            ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                File.ReadAllBytes(Path.Combine(run.ArtifactsDirectory, captureName + ".png"))))
+            : null;
         var result = new WidthCaptureResult(
             requestedHostWidth,
             Math.Round(hostWidth, 2),
@@ -2836,7 +2846,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         int InitialWindowWidthPx,
         int FinalWindowWidthPx,
         int Corrections,
-        string Sha256,
+        string? Sha256,
         string Note);
     private sealed record WindowSizingResult(
         int InitialWindowWidthPx,
