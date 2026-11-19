@@ -2554,7 +2554,8 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
                 "1000 DIP shell minimum with pane collapsed", shellSizing));
 
             Assert.True(metrics.Select(metric => metric.WindowWidthPx).Distinct().Count() >= 4);
-            Assert.Equal(metrics.Count, metrics.Select(metric => metric.Sha256).Distinct(StringComparer.Ordinal).Count());
+            if (Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1")
+                Assert.Equal(metrics.Count, metrics.Select(metric => metric.Sha256).Distinct(StringComparer.Ordinal).Count());
             File.WriteAllText(Path.Combine(run.ArtifactsDirectory, "sessions-widths.json"),
                 JsonSerializer.Serialize(metrics, new JsonSerializerOptions { WriteIndented = true }));
         }
@@ -2661,8 +2662,11 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         var contentWidth = Math.Min(Math.Max(0, hostWidth - 2 * (hostWidth < 720 ? 20 : 32)), 1200);
         var tier = hostWidth >= 1000 ? "Wide" : hostWidth >= 720 ? "Medium" : "Narrow";
         CaptureSessionsWindow(run, captureName + ".png");
-        var imagePath = Path.Combine(run.ArtifactsDirectory, captureName + ".png");
-        var sha = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(imagePath)));
+        // The new-test soak disables screenshots; geometry is still measured and asserted.
+        var sha = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS") == "1"
+            ? Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+                File.ReadAllBytes(Path.Combine(run.ArtifactsDirectory, captureName + ".png"))))
+            : null;
         var result = new WidthCaptureResult(
             requestedHostWidth,
             Math.Round(hostWidth, 2),
@@ -2842,7 +2846,7 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         int InitialWindowWidthPx,
         int FinalWindowWidthPx,
         int Corrections,
-        string Sha256,
+        string? Sha256,
         string Note);
     private sealed record WindowSizingResult(
         int InitialWindowWidthPx,
