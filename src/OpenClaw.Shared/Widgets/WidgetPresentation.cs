@@ -67,7 +67,13 @@ public sealed partial record WidgetPresentation(
                 throw new ArgumentException("Widget JSON exceeds depth 24.");
             if (value.ValueKind == JsonValueKind.Array)
             {
-                foreach (var child in value.EnumerateArray()) Visit(child, depth + 1, template);
+                foreach (var child in value.EnumerateArray())
+                {
+                    if (template && child.ValueKind == JsonValueKind.String &&
+                        child.GetString()!.Contains("${", StringComparison.Ordinal))
+                        throw new ArgumentException("Widget element and action structure must be literal JSON; bind scalar properties instead.");
+                    Visit(child, depth + 1, template);
+                }
                 return;
             }
             if (value.ValueKind != JsonValueKind.Object) return;
@@ -80,6 +86,16 @@ public sealed partial record WidgetPresentation(
                     throw new ArgumentException($"Duplicate widget property: {property.Name}.");
                 if (template)
                 {
+                    var binding = property.Value.ValueKind == JsonValueKind.String &&
+                        property.Value.GetString()!.Contains("${", StringComparison.Ordinal);
+                    if (property.Name.Contains("${", StringComparison.Ordinal) ||
+                        (property.Name == "type" && (property.Value.ValueKind != JsonValueKind.String || binding)) ||
+                        (property.Name is "body" or "items" or "columns" or "images" or "inlines" or "rows" or "cells" or "actions" or "layouts" or "pages" or "sources"
+                            && property.Value.ValueKind != JsonValueKind.Array) ||
+                        (property.Name is "selectAction" or "inlineAction" or "action" or "card" or "metadata"
+                            && property.Value.ValueKind != JsonValueKind.Object) ||
+                        (property.Name is "fallback" or "header" && binding))
+                        throw new ArgumentException("Widget element and action structure must be literal JSON; bind scalar properties instead.");
                     if (property.Name == "$when" &&
                         (property.Value.ValueKind != JsonValueKind.String ||
                          !property.Value.GetString()!.StartsWith("${", StringComparison.Ordinal) ||

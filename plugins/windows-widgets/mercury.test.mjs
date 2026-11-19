@@ -384,6 +384,30 @@ test("native templates expose backgrounds, rich elements, data, host conditions,
   assert.throws(() => validatePresentation(design("x".repeat(65536))), /65536 bytes/);
 });
 
+test("template data cannot substitute unvalidated elements, actions or header resources", () => {
+  const action = { type: "Action.OpenUrl", url: "file:///C:/private.txt" };
+  for (const change of [
+    { body: [{ type: "Container", selectAction: "${$root.content.action}", items: [] }] },
+    { body: ["${$root.content.element}"] },
+    { body: [{ type: "Container", items: "${$root.content.elements}" }] },
+    { body: [{ type: "TextBlock", text: "Fallback", fallback: "${$root.content.element}" }] },
+    { body: [{ type: "ActionSet", actions: ["${$root.content.action}"] }] },
+    { body: [{ type: "${$root.content.elementType}", text: "Dynamic" }] },
+    { header: "${$root.content.header}" },
+    { metadata: "${$root.content.metadata}" },
+    { body: [{ type: "Media", sources: "${$root.content.sources}" }] },
+  ]) {
+    assert.throws(() => validatePresentation({
+      card: { ...design("Facts").card, ...change },
+      data: { action, element: { type: "Image", url: "file:///C:/private.png" },
+        elements: [{ type: "Container", selectAction: action }], elementType: "Image",
+        header: { text: "Header", iconUrl: "file:///C:/private.png" },
+        metadata: { webUrl: "https://example.com/unapproved-html" },
+        sources: [{ mimeType: "video/mp4", url: "file:///C:/private.mp4" }] },
+    }), /literal/);
+  }
+});
+
 test("saved PoC presets migrate to native templates but are not accepted as new designs", async () => {
   for (const theme of ["native", "minimal", "cosmic", "mystic"]) {
     const migrated = migratePresentation({ theme });

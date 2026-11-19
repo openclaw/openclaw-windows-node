@@ -69,7 +69,21 @@ function metadata(record) {
   return { id: record.id, enabled: record.enabled, mode: record.mode,
     refreshMinutes: record.refreshMinutes, observedAt: record.snapshot?.observedAt,
     attemptedAt: record.attemptedAt, error: record.error ?? null,
+    lastDelivery: record.lastDelivery ?? null,
     requiresUserPin: true, visibleRenderingVerified: false };
+}
+
+function deliveryMetadata(result, reportedAt) {
+  const payload = result?.payload ?? result;
+  const host = payload?.host;
+  return {
+    reportedAt,
+    saved: typeof payload?.saved === "boolean" ? payload.saved : null,
+    host: typeof host?.supported === "boolean" && Number.isSafeInteger(host.pinnedCount) && host.pinnedCount >= 0
+      ? { supported: host.supported, pinnedCount: host.pinnedCount,
+        reason: typeof host.reason === "string" ? host.reason.slice(0, 512) : null }
+      : null,
+  };
 }
 
 export function createWidgetBridge({ state, invoke, nodeId, allowedSourceUrls = [], now = Date.now, fetchJson }) {
@@ -130,8 +144,9 @@ export function createWidgetBridge({ state, invoke, nodeId, allowedSourceUrls = 
         sourceUrl: record.source.url, observedAt: result.observedAt, staleAfterMinutes: record.staleAfterMinutes,
         presentation: sourcePresentation(record.presentation, result) };
       validateSnapshot(snapshot, now());
-      await send("widgets.upsert", snapshot, signal);
-      const saved = { ...record, enabled: true, snapshot, attemptedAt, error: null };
+      const delivery = await send("widgets.upsert", snapshot, signal);
+      const saved = { ...record, enabled: true, snapshot, attemptedAt, error: null,
+        lastDelivery: deliveryMetadata(delivery, new Date(now()).toISOString()) };
       await save(saved);
       return metadata(saved);
     } catch (error) {
@@ -188,9 +203,10 @@ export function createWidgetBridge({ state, invoke, nodeId, allowedSourceUrls = 
           validateSnapshot(snapshot, now());
           signal?.throwIfAborted();
           await reserve(key);
-          await send("widgets.upsert", snapshot, signal);
+          const delivery = await send("widgets.upsert", snapshot, signal);
           const saved = { id: key, mode: "manual", enabled: true, snapshot,
-            presentation: authored, series: observation?.content, error: null };
+            presentation: authored, series: observation?.content, error: null,
+            lastDelivery: deliveryMetadata(delivery, new Date(now()).toISOString()) };
           await save(saved);
           return metadata(saved);
         }
@@ -221,8 +237,9 @@ export function createWidgetBridge({ state, invoke, nodeId, allowedSourceUrls = 
           ? sourcePresentation(presentation, { content: record.series ?? record.snapshot.presentation.data.source })
           : presentation };
         validateSnapshot(snapshot, now());
-        await send("widgets.upsert", snapshot, signal);
-        const saved = { ...record, snapshot, presentation };
+        const delivery = await send("widgets.upsert", snapshot, signal);
+        const saved = { ...record, snapshot, presentation,
+          lastDelivery: deliveryMetadata(delivery, new Date(now()).toISOString()) };
         await save(saved);
         return metadata(saved);
       });

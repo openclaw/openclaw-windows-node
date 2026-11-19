@@ -1,6 +1,6 @@
 ---
 name: windows-widgets
-description: Author and publish native Windows Adaptive Card widgets from bot-pushed observations, timestamped history and opted-in lighting controls.
+description: Author and publish native Windows Adaptive Card widgets with matching creation previews from bot-pushed observations, timestamped history and opted-in lighting controls.
 ---
 
 # Windows widgets
@@ -31,10 +31,12 @@ not in this skill, examples, tests, logs attached to a PR or published artifacts
    `value` and actual ISO `observedAt`, plus optional `detail`,
    `staleAfterMinutes` and `presentation`. Author `presentation.card` separately
    from its bound `presentation.data`.
-4. Publish the complete snapshot again for each new observation. This does not
+4. Include a [rendered creation preview](#publish-a-creation-preview) in the
+   creation response, or explicitly report why preview delivery is blocked.
+5. Publish the complete snapshot again for each new observation. This does not
    start a schedule. An authorized bot job may do the same, but creating a
    widget does not itself authorize creating a recurring job.
-5. Use `style` to change appearance without collecting data or changing
+6. Use `style` to change appearance without collecting data or changing
    observation time. `widget.refresh` only re-renders cached content.
 
 For a history graph, replace `value`/`observedAt` with `snapshot.series`:
@@ -186,6 +188,9 @@ and individual card features remain host-dependent; the general Adaptive
 Cards Designer is not proof of Widgets Board support.
 For a requested widget title, set the card's `header` string to that text.
 Do not duplicate it in the body on hosts that support header customization.
+Keep element/action types and structure literal. Bind scalar properties inside
+objects, not entire elements, actions, arrays, headers or metadata from data.
+For a bound header title, use `{ "text": "${title}" }`.
 
 Source facts are bindings `title`, `value`, `detail`, `observedAt`,
 `freshness`, `sourceUrl`. Put authored display data in `presentation.data`
@@ -263,8 +268,61 @@ Creation caches a snapshot; Windows owns pinning. Report actual provider support
 and delivery, then tell the user to open Win+W, add **OpenClaw Tracker**, and
 select the requested tracker if needed. A successful call is not a visible
 rendering claim. Unpackaged Companion is cache-only.
+Inspect `lastDelivery.host` in generalized results: `supported: false` means
+cache-only, and `null` means support is unknown. Its `reportedAt` timestamps
+the last acknowledgment, not a fresh provider-health check.
 
 Use `status` for persisted state/errors, `refresh` for a real source fetch and
 `stop` to disable collection and remove the snapshot. Failures are errors,
 never a "No" retrograde result. Last-good observations remain cached and become
 stale. Styling errors are separate from collection errors.
+
+### Publish a creation preview
+
+Every new widget, whether created by its first `publish` or a compatibility
+`create`, needs a matching rendered preview alongside the creation result in
+the requesting conversation. A prose description, card JSON, graph-only image
+or the bundled picker illustration is not a preview of the complete widget.
+Refresh the preview after a requested visual redesign; do not silently keep
+showing the old design.
+
+Use the requested widget name, or the session display name when available, as
+the title. A relevant bot-chosen emoji may accompany it. Keep that title
+consistent in the published snapshot, card header where supported, and preview.
+Do not change an existing widget ID to produce its preview.
+
+1. Discover the current host's rendering and attachment tools. `windows_widgets`
+   has no preview action or preview parameter; preview delivery is a separate
+   handoff, not an invented plugin call or package installation.
+2. Prefer a cropped capture of the actual Windows-rendered widget when it is
+   pinned and UI capture is authorized. Otherwise, use an available local
+   Adaptive Cards renderer with the same card, bound data, initial state and
+   artwork. Include provider-owned observation/source controls when available;
+   disclose any omitted controls or unsupported features. Label this fallback
+   **Approximate preview. Windows rendering not verified**, and identify the
+   assumed widget size and theme. Do not use an AI-generated mockup as rendering
+   evidence, and do not run interactive actions just to capture a preview.
+3. Attach the resulting image or supported local preview artifact to the
+   creation response using the host's actual delivery tools. Identify the
+   widget ID, title, size/theme and whether the preview is Windows-rendered or
+   approximate. Inspect the result and verify the attachment is accessible;
+   writing an image file alone is not delivery.
+4. Report widget publication and preview delivery separately. If rendering,
+   capture permission or attachment support is unavailable, state
+   **Preview unavailable** with the specific blocker and retain any successfully
+   published widget. Do not repeat creation, duplicate the widget, or claim an
+   image was attached when preview generation or delivery failed.
+
+Preview sharing is a separate exposure from displaying a widget on the user's
+PC. Use only content authorized for the requesting conversation and audience.
+Never fetch sensitive data merely for a preview, send private card payloads to
+a public Designer or remote rendering service, or include unrelated desktop
+content. Obtain permission before sharing sensitive readings; otherwise use a
+clearly labelled redacted preview without changing the published snapshot.
+Keep preview files and private endpoints out of the repository and distributable
+package.
+
+This preview accompanies the conversation response. It does not replace the
+Windows **Add widget** picker's manifest-defined name, icon or bundled
+screenshot. Do not modify the package manifest, overwrite `WidgetPreview.png`
+or re-register Companion for each widget.

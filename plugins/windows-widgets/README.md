@@ -202,6 +202,10 @@ cached trackers, including the independent source integrations described below.
 
 **Windows owns pinning.** A successful tool call is not a claim that the card
 was pinned or displayed. `host.supported: false` means cache-only.
+Generalized publication, refresh, style and status results expose bounded
+`lastDelivery` metadata: `reportedAt`, `saved` and `host` (support, pinned count
+and reason). This is the last acknowledgment, not a live health query; missing
+metadata is `null`, never assumed support. No snapshot content is returned.
 
 ## Create another source-backed widget
 
@@ -429,6 +433,10 @@ recursively evaluated as templates. Root `$data` and `$when` are reserved so an
 authored card cannot rebind or hide the provider's observation controls.
 Put those directives on body elements instead. `header` accepts a string,
 `{text, iconUrl}` or `null`, subject to Windows host support.
+Element/action types and structure must be literal JSON, not whole-object or
+array substitutions from data. Bind scalar properties inside those objects;
+for a bound header title, use `{ "text": "${title}" }` rather than binding the
+entire header. This keeps action and resource admission ahead of host expansion.
 
 Literal image/background/action URLs may use any public HTTPS DNS host, not
 three hard-coded image sites. Queries and formats supported by the Windows
@@ -619,6 +627,23 @@ offline, retry stop after reconnecting. Disabling the environment opt-in alone
 blocks new commands but does not erase already cached/displayed content.
 
 ## Development proof
+
+### Agent discovery before installation
+
+The shipped `winnode` skill and the existing WSL setup-managed Windows-node
+context introduce this optional plugin for dashboard and tracker requests.
+Agents should check for an installed tool first, otherwise offer installation
+with explicit user approval and a verified package source. They must continue
+the original dashboard task if the offer is declined or unavailable.
+
+The plugin's own skill cannot advertise itself before installation. Updating
+these source instructions does not update an existing Gateway workspace or
+teach every native/remote Gateway automatically. The managed context currently
+applies only through the WSL setup path; native/remote Gateway-wide discovery
+and a verified ClawHub listing still need release integration. Do not reset
+onboarding or overwrite a user's workspace to inject this guidance.
+
+### Checks and historical evidence
 
 Run the repository-required build, Shared tests and Tray tests, plus:
 

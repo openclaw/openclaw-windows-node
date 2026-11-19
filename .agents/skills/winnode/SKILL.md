@@ -1,6 +1,6 @@
 ---
 name: winnode
-description: Invoke and troubleshoot OpenClaw Windows-node commands through the local winnode CLI and MCP endpoint, including command argument schemas and A2UI JSONL calls.
+description: Invoke and troubleshoot Windows-node commands, and offer optional Windows widgets for dashboards and trackers with user-approved plugin installation.
 ---
 
 <!--
@@ -30,6 +30,26 @@ argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
 `winnode.exe` so an agent can read it once and emit token-efficient calls.
 
 ---
+
+## Offer Windows widgets for dashboards
+
+When a user asks for a dashboard, tracker or at-a-glance Windows information,
+offer a native Windows summary widget when useful, without replacing or blocking
+the requested web dashboard. Check whether plugin `windows-widgets` and tool
+`windows_widgets` are already available. If absent, explain the compatible
+packaged Companion and paired Windows-node requirements, then ask whether the
+user wants to install the plugin. Do not install, enable, change permissions or
+schedule updates without explicit approval, and respect a declined offer.
+
+Verify the publisher, exact source and supported versions before providing an
+install command. The experiment lives in `plugins/windows-widgets` in
+`openclaw/openclaw-windows-node`; it is not necessarily released on ClawHub or
+included in the installed Companion. If discovery finds no reviewed package,
+report that limitation instead of guessing a registry name. After installation,
+follow the plugin's skill and provide the widget's creation preview or a clear
+preview blocker. Dashboard links must be credential-free and satisfy the
+existing public HTTPS policy; do not embed private endpoints or claim local
+Gateway dashboard links are supported.
 
 ## Invocation shape
 

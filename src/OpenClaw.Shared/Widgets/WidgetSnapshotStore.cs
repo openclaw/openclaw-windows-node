@@ -44,11 +44,8 @@ public sealed partial class WidgetSnapshotStore(string dataDirectory)
         ValidateText(snapshot.Title, 100, "title");
         ValidateText(snapshot.Value, 120, "value");
         ValidateText(snapshot.Detail, 600, "detail", allowEmpty: true);
-        if (!Uri.TryCreate(snapshot.SourceUrl, UriKind.Absolute, out var source) ||
-            source.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(source.UserInfo) ||
-            source.IsLoopback || source.HostNameType != UriHostNameType.Dns ||
-            snapshot.SourceUrl.Length > 2_048)
-            throw new ArgumentException("Widget sourceUrl must be an absolute public HTTPS source link without credentials.");
+        ValidateText(snapshot.SourceUrl, 2_048, "sourceUrl");
+        WidgetPresentation.ValidatePublicUrl(snapshot.SourceUrl);
         if (snapshot.ObservedAt == default || snapshot.ObservedAt > DateTimeOffset.UtcNow.AddMinutes(5))
             throw new ArgumentException("Widget observedAt must be a non-future observation timestamp.");
         if (snapshot.StaleAfterMinutes is < 5 or > 10_080)

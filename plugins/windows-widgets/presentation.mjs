@@ -3,6 +3,8 @@
 const verbs = ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh", "widget.lighting"];
 export const MAX_ARTWORK_BYTES = 262144;
 const MAX_IMAGE_DIMENSION = 4096;
+const structureArrays = new Set(["body", "items", "columns", "images", "inlines", "rows", "cells", "actions", "layouts", "pages", "sources"]);
+const structureObjects = new Set(["selectAction", "inlineAction", "action", "card", "metadata"]);
 export const presentationSchema = {
   type: "object", additionalProperties: false, required: ["card"],
   description: "Design a complete native Adaptive Card, not a preset. Native elements/properties, backgroundImage, rich text, columns, images, inputs, actions, header and Adaptive Card templating ($when, $data, $host.widgetSize, $host.hostTheme, $host.isSettingsPayload) pass to Windows, which decides host support. Version 1.0-1.6. Source facts are read-only bindings ${title}, ${value}, ${detail}, ${observedAt}, ${freshness}, ${sourceUrl}. Separate data is content; polling adapters reserve content.source and source-series artwork. Scalar initialState keys are per-instance state. Execute verbs: widget.set (input IDs match keys), widget.increment (data.key, amount), widget.toggle (data.key), widget.reset, widget.refresh (cached render). Separately opted-in widget.lighting accepts literal status/release/color/preset data with associatedInputs none, only on user click. It never accepts commands or bound inputs; driver ACK is not physical proof. Only widget.refresh may run automatically. No arbitrary commands, credentials or HTML. Images/backgrounds/icons can use public HTTPS or openclaw-asset:<name> for PNG artwork supplied in assets, with any valid name, not built-in designs. Prefer artworkFiles on the plugin tool for locally generated or selected PNG files; the plugin encodes them so you never need to paste base64. Resource bindings must be direct ${$root.content.path}; use separate conditional images to switch artwork with data. Navigation remains HTTPS-only. Provider appends observation/source. Layout/data/state max 65536 UTF-8 bytes; artwork max 262144 decoded bytes total, 4096 pixels per side, PNG only; 256 objects, JSON depth 24, state 4096 bytes. Snapshot max 524288 bytes, expanded native template max 1048576 bytes. {} does not reset: use a new minimal card.",
@@ -131,13 +133,23 @@ export function validatePresentation(value) {
   function visit(node, depth, template) {
     if (depth > 24) throw new Error("Widget JSON exceeds depth 24.");
     if (Array.isArray(node)) {
-      for (const child of node) visit(child, depth + 1, template);
+      for (const child of node) {
+        if (template && typeof child === "string" && child.includes("${"))
+          throw new Error("Widget element and action structure must be literal JSON; bind scalar properties instead.");
+        visit(child, depth + 1, template);
+      }
       return;
     }
     if (!object(node)) return;
     if (++count > 256) throw new Error("Widget presentation exceeds 256 objects.");
     for (const [key, input] of Object.entries(node)) {
       if (template) {
+        if (key.includes("${") ||
+          (key === "type" && (typeof input !== "string" || input.includes("${"))) ||
+          (structureArrays.has(key) && !Array.isArray(input)) ||
+          (structureObjects.has(key) && !object(input)) ||
+          (["fallback", "header"].includes(key) && typeof input === "string" && input.includes("${")))
+          throw new Error("Widget element and action structure must be literal JSON; bind scalar properties instead.");
         if (key === "$when" && (typeof input !== "string" || !input.startsWith("${") || !input.endsWith("}")))
           throw new Error("Widget $when requires an Adaptive Card template expression.");
         if (key === "authentication" || key === "webUrl")

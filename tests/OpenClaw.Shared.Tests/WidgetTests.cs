@@ -43,6 +43,9 @@ public sealed class WidgetTests : IDisposable
     [InlineData("mercury", "http://example.com/")]
     [InlineData("mercury", "https://secret@example.com/")]
     [InlineData("mercury", "https://127.0.0.1/")]
+    [InlineData("mercury", "https://printer.local:8443/status")]
+    [InlineData("mercury", "https://server/status")]
+    [InlineData("mercury", "https://example.com:8443/status")]
     public void Store_RejectsUnsafeIdentifiersAndSourceLinks(string id, string url) =>
         Assert.Throws<ArgumentException>(() => new WidgetSnapshotStore(_directory).Upsert(Mercury with { Id = id, SourceUrl = url }));
 
@@ -294,6 +297,36 @@ public sealed class WidgetTests : IDisposable
         var card = JsonSerializer.SerializeToElement(new
         { type = "AdaptiveCard", version = "1.6", body = new[] { new { type = "Image", url, altText = "Mercury" } } });
         Assert.Throws<ArgumentException>(() => new WidgetPresentation(card).Validate());
+    }
+
+    [Theory]
+    [InlineData("""{"body":[{"type":"Container","selectAction":"${$root.content.action}","items":[]}]}""")]
+    [InlineData("""{"body":["${$root.content.element}"]}""")]
+    [InlineData("""{"body":[{"type":"Container","items":"${$root.content.elements}"}]}""")]
+    [InlineData("""{"body":[{"type":"TextBlock","text":"Fallback","fallback":"${$root.content.element}"}]}""")]
+    [InlineData("""{"body":[{"type":"ActionSet","actions":["${$root.content.action}"]}]}""")]
+    [InlineData("""{"body":[{"type":"${$root.content.elementType}","text":"Dynamic"}]}""")]
+    [InlineData("""{"header":"${$root.content.header}"}""")]
+    [InlineData("""{"metadata":"${$root.content.metadata}"}""")]
+    [InlineData("""{"body":[{"type":"Media","sources":"${$root.content.sources}"}]}""")]
+    public void Presentation_RejectsStructuralBindingsBeforeTheyCanBypassAdmission(string changes)
+    {
+        var card = JsonNode.Parse("""{"type":"AdaptiveCard","version":"1.6","body":[]}""")!.AsObject();
+        foreach (var entry in JsonNode.Parse(changes)!.AsObject())
+            card[entry.Key] = entry.Value?.DeepClone();
+        var data = JsonSerializer.SerializeToElement(new
+        {
+            action = new { type = "Action.OpenUrl", url = "file:///C:/private.txt" },
+            element = new { type = "Image", url = "file:///C:/private.png" },
+            elements = new[] { new { type = "Image", url = "file:///C:/private.png" } },
+            elementType = "Image",
+            header = new { text = "Header", iconUrl = "file:///C:/private.png" },
+            metadata = new { webUrl = "https://example.com/unapproved-html" },
+            sources = new[] { new { mimeType = "video/mp4", url = "file:///C:/private.mp4" } }
+        });
+        var presentation = new WidgetPresentation(JsonSerializer.SerializeToElement(card), data);
+        var error = Assert.Throws<ArgumentException>(() => presentation.Validate());
+        Assert.Contains("literal", error.Message);
     }
 
     [Theory]

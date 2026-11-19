@@ -111,6 +111,34 @@ test("manual deployment never fetches or starts a schedule and rejects overlappi
   await assert.rejects(h.bridge.execute("publish", { id: "bad", snapshot: { ...snapshot, value: "" } }), /value/);
 });
 
+test("publication retains cache-only host metadata through status, restart and restyling", async () => {
+  const h = harness();
+  const host = { supported: false, pinnedCount: 0, reason: "Packaged Companion required." };
+  h.options.invoke = async () => ({ ok: true, payload: { saved: true, host, privateField: "not metadata" } });
+  const bridge = createWidgetBridge(h.options);
+  const result = await bridge.execute("publish", { id: "summary",
+    snapshot: { title: "Summary", value: "Ready", sourceUrl: url, observedAt: new Date(at).toISOString() } });
+  assert.deepEqual(result.lastDelivery, { saved: true, host, reportedAt: new Date(at).toISOString() });
+  assert.equal(JSON.stringify(result).includes("not metadata"), false);
+  assert.deepEqual((await createWidgetBridge(h.options).execute("status", { id: "summary" })).lastDelivery, result.lastDelivery);
+  h.options.invoke = async () => ({ saved: true, host: { supported: true, pinnedCount: 1 } });
+  const styled = await createWidgetBridge(h.options).execute("style", { id: "summary", presentation });
+  assert.equal(styled.lastDelivery.host.supported, true);
+  assert.equal(styled.lastDelivery.host.pinnedCount, 1);
+  assert.equal(styled.visibleRenderingVerified, false);
+});
+
+test("collector refresh updates delivery metadata and missing host metadata stays unknown", async () => {
+  const h = harness();
+  await h.bridge.execute("create", { id: "polling", title: "Polling", source });
+  assert.equal((await h.bridge.execute("status", { id: "polling" })).lastDelivery.host, null);
+  h.options.invoke = async () => ({ saved: true, host: { supported: false, pinnedCount: 0 } });
+  h.advance(5);
+  const refreshed = await createWidgetBridge(h.options).execute("refresh", { id: "polling" });
+  assert.equal(refreshed.lastDelivery.host.supported, false);
+  assert.equal(refreshed.lastDelivery.saved, true);
+});
+
 test("pushed history derives current facts and graph, survives restyling and accepts later bot updates without collection", async () => {
   const h = harness();
   const snapshot = { title: "Synthetic history", sourceUrl: url, series: {

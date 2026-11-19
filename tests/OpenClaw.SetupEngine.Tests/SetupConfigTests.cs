@@ -940,6 +940,11 @@ public class SetupConfigTests : IDisposable
         Assert.Contains("Share Windows Ollama", block);
         Assert.Contains("ollama.models", block);
         Assert.Contains("separate from the app-managed Local AI gateway provider", block);
+        Assert.Contains("dashboard, tracker, or at-a-glance", block);
+        Assert.Contains("`windows-widgets` plugin and `windows_widgets` tool", block);
+        Assert.Contains("without explicit approval", block);
+        Assert.Contains("must not block the original dashboard request", block);
+        Assert.Contains("do not assume the plugin is published on ClawHub", block);
         Assert.DoesNotContain("tools.exec.security full", block);
         Assert.DoesNotContain("tools.exec.ask off", block);
         Assert.EndsWith("\n" + WindowsNodeContextSection.EndMarker, block);
