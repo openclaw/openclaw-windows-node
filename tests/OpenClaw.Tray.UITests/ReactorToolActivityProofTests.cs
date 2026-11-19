@@ -988,44 +988,6 @@ public sealed class ReactorToolActivityProofTests
     }
 
     [Fact]
-    public async Task ChatMotion_HoldTakesOverAGlideWhoseEndNeverOverwritesIt()
-    {
-        await _ui.ResetContainerAsync();
-        using var motion = new ChatMotionScope(enabled: true);
-        await _ui.RunOnUIAsync(async () =>
-        {
-            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
-            var clock = new ChatMotionHost { Content = new Border { Height = 40 } };
-            var panel = new StackPanel();
-            panel.Children.Add(row);
-            panel.Children.Add(clock);
-            _ui.Container.Children.Add(panel);
-            try
-            {
-                await WaitForRenderedConditionAsync(() => row.IsLoaded && clock.IsLoaded, "the rows load");
-                ChatMotion.SlideBy(row, 60, 100);
-                // The glide's start is drawn in the frame that shows the new layout.
-                Assert.Equal(new System.Numerics.Vector3(0, 60, 0), row.Translation);
-                // A longer glide started now has landed only after the row's glide would have.
-                ChatMotion.SlideBy(clock, 60, 300);
-                ChatMotion.HoldAt(row, 25);
-
-                await WaitForRenderedConditionAsync(
-                    () => clock.Translation == System.Numerics.Vector3.Zero, "the longer glide lands at rest");
-                Assert.Equal(new System.Numerics.Vector3(0, 25, 0), row.Translation);
-            }
-            finally
-            {
-                ChatMotion.Reset(row);
-                ChatMotion.Reset(clock);
-                _ui.Container.Children.Remove(panel);
-            }
-            Assert.Equal(System.Numerics.Vector3.Zero, row.Translation);
-            Assert.Null(row.TranslationTransition);
-        });
-    }
-
-    [Fact]
     public async Task CompletedWork_ReusesNativeDisclosureAndToolDetailsWithoutHidingAnswer()
     {
         await _ui.ResetContainerAsync();

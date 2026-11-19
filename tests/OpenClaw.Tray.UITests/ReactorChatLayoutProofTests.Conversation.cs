@@ -634,11 +634,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.DoesNotContain(server.Requests, request => request.Method == "chat.message.get");
                 await ui.RunOnUIAsync(() =>
                 {
-                    Assert.DoesNotContain(FindDescendants<TextBlock>(expander), text =>
+                    var row = Disclosure(expander);
+                    Assert.DoesNotContain(FindDescendants<TextBlock>(row), text =>
                         Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
-                    Assert.DoesNotContain(FindDescendants<Button>(expander), button =>
+                    Assert.DoesNotContain(FindDescendants<Button>(row), button =>
                         Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "ChatToolOutputLoad");
-                    Invoke(FindControl<Button>(expander, $"ChatToolDetails_{entry.Id}"));
+                    Invoke(FindControl<Button>(row, $"ChatToolDetails_{entry.Id}"));
                 });
                 await SettleAsync();
                 var reader = await ui.RunOnUIAsync(() =>
@@ -697,7 +698,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     {
                         Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(reader));
                         if (action == "close")
-                            Invoke(FindControl<Button>(expander, $"ChatToolDetails_{entry.Id}"));
+                            Invoke(FindControl<Button>(Disclosure(expander), $"ChatToolDetails_{entry.Id}"));
                     });
                     await SettleAsync();
                     reader = await ui.RunOnUIAsync(() =>
@@ -725,7 +726,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 {
                     Assert.Contains(output, FindDescendants<RichTextBlock>(reader));
                     Assert.Contains("RECOVERED OUTPUT TAIL", ReadToolText(reader));
-                    Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
+                    Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(Disclosure(expander)));
                     Assert.Equal("Preserve this draft.", FindControl<TextBox>(surface, "ChatComposerInput").Text);
                     reader.ChangeView(null, reader.ScrollableHeight, null, true);
                 });
@@ -837,13 +838,14 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await SettleAsync();
             await RevealHeaderAsync(surface, commandControl);
-            var commandText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(commandControl)));
+            var commandText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(Disclosure(commandControl))));
             Assert.DoesNotContain("PARITY OUTPUT TAIL", commandText);
             await ui.RunOnUIAsync(() =>
             {
-                Assert.Equal("+99 more lines", FindControl<TextBlock>(commandControl,
+                var row = Disclosure(commandControl);
+                Assert.Equal("+99 more lines", FindControl<TextBlock>(row,
                     $"ChatToolMoreLines_{command.Id}").Text);
-                Invoke(FindControl<Button>(commandControl, $"ChatToolDetails_{command.Id}"));
+                Invoke(FindControl<Button>(row, $"ChatToolDetails_{command.Id}"));
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => FindOptional<ScrollViewer>(surface, "ConversationToolDetailsReader") is { } reader &&
@@ -861,11 +863,11 @@ public sealed partial class ReactorChatLayoutProofTests
             await CaptureAsync(surface, $"ConversationParity-{width}-command-expanded");
             await ui.RunOnUIAsync(() =>
             {
-                var output = FindDescendants<ScrollViewer>(commandControl).LastOrDefault();
+                var output = FindDescendants<ScrollViewer>(Disclosure(commandControl)).LastOrDefault();
                 output?.ChangeView(null, output.ScrollableHeight, null, true);
             });
             await SettleAsync();
-            await ui.RunOnUIAsync(() => FindDescendants<ScrollViewer>(commandControl).Last()
+            await ui.RunOnUIAsync(() => FindDescendants<ScrollViewer>(Disclosure(commandControl)).Last()
                 .StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0 }));
             await SettleAsync();
             await CaptureAsync(surface, $"ConversationParity-{width}-command-tail");
@@ -878,7 +880,7 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await SettleAsync();
             await RevealHeaderAsync(surface, genericControl);
-            var genericText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(genericControl)));
+            var genericText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(Disclosure(genericControl))));
             await CaptureAsync(surface, $"ConversationParity-{width}-generic-expanded");
             if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR") is { Length: > 0 } directory)
                 await File.WriteAllTextAsync(Path.Combine(directory, $"conversation-{width}.json"), JsonSerializer.Serialize(new

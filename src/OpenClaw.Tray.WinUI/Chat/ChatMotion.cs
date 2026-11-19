@@ -392,72 +392,11 @@ internal static class ChatMotion
     internal static void FadeIn(FrameworkElement control, int milliseconds) =>
         Enter(control, 0, milliseconds, fade: true);
 
-    /// <summary>
-    /// Draws the control <paramref name="offsetY"/> pixels from its slot, without motion, until a
-    /// later <see cref="SlideBy"/>, <see cref="HoldAt"/> or <see cref="Reset"/>. With a
-    /// <paramref name="scrollView"/>, the offset was measured at its <see cref="DrawnVerticalOffset"/>,
-    /// and the hold follows the compositor's scroll position. A scroll lands there a frame before the
-    /// UI thread learns of it, so a plain hold would draw that frame from the wrong place.
-    /// </summary>
-    internal static void HoldAt(FrameworkElement control, float offsetY, Microsoft.UI.Xaml.Controls.ScrollView? scrollView = null)
-    {
-        if (!AnimationsEnabled)
-        {
-            Reset(control);
-            return;
-        }
-        var state = StateFor(control);
-        if (!TrySet(() => PlaceAt(control, state, new Vector3(0, offsetY, 0))))
-            return;
-        state.Facade = true;
-        // Supersedes a slide still waiting for its first frame.
-        state.Generation++;
-        if (scrollView is null)
-            return;
-        try
-        {
-            var sources = scrollView.ExpressionAnimationSources;
-            var hold = sources.Compositor.CreateExpressionAnimation(
-                "Vector3(0, Held + (Scroll.Position.Y - Scroll.MinPosition.Y) - Measured, 0)");
-            hold.Target = "Translation";
-            hold.SetScalarParameter("Held", offsetY);
-            hold.SetScalarParameter("Measured", (float)DrawnVerticalOffset(scrollView));
-            hold.SetReferenceParameter("Scroll", sources);
-            control.StartAnimation(hold);
-            state.Hold = hold;
-        }
-        catch (Exception ex) when (ex is ArgumentException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
-        {
-            // The static hold above still applies; only the frame a scroll lands in may lag.
-        }
-    }
-
-    /// <summary>
-    /// The scroll offset the compositor draws. When the content's extent shrinks (a list
-    /// re-estimating rows it has not measured), the offset can run past the new end until the
-    /// scroller clamps it, but the compositor already draws the clamped end.
-    /// </summary>
-    internal static double DrawnVerticalOffset(Microsoft.UI.Xaml.Controls.ScrollView scrollView) =>
-        Math.Min(scrollView.VerticalOffset, Math.Max(0, scrollView.ScrollableHeight));
-
-    /// <summary>Whether a <see cref="HoldAt"/> that follows the compositor's scroll position draws the control.</summary>
-    internal static bool FollowsScroll(FrameworkElement control) =>
-        s_states.TryGetValue(control, out var state) && state.Hold is not null;
-
-    private static void StopHold(UIElement control, MotionState state)
-    {
-        if (state.Hold is not { } hold)
-            return;
-        state.Hold = null;
-        control.StopAnimation(hold);
-    }
-
-    // Draws the control at a static Translation, taking over from any hold or glide in flight.
+    // Draws the control at a static Translation, taking over from any glide in flight.
     // Writing the static value a glide started from cancels the glide without redrawing the
     // control, which would keep its last glide frame, so an equal value is first nudged through.
     private static void PlaceAt(UIElement control, MotionState state, Vector3 value)
     {
-        StopHold(control, state);
         control.TranslationTransition = null;
         if (state.Gliding)
         {
@@ -742,7 +681,6 @@ internal static class ChatMotion
         public bool Visual { get; set; }
         public bool Sized { get; set; }
         public Microsoft.UI.Xaml.Media.Animation.Storyboard? Storyboard { get; set; }
-        public Microsoft.UI.Composition.ExpressionAnimation? Hold { get; set; }
         // A keyframe glide may still draw the control; its static Translation is the glide's start.
         public bool Gliding { get; set; }
         public string? Glyph { get; set; }
