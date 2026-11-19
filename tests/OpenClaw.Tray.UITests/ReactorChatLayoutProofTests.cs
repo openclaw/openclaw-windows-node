@@ -674,21 +674,14 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     public async Task DraftSendStatus_IsRenderedAsPoliteLiveRegion()
     {
         const string message = "The Gateway send status is unknown.";
+        var draft = ChatDraft.Create("main");
         await WithChatAsync(800, async (surface, _, session, _) =>
         {
-            var draft = new ChatDraft("draft-status-proof", "main");
-            await ui.RunOnUIAsync(() =>
-            {
-                var inputs = session.ViewModel.Inputs!;
-                session.Controller.RegisterDraft(draft);
-                session.ApplyInputs(inputs with
-                {
-                    CurrentThread = inputs.CurrentThread with { Id = draft.Key },
-                    PlacementDraft = draft,
-                    PlacementRequiresCreation = true
-                });
-                session.Placement!.ReportDraftSendStatus(draft.Key, message);
-            });
+            await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession(draft.Key)));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is not null,
+                "draft location row"));
+            await ui.RunOnUIAsync(() => session.Placement!.ReportDraftSendStatus(draft.Key, message));
 
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => FindControlOrNull<TextBlock>(surface, "ChatDraftSendStatus")?.Text == message,
@@ -700,7 +693,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 Assert.Equal(message, status.Text);
                 Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(status));
             });
-        }, "empty");
+        }, "empty", placementGateway: new PlacementProofGateway(),
+            onMounted: host => host.RegisterDraft(draft));
     }
 
     [Theory]
@@ -787,9 +781,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     [Fact]
     public async Task PlacementInterruptedNavigation_RestoresChoiceAndVisibleUncertainty()
     {
+        // A confirmed preparation is committed; only a lost acknowledgment leaves the location uncertain.
         var gateway = new PlacementProofGateway
         {
-            PrepareCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously)
+            PrepareCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            PrepareFailure = new ChatPlacementOutcomeUncertainException(
+                new TimeoutException("The Gateway acknowledgment was lost."))
         };
         await WithChatAsync(800, async (surface, _, session, provider) =>
         {
@@ -4390,9 +4387,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 await beforeMutation(cancellationToken);
             Preparations++;
             Selection = selection;
+            await (PrepareCompletion?.Task ?? Task.CompletedTask);
             if (PrepareFailure is { } failure)
                 throw failure;
-            await (PrepareCompletion?.Task ?? Task.CompletedTask);
         }
     }
 

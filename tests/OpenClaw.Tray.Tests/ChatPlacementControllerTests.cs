@@ -313,8 +313,10 @@ public sealed class ChatPlacementControllerTests
         Assert.Equal(0, context.Port.SendMessageCallCount);
     }
 
-    [Fact]
-    public async Task ConfirmedPreparation_CancellationDuringHistoryWaitDoesNotBecomeUncertain()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConfirmedPreparation_CancellationDuringHistoryWaitDoesNotBecomeUncertain(bool returnBeforeCompletion)
     {
         using var context = new Context();
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -332,11 +334,15 @@ public sealed class ChatPlacementControllerTests
         var preparing = context.Placement.PrepareAsync(Key, default);
         Assert.True(context.Composer.TrySelectSession("agent:main:other"));
         Assert.True(context.Gateway.PrepareToken.IsCancellationRequested);
-        Assert.True(context.Composer.TrySelectSession(Key));
+        if (returnBeforeCompletion)
+            Assert.True(context.Composer.TrySelectSession(Key));
         completion.SetResult();
 
         Assert.False(await preparing);
+        if (!returnBeforeCompletion)
+            Assert.True(context.Composer.TrySelectSession(Key));
         Assert.False(context.Placement.RequiresPreparation);
+        Assert.Equal(FakeGateway.Project, context.Placement.State.Selection?.Workspace);
         Assert.NotEqual(ChatPlacementError.Interrupted, context.Placement.State.Error);
         Assert.True(await context.Composer.SendCoreAsync(Key, "New chat", "continue", []));
         Assert.Equal(1, context.Gateway.PrepareCalls);
