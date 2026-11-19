@@ -1,5 +1,6 @@
 using Microsoft.Toolkit.Uwp.Notifications;
 using OpenClaw.Shared;
+using OpenClawTray.Presentation;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,6 +40,60 @@ internal sealed class ToastService : IToastNotificationPublisher
         if (!ShouldShowToast(toastTag, deviceId))
             return;
 
+        ApplySound(builder);
+        builder.Show();
+    }
+
+    /// <summary>
+    /// Shows an approval toast the app withdraws by <paramref name="tag"/>/<paramref name="group"/>
+    /// once it is decided; Windows also drops it at the approval's expiry. False when suppressed.
+    /// </summary>
+    public bool ShowWithdrawableToast(ApprovalToastPlan plan, string tag, string group)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        if (GatewayFixtureIsolation.IsEnabled || AppIdentity.IsIsolated || plan.ExpiresAt <= DateTimeOffset.UtcNow)
+            return false;
+
+        var builder = CreateApprovalContent(plan);
+        ApplySound(builder);
+        builder.Show(toast =>
+        {
+            toast.Tag = tag;
+            toast.Group = group;
+            toast.ExpirationTime = plan.ExpiresAt;
+        });
+        return true;
+    }
+
+    /// <summary>Materializes the approval plan through the shipping toast toolkit before delivery.</summary>
+    internal static ToastContentBuilder CreateApprovalContent(ApprovalToastPlan plan)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        var builder = new ToastContentBuilder().AddText(plan.Title);
+        foreach (var line in plan.Lines)
+            builder.AddText(line);
+        foreach (var (key, value) in plan.LaunchArguments)
+            builder.AddArgument(key, value);
+        foreach (var planned in plan.Buttons)
+        {
+            var button = new ToastButton().SetContent(planned.Label);
+            foreach (var (key, value) in planned.Arguments)
+                button.AddArgument(key, value);
+            builder.AddButton(button);
+        }
+        return builder;
+    }
+
+    /// <summary>Removes a toast shown by <see cref="ShowWithdrawableToast"/> from the screen and Action Center.</summary>
+    public void RemoveToast(string tag, string group)
+    {
+        if (GatewayFixtureIsolation.IsEnabled || AppIdentity.IsIsolated)
+            return;
+        ToastNotificationManagerCompat.History.Remove(tag, group);
+    }
+
+    private void ApplySound(ToastContentBuilder builder)
+    {
         var sound = _getSettings()?.NotificationSound;
         if (string.Equals(sound, "None", StringComparison.OrdinalIgnoreCase))
         {
@@ -48,7 +103,6 @@ internal sealed class ToastService : IToastNotificationPublisher
         {
             builder.AddAudio(new Uri("ms-winsoundevent:Notification.IM"), silent: false);
         }
-        builder.Show();
     }
 
     /// <summary>Check whether a toast with this tag was recently shown (within dedup window).</summary>

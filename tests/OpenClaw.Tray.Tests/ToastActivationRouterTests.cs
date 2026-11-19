@@ -58,4 +58,31 @@ public sealed class ToastActivationRouterTests
             "unknown",
             _ => throw new InvalidOperationException("arguments should not be read")));
     }
+
+    [Fact]
+    public void PlanRoute_ApprovalDecision_CarriesOnlyIdDecisionAndToken()
+    {
+        var args = new Dictionary<string, string> { ["approvalId"] = "a1", ["decision"] = "deny", ["token"] = "T" };
+
+        var route = Assert.IsType<ActivationRoute.DecideApproval>(
+            ToastActivationRouter.PlanRoute("approval_decision", key => args.GetValueOrDefault(key)));
+
+        Assert.Equal(("a1", "deny", "T"), (route.ApprovalId, route.Decision, route.Token));
+    }
+
+    [Theory]
+    [InlineData(null, "deny", "T")]
+    [InlineData("a1", "approve", "T")]
+    [InlineData("a1", "allow-once", null)]
+    public void PlanRoute_IncompleteApprovalDecision_OpensTheInboxInstead(string? id, string? decision, string? token)
+    {
+        var args = new Dictionary<string, string?> { ["approvalId"] = id, ["decision"] = decision, ["token"] = token };
+
+        var route = Assert.IsType<ActivationRoute.OpenHub>(
+            ToastActivationRouter.PlanRoute("approval_decision", key => args.GetValueOrDefault(key)));
+
+        Assert.Equal("notifications", route.Page);
+        Assert.Equal("notifications", Assert.IsType<ActivationRoute.OpenHub>(
+            ToastActivationRouter.PlanRoute("open_inbox", _ => null)).Page);
+    }
 }

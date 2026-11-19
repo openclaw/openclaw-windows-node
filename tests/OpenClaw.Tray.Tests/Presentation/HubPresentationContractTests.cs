@@ -60,7 +60,7 @@ public sealed class HubPresentationContractTests
         Assert.True(secondaryStart > actionStart);
         var action = view[actionStart..secondaryStart];
         var appStart = action.IndexOf("if (!InboxGatewayItems.IsGatewayItemId(item.Id))", StringComparison.Ordinal);
-        var gatewayStart = action.IndexOf("item.OpenAction(commands.OpenGatewayRoute, commands.OpenDashboard);", StringComparison.Ordinal);
+        var gatewayStart = action.IndexOf("commands.OpenGatewayRoute(item.ActionRoute);", StringComparison.Ordinal);
         Assert.True(appStart >= 0 && gatewayStart > appStart);
         var appBranch = action[appStart..gatewayStart];
         Assert.Contains("feed.NavigateNotificationAsync(item.Id, commands.TryNavigateAsync)", appBranch);
@@ -69,8 +69,8 @@ public sealed class HubPresentationContractTests
         Assert.DoesNotContain(".Dismiss(", action);
 
         var secondary = view[secondaryStart..view.IndexOf("private void OnAskClick", secondaryStart, StringComparison.Ordinal)];
-        Assert.Matches(@"&&\s+InboxGatewayItems\.IsGatewayItemId\(item\.Id\)\)\s+_commands\?\.OpenGatewayRoute\(route\);", secondary);
-        Assert.Contains("_commands?.OpenGatewayRoute(route);", secondary);
+        Assert.Matches(@"&&\s+InboxGatewayItems\.IsGatewayItemId\(item\.Id\)\)\s+item\.OpenSecondaryAction\(commands\.OpenGatewayRoute,\s*commands\.OpenDashboard\);", secondary);
+        Assert.Contains("item.OpenSecondaryAction(commands.OpenGatewayRoute, commands.OpenDashboard);", secondary);
         Assert.DoesNotContain("NavigateNotificationAsync", secondary);
         Assert.DoesNotContain(".Dismiss(", secondary);
     }

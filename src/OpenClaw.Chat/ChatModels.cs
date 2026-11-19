@@ -65,8 +65,12 @@ public static class ChatPermissionActionKeys
 
     public static string[] NormalizeActions(IReadOnlyList<string>? actions)
     {
-        if (actions is not { Count: > 0 })
+        if (actions is null)
             return ExecApprovalDefaults;
+        // An explicit empty list means the request offers no decision here (for example the
+        // connection lacks approval access); it must not widen to the defaults.
+        if (actions.Count == 0)
+            return [];
 
         var normalized = actions
             .Where(action => !string.IsNullOrWhiteSpace(action))

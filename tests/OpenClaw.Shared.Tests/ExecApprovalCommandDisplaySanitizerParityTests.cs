@@ -393,6 +393,20 @@ public class ExecApprovalCommandDisplaySanitizerParityTests
         Assert.Contains("[truncated]", result, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("review text\u2026[truncated]", true, false)]
+    [InlineData("[exec approval command exceeds display size limit; full text suppressed]", false, true)]
+    [InlineData("[exec approval warning exceeds display size limit; full text suppressed]", false, true)]
+    [InlineData("The word [truncated] is quoted in complete text.", false, false)]
+    public void PreservesExistingIncompleteDisplayMarkers(string text, bool truncated, bool oversized)
+    {
+        var result = ExecApprovalCommandDisplaySanitizer.SanitizeWarningTextWithStatus(text);
+
+        Assert.Equal(text, result.Text);
+        Assert.Equal(truncated, result.Truncated);
+        Assert.Equal(oversized, result.Oversized);
+    }
+
     [Fact]
     public void DoesNotSplitSurrogatePairsAtTheDisplayTruncationBoundary()
     {

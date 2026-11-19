@@ -45,12 +45,20 @@ public static class ExecApprovalCommandDisplaySanitizer
             result.UnsafeConcealment);
     }
 
-    public static string SanitizeWarningText(string text)
+    public static string SanitizeWarningText(string text) => SanitizeWarningTextWithStatus(text).Text;
+
+    /// <summary>
+    /// Preserves multiline review text and reports whether any required content was concealed or lost,
+    /// so callers can tell when the visible text no longer matches the original.
+    /// </summary>
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeWarningTextWithStatus(string text)
     {
-        return SanitizeInternal(
+        var result = SanitizeInternal(
             NormalizeDisplayLineBreaks(text),
             preserveLineBreaks: true,
-            oversizedMarker: WarningOversizedMarker).Text;
+            oversizedMarker: WarningOversizedMarker);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
     /// <summary>
@@ -69,15 +77,14 @@ public static class ExecApprovalCommandDisplaySanitizer
         return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
-    /// <summary>
-    /// Warning text with its redaction status, so callers can tell when the visible text no longer
-    /// matches the original (for example to avoid computing line counts from masked values).
-    /// </summary>
-    public static (string Text, bool Truncated, bool Oversized, bool Redacted) SanitizeWarningTextWithStatus(string text)
+    /// <summary>Full review text for one list entry, with every invisible character escaped, including line/tab controls.</summary>
+    public static string SanitizeSingleLineForReview(string text) => SanitizeSingleLineForReviewWithStatus(text).Text;
+
+    public static (string Text, bool Truncated, bool Oversized, bool Redacted, bool UnsafeConcealment)
+        SanitizeSingleLineForReviewWithStatus(string text)
     {
-        var result = SanitizeInternal(NormalizeDisplayLineBreaks(text), preserveLineBreaks: true,
-            oversizedMarker: WarningOversizedMarker);
-        return (result.Text, result.Truncated, result.Oversized, result.Redacted);
+        var result = SanitizeInternal(text, commandReviewLayout: true);
+        return (result.Text, result.Truncated, result.Oversized, result.Redacted, result.UnsafeConcealment);
     }
 
     /// <summary>
@@ -212,7 +219,7 @@ public static class ExecApprovalCommandDisplaySanitizer
         for (var i = 0; i < text.Length;)
         {
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if ((preserveLineBreaks && codePoint == '\n') || (commandReviewLayout && codePoint == '\t'))
+            if (preserveLineBreaks && (codePoint == '\n' || (commandReviewLayout && codePoint == '\t')))
             {
                 sanitized.Append((char)codePoint);
             }
@@ -272,7 +279,7 @@ public static class ExecApprovalCommandDisplaySanitizer
             }
 
             var codePoint = ReadCodePoint(text, i, out var codeUnitLength);
-            if ((preserveLineBreaks && codePoint == '\n') || (commandReviewLayout && codePoint == '\t'))
+            if (preserveLineBreaks && (codePoint == '\n' || (commandReviewLayout && codePoint == '\t')))
             {
                 rendered.Append((char)codePoint);
             }
@@ -299,10 +306,12 @@ public static class ExecApprovalCommandDisplaySanitizer
     {
         if (text.Length <= maxOutput)
         {
+            // Gateway plugin details may arrive already bounded. Rendering them again
+            // must not turn a truncation or suppression marker into complete consent.
             return new SanitizedDisplayText(
                 text,
-                Truncated: false,
-                Oversized: false,
+                Truncated: text.EndsWith(TruncationMarker, StringComparison.Ordinal),
+                Oversized: text is OversizedMarker or WarningOversizedMarker,
                 Redacted: redacted,
                 UnsafeConcealment: unsafeConcealment);
         }

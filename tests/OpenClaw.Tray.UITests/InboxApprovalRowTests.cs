@@ -25,14 +25,14 @@ public sealed class InboxApprovalRowTests(UIThreadFixture ui)
             var routes = new List<string>();
             var dashboardCalls = 0;
 
-            row.OpenAction(routes.Add, () => dashboardCalls++);
+            row.OpenSecondaryAction(routes.Add, () => dashboardCalls++);
 
             Assert.Equal(1, dashboardCalls);
             Assert.Empty(routes);
-            Assert.True(row.OpensDashboard);
-            Assert.Null(row.ActionRoute);
-            Assert.Equal(Visibility.Visible, row.ActionVisibility);
-            Assert.Equal(LocalizationHelper.GetString("Menu_OpenDashboard"), row.ActionLabel);
+            Assert.True(row.SecondaryOpensDashboard);
+            Assert.Null(row.SecondaryActionRoute);
+            Assert.Equal(Visibility.Visible, row.SecondaryActionVisibility);
+            Assert.Equal(LocalizationHelper.GetString("Menu_OpenDashboard"), row.SecondaryActionLabel);
         });
     }
 
@@ -47,12 +47,12 @@ public sealed class InboxApprovalRowTests(UIThreadFixture ui)
             var routes = new List<string>();
             var dashboardCalls = 0;
 
-            row.OpenAction(routes.Add, () => dashboardCalls++);
+            row.OpenSecondaryAction(routes.Add, () => dashboardCalls++);
 
             Assert.Equal([expectedRoute], routes);
             Assert.Equal(0, dashboardCalls);
-            Assert.False(row.OpensDashboard);
-            Assert.Equal(LocalizationHelper.GetString("Inbox_OpenChat"), row.ActionLabel);
+            Assert.False(row.SecondaryOpensDashboard);
+            Assert.Equal(LocalizationHelper.GetString("Inbox_OpenChat"), row.SecondaryActionLabel);
         });
     }
 
