@@ -317,7 +317,8 @@ public sealed partial class GatewayFixtureUiTests
                     input.FindFirst(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true)) is not null,
                     $"{inputId} focused");
-                OwnedWindowCapture.Save(run, window, $"{inputId}-channels-dashboard.png", FindById(run, "SearchResult_0")!);
+                OwnedWindowCapture.Save(run, window, $"{inputId}-channels-dashboard.png",
+                    await WaitForElementByIdAsync(run, "SearchResult_0", $"Channels Dashboard row for {inputId} capture"));
                 Assert.True(ForegroundBelongsTo(run.AppProcessId),
                     "The fixture lost foreground before search activation; no keys were sent.");
                 Assert.NotNull(FindById(run, inputId));
