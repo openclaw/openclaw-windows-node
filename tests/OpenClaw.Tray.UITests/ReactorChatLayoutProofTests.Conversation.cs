@@ -946,7 +946,6 @@ public sealed partial class ReactorChatLayoutProofTests
             {
                 Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
             }));
-            await SettleAsync();
             await AwaitInitialTailAsync(surface, "proof", "a11");
 
             ScrollView? scroll = null;
