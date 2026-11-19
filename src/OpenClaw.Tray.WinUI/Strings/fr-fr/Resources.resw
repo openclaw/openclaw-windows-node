@@ -4490,7 +4490,7 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsLobsterdexIntro.Text" xml:space="preserve"><value>Les homards qui ont visité ce profil du Hub.</value></data>
   <data name="Lobsterdex_Loading" xml:space="preserve"><value>Chargement du carnet des homards…</value></data>
   <data name="Lobsterdex_Empty" xml:space="preserve"><value>Aucun homard enregistré. Surveillez les visites quand vous démarrez une nouvelle session.</value></data>
-  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>Impossible de lire le carnet des homards.</value></data>
+  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>Impossible de lire le carnet des homards. Repliez-le, puis ouvrez-le à nouveau pour réessayer. Si le problème persiste, contactez l’assistance avant de modifier le fichier de la collection.</value></data>
   <data name="Lobsterdex_FirstSeen" xml:space="preserve"><value>Première visite le {0:D}</value></data>
   <data name="Lobsterdex_ShinySeen" xml:space="preserve"><value>Première visite d’un homard brillant : {0:D}</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">

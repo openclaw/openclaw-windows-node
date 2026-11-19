@@ -4490,7 +4490,7 @@
   <data name="SettingsLobsterdexIntro.Text" xml:space="preserve"><value>曾造訪此 Hub 設定檔的龍蝦。</value></data>
   <data name="Lobsterdex_Loading" xml:space="preserve"><value>正在載入龍蝦圖鑑…</value></data>
   <data name="Lobsterdex_Empty" xml:space="preserve"><value>目前沒有龍蝦造訪的紀錄。開始新對話時，留意來訪的龍蝦。</value></data>
-  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>無法讀取龍蝦圖鑑。</value></data>
+  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>無法讀取龍蝦圖鑑。請收合圖鑑後再重新展開，以重試讀取。如果問題仍然存在，請先聯絡支援人員，再修改收藏檔案。</value></data>
   <data name="Lobsterdex_FirstSeen" xml:space="preserve"><value>首次造訪：{0:D}</value></data>
   <data name="Lobsterdex_ShinySeen" xml:space="preserve"><value>閃光龍蝦首次造訪：{0:D}</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">

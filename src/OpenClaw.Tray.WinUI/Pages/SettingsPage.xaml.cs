@@ -199,8 +199,9 @@ public sealed partial class SettingsPage : Page
             }
 
             LobsterdexStatus.Visibility = Visibility.Collapsed;
+            var (accent, hover) = LobsterArtworkCanvas.ReadAccentColors();
             foreach (var (paletteId, sighting) in entries.OrderBy(entry => entry.Value.FirstSeenAt).ThenBy(entry => entry.Key, StringComparer.Ordinal))
-                LobsterdexEntries.Children.Add(BuildLobsterdexRow(paletteId, sighting));
+                LobsterdexEntries.Children.Add(BuildLobsterdexRow(paletteId, sighting, accent, hover));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
@@ -222,7 +223,7 @@ public sealed partial class SettingsPage : Page
         FrameworkElementAutomationPeer.FromElement(LobsterdexStatus)?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
     }
 
-    private static Grid BuildLobsterdexRow(string paletteId, LobsterSighting sighting)
+    private static Grid BuildLobsterdexRow(string paletteId, LobsterSighting sighting, string accent, string accentHover)
     {
         var resources = Application.Current.Resources;
         var row = new Grid { ColumnSpacing = 12 };
@@ -235,7 +236,7 @@ public sealed partial class SettingsPage : Page
             // A palette portrait, not a reconstruction of the visitor's seasonal costume or pose.
             var look = new LobsterLook(palette, 2, LobsterAccessory.None, LobsterAntennae.Perky, 50, 1,
                 LobsterPersonality.Friendly, 0, LobsterClawSize.Regular, false, false, null, false, null, null);
-            var artwork = LobsterArtwork.Compose(look, grumpy: false, offline: false, sighting.FirstSeenAt, "#7f77dd", "#9a93e8");
+            var artwork = LobsterArtwork.Compose(look, grumpy: false, offline: false, sighting.FirstSeenAt, accent, accentHover);
             var portrait = new Viewbox { Width = 32, Height = 32, Child = LobsterArtworkCanvas.Build(artwork).Root };
             AutomationProperties.SetAccessibilityView(portrait, AccessibilityView.Raw);
             row.Children.Add(portrait);

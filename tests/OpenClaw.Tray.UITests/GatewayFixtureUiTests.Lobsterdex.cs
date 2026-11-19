@@ -13,7 +13,7 @@ public sealed partial class GatewayFixtureUiTests
         const string expanderId = "SettingsLobsterdex";
         const string toggleId = "SettingsPageShowLobsterVisits";
         const string empty = "No lobsters recorded yet. Look for visitors when you start a new session.";
-        const uint shinyScheduledVisitSeed = 1004;
+        const uint shinyScheduledMoodVisitSeed = 241330;
         const string legacy = """{"visits":8,"shoos":2}""";
         var app = Environment.GetEnvironmentVariable("OPENCLAW_GATEWAY_FIXTURE_APP")!;
 
@@ -45,7 +45,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Equal(firstSeen, sighting.Value.GetProperty("shinySeenAt").GetDateTimeOffset());
             Assert.Equal(3, sighting.Value.EnumerateObject().Count());
             // The product's anniversary wardrobe replaces any rolled palette with Retro on Nov 24.
-            Assert.Equal(firstSeen is { Month: 11, Day: 24 } ? "retro" : "crimson", sighting.Name);
+            Assert.Equal(firstSeen is { Month: 11, Day: 24 } ? "retro" : "mood", sighting.Name);
             await run.WaitForAsync(async () =>
             {
                 using var familiar = JsonDocument.Parse(await File.ReadAllTextAsync(counters));
@@ -67,9 +67,25 @@ public sealed partial class GatewayFixtureUiTests
             var firstProcess = run.AppProcessId;
             await run.RestartAppAsync(app);
             Assert.NotEqual(firstProcess, run.AppProcessId);
-            await OpenLobsterdexAsync(run);
+            var disclosure = await OpenLobsterdexAsync(run);
             await AssertSightingAsync(run, "lobsterdex-reopened.png");
             Assert.Equal(stored, await File.ReadAllTextAsync(path));
+
+            disclosure.Collapse();
+            const string damaged = "{";
+            await File.WriteAllTextAsync(path, damaged);
+            disclosure.Expand();
+            await WaitUiAsync(run, () => FindById(run, "SettingsLobsterdexStatus") is { } status
+                && status.Current.Name.Contains("Collapse and reopen it to retry.", StringComparison.Ordinal),
+                "read failure offers a concrete retry");
+            Assert.Equal(damaged, await File.ReadAllTextAsync(path));
+            await ScrollToLobsterdexElementAsync(run, "SettingsLobsterdexStatus");
+            CaptureSettings(run, "lobsterdex-read-error.png");
+
+            disclosure.Collapse();
+            await File.WriteAllTextAsync(path, stored);
+            disclosure.Expand();
+            await AssertSightingAsync(run, "lobsterdex-after-retry.png");
 
             async Task AssertSightingAsync(GatewayFixtureRun fixture, string capture)
             {
@@ -85,11 +101,11 @@ public sealed partial class GatewayFixtureUiTests
             }
         }, allowSessionMutations: true, configureProfile: profile =>
         {
-            profile.LobsterVisitSeed = shinyScheduledVisitSeed;
+            profile.LobsterVisitSeed = shinyScheduledMoodVisitSeed;
             File.WriteAllText(Path.Combine(profile.DataDirectory, "lobster-visits.json"), legacy);
         });
 
-        async Task OpenLobsterdexAsync(GatewayFixtureRun run)
+        async Task<ExpandCollapsePattern> OpenLobsterdexAsync(GatewayFixtureRun run)
         {
             await run.InvokeAsync("app.navigate", new { page = "settings" });
             await ScrollToLobsterdexElementAsync(run, expanderId);
@@ -98,6 +114,7 @@ public sealed partial class GatewayFixtureUiTests
             var disclosure = (ExpandCollapsePattern)expander.GetCurrentPattern(ExpandCollapsePattern.Pattern);
             if (disclosure.Current.ExpandCollapseState == ExpandCollapseState.Collapsed)
                 disclosure.Expand();
+            return disclosure;
         }
     }
 

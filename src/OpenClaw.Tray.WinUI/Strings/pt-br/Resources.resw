@@ -4509,7 +4509,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsLobsterdexIntro.Text" xml:space="preserve"><value>Lagostas que visitaram este perfil do Hub.</value></data>
   <data name="Lobsterdex_Loading" xml:space="preserve"><value>Carregando o Lagostadex…</value></data>
   <data name="Lobsterdex_Empty" xml:space="preserve"><value>Nenhuma lagosta registrada ainda. Fique de olho nas visitas ao iniciar uma nova sessão.</value></data>
-  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>Não foi possível ler o Lagostadex.</value></data>
+  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>Não foi possível ler o Lagostadex. Recolha e reabra a seção para tentar novamente. Se o problema persistir, entre em contato com o suporte antes de alterar o arquivo da coleção.</value></data>
   <data name="Lobsterdex_FirstSeen" xml:space="preserve"><value>Primeira visita em {0:D}</value></data>
   <data name="Lobsterdex_ShinySeen" xml:space="preserve"><value>Primeira visita de uma lagosta brilhante: {0:D}</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">

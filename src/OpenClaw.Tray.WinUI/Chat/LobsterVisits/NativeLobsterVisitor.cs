@@ -432,14 +432,7 @@ internal sealed class NativeLobsterVisitor : Control
         Render();
     }
 
-    private void ReadAccent()
-    {
-        static string Hex(global::Windows.UI.Color c) => $"#{c.R:x2}{c.G:x2}{c.B:x2}";
-        if (Application.Current.Resources.TryGetValue("SystemAccentColor", out var accent) && accent is global::Windows.UI.Color color)
-            _accent = Hex(color);
-        if (Application.Current.Resources.TryGetValue("SystemAccentColorLight1", out var hover) && hover is global::Windows.UI.Color light)
-            _accentHover = Hex(light);
-    }
+    private void ReadAccent() => (_accent, _accentHover) = LobsterArtworkCanvas.ReadAccentColors();
 
     // Rendering.
 
