@@ -158,6 +158,177 @@ public sealed class ChatPlacementTests
         Assert.Equal(3, requests.Count);
     }
 
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task WorkspaceActions_RespectExplicitGatewayMethodAdvertisement(bool browse, bool repository)
+    {
+        var methods = new List<string> { "sessions.create", "projects.list", "agents.list", "environments.list" };
+        if (browse) methods.Add("fs.listDir");
+        if (repository) methods.Add("projects.add");
+        var client = new GatewayChatPlacementClient(() => 42, (method, _, _, _) => Task.FromResult(method switch
+        {
+            "agents.list" => Agents,
+            "projects.list" => JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>() }),
+            "environments.list" => Environments,
+            _ => throw new InvalidOperationException("Unexpected request")
+        }), () => methods);
+
+        var catalog = await client.LoadAsync("main", default);
+
+        Assert.Equal(browse, catalog.CanBrowseFolders);
+        Assert.Equal(repository, catalog.CanAddRepository);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingLocation_ResolvesInheritedWorkspaceThroughReadOnlyGatewayOwner(bool? advertised)
+    {
+        var calls = new List<(string Method, JsonElement Parameters)>();
+        Func<IReadOnlyList<string>>? serverMethods = advertised is null ? null
+            : () => advertised.Value ? ["sessions.describe", "sessions.files.list"] : [];
+        var catalog = GatewayChatPlacementClient.ParseCatalog(42, "main", Environments,
+            JsonSerializer.SerializeToElement(new { projects = Array.Empty<object>() }), Agents);
+        var client = new GatewayChatPlacementClient(() => 42, (method, parameters, _, epoch) =>
+        {
+            Assert.Equal(42, epoch);
+            calls.Add((method, JsonSerializer.SerializeToElement(parameters)));
+            return Task.FromResult(method switch
+            {
+                "sessions.describe" => JsonSerializer.SerializeToElement(new { session = new { key = Key, sessionId = "incarnation" } }),
+                "sessions.files.list" => JsonSerializer.SerializeToElement(new { sessionKey = Key, root = "/srv/agent/workspace" }),
+                _ => throw new InvalidOperationException("Location discovery must not mutate the session")
+            });
+        }, serverMethods);
+
+        var selection = await client.ResolveAsync(Key, catalog, default);
+
+        Assert.Equal("gateway:actual-id", selection?.Environment.Id);
+        Assert.Equal("default", selection?.Workspace.Id);
+        Assert.Equal("/srv/agent/workspace", selection?.Workspace.Path);
+        Assert.Equal(new[] { "sessions.describe", "sessions.files.list", "sessions.describe" }, calls.Select(call => call.Method));
+        Assert.Equal(Key, calls[0].Parameters.GetProperty("key").GetString());
+        Assert.Equal(Key, calls[1].Parameters.GetProperty("sessionKey").GetString());
+        Assert.All(calls, call => Assert.Equal("main", call.Parameters.GetProperty("agentId").GetString()));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingLocation_ExplicitMethodExclusionsRemainUnknownWithoutUnsupportedRequests(bool describe)
+    {
+        var calls = new List<string>();
+        var catalog = new ChatPlacementCatalog(42, "main", GatewayChatPlacementClient.ParseEnvironments(Environments),
+            new("default", "workspace", "/default"), []);
+        var client = new GatewayChatPlacementClient(() => 42, (method, _, _, _) =>
+        {
+            calls.Add(method);
+            return Task.FromResult(method switch
+            {
+                "sessions.describe" => JsonSerializer.SerializeToElement(new { session = new { key = Key, sessionId = "incarnation" } }),
+                "sessions.files.list" => JsonSerializer.SerializeToElement(new { sessionKey = Key, root = "/workspace" }),
+                _ => throw new InvalidOperationException("Unexpected request")
+            });
+        }, () => describe ? ["sessions.describe"] : ["sessions.files.list"]);
+
+        var selection = await client.ResolveAsync(Key, catalog, default);
+
+        Assert.Equal(describe ? ["sessions.describe"] : Array.Empty<string>(), calls);
+        Assert.Null(selection);
+    }
+
+    [Theory]
+    [InlineData("execCwd")]
+    [InlineData("spawnedCwd")]
+    [InlineData("workspaceDir")]
+    [InlineData("spawnedWorkspaceDir")]
+    public async Task ExistingLocation_PreservesGatewayExecutionPathWithoutInspectingLocalFiles(string field)
+    {
+        var catalog = new ChatPlacementCatalog(42, "main", GatewayChatPlacementClient.ParseEnvironments(Environments),
+            new("default", "workspace", "/default"), []);
+        var client = new GatewayChatPlacementClient(() => 42, (method, _, _, _) =>
+        {
+            Assert.Equal("sessions.describe", method);
+            return Task.FromResult(JsonSerializer.SerializeToElement(new
+            {
+                session = new Dictionary<string, object> { ["key"] = Key, [field] = @"D:\Gateway work\Task" }
+            }));
+        }, () => ["sessions.describe"]);
+
+        var selection = await client.ResolveAsync(Key, catalog, default);
+
+        Assert.Equal(@"D:\Gateway work\Task", selection?.Workspace.Path);
+        Assert.Equal("Task", selection?.Workspace.Label);
+        Assert.True(selection?.Environment.IsLocal);
+    }
+
+    [Theory]
+    [InlineData("wrong-key")]
+    [InlineData("node")]
+    [InlineData("remote-placement")]
+    [InlineData("unknown-session")]
+    public async Task ExistingLocation_DoesNotInferLocalDefaultsForUnknownOrRemoteSessions(string scenario)
+    {
+        var catalog = new ChatPlacementCatalog(42, "main", GatewayChatPlacementClient.ParseEnvironments(Environments),
+            new("default", "workspace", "/default"), []);
+        var client = new GatewayChatPlacementClient(() => 42, (method, _, _, _) =>
+        {
+            Assert.Equal("sessions.describe", method);
+            object? session = scenario switch
+            {
+                "wrong-key" => new { key = "another-session", workspaceDir = "/private" },
+                "node" => new { key = Key, execNode = "other-machine", workspaceDir = "/private" },
+                "remote-placement" => new { key = Key, placement = new { state = "active" }, workspaceDir = "/private" },
+                _ => null
+            };
+            return Task.FromResult(JsonSerializer.SerializeToElement(new { session }));
+        });
+
+        Assert.Null(await client.ResolveAsync(Key, catalog, default));
+    }
+
+    [Theory]
+    [InlineData("another-session", "/private")]
+    [InlineData(Key, null)]
+    public async Task ExistingLocation_MissingOrMismatchedWorkspaceRootRemainsUnknown(string responseKey, string? root)
+    {
+        var catalog = new ChatPlacementCatalog(42, "main", GatewayChatPlacementClient.ParseEnvironments(Environments),
+            new("default", "workspace", "/default"), []);
+        var client = new GatewayChatPlacementClient(() => 42, (method, _, _, _) => Task.FromResult(method switch
+        {
+            "sessions.describe" => JsonSerializer.SerializeToElement(new { session = new { key = Key, sessionId = "incarnation" } }),
+            "sessions.files.list" => JsonSerializer.SerializeToElement(new { sessionKey = responseKey, root }),
+            _ => throw new InvalidOperationException("Unexpected request")
+        }));
+
+        Assert.Null(await client.ResolveAsync(Key, catalog, default));
+    }
+
+    [Theory]
+    [InlineData("incarnation")]
+    [InlineData(null)]
+    public async Task ExistingLocation_DropsWorkspaceReadAcrossSessionReplacement(string? sessionId)
+    {
+        var catalog = new ChatPlacementCatalog(42, "main", GatewayChatPlacementClient.ParseEnvironments(Environments),
+            new("default", "workspace", "/default"), []);
+        var descriptions = 0;
+        var client = new GatewayChatPlacementClient(() => 42, (method, _, _, _) => Task.FromResult(method switch
+        {
+            "sessions.describe" => JsonSerializer.SerializeToElement(new
+            {
+                session = new { key = Key, sessionId = ++descriptions == 1 ? sessionId : "replacement" }
+            }),
+            "sessions.files.list" => JsonSerializer.SerializeToElement(new { sessionKey = Key, root = "/old-workspace" }),
+            _ => throw new InvalidOperationException("Unexpected request")
+        }));
+
+        Assert.Null(await client.ResolveAsync(Key, catalog, default));
+    }
+
     [Fact]
     public async Task LocalPreparation_AdoptsExactKeyAndCwdWithoutResettingOrSending()
     {

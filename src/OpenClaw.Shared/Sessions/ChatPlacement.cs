@@ -40,7 +40,9 @@ public sealed record ChatPlacementCatalog(
     string? AgentName = null,
     string? AgentEmoji = null,
     string? AgentAvatarUrl = null,
-    string? AgentAvatar = null);
+    string? AgentAvatar = null,
+    bool CanBrowseFolders = true,
+    bool CanAddRepository = true);
 
 public sealed record ChatWorkspaceDirectory(
     string Path,
@@ -59,6 +61,9 @@ public interface IChatPlacementGateway
 {
     long? ConnectionEpoch { get; }
     Task<ChatPlacementCatalog> LoadAsync(string agentId, CancellationToken cancellationToken);
+    /// <summary>Reads an existing local session location, without inferring it from agent defaults.</summary>
+    Task<ChatPlacementSelection?> ResolveAsync(string sessionKey, ChatPlacementCatalog catalog,
+        CancellationToken cancellationToken) => Task.FromResult<ChatPlacementSelection?>(null);
     Task<ChatWorkspaceDirectory> BrowseAsync(string? path, long connectionEpoch, CancellationToken cancellationToken);
     /// <summary>Rechecks the caller's session authority before each mutation when a guard is supplied.</summary>
     Task PrepareAsync(string sessionKey, string agentId, ChatPlacementSelection selection,
@@ -69,12 +74,15 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
 {
     private readonly Func<long?> _connectionEpoch;
     private readonly Func<string, object, int, long, Task<JsonElement>> _request;
+    private readonly Func<IReadOnlyList<string>>? _serverMethods;
 
     internal GatewayChatPlacementClient(Func<long?> connectionEpoch,
-        Func<string, object, int, long, Task<JsonElement>> request)
+        Func<string, object, int, long, Task<JsonElement>> request,
+        Func<IReadOnlyList<string>>? serverMethods = null)
     {
         _connectionEpoch = connectionEpoch;
         _request = request;
+        _serverMethods = serverMethods;
     }
 
     public long? ConnectionEpoch => _connectionEpoch();
@@ -88,8 +96,71 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
         var runtime = ReadRuntime(await agents, agentId);
         var environments = await RequestAsync("environments.list", EnvironmentParameters(runtime), epoch, cancellationToken)
             .ConfigureAwait(false);
-        return ParseCatalog(epoch, agentId, environments, await projects, await agents);
+        var methods = _serverMethods?.Invoke();
+        return ParseCatalog(epoch, agentId, environments, await projects, await agents) with
+        {
+            CanBrowseFolders = Supports(methods, "fs.listDir"),
+            CanAddRepository = Supports(methods, "projects.add")
+        };
     }
+
+    public async Task<ChatPlacementSelection?> ResolveAsync(string sessionKey, ChatPlacementCatalog catalog,
+        CancellationToken cancellationToken)
+    {
+        var methods = _serverMethods?.Invoke();
+        if (!Supports(methods, "sessions.describe"))
+            return null;
+        var described = await RequestAsync("sessions.describe", new { key = sessionKey, agentId = catalog.AgentId },
+            catalog.ConnectionEpoch, cancellationToken).ConfigureAwait(false);
+        if (!TryReadLocalSession(described, sessionKey, out var session))
+            return null;
+
+        var local = catalog.Environments.Where(environment => environment.IsLocal).ToArray();
+        if (local.Length != 1) return null;
+
+        // Persisted execution paths take precedence. The files owner can resolve an inherited
+        // workspace when a row has no path; never substitute the Companion filesystem or
+        // assume that an omitted/redacted row field means the agent default is in use.
+        var path = SessionWorkspacePath(session);
+        if (path is null)
+        {
+            if (!Supports(methods, "sessions.files.list"))
+                return null;
+            var sessionId = OptionalString(session, "sessionId");
+            if (sessionId is null) return null;
+            var files = await RequestAsync("sessions.files.list", new { sessionKey, agentId = catalog.AgentId },
+                catalog.ConnectionEpoch, cancellationToken).ConfigureAwait(false);
+            if (OptionalString(files, "sessionKey") != sessionKey) return null;
+            path = OptionalString(files, "root");
+            if (path is null) return null;
+            var confirmed = await RequestAsync("sessions.describe", new { key = sessionKey, agentId = catalog.AgentId },
+                catalog.ConnectionEpoch, cancellationToken).ConfigureAwait(false);
+            if (!TryReadLocalSession(confirmed, sessionKey, out var current) ||
+                OptionalString(current, "sessionId") != sessionId ||
+                OptionalString(current, "lifecycleRevision") != OptionalString(session, "lifecycleRevision") ||
+                SessionWorkspacePath(current) is { } currentPath && currentPath != path)
+                return null;
+        }
+
+        var workspace = catalog.DefaultWorkspace.Path == path ? catalog.DefaultWorkspace
+            : catalog.Workspaces.FirstOrDefault(item => item.Path == path)
+                ?? new ChatWorkspace("folder:" + path, FolderName(path), path);
+        return new(local[0], workspace);
+    }
+
+    // Missing advertisements are unknown on older Gateways; a nonempty list can rule a method out.
+    private static bool Supports(IReadOnlyList<string>? methods, string method) =>
+        methods is null || methods.Count == 0 || methods.Contains(method, StringComparer.Ordinal);
+
+    private static bool TryReadLocalSession(JsonElement response, string key, out JsonElement session) =>
+        response.TryGetProperty("session", out session) && OptionalString(session, "key") == key &&
+        OptionalString(session, "execNode") is null &&
+        (!session.TryGetProperty("placement", out var placement) || placement.ValueKind == JsonValueKind.Null ||
+            OptionalString(placement, "state") == "local");
+
+    private static string? SessionWorkspacePath(JsonElement session) =>
+        OptionalString(session, "execCwd") ?? OptionalString(session, "spawnedCwd")
+            ?? OptionalString(session, "workspaceDir") ?? OptionalString(session, "spawnedWorkspaceDir");
 
     public async Task<ChatWorkspaceDirectory> BrowseAsync(
         string? path, long connectionEpoch, CancellationToken cancellationToken)

@@ -340,6 +340,132 @@ public sealed class ChatPlacementControllerTests
         Assert.Equal(expected, ChatPlacementController.IsGitUrl(input));
 
     [Fact]
+    public async Task ExistingSession_GatewayLocationIsShownWithoutCreatingPlacementIntent()
+    {
+        using var context = new Context(targetIsNew: false);
+        context.Gateway.Resolve = _ => Task.FromResult<ChatPlacementSelection?>(new(
+            context.Placement.State.Catalog!.Environments[0], FakeGateway.Project));
+
+        await context.Placement.RefreshAsync();
+
+        Assert.True(context.Placement.State.SelectionIsKnown);
+        Assert.Equal("/gateway/project", context.Placement.State.Selection?.Workspace.Path);
+        Assert.Equal(Key, context.Gateway.LastResolvedKey);
+        Assert.False(context.Placement.RequiresPreparation);
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+        context.Vm.SetDraft("keep the current location");
+        Assert.True(await context.Composer.SendAsync());
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+        Assert.Equal(Key, context.Port.LastSendMessageCall?.ThreadId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExistingSession_MaterializationAndFreshEmptyHistoryReadTheirOwnLocation(bool materializing)
+    {
+        using var context = new Context(targetIsNew: materializing);
+        if (!materializing)
+            context.Session.ApplyInputs(Inputs() with
+            {
+                PlacementTargetIsNew = false, PlacementTargetIsEmpty = false, ShowPlacementPickers = false
+            });
+        context.Gateway.Resolve = _ => Task.FromResult<ChatPlacementSelection?>(new(
+            new("local:gateway", "Gateway", true, ChatEnvironmentUnavailable.None),
+            new("folder:task", "Task", "/gateway/current-task")));
+
+        context.Session.ApplyInputs(Inputs() with { PlacementTargetIsNew = false });
+
+        Assert.True(context.Placement.State.SelectionIsKnown);
+        Assert.Equal("/gateway/current-task", context.Placement.State.Selection?.Workspace.Path);
+        Assert.Contains(context.Placement.State.Catalog!.Workspaces, item => item.Id == "folder:task");
+        Assert.Equal(Key, context.Gateway.LastResolvedKey);
+        Assert.False(context.Placement.RequiresPreparation);
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public async Task ExistingSession_UnsupportedLocationReadRetainsCatalogWithoutGuessingDefaults()
+    {
+        using var context = new Context(targetIsNew: false);
+        context.Gateway.Resolve = _ => Task.FromException<ChatPlacementSelection?>(new NotSupportedException());
+
+        await context.Placement.RefreshAsync();
+
+        Assert.NotNull(context.Placement.State.Catalog);
+        Assert.False(context.Placement.State.SelectionIsKnown);
+        Assert.Null(context.Placement.State.Error);
+        Assert.True(context.Placement.State.HasEnvironmentChoices);
+        Assert.True(context.Placement.State.HasWorkspaceChoices);
+        Assert.False(context.Placement.RequiresPreparation);
+    }
+
+    [Fact]
+    public async Task ExistingSession_LateLocationReadCannotReplaceExplicitUserIntent()
+    {
+        using var context = new Context(targetIsNew: false);
+        var completion = new TaskCompletionSource<ChatPlacementSelection?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalog = context.Placement.State.Catalog!;
+        context.Gateway.Resolve = _ => completion.Task;
+        var refreshing = context.Placement.RefreshAsync();
+        context.Placement.SelectEnvironment("node:windows");
+        context.Placement.SelectWorkspace(FakeGateway.Project);
+
+        completion.SetResult(new(catalog.Environments[0], catalog.DefaultWorkspace));
+        await refreshing;
+
+        Assert.Equal("node:windows", context.Placement.State.Selection?.Environment.Id);
+        Assert.Equal("project:one", context.Placement.State.Selection?.Workspace.Id);
+        Assert.True(context.Placement.RequiresPreparation);
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ExistingSession_LateLocationReadCannotCrossNavigationOrConnection(bool reconnect)
+    {
+        using var context = new Context(targetIsNew: false);
+        var catalog = context.Placement.State.Catalog!;
+        var completion = new TaskCompletionSource<ChatPlacementSelection?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        context.Gateway.Resolve = _ => completion.Task;
+        var refreshing = context.Placement.RefreshAsync();
+        context.Gateway.Resolve = _ => Task.FromResult<ChatPlacementSelection?>(null);
+        if (reconnect) context.Gateway.ConnectionEpoch++;
+        context.Session.ApplyInputs(Inputs(reconnect ? Key : "agent:main:another") with { PlacementTargetIsNew = false });
+
+        completion.SetResult(new(catalog.Environments[0], FakeGateway.Project));
+        await refreshing;
+
+        Assert.False(context.Placement.State.SelectionIsKnown);
+        Assert.False(context.Placement.RequiresPreparation);
+        Assert.Equal(0, context.Gateway.PrepareCalls);
+    }
+
+    [Fact]
+    public void LocationChoices_IgnoreUnavailableEnvironmentsAndDuplicateDefaultWorkspace()
+    {
+        var local = new ChatEnvironment("local:gateway", "Gateway", true, ChatEnvironmentUnavailable.None);
+        var workspace = new ChatWorkspace("default", "workspace", "/gateway/workspace");
+        var catalog = new ChatPlacementCatalog(7, "main",
+            [local, new("node:offline", "Offline device", false, ChatEnvironmentUnavailable.Offline)],
+            workspace, [workspace with { Id = "project:duplicate" }], CanBrowseFolders: false, CanAddRepository: false);
+        var state = new ChatPlacementState(Catalog: catalog, Selection: new(local, workspace), SelectionIsKnown: true);
+
+        Assert.False(state.HasEnvironmentChoices);
+        Assert.False(state.HasWorkspaceChoices);
+        Assert.True((state with { Catalog = catalog with
+        {
+            Environments = [local, new("node:ready", "Ready device", false, ChatEnvironmentUnavailable.None)],
+            Workspaces = [FakeGateway.Project]
+        } }).HasEnvironmentChoices);
+        Assert.True((state with { Catalog = catalog with { Workspaces = [FakeGateway.Project] } }).HasWorkspaceChoices);
+        Assert.True((state with { Catalog = catalog with { CanBrowseFolders = true } }).HasWorkspaceChoices);
+        Assert.True((state with { Catalog = catalog with { CanAddRepository = true } }).HasWorkspaceChoices);
+        Assert.True((state with { Selection = new(catalog.Environments[1], workspace) }).HasEnvironmentChoices);
+    }
+
+    [Fact]
     public async Task ExistingSession_DefaultsRemainUnverifiedAndUntouchedSendDoesNotChangeLocation()
     {
         using var context = new Context(targetIsNew: false);
@@ -704,6 +830,9 @@ public sealed class ChatPlacementControllerTests
         public long? ConnectionEpoch { get; set; } = 7;
         internal Func<CancellationToken, Task> Prepare { get; set; } = _ => Task.CompletedTask;
         internal Func<Task<ChatPlacementCatalog>>? Load { get; set; }
+        internal Func<string, Task<ChatPlacementSelection?>> Resolve { get; set; } =
+            _ => Task.FromResult<ChatPlacementSelection?>(null);
+        internal string? LastResolvedKey { get; private set; }
         internal Func<string?, Task<ChatWorkspaceDirectory>> Browse { get; set; } =
             path => Task.FromResult(new ChatWorkspaceDirectory(path ?? "/", null, "/", []));
         internal int PrepareCalls { get; private set; }
@@ -718,6 +847,13 @@ public sealed class ChatPlacementControllerTests
                 [new("local:gateway", "Gateway", true, ChatEnvironmentUnavailable.None),
                  new("node:windows", "Windows", false, ChatEnvironmentUnavailable.None)],
                 new("default", "workspace", "/gateway/workspace"), [Project]));
+
+        public Task<ChatPlacementSelection?> ResolveAsync(string sessionKey, ChatPlacementCatalog catalog,
+            CancellationToken cancellationToken)
+        {
+            LastResolvedKey = sessionKey;
+            return Resolve(sessionKey);
+        }
 
         public Task<ChatWorkspaceDirectory> BrowseAsync(string? path, long connectionEpoch, CancellationToken cancellationToken)
         {
