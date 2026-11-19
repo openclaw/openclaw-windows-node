@@ -1,3 +1,4 @@
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using OpenClawTray.Services;
 
@@ -51,7 +52,66 @@ public sealed class WindowManagerRuntimeAnchorTests(UIThreadFixture ui)
         });
     }
 
-    private WindowManager CreateManager(Action<Window?> applyTheme) =>
+    [Fact]
+    public async Task MainWindowVisibility_RequiresEverySetupWindowMinimizedHiddenOrClosed()
+    {
+        await ui.RunOnUIAsync(async () =>
+        {
+            var windows = new List<Window>();
+            bool? visible = null;
+            var manager = CreateManager(window => windows.Add(Assert.IsAssignableFrom<Window>(window)),
+                value => visible = value);
+            try
+            {
+                manager.InitializeRuntimeAnchor();
+                Assert.False(manager.HasVisibleMainWindow);
+                manager.ShowNativeSetupStartupProgress();
+                manager.ShowSetupRestartProgress();
+                Assert.Equal(3, windows.Count);
+                var first = windows[1];
+                var second = windows[2];
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => first.AppWindow.IsVisible && second.AppWindow.IsVisible && visible == true,
+                    "both setup windows visible");
+                var firstPresenter = Assert.IsType<OverlappedPresenter>(first.AppWindow.Presenter);
+                var secondPresenter = Assert.IsType<OverlappedPresenter>(second.AppWindow.Presenter);
+                firstPresenter.Minimize();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => firstPresenter.State == OverlappedPresenterState.Minimized,
+                    "first setup minimized");
+                Assert.True(manager.HasVisibleMainWindow);
+                Assert.True(visible);
+                secondPresenter.Minimize();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => !manager.HasVisibleMainWindow && visible == false,
+                    "all setup windows minimized");
+                firstPresenter.Restore(activateWindow: false);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => manager.HasVisibleMainWindow && visible == true,
+                    "restored setup blocks lobster");
+                first.Close();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => !manager.HasVisibleMainWindow && visible == false,
+                    "closed setup no longer blocks lobster");
+                secondPresenter.Restore(activateWindow: false);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => manager.HasVisibleMainWindow && visible == true,
+                    "remaining setup restored");
+                second.AppWindow.Hide();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => !manager.HasVisibleMainWindow && visible == false,
+                    "hidden setup no longer blocks lobster");
+                second.Close();
+                Assert.False(manager.HasVisibleMainWindow);
+            }
+            finally
+            {
+                await manager.CloseForShutdownAsync();
+            }
+        });
+    }
+
+    private WindowManager CreateManager(Action<Window?> applyTheme, Action<bool>? visibilityChanged = null) =>
         new(ui.Dispatcher, new WindowManagerCallbacks(
             GetAppState: () => null,
             GetAppNotificationService: () => null,
@@ -71,5 +131,6 @@ public sealed class WindowManagerRuntimeAnchorTests(UIThreadFixture ui)
             SettingsSaved: (_, _) => { },
             AdvancedSetupRequested: (_, _) => { },
             SetupCompleted: (_, _) => { },
-            ApplyTheme: applyTheme));
+            ApplyTheme: applyTheme,
+            MainWindowVisibilityChanged: visibilityChanged));
 }

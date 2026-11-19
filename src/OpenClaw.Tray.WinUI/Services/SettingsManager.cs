@@ -110,6 +110,7 @@ public class SettingsManager
     // Notifications
     public bool ShowNotifications { get => _data.ShowNotifications; set => _data = _data with { ShowNotifications = value }; }
     public bool ShowDesktopCompanion { get => _data.ShowDesktopCompanion; set => _data = _data with { ShowDesktopCompanion = value }; }
+    public bool DesktopCompanionOnlyWhenMinimized { get => _data.DesktopCompanionOnlyWhenMinimized; set => _data = _data with { DesktopCompanionOnlyWhenMinimized = value }; }
     public int DesktopCompanionScalePercent
     {
         get => _data.DesktopCompanionScalePercent;

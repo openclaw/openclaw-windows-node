@@ -21,6 +21,43 @@ namespace OpenClaw.Tray.UITests;
 public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
 {
     [Fact]
+    public Task AutomaticHide_ClosesBubbleButRetainsMountedMascotAndDesktopAnchor() =>
+        WithWindowAsync(async window =>
+        {
+            var host = Assert.IsType<ReactorHostControl>(window.Content);
+            var mascot = Mascot(host);
+            var view = (IDesktopCompanionView)window;
+            var hideRequests = 0;
+            window.HideRequested += (_, _) => hideRequests++;
+            window.Present(new() { Title = "Visible", Message = "Hide with the lobster." });
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot).Any(popup => popup.IsOpen),
+                "lobster notification popup");
+            var anchor = new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
+                window.AppWindow.Position.Y + window.AppWindow.Size.Height);
+            view.Hide();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => !window.AppWindow.IsVisible &&
+                    !VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot).Any(popup => popup.IsOpen),
+                "lobster and popup hidden");
+            view.Show();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && Assert.IsType<TranslateTransform>(host.RenderTransform).Y == 0,
+                "same lobster restored through the bottom frame");
+            view.Hide();
+            view.Show();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && Assert.IsType<TranslateTransform>(host.RenderTransform).Y == 0,
+                "restore supersedes pending hide without a stale completion hiding the lobster");
+            Assert.Same(host, window.Content);
+            Assert.Same(mascot, Mascot(host));
+            Assert.Equal(anchor, new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
+                window.AppWindow.Position.Y + window.AppWindow.Size.Height));
+            Assert.Equal(0, hideRequests);
+            Assert.DoesNotContain(VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot), popup => popup.IsOpen);
+        });
+
+    [Fact]
     public Task QuickChat_AndNotificationsUseTheSameCompactBubbleInset() =>
         WithWindowAsync(async window =>
         {

@@ -1479,6 +1479,20 @@ The editor grows vertically as text wraps, up to its existing 200-DIP limit. It
 shrinks to the monitor work area and retains the mascot's bottom-right anchor.
 Desktop lobster settings use a native settings expander with its independent
 enable toggle in the header and a size dropdown in the expanded child row.
+An additional toggle, "Only show when other OpenClaw windows are minimized",
+uses a native SettingsCard child and ToggleSwitch. Both lobster settings default
+on when absent; explicitly saved choices are preserved. When enabled,
+any visible, non-minimized Workspace or setup window hides the lobster and its
+bubble. Closed or hidden windows do not block it. Restoring any of those windows
+hides it again without turning off Desktop lobster, losing its quick-chat draft,
+moving its desktop anchor or replaying notifications received while hidden.
+The option observes app-owned windows, not external browser dashboards.
+On appearance the mascot rises through its transparent overlay's bottom frame,
+and on automatic hiding it tucks back below that frame. The native transform
+uses a 180ms cubic ease-out entrance and ease-in exit, without bounce or a new
+decorative border. A restore reverses an in-flight exit without moving the window
+or stealing focus. Windows animations off makes both transitions immediate,
+including an animation already in flight.
 The lobster is enabled by default unless the user has explicitly saved it off.
 The options menu's Desktop lobster settings action opens General settings
 instead of hiding the lobster. Its settings toggle remains the visibility control.

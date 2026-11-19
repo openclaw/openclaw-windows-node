@@ -24,6 +24,8 @@
   <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Meldingen openen</value></data>
   <data name="DesktopCompanion_Open" xml:space="preserve"><value>OpenClaw openen</value></data>
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Grootte van de kreeft</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>Alleen tonen als andere OpenClaw-vensters zijn geminimaliseerd</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>Verbergen als de installatie of het chat-/dashboardvenster zichtbaar is.</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Pas de grootte van de kreeft aan zonder de chat- of meldingstekst te wijzigen.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Instellingen voor bureaubladkreeft</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>De bureaubladkreeft kon niet worden weergegeven. Schakel Bureaubladkreeft uit en weer in via Instellingen om het opnieuw te proberen. Je meldingen blijven beschikbaar in OpenClaw.</value></data>
