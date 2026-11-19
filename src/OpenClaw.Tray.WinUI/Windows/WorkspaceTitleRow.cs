@@ -3,7 +3,7 @@
 // to the panel, and keeps the panel's tabs clickable under the title bar. WorkspaceWindow owns
 // one instance and calls Update from a coalesced low-priority pass:
 //   _titleRow = new WorkspaceTitleRow(AppWindow, WorkspaceTitleBar, TitleBarRightActions,
-//       TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
+//       SessionTitleHost, TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
 //   _titleRow.Update(panel, offer: chatShown && !bannerAboveChat, startInset);
 //   _titleRow.Dispose(); // on window close
 using Microsoft.UI.Windowing;
@@ -20,11 +20,13 @@ internal sealed class WorkspaceTitleRow : IDisposable
 {
     // Space kept between the side panel's tabs and the title-bar actions.
     private const double ActionGap = 8;
+    private const double SessionTitleInset = 16;
     // The TabView template part that hosts the tab items.
     private const string TabListPartName = "TabListView";
     private readonly AppWindow _window;
     private readonly TitleBar _titleBar;
     private readonly FrameworkElement _actions;
+    private readonly FrameworkElement _sessionTitle;
     private readonly Canvas _passthroughCanvas;
     private readonly FrameworkElement _tabsPassthrough;
     private readonly Action _invalidate;
@@ -34,11 +36,12 @@ internal sealed class WorkspaceTitleRow : IDisposable
     private XamlRoot? _root;
 
     internal WorkspaceTitleRow(AppWindow window, TitleBar titleBar, FrameworkElement actions,
-        Canvas passthroughCanvas, FrameworkElement tabsPassthrough, Action invalidate)
+        FrameworkElement sessionTitle, Canvas passthroughCanvas, FrameworkElement tabsPassthrough, Action invalidate)
     {
         _window = window;
         _titleBar = titleBar;
         _actions = actions;
+        _sessionTitle = sessionTitle;
         _passthroughCanvas = passthroughCanvas;
         _tabsPassthrough = tabsPassthrough;
         _invalidate = invalidate;
@@ -57,7 +60,15 @@ internal sealed class WorkspaceTitleRow : IDisposable
         var scale = root.RasterizationScale;
         var captionWidth = _window.TitleBar.RightInset / scale;
         var captionHeight = _window.TitleBar.Height / scale;
-        if (captionHeight > 0) _actions.Height = captionHeight;
+        if (captionHeight > 0)
+        {
+            _actions.Height = captionHeight;
+            _sessionTitle.Height = captionHeight;
+        }
+        _sessionTitle.Margin = new Thickness(startInset + SessionTitleInset, 0, ActionGap, 0);
+        var panelStartInset = _sessionTitle.Visibility == Visibility.Visible
+            ? _sessionTitle.Margin.Left + _sessionTitle.ActualWidth + _sessionTitle.Margin.Right
+            : startInset;
         // The template reserves a minimum drag column plus caption padding sized from the physical
         // RightInset as if it were DIPs, which exceeds the real buttons above 100% scale. Extend the
         // bar past the window edge by the excess so the actions are laid out beside minimize; TitleBar
@@ -72,7 +83,7 @@ internal sealed class WorkspaceTitleRow : IDisposable
         }
         // The joined header covers the whole bar height so no strip of panel body falls in the drag region.
         panel?.SetTitleRow(offer ? _titleBar.ActualHeight : 0,
-            _actions.ActualWidth + captionWidth + ActionGap, startInset, captionHeight);
+            _actions.ActualWidth + captionWidth + ActionGap, panelStartInset, captionHeight);
         Track(offer && panel is { JoinsTitleRow: true } ? panel.TabStrip as FrameworkElement : null);
         PlaceTabsPassthrough();
         _titleBar.RecomputeDragRegions();

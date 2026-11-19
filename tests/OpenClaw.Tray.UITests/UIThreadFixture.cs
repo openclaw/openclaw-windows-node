@@ -25,6 +25,9 @@ internal static class TestHostDpiInitializer
     [System.Runtime.CompilerServices.ModuleInitializer]
     internal static void Initialize()
     {
+        // Chat motion is render-only; layout proofs must never sample a row mid-rise or mid-glide.
+        // Motion proofs opt back in with ChatMotionScope.
+        OpenClawTray.Chat.ChatMotion.AnimationsOverride = false;
         try { OnboardingNativeProof.LockProcessDpi(); }
         catch
         {

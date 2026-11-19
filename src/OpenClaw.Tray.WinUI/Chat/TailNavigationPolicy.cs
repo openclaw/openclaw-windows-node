@@ -323,11 +323,133 @@ internal sealed class InitialTailConfirmation
     }
 }
 
+internal enum InitialTailVerdict
+{
+    Wait,
+    Reissue,
+    Exhausted,
+    Done,
+}
+
+// A confirmed landing can precede a later projection of the same request (for example
+// a restored session that renders two rows, then four). The follow and reflow paths
+// that handle that growth do not verify their outcome, and a reflow can cancel the
+// staged follow bring, so the view could stay at the old offset while following.
+// For one bounded window after the landing, a settled view that is following but not
+// at the tail after the tail grew re-issues the staged tail bring. Without growth, a
+// following view near the tail is the reader's position and is left alone. The budget
+// is fixed for the window, never replenished, and the window never resumes once it ends.
+internal sealed class InitialTailVerification
+{
+    public const int MaxReissues = 2;
+    public const int MaxObservedFrames = InitialTailConfirmation.MaxObservedFrames;
+
+    private int _generation;
+    private bool _active;
+    private bool _reissuePending;
+    private bool _tailGrew;
+    private int _observedFrames;
+    private int _settledFrames;
+    private int _reissues;
+
+    public int Start()
+    {
+        _active = true;
+        _reissuePending = false;
+        _tailGrew = false;
+        _observedFrames = 0;
+        _settledFrames = 0;
+        _reissues = 0;
+        return ++_generation;
+    }
+
+    public void Stop()
+    {
+        _active = false;
+        _reissuePending = false;
+        _generation++;
+    }
+
+    public bool IsCurrent(int generation) => _active && generation == _generation;
+
+    public void GeometryChanged() => _settledFrames = 0;
+
+    // A later projection changed the tail row or grew the extent after the landing.
+    public void TailGrew()
+    {
+        if (_active)
+            _tailGrew = true;
+    }
+
+    // Any arrival at the tail settles the growth; only new growth can owe another re-issue,
+    // so a reader who then moves slightly away is not pulled back.
+    public void ReachedTail() => _tailGrew = false;
+
+    // A queued or realizing re-issue still has growth to recover; arrival at the tail revokes it.
+    public bool OwesReissue => _active && _tailGrew;
+
+    // The dispatched re-issue ran (started or not); its own work is now visible as pending.
+    public void ReissueDispatched()
+    {
+        _reissuePending = false;
+        _settledFrames = 0;
+    }
+
+    public InitialTailVerdict Observe(bool idle, bool operationPending, bool following, bool atBottom)
+    {
+        if (!_active)
+            return InitialTailVerdict.Done;
+
+        // Only reader intent clears following; the window never resumes after it.
+        if (!following)
+        {
+            Stop();
+            return InitialTailVerdict.Done;
+        }
+
+        if (atBottom)
+            ReachedTail();
+
+        if (++_observedFrames > MaxObservedFrames)
+        {
+            Stop();
+            return atBottom || !_tailGrew ? InitialTailVerdict.Done : InitialTailVerdict.Exhausted;
+        }
+
+        if (!idle || operationPending || _reissuePending)
+        {
+            _settledFrames = 0;
+            return InitialTailVerdict.Wait;
+        }
+
+        if (++_settledFrames < InitialTailConfirmation.SettledFramesBeforeDecision)
+            return InitialTailVerdict.Wait;
+
+        _settledFrames = 0;
+        // At the tail, or away from it without new growth, keep watching: a later
+        // projection can still grow the tail within the window.
+        if (atBottom || !_tailGrew)
+            return InitialTailVerdict.Wait;
+
+        if (_reissues >= MaxReissues)
+        {
+            Stop();
+            return InitialTailVerdict.Exhausted;
+        }
+
+        _reissues++;
+        _reissuePending = true;
+        return InitialTailVerdict.Reissue;
+    }
+}
+
 internal sealed class TailReflowCorrection
 {
+    private const int MaxLandingRetries = 2;
     private bool _available;
     private object? _contentRevision;
     private bool _growthAvailable;
+    private int _landingRetries;
 
     public void Arm() => _available = true;
 
@@ -338,6 +460,20 @@ internal sealed class TailReflowCorrection
 
         _contentRevision = revision;
         _growthAvailable = true;
+        _landingRetries = 0;
+    }
+
+    // A correction targets an absolute offset that is applied after later layout. When
+    // streaming growth or virtual-row estimates move the tail meanwhile, it lands short.
+    // Retry from the new geometry, bounded per content revision so estimate churn cannot loop.
+    public bool ArmAfterLanding(bool following, bool atBottom)
+    {
+        if (!following || atBottom || _landingRetries >= MaxLandingRetries)
+            return false;
+
+        _landingRetries++;
+        Arm();
+        return true;
     }
 
     public void ArmForExtentGrowth(bool following, bool atBottom, bool initialPending, bool readerOwnsAnchor)
@@ -366,5 +502,6 @@ internal sealed class TailReflowCorrection
     {
         _available = false;
         _growthAvailable = false;
+        _landingRetries = 0;
     }
 }

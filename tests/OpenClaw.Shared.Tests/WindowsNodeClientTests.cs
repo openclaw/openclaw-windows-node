@@ -1041,6 +1041,38 @@ public class WindowsNodeClientTests
     }
 
     [Fact]
+    public async Task RetryableHandshakeDenial_ReconnectLoopOpensFreshSocketWithoutCredential()
+    {
+        using var server = new LoopbackWebSocketServer();
+        using var dataPath = new TempDirectory("node-retryable-handshake-");
+        using var client = new WindowsNodeClient(server.WebSocketUrl, "test-token", dataPath.Path);
+        var authorizations = 0;
+        client.HandshakeAuthorizationAsync = _ =>
+        {
+            Interlocked.Increment(ref authorizations);
+            return Task.FromResult(new ReconnectAuthorizationResult(
+                false, GatewayErrorKind.Network, "Gateway is restarting", Retryable: true));
+        };
+        var failures = new List<GatewayErrorKind>();
+        client.ConnectionFailure += (_, kind) => { lock (failures) failures.Add(kind); };
+
+        await server.StartAsync();
+        await client.ConnectAsync();
+        await server.WaitForAcceptedCountAsync(1, StepTimeout);
+        await server.SendTextAsync(
+            """
+            {"type":"event","event":"connect.challenge","payload":{"nonce":"node-restarting","ts":1785824000000}}
+            """);
+
+        // The handshake abort is recovered by the client's own reconnect loop, not by a terminal failure.
+        await AssertServerObservedDisconnectAsync(server);
+        await server.WaitForAcceptedCountAsync(2, StepTimeout);
+        Assert.Equal(1, Volatile.Read(ref authorizations));
+        lock (failures) Assert.Empty(failures);
+        Assert.False(client.IsConnected);
+    }
+
+    [Fact]
     public async Task ProtocolMismatch_AbortsCurrentTransportAndBlocksCommandDispatch()
     {
         using var server = new LoopbackWebSocketServer();
@@ -2007,6 +2039,49 @@ public class WindowsNodeClientTests
             Assert.True(Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - gatewayTimestampMs) >= 120_000);
             Assert.InRange(Math.Abs(signedAt - gatewayTimestampMs), 0, 30_000);
             Assert.Equal(expectedSignature, device.GetProperty("signature").GetString());
+        }
+        finally
+        {
+            Directory.Delete(dataPath, true);
+        }
+    }
+
+    [Fact]
+    public async Task HandleConnectChallenge_RetryableHandshakeDenialLeavesRecoveryToReconnectLoop()
+    {
+        var dataPath = Path.Combine(Path.GetTempPath(), $"openclaw-node-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataPath);
+
+        try
+        {
+            using var client = new CapturingWindowsNodeClient(
+                "ws://localhost:18789",
+                "synthetic-node-credential",
+                dataPath);
+            client.HandshakeAuthorizationAsync = _ => Task.FromResult(new ReconnectAuthorizationResult(
+                false, GatewayErrorKind.Network, "Gateway is restarting", Retryable: true));
+            GatewayErrorKind? failureKind = null;
+            ConnectionStatus? lastStatus = null;
+            client.ConnectionFailure += (_, kind) => failureKind = kind;
+            client.StatusChanged += (_, status) => lastStatus = status;
+
+            await InvokeHandleEventAsync(
+                client,
+                """
+                {
+                  "type": "event",
+                  "event": "connect.challenge",
+                  "payload": {
+                    "nonce": "node-gateway-restarting",
+                    "ts": 1785824000000
+                  }
+                }
+
+                """);
+
+            Assert.Empty(client.SentMessages);
+            Assert.Null(failureKind);
+            Assert.Equal(ConnectionStatus.Error, lastStatus);
         }
         finally
         {

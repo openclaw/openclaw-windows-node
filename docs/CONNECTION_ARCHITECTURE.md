@@ -236,8 +236,16 @@ sessions, and the entire footer disappear, and content fills the vacated width.
 While the pane is hidden, the same footer control shows only Dashboard and the
 bell in the native `TitleBar` right header; it collapses again when the pane
 reopens or Settings is shown, so the actions never appear twice.
-The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
-controls without a second layout step. Native motion preferences still apply.
+With Windows animations on, the pane's width eases over 220 ms (cubic in and
+out) once per drawn frame (`WorkspacePaneAnimator`), so the content beside it
+widens or narrows with the pane instead of snapping to its final width under
+the native 160ms slide. The pane's content keeps its full width and slides
+with the pane's trailing edge, and the reopen row grows or shrinks in step so
+the content moves down or up with the slide. A close hides the pane only once
+it reaches zero width; a toggle during the motion reverses from the current
+width. Dashboard and the bell fade into the title bar over 150 ms. With Windows
+animations off, the native slide goes directly to zero width and `PaneClosed`
+hides offscreen controls without a second layout step.
 Both toggle states share a stable overlay position outside the animated pane,
 so native focus restoration and intermediate layout cannot move the target.
 A floating-style subtle reopen button reserves a dedicated 56 DIP row at
@@ -472,7 +480,15 @@ attempt owns a new generation, including while its HTTP upgrade is pending.
 Successful handshakes and failed transport attempts clear stored startup state
 rather than relabeling a network error as startup.
 Reconnect and pre-credential handshake authorization still run on every fresh
-socket. Native setup retains its existing 20-second handshake wait and linked
+socket. A denial is terminal unless the endpoint owner marks
+`ReconnectAuthorizationResult.Retryable` for a structured temporary cause, such
+as a package-managed native Gateway that is restarting. The reconnect loop then
+reports `Error`, sends no credential, and authorizes again after its normal
+capped backoff. Setup flows never mark denials retryable. For native Gateways only
+reconnect authorization, before a new socket opens, may start or wait for the
+Gateway; handshake authorization on an already-accepted socket only re-inspects
+ownership, so a peer that accepted the socket cannot receive credentials after
+the real Gateway takes the port. Native setup retains its existing 20-second handshake wait and linked
 cancellation lifetime. If that deadline expires while a typed startup rejection
 is current, it throws `GatewayStartupUnavailableException`, not an auth or
 pairing failure, without extending the deadline or changing credentials.

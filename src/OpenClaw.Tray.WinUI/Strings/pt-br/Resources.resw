@@ -2849,16 +2849,85 @@ Use uma destas opções:
     <value>Concluído</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>HISTÓRICO COMPACTADO</value>
+    <value>Contexto compactado</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} tokens · {2} economizados</value>
+    <value>{0} tokens economizados ({1}%)</value>
   </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>A transcrição compactada é preservada como um checkpoint. Abra os checkpoints da sessão para ramificar ou restaurar a partir dessa visão compactada.</value>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>Sistema</value>
   </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>Abrir checkpoints</value>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>Automação</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>Sistema · recuperação da automação</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>Falha na automação.</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>Sistema · Gateway reiniciado</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>Sistema · contexto injetado</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>Sistema · tarefa em segundo plano</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>Modelo alternativo: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>Retorno ao modelo selecionado: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>Motivo: {0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>Não foi possível concluir esta resposta</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} não aceitou as credenciais salvas</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} relata um problema de cobrança</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} vezes</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>Copiar erro</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>Detalhes do erro</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>Criada</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>Atualizada</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>Arquivada</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>Restaurada</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>Aprendido</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>Desfazer</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>Desfazendo…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>Desfeito</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>Não foi possível desfazer a alteração da habilidade. Tente novamente.</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>Nova sessão</value>
@@ -5793,6 +5862,12 @@ Abrir Canais no painel web.</value>
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>O Gateway está em execução em mais de uma porta, mas não atestou quais listeners pertencem à sua sessão isolada. Por isso, o Companion não enviou as credenciais. Recursos do Gateway, como aplicativos MCP ou o proxy local de um plugin, abrem portas adicionais. Atualize o MSIX do Gateway e tente novamente. A atestação de listeners também requer o Windows 11 26100.4770 ou posterior.</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>O Gateway está em execução, mas o listener na porta {0} não respondeu a tempo à verificação do protocolo do Gateway feita pelo Companion. Por isso, o Companion não enviou as credenciais. Tente novamente em instantes.</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>
@@ -7824,6 +7899,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Não foi possível carregar a saída completa.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>A saída completa requer a identidade do resultado salvo e uma conta atual verificada.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Mostrar saída completa</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>Mais saída disponível</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} linhas adicionais</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} linha adicional</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancelar</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Novas mensagens. Ir para as mais recentes</value></data>
@@ -9053,6 +9131,54 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>Os widgets {0} ainda não estão disponíveis no Windows.</value>
+  </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>Progresso da sessão</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>Você não tem mais acesso ao progresso desta sessão.</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>Nenhum progresso ainda</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>Os detalhes aparecerão aqui quando a sessão os informar.</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>Não foi possível atualizar o progresso.</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>Carregando progresso</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>Mostrando o último progresso recebido. A atualização mais recente falhou.</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>Concluído</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>Em andamento</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>Pendente</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>Etapa {0}: {1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>{0} de {1} etapas concluídas</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>Progresso indisponível</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>Esta conexão não pode ler os dados de progresso do Gateway.</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>Atualizado em {0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>Horário de atualização indisponível</value>
   </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>Este relatório tem dados inválidos.</value>

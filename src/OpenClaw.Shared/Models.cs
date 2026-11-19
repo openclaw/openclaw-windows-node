@@ -223,8 +223,8 @@ public sealed class SessionWorktreeInfo
     public string? RepoRoot { get; set; }
 }
 
-/// <summary>A <c>sessions.changed</c> push: its <c>reason</c> and <c>sessionKey</c>, each null when absent.</summary>
-public sealed record SessionListChange(string? Reason, string? SessionKey);
+/// <summary>A <c>sessions.changed</c> push: its <c>reason</c>, <c>sessionKey</c>, and owning <c>agentId</c>, each null when absent.</summary>
+public sealed record SessionListChange(string? Reason, string? SessionKey, string? AgentId = null);
 
 /// <summary>Assignable session owner projected by the Gateway (<c>owner.actor</c>).</summary>
 public sealed record SessionOwnerInfo(string Type, string? Id, string? Label);
@@ -2019,8 +2019,20 @@ public sealed record ChatMessagePresentation(
     string? SenderAgentId = null,
     string? SenderLabel = null,
     string? SourceRole = null,
-    bool IsImported = false)
+    bool IsImported = false,
+    ChatSkillChangeNotice? SkillChanges = null,
+    bool LegacySkillNotice = false,
+    ChatModelFallbackNotice? ModelFallback = null,
+    ChatRunFailureNotice? RunFailure = null,
+    string? PluginSteeringName = null)
 {
+    /// <summary>
+    /// True when the Gateway marked this row as a typed transcript notice that clients render
+    /// outside assistant answer ownership, even when the row carries no display text.
+    /// </summary>
+    public bool HasStructuredNotice =>
+        RunFailure is not null || SkillChanges is not null || LegacySkillNotice || ModelFallback is not null;
+
     public bool IsIndependent =>
         ProvenanceKind == "inter_session" && SourceTool == "sessions_send" ||
         ProvenanceKind == "internal_system" && SourceTool == "cron" &&
@@ -2030,6 +2042,59 @@ public sealed record ChatMessagePresentation(
             !string.IsNullOrWhiteSpace(AutomationRunId);
 
     public bool EndsInFailure => Interrupted || StopReason == "error";
+}
+
+/// <summary>A learned-skill change reported by the Skill Workshop plugin notice.</summary>
+public enum ChatSkillChangeAction
+{
+    Created,
+    Updated,
+    Archived,
+    Restored,
+}
+
+public sealed record ChatSkillChange(string Name, ChatSkillChangeAction Action, string? Summary = null);
+
+/// <summary>
+/// Skill Workshop <c>skills-changed</c> plugin notice. <see cref="RunId"/> identifies the background
+/// review whose changes <c>skills.workshop.undo</c> reverts as one unit.
+/// </summary>
+public sealed record ChatSkillChangeNotice(string AgentId, string RunId, IReadOnlyList<ChatSkillChange> Skills)
+{
+    public bool Equals(ChatSkillChangeNotice? other) =>
+        other is not null && AgentId == other.AgentId && RunId == other.RunId && Skills.SequenceEqual(other.Skills);
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(AgentId);
+        hash.Add(RunId);
+        foreach (var skill in Skills)
+            hash.Add(skill);
+        return hash.ToHashCode();
+    }
+}
+
+/// <summary>Transcript-only model fallback fact; it never changes the selected model.</summary>
+public sealed record ChatModelFallbackNotice(
+    string RunId,
+    string FromModel,
+    string ToModel,
+    string? Reason = null,
+    bool Restored = false);
+
+/// <summary>Diagnostic run-failure row owned by the settled run, not by a model attempt.</summary>
+public sealed record ChatRunFailureNotice(
+    string RunId,
+    string Summary,
+    string? CauseProvider = null,
+    string? FailoverReason = null);
+
+/// <summary>Result of <c>skills.workshop.undo</c>; the Gateway's <c>already-undone</c> also reports <see cref="Undone"/>.</summary>
+public enum SkillWorkshopUndoStatus
+{
+    Undone,
+    Unsupported,
 }
 
 public enum ChatMediaContentKind

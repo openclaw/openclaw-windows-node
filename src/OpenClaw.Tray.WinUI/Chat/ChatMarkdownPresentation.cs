@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
+using FunctionalTheme = OpenClawTray.FunctionalUI.Core.Theme;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
@@ -218,8 +219,7 @@ internal static class ChatMarkdownPresentation
         // Prose and strong text share the primary tone (strong keeps its weight); inline
         // code keeps its surrounding tone on a subtle chip.
         var isDark = rich.ActualTheme == ElementTheme.Dark;
-        if (ThemeRef.Resolve("ControlFillColorSecondaryBrush", isDark) is not Brush chip ||
-            ThemeRef.Resolve("SubtleFillColorTransparentBrush", isDark) is not Brush clear ||
+        if (ThemeRef.Resolve("SubtleFillColorTransparentBrush", isDark) is not Brush clear ||
             ThemeRef.Resolve("TextFillColorPrimaryBrush", isDark) is not Brush strongText ||
             ThemeRef.Resolve("TextFillColorPrimaryBrush", isDark) is not Brush proseText)
             return;
@@ -231,6 +231,11 @@ internal static class ChatMarkdownPresentation
             strongRanges.Clear();
         }
         AddHighlighter(strongRanges, clear, strongText);
+        if (codeRanges.Count == 0 && strongCodeRanges.Count == 0)
+            return;
+
+        // The application brush can carry the opposite palette from the mounted chat.
+        var chip = new SolidColorBrush(FunctionalTheme.ResolveColor("ControlFillColorSecondary", rich.ActualTheme));
         AddHighlighter(codeRanges, chip, proseText);
         AddHighlighter(strongCodeRanges, chip, strongText);
 
@@ -688,14 +693,21 @@ internal sealed class ChatMarkdownDisclosureView : Component<ChatMarkdownDisclos
                 disclosure.Summary,
                 MarkdownTextSelection.Visibility(expanded,
                     ChatMarkdownPresentation.Disclosures(
-                        disclosure.Body, Props.RenderMarkdown, Props.SelectionOptions)),
+                        disclosure.Body, Props.RenderMarkdown, Props.SelectionOptions))
+                    .Margin(ChatVisuals.ToolRowTitleInset, 4, 0, 8),
                 expanded,
                 setExpanded) with
             {
-                HeaderContent = MarkdownTextSelection.Surface(disclosure.Summary,
-                    TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)
-                        .FontFamily(ChatVisuals.BodyFontFamily)),
+                HeaderContent = ToolCallCardRenderer.BuildDisclosureHeader(expanded,
+                    MarkdownTextSelection.Surface(disclosure.Summary,
+                        TextBlock(disclosure.Summary).TextWrapping(TextWrapping.Wrap)
+                            .FontFamily(ChatVisuals.BodyFontFamily))),
             })
+            .Padding(0)
+            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .Resources(ChatVisuals.ToolRowExpanderResources)
+            .Set(ChatVisuals.FlushToolRowExpander)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationName(disclosure.Summary);

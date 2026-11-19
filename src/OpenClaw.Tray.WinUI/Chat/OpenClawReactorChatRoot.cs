@@ -2,6 +2,7 @@ using Microsoft.UI;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
+using Microsoft.UI.Reactor.Hooks;
 using Microsoft.UI.Reactor.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -27,7 +28,6 @@ public sealed record OpenClawReactorChatRootProps(
     string? InitialThreadId = null,
     Func<string, Task>? OnReadAloud = null,
     Action? OnStopSpeaking = null,
-    Action<string>? OnOpenCheckpoints = null,
     Func<string, bool>? TryCopyText = null,
     bool InitialThreadIsExplicitSelection = true,
     IChatAgentRosterSource? AgentRosterSource = null,
@@ -49,6 +49,7 @@ public sealed record OpenClawReactorChatRootProps(
 public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootProps>
 {
     private static bool s_showToolCalls = true;
+    private const int WelcomeComposerSlideMilliseconds = 260;
     private static bool s_showChatThinking = true;
     private static int s_toolCallsCollapseVersion;
     private static event EventHandler? ToolCallsVisibilityChanged;
@@ -164,6 +165,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         {
             EventHandler visibilityChanged = (_, _) =>
             {
+                // Collapse-all and show or hide tools reflow the transcript; rows glide to their new places.
+                ChatTranscriptReflow.CaptureAll();
                 setShowToolCalls(s_showToolCalls);
                 setShowChatThinking(s_showChatThinking);
                 setToolCallsCollapseVersion(s_toolCallsCollapseVersion);
@@ -450,7 +453,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     ChatAssistantMediaRenderer.DisplayName(media), media.Reference.ArtifactId, media.Reference.AgentId,
                     media.MimeType ?? media.Reference.MimeType, media.Reference.SizeBytes), panelRevision)
                 : null,
-            ActiveReasoningId: timeline.ActiveReasoningId);
+            ActiveReasoningId: timeline.ActiveReasoningId,
+            SkillUndo: dataProvider?.SkillUndo);
         var identitySource = props.Provider as IChatAgentIdentitySource;
         var assistantAgentId = effectiveThread?.AgentId ?? "main";
         var avatarCacheRef = UseRef<AgentAvatarImageCache?>(null);
@@ -560,10 +564,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             };
         }
 
+        // The first send from an authoritatively empty conversation mounts the transcript fresh;
+        // its first rows are new messages, not loaded history, so they keep their entrance.
+        var emptyConversationId = UseRef<string?>(null);
+        var admitInitialEntrances = mode == ReactorChatTimelineMode.Timeline && effectiveThread is not null
+            && string.Equals(emptyConversationId.Current, effectiveThread.Id, StringComparison.Ordinal);
+        emptyConversationId.Current = mode == ReactorChatTimelineMode.Empty ? effectiveThread?.Id : null;
         var timelineElement = Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(
             mode,
             timelineProps,
-            OnOpenCheckpoints: props.OnOpenCheckpoints,
             HistoryRevision: historyRevision,
             TryCopyText: props.TryCopyText,
             HistoryFailed: historyFailed,
@@ -574,7 +583,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             AssistantAgentId: assistantAgentId,
             AssistantCatalog: props.ComposerSession.Placement?.State.Catalog,
             AssistantAvatarImageSource: avatarCache,
-            AssistantRosterAgent: selectedRosterAgent));
+            AssistantRosterAgent: selectedRosterAgent,
+            ViewportWidth: viewportWidth,
+            AdmitInitialEntrances: admitInitialEntrances));
 
         var pendingQuestion = effectiveThread is null ? null : questionSnapshot?.Prompts.FirstOrDefault(prompt =>
             prompt.Request.Status == "pending"
@@ -594,7 +605,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 CurrentThread: effectiveThread,
                 AvailableModels: snapshot.AvailableModels,
                 ModelChoices: snapshot.ModelChoices,
-                MessageOptionsDisabled: timeline.TurnActive || hasPendingQueuedSend,
+                MessageOptionsDisabled: hasPendingQueuedSend,
                 QueuedMessages: queuedMessages,
                 AvailableCommands: snapshot.AvailableCommands,
                 CommandsSupported: snapshot.CommandsSupported,
@@ -631,9 +642,20 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                         collapsed => setCollapsedQuestionId(collapsed ? pendingQuestion?.Request.Id : null), questionCollapsed))
                 : Empty();
         var showWelcome = !props.Compact && mode == ReactorChatTimelineMode.Empty;
+        // The first send moves the composer from the centered welcome block to the bottom.
+        // Measure its input box (the same control in both layouts, unlike the welcome block
+        // around it) where it is now; after layout it slides from there, without moving focus.
+        var composerContentRef = this.UseElementRef<Grid>();
+        var composerAreaRef = this.UseElementRef<ChatMotionHost>();
+        var composerWasWelcome = UseRef(false);
+        if (composerWasWelcome.Current && !showWelcome
+            && composerContentRef.Current is { } composerContent && composerAreaRef.Current is { } composerScroller
+            && ChatMotion.FindByAutomationId(composerContent, "ChatComposerInput") is { } composerInput)
+            ChatMotion.SlideFromCurrentPosition(composerInput, composerScroller, WelcomeComposerSlideMilliseconds);
+        composerWasWelcome.Current = showWelcome;
         // Keep the composer at the same tree position across the first send. Moving
         // the control into a different parent would lose focus, caret and flyouts.
-        var composerArea = ScrollViewer(
+        var composerArea = ChatMotion.Host(ScrollViewer(
             Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto],
                 composerElement.WithKey("chat-composer").Grid(row: 0),
                 showWelcome
@@ -644,7 +666,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                         .Grid(row: 1)
                     : Empty().Grid(row: 1))
                 .Margin(0, showWelcome ? 24 : 0, 0, 0)
-                .VAlign(showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top))
+                .VAlign(showWelcome ? VerticalAlignment.Center : VerticalAlignment.Top)
+                .Ref(composerContentRef))
             .Set(scroll =>
             {
                 scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
@@ -654,7 +677,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             })
             .MaxHeight(props.Compact ? 260 : double.PositiveInfinity)
             .IsVisible(composerVisible)
-            .AutomationId("ChatComposerArea")
+            .AutomationId("ChatComposerArea"))
+            .Ref(composerAreaRef)
+            .OnUnmountAdd(ChatMotion.Reset)
             .WithKey("chat-composer-area");
         var conversation = Grid(
             [GridSize.Star()],
@@ -666,7 +691,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     ? Border(timelineElement).Grid(row: 0)
                     : timelineElement.Grid(row: 0),
             Border(questions).WithKey("chat-question-area").Grid(row: 1),
-            ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
+            // A stable wrapper keeps the panel's own mount and unmount (and its fade) inside this slot.
+            Border(ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight))
                 .WithKey("chat-pending-messages").Grid(row: 2),
             Component<ReactorChatProviderReview, ReactorChatProviderReviewProps>(
                     new(isGatewayConnected ? effectiveThread?.ProviderReview : null, viewportWidth))

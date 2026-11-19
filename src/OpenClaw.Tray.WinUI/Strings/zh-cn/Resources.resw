@@ -2830,16 +2830,85 @@
     <value>完成</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>已压缩的历史记录</value>
+    <value>上下文已压缩</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} 个令牌 · 节省 {2}</value>
+    <value>节省了 {0} 个令牌（{1}%）</value>
   </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>压缩后的对话记录会保留为检查点。打开会话检查点，以便从该压缩视图创建分支或进行还原。</value>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>系统</value>
   </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>打开检查点</value>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>自动化</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>系统 · 自动化恢复</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>自动化失败。</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>系统 · 网关已重启</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>系统 · 注入的上下文</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>系统 · 后台任务</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>模型回退：{0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>已恢复为所选模型：{0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>原因：{0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>无法完成此回复</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} 未接受已保存的凭据</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} 报告了账单问题</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} 次</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>复制错误</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>错误详情</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>已创建</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>已更新</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>已归档</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>已恢复</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>已学习</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>撤销</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>正在撤销…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>已撤销</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>无法撤销技能更改。请重试。</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>新会话</value>
@@ -5816,6 +5885,12 @@
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>网关正在多个端口上运行，但未证明哪些侦听器属于其隔离会话，因此 Companion 未发送凭据。MCP 应用或插件的本地代理等网关功能会打开额外的端口。请更新网关 MSIX，然后重试。侦听器证明还需要 Windows 11 26100.4770 或更高版本。</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>网关正在运行，但其端口 {0} 上的侦听器未及时响应 Companion 的网关协议检查，因此 Companion 未发送凭据。请稍后重试。</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>
@@ -7771,6 +7846,9 @@
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>无法加载完整输出。</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>加载完整输出需要已保存的结果标识和已验证的当前帐户。</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>显示完整输出</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>还有更多输出</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>还有 {0} 行</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>还有 {0} 行</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>重试</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新消息。跳到最新消息</value></data>
@@ -9000,6 +9078,54 @@
   </data>
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>{0} 小组件尚不可在 Windows 上使用。</value>
+  </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>会话进度</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>您已无权查看此会话的进度。</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>暂无进度</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>会话报告进度后，详细信息会显示在这里。</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>无法刷新进度。</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>正在加载进度</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>正在显示最后收到的进度。最近一次刷新失败。</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>进行中</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>待处理</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>已完成 {0}/{1} 个步骤</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>进度不可用</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>此连接无法从 Gateway 读取进度卡片数据。</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>更新时间：{0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>更新时间不可用</value>
   </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>此报告包含无效数据。</value>

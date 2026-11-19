@@ -537,6 +537,29 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void TailReflowCorrection_StaleLandingRetriesAreBoundedPerContentRevision()
+    {
+        var correction = new TailReflowCorrection();
+        correction.ContentChanged(new object());
+
+        Assert.False(correction.ArmAfterLanding(following: false, atBottom: false));
+        Assert.False(correction.ArmAfterLanding(following: true, atBottom: true));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        for (var retry = 0; retry < 2; retry++)
+        {
+            Assert.True(correction.ArmAfterLanding(following: true, atBottom: false));
+            Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        }
+
+        Assert.False(correction.ArmAfterLanding(following: true, atBottom: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.ContentChanged(new object());
+        Assert.True(correction.ArmAfterLanding(following: true, atBottom: false));
+    }
+
+    [Fact]
     public void TailReflowCorrection_DoesNotStartWhileInitialPositioningIsPending()
     {
         var correction = new TailReflowCorrection();
@@ -1286,6 +1309,126 @@ public sealed class ChatTimelinePresentationTests
         Assert.Equal(InitialTailLanding.GiveUp, confirmation.Observe(idle: true, nearBottom: false));
     }
 
+    private static InitialTailVerdict SettleVerification(InitialTailVerification verification, bool atBottom)
+    {
+        for (var frame = 1; frame < InitialTailConfirmation.SettledFramesBeforeDecision; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom));
+        return verification.Observe(idle: true, operationPending: false, following: true, atBottom);
+    }
+
+    // The landing confirmed a two-row projection; four rows arrived and the follow path left the view behind.
+    [Fact]
+    public void InitialTailVerification_ReissuesWhenTheTailGrewAfterALandingAndTheViewSettlesAway()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: true));
+
+        verification.TailGrew();
+        for (var frame = 0; frame < 10; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: true, following: true, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+
+        // Nothing else is decided until the re-issue has been dispatched and its work has settled.
+        for (var frame = 0; frame < 10; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+        verification.ReissueDispatched();
+        Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: true, following: true, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: true));
+    }
+
+    // Without growth, a following view a little above the tail is where the reader (or UIA) put it.
+    [Fact]
+    public void InitialTailVerification_LeavesAReaderPositionNearTheTailAloneWithoutGrowth()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+
+        for (var frame = 0; frame < 120; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+    }
+
+    // Follow reached the grown tail; the reader then moved a little up before the view settled.
+    [Fact]
+    public void InitialTailVerification_ArrivingAtTheTailSpendsTheGrowth()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: false, operationPending: true, following: true, atBottom: true));
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: false));
+
+        verification.TailGrew();
+        verification.ReachedTail();
+        Assert.Equal(InitialTailVerdict.Wait, SettleVerification(verification, atBottom: false));
+
+        // A re-issue admitted before the arrival no longer owes anything when its dispatch runs.
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+        Assert.True(verification.OwesReissue);
+        verification.ReachedTail();
+        Assert.False(verification.OwesReissue);
+    }
+
+    [Fact]
+    public void InitialTailVerification_BudgetIsFixedAndSelfInducedChangesNeverReplenishIt()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        verification.TailGrew();
+
+        for (var reissue = 0; reissue < 2; reissue++)
+        {
+            Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+            verification.ReissueDispatched();
+            verification.GeometryChanged();
+            verification.TailGrew();
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: false, operationPending: true, following: true, atBottom: false));
+        }
+
+        Assert.Equal(InitialTailVerdict.Exhausted, SettleVerification(verification, atBottom: false));
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+    }
+
+    [Fact]
+    public void InitialTailVerification_ReaderIntentEndsTheWindowAndRevokesItsDispatch()
+    {
+        var verification = new InitialTailVerification();
+        var generation = verification.Start();
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Reissue, SettleVerification(verification, atBottom: false));
+
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: false, atBottom: false));
+        Assert.False(verification.IsCurrent(generation));
+        verification.TailGrew();
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+
+        var next = verification.Start();
+        verification.Stop();
+        Assert.False(verification.IsCurrent(next));
+    }
+
+    [Fact]
+    public void InitialTailVerification_NeverChasesAMovingExtentAndEndsAtItsFrameLimit()
+    {
+        var verification = new InitialTailVerification();
+        verification.Start();
+        verification.TailGrew();
+
+        for (var frame = 0; frame < 120; frame++)
+        {
+            verification.GeometryChanged();
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+        }
+        Assert.Equal(InitialTailVerdict.Exhausted, verification.Observe(idle: true, operationPending: false, following: true, atBottom: false));
+
+        verification.Start();
+        for (var frame = 0; frame < 120; frame++)
+            Assert.Equal(InitialTailVerdict.Wait, verification.Observe(idle: true, operationPending: false, following: true, atBottom: true));
+        Assert.Equal(InitialTailVerdict.Done, verification.Observe(idle: true, operationPending: false, following: true, atBottom: true));
+    }
+
     [Fact]
     public void ReactorTimeline_TracksOnlyTheCurrentTailBringAndDetachesNativeEvents()
     {
@@ -1409,8 +1552,11 @@ public sealed class ChatTimelinePresentationTests
             renderer,
             ".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))\n                .BorderBrush(Theme.Ref(\"SubtleFillColorTransparentBrush\"))"));
         Assert.Contains("WithKey(\"nested-guide\")", renderer);
-        // Rows start on the prose edge: every tool Expander drops the built-in header inset.
-        Assert.Equal(3, CountOccurrences(renderer, "ChatVisuals.FlushToolRowExpander"));
+        // Rows start on the prose edge: every tool Expander drops the built-in header inset, and a
+        // header-only Expander (details rendered below it) also drops its empty content area.
+        Assert.Equal(2, CountOccurrences(renderer, "ChatVisuals.FlushToolRowExpander"));
+        Assert.Equal(3, CountOccurrences(renderer, "ChatVisuals.FlushHeaderOnlyExpander"));
+        Assert.Equal(2, CountOccurrences(visuals, "ApplyToolRowFlush(expander);"));
         Assert.Contains("header.Padding = new Thickness(0);", visuals);
         Assert.Contains("expander.Resources[\"ExpanderChevronMargin\"] = new Thickness(0);", visuals);
         Assert.Contains("Border(Empty()).Width(1).Margin(7, 0, 16, 0)", renderer);
@@ -1978,7 +2124,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatToolActivity_", renderer);
         Assert.Contains("ChatToolCall_", renderer);
         Assert.Contains("internal sealed class ToolActivityCard : Component<ToolActivityCardProps>", renderer);
-        Assert.Contains("Element details = !isExpanded", renderer);
+        // Details exist only while expanded, or briefly while a closing group shrinks them away.
+        Assert.Contains("var showDetails = isExpanded || closing;", renderer);
+        Assert.Contains("Element details = !showDetails", renderer);
         Assert.Contains("? VStack(", renderer);
         Assert.Contains(".FontSize(12)", renderer);
         Assert.Contains(".BorderThickness(0)", renderer);
@@ -1988,7 +2136,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_RendersStructuredCompactionCard()
+    public void ReactorTimeline_RendersLocalizedCompactionWithoutCheckpointAction()
     {
         var timeline = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -2000,10 +2148,10 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatTimelineItemKind.Status => BuildStatus(row, entry)", timeline);
         Assert.Contains("ChatCompactionPresenter.TryCreateForEntry(", timeline);
         Assert.Contains("Chat_Compaction_Title", timeline);
-        Assert.Contains("Chat_Compaction_FallbackDetail", timeline);
-        Assert.Contains("Chat_Compaction_OpenCheckpoints", timeline);
-        Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
-        Assert.Contains(".BorderThickness(1)", timeline);
+        Assert.Contains("Chat_Compaction_MetricsFormat", timeline);
+        Assert.DoesNotContain("Chat_Compaction_FallbackDetail", timeline);
+        Assert.DoesNotContain("Chat_Compaction_OpenCheckpoints", timeline);
+        Assert.DoesNotContain("OnOpenCheckpoints", timeline);
         Assert.DoesNotContain("ReactorChatComposer.IsHighContrast", timeline);
         Assert.Contains(".AutomationName(presentation.AutomationName)", timeline);
     }

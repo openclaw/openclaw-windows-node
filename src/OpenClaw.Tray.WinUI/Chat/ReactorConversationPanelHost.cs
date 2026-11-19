@@ -25,6 +25,17 @@ internal sealed record ReactorConversationPanelHostProps(
 /// <summary>Applies native tab selection, split or expanded sizing, compact presentation and focus.</summary>
 internal sealed class ReactorConversationPanelHost : Component<ReactorConversationPanelHostProps>
 {
+    private const double TabMaximumWidth = 200;
+    private const int PanelEnterMilliseconds = 200;
+    private const float PanelEnterOffset = 24;
+    private const int TabBodyRevealMilliseconds = 150;
+    private const float TabBodyRise = 4;
+    // A narrow conversation fades back in when the panel that covered it closes.
+    private const int ConversationRevealMilliseconds = 150;
+
+    /// <summary>How the panel shares the area; wide-mode changes between these ease the panel column.</summary>
+    private enum PanelMode { Hidden, Split, Expanded, Narrow }
+
     public override Element Render()
     {
         var state = Props.State;
@@ -39,6 +50,8 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         var layoutWatch = UseRef<EventHandler<object>?>(null);
         var focus = UseRef<PanelInteraction?>(null);
         var tabView = UseRef<TabView?>(null);
+        var motion = UseRef<PanelWidthMotion?>(null).Current ??= new PanelWidthMotion();
+        var (_, setSettled) = UseState(0L);
         // The native drag handler is attached once at mount; it must reach the current state.
         var latestState = UseRef(state);
         latestState.Current = state;
@@ -52,6 +65,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         var adoptNativeOrderRef = UseRef<TypedEventHandler<TabView, global::Windows.Foundation.Collections.IVectorChangedEventArgs>?>(null);
         var adoptNativeOrder = adoptNativeOrderRef.Current ??= (view, args) =>
         {
+            ApplyTabAppearance(view);
             // Reactor removes a closed tab after state already dropped it; a native move removes a rendered one.
             if (args.CollectionChange == global::Windows.Foundation.Collections.CollectionChange.ItemRemoved &&
                 view.TabItems.Count == renderedTabCount.Current - 1)
@@ -96,12 +110,66 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         // window top, unless the panel is too narrow to keep usable tabs beside the window controls.
         var joinsTitleRow = presented && !narrow &&
             state.CanJoinTitleRow(expanded ? width : state.EffectiveWidth(width), fillsArea: expanded);
-        var lift = joinsTitleRow ? topOffset : 0;
+        // Wide-mode open, close, expand and collapse ease the panel column's width, like the workspace
+        // sidebar; state and focus follow the logical values at once while the drawn layout catches up.
+        var mode = narrow ? PanelMode.Narrow
+            : !presented ? PanelMode.Hidden
+            : expanded ? PanelMode.Expanded
+            : PanelMode.Split;
+        double Extent(PanelMode value) => value switch
+        {
+            PanelMode.Split => state.EffectiveWidth(width),
+            PanelMode.Expanded => width,
+            _ => 0,
+        };
+        bool Joins(PanelMode value) => value switch
+        {
+            PanelMode.Split => state.CanJoinTitleRow(state.EffectiveWidth(width)),
+            PanelMode.Expanded => state.CanJoinTitleRow(width, fillsArea: true),
+            _ => false,
+        };
+        if (motion.Active && width != motion.Width) motion.Cancel();
+        if (mode != motion.Mode)
+        {
+            if (motion.Mode is { } previous && previous != PanelMode.Narrow && mode != PanelMode.Narrow &&
+                width > 0 && motion.Root is { IsLoaded: true } && ChatMotion.AnimationsEnabled)
+            {
+                motion.Start = motion.Active ? motion.Current : Extent(previous);
+                motion.Target = Extent(mode);
+                motion.From = previous;
+                motion.To = mode;
+                motion.Width = width;
+                motion.Pending = true;
+            }
+            else
+            {
+                motion.Cancel();
+            }
+            motion.Mode = mode;
+        }
+        var animating = motion.Active;
+        bool Between(PanelMode a, PanelMode b) =>
+            animating && (motion.From == a && motion.To == b || motion.From == b && motion.To == a);
+        var involvesExpanded = animating && (motion.From == PanelMode.Expanded || motion.To == PanelMode.Expanded);
+        // The drawn header keeps the caption-row layout while either end of a transition uses it.
+        var visualJoins = animating ? Joins(motion.From) || Joins(motion.To) : joinsTitleRow;
+        var lift = visualJoins ? topOffset : 0;
         // A panel that fills the area starts at the window's leading edge, under its start controls.
         var startInset = joinsTitleRow && expanded ? state.TitleRowStartInset : 0;
-        var endInset = joinsTitleRow ? state.TitleRowEndInset : 0;
+        // While the panel's leading edge travels under those controls, only the covered part is reserved.
+        double StartInsetAt(double extent) =>
+            !visualJoins ? 0
+            : involvesExpanded ? Math.Max(0, state.TitleRowStartInset - (width - extent))
+            : startInset;
+        var endInset = visualJoins ? state.TitleRowEndInset : 0;
         // Tabs center in the caption band; the rest of the covered chrome stays header space, never body.
-        var captionBand = joinsTitleRow ? state.TitleRowHeight - state.TitleRowCaptionHeight : 0;
+        var captionBand = visualJoins ? state.TitleRowHeight - state.TitleRowCaptionHeight : 0;
+        motion.Frame = involvesExpanded && visualJoins
+            ? extent =>
+            {
+                if (tabView.Current is { } view) ReserveTabStripEdges(view, StartInsetAt(extent), endInset);
+            }
+            : null;
         UseEffect((Func<Action>)(() =>
         {
             state.SetPresentation(presented, narrow, joinsTitleRow);
@@ -144,7 +212,12 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     Border(null).IsVisible(false).Set(marker => marker.Tag = tab)) with { IsClosable = true }).ToArray())
             .IsAddTabButtonVisible(false)
             .CanDragTabs(false).CanReorderTabs(true)
-            .TabWidthMode(TabViewWidthMode.SizeToContent)
+            .TabWidthMode(TabViewWidthMode.Equal)
+            .Padding(0)
+            .Background(Theme.Ref("ChatCanvasBrush"))
+            .Resources(resources => resources
+                .Set("TabViewItemMaxWidth", TabMaximumWidth)
+                .Set("TabViewBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
             .CloseButtonOverlayMode(TabViewCloseButtonOverlayMode.OnPointerOver)
             .TabCloseRequested(index =>
             {
@@ -159,18 +232,25 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             {
                 var view = (TabView)control;
                 tabView.Current = view;
+                ApplyTabAppearance(view);
                 view.TabItemsChanged += adoptNativeOrder;
                 state.SetTabStrip(view);
             })
             .OnUnmount(control =>
             {
-                ((TabView)control).TabItemsChanged -= adoptNativeOrder;
+                var view = (TabView)control;
+                view.TabItemsChanged -= adoptNativeOrder;
+                foreach (var item in view.TabItems.OfType<TabViewItem>())
+                {
+                    item.ClearValue(FrameworkElement.StyleProperty);
+                    item.IconSource = null;
+                }
                 tabView.Current = null;
                 if (ReferenceEquals(state.TabStrip, control)) state.SetTabStrip(null);
             });
 
         var bodies = tabs.Select(slot =>
-            Border(slot switch
+            ChatMotion.Host(Border(slot switch
                 {
                     ChatConversationPanelState.SubagentsSlot => Props.Subagents ?? Empty(),
                     ChatConversationPanelState.DashboardSlot => DashboardBody(state.Dashboard, Props.Dashboards),
@@ -180,50 +260,76 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                         : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16),
                     _ => state.Details is { } request && state.Resolve(request) is { } entry
                         ? ToolCallCardRenderer.BuildPanelDetails(
-                            Props.Timeline ?? new(request.SessionKey, [], false, null), entry)
+                            Props.Timeline ?? new(request.SessionKey, [], false, null), entry,
+                            isActive: presented && slot == selected)
                         : TextBlock(Text("Unavailable")).TextWrapping(TextWrapping.Wrap).Margin(16),
                 })
+                .IsVisible(slot == selected))
+                // A tab that becomes the selected one fades its body in; the strip itself moves natively.
+                .EnterWhenShown(slot == selected, new System.Numerics.Vector3(0, TabBodyRise, 0), TabBodyRevealMilliseconds,
+                    onFirstRender: true)
                 .WithKey(slot switch
                 {
                     ChatConversationPanelState.DetailsSlot => state.Details?.ToString() ?? slot,
                     ChatConversationPanelState.DashboardSlot => slot + ":" + state.Dashboard?.SessionKey,
                     ChatConversationPanelState.FileSlot => state.FileBodyKey ?? slot,
                     _ => slot,
-                })
-                .IsVisible(slot == selected))
+                }))
             .Cast<Element>().ToArray();
-        var headerMargin = joinsTitleRow
-            ? new Thickness(ChatVisuals.BlockGap + startInset, 0, endInset, captionBand)
+        var headerMargin = visualJoins
+            ? new Thickness(ChatVisuals.BlockGap + StartInsetAt(motion.Current), 0, endInset, captionBand)
             : new Thickness(ChatVisuals.BlockGap, ChatVisuals.BlockGap, ChatVisuals.BlockGap, 0);
-        var panel = Grid([GridSize.Star()], [joinsTitleRow ? GridSize.Px(state.TitleRowHeight) : GridSize.Auto, GridSize.Star()],
+        var panel = Grid([GridSize.Star()], [visualJoins ? GridSize.Px(state.TitleRowHeight) : GridSize.Auto, GridSize.Star()],
                 launcher
                     ? TextBlock(Text("Launcher")).FontSize(ChatVisuals.BodySize).FontWeight(Microsoft.UI.Text.FontWeights.SemiBold)
                         .Foreground(Theme.Ref("ChatTextBrush"))
                         .Margin(headerMargin)
-                        .VAlign(joinsTitleRow ? VerticalAlignment.Center : VerticalAlignment.Top)
+                        .VAlign(visualJoins ? VerticalAlignment.Center : VerticalAlignment.Top)
                         .HeadingLevel(Microsoft.UI.Xaml.Automation.Peers.AutomationHeadingLevel.Level2)
                         .AutomationId("ConversationPanelLauncherTitle")
                         .Grid(row: 0)
-                    : (joinsTitleRow
+                    : (visualJoins
                         ? tabStrip.VAlign(VerticalAlignment.Center).Margin(0, 0, 0, captionBand)
                         : tabStrip.VAlign(VerticalAlignment.Top).Margin(0))
-                        .Set(control => ReserveTabStripEdges((TabView)control, startInset, endInset))
+                        .Set(control =>
+                        {
+                            var view = (TabView)control;
+                            ReserveTabStripEdges(view, StartInsetAt(motion.Current), endInset);
+                            ApplyTabAppearance(view);
+                        })
                         .Grid(row: 0),
                 launcher
                     ? Border(Props.Launcher ?? Empty()).WithKey("panel-launcher").Grid(row: 1)
                     : Grid([GridSize.Star()], [GridSize.Star()], bodies).Grid(row: 1))
             .Background(Theme.Ref("ChatCanvasBrush"))
-            .Margin(0, -lift, 0, 0)
             .AutomationId("ConversationPanel")
-            .IsVisible(presented)
+            // A closing panel stays drawn while its column eases shut, but no longer takes input.
+            .IsVisible(presented || animating)
+            .IsHitTestVisible(!(animating && motion.To == PanelMode.Hidden))
             .Set(control =>
             {
                 control.Style = (Style)Application.Current.Resources["ChatCanvasStyle"];
                 control.ClearValue(Microsoft.UI.Xaml.Controls.Panel.BackgroundProperty);
                 focus.Current?.Update(control, narrow, expanded, presented, TogglePresented);
-            })
-            .WithKey("conversation-panel");
-        var panelWidth = split ? state.EffectiveWidth(width) : 0;
+            });
+        // A wide panel arrives and leaves through its column's width. Over a narrow conversation it rises
+        // in instead, and closing it there is immediate, so the conversation is never held behind an exit.
+        var panelHost = ChatMotion.Host(panel)
+            .EnterWhenShown(presented, new System.Numerics.Vector3(0, PanelEnterOffset, 0), PanelEnterMilliseconds,
+                animate: narrow);
+        // While it opens or closes, the panel keeps its full width and its column reveals it like a slide;
+        // the clipped conversation likewise holds still while a panel that fills the area covers it.
+        double? panelPin = Between(PanelMode.Hidden, PanelMode.Split) ? state.EffectiveWidth(width)
+            : Between(PanelMode.Hidden, PanelMode.Expanded) ? width
+            : null;
+        double? conversationPin = Between(PanelMode.Split, PanelMode.Expanded)
+                ? width - ChatConversationPanelState.DividerWidth - state.EffectiveWidth(width)
+            : Between(PanelMode.Hidden, PanelMode.Expanded) ? width
+            : null;
+        var dividerColumn = animating ? PanelWidthMotion.DividerAt(motion.Current, width)
+            : split ? ChatConversationPanelState.DividerWidth : 0;
+        var panelColumn = animating ? motion.Current : split ? state.EffectiveWidth(width) : 0;
+        var conversationShown = conversationVisible || animating;
         var resize = Button(
                 Border(null).Background(Theme.Ref("ControlStrokeColorDefaultBrush")).Width(4).Height(40), () => { })
             .AutomationName(Text("Resize"))
@@ -232,12 +338,12 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             .ToolTip(Text("Resize"))
             .Resources(ChatVisuals.ToolbarButtonResources)
             .Padding(0).MinWidth(0).Width(ChatConversationPanelState.DividerWidth)
-            .IsVisible(split)
+            .IsVisible(split && !animating)
             .OnMount(control => PanelResize.Attach((Button)control, state, () => viewportWidth.Current))
             .OnUnmount(control => PanelResize.Detach((Button)control));
 
         var toggleText = presented ? "Back" : "Show";
-        return Grid([GridSize.Star(), GridSize.Px(split ? ChatConversationPanelState.DividerWidth : 0), GridSize.Px(panelWidth)],
+        return Grid([GridSize.Star(), GridSize.Px(dividerColumn), GridSize.Px(panelColumn)],
                 [GridSize.Auto, GridSize.Star()],
                 Button(TextBlock(Text(toggleText)), TogglePresented)
                     .AutomationId("ConversationPanelToggle")
@@ -245,10 +351,15 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     .IsVisible(open && narrow)
                     .HAlign(HorizontalAlignment.Left).Margin(8)
                     .Grid(row: 0),
-                Border(Props.Conversation).WithKey("chat-conversation")
-                    .AutomationId("ChatConversation")
-                    .IsVisible(conversationVisible)
-                    .Set(control => focus.Current?.SetConversation(control))
+                ChatMotion.Host(
+                        ChatMotion.Host(Border(Props.Conversation)
+                                .AutomationId("ChatConversation")
+                                .IsVisible(conversationShown)
+                                .Set(control => focus.Current?.SetConversation(control)))
+                            .EnterWhenShown(conversationShown, System.Numerics.Vector3.Zero, ConversationRevealMilliseconds,
+                                animate: narrow))
+                    .Set(control => Pin(control, conversationPin))
+                    .WithKey("chat-conversation")
                     .Grid(row: 1),
                 Border(Empty()).Width(1)
                     .Background(Theme.Ref("DividerStrokeColorDefaultBrush"))
@@ -257,11 +368,28 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     .IsHitTestVisible(false)
                     .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                     .AutomationId("ConversationPanelDivider")
-                    .IsVisible(split)
+                    .IsVisible(split || animating)
                     .WithKey("conversation-panel-divider")
                     .Grid(column: 1, row: 1),
                 resize.Grid(column: 1, row: 1),
-                panel.Grid(column: split ? 2 : 0, row: 1))
+                ChatMotion.Host(panelHost)
+                    .Set(control => Pin(control, panelPin))
+                    .Margin(0, -lift, 0, 0)
+                    .WithKey("conversation-panel")
+                    .Grid(column: split || animating ? 2 : 0, row: 1))
+            .Set(control =>
+            {
+                var root = (Grid)control;
+                motion.Root = root;
+                // Reactor skips columns it declared unchanged, so widths a finished motion drew are restored here.
+                if (root.ColumnDefinitions.Count == 3)
+                {
+                    root.ColumnDefinitions[1].Width = new GridLength(dividerColumn);
+                    root.ColumnDefinitions[2].Width = new GridLength(panelColumn);
+                }
+                if (motion.Pending)
+                    motion.Run(() => setSettled(++motion.Generation));
+            })
             .OnMount(control =>
             {
                 ChatVisuals.Observe(control, setWidth);
@@ -284,6 +412,9 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
             })
             .OnUnmount(control =>
             {
+                motion.Cancel();
+                motion.Root = null;
+                motion.Frame = null;
                 ChatVisuals.StopObserving(control);
                 if (layoutWatch.Current is { } watch) ((FrameworkElement)control).LayoutUpdated -= watch;
                 layoutWatch.Current = null;
@@ -294,6 +425,70 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
     }
 
     private static string Text(string name) => LocalizationHelper.GetString("Chat_Panel_" + name);
+
+    // Holds a moving element at its resting width at the start of its column, so the column clips it
+    // instead of reflowing it every frame.
+    private static void Pin(FrameworkElement control, double? width)
+    {
+        if (width is { } pinned)
+        {
+            control.Width = Math.Max(0, pinned);
+            control.HorizontalAlignment = HorizontalAlignment.Left;
+            return;
+        }
+        control.ClearValue(FrameworkElement.WidthProperty);
+        control.ClearValue(FrameworkElement.HorizontalAlignmentProperty);
+    }
+
+    /// <summary>
+    /// Eases the panel column between two <see cref="PanelMode"/> extents, writing the divider and panel
+    /// columns natively each frame. Render records a pending change; the root grid starts it once applied.
+    /// </summary>
+    private sealed class PanelWidthMotion
+    {
+        private OpenClawTray.Windows.WorkspacePaneAnimator? _animator;
+
+        internal Grid? Root { get; set; }
+        internal PanelMode? Mode { get; set; }
+        internal PanelMode From { get; set; }
+        internal PanelMode To { get; set; }
+        internal double Start { get; set; }
+        internal double Target { get; set; }
+        /// <summary>Area width the extents were measured at; a resize cancels the motion.</summary>
+        internal double Width { get; set; }
+        internal bool Pending { get; set; }
+        internal long Generation { get; set; }
+        /// <summary>Per-frame header update for a panel whose leading edge passes the caption-row start controls.</summary>
+        internal Action<double>? Frame { get; set; }
+
+        private bool Running => _animator?.IsRunning == true;
+        internal bool Active => Pending || Running;
+        internal double Current => !Pending && Running ? _animator!.Current : Start;
+
+        internal void Cancel()
+        {
+            _animator?.Cancel();
+            Pending = false;
+        }
+
+        internal void Run(Action completed)
+        {
+            Pending = false;
+            (_animator ??= new(Apply)).Run(Start, Target, completed);
+        }
+
+        private void Apply(double extent)
+        {
+            if (Root is not { ColumnDefinitions.Count: 3 } root) return;
+            root.ColumnDefinitions[1].Width = new GridLength(DividerAt(extent, Width));
+            root.ColumnDefinitions[2].Width = new GridLength(extent);
+            Frame?.Invoke(extent);
+        }
+
+        /// <summary>The divider column narrows to nothing as the panel column nears either edge.</summary>
+        internal static double DividerAt(double extent, double width) =>
+            Math.Clamp(Math.Min(extent, width - extent), 0, ChatConversationPanelState.DividerWidth);
+    }
 
     /// <summary>
     /// Keeps tabs clear of window controls in the caption row while the strip's bottom line
@@ -319,6 +514,31 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
 
     private static string? SlotOf(object item) =>
         item is TabViewItem { Content: FrameworkElement { Tag: string slot } } ? slot : null;
+
+    private static void ApplyTabAppearance(TabView view)
+    {
+        var style = (Style)Application.Current.Resources["ChatPanelTabStyle"];
+        foreach (var item in view.TabItems.OfType<TabViewItem>())
+        {
+            item.Style = style;
+            item.MaxWidth = TabMaximumWidth;
+            var glyph = SlotOf(item) switch
+            {
+                ChatConversationPanelState.SubagentsSlot => FluentIconCatalog.Subagent,
+                ChatConversationPanelState.DashboardSlot => FluentIconCatalog.DashboardView,
+                ChatConversationPanelState.FilesSlot => FluentIconCatalog.Folder,
+                ChatConversationPanelState.FileSlot => FluentIconCatalog.Document,
+                _ => FluentIconCatalog.Terminal,
+            };
+            if (item.IconSource is not FontIconSource icon || icon.Glyph != glyph)
+                item.IconSource = new FontIconSource
+                {
+                    Glyph = glyph,
+                    FontFamily = FluentIconCatalog.SymbolThemeFontFamily,
+                    FontSize = 16,
+                };
+        }
+    }
 
     private static string TabTitle(string slot, ChatConversationPanelState state) => slot switch
     {
