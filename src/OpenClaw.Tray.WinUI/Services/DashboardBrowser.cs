@@ -1,10 +1,5 @@
 // Final hand-off of a credential-bearing Gateway Dashboard URL to Windows.
 //
-// Usage (App.CreateDashboardLauncher):
-//   var browser = new DashboardBrowser(
-//       async url => await Launcher.LaunchUriAsync(new Uri(url)), Logger.Info);
-//   new GatewayDashboardLauncher(..., browser.OpenAsync, ...);
-//
 // Ordinary runs pass the URL straight to Windows. Gateway fixture runs never reach a real
 // browser: the launch is logged with a redacted URL and reported as opened, so full-app
 // tests can observe that dispatch happened (or did not) without leaking the fixture token.

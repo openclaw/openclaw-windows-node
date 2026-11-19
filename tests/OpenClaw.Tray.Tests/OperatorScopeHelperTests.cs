@@ -14,10 +14,11 @@ public class OperatorScopeHelperTests
     }
 
     [Fact]
-    public void CanWriteConfig_AllowsAdminOrWriteScope()
+    public void CanWriteConfig_RequiresAdminScope()
     {
         Assert.True(OperatorScopeHelper.CanWriteConfig(["operator.admin"]));
-        Assert.True(OperatorScopeHelper.CanWriteConfig(["operator.write"]));
+        Assert.False(OperatorScopeHelper.CanWriteConfig(["operator.write"]));
+        Assert.False(OperatorScopeHelper.CanWriteConfig(["operator.read", "operator.write"]));
         Assert.False(OperatorScopeHelper.CanWriteConfig(["operator.read"]));
         Assert.False(OperatorScopeHelper.CanWriteConfig([]));
     }

@@ -16,8 +16,7 @@ public static class OperatorScopeHelper
         HasScope(grantedScopes, ReadScope);
 
     public static bool CanWriteConfig(IReadOnlyList<string> grantedScopes) =>
-        HasAdminScope(grantedScopes) ||
-        HasScope(grantedScopes, WriteScope);
+        HasAdminScope(grantedScopes);
 
     public static bool HasAdminScope(IReadOnlyList<string> grantedScopes) =>
         HasScope(grantedScopes, AdminScope);

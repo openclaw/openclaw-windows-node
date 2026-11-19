@@ -84,6 +84,7 @@ public partial class App
             }));
         }
 
+        _gatewayDashboardLinkService = null;
         // Native withdrawal borrows the authorized manager connection. Drain recovery
         // and withdraw before that owner is disconnected, even when the Gateway stays running.
         var localAiLifecycle = _localAiGatewayLifecycle;

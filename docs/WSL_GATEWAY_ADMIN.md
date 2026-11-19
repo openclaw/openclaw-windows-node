@@ -120,7 +120,40 @@ wsl.exe -d OpenClawGateway --user openclaw -- bash -lc "systemctl --user status 
 
 The generated WSL distro is Ubuntu 24.04 (noble). Tailscale Serve setup requires that exact generated distro and rejects another `BaseDistro` before replacing an existing gateway. Setup installs Tailscale from its signed stable APT repository rather than executing the mutable `install.sh` bootstrap script as root.
 
-Tailscale Serve preserves Companion token and device authentication by default (`gateway.auth.allowTailscale=false`). Setup runs `tailscale up`, Serve, reset, logout, and daemon management as root; the `openclaw` account is never made a Tailscale operator. Tailscale's LocalAPI permits read-only operations, such as identity lookup, to local unprivileged clients while reserving mutation for root or an explicitly configured operator. In the setup review, **Trust Tailscale identities for gateway authentication** is an explicit opt-in; when enabled, verified Tailscale identity headers and tailnet ACLs become part of the gateway access-control boundary. Token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
+Tailscale Serve preserves Companion token and device authentication by default (`gateway.auth.allowTailscale=false`). Setup runs `tailscale up`, Serve, reset, logout, and daemon management as root; the `openclaw` account is never made a Tailscale operator. Tailscale's LocalAPI permits read-only operations, such as identity lookup, to local unprivileged clients while reserving mutation for root or an explicitly configured operator. In the setup review, **Trust Tailscale identities for gateway authentication** is an explicit opt-in that writes the auth setting and records consent. Consent alone does not establish working identity authentication: the setup-generated background Serve route is not Core-managed identity ingress. Token and device credentials remain available for Companion pairing and compatibility. Do not enable Funnel for this generated gateway: this workflow supports private tailnet Serve only.
+
+### Upgrade dashboard authentication on an existing gateway
+
+In Connection, select the managed Tailscale gateway, connect with
+`operator.admin`, then choose **Use Tailscale identity for dashboard** from its
+saved-row menu and confirm. This auth-only action requires
+`gateway.tailscale.mode="serve"` and verified Core-owned foreground Serve ingress.
+It reads configuration and checks ingress before changing either Core or local
+trust. Missing or unavailable ingress returns a not-ready message.
+
+The default setup topology has `gateway.tailscale.mode="off"` and root-owned
+`tailscale serve --bg`. It is unsupported by this action, even if Serve forwards
+HTTPS successfully. Ask the gateway administrator to review the installed Core
+version and deployment. The action does not migrate the distro, switch Serve
+ownership, restart services, or change token/device credentials. Do not toggle
+the mode alone and assume that proves compatible ingress.
+
+On supported ingress, the action sends only
+`{"gateway":{"auth":{"allowTailscale":true}}}` with the fresh Core config hash.
+A new local `TrustTailscaleAuth` marker is saved only after Core confirms patch
+acceptance. The success message reports acceptance, not completed asynchronous
+application. Dashboard links separately verify matching applied configuration
+and live ingress before omitting the browser token.
+
+A rejected, timed-out, lost, or canceled response does not create new trust.
+Reconnect and repeat the same action; it remains available after registry reload,
+and its minimal patch is idempotent even if Core accepted the earlier request.
+Cancellation during dispatch waits for the bounded request to finish before
+returning, without saving new trust. A local save failure restores the in-memory
+marker and leaves the same retry available. Existing true consent is preserved
+on ambiguous failures; only authoritative applied config revocation clears it.
+When live identity cannot be verified, links use an independently approved shared
+browser credential or fail closed if none is available.
 
 ## Use root instead of sudo
 

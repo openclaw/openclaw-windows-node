@@ -503,8 +503,9 @@ public sealed class SetupNativeChatPresentationTests
                 completion.Verification, completion.Target.SessionKey)),
             async (selected, _) =>
             {
-                var dashboard = new GatewayDashboardLauncher(() => true,
-                    () =>
+                var dashboard = new GatewayDashboardLauncher(
+                    () => true,
+                    _ =>
                     {
                         if (mutation == "gateway")
                             identity.Registry.AddOrUpdate(Gateway with { Url = "wss://replaced.test/" });
@@ -513,16 +514,19 @@ public sealed class SetupNativeChatPresentationTests
                             File.Delete(identity.IdentityFile);
                             new DeviceIdentity(Path.GetDirectoryName(identity.IdentityFile)!).Initialize();
                         }
-                        return new InteractiveGatewayCredential(
-                            Gateway.Url, "synthetic shared", false, CredentialResolver.SourceSharedGatewayToken);
+                        return new GatewayDashboardLinkRequest(
+                            Gateway.Url, "channels", "synthetic shared", AppendBrowserCredential: true);
                     },
+                    new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key),
                     _ =>
                     {
                         browserLaunches++;
                         return Task.FromResult(true);
-                    }, () => { });
+                    },
+                    _ => { },
+                    _ => { });
                 var request = new SetupNativeNavigationRequest(selected);
-                if (!await dashboard.OpenAsync("channels", () =>
+                if (!await dashboard.OpenAsync("channels", authorizeDispatch: () =>
                     request.GetConnectedClient(identity.Registry, h.Connection)))
                     throw new InvalidOperationException("The bound dashboard was not dispatched.");
             }, value => failure = value);

@@ -21,8 +21,9 @@ public sealed class AutomationsWebHandoffTests
     public async Task OpenInWeb_LaunchesTheAutomationsRouteThroughTheDashboardLauncher(string gatewayUrl, string? jobId, string expected)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new(gatewayUrl, "shared secret", false, CredentialResolver.SourceSharedGatewayToken),
+        var launcher = CreateDashboardLauncher(
+            gatewayUrl,
+            appendBrowserCredential: true,
             url => { launched = url; return Task.FromResult(true); },
             () => throw new InvalidOperationException("Unexpected failure"));
 
@@ -38,10 +39,12 @@ public sealed class AutomationsWebHandoffTests
     public async Task OpenInWeb_NeverExportsDeviceOrBootstrapTokens(string source, bool bootstrap)
     {
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new("wss://gateway.example/control", "do-not-export", bootstrap, source),
+        var launcher = CreateDashboardLauncher(
+            "wss://gateway.example/control",
+            appendBrowserCredential: !bootstrap && source == CredentialResolver.SourceSharedGatewayToken,
             url => { launched = url; return Task.FromResult(true); },
-            () => throw new InvalidOperationException("Unexpected failure"));
+            () => throw new InvalidOperationException("Unexpected failure"),
+            bootstrap ? null : "do-not-export");
 
         Assert.True(await launcher.OpenAsync(CronProtocol.WebPath("job-1")));
         Assert.Equal("https://gateway.example/control/cron?job=job-1", launched);
@@ -52,14 +55,29 @@ public sealed class AutomationsWebHandoffTests
     {
         var launches = 0;
         var failures = 0;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new("wss://gateway.example", "shared", false, CredentialResolver.SourceSharedGatewayToken),
+        var launcher = CreateDashboardLauncher(
+            "wss://gateway.example",
+            appendBrowserCredential: true,
             _ => { launches++; return Task.FromResult(false); },
             () => failures++);
 
         Assert.False(await launcher.OpenAsync(CronProtocol.WebPath("job-1")));
         Assert.Equal((1, 1), (launches, failures));
     }
+
+    private static GatewayDashboardLauncher CreateDashboardLauncher(
+        string gatewayUrl,
+        bool appendBrowserCredential,
+        Func<string, Task<bool>> launchBrowser,
+        Action reportFailure,
+        string? token = "shared secret") =>
+        new(
+            () => true,
+            path => new GatewayDashboardLinkRequest(gatewayUrl, path, token, appendBrowserCredential),
+            new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key),
+            launchBrowser,
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure"),
+            _ => reportFailure());
 
     private static string? ParseJob(string url)
     {

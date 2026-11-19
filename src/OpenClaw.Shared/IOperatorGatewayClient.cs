@@ -158,6 +158,8 @@ public interface IOperatorGatewayClient
     Task RequestCronRunsAsync(string? id = null, int limit = 20, int offset = 0);
     /// <summary>Requests the effective Gateway configuration and raises <see cref="ConfigUpdated"/>.</summary>
     Task RequestConfigAsync();
+    Task<JsonElement> RequestConfigDetailedAsync(int timeoutMs = 15000) =>
+        Task.FromException<JsonElement>(new NotSupportedException("Response-aware config.get is not supported by this client."));
     Task RequestConfigSchemaAsync();
     Task<bool> SetConfigAsync(string path, object value);
     /// <summary>Applies a full configuration document against an optional Gateway base hash.</summary>

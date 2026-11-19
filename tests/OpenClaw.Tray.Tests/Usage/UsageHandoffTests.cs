@@ -28,10 +28,14 @@ public sealed class UsageHandoffTests
         Assert.Empty(commands.Navigations);
 
         string? launched = null;
-        var launcher = new GatewayDashboardLauncher(() => true,
-            () => new(gatewayUrl, "synthetic shared", false, CredentialResolver.SourceSharedGatewayToken),
+        var launcher = new GatewayDashboardLauncher(
+            () => true,
+            route => new GatewayDashboardLinkRequest(
+                gatewayUrl, route, "synthetic shared", AppendBrowserCredential: true),
+            new GatewayDashboardLinkService((_, _) => Task.FromResult(false), key => key),
             url => { launched = url; return Task.FromResult(true); },
-            () => throw new InvalidOperationException("Unexpected launch failure."));
+            _ => throw new InvalidOperationException("Unexpected Dashboard link failure."),
+            _ => throw new InvalidOperationException("Unexpected launch failure."));
         Assert.True(await launcher.OpenAsync(path));
         Assert.Equal(expected, launched);
         Assert.DoesNotContain("session", launched, StringComparison.OrdinalIgnoreCase);

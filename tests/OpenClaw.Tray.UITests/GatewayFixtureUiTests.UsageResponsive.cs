@@ -711,6 +711,13 @@ public sealed partial class GatewayFixtureUiTests
                                         return true;
                                     }
                                 }
+                                if (candidate is null && FindById(run, "UsageSessionsShowAll") is { Current.IsOffscreen: false } more)
+                                {
+                                    Invoke(more);
+                                    requestedPercent = 0;
+                                    scroll.SetScrollPercent(ScrollPattern.NoScroll, requestedPercent);
+                                    return false;
+                                }
                                 Assert.True(requestedPercent < 100 && position.VerticalViewSize is > 0 and < 100,
                                     "Main Usage session header has no visible measured geometry at the end of the page.");
                                 // Overlapping half-viewport steps reveal the intended row, not a calendar-dependent offset.
