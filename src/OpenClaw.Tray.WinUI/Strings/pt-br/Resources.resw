@@ -6175,6 +6175,7 @@ Abrir Canais no painel web.</value>
   <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Não foi possível iniciar o download</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>IA local</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>IA local</value></data>
+  <data name="LocalAiPage_RequirementsLink.Content" xml:space="preserve"><value>Requisitos e instalação</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Execute o llama-server nativo verificado de forma privada neste computador. Os modelos são carregados apenas quando solicitados.</value></data>
   <data name="LocalAiPage_EngineHeading.Text" xml:space="preserve"><value>llama-server</value></data>
   <data name="LocalAiPage_VersionLabel.Text" xml:space="preserve"><value>Versão</value></data>
@@ -6299,7 +6300,7 @@ Abrir Canais no painel web.</value>
   <data name="LocalAi_Reason_GigabytesFormat" xml:space="preserve"><value>{0:0.#} GiB</value></data>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>O OpenClaw não conseguiu ler um identificador estável, a memória, o driver ou a capacidade CUDA da GPU NVIDIA.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} requer {1} de memória da GPU para pesos do modelo, cache KV e espaço de trabalho do runtime. O OpenClaw detectou {2}.</value></data>
-  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>Nenhuma GPU NVIDIA foi informada pelo driver NVIDIA. Instale ou repare o driver NVIDIA e tente configurar novamente.</value></data>
+  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>Esta instalação gerenciada requer uma GPU NVIDIA compatível e seu driver. Intel Arc e outras GPUs que não sejam NVIDIA não são compatíveis com esta instalação. Se este computador também tiver uma GPU NVIDIA, verifique o driver e tente configurar novamente.</value></data>
   <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>Esta versão da IA local não inclui um runtime nativo do llama-server para a arquitetura Windows detectada.</value></data>
   <data name="LocalAi_Reason_UnknownDriverVersion" xml:space="preserve"><value>desconhecida</value></data>
   <data name="LocalAi_Reason_UnknownMemoryAmount" xml:space="preserve"><value>uma quantidade desconhecida</value></data>

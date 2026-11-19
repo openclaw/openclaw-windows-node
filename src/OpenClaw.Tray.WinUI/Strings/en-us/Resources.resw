@@ -6204,6 +6204,7 @@ Open Channels in the web dashboard.</value>
   <data name="Chat_AssistantMedia_DownloadFailed" xml:space="preserve"><value>Couldn't start the download</value></data>
   <data name="HubWindow_NavigationViewItem_LocalAi.Content" xml:space="preserve"><value>Local AI</value></data>
   <data name="LocalAiPage_Title.Text" xml:space="preserve"><value>Local AI</value></data>
+  <data name="LocalAiPage_RequirementsLink.Content" xml:space="preserve"><value>Requirements and setup</value></data>
   <data name="LocalAiPage_Intro.Text" xml:space="preserve"><value>Run the verified native llama-server privately on this computer. Models load only when requested.</value></data>
   <data name="LocalAiPage_UnavailableInfoBar.Title" xml:space="preserve"><value>Local AI is not available</value></data>
   <data name="LocalAiPage_UnavailableDetailsButton.Content" xml:space="preserve"><value>See why</value></data>
@@ -6342,7 +6343,7 @@ Open Channels in the web dashboard.</value>
   <data name="Onboarding_LocalAi_UnavailableDetailsDialogTitle" xml:space="preserve"><value>Why Local AI is unavailable</value></data>
   <data name="Onboarding_LocalAi_UnavailableDetailsDialogClose" xml:space="preserve"><value>Close</value></data>
   <data name="LocalAi_Reason_RuntimeUnavailable" xml:space="preserve"><value>This Local AI release does not include a native llama-server runtime for the detected Windows architecture.</value></data>
-  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>No NVIDIA GPU was reported by the NVIDIA driver. Install or repair the NVIDIA driver, then try setup again.</value></data>
+  <data name="LocalAi_Reason_NoNvidiaGpu" xml:space="preserve"><value>This managed setup requires a compatible NVIDIA GPU and driver. Intel Arc and other non-NVIDIA GPUs are not supported by this setup. If this computer also has an NVIDIA GPU, check its driver and try setup again.</value></data>
   <data name="LocalAi_Reason_UnknownModel" xml:space="preserve"><value>The selected model is not available in this Local AI release.</value></data>
   <data name="LocalAi_Reason_HardwareFactsIncomplete" xml:space="preserve"><value>OpenClaw could not read all required GPU, system memory, or disk facts. Recheck to try again.</value></data>
   <data name="LocalAi_Reason_InsufficientGpuMemory" xml:space="preserve"><value>{0} requires {1} of GPU memory for model weights, KV cache, and runtime workspace. OpenClaw detected {2}.</value></data>
