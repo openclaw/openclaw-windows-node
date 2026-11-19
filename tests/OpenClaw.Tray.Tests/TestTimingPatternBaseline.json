@@ -119,7 +119,7 @@
     "tests/OpenClaw.Tray.UITests/GatewayFixtureContextUsageUiTests.cs": 6,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureDashboardUiTests.cs": 21,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureInteractiveUiTests.cs": 14,
-    "tests/OpenClaw.Tray.UITests/GatewayFixtureMainSearchUiTests.cs": 52,
+    "tests/OpenClaw.Tray.UITests/GatewayFixtureMainSearchUiTests.cs": 50,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureSettingsModalUiTests.cs": 22,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureSystemsUiTests.cs": 29,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureUiTests.ComposerHistory.cs": 14,

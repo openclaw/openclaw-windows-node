@@ -307,7 +307,7 @@ public sealed partial class GatewayFixtureUiTests
                 SetForeground(window);
                 Invoke(FindById(run, buttonId)!);
                 await WaitUiAsync(run, () => FindById(run, inputId) is not null, $"{inputId} opened");
-                var input = SearchEdit(run, inputId);
+                var input = await SearchEditAsync(run, inputId);
                 ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(query);
                 await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is { Current.IsOffscreen: false } result
                     && result.Current.Name.StartsWith("Channels.", StringComparison.Ordinal)
