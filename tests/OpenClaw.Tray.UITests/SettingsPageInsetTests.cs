@@ -3,7 +3,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Controls;
 using OpenClawTray.Pages;
 using OpenClawTray.Presentation;
@@ -18,7 +17,7 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
     public async Task DesktopLobster_HasNamedDisclosureAndIndependentToggleWithNoneditableSizePicker()
     {
         await ui.ResetContainerAsync();
-        await ui.RunOnUIAsync(() =>
+        await ui.RunOnUIAsync(async () =>
         {
             using var resources = new ChatThemeProofScope("Light");
             var page = new SettingsPage();
@@ -27,7 +26,11 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
             {
                 ui.Container.UpdateLayout();
                 var card = Assert.IsType<SettingsExpander>(page.FindName("DesktopCompanionExpander"));
-                var disclosure = Assert.Single(Descendants(card).OfType<Expander>());
+                Expander[] disclosures = [];
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => (disclosures = TestSupport.FindDescendants<Expander>(card).ToArray()).Length > 0,
+                    "Desktop lobster disclosure template");
+                var disclosure = Assert.Single(disclosures);
                 var peer = FrameworkElementAutomationPeer.CreatePeerForElement(disclosure);
                 Assert.Equal("Desktop lobster", peer.GetName());
                 var expansion = Assert.IsAssignableFrom<IExpandCollapseProvider>(
@@ -55,17 +58,6 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
                 ui.Container.Children.Remove(page);
             }
         });
-    }
-
-    private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
-    {
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
-        {
-            var child = VisualTreeHelper.GetChild(parent, index);
-            yield return child;
-            foreach (var descendant in Descendants(child))
-                yield return descendant;
-        }
     }
 
     [Fact]
