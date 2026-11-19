@@ -26,6 +26,13 @@ public static class LocalAiGatewayProviderDefinition
     public const int ProviderTimeoutSeconds = 300;
     public const int MaximumOutputTokens = 8_192;
 
+    /// <summary>
+    /// Model keys the effort metadata needs. A protocol-4 Gateway can predate
+    /// them (thinkingLevelMap arrived in 2026.6.5) and rejects them as unknown.
+    /// </summary>
+    public static readonly IReadOnlyList<string> EffortMetadataKeys =
+        ["thinkingLevelMap", "supportedReasoningEfforts", "reasoningEffortMap"];
+
     /// <summary>Caps generated Gateway output tokens to one quarter of the selected context window.</summary>
     public static int GetMaximumOutputTokens(int contextTokens) =>
         Math.Min(MaximumOutputTokens, contextTokens / 4);
@@ -57,7 +64,7 @@ public static class LocalAiGatewayProviderDefinition
         if (MatchesProviderJson(priorProviderJson, install))
             return BuildProviderJson(install);
         if (MatchesLegacyProviderJson(priorProviderJson, install))
-            return BuildProviderJson(install, "llama-local", legacy: true);
+            return BuildLegacyProviderJson(install);
         throw new InvalidDataException("The original Local AI provider is not an exact managed configuration.");
     }
 
@@ -137,6 +144,13 @@ public static class LocalAiGatewayProviderDefinition
     /// <summary>Builds the managed provider JSON for a resolved install and explicit local API credential.</summary>
     public static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey) =>
         BuildProviderJson(install, apiKey, legacy: false);
+
+    /// <summary>
+    /// Builds the exact pre-effort provider for Gateways whose model schema
+    /// rejects effort metadata. Effort Off cannot disable reasoning there.
+    /// </summary>
+    public static string BuildLegacyProviderJson(LocalAiResolvedInstall install, string apiKey = "llama-local") =>
+        BuildProviderJson(install, apiKey, legacy: true);
 
     private static string BuildProviderJson(LocalAiResolvedInstall install, string apiKey, bool legacy)
     {
@@ -251,10 +265,13 @@ public static class LocalAiGatewayProviderDefinition
         }
     }
 
-    /// <summary>Builds an atomic Gateway batch that writes both provider definition and primary model.</summary>
-    public static string BuildProviderBatchJson(LocalAiResolvedInstall install)
+    /// <summary>
+    /// Builds an atomic Gateway batch that writes both provider definition and
+    /// primary model, in the pre-effort shape when <paramref name="legacy"/> is set.
+    /// </summary>
+    public static string BuildProviderBatchJson(LocalAiResolvedInstall install, bool legacy = false)
     {
-        using JsonDocument provider = JsonDocument.Parse(BuildProviderJson(install));
+        using JsonDocument provider = JsonDocument.Parse(BuildProviderJson(install, "llama-local", legacy));
         return JsonSerializer.Serialize(new[]
         {
             new { path = ProviderPath, value = (object)provider.RootElement.Clone() },

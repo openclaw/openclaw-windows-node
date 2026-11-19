@@ -16,15 +16,16 @@ internal static class LocalAiGatewayConfigBuilder
     internal const string ProviderPath = LocalAiGatewayProviderDefinition.ProviderPath;
     internal const string PrimaryModelPath = LocalAiGatewayProviderDefinition.PrimaryModelPath;
 
-    public static string BuildBatchJson(SetupContext context)
+    public static string BuildBatchJson(SetupContext context, bool legacy = false)
     {
         ArgumentNullException.ThrowIfNull(context);
         var install = context.LocalAiResolvedInstall
             ?? throw new InvalidOperationException("The Local AI install receipt is required.");
         _ = context.LocalAiEligibility?.Plan
             ?? throw new InvalidOperationException("The qualified Local AI plan is required.");
-        using JsonDocument provider = JsonDocument.Parse(
-            LocalAiGatewayProviderDefinition.BuildProviderJson(install));
+        using JsonDocument provider = JsonDocument.Parse(legacy
+            ? LocalAiGatewayProviderDefinition.BuildLegacyProviderJson(install)
+            : LocalAiGatewayProviderDefinition.BuildProviderJson(install));
         object[] operations =
         [
             new { path = ProviderPath, value = (object)provider.RootElement.Clone() },
@@ -204,6 +205,17 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
 
         string batchJson = LocalAiGatewayConfigBuilder.BuildBatchJson(ctx);
         CommandResult result = await ApplyBatchAsync(ctx, batchJson, "LOCAL_AI_GATEWAY_CONFIGURED", ct);
+        if (result.ExitCode != 0 && !result.TimedOut &&
+            await RejectsBatchAsync(ctx, batchJson, ct).ConfigureAwait(false))
+        {
+            // Effort metadata needs Gateway 2026.6.5 or later; protocol-4 Gateways
+            // before it reject the model keys. The dry-run wrote nothing, so publish
+            // the exact pre-effort provider instead of failing setup.
+            ctx.Logger.Warn("The Gateway does not accept Local AI effort metadata (it needs OpenClaw Gateway 2026.6.5 or later). " +
+                "Publishing the earlier provider shape, so Effort Off cannot turn reasoning off on this Gateway.");
+            result = await ApplyBatchAsync(
+                ctx, LocalAiGatewayConfigBuilder.BuildBatchJson(ctx, legacy: true), "LOCAL_AI_GATEWAY_CONFIGURED", ct);
+        }
         if (result.ExitCode != 0 || result.TimedOut ||
             !result.Stdout.Contains("LOCAL_AI_GATEWAY_CONFIGURED", StringComparison.Ordinal))
         {
@@ -268,8 +280,9 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
         }
 
         string expectedPrimary = JsonSerializer.Serialize(LocalAiGatewayConfigBuilder.ExpectedPrimaryModel(ctx));
+        // Setup writes the pre-effort shape to Gateways that reject effort metadata.
         if (!current.ProviderExisted || !current.PrimaryModelExisted ||
-            !LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            !LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
                 current.ProviderJson!,
                 ctx.LocalAiResolvedInstall!) ||
             !JsonEquals(current.PrimaryModelJson!, expectedPrimary))
@@ -384,7 +397,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             observed.ProviderExisted &&
             observed.PrimaryModelExisted &&
             ctx.LocalAiResolvedInstall is { } replacement &&
-            LocalAiGatewayProviderDefinition.MatchesProviderJson(
+            LocalAiGatewayProviderDefinition.MatchesCurrentOrLegacyProviderJson(
                 observed.ProviderJson!,
                 replacement) &&
             JsonEquals(
@@ -538,16 +551,27 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             user: ctx.Config.Wsl.User, inputViaStdin: true);
     }
 
+    /// <summary>True only when a dry-run of the batch completed and the Gateway rejected it.</summary>
+    private static async Task<bool> RejectsBatchAsync(SetupContext ctx, string batchJson, CancellationToken ct)
+    {
+        CommandResult validated = await ApplyBatchAsync(
+            ctx, batchJson, "LOCAL_AI_GATEWAY_VALIDATED", ct, apply: false).ConfigureAwait(false);
+        return validated.ExitCode != 0 && !validated.TimedOut;
+    }
+
     private static Task<CommandResult> ApplyBatchAsync(
         SetupContext ctx,
         string batchJson,
         string successMarker,
-        CancellationToken ct)
+        CancellationToken ct,
+        bool apply = true)
     {
         var environment = new Dictionary<string, string>
         {
             [BatchVariable] = Convert.ToBase64String(Encoding.UTF8.GetBytes(batchJson)),
         };
+        // A validation-only run stops after the dry-run (":" is the shell no-op).
+        string write = apply ? "openclaw config set --batch-file \"$batch_file\"" : ":";
         string script = $$"""
             set -e
             {{ctx.WslPathPrefix}}
@@ -555,7 +579,7 @@ public sealed class ConfigureLocalAiGatewayStep : SetupStep
             trap 'rm -f "$batch_file"' EXIT
             printf '%s' "$OPENCLAW_LOCAL_AI_BATCH_B64" | base64 -d > "$batch_file"
             openclaw config set --batch-file "$batch_file" --dry-run
-            openclaw config set --batch-file "$batch_file"
+            {{write}}
             echo {{successMarker}}
             """;
         return ctx.Commands.RunInWslAsync(

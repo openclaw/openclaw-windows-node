@@ -21,22 +21,29 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
     private readonly IOpenClawLogger _logger;
     private readonly Func<string, string>? _getString;
 
+    // The provider shape the installed Gateway accepts, decided before an
+    // endpoint-cycle withdrawal and consumed by the publication that follows.
+    private ProviderShape? _decidedShape;
+
     public LocalAiGatewayProviderCoordinator(
         IWslCommandRunner commands,
         ILocalAiGatewayDistroResolver distroResolver,
-        IOpenClawLogger logger)
+        IOpenClawLogger logger,
+        Func<string, string>? getString = null)
         : this(new WslLocalAiGatewayConfigurationTransport(
             commands ?? throw new ArgumentNullException(nameof(commands)),
-            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger)
+            distroResolver ?? throw new ArgumentNullException(nameof(distroResolver))), logger, getString)
     {
     }
 
     public LocalAiGatewayProviderCoordinator(
         ILocalAiGatewayConfigurationTransport configuration,
-        IOpenClawLogger logger)
+        IOpenClawLogger logger,
+        Func<string, string>? getString = null)
     {
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _getString = getString;
     }
 
     public LocalAiGatewayProviderCoordinator(
@@ -51,12 +58,22 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         _getString = getString;
     }
 
-    public async Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
+    public Task<LocalAiEndpointLifecycleResult> QuiesceAsync(
         LocalAiResolvedInstall install,
         LocalAiQuiesceReason reason = LocalAiQuiesceReason.Teardown,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(install);
+        // Every external withdrawal starts a fresh decision; the Gateway may have changed.
+        _decidedShape = null;
+        return QuiesceCoreAsync(install, reason, cancellationToken);
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> QuiesceCoreAsync(
+        LocalAiResolvedInstall install,
+        LocalAiQuiesceReason reason,
+        CancellationToken cancellationToken)
+    {
         GatewayCapture current = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
         if (!current.Success)
             return Failed(current.Detail ?? "The managed Local AI gateway route could not be inspected.");
@@ -69,9 +86,9 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 install.Manifest.GatewayFallbackModel);
             if (current.ProviderExists)
             {
-                _ = BuildProvider(install);
-                if (!MatchesProvider(current.ProviderJson!, install) &&
-                    !MatchesLegacyProvider(current.ProviderJson!, install))
+                _ = BuildProvider(install, ProviderShape.Current);
+                if (!MatchesProvider(current.ProviderJson!, install, ProviderShape.Current) &&
+                    !MatchesProvider(current.ProviderJson!, install, ProviderShape.Legacy))
                 {
                     return Failed("The llamacpp provider was changed outside the companion; preserving it and refusing to cycle the managed endpoint.");
                 }
@@ -93,6 +110,15 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
 
         string? expectedPrimary = current.PrimaryModel;
         bool retainManagedPrimary = reason == LocalAiQuiesceReason.EndpointCycle;
+        if (retainManagedPrimary && current.ProviderExists)
+        {
+            // The route is republished right after an endpoint cycle. Withdraw
+            // it only once the installed Gateway is known to accept a replacement.
+            LocalAiEndpointLifecycleResult decided = await EnsureShapeAsync(install, cancellationToken)
+                .ConfigureAwait(false);
+            if (!decided.Success)
+                return decided;
+        }
         if (_atomicConfiguration is not null)
         {
             if (primaryIsManaged && !retainManagedPrimary)
@@ -166,10 +192,23 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(install);
-        string batch;
         try
         {
-            batch = LocalAiGatewayProviderDefinition.BuildProviderBatchJson(install);
+            return await PublishCoreAsync(install, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _decidedShape = null;
+        }
+    }
+
+    private async Task<LocalAiEndpointLifecycleResult> PublishCoreAsync(
+        LocalAiResolvedInstall install,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _ = LocalAiGatewayProviderDefinition.BuildProviderBatchJson(install);
         }
         catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
         {
@@ -180,10 +219,19 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         LocalAiEndpointLifecycleResult admission = CheckPublication(current, install);
         if (!admission.Success)
             return admission;
+        // Admission accepted the current shape or the exact pre-effort shape.
+        if (current.ProviderExists && MatchesProvider(current.ProviderJson!, install, ProviderShape.Current))
+            return admission;
+        // Decide what the installed Gateway accepts before anything is written or withdrawn.
+        LocalAiEndpointLifecycleResult decided = await EnsureShapeAsync(install, cancellationToken)
+            .ConfigureAwait(false);
+        if (!decided.Success)
+            return decided;
+        ProviderShape shape = _decidedShape!.Value;
         if (current.ProviderExists)
         {
-            // Admission accepted the current shape or the exact pre-effort shape.
-            if (MatchesProvider(current.ProviderJson!, install))
+            // A Gateway that rejects effort metadata keeps its pre-effort route as is.
+            if (shape == ProviderShape.Legacy)
                 return admission;
             // Native endpoint recovery keeps a verified live route, so only the
             // owned model array of a pre-effort provider is upgraded in place.
@@ -191,7 +239,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
                 return await MigrateLegacyProviderAsync(current, install, cancellationToken).ConfigureAwait(false);
             // WSL always quiesces before publishing, so a pre-effort provider is
             // withdrawn like an endpoint cycle and published from scratch.
-            LocalAiEndpointLifecycleResult withdrawn = await QuiesceAsync(
+            LocalAiEndpointLifecycleResult withdrawn = await QuiesceCoreAsync(
                 install, LocalAiQuiesceReason.EndpointCycle, cancellationToken).ConfigureAwait(false);
             if (!withdrawn.Success)
                 return withdrawn;
@@ -222,14 +270,16 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             var patch = new JsonObject
             {
                 ["models"] = new JsonObject { ["providers"] = new JsonObject
-                    { ["llamacpp"] = JsonNode.Parse(BuildProvider(install)) } },
+                    { ["llamacpp"] = JsonNode.Parse(BuildProvider(install, shape)) } },
                 ["agents"] = new JsonObject { ["defaults"] = defaults },
             };
             var result = await ApplyAtomicAsync(current, patch, cancellationToken).ConfigureAwait(false);
             if (!result.Success) return result;
-            return await VerifyPublishedAsync(install, CancellationToken.None).ConfigureAwait(false);
+            return await VerifyPublishedAsync(install, shape, CancellationToken.None).ConfigureAwait(false);
         }
 
+        string batch = LocalAiGatewayProviderDefinition.BuildProviderBatchJson(
+            install, legacy: shape == ProviderShape.Legacy);
         LocalAiGatewayCommandOutcome applied = await _configuration!.ApplyBatchAsync(batch, cancellationToken).ConfigureAwait(false);
         if (!applied.Routed)
             return Failed(applied.Detail!);
@@ -253,16 +303,16 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
             return Failed("The Local AI route was saved, but the app-owned Gateway did not restart. Check the WSL Gateway before retrying Local AI.");
         }
 
-        return await VerifyPublishedAsync(install, cancellationToken).ConfigureAwait(false);
+        return await VerifyPublishedAsync(install, shape, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<LocalAiEndpointLifecycleResult> VerifyPublishedAsync(
-        LocalAiResolvedInstall install, CancellationToken cancellationToken)
+        LocalAiResolvedInstall install, ProviderShape shape, CancellationToken cancellationToken)
     {
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
         GatewayCapture verified = await CaptureGatewayAsync(cancellationToken).ConfigureAwait(false);
         if (!verified.Success || !verified.ProviderExists ||
-            !MatchesProvider(verified.ProviderJson!, install) ||
+            !MatchesProvider(verified.ProviderJson!, install, shape) ||
             !verified.PrimaryExists ||
             !string.Equals(verified.PrimaryModel, managedPrimary, StringComparison.Ordinal))
         {
@@ -288,8 +338,8 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
         if (current.ProviderExists)
         {
-            return (MatchesProvider(current.ProviderJson!, install) ||
-                    MatchesLegacyProvider(current.ProviderJson!, install)) &&
+            return (MatchesProvider(current.ProviderJson!, install, ProviderShape.Current) ||
+                    MatchesProvider(current.ProviderJson!, install, ProviderShape.Legacy)) &&
                    current.PrimaryExists &&
                    string.Equals(current.PrimaryModel, managedPrimary, StringComparison.Ordinal)
                 ? LocalAiEndpointLifecycleResult.Ok()
@@ -334,7 +384,7 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         // caller's token, and never tear down the route that was just upgraded.
         GatewayCapture verified = await CaptureGatewayAsync(CancellationToken.None).ConfigureAwait(false);
         return verified.Success && verified.ProviderExists &&
-               MatchesProvider(verified.ProviderJson!, install) &&
+               MatchesProvider(verified.ProviderJson!, install, ProviderShape.Current) &&
                verified.PrimaryExists &&
                string.Equals(verified.PrimaryModel,
                    LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), StringComparison.Ordinal)
@@ -476,15 +526,73 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         return LocalAiEndpointLifecycleResult.Failed(detail);
     }
 
-    private string BuildProvider(LocalAiResolvedInstall install) => _getApiKey is null
-        ? LocalAiGatewayProviderDefinition.BuildProviderJson(install)
-        : LocalAiGatewayProviderDefinition.BuildProviderJson(install, _getApiKey());
+    private string BuildProvider(LocalAiResolvedInstall install, ProviderShape shape)
+    {
+        string apiKey = _getApiKey?.Invoke() ?? "llama-local";
+        return shape == ProviderShape.Legacy
+            ? LocalAiGatewayProviderDefinition.BuildLegacyProviderJson(install, apiKey)
+            : LocalAiGatewayProviderDefinition.BuildProviderJson(install, apiKey);
+    }
 
-    private bool MatchesProvider(string json, LocalAiResolvedInstall install) =>
-        LocalAiGatewayProviderDefinition.MatchesProviderJson(json, install, _getApiKey?.Invoke());
+    private bool MatchesProvider(string json, LocalAiResolvedInstall install, ProviderShape shape) =>
+        shape == ProviderShape.Legacy
+            ? LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(json, install, _getApiKey?.Invoke())
+            : LocalAiGatewayProviderDefinition.MatchesProviderJson(json, install, _getApiKey?.Invoke());
 
-    private bool MatchesLegacyProvider(string json, LocalAiResolvedInstall install) =>
-        LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(json, install, _getApiKey?.Invoke());
+    private async Task<LocalAiEndpointLifecycleResult> EnsureShapeAsync(
+        LocalAiResolvedInstall install, CancellationToken ct)
+    {
+        if (_decidedShape is not null)
+            return LocalAiEndpointLifecycleResult.Ok();
+        bool effortMetadata;
+        if (_atomicConfiguration is not null)
+        {
+            try
+            {
+                effortMetadata = await _atomicConfiguration.SupportsEffortMetadataAsync(ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception)
+            {
+                // RPC errors can include authored config. Never log their payload.
+                return Failed(ShapeCheckFailed());
+            }
+        }
+        else
+        {
+            // A dry-run validates against the installed schema without writing.
+            LocalAiGatewayCommandOutcome full = await _configuration!.ValidateBatchAsync(
+                LocalAiGatewayProviderDefinition.BuildProviderBatchJson(install), ct).ConfigureAwait(false);
+            if (!full.Routed)
+                return Failed(full.Detail!);
+            if (full.Result!.TimedOut || full.Result.OutcomeIndeterminate)
+                return Failed(ShapeCheckFailed());
+            effortMetadata = full.Result.Success;
+            if (!effortMetadata)
+            {
+                LocalAiGatewayCommandOutcome legacy = await _configuration.ValidateBatchAsync(
+                    LocalAiGatewayProviderDefinition.BuildProviderBatchJson(install, legacy: true), ct)
+                    .ConfigureAwait(false);
+                if (!legacy.Routed)
+                    return Failed(legacy.Detail!);
+                if (legacy.Result!.TimedOut || legacy.Result.OutcomeIndeterminate)
+                    return Failed(ShapeCheckFailed());
+                if (!legacy.Result.Success)
+                    return Failed(Localized("LocalAi_GatewayProviderRejected",
+                        "The Gateway rejected the Local AI provider configuration. The current Local AI route was kept; update the OpenClaw Gateway and retry."));
+            }
+        }
+        if (!effortMetadata)
+        {
+            _logger.Warn("The Gateway does not accept Local AI effort metadata (it needs OpenClaw Gateway 2026.6.5 or later). " +
+                "Publishing the earlier provider shape, so Effort Off cannot turn reasoning off on this Gateway.");
+        }
+        _decidedShape = effortMetadata ? ProviderShape.Current : ProviderShape.Legacy;
+        return LocalAiEndpointLifecycleResult.Ok();
+    }
+
+    private string ShapeCheckFailed() => Localized("LocalAi_GatewayProviderCheckFailed",
+        "The Gateway could not confirm which Local AI configuration it accepts. The current Local AI route was kept; reconnect the Gateway and retry.");
 
     private async Task<GatewayCapture> CaptureAtomicAsync(CancellationToken ct)
     {
@@ -544,6 +652,9 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         }
         return true;
     }
+
+    /// <summary>Current carries effort metadata; Legacy is the exact pre-effort provider.</summary>
+    private enum ProviderShape { Current, Legacy }
 
     private sealed record SettingCapture(bool Success, bool Exists, string? Json, string? Detail);
     private sealed record GatewayCapture(

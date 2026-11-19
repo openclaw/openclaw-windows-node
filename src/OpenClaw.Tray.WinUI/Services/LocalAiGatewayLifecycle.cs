@@ -750,8 +750,8 @@ internal sealed class LocalAiGatewayLifecycle(
                         throw new InvalidOperationException("The recovered endpoint could not be verified through the original Gateway.");
                     // Inference proves the old route belongs to this listener. Only an
                     // exact pre-effort provider continues through the guarded
-                    // coordinator to receive its effort metadata; any other verified
-                    // route is already published.
+                    // coordinator to receive its effort metadata when the Gateway
+                    // accepts it; any other verified route is already published.
                     binding = binding with { Pending = false, ConfigHash = after.Hash };
                     if (provider is null || !LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(
                             provider.ToJsonString(), install, _credentials.GetOrCreate()))
@@ -885,6 +885,9 @@ internal sealed class LocalAiGatewayLifecycle(
                 throw new InvalidOperationException("The bound Gateway configuration changed outside this Local AI operation.");
             return snapshot;
         }
+
+        public Task<bool> SupportsEffortMetadataAsync(CancellationToken ct) =>
+            rpc.SupportsEffortMetadataAsync(ct);
 
         public async Task ApplyAsync(LocalAiGatewayConfigurationSnapshot expected, JsonElement patch,
             CancellationToken ct, IReadOnlyList<string>? replacePaths = null)

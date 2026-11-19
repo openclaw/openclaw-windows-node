@@ -99,12 +99,16 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         var result = await CreateCoordinator(commands).PublishAsync(install);
 
         Assert.True(result.Success, result.Detail);
+        int validation = commands.Calls.FindIndex(call => call.Contains("/bin/sh"));
         int unset = commands.Calls.FindIndex(call =>
             call.Contains("unset") && call.Contains(LocalAiGatewayProviderDefinition.ProviderPath));
-        int publish = commands.Calls.FindIndex(call => call.Contains("/bin/sh"));
+        int publish = commands.FirstApplyIndex;
         int[] restarts = commands.Calls.Select((call, index) => (call, index))
             .Where(item => item.call.Contains("gateway") && item.call.Contains("restart"))
             .Select(item => item.index).ToArray();
+        // The Gateway accepted the replacement before the working route was withdrawn.
+        Assert.Contains("thinkingLevelMap", Assert.Single(commands.ValidatedBatches), StringComparison.Ordinal);
+        Assert.InRange(validation, 0, unset - 1);
         Assert.InRange(unset, 0, publish - 1);
         Assert.Equal(2, restarts.Length);
         Assert.InRange(restarts[0], unset + 1, publish - 1);
@@ -114,11 +118,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.DoesNotContain(commands.Calls, call => call.Contains(LocalAiGatewayProviderDefinition.ProviderModelsPath));
 
         // The fresh batch carries the canonical credential, never the redacted readback.
-        string script = commands.StandardInputs[publish]!;
-        const string prefix = "printf '%s' '";
-        int start = script.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
-        string batch = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(
-            script[start..script.IndexOf('\'', start)]));
+        string batch = DecodeBatch(commands.StandardInputs[publish]!);
         var written = JsonNode.Parse(batch)!.AsArray();
         JsonNode provider = written.Single(entry =>
             (string?)entry!["path"] == LocalAiGatewayProviderDefinition.ProviderPath)!["value"]!;
@@ -146,7 +146,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         var result = await CreateCoordinator(commands).PublishAsync(install);
 
         Assert.False(result.Success);
-        Assert.DoesNotContain(commands.Calls, call => call.Contains("/bin/sh"));
+        Assert.Equal(-1, commands.FirstApplyIndex);
         Assert.Single(commands.Calls, call => call.Contains("gateway") && call.Contains("restart"));
         Assert.Null(commands.ProviderJson);
         Assert.Equal(legacy, commands.ActiveProviderJson);
@@ -165,6 +165,155 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.True(result.Success, result.Detail);
         Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
         Assert.DoesNotContain(commands.Calls, call => call.Contains("set") || call.Contains("unset"));
+    }
+
+    [Fact]
+    public async Task WslPublish_GatewayRejectingEffortMetadataKeepsLegacyRouteUntouched()
+    {
+        var install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        string legacy = RedactApiKey(LegacyProviderJson(install));
+        var commands = new FakeWslCommandRunner(legacy, managedPrimary) { RejectEffortMetadata = true };
+
+        var result = await CreateCoordinator(commands).PublishAsync(install);
+
+        // Gateway 2026.6.1-2026.6.4 admits protocol 4 but rejects thinkingLevelMap:
+        // the working pre-effort route is current there, so nothing is withdrawn.
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal(2, commands.ValidatedBatches.Count);
+        Assert.Contains("thinkingLevelMap", commands.ValidatedBatches[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("thinkingLevelMap", commands.ValidatedBatches[1], StringComparison.Ordinal);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
+        Assert.Equal(-1, commands.FirstApplyIndex);
+        Assert.Equal(legacy, commands.ProviderJson);
+        Assert.Equal(legacy, commands.ActiveProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task WslEndpointCycle_GatewayRejectingEffortMetadataRepublishesLegacyRoute()
+    {
+        var install = Install(28_765);
+        var restarted = Install(28_766);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(RedactApiKey(LegacyProviderJson(install)), managedPrimary)
+        {
+            RejectEffortMetadata = true,
+            ApplyWritesBatch = true,
+        };
+        var coordinator = CreateCoordinator(commands);
+
+        // Normal runtime startup: withdraw the old endpoint, then publish the new one.
+        var withdrawn = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
+        Assert.True(withdrawn.Success, withdrawn.Detail);
+        Assert.Null(commands.ProviderJson);
+        var published = await coordinator.PublishAsync(restarted);
+
+        Assert.True(published.Success, published.Detail);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(commands.ProviderJson!, restarted));
+        Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, restarted));
+        Assert.Equal(commands.ProviderJson, commands.ActiveProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+        // The withdrawal decided the shape; publication reuses it instead of probing again.
+        Assert.Equal(2, commands.ValidatedBatches.Count);
+        int unset = commands.Calls.FindIndex(call => call.Contains("unset"));
+        Assert.All(commands.ValidationCallIndexes, index => Assert.InRange(index, 0, unset - 1));
+    }
+
+    [Fact]
+    public async Task WslEndpointCycle_GatewayRejectingBothShapesNeverWithdrawsRoute()
+    {
+        var install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        string legacy = LegacyProviderJson(install);
+        var commands = new FakeWslCommandRunner(legacy, managedPrimary) { RejectEveryProvider = true };
+        var coordinator = new LocalAiGatewayProviderCoordinator(commands,
+            new LocalAiGatewayDistroResolver(CreateRegistry(ManagedRecord("managed", "OpenClawGateway"))),
+            NullLogger.Instance, key => $"localized:{key}");
+
+        var withdrawn = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
+        var published = await coordinator.PublishAsync(install);
+
+        Assert.False(withdrawn.Success);
+        Assert.Equal("localized:LocalAi_GatewayProviderRejected", withdrawn.Detail);
+        Assert.False(published.Success);
+        Assert.Equal("localized:LocalAi_GatewayProviderRejected", published.Detail);
+        Assert.Equal(4, commands.ValidatedBatches.Count);
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
+        Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
+        Assert.Equal(-1, commands.FirstApplyIndex);
+        Assert.Equal(legacy, commands.ProviderJson);
+        Assert.Equal(legacy, commands.ActiveProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RpcPublish_WritesTheShapeTheGatewaySchemaAccepts(bool supportsEffort)
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("""{"agents":{"defaults":{"model":{"primary":"cloud/prior"}}}}""")
+        {
+            SupportsEffortMetadata = supportsEffort,
+        };
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal(1, transport.SchemaChecks);
+        Assert.Single(transport.Patches);
+        string provider = transport.Config["models"]!["providers"]!["llamacpp"]!.ToJsonString();
+        Assert.Equal(supportsEffort,
+            LocalAiGatewayProviderDefinition.MatchesProviderJson(provider, install, "actual-local-secret"));
+        Assert.Equal(!supportsEffort,
+            LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(provider, install, "actual-local-secret"));
+        Assert.Equal(supportsEffort, transport.Patches[0].GetRawText().Contains("thinkingLevelMap", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task RpcPublish_GatewayWithoutEffortSchemaKeepsLegacyProviderWithoutMigration()
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("{}") { SupportsEffortMetadata = false };
+        transport.SetManaged(install);
+        StripEffortMetadata((JsonObject)transport.Config["models"]!["providers"]!["llamacpp"]!["models"]![0]!);
+        string legacy = transport.Config.ToJsonString();
+        var coordinator = new LocalAiGatewayProviderCoordinator(transport, () => "actual-local-secret", NullLogger.Instance);
+
+        var result = await coordinator.PublishAsync(install);
+
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal(1, transport.SchemaChecks);
+        Assert.Empty(transport.Patches);
+        Assert.Equal(legacy, transport.Config.ToJsonString());
+    }
+
+    [Fact]
+    public async Task RpcQuiesce_EndpointCycleKeepsRouteWhenSchemaCannotBeRead()
+    {
+        var install = Install(28_765, "cloud/prior");
+        var transport = new AtomicTransport("{}") { FailSchema = true };
+        transport.SetManaged(install);
+        string before = transport.Config.ToJsonString();
+        var coordinator = new LocalAiGatewayProviderCoordinator(
+            transport, () => "actual-local-secret", NullLogger.Instance, key => $"localized:{key}");
+
+        var cycle = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.False(cycle.Success);
+        Assert.Equal("localized:LocalAi_GatewayProviderCheckFailed", cycle.Detail);
+        Assert.DoesNotContain("sensitive", cycle.Detail);
+        Assert.Empty(transport.Patches);
+        Assert.Equal(before, transport.Config.ToJsonString());
+
+        // Teardown publishes nothing afterwards, so it needs no schema decision.
+        var teardown = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.Teardown);
+        Assert.True(teardown.Success, teardown.Detail);
+        Assert.Equal(1, transport.SchemaChecks);
+        Assert.Null(transport.Config["models"]?["providers"]?["llamacpp"]);
     }
 
     /// <summary>The exact provider shape published before effort metadata was added.</summary>
@@ -282,7 +431,19 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public bool FailRead { get; init; }
         public bool FailAfterApply { get; init; }
         public bool DropThinkingLevelMapOnApply { get; init; }
+        /// <summary>False models a config.schema without thinkingLevelMap (Gateway 2026.6.1-2026.6.4).</summary>
+        public bool SupportsEffortMetadata { get; init; } = true;
+        public bool FailSchema { get; init; }
+        public int SchemaChecks { get; private set; }
         private int _version;
+
+        public Task<bool> SupportsEffortMetadataAsync(CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            SchemaChecks++;
+            if (FailSchema) throw new IOException("sensitive RPC response");
+            return Task.FromResult(SupportsEffortMetadata);
+        }
 
         public Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct)
         {
@@ -393,6 +554,10 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             Mutations++;
             return Task.FromResult(new LocalAiGatewayCommandOutcome(new(0, "", ""), null));
         }
+
+        public Task<LocalAiGatewayCommandOutcome> ValidateBatchAsync(
+            string batch, CancellationToken cancellationToken) =>
+            Task.FromResult(new LocalAiGatewayCommandOutcome(new(0, "", "", timedOut, indeterminate), null));
     }
 
     [Fact]
@@ -759,12 +924,17 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.True(result.Success);
         Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install));
         Assert.Equal(LocalAiGatewayProviderDefinition.BuildPrimaryModel(install), commands.PrimaryModel);
-        IReadOnlyList<string> apply = Assert.Single(commands.Calls, call => call.Contains("/bin/sh"));
+        // One dry-run-only schema check, then one dry-run-and-apply batch.
+        Assert.Equal(2, commands.Calls.Count(call => call.Contains("/bin/sh")));
+        string validation = Assert.IsType<string>(commands.StandardInputs[
+            commands.Calls.FindIndex(call => call.Contains("/bin/sh"))]);
+        Assert.EndsWith("openclaw config set --batch-file \"$batch_file\" --dry-run\n", validation, StringComparison.Ordinal);
+        Assert.Contains("thinkingLevelMap", Assert.Single(commands.ValidatedBatches), StringComparison.Ordinal);
+        IReadOnlyList<string> apply = commands.Calls[commands.FirstApplyIndex];
         Assert.Equal("-s", apply[^1]);
         Assert.DoesNotContain("-c", apply);
         Assert.DoesNotContain(apply, argument => argument.Contains("base64", StringComparison.Ordinal));
-        string script = Assert.IsType<string>(commands.StandardInputs[
-            commands.Calls.FindIndex(call => call.Contains("/bin/sh"))]);
+        string script = Assert.IsType<string>(commands.StandardInputs[commands.FirstApplyIndex]);
         Assert.StartsWith("set -e\n", script, StringComparison.Ordinal);
         Assert.Contains("batch_file=\"$(mktemp)\"\n", script, StringComparison.Ordinal);
         Assert.Contains("trap 'rm -f \"$batch_file\"' EXIT\n", script, StringComparison.Ordinal);
@@ -773,7 +943,7 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
             "openclaw config set --batch-file \"$batch_file\"\n",
             script, StringComparison.Ordinal);
-        int publishIndex = commands.Calls.FindIndex(call => call.Contains("/bin/sh"));
+        int publishIndex = commands.FirstApplyIndex;
         int restartIndex = commands.Calls.FindIndex(call => call.Contains("gateway") && call.Contains("restart"));
         Assert.True(restartIndex > publishIndex, "The Gateway must activate the newly published Local AI route.");
         Assert.DoesNotContain("/dev/stdin", script, StringComparison.Ordinal);
@@ -1190,6 +1360,14 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         };
     }
 
+    private static string DecodeBatch(string script)
+    {
+        const string prefix = "printf '%s' '";
+        int start = script.IndexOf(prefix, StringComparison.Ordinal) + prefix.Length;
+        return System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(
+            script[start..script.IndexOf('\'', start)]));
+    }
+
     private static string RedactApiKey(string value) => value.Replace(
         "\"api\":\"openai-completions\",\"apiKey\":\"llama-local\"",
         $"\"apiKey\":\"{LocalAiGatewayProviderDefinition.CliRedactedApiKey}\",\"api\":\"openai-completions\"",
@@ -1205,12 +1383,23 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         public bool FailReads { get; init; }
         public HashSet<int> FailedReadCalls { get; init; } = [];
         public HashSet<int> IndeterminateRestartCalls { get; init; } = [];
+        /// <summary>Models Gateway 2026.6.1-2026.6.4: protocol 4, but no thinkingLevelMap in its model schema.</summary>
+        public bool RejectEffortMetadata { get; init; }
+        public bool RejectEveryProvider { get; init; }
+        /// <summary>Persists the provider and primary from an applied batch instead of the preset values.</summary>
+        public bool ApplyWritesBatch { get; init; }
         public Action<int>? CommandObserved { get; init; }
         public List<IReadOnlyList<string>> Calls { get; } = [];
         public List<string?> StandardInputs { get; } = [];
         public List<string> Distros { get; } = [];
+        public List<string> ValidatedBatches { get; } = [];
+        public List<int> ValidationCallIndexes { get; } = [];
+        public int FirstApplyIndex => StandardInputs.FindIndex(IsApplyScript);
         private int _readCalls;
         private int _restartCalls;
+
+        private static bool IsApplyScript(string? script) =>
+            script?.Contains("--batch-file \"$batch_file\"\n", StringComparison.Ordinal) == true;
 
         public Task<WslCommandResult> RunInDistroAsync(
             string name,
@@ -1230,6 +1419,29 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
                 return Result(1, string.Empty, "wsl.exe failed");
             if (command.Contains("/bin/sh"))
             {
+                string batch = DecodeBatch(standardInput!);
+                bool rejected = batch.Contains(LocalAiGatewayProviderDefinition.ProviderPath, StringComparison.Ordinal) &&
+                    (RejectEveryProvider ||
+                        RejectEffortMetadata && batch.Contains("thinkingLevelMap", StringComparison.Ordinal));
+                if (!IsApplyScript(standardInput))
+                {
+                    ValidatedBatches.Add(batch);
+                    ValidationCallIndexes.Add(Calls.Count - 1);
+                    return rejected ? Result(1, string.Empty, "Unrecognized key: \"thinkingLevelMap\"") : Result(0, string.Empty);
+                }
+                if (rejected)
+                    return Result(1, string.Empty, "Unrecognized key: \"thinkingLevelMap\"");
+                if (ApplyWritesBatch)
+                {
+                    foreach (JsonNode? entry in JsonNode.Parse(batch)!.AsArray())
+                    {
+                        if ((string?)entry!["path"] == LocalAiGatewayProviderDefinition.ProviderPath)
+                            ProviderJson = entry["value"]!.ToJsonString();
+                        else if ((string?)entry["path"] == LocalAiGatewayProviderDefinition.PrimaryModelPath)
+                            PrimaryModel = (string?)entry["value"];
+                    }
+                    return Result(0, string.Empty);
+                }
                 if (ProviderAfterApply is not null)
                     ProviderJson = ProviderAfterApply;
                 PrimaryModel = PrimaryAfterApply;

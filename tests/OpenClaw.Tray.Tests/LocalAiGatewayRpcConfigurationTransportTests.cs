@@ -196,6 +196,43 @@ public sealed class LocalAiGatewayRpcConfigurationTransportTests
         Assert.Empty(rpc.Calls);
     }
 
+    [Fact]
+    public async Task GatewayWithoutConfigSchemaSupportsEffortMetadataWithoutRequest()
+    {
+        var rpc = new Transport();
+
+        Assert.True(await Create(rpc).SupportsEffortMetadataAsync(CancellationToken.None));
+        Assert.Empty(rpc.Calls);
+    }
+
+    [Theory]
+    [InlineData("""{"schema":{"properties":{"compat":{"properties":{"supportsReasoningEffort":{}}}}}}""", false)]
+    [InlineData("""{"schema":{"properties":{"compat":{"properties":{"supportedReasoningEfforts":{},"reasoningEffortMap":{}}}}}}""", false)]
+    [InlineData("""{"schema":{"properties":{"thinkingLevelMap":{},"compat":{"properties":{"supportedReasoningEfforts":{},"reasoningEffortMap":{}}}}}}""", true)]
+    public async Task ConfigSchemaDecidesEffortMetadataSupport(string schema, bool expected)
+    {
+        var rpc = new Transport
+        {
+            Methods = ["config.get", "config.patch", "config.schema"],
+            Response = JsonDocument.Parse(schema).RootElement.Clone(),
+        };
+
+        Assert.Equal(expected, await Create(rpc).SupportsEffortMetadataAsync(CancellationToken.None));
+        Assert.Equal("config.schema", Assert.Single(rpc.Calls).Method);
+    }
+
+    [Fact]
+    public async Task ConfigSchemaCheckRequiresTheBoundOwner()
+    {
+        var rpc = new Transport { Methods = ["config.get", "config.patch", "config.schema"] };
+        var configuration = Create(rpc);
+        rpc.Generation++;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            configuration.SupportsEffortMetadataAsync(CancellationToken.None));
+        Assert.Empty(rpc.Calls);
+    }
+
     private static readonly GatewayRecord NativeRecord = new()
     {
         Id = "native",

@@ -133,6 +133,7 @@ public sealed class LocalAiGatewayUninstallTests
         Assert.Equal(StepOutcome.Success, result.Outcome);
         Assert.Equal(LocalAiGatewayProviderDefinition.BuildProviderJson(install), commands.ProviderJson);
         Assert.Equal(managedPrimary, commands.PrimaryJson);
+        Assert.Empty(commands.ValidatedBatches);
         LocalAiResolvedInstall repaired = (await new LocalAiManifestStore(new LocalAiPaths(temp.Path)).LoadAsync())!;
         Assert.Equal("openai/gpt-5", repaired.Manifest.GatewayFallbackModel);
 
@@ -161,6 +162,37 @@ public sealed class LocalAiGatewayUninstallTests
         Assert.Equal(StepOutcome.Success, result.Outcome);
         Assert.Null(commands.ProviderJson);
         Assert.Null(commands.PrimaryJson);
+    }
+
+    [Fact]
+    public async Task Configure_GatewayRejectingEffortMetadataPublishesAndRollsBackLegacyShape()
+    {
+        using var temp = new TempDirectory("local-ai-gateway-legacy-");
+        LocalAiResolvedInstall install = await SaveManifestAsync(temp.Path, "openai/gpt-5");
+        string managedPrimary = JsonSerializer.Serialize(
+            LocalAiGatewayProviderDefinition.BuildPrimaryModel(install));
+        var commands = new GatewayStateCommandRunner(providerJson: null, managedPrimary)
+        {
+            RejectEffortMetadata = true,
+        };
+        SetupContext context = CreateContext(temp.Path, commands);
+        context.LocalAiResolvedInstall = install;
+        context.LocalAiEligibility = LocalInferenceEligibility.Evaluate(CreateSparkHardware());
+        var step = new ConfigureLocalAiGatewayStep();
+
+        StepResult result = await step.ExecuteAsync(context, CancellationToken.None);
+
+        // Gateway 2026.6.1-2026.6.4 rejects thinkingLevelMap: setup keeps the pre-effort route.
+        Assert.Equal(StepOutcome.Success, result.Outcome);
+        Assert.Contains("thinkingLevelMap", Assert.Single(commands.ValidatedBatches), StringComparison.Ordinal);
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesLegacyProviderJson(commands.ProviderJson!, install));
+        Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install));
+        Assert.Equal(managedPrimary, commands.PrimaryJson);
+
+        await step.RollbackAsync(context, CancellationToken.None);
+
+        Assert.Null(commands.ProviderJson);
+        Assert.Equal(JsonSerializer.Serialize("openai/gpt-5"), commands.PrimaryJson);
     }
 
     [Fact]
@@ -917,6 +949,9 @@ public sealed class LocalAiGatewayUninstallTests
         public bool FailRestoreBatchOnce { get; set; }
         public bool LoseRestoreAcknowledgementOnce { get; set; }
         public bool ThrowOnNextCapture { get; set; }
+        /// <summary>Models Gateway 2026.6.1-2026.6.4, whose model schema has no thinkingLevelMap.</summary>
+        public bool RejectEffortMetadata { get; init; }
+        public List<string> ValidatedBatches { get; } = [];
         public List<string> WslCalls { get; } = [];
 
         public Task<CommandResult> RunAsync(
@@ -966,6 +1001,21 @@ public sealed class LocalAiGatewayUninstallTests
                 }
                 string encoded = Assert.Single(environment).Value;
                 string batch = Encoding.UTF8.GetString(Convert.FromBase64String(encoded));
+                bool rejected = RejectEffortMetadata &&
+                    batch.Contains("thinkingLevelMap", StringComparison.Ordinal);
+                if (command.Contains("LOCAL_AI_GATEWAY_VALIDATED", StringComparison.Ordinal))
+                {
+                    ValidatedBatches.Add(batch);
+                    return Task.FromResult(rejected
+                        ? new CommandResult(1, "", "Unrecognized key: \"thinkingLevelMap\"", TimeSpan.Zero, TimedOut: false)
+                        : new CommandResult(0, "LOCAL_AI_GATEWAY_VALIDATED", "", TimeSpan.Zero, TimedOut: false));
+                }
+                if (rejected)
+                {
+                    // The dry-run before the write fails, so nothing is written.
+                    return Task.FromResult(new CommandResult(
+                        1, "", "Unrecognized key: \"thinkingLevelMap\"", TimeSpan.Zero, TimedOut: false));
+                }
                 using JsonDocument document = JsonDocument.Parse(batch);
                 foreach (JsonElement operation in document.RootElement.EnumerateArray())
                 {
