@@ -100,9 +100,9 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
     }
 
 #if LOCAL_AI_BASELINE
-    private const bool IsBaseline = true;
+    private static readonly bool IsBaseline = true;
 #else
-    private const bool IsBaseline = false;
+    private static readonly bool IsBaseline = false;
 #endif
 
     [Theory]
