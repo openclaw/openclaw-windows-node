@@ -7356,7 +7356,7 @@
     <value>Gateway 无法创建新聊天。请检查连接，然后重试。</value>
   </data>
   <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
-    <value>Gateway 可能已创建此聊天，但未确认响应。请先检查会话列表，再重试。</value>
+    <value>Gateway 可能已创建此聊天，但未确认响应，因此无法发送此草稿。如果会话列表中出现该聊天，请从中打开；否则请开始新聊天。</value>
   </data>
   <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
     <value>位置选项不可用。此聊天将使用 Gateway 的默认位置。</value>

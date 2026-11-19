@@ -7356,7 +7356,7 @@
     <value>Gateway 無法建立新的聊天。請檢查連線，然後再試一次。</value>
   </data>
   <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
-    <value>Gateway 可能已建立此聊天，但未確認回應。請先檢查工作階段清單，再試一次。</value>
+    <value>Gateway 可能已建立此聊天，但未確認回應，因此無法傳送此草稿。如果工作階段清單中出現該聊天，請從中開啟；否則請開始新的聊天。</value>
   </data>
   <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
     <value>位置選項無法使用。此聊天將使用 Gateway 的預設位置。</value>

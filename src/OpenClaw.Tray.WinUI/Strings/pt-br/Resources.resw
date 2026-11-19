@@ -7409,7 +7409,7 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>O Gateway não conseguiu criar o novo chat. Verifique a conexão e tente novamente.</value>
   </data>
   <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
-    <value>O Gateway pode ter criado este chat, mas a resposta não foi confirmada. Verifique a lista de sessões antes de tentar novamente.</value>
+    <value>O Gateway pode ter criado este chat, mas a resposta não foi confirmada. Por isso, este rascunho não pode ser enviado. Abra o chat na lista de sessões, se ele aparecer, ou inicie um novo chat.</value>
   </data>
   <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
     <value>A seleção de local não está disponível. Este chat usará o local padrão do Gateway.</value>

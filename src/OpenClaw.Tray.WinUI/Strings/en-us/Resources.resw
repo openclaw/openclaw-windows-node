@@ -7427,7 +7427,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>The Gateway could not create the new chat. Check the connection and try again.</value>
   </data>
   <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
-    <value>The Gateway may have created this chat, but its response was not confirmed. Check the session list before trying again.</value>
+    <value>The Gateway may have created this chat, but its response was not confirmed, so this draft cannot be sent. Open the chat from the session list if it appears, or start a new chat.</value>
   </data>
   <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
     <value>Location choices are unavailable. This chat will use the Gateway's default location.</value>

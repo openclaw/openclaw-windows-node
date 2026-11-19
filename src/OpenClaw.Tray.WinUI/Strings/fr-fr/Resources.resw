@@ -7356,7 +7356,7 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Le Gateway n'a pas pu créer la nouvelle conversation. Vérifiez la connexion et réessayez.</value>
   </data>
   <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
-    <value>Le Gateway a peut-être créé cette conversation, mais sa réponse n'a pas été confirmée. Vérifiez la liste des sessions avant de réessayer.</value>
+    <value>Le Gateway a peut-être créé cette conversation, mais sa réponse n'a pas été confirmée. Ce brouillon ne peut donc pas être envoyé. Ouvrez la conversation depuis la liste des sessions si elle y apparaît, ou démarrez une nouvelle conversation.</value>
   </data>
   <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
     <value>Le choix de l'emplacement n'est pas disponible. Cette conversation utilisera l'emplacement par défaut du Gateway.</value>

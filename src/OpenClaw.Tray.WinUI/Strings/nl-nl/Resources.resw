@@ -7357,7 +7357,7 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>De Gateway kon de nieuwe chat niet maken. Controleer de verbinding en probeer het opnieuw.</value>
   </data>
   <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
-    <value>De Gateway heeft deze chat mogelijk gemaakt, maar de reactie is niet bevestigd. Controleer de sessielijst voordat u het opnieuw probeert.</value>
+    <value>De Gateway heeft deze chat mogelijk gemaakt, maar de reactie is niet bevestigd. Dit concept kan daarom niet worden verzonden. Open de chat vanuit de sessielijst als deze daar verschijnt, of start een nieuwe chat.</value>
   </data>
   <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
     <value>Locatiekeuze is niet beschikbaar. Deze chat gebruikt de standaardlocatie van de Gateway.</value>
