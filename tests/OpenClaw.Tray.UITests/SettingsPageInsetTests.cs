@@ -18,7 +18,7 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
     public async Task DesktopLobster_HasNamedDisclosureAndIndependentToggleWithNoneditableSizePicker()
     {
         await ui.ResetContainerAsync();
-        await ui.RunOnUIAsync(() =>
+        await ui.RunOnUIAsync(async () =>
         {
             using var resources = new ChatThemeProofScope("Light");
             var page = new SettingsPage();
@@ -47,8 +47,25 @@ public sealed class SettingsPageInsetTests(UIThreadFixture ui)
                 Assert.False(card.IsExpanded);
                 Assert.True(toggle.IsOn);
 
-                var sizeCard = Assert.IsType<SettingsCard>(Assert.Single(card.Items));
+                var sizeCard = Assert.Single(card.Items.OfType<SettingsCard>(), item => item.Content is ComboBox);
                 Assert.False(Assert.IsType<ComboBox>(sizeCard.Content).IsEditable);
+
+                expansion.Expand();
+                var minimizedCard = Assert.Single(card.Items.OfType<SettingsCard>(), item => item.Content is ToggleSwitch);
+                var minimizedToggle = Assert.IsType<ToggleSwitch>(minimizedCard.Content);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => minimizedToggle.IsLoaded &&
+                        !string.IsNullOrEmpty(FrameworkElementAutomationPeer.CreatePeerForElement(minimizedToggle).GetName()),
+                    "expanded minimized-only toggle is mounted and named");
+                var minimizedPeer = FrameworkElementAutomationPeer.CreatePeerForElement(minimizedToggle);
+                Assert.Equal("Only show when other OpenClaw windows are minimized", minimizedPeer.GetName());
+                var minimizedToggling = Assert.IsAssignableFrom<IToggleProvider>(
+                    minimizedPeer.GetPattern(PatternInterface.Toggle));
+                var wasOn = minimizedToggle.IsOn;
+                minimizedToggling.Toggle();
+                Assert.NotEqual(wasOn, minimizedToggle.IsOn);
+                Assert.True(toggle.IsOn);
+                Assert.True(card.IsExpanded);
             }
             finally
             {

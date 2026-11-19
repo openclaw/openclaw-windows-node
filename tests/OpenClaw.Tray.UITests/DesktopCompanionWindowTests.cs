@@ -60,15 +60,19 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             Assert.True(new Windows.UI.ViewManagement.UISettings().AnimationsEnabled,
                 "This regression requires native animations enabled.");
             var host = Assert.IsType<ReactorHostControl>(window.Content);
+            var mascot = Mascot(host);
             var translation = Assert.IsType<TranslateTransform>(host.RenderTransform);
             var view = (IDesktopCompanionView)window;
             await TestSupport.WaitForRenderedConditionAsync(
                 () => translation.Y == 0, "initial entrance completes");
             view.Hide();
             await TestSupport.WaitForRenderedConditionAsync(
-                () => translation.Y > 0 && translation.Y < host.ActualHeight,
+                () => window.AppWindow.IsVisible && translation.Y > 0 && translation.Y < mascot.ActualHeight,
                 "exit has progressed before reversing it",
-                () => $"Y={translation.Y}, Height={host.ActualHeight}, Visible={window.AppWindow.IsVisible}");
+                () => $"Y={translation.Y}, MascotHeight={mascot.ActualHeight}, Visible={window.AppWindow.IsVisible}");
+            Assert.True(window.AppWindow.IsVisible);
+            Assert.True(translation.Y > 0 && translation.Y < mascot.ActualHeight,
+                "Restore must interrupt an exit, not show an already hidden window.");
             view.Show();
             await TestSupport.WaitForRenderedConditionAsync(
                 () => window.AppWindow.IsVisible && translation.Y == 0,
