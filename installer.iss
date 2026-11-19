@@ -114,6 +114,11 @@ Source: "{#publish}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "scripts\Uninstall-LocalGateway.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "scripts\Test-InnoMigration.ps1"; DestDir: "{app}"; Flags: ignoreversion
 Source: "src\OpenClaw.Connection\Migration\MigrationRecordCodec.cs"; DestDir: "{app}"; Flags: ignoreversion
+; The model helper compiles the same pinned catalog and file operation as Shared.
+; It does not load Companion or keep its installed binaries locked.
+Source: "scripts\Uninstall-DownloadedModels.ps1"; DestDir: "{app}"; Flags: ignoreversion
+Source: "src\OpenClaw.Shared\Audio\KokoroDownloadCatalog.cs"; DestDir: "{app}"; Flags: ignoreversion
+Source: "src\OpenClaw.Shared\Audio\KokoroUninstallFiles.cs"; DestDir: "{app}"; Flags: ignoreversion
 #if vcRedist != ""
 Source: "{#vcRedist}"; DestDir: "{tmp}"; DestName: "vc_redist.exe"; Flags: deleteafterinstall; AfterInstall: InstallVCRuntime
 #endif
@@ -156,6 +161,16 @@ var
   MigrationOperationHandle: THandle;
   MigrationOperationLocked: Boolean;
   MigrationOperationUnavailable: Boolean;
+  ModelCleanupSelection: Integer;
+  ModelSummary: String;
+  ModelScanRunning, ModelScanCancelled, ModelScanAllowed: Boolean;
+  ModelPreviewEligible: Integer;
+  ModelDialog: TSetupForm;
+  ModelDetails: TNewMemo;
+  ModelRemoveCheck: TNewCheckBox;
+  ModelScanButton, ModelContinueButton: TNewButton;
+
+function ChooseModelCleanup: Boolean; forward;
 
 function OpenMigrationOperationFile(
   FileName: String; DesiredAccess, ShareMode: LongWord; SecurityAttributes: Integer;
@@ -273,6 +288,8 @@ begin
   if Result and MigrationOperationUnavailable then
     Log('Migration state could not be locked. Uninstall continues and preserves the local gateway.');
 #endif
+  if Result then
+    Result := ChooseModelCleanup;
 end;
 
 procedure DeinitializeUninstall;
@@ -521,6 +538,218 @@ begin
     MigrateLegacyBackgroundLaunch;
 end;
 
+function ReadModelText(Path: String; var Value: String): Boolean;
+var
+  Lines: TArrayOfString;
+  I: Integer;
+begin
+  Value := '';
+  Result := LoadStringsFromFile(Path, Lines);
+  if not Result then Exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    if I > 0 then Value := Value + #13#10;
+    Value := Value + Lines[I];
+  end;
+end;
+
+function StageModelHelper: Boolean;
+begin
+  Result := CopyFile(ExpandConstant('{app}\Uninstall-DownloadedModels.ps1'),
+    ExpandConstant('{tmp}\Uninstall-DownloadedModels.ps1'), False);
+  if not Result then Exit;
+  Result := CopyFile(ExpandConstant('{app}\KokoroDownloadCatalog.cs'),
+    ExpandConstant('{tmp}\KokoroDownloadCatalog.cs'), False);
+  if not Result then Exit;
+  Result := CopyFile(ExpandConstant('{app}\KokoroUninstallFiles.cs'),
+    ExpandConstant('{tmp}\KokoroUninstallFiles.cs'), False);
+end;
+
+function RunModelHelper(Selection: Integer; var Eligible: Integer): Boolean;
+var
+  Params, Mask, ReportText: String;
+  Code: Integer;
+begin
+  Result := False;
+  Eligible := 0;
+  DeleteFile(ExpandConstant('{tmp}\model-report.txt'));
+  DeleteFile(ExpandConstant('{tmp}\model-selection.txt'));
+  Params := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' +
+    AddQuotes(ExpandConstant('{tmp}\Uninstall-DownloadedModels.ps1')) +
+    ' -DataDirectory ' + AddQuotes(ExpandConstant('{userappdata}\{#MyInstallDir}')) +
+    ' -ReportPath ' + AddQuotes(ExpandConstant('{tmp}\model-report.txt')) +
+    ' -SelectionPath ' + AddQuotes(ExpandConstant('{tmp}\model-selection.txt')) +
+    ' -CancellationPath ' + AddQuotes(ExpandConstant('{tmp}\model-cancel.txt')) +
+    ' -SelectionMask ' + IntToStr(Selection);
+  if Selection <> 0 then Params := Params + ' -ConfirmDestructive';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      Params, '', SW_HIDE, ewWaitUntilTerminated, Code) then Exit;
+  if not ReadModelText(ExpandConstant('{tmp}\model-report.txt'), ReportText) then Exit;
+  ModelSummary := ReportText;
+  if (Code <> 0) and (Code <> 1) then Exit;
+  if not ReadModelText(ExpandConstant('{tmp}\model-selection.txt'), Mask) then Exit;
+  Eligible := StrToIntDef(Trim(Mask), 0);
+  if (Eligible < 0) or (Eligible > 15) then Eligible := 0;
+  Result := True;
+end;
+
+procedure CancelModelPreview(Sender: TObject);
+begin
+  if ModelScanRunning then
+  begin
+    ModelScanCancelled := True;
+    SaveStringToFile(ExpandConstant('{tmp}\model-cancel.txt'), 'cancel', False);
+    ModelDetails.Text := 'Cancelling the model check. No model removal has started.';
+  end
+  else
+    ModelDialog.ModalResult := mrCancel;
+end;
+
+procedure ModelPreviewCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  CanClose := not ModelScanRunning;
+  if not CanClose then CancelModelPreview(Sender);
+end;
+
+procedure CheckModelPreview(Sender: TObject);
+begin
+  ModelScanRunning := True;
+  ModelScanCancelled := False;
+  ModelPreviewEligible := 0;
+  ModelRemoveCheck.Checked := False;
+  ModelRemoveCheck.Enabled := False;
+  ModelScanButton.Enabled := False;
+  ModelContinueButton.Enabled := False;
+  DeleteFile(ExpandConstant('{tmp}\model-cancel.txt'));
+  ModelDetails.Text := 'Checking ownership and downloaded model files. Cancel stops this read-only check.';
+  try
+    // Exec pumps window messages while waiting, so Cancel remains available.
+    if CheckCompletedStoreMigration <> 0 then
+      ModelSummary := 'Store migration or uncertain ownership requires preservation. Models are kept; sizes were not scanned.'
+    else if not ModelScanCancelled then
+    begin
+      if StageModelHelper then
+      begin
+        if not RunModelHelper(0, ModelPreviewEligible) then
+        begin
+          ModelPreviewEligible := 0;
+          ModelSummary := 'Model inventory is unavailable. No model removal will be attempted.' + #13#10 + ModelSummary;
+        end;
+      end
+      else
+        ModelSummary := 'The model helper is unavailable. Models are kept.' + #13#10 + ModelSummary;
+    end;
+  finally
+    ModelScanRunning := False;
+    ModelDetails.Text := ModelSummary;
+    ModelRemoveCheck.Enabled := ModelPreviewEligible <> 0;
+    ModelScanButton.Enabled := ModelScanAllowed;
+    ModelContinueButton.Enabled := True;
+    if ModelScanCancelled then ModelDialog.ModalResult := mrCancel;
+  end;
+end;
+
+function ShowModelReport(Choosing: Boolean): Boolean;
+var
+  CancelButton: TNewButton;
+begin
+  ModelDialog := CreateCustomForm;
+  try
+    ModelDialog.Caption := 'Downloaded voice models';
+    ModelDialog.ClientWidth := ScaleX(640);
+    ModelDialog.ClientHeight := ScaleY(440);
+    ModelDialog.OnCloseQuery := @ModelPreviewCloseQuery;
+    ModelRemoveCheck := TNewCheckBox.Create(ModelDialog);
+    ModelRemoveCheck.Parent := ModelDialog;
+    ModelRemoveCheck.SetBounds(ScaleX(16), ScaleY(16), ScaleX(608), ScaleY(32));
+    ModelRemoveCheck.Caption := 'Remove the verified Kokoro downloads listed below';
+    ModelRemoveCheck.Checked := False;
+    ModelRemoveCheck.Enabled := False;
+    ModelRemoveCheck.Visible := Choosing;
+    ModelDetails := TNewMemo.Create(ModelDialog);
+    ModelDetails.Parent := ModelDialog;
+    ModelDetails.SetBounds(ScaleX(16), ScaleY(56), ScaleX(608), ScaleY(320));
+    ModelDetails.ReadOnly := True;
+    ModelDetails.ScrollBars := ssVertical;
+    ModelDetails.WordWrap := True;
+    ModelDetails.Text := ModelSummary;
+    ModelScanButton := TNewButton.Create(ModelDialog);
+    ModelScanButton.Parent := ModelDialog;
+    ModelScanButton.SetBounds(ScaleX(16), ScaleY(392), ScaleX(240), ScaleY(32));
+    ModelScanButton.Caption := 'Check downloaded models';
+    ModelScanButton.Enabled := ModelScanAllowed;
+    ModelScanButton.Visible := Choosing;
+    ModelScanButton.OnClick := @CheckModelPreview;
+    ModelContinueButton := TNewButton.Create(ModelDialog);
+    ModelContinueButton.Parent := ModelDialog;
+    ModelContinueButton.SetBounds(ScaleX(352), ScaleY(392), ScaleX(152), ScaleY(32));
+    ModelContinueButton.ModalResult := mrOk;
+    ModelContinueButton.Default := True;
+    if Choosing then ModelContinueButton.Caption := 'Continue uninstall'
+    else ModelContinueButton.Caption := 'Close';
+    CancelButton := TNewButton.Create(ModelDialog);
+    CancelButton.Parent := ModelDialog;
+    CancelButton.SetBounds(ScaleX(512), ScaleY(392), ScaleX(112), ScaleY(32));
+    CancelButton.Caption := 'Cancel';
+    CancelButton.OnClick := @CancelModelPreview;
+    CancelButton.Cancel := True;
+    CancelButton.Visible := Choosing;
+    Result := ModelDialog.ShowModal = mrOk;
+    if Choosing and Result and ModelRemoveCheck.Checked then
+      ModelCleanupSelection := ModelPreviewEligible;
+  finally
+    ModelDialog.Free;
+  end;
+end;
+
+function ChooseModelCleanup: Boolean;
+begin
+  Result := True;
+  ModelCleanupSelection := 0;
+  ModelPreviewEligible := 0;
+  ModelScanRunning := False;
+  ModelScanAllowed := False;
+  ModelSummary := 'Downloaded models and other app data will be kept at ' +
+    ExpandConstant('{userappdata}\{#MyInstallDir}') + '.' + #13#10 +
+    'Sizes have not been measured. Gateway removal is a separate choice.';
+  if UninstallSilent() then Exit;
+  if GetEnv('OPENCLAW_TRAY_DATA_DIR') <> '' then
+    ModelSummary := 'A custom app-data directory is configured. Models are kept; sizes were not scanned.' +
+      #13#10 + 'Configured path: ' + GetEnv('OPENCLAW_TRAY_DATA_DIR') + #13#10 + ModelSummary
+  else if MigrationOperationUnavailable then
+    ModelSummary := 'Migration ownership could not be checked. Models are kept.' + #13#10 + ModelSummary
+  else
+  begin
+    ModelScanAllowed := True;
+    ModelSummary := ModelSummary + #13#10#13#10 +
+      'Continue to keep models, or check downloaded models to preview files eligible for optional removal.';
+  end;
+  // Keeping models needs no scan. The visible dialog owns the optional check.
+  Result := ShowModelReport(True);
+end;
+
+procedure RunSelectedModelCleanup;
+var
+  Ignored: Integer;
+begin
+  if ModelCleanupSelection = 0 then Exit;
+  // Preserve on changed Store ownership, independently of the Gateway choice.
+  if MigrationOperationUnavailable then
+  begin
+    ModelSummary := 'Models were kept: migration ownership is unavailable.' + #13#10 + ModelSummary;
+    Exit;
+  end;
+  if CheckCompletedStoreMigration <> 0 then
+  begin
+    ModelSummary := 'Models were kept: Store migration or ownership changed.' + #13#10 + ModelSummary;
+    Exit;
+  end;
+  UninstallProgressForm.StatusLabel.Caption := 'Checking and removing selected voice models...';
+  if not RunModelHelper(ModelCleanupSelection, Ignored) then
+    ModelSummary := 'Model cleanup could not be completed or verified. Some selected files may remain.' +
+      #13#10 + ModelSummary;
+end;
+
 procedure EnsureLocalGatewayCleanupChoice;
 var
   MigrationResult: Integer;
@@ -736,6 +965,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    RunSelectedModelCleanup;
     RemoveAppAutoStart;
     EnsureLocalGatewayCleanupChoice;
     RunLocalGatewayCleanup;
@@ -743,5 +973,11 @@ begin
   else if CurUninstallStep = usPostUninstall then
   begin
     DeleteGeneratedAppState;
+    if not UninstallSilent() then
+    begin
+      if ModelCleanupSelection = 0 then
+        ModelSummary := 'No model removal was requested. Measurements below are from the preview.' + #13#10 + ModelSummary;
+      ShowModelReport(False);
+    end;
   end;
 end;
