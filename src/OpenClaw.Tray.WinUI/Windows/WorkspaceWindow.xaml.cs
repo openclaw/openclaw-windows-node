@@ -150,6 +150,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             if (Destination.Page == WorkspacePageId.Home) _chat.Initialize(this);
         };
         _chat.SessionSelected += OnChatSessionSelected;
+        _chat.SessionPromoted += OnChatSessionPromoted;
         _chat.ConversationPanelsChanged += OnChatPanelsChanged;
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
@@ -343,7 +344,11 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnChatSessionSelected(string sessionKey, string? previousSessionKey)
     {
-        if (IsClosed || !_navigation.SelectChatSession(sessionKey, previousSessionKey))
+        if (IsClosed)
+            return;
+
+        var navigated = _navigation.SelectChatSession(sessionKey, previousSessionKey);
+        if (!navigated)
             return;
 
         var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)
@@ -352,6 +357,41 @@ public sealed partial class WorkspaceWindow : WindowEx
         RefreshSidebar();
         UpdateNavigationSelection();
         UpdateHistoryButtons();
+    }
+
+    private void OnChatSessionPromoted(string draftKey, string sessionKey)
+    {
+        if (IsClosed)
+            return;
+
+        if (_navigation.Current.SessionKey == draftKey)
+        {
+            if (_navigation.PromoteSession(draftKey, sessionKey))
+                RenderDestination();
+        }
+        else if (_navigation.PromoteSession(draftKey, sessionKey))
+        {
+            UpdateNavigationSelection();
+            UpdateHistoryButtons();
+        }
+
+        _ = RefreshSessionsAfterDraftPromotionAsync();
+    }
+
+    private async Task RefreshSessionsAfterDraftPromotionAsync()
+    {
+        if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true } client)
+            return;
+
+        try
+        {
+            await client.RequestSessionsAsync();
+        }
+        catch (Exception ex)
+        {
+            if (!IsClosed && ReferenceEquals(client, CurrentApp.GatewayClient))
+                ReportError("refresh-sessions", ex);
+        }
     }
 
     internal void NavigateNativeSetup(SetupNativeNavigationRequest request)
@@ -946,15 +986,15 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
     }
 
-    private async Task NewSessionAsync()
+    private Task NewSessionAsync()
     {
         if (_creatingSession)
-            return;
+            return Task.CompletedTask;
         if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true } client)
         {
             ShowError(Text("ConnectionRequired"));
             OpenCompanion(CompanionPageId.Connection);
-            return;
+            return Task.CompletedTask;
         }
 
         RefreshSidebar();
@@ -962,12 +1002,19 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             ShowError(Text("SelectAssistant"));
             AssistantSelector.Focus(FocusState.Programmatic);
-            return;
+            return Task.CompletedTask;
         }
 
-        await CreateAndSelectSessionAsync(
-            client, new SessionCreateRequest { AgentId = SelectedAgentId },
-            "create-session", "SessionFailed", "SessionUnsupported");
+        if (CurrentApp.ChatProvider is not { PlacementGateway: not null } provider)
+        {
+            ShowError(Text("SessionUnsupported"));
+            return Task.CompletedTask;
+        }
+        SelectSession(_chat.QueueNewChatDraft(
+            provider,
+            SelectedAgentId,
+            useGatewayDefaultAgent: SelectedAgentId is null));
+        return Task.CompletedTask;
     }
 
     private Task ForkSessionAsync(SessionCreateRequest request)
@@ -1000,6 +1047,8 @@ public sealed partial class WorkspaceWindow : WindowEx
                 return;
             }
             SelectSession(result.Key);
+            if (string.Equals(operation, "fork-session", StringComparison.Ordinal))
+                _chat.RememberCreatedSession(result.Key);
             await client.RequestSessionsAsync();
         }
         catch (Exception ex)
@@ -1913,6 +1962,7 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chatFocus = null;
         _chat.CloseSurface();
         _chat.SessionSelected -= OnChatSessionSelected;
+        _chat.SessionPromoted -= OnChatSessionPromoted;
         _chat.ConversationPanelsChanged -= OnChatPanelsChanged;
         if (_sidePanel is not null) _sidePanel.Changed -= OnSidePanelChanged;
         _sidePanel = null;

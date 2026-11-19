@@ -86,8 +86,17 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
     public override Element Render()
     {
         var props = Props;
+        var placementController = props.ComposerSession.Placement;
         var (snapshot, setSnapshot) = UseState<ChatDataSnapshot?>(null, threadSafe: true);
         var latestSnapshot = UseRef<ChatDataSnapshot?>(null);
+        var (_, setDraftRevision) = UseState(0L, threadSafe: true);
+        UseEffect((Func<Action>)(() =>
+        {
+            long revision = 0;
+            void Changed() => setDraftRevision(++revision);
+            props.ComposerSession.Controller.DraftChanged += Changed;
+            return () => props.ComposerSession.Controller.DraftChanged -= Changed;
+        }), props.ComposerSession);
         var (_, setPanelRevision) = UseState(0L, threadSafe: true);
         UseEffect((Func<Action>)(() =>
         {
@@ -224,6 +233,9 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
 
         var effectiveThread = selectedMaterializedThread
             ?? CreateComposeOnlyThread(props.Provider, snapshot, props.Compact ? selectedId : null);
+        var draft = props.ComposerSession.Controller.FindDraft(effectiveThread?.Id);
+        if (draft is not null && effectiveThread is not null)
+            effectiveThread = draft.Project(effectiveThread);
         if (selectedMaterializedThread is { } selected && string.Equals(_pendingSelectedThreadId, selected.Id, StringComparison.Ordinal))
             _pendingSelectedThreadId = null;
 
@@ -266,15 +278,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         var isComposeOnly = effectiveThread is not null && selectedMaterializedThread is null;
         var placementHistoryReady = isGatewayConnected
             && (isComposeOnly
-                ? snapshot.ComposeTarget.IsReady
+                ? draft is not null || placementController?.IsKnownCreatedSession(effectiveThread!.Id) == true
+                    || snapshot.ComposeTarget.IsReady
                     && string.Equals(snapshot.ComposeTarget.SessionKey, effectiveThread?.Id, StringComparison.Ordinal)
                 : effectiveThread is not null
                     && snapshot.CurrentHistoryThreads?.Contains(effectiveThread.Id) == true);
         var welcomeEligible = isEmptyConversation
             && isGatewayConnected
             && (
-                (isComposeOnly && snapshot.ComposeTarget.IsReady
-                    && snapshot.ComposeTarget.SessionKey == effectiveThread?.Id)
+                (isComposeOnly && placementHistoryReady)
                 || (!isComposeOnly && timeline.HistoryLoaded));
         var welcomeEligibilityKey = welcomeEligible
             ? $"{effectiveThread?.Id}|{isComposeOnly}|{timeline.HistoryLoaded}"
@@ -512,7 +524,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             _pendingSelectedThreadId = threadId;
             selectedIdRef.Current = threadId;
             setSelectedId(threadId);
-            if (!props.Compact && props.Provider is OpenClawChatDataProvider native)
+            if (!props.Compact && props.ComposerSession.Controller.FindDraft(threadId) is null
+                && props.Provider is OpenClawChatDataProvider native)
                 native.RememberSelectedThread(threadId);
         }
 
@@ -535,8 +548,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 {
                     try
                     {
-                        await props.ComposerSession.Controller.SendCoreAsync(
-                            suggestionThread.Id, suggestionThread.Title, suggestion, Array.Empty<ChatAttachment>());
+                        await props.ComposerSession.Controller.SendSuggestionAsync(
+                            suggestionThread.Id, suggestionThread.Title, suggestion);
                     }
                     finally
                     {
@@ -590,10 +603,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 ModelCatalogRevision: nativeProvider?.ModelCatalogRevision ?? 0)
             {
                 IsVisible = composerVisible,
-                ShowPlacementPickers = !props.Compact && placementHistoryReady && mode == ReactorChatTimelineMode.Empty,
+                ShowPlacementPickers = !props.Compact && placementHistoryReady
+                    && mode == ReactorChatTimelineMode.Empty
+                    && draft?.UsesGatewayDefaultAgent != true
+                    && props.AgentRosterSource?.AgentsListUnsupported != true,
                 PlacementTargetIsEmpty = isEmptyConversation,
                 PlacementHistoryReady = placementHistoryReady,
                 PlacementTargetIsNew = isComposeOnly,
+                PlacementRequiresCreation = draft is { UsesGatewayDefaultAgent: false },
+                PlacementDraft = draft,
                 AgentIdentity = assistantIdentity,
                 AgentRosterPresentation = selectedRosterAgent,
                 ContextUsage = contextUsage

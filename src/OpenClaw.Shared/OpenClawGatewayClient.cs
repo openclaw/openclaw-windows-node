@@ -542,10 +542,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private long GetReadyConnectionGeneration(string method)
     {
         if (!IsConnected)
-            throw new InvalidOperationException("Gateway connection is not open");
+            throw new GatewayRequestNotSentException("Gateway connection is not open");
 
         if (!TryGetReadyConnectionGeneration(out var connectionGeneration))
-            throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
+            throw new GatewayRequestNotSentException($"{HandshakePendingError}; refusing to send '{method}'");
 
         return connectionGeneration;
     }
@@ -731,13 +731,27 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         try
         {
             var connectionGeneration = GetReadyConnectionGeneration("chat.send");
-            var sent = await SendRawAsync(
-                    JsonSerializer.Serialize(req),
-                    connectionGeneration,
-                    CancellationToken)
-                .ConfigureAwait(false);
-            if (!sent)
-                throw new InvalidOperationException("Gateway connection changed before chat.send could be sent.");
+            GenerationBoundSendOutcome sendOutcome;
+            try
+            {
+                sendOutcome = await SendRawWithOutcomeAsync(
+                        JsonSerializer.Serialize(req),
+                        connectionGeneration,
+                        CancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (System.Net.WebSockets.WebSocketException ex)
+            {
+                throw new GatewayConnectionLostException(RemoteCloseStatusCode, ex.Message);
+            }
+
+            if (sendOutcome == GenerationBoundSendOutcome.NotSent)
+                throw new GatewayRequestNotSentException(
+                    "Gateway connection changed before chat.send could be sent.");
+            if (sendOutcome == GenerationBoundSendOutcome.Unconfirmed && !pending.Task.IsCompleted)
+                throw new GatewayConnectionLostException(
+                    RemoteCloseStatusCode,
+                    RemoteCloseStatusDescription);
             var result = await WaitForGatewayResponseAsync(
                 pending.Task,
                 TimeSpan.FromSeconds(30),
@@ -1838,7 +1852,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         requestToken.ThrowIfCancellationRequested();
         var connectionGeneration = GetReadyConnectionGeneration(method);
         if (expectedConnectionEpoch.HasValue && connectionGeneration != expectedConnectionEpoch.Value)
-            throw new InvalidOperationException(ConnectionChangedBeforeSendError);
+            throw new GatewayRequestNotSentException(ConnectionChangedBeforeSendError);
 
         // #1418: wizard requests are application RPCs (models.list,
         // device.pair.list, pairing approvals, update.status, chat.abort,
@@ -1848,7 +1862,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         // fallback, media resolution, payload reads) already catch
         // InvalidOperationException and degrade gracefully.
         if (!HasHandshakeSnapshot)
-            throw new InvalidOperationException($"{HandshakePendingError}; refusing to send '{method}'");
+            throw new GatewayRequestNotSentException($"{HandshakePendingError}; refusing to send '{method}'");
 
         _logger.Info($"[GatewayClient] Sending frame: {method}");
         var requestId = (searchRead ? SearchRequestIdPrefix : "") + Guid.NewGuid().ToString();
@@ -1856,14 +1870,28 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
         try
         {
-            var sent = await SendRawAsync(
-                    SerializeRequest(requestId, method, parameters),
-                    connectionGeneration,
-                    requestToken)
-                .WaitAsync(requestToken)
-                .ConfigureAwait(false);
-            if (!sent)
-                throw new InvalidOperationException($"Gateway connection changed before {method} could be sent.");
+            GenerationBoundSendOutcome sendOutcome;
+            try
+            {
+                sendOutcome = await SendRawWithOutcomeAsync(
+                        SerializeRequest(requestId, method, parameters),
+                        connectionGeneration,
+                        requestToken)
+                    .WaitAsync(requestToken)
+                    .ConfigureAwait(false);
+            }
+            catch (System.Net.WebSockets.WebSocketException ex)
+            {
+                throw new GatewayConnectionLostException(RemoteCloseStatusCode, ex.Message);
+            }
+
+            if (sendOutcome == GenerationBoundSendOutcome.NotSent)
+                throw new GatewayRequestNotSentException(
+                    $"Gateway connection changed before {method} could be sent.");
+            if (sendOutcome == GenerationBoundSendOutcome.Unconfirmed && !pending.Task.IsCompleted)
+                throw new GatewayConnectionLostException(
+                    RemoteCloseStatusCode,
+                    RemoteCloseStatusDescription);
             return await pending.Task.WaitAsync(TimeSpan.FromMilliseconds(timeoutMs), requestToken);
         }
         catch (TimeoutException ex)
@@ -2782,9 +2810,20 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 if (root.TryGetProperty("ok", out var okChatProp) &&
                     okChatProp.ValueKind == JsonValueKind.False)
                 {
+                    var failedResult = ParseChatSendResult(root);
+                    if (!string.IsNullOrWhiteSpace(failedResult.RunId) &&
+                        ChatSendResult.IsFailureStatus(failedResult.Status))
+                    {
+                        pendingChatSend.TryComplete(failedResult);
+                        return;
+                    }
+
                     var message = TryGetErrorMessage(root) ?? "request failed";
                     _logger.Warn($"chat.send failed: {message}");
-                    pendingChatSend.TryFault(new InvalidOperationException(message));
+                    pendingChatSend.TryFault(GatewayRequestErrors.Create(
+                        message,
+                        TryGetErrorTopLevelCode(root),
+                        TryGetErrorDetailCode(root)));
                     return;
                 }
 
@@ -3159,6 +3198,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 error = TryReadJsonValueAsString(payloadErrorProp);
             else if (payload.TryGetProperty("message", out var payloadMessageProp) && ChatSendResult.IsFailureStatus(status))
                 error = TryReadJsonValueAsString(payloadMessageProp);
+            else if (payload.TryGetProperty("summary", out var payloadSummaryProp) && ChatSendResult.IsFailureStatus(status))
+                error = TryReadJsonValueAsString(payloadSummaryProp);
         }
 
         if (root.TryGetProperty("status", out var rootStatusProp))

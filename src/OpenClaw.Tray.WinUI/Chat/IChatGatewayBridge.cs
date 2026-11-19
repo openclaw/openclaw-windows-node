@@ -98,6 +98,10 @@ public interface IChatGatewayBridge : IDisposable
     Task<ChatHistoryInfo> RequestOlderChatHistoryAsync(string sessionKey, ChatHistoryPageRequest page) =>
         Task.FromException<ChatHistoryInfo>(new NotSupportedException("Older history is not available on this bridge."));
     long? ChatMessageReadConnectionEpoch => null;
+    object GatewayAuthorityIdentity => this;
+    bool IsAgentsListUnsupported => false;
+    Task PatchSessionConfirmedAsync(string sessionKey, SessionPatch patch, long connectionEpoch) =>
+        Task.FromException(new NotSupportedException("Response-confirmed session patches are unavailable on this bridge."));
     /// <summary>Reads the session's file list through <c>sessions.files.list</c>; unsupported when the bridge has no Gateway.</summary>
     Task<SessionFileList> ListSessionFilesAsync(string sessionKey) =>
         Task.FromResult(new SessionFileList { Key = sessionKey, IsSupported = false });
@@ -314,6 +318,9 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public Task PatchSessionModelAsync(string sessionKey, string model) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { Model = model });
 
+    public Task PatchSessionConfirmedAsync(string sessionKey, SessionPatch patch, long connectionEpoch) =>
+        _client.PatchSessionConfirmedAsync(sessionKey, patch, connectionEpoch);
+
     public Task ClearSessionModelAsync(string sessionKey) =>
         _client.PatchSessionAsync(sessionKey, new SessionPatch { Model = SessionPatch.Clear });
 
@@ -353,6 +360,8 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         _client.RequestChatHistoryAsync(sessionKey, page: page);
 
     public long? ChatMessageReadConnectionEpoch => _client.SessionMutationConnectionEpoch;
+    public object GatewayAuthorityIdentity => _client;
+    public bool IsAgentsListUnsupported => _client.IsAgentsListUnsupported;
     public Task<SessionFileList> ListSessionFilesAsync(string sessionKey) =>
         // Ask only Gateways that advertise the method; hello fills the list before Connected is raised.
         _client.AdvertisedServerMethods.Contains("sessions.files.list", StringComparer.Ordinal)

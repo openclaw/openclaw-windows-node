@@ -21,6 +21,29 @@ public sealed class ChatStreamingParityTests
         Assert.Equal(expected, mapped.Text);
     }
 
+    [Fact]
+    public void HistoryMergePreservesLiveTurnGeneration()
+    {
+        var prior = ChatTimelineReducer.AddLocalUser(
+            ChatTimelineState.Initial() with { TurnGeneration = 4 },
+            "Live prompt",
+            "live-prompt");
+        var plan = new ChatHistoryRebuildPlan(
+            null,
+            ChatTimelineState.Initial(),
+            new Dictionary<string, ChatEntryMetadata>(),
+            0);
+
+        var (merged, _) = ChatHistoryState.MergeWithLiveEntries(
+            plan,
+            prior,
+            new Dictionary<string, ChatEntryMetadata>(),
+            Start,
+            authoritative: true);
+
+        Assert.Equal(5, merged.TurnGeneration);
+    }
+
     [Theory]
     [InlineData("r", 1)]
     [InlineData("other", 2)]

@@ -3294,6 +3294,12 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>The connection dropped before the gateway accepted this message.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Could not confirm whether the message was sent. Check the conversation before trying again.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>This conversation is busy. Your draft is still here; try again when it is ready.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Abort failed</value>
   </data>
@@ -3304,7 +3310,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Assistant replied</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Connection lost: response interrupted.</value>
+    <value>Connection lost while waiting for the response. Check the conversation before sending again.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Gateway timeline event dropped</value>
@@ -7339,6 +7345,19 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>The Gateway did not confirm the selected model or reasoning options. Review them and try again.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>The Gateway could not create the new chat. Check the connection and try again.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>The Gateway may have created this chat, but its response was not confirmed. Check the session list before trying again.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>Location choices are unavailable. This chat will use the Gateway's default location.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Send a message to create this chat before using lifecycle commands.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Refresh questions</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Question answered</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Question cancelled</value></data>

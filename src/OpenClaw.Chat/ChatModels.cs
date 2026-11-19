@@ -248,7 +248,8 @@ public record ChatTimelineState(
     ChatReasoningStream? ReasoningStream = null,
     long? ProgressRetryAtMs = null,
     string? ReconcilableAssistantId = null,
-    System.Collections.Immutable.ImmutableDictionary<(string RunId, string ItemId), int>? PreambleSequences = null)
+    System.Collections.Immutable.ImmutableDictionary<(string RunId, string ItemId), int>? PreambleSequences = null,
+    long TurnGeneration = 0)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
@@ -458,10 +459,9 @@ public interface IChatDataProvider : IAsyncDisposable
     event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
 
     Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default);
-    // Note: there is intentionally no CreateThreadAsync. The gateway protocol
-    // has no "create new session" RPC; the canonical send target is exposed via
-    // ChatDataSnapshot.ComposeTarget and the first SendMessageAsync against it
-    // implicitly materializes the session on the server.
+    // The canonical send target is exposed via ChatDataSnapshot.ComposeTarget.
+    // Workspace drafts use a fresh local key and the placement gateway prepares
+    // that key on first send; selecting a draft never creates a server session.
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default);
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken, IReadOnlyList<OpenClaw.Shared.ChatAttachment>? attachments) =>
         SendMessageAsync(threadId, message, cancellationToken);

@@ -19,7 +19,1303 @@ namespace OpenClaw.Tray.Tests;
 public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 {
     [Fact]
-    public async Task PreambleBeforeAcknowledgment_FollowsItsUserAndCannotReopenACompletedRun()
+    public async Task AcceptedSendResultAfterReconnect_IsNotAbortedWhenConversationWasNotReset()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-after-reconnect",
+            Status = "started"
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var send = provider.SendMessageReportingAcceptanceAsync(
+            "main", "accepted message", gatewayIdempotencyKey: "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => sendStarted.Task.IsCompleted);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            releaseSend.TrySetResult();
+
+            Assert.True(await send);
+            Assert.Empty(bridge.AbortedRunIds);
+            Assert.Equal("draft-send-id", Assert.Single(bridge.SentIdempotencyKeys));
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+            await send;
+        }
+    }
+
+    [Fact]
+    public async Task DraftSendWhileResponseActive_IsDeferredWithoutLocalQueueAdmission()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "active-run"));
+
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "draft text",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Deferred, outcome);
+        Assert.Empty(bridge.SentIdempotencyKeys);
+        Assert.Empty(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Text == "draft text");
+    }
+
+    [Fact]
+    public async Task DraftSendWithTerminalRunResult_IsAcceptedAsGatewayAdmission()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "failed-run",
+            Status = "failed",
+            Error = "The run failed after admission."
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Accepted, outcome);
+        Assert.Equal("draft-send-id", Assert.Single(bridge.SentIdempotencyKeys));
+        Assert.Contains(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Status &&
+                     entry.Text.Contains("The run failed after admission.", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task DraftSendWithUnknownStatus_IsIndeterminate()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "unknown-run",
+            Status = "queued_v2"
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, outcome);
+        Assert.Equal("draft-send-id", Assert.Single(bridge.SentIdempotencyKeys));
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "accepted draft");
+    }
+
+    [Fact]
+    public async Task DraftSendWithStaleCapturedSessionId_IsDeferredWithoutDispatch()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "current-session",
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "draft text",
+            "key-from-old-session",
+            CancellationToken.None,
+            attachments: null,
+            expectedSessionId: "old-session");
+
+        Assert.Equal(ChatSendOutcome.Deferred, outcome);
+        Assert.Empty(bridge.SentIdempotencyKeys);
+        Assert.DoesNotContain(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "draft text");
+    }
+
+    [Fact]
+    public async Task DraftRetryCachedRejection_IsDefinitiveAndRemovesUnconfirmedBubble()
+    {
+        var (bridge, provider, snapshots, notifications) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = (_, _, _) =>
+            Interlocked.Increment(ref sendCount) == 1
+                ? Task.FromException(new TimeoutException("No chat.send response arrived."))
+                : Task.CompletedTask;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await LoadKnownSessionAsync(bridge, provider);
+        var port = new ChatComposerRuntimePort(provider);
+
+        var firstOutcome = await port.SendMessageAsync(
+            "main",
+            "rejected draft",
+            [],
+            CancellationToken.None,
+            "draft-send-id",
+            expectedSessionId: "session-1");
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            Status = "failed",
+            Error = "Gateway rejected the retry.",
+            Cached = true,
+        });
+
+        var retryOutcome = await port.SendMessageAsync(
+            "main",
+            "rejected draft",
+            [],
+            CancellationToken.None,
+            "draft-send-id",
+            expectedSessionId: "session-1");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.Equal(ChatSendOutcome.DefinitivelyRejected, retryOutcome);
+        Assert.Equal(new[] { "draft-send-id", "draft-send-id" }, bridge.SentIdempotencyKeys);
+        Assert.DoesNotContain(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "rejected draft");
+        Assert.Contains(
+            notifications,
+            notification => notification.Kind == ChatProviderNotificationKind.Error &&
+                            notification.Message?.Contains(
+                                "Gateway rejected the retry.",
+                                StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public async Task DraftRetryAfterIndeterminateAdmission_ReusesTheRequestAndIdempotencyKey()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "pending-run",
+            Status = "in_flight"
+        });
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "in_flight",
+            Cached = true
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await LoadKnownSessionAsync(bridge, provider);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        var afterFirstOutcome = snapshots[^1].Timelines["main"];
+        var changedPayloadOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "edited draft",
+            "different-draft-send-id");
+        var secondOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.True(afterFirstOutcome.TurnActive);
+        Assert.Equal(ChatSendOutcome.Deferred, changedPayloadOutcome);
+        Assert.Equal(ChatSendOutcome.Accepted, secondOutcome);
+        Assert.Equal(new[] { "draft-send-id", "draft-send-id" }, bridge.SentIdempotencyKeys);
+        Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "accepted draft");
+    }
+
+    [Fact]
+    public async Task DraftSendTimeout_RetryIsBlockedWhenInitialSessionIdentityWasUnknown()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sentSessionIds = new List<string?>();
+        var sendCount = 0;
+        bridge.SendBehavior = (_, _, sessionId) =>
+        {
+            sentSessionIds.Add(sessionId);
+            return Interlocked.Increment(ref sendCount) == 1
+                ? Task.FromException(new TimeoutException("No chat.send response arrived."))
+                : Task.CompletedTask;
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "learned-session-id",
+        });
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+        var retryOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.Equal(ChatSendOutcome.Indeterminate, retryOutcome);
+        Assert.Equal(new[] { "draft-send-id" }, bridge.SentIdempotencyKeys);
+        Assert.Equal(new string?[] { null }, sentSessionIds);
+    }
+
+    [Fact]
+    public async Task DraftSendTimeout_EndsPlaceholderTurnSoNonDraftSendIsNotDropped()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = (_, _, _) =>
+            Interlocked.Increment(ref sendCount) == 1
+                ? Task.FromException(new TimeoutException("No chat.send response arrived."))
+                : Task.CompletedTask;
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "follow-up-run",
+            Status = "started"
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        var afterTimeout = snapshots[^1].Timelines["main"];
+        var followUpAccepted = await provider.SendMessageReportingAcceptanceAsync(
+            "main",
+            "non-draft follow-up");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.False(afterTimeout.TurnActive);
+        Assert.True(followUpAccepted);
+        Assert.Equal(2, bridge.SentIdempotencyKeys.Count);
+        Assert.Equal("draft-send-id", bridge.SentIdempotencyKeys[0]);
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "accepted draft");
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "non-draft follow-up");
+    }
+
+    [Fact]
+    public async Task ForeignSameTextEcho_DoesNotDiscardUncertainRequestOrBlockDistinctDraft()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = (_, _, _) =>
+            Interlocked.Increment(ref sendCount) == 1
+                ? Task.FromException(new TimeoutException("No chat.send response arrived."))
+                : Task.CompletedTask;
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "next-run",
+            Status = "ok",
+            Cached = true,
+        });
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "ok",
+            Cached = true,
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await LoadKnownSessionAsync(bridge, provider);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        var afterTimeout = snapshots[^1].Timelines["main"];
+        Assert.False(afterTimeout.TurnActive);
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = "accepted draft",
+            RunId = "foreign-run",
+            Ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            OpenClawId = "foreign-user-message",
+        });
+        var nextOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "next draft",
+            "next-draft-send-id");
+        var retryOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.Equal(ChatSendOutcome.Accepted, nextOutcome);
+        Assert.Equal(ChatSendOutcome.Accepted, retryOutcome);
+        Assert.Equal(
+            new[] { "draft-send-id", "next-draft-send-id", "draft-send-id" },
+            bridge.SentIdempotencyKeys);
+        var users = snapshots[^1].Timelines["main"].Entries
+            .Where(entry => entry.Kind == ChatTimelineItemKind.User)
+            .ToArray();
+        Assert.Single(users, entry => entry.Text == "accepted draft");
+        Assert.Single(users, entry => entry.Text == "next draft");
+    }
+
+    [Fact]
+    public async Task UncertainDraftFallbackEchoAndHistoryReload_PreserveSameKeyRetryIdentity()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = (_, _, _) =>
+            Interlocked.Increment(ref sendCount) == 1
+                ? Task.FromException(new TimeoutException("No chat.send response arrived."))
+                : Task.CompletedTask;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await LoadKnownSessionAsync(bridge, provider);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = "accepted draft",
+            Ts = timestamp,
+            OpenClawId = "confirmed-user-message",
+        });
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            Messages =
+            [
+                new ChatMessageInfo
+                {
+                    SessionKey = "main",
+                    Role = "user",
+                    State = "final",
+                    Text = "accepted draft",
+                    Ts = timestamp,
+                    OpenClawId = "confirmed-user-message",
+                },
+            ],
+        });
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "ok",
+            Cached = true,
+        });
+
+        var retryOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.Equal(ChatSendOutcome.Accepted, retryOutcome);
+        Assert.Equal(new[] { "draft-send-id", "draft-send-id" }, bridge.SentIdempotencyKeys);
+        Assert.Single(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User && entry.Text == "accepted draft");
+    }
+
+    [Fact]
+    public async Task DraftRetryAfterSessionIdentityChanges_DropsTheStaleUncertainFence()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sessionId = "session-before-reset";
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = sessionId,
+        });
+        var sentSessionIds = new List<string?>();
+        bridge.SendBehavior = (_, _, sentSessionId) =>
+        {
+            sentSessionIds.Add(sentSessionId);
+            return Task.CompletedTask;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "old-session-run",
+            Status = "in_flight",
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        sessionId = "session-after-reset";
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "started",
+        });
+        const string replacementKey = "draft-send-after-reset";
+
+        var retryOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            replacementKey);
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.Equal(ChatSendOutcome.Accepted, retryOutcome);
+        Assert.Equal(new string?[] { "session-before-reset", "session-after-reset" }, sentSessionIds);
+        Assert.Equal(
+            new[] { "draft-send-id", replacementKey },
+            bridge.SentIdempotencyKeys);
+        Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "accepted draft");
+    }
+
+    [Fact]
+    public async Task DraftRetryAfterReconnect_ReconcilesLateEchoToExistingBubble()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = (_, _, _) =>
+            Interlocked.Increment(ref sendCount) == 1
+                ? Task.FromException(new TimeoutException("No chat.send response arrived."))
+                : Task.CompletedTask;
+        bridge.HistoryBehavior = sessionKey => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        var original = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "accepted draft");
+        var originalMeta = provider.GetEntryMetadata("main")[original.Id];
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.HistoryBehavior = sessionKey => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages = [],
+        });
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "started",
+        });
+
+        var retryOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            State = "final",
+            Text = "accepted draft",
+            Ts = originalMeta.Timestamp!.Value.AddMinutes(1).ToUnixTimeMilliseconds(),
+            OpenClawId = "late-user-message",
+        });
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.Equal(ChatSendOutcome.Accepted, retryOutcome);
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+        var user = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "accepted draft");
+        var metadata = provider.GetEntryMetadata("main")[user.Id];
+        Assert.Equal("late-user-message", metadata.GatewayMessageId);
+        Assert.False(metadata.IsLocalQueuedSend);
+    }
+
+    [Fact]
+    public async Task DraftRetryAcknowledgedAfterAnotherReconnect_RestoresEchoCorrelation()
+    {
+        var retryStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRetry = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sendCount) == 1)
+                throw new TimeoutException("No chat.send response arrived.");
+            retryStarted.TrySetResult();
+            await releaseRetry.Task;
+        };
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        var original = Assert.Single(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.User &&
+                     entry.Text == "accepted draft");
+        var originalMeta = provider.GetEntryMetadata("main")[original.Id];
+
+        bridge.RaiseStatus(ConnectionStatus.Disconnected);
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = "session-1",
+            Messages = [],
+        });
+        await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "started",
+        });
+
+        var retry = provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => retryStarted.Task.IsCompleted);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            await provider.LoadHistoryAsync("main", force: true, authoritative: true);
+            releaseRetry.TrySetResult();
+            var retryOutcome = await retry;
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main",
+                Role = "user",
+                State = "final",
+                Text = "accepted draft",
+                Ts = originalMeta.Timestamp!.Value.AddMinutes(1).ToUnixTimeMilliseconds(),
+                OpenClawId = "late-user-message",
+            });
+
+            Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+            Assert.Equal(ChatSendOutcome.Accepted, retryOutcome);
+            Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+            var user = Assert.Single(
+                snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.User &&
+                         entry.Text == "accepted draft");
+            var metadata = provider.GetEntryMetadata("main")[user.Id];
+            Assert.Equal("late-user-message", metadata.GatewayMessageId);
+            Assert.False(metadata.IsLocalQueuedSend);
+        }
+        finally
+        {
+            releaseRetry.TrySetResult();
+            await retry;
+        }
+    }
+
+    [Fact]
+    public async Task DraftRetry_RestoresLocalTurnAndQueuesFollowUp()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = (_, _, _) =>
+            Interlocked.Increment(ref sendCount) == 1
+                ? Task.FromException(new TimeoutException("No chat.send response arrived."))
+                : Task.CompletedTask;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await LoadKnownSessionAsync(bridge, provider);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "retry-run",
+            Status = "started",
+        });
+        var retryOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        _ = await provider.SendMessageReportingAcceptanceAsync("main", "follow-up");
+
+        Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+        Assert.Equal(ChatSendOutcome.Accepted, retryOutcome);
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.Equal(new[] { "accepted draft", "accepted draft" }, bridge.SentMessages);
+        Assert.Single(GetQueuedMessages(snapshots[^1], "main"),
+            message => message.Text == "follow-up");
+    }
+
+    [Theory]
+    [InlineData("ok", null)]
+    [InlineData("failed", "The retried run failed.")]
+    public async Task DraftRetryTerminalAcknowledgement_ClosesItsOwnRun(
+        string status,
+        string? error)
+    {
+        var retryStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRetry = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sendCount) == 1)
+                throw new TimeoutException("No chat.send response arrived.");
+            retryStarted.TrySetResult();
+            await releaseRetry.Task;
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await LoadKnownSessionAsync(bridge, provider);
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "retry-run",
+            Status = status,
+            Error = error,
+            Cached = true,
+        });
+
+        var retry = provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => retryStarted.Task.IsCompleted);
+            bridge.RaiseAgent(MakeAgentEvent(
+                "lifecycle",
+                """{"phase":"start"}""",
+                runId: "retry-run"));
+            releaseRetry.TrySetResult();
+            var retryOutcome = await retry;
+
+            Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+            Assert.Equal(ChatSendOutcome.Accepted, retryOutcome);
+            Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+            Assert.Single(
+                snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.User &&
+                         entry.Text == "accepted draft");
+        }
+        finally
+        {
+            releaseRetry.TrySetResult();
+            await retry;
+        }
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ReconnectLateAcknowledgement_DoesNotSuppressResumedRun(
+        bool resumeBeforeAcknowledgement)
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "resumed-run",
+            Status = "started",
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var send = provider.SendMessageReportingAcceptanceAsync(
+            "main",
+            "accepted message",
+            gatewayIdempotencyKey: "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => sendStarted.Task.IsCompleted);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+            if (resumeBeforeAcknowledgement)
+            {
+                bridge.RaiseAgent(MakeAgentEvent(
+                    "lifecycle",
+                    """{"phase":"start"}""",
+                    runId: "resumed-run"));
+            }
+
+            releaseSend.TrySetResult();
+            Assert.True(await send);
+
+            if (!resumeBeforeAcknowledgement)
+            {
+                bridge.RaiseAgent(MakeAgentEvent(
+                    "lifecycle",
+                    """{"phase":"start"}""",
+                    runId: "resumed-run"));
+            }
+            Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+            bridge.RaiseAgent(MakeAgentEvent(
+                "lifecycle",
+                """{"phase":"end"}""",
+                runId: "resumed-run"));
+
+            Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+            await send;
+        }
+    }
+
+    [Fact]
+    public async Task RetryTerminalFailure_DoesNotEndNewerRemoteTurn()
+    {
+        var retryStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRetry = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        var sendCount = 0;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            if (Interlocked.Increment(ref sendCount) == 1)
+                throw new TimeoutException("No chat.send response arrived.");
+            retryStarted.TrySetResult();
+            await releaseRetry.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "failed-retry",
+            Status = "failed",
+            Error = "The retried run failed."
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await LoadKnownSessionAsync(bridge, provider);
+
+        var firstOutcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "user",
+            Text = "newer remote prompt",
+        });
+        var retry = provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => retryStarted.Task.IsCompleted);
+            releaseRetry.TrySetResult();
+
+            Assert.Equal(ChatSendOutcome.Indeterminate, firstOutcome);
+            Assert.Equal(ChatSendOutcome.Accepted, await retry);
+            Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.User &&
+                         entry.Text == "newer remote prompt");
+            Assert.Equal(new[] { "draft-send-id", "draft-send-id" }, bridge.SentIdempotencyKeys);
+        }
+        finally
+        {
+            releaseRetry.TrySetResult();
+            await retry;
+        }
+    }
+
+    [Fact]
+    public async Task DraftSendWithAcceptedRunIdAndNoStatus_IsAccepted()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "accepted-run" });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Accepted, outcome);
+        Assert.Equal("draft-send-id", Assert.Single(bridge.SentIdempotencyKeys));
+    }
+
+    [Fact]
+    public async Task DraftSendWithCachedInFlight_IsAccepted()
+    {
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "accepted-run",
+            Status = "in_flight",
+            Cached = true
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Accepted, outcome);
+        Assert.Equal("draft-send-id", Assert.Single(bridge.SentIdempotencyKeys));
+    }
+
+    [Fact]
+    public async Task DraftSendWithCachedSuccess_EndsLocalTurn()
+    {
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "cached-run",
+            Status = "ok",
+            Cached = true
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var snapshotCountBeforeSend = snapshots.Count;
+        var outcome = await provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+
+        Assert.Equal(ChatSendOutcome.Accepted, outcome);
+        Assert.True(snapshots.Count >= snapshotCountBeforeSend + 2);
+        Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Text == "accepted draft");
+    }
+
+    [Fact]
+    public async Task CachedSuccessDoesNotEndNewerUserTurnBeforeLifecycleStart()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "cached-run",
+            Status = "ok",
+            Cached = true
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var send = provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => sendStarted.Task.IsCompleted);
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main",
+                Role = "user",
+                Text = "newer remote prompt"
+            });
+            await WaitForConditionAsync(() => snapshots[^1].Timelines["main"].Entries.Any(
+                entry => entry.Kind == ChatTimelineItemKind.User &&
+                         entry.Text == "newer remote prompt"));
+            releaseSend.TrySetResult();
+
+            Assert.Equal(ChatSendOutcome.Accepted, await send);
+            Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Text == "newer remote prompt");
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+            await send;
+        }
+    }
+
+    [Fact]
+    public async Task DraftInFlightWithoutCacheAfterDisconnect_RemainsIndeterminate()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "pending-run",
+            Status = "in_flight"
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var send = provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => sendStarted.Task.IsCompleted);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            releaseSend.TrySetResult();
+
+            Assert.Equal(ChatSendOutcome.Indeterminate, await send);
+            Assert.Equal("draft-send-id", Assert.Single(bridge.SentIdempotencyKeys));
+            Assert.False(snapshots[^1].Timelines["main"].TurnActive);
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Kind == ChatTimelineItemKind.User &&
+                         entry.Text == "accepted draft");
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+            await send;
+        }
+    }
+
+    [Fact]
+    public async Task TerminalFailureDoesNotEndNewerUserTurnBeforeLifecycleStart()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "failed-run",
+            Status = "failed",
+            Error = "The run failed after admission."
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var send = provider.SendDraftMessageReportingOutcomeAsync(
+            "main",
+            "accepted draft",
+            "draft-send-id");
+        try
+        {
+            await WaitForConditionAsync(() => sendStarted.Task.IsCompleted);
+            bridge.RaiseChat(new ChatMessageInfo
+            {
+                SessionKey = "main",
+                Role = "user",
+                Text = "newer remote prompt"
+            });
+            await WaitForConditionAsync(() => snapshots[^1].Timelines["main"].Entries.Any(
+                entry => entry.Kind == ChatTimelineItemKind.User &&
+                         entry.Text == "newer remote prompt"));
+            releaseSend.TrySetResult();
+
+            Assert.Equal(ChatSendOutcome.Accepted, await send);
+            Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Text == "newer remote prompt");
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+            await send;
+        }
+    }
+
+    [Fact]
+    public async Task ResetInvalidatedAcceptedSend_IsNotReportedAsAccepted()
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, _, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "pre-reset-run",
+            Status = "started"
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var send = provider.SendMessageReportingAcceptanceAsync("main", "before reset");
+        try
+        {
+            await WaitForConditionAsync(() => sendStarted.Task.IsCompleted);
+            bridge.RaiseSessionCommandCompleted(new SessionCommandResult
+            {
+                Method = "sessions.reset",
+                Ok = true,
+                Key = "main"
+            });
+            releaseSend.TrySetResult();
+
+            Assert.False(await send);
+            Assert.Contains("pre-reset-run", bridge.AbortedRunIds);
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+            await send;
+        }
+    }
+
+    [Fact]
+    public async Task StaleAcceptedSendResult_DoesNotMutateNewConnectionTimeline()
+    {
+        var staleSendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseStaleSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (message, _, _) =>
+        {
+            if (message == "stale accepted")
+            {
+                staleSendStarted.TrySetResult();
+                await releaseStaleSend.Task;
+            }
+            bridge.SendResults.Enqueue(new ChatSendResult
+            {
+                RunId = message == "stale accepted" ? "old-run" : "new-run",
+                Status = "started"
+            });
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        var staleSend = provider.SendMessageReportingAcceptanceAsync("main", "stale accepted");
+        try
+        {
+            await WaitForConditionAsync(() => staleSendStarted.Task.IsCompleted);
+            bridge.RaiseStatus(ConnectionStatus.Disconnected);
+            bridge.RaiseStatus(ConnectionStatus.Connected);
+
+            await provider.SendMessageAsync("main", "current turn");
+            var beforeStaleAcknowledgment = snapshots[^1].Timelines["main"];
+            Assert.True(beforeStaleAcknowledgment.TurnActive);
+
+            releaseStaleSend.TrySetResult();
+            Assert.True(await staleSend);
+
+            Assert.Equal(beforeStaleAcknowledgment, snapshots[^1].Timelines["main"]);
+            Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+
+            bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-run"));
+            bridge.RaiseChat(AssistantDelta("Current response", "new-run"));
+            Assert.Contains(snapshots[^1].Timelines["main"].Entries,
+                entry => entry.Text == "Current response");
+        }
+        finally
+        {
+            releaseStaleSend.TrySetResult();
+            await staleSend;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DefinitelyNotSentResultRemainsNotAcceptedAcrossReconnect(
+        bool reconnectBeforeResult)
+    {
+        var sendStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSend = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        bridge.SendBehavior = async (message, _, _) =>
+        {
+            if (message != "queued not sent")
+                return;
+            sendStarted.TrySetResult();
+            await releaseSend.Task;
+            if (reconnectBeforeResult)
+            {
+                bridge.RaiseStatus(ConnectionStatus.Disconnected);
+                bridge.RaiseStatus(ConnectionStatus.Connected);
+            }
+            throw new GatewayRequestNotSentException(
+                "Gateway connection changed before chat.send could be sent.");
+        };
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "prior-run",
+            Status = "started"
+        });
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+
+        await provider.SendMessageAsync("main", "prior");
+        bridge.RaiseAgent(MakeAgentEvent(
+            "lifecycle",
+            """{"phase":"start"}""",
+            runId: "prior-run"));
+        await provider.SendMessageAsync("main", "queued not sent");
+        Assert.Equal(
+            ChatQueuedMessageSendState.Queued,
+            Assert.Single(GetQueuedMessages(snapshots[^1], "main")).SendState);
+
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            RunId = "prior-run",
+            Role = "assistant",
+            State = "final",
+            Text = "prior response",
+        });
+        try
+        {
+            await WaitForConditionAsync(() => sendStarted.Task.IsCompleted);
+            releaseSend.TrySetResult();
+            await WaitForConditionAsync(() =>
+                GetQueuedMessages(snapshots[^1], "main").SingleOrDefault() is
+                {
+                    SendState: ChatQueuedMessageSendState.Failed,
+                    ErrorText: "Gateway connection changed before chat.send could be sent."
+                });
+            if (!reconnectBeforeResult)
+            {
+                bridge.RaiseStatus(ConnectionStatus.Disconnected);
+                bridge.RaiseStatus(ConnectionStatus.Connected);
+            }
+
+            var failed = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+            Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
+            Assert.Equal(
+                "Gateway connection changed before chat.send could be sent.",
+                failed.ErrorText);
+        }
+        finally
+        {
+            releaseSend.TrySetResult();
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreambleBeforeAcknowledgment_FollowsItsUserAndCannotReopenACompletedRun(
+        bool useDraftIdempotencyKey)
     {
         var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
         await using var lifetime = provider;
@@ -27,7 +1323,10 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseStatus(ConnectionStatus.Connected);
         var acknowledgment = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         bridge.SendBehavior = (_, _, _) => acknowledgment.Task;
-        var send = provider.SendMessageAsync("main", "Check the digits");
+        var send = provider.SendMessageReportingAcceptanceAsync(
+            "main",
+            "Check the digits",
+            gatewayIdempotencyKey: useDraftIdempotencyKey ? "draft-send-id" : null);
         var run = Assert.Single(bridge.SentIdempotencyKeys)!;
         AgentEventInfo Progress(string runId) => MakeAgentEvent("item",
             """{"kind":"preamble","phase":"end","itemId":"p","progressText":"Checking the equation."}""", runId: runId);
@@ -94,8 +1393,11 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal(!confirmsTerminal, snapshots[^1].Timelines["main"].TurnActive);
     }
 
-    [Fact]
-    public async Task MessageLessTerminalBeforeAcknowledgment_MustMatchThePendingSend()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MessageLessTerminalBeforeAcknowledgment_MustMatchThePendingSend(
+        bool useDraftIdempotencyKey)
     {
         var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
         await using var lifetime = provider;
@@ -103,7 +1405,10 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         bridge.RaiseStatus(ConnectionStatus.Connected);
         var acknowledgment = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         bridge.SendBehavior = (_, _, _) => acknowledgment.Task;
-        var send = provider.SendMessageAsync("main", "Pending question");
+        var send = provider.SendMessageReportingAcceptanceAsync(
+            "main",
+            "Pending question",
+            gatewayIdempotencyKey: useDraftIdempotencyKey ? "draft-send-id" : null);
         try
         {
             var run = Assert.Single(bridge.SentIdempotencyKeys)!;
@@ -1171,6 +2476,23 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         }
     }
 
+    private static async Task LoadKnownSessionAsync(
+        FakeBridge bridge,
+        OpenClawChatDataProvider provider,
+        string sessionId = "session-1")
+    {
+        bridge.HistoryBehavior = _ => Task.FromResult(new ChatHistoryInfo
+        {
+            SessionKey = "main",
+            SessionId = sessionId,
+            Messages = [],
+        });
+        await provider.LoadHistoryAsync(
+            "main",
+            force: true,
+            authoritative: true);
+    }
+
     private static (FakeBridge bridge, OpenClawChatDataProvider provider, List<ChatDataSnapshot> snapshots, List<ChatProviderNotification> notifications)
         CreateProvider(
             SessionInfo[]? initial = null,
@@ -1757,6 +3079,36 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal("agent:main:main", request.ParentSessionKey);
         Assert.True(request.EmitCommandHooks);
         Assert.Equal(false, request.SucceedsParent);
+    }
+
+    [Fact]
+    public async Task CreateDefaultDraftSession_DoesNotRequireUnsupportedAgentRoster()
+    {
+        var (bridge, provider, _, _) = CreateProvider();
+        await using (provider)
+        {
+            var result = await provider.CreateDefaultDraftSessionAsync(CancellationToken.None);
+
+            Assert.True(result.Ok);
+            var request = Assert.Single(bridge.CreateSessionRequests);
+            Assert.Null(request.AgentId);
+            Assert.False(request.EmitCommandHooks);
+        }
+    }
+
+    [Fact]
+    public async Task CreateDraftSession_PreservesSelectedAgentWithoutPlacementCatalog()
+    {
+        var (bridge, provider, _, _) = CreateProvider();
+        await using (provider)
+        {
+            var result = await provider.CreateDraftSessionAsync("research", CancellationToken.None);
+
+            Assert.True(result.Ok);
+            var request = Assert.Single(bridge.CreateSessionRequests);
+            Assert.Equal("research", request.AgentId);
+            Assert.False(request.EmitCommandHooks);
+        }
     }
 
     [Fact]
@@ -2764,7 +4116,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     {
         using var activities = new ChatActivityCollector();
         var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
-        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run", Status = "future_status" });
+        bridge.SendResults.Enqueue(new ChatSendResult { Status = "future_status" });
 
         await provider.SendMessageAsync("main", "prompt");
 
@@ -3749,7 +5101,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         snapshots.Clear();
         notifications.Clear();
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        await Assert.ThrowsAsync<ChatSendRejectedException>(() =>
             provider.SendMessageAsync("main", "Hi"));
 
         var timeline = snapshots[^1].Timelines["main"];
@@ -3779,7 +5131,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         var firstSend = provider.SendMessageAsync("main", "a");
         var secondSend = provider.SendMessageAsync("main", "b");
         firstGate.SetResult();
-        await Assert.ThrowsAsync<InvalidOperationException>(() => firstSend);
+        await Assert.ThrowsAsync<ChatSendRejectedException>(() => firstSend);
 
         for (var i = 0; i < 20 && bridge.SentMessages.Count < 2; i++)
             await Task.Delay(10);
@@ -3962,7 +5314,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task ConnectionLostDuringActiveSend_KeepsQueuedMessageUnsentWhicheverNotificationArrivesFirst(
+    public async Task ConnectionLostDuringActiveSend_RetainsUncertainMessageAndQueuedMessageAsNotAccepted(
         bool statusBeforeCancellation)
     {
         // The client cancels a dispatched chat.send when its connection drops and then reports the
@@ -3989,12 +5341,18 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             entry => entry.Text.Contains("Request canceled", StringComparison.Ordinal));
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        var queued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("queued across drop", queued.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Failed, queued.SendState);
+        var queued = GetQueuedMessages(snapshots[^1], "main");
+        var notSent = Assert.Single(queued, message => message.Text == "queued across drop");
+        Assert.Equal(ChatQueuedMessageSendState.Failed, notSent.SendState);
         Assert.Equal(
             "The connection dropped before the gateway accepted this message.",
-            queued.ErrorText);
+            notSent.ErrorText);
+        Assert.Contains(
+            snapshots[^1].Timelines["main"].Entries,
+            entry => entry.Kind == ChatTimelineItemKind.Status &&
+                     entry.Text.Contains(
+                         "Chat_Notification_ConnectionInterrupted",
+                         StringComparison.Ordinal));
         Assert.Equal(["active across drop"], bridge.SentMessages);
         Assert.DoesNotContain(notifications, n => n.Kind == ChatProviderNotificationKind.Error);
     }
@@ -10022,6 +11380,70 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public async Task QueuedSend_NotSentRetryAfterInFlight_RemainsUnknownAndPreservesCurrentTurn()
+    {
+        var drains = new ControlledQueueDrains();
+        var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var retryEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRetry = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sendCount = 0;
+        var (bridge, provider, snapshots, _) = CreateProvider(
+            new[] { MainSession() }, queueDrainScheduler: drains.Schedule);
+        await using var providerLifetime = provider;
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
+        bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-2", Status = "in_flight" });
+        bridge.SendBehavior = async (_, _, _) =>
+        {
+            switch (Interlocked.Increment(ref sendCount))
+            {
+                case 2:
+                    secondEntered.TrySetResult();
+                    await releaseSecond.Task;
+                    break;
+                case 3:
+                    retryEntered.TrySetResult();
+                    await releaseRetry.Task;
+                    throw new GatewayRequestNotSentException(
+                        "Gateway connection changed before chat.send could be sent.");
+            }
+        };
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        await provider.SendMessageAsync("main", "first");
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "run-1"));
+        await provider.SendMessageAsync("main", "Hello");
+        bridge.RaiseChat(new ChatMessageInfo
+        {
+            SessionKey = "main",
+            Role = "assistant",
+            Text = "first response",
+            State = "final",
+        });
+
+        var firstDrain = drains.RunNextAsync();
+        await secondEntered.Task.WaitAsync(QueuedSendProbeDeadline);
+        releaseSecond.TrySetResult();
+        await firstDrain.WaitAsync(QueuedSendProbeDeadline);
+        var requeued = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(ChatQueuedMessageSendState.Queued, requeued.SendState);
+
+        var retryDrain = await drains.RunUntilAdmissionAsync(
+            retryEntered.Task,
+            QueuedSendProbeDeadline);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "new-current-run"));
+        releaseRetry.TrySetResult();
+        await retryDrain.WaitAsync(QueuedSendProbeDeadline);
+
+        var failedRetry = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal(ChatQueuedMessageSendState.Failed, failedRetry.SendState);
+        Assert.Equal(ChatQueueState.SendOutcomeUnknownError, failedRetry.ErrorText);
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
+        Assert.Equal(3, bridge.SentMessages.Count);
+        Assert.Equal(bridge.SentIdempotencyKeys[1], bridge.SentIdempotencyKeys[2]);
+    }
+
+    [Fact]
     public async Task QueuedSend_RetryDriver_FollowsCapturedRearmAndReturnsHeldAdmission()
     {
         var drains = new ControlledQueueDrains();
@@ -10567,27 +11989,27 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public async Task DirectSend_TimeoutAckWithRunId_FailsInsteadOfPromoting()
+    public async Task DirectSend_TimeoutAckWithRunId_PromotesAndEndsTheFailedRun()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-timeout", Status = "timeout" });
         await provider.LoadAsync();
         bridge.RaiseStatus(ConnectionStatus.Connected);
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            provider.SendMessageAsync("main", "direct timeout"));
-
-        Assert.Contains("timeout", ex.Message, StringComparison.Ordinal);
+        Assert.True(await provider.SendMessageReportingAcceptanceAsync("main", "direct timeout"));
         var snapshot = snapshots[^1];
         Assert.False(snapshot.Timelines["main"].TurnActive);
         Assert.Empty(GetQueuedMessages(snapshot, "main"));
+        Assert.Contains(snapshot.Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.User &&
+            entry.Text == "direct timeout");
         Assert.Contains(snapshot.Timelines["main"].Entries, entry =>
             entry.Kind == ChatTimelineItemKind.Status &&
             entry.Text.Contains("timeout", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task QueuedSend_TimeoutAckWithRunId_KeepsFailedQueuedMessage()
+    public async Task QueuedSend_TimeoutAckWithRunId_PromotesAndEndsTheFailedRun()
     {
         var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
         bridge.SendResults.Enqueue(new ChatSendResult { RunId = "run-1", Status = "started" });
@@ -10606,16 +12028,19 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
             Text = "first response",
             State = "final",
         });
-        await WaitForConditionAsync(() => HasFailedQueuedMessage(snapshots[^1], "main", "queued timeout"));
+        await WaitForConditionAsync(() => snapshots[^1].Timelines["main"].Entries.Any(entry =>
+            entry.Kind == ChatTimelineItemKind.User && entry.Text == "queued timeout"));
 
-        var failed = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
-        Assert.Equal("queued timeout", failed.Text);
-        Assert.Equal(ChatQueuedMessageSendState.Failed, failed.SendState);
-        Assert.Contains("timeout", failed.ErrorText, StringComparison.Ordinal);
-        Assert.Equal(new[] { "first", "queued timeout" }, bridge.SentMessages);
-        Assert.DoesNotContain(snapshots[^1].Timelines["main"].Entries, entry =>
+        var snapshot = snapshots[^1];
+        Assert.Empty(GetQueuedMessages(snapshot, "main"));
+        Assert.False(snapshot.Timelines["main"].TurnActive);
+        Assert.Contains(snapshot.Timelines["main"].Entries, entry =>
             entry.Kind == ChatTimelineItemKind.User &&
             entry.Text == "queued timeout");
+        Assert.Contains(snapshot.Timelines["main"].Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.Status &&
+            entry.Text.Contains("timeout", StringComparison.Ordinal));
+        Assert.Equal(new[] { "first", "queued timeout" }, bridge.SentMessages);
     }
 
     [Fact]
@@ -14865,6 +16290,10 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
 
         await WaitForConditionAsync(() => bridge.SentMessages.Count == 1);
         Assert.Equal(new[] { "fresh after reconnect" }, bridge.SentMessages);
+        var staleMessage = Assert.Single(GetQueuedMessages(snapshots[^1], "main"));
+        Assert.Equal("stale after reconnect", staleMessage.Text);
+        Assert.Equal(ChatQueuedMessageSendState.Failed, staleMessage.SendState);
+        Assert.Equal(ChatQueueState.ConnectionDroppedBeforeAcceptError, staleMessage.ErrorText);
     }
 
     [Fact]
@@ -14904,14 +16333,20 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         var releaseSend = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var sendCount = 0;
-        var (bridge, provider, _, _) = CreateProvider(new[] { MainSession() });
+        var (bridge, provider, snapshots, _) = CreateProvider(new[] { MainSession() });
+        bridge.SendResults.Enqueue(new ChatSendResult
+        {
+            RunId = "fresh-run",
+            Status = "started"
+        });
         bridge.SendBehavior = async (_, _, _) =>
         {
             if (Interlocked.Increment(ref sendCount) != 1)
                 return;
             sendStarted.TrySetResult();
             await releaseSend.Task;
-            throw new InvalidOperationException("stale failure");
+            throw new GatewayRequestNotSentException(
+                "Gateway connection changed before chat.send could be sent.");
         };
         await provider.LoadAsync();
 
@@ -14926,6 +16361,7 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal(
             new[] { "failing in flight", "fresh after stale failure" },
             bridge.SentMessages);
+        Assert.True(snapshots[^1].Timelines["main"].TurnActive);
     }
 
     [Theory]

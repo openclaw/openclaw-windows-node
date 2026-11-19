@@ -39,6 +39,38 @@ public sealed class ChatSurfaceResolverTests : IDisposable
         Assert.False(ChatSurfaceResolver.UseLegacyWebChat(true));
     }
 
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, false)]
+    public void PendingDraftUsesNativeSurface(
+        bool legacySurfaceRequested,
+        bool hasPendingDraft,
+        bool expectedLegacySurface)
+    {
+        Assert.Equal(expectedLegacySurface,
+            ChatSurfaceResolver.ShouldUseLegacyWebChat(legacySurfaceRequested, hasPendingDraft));
+    }
+
+    [Theory]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, false, true, false)]
+    [InlineData(true, true, false, false)]
+    [InlineData(false, false, true, false)]
+    public void UnsentComposerContentKeepsNativeSurface(
+        bool legacySurfaceRequested,
+        bool hasPendingDraft,
+        bool hasUnsentComposerContent,
+        bool expectedLegacySurface)
+    {
+        Assert.Equal(expectedLegacySurface,
+            ChatSurfaceResolver.ShouldUseLegacyWebChat(
+                legacySurfaceRequested,
+                hasPendingDraft,
+                hasUnsentComposerContent));
+    }
+
     [Fact]
     public void WorkspaceOverride_NotifiesOnlyWhenValueChanges()
     {
@@ -76,5 +108,17 @@ public sealed class ChatSurfaceResolverTests : IDisposable
     public void BuildChatUrl_PreservesTransportSecurityAndTokenEscaping(string gatewayUrl, string? expected)
     {
         Assert.Equal(expected, ChatSurfaceResolver.BuildChatUrl(gatewayUrl, "tok &/"));
+    }
+
+    [Fact]
+    public void BuildChatUrlForSession_ReplacesDraftKeyWithMaterializedGatewayKey()
+    {
+        var url = ChatSurfaceResolver.BuildChatUrlForSession(
+            "https://gateway.example.test/chat?token=tok&session=draft%3Alocal",
+            "agent:main:created&one");
+
+        Assert.Equal(
+            "https://gateway.example.test/chat?token=tok&session=agent%3Amain%3Acreated%26one",
+            url);
     }
 }

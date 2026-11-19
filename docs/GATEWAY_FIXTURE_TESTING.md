@@ -151,21 +151,23 @@ installed-app or live-provider behavior.
 a different compatibility path. After a fixture-owned reconnect, the actual
 client receives `unknown method: agents.list` while `sessions.list` still works.
 Workspace must show the legacy sessions and enable new-conversation creation
-with the Gateway's default target. The assistant selector remains unavailable,
-because no authoritative agent roster was delivered. A pending or failed listing
-is not treated as an explicitly unsupported method.
+with the Gateway's default target. New Chat remains local until the first message;
+that send uses `sessions.create` without an `agentId`, then sends to the confirmed
+Gateway-returned key. The assistant selector and location pickers remain unavailable,
+because no authoritative agent roster or placement catalog was delivered. A pending
+or failed listing is not treated as an explicitly unsupported method.
 
 The disconnected assistant menu still exposes its existing connection guidance.
 This does not authorize session creation or treat a pending connected roster as
 available.
 
-`VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
+`VerifiedSetupBindingClearsWhenOpeningLocalNewChat` starts with a real
 production handoff receipt and a synthetic model-verification response. It
-holds the fixture's session-creation response and checks that the prior bound
-setup warning is already cleared, then releases creation and observes the
-ordinary selected conversation. Existing warning recovery coverage checks the
-navigation path; the shutdown guard has a mounted WindowManager case. These
-are behavioral handoff checks, not source-text ordering assertions.
+checks that the prior bound setup warning is already cleared before the local
+draft opens and asserts that no session-creation request is sent until the first
+message. Existing warning recovery coverage checks the navigation path; the
+shutdown guard has a mounted WindowManager case. These are behavioral handoff
+checks, not source-text ordering assertions.
 
 Channels management lives in the Gateway Dashboard, and the native Channels
 page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its

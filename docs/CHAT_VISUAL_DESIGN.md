@@ -890,9 +890,23 @@ workspace. Until there is explicit local selection intent, its picker labels sho
 **Not verified**, with no selected flyout row. Sending without changing a picker
 preserves the existing session location. Explicitly choosing even the displayed
 default creates placement intent and runs preparation before sending. Genuinely
-new compose-only targets may show the agent defaults.
+new compose-only targets may show the agent defaults. Workspace's New Chat action opens a local draft and does not immediately create a
+Gateway session. The draft starts with the local environment and selected agent's
+default workspace. Environment, workspace, model and reasoning choices stay local
+until Send. First send creates/prepares the session, confirms selected options with
+the Gateway response, and only then sends the message. Abandoning an unsent draft
+creates no Gateway session. Drafts and explicit location choices survive composer
+remounts while the same Gateway client remains authoritative; switching Gateways
+discards those local identities. Older sessions and explicit forks do not inherit
+draft state. If `agents.list` is explicitly unsupported, new chats defer a
+Gateway-default `sessions.create` request until Send and use only its confirmed
+returned key. This compatibility path does not offer unverified location pickers.
+Discovery and preparation failures preserve the draft and attachments.
+Native `/new`, `/reset`, and `/compact` commands are rejected locally for an
+unmaterialized draft with an explanation; send a first message before using
+lifecycle commands so they cannot target a placeholder key or bypass placement.
 
-`ChatPlacementController` owns each mounted host's local selection and cancellation
+`ChatPlacementController` owns mounted-host selection, send fencing, and cancellation
 scope. Discovery and selection are read-only. On first send, `GatewayChatPlacementClient`
 rechecks device availability, applies the workspace to the exact empty session key,
 and, for remote hosts, creates a session-owned worktree and requires an active

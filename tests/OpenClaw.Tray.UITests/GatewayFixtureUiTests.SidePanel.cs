@@ -64,7 +64,7 @@ public sealed partial class GatewayFixtureUiTests
             await CaptureIfRequestedAsync(run, $"side-panel-{theme}-{(maximized ? "max" : "normal")}-split.png");
 
             // An operation banner above chat must stay visible and dismissable: the panel leaves the caption row.
-            Invoke(await VisibleAsync("WorkspaceSessionsAdd", "new conversation action"));
+            await TriggerReadOnlySessionErrorAsync(run);
             var banner = await VisibleAsync("WorkspaceOperationFeedback", "rejected-operation banner above chat");
             var bannerBottom = banner.Current.BoundingRectangle.Bottom;
             await TabAsync(bounds => bounds.Top >= bannerBottom - 1, "panel leaves the caption row while the banner shows");

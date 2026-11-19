@@ -645,6 +645,67 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     [Theory]
     [InlineData(320)]
     [InlineData(800)]
+    public async Task LocalDraft_ShowsDefaultLocationAndCreatesOnlyOnSend(int width)
+    {
+        var gateway = new PlacementProofGateway();
+        var draft = ChatDraft.Create("main");
+        await WithChatAsync(width, async (surface, _, session, provider) =>
+        {
+            await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession(draft.Key)));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is { } environment &&
+                    AutomationProperties.GetName(environment).Contains("Gateway machine", StringComparison.Ordinal) &&
+                    FindControlOrNull<Button>(surface, "ChatWorkspacePicker") is { } workspace &&
+                    AutomationProperties.GetName(workspace).Contains("workspace", StringComparison.Ordinal),
+                "new session location defaults"));
+            Assert.Empty(provider.SentMessages);
+            Assert.Equal(0, gateway.Preparations);
+            await CaptureAsync(surface, $"ChatNewSessionDefaults-{width}");
+            await ui.RunOnUIAsync(async () => Assert.True(await session.Controller.SendAsync()));
+            Assert.Equal(1, gateway.Preparations);
+            Assert.Equal("local:gateway", gateway.Selection?.Environment.Id);
+            Assert.Equal("/gateway/workspace", gateway.Selection?.Workspace.Path);
+            Assert.Equal((draft.Key, Draft), Assert.Single(provider.SentMessages));
+        }, "empty", placementGateway: gateway,
+            onMounted: host => host.RegisterDraft(draft));
+    }
+
+    [Fact]
+    public async Task DraftSendStatus_IsRenderedAsPoliteLiveRegion()
+    {
+        const string message = "The Gateway send status is unknown.";
+        await WithChatAsync(800, async (surface, _, session, _) =>
+        {
+            var draft = new ChatDraft("draft-status-proof", "main");
+            await ui.RunOnUIAsync(() =>
+            {
+                var inputs = session.ViewModel.Inputs!;
+                session.Controller.RegisterDraft(draft);
+                session.ApplyInputs(inputs with
+                {
+                    CurrentThread = inputs.CurrentThread with { Id = draft.Key },
+                    PlacementDraft = draft,
+                    PlacementRequiresCreation = true
+                });
+                session.Placement!.ReportDraftSendStatus(draft.Key, message);
+            });
+
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControlOrNull<TextBlock>(surface, "ChatDraftSendStatus")?.Text == message,
+                "visible draft send status",
+                () => FindControlOrNull<TextBlock>(surface, "ChatDraftSendStatus")?.Text ?? "absent"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var status = FindControl<TextBlock>(surface, "ChatDraftSendStatus");
+                Assert.Equal(message, status.Text);
+                Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(status));
+            });
+        }, "empty");
+    }
+
+    [Theory]
+    [InlineData(320)]
+    [InlineData(800)]
     public async Task PlacementPickers_SearchSelectAndPrepareOnlyOnSend(int width)
     {
         var gateway = new PlacementProofGateway();

@@ -62,7 +62,10 @@ public static class ReactorChatHostExtensions
         Action? onSessionNavigationStarting = null,
         Action<string, string?>? onSessionSelected = null,
         Action<string>? onSpeechTargetChanged = null,
-        Func<IDisposable>? beginModal = null)
+        Func<IDisposable>? beginModal = null,
+        Action<string>? onSessionCreated = null,
+        Action<string, string>? onSessionPromoted = null,
+        Action? onComposerChanged = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);
@@ -104,7 +107,10 @@ public static class ReactorChatHostExtensions
             onSessionNavigationStarting,
             onSessionSelected,
             SandboxSettingsNavigation: onSandboxSettingsClick,
-            SpeechTargetChanged: onSpeechTargetChanged);
+            SpeechTargetChanged: onSpeechTargetChanged,
+            SessionCreated: onSessionCreated,
+            SessionPromoted: onSessionPromoted,
+            ComposerChanged: onComposerChanged);
         return composerFactory.Create(provider, hostActions, initialMuted);
     }
 
@@ -203,10 +209,15 @@ public sealed class MountedReactorChat(
     }
 
     internal string? CurrentThreadId => session.ViewModel.Inputs?.CurrentThread.Id;
+    internal bool HasUnsentComposerContent => session.Controller.HasUnsentComposerContent;
 
     internal ChatConversationPanelState ConversationPanels => props.Panels;
 
     internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectSession(sessionKey);
+
+    internal void RegisterDraft(ChatDraft draft) => session.Controller.RegisterDraft(draft);
+
+    internal void MarkCreatedSession(string sessionKey) => session.Placement?.MarkCreatedSession(sessionKey);
 
     internal void InvalidatePendingSessionNavigation() => session.Controller.InvalidatePendingSessionNavigation();
 
