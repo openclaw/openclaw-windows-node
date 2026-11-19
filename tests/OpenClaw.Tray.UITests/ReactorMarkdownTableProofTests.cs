@@ -1,8 +1,6 @@
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation.Peers;
-using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -78,10 +76,8 @@ public sealed class ReactorMarkdownTableProofTests
                 var cells = table.Children.SelectMany(FindDescendants<RichTextBlock>).ToArray();
 
                 Assert.Equal(12, cells.Length);
-                Assert.Single(FindDescendants<Control>(root!), control =>
-                    FrameworkElementAutomationPeer.CreatePeerForElement(control)
-                        ?.GetPattern(PatternInterface.Text) is ITextProvider);
-                Assert.All(cells, cell => Assert.False(cell.IsTextSelectionEnabled));
+                Assert.Equal(ChatVisuals.TableRadius, Assert.IsType<Border>(VisualTreeHelper.GetParent(table)).CornerRadius.TopLeft);
+                Assert.All(cells, cell => Assert.True(cell.IsTextSelectionEnabled));
                 Assert.All(cells, cell => Assert.Equal(TextWrapping.Wrap, cell.TextWrapping));
                 Assert.All(cells, cell => Assert.InRange(cell.ActualWidth, 1, 160));
                 Assert.True(GetRuns(cells[0]).All(run => run.FontWeight.Weight > 400));

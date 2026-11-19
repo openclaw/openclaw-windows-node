@@ -577,6 +577,22 @@ public sealed class ChatStreamingParityTests
     }
 
     [Fact]
+    public void RunClock_OnlyTicksForChangingElapsedTimeOrRetryCountdown()
+    {
+        var active = new ChatRunProgressPresentation(null, null, "Working", Active: true, Waiting: false);
+        Assert.False(ChatRunProgressProjection.NeedsClock(active, Start));
+        Assert.True(ChatRunProgressProjection.NeedsClock(active with { StartedAt = Start }, Start));
+
+        var yielded = active with { Active = false, Waiting = true, StartedAt = Start, EndedAt = Start.AddSeconds(1) };
+        Assert.True(ChatRunProgressProjection.NeedsClock(yielded, Start.AddSeconds(2)));
+        Assert.False(ChatRunProgressProjection.NeedsClock(yielded with { Waiting = false }, Start.AddSeconds(2)));
+
+        var retrying = active with { Label = ChatRunProgressProjection.RetryLabel, RetryAt = Start.AddSeconds(1) };
+        Assert.True(ChatRunProgressProjection.NeedsClock(retrying, Start));
+        Assert.False(ChatRunProgressProjection.NeedsClock(retrying, Start.AddSeconds(1)));
+    }
+
+    [Fact]
     public void RetryStatus_CountsDownToSuppliedRetryAt_AndClearsWhenWorkResumes()
     {
         var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent(""), Start);

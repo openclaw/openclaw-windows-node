@@ -343,32 +343,6 @@ as well. That option enables only its own child and still rejects failed,
 skipped, and zero-test runs. The ordinary UI filter continues to exclude those
 keyboard-only cases; `-NativeInputProof` does not select them.
 
-`MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent`
-uses synthetic history in the shipped app to select and copy across paragraphs,
-lists, code, a table and a native collapsed details block. It checks exact
-normalized clipboard text, excludes adjacent messages and collapsed body text,
-switches to a second conversation and back to verify that copying from the
-focused message cannot leak another conversation's text, and exercises edge
-scrolling in the production chat ItemsView. Returning to the same message may
-retain its own selection. The disclosure is scrolled into view before its
-expanded body is checked. This case uses native pointer, keyboard and clipboard
-input, so run it only on an authorized, exclusive interactive desktop:
-
-```powershell
-$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
-$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
-$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:TEMP 'openclaw-markdown-selection'
-$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
-dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
-  -p:Platform=ARM64 -r win-arm64 `
-  --filter 'FullyQualifiedName~MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent' `
-  --logger 'console;verbosity=normal'
-```
-
-The test captures only its owned app window. The fixture Gateway and profile are
-synthetic and disposable; this is not live Gateway, provider, or installed-app
-proof.
-
 ### Saved Gateway ownership and released profiles
 
 `GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
