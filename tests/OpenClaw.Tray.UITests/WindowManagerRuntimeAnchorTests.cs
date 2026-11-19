@@ -111,6 +111,47 @@ public sealed class WindowManagerRuntimeAnchorTests(UIThreadFixture ui)
         });
     }
 
+    [Fact]
+    public async Task Shutdown_DoesNotPublishVisibilityChangesThatCouldReopenTheLobster()
+    {
+        await ui.RunOnUIAsync(async () =>
+        {
+            var windows = new List<Window>();
+            var visibilityChanges = new List<bool>();
+            var manager = CreateManager(window => windows.Add(Assert.IsAssignableFrom<Window>(window)),
+                visibilityChanges.Add);
+            try
+            {
+                manager.ShowSetupRestartProgress();
+                var window = Assert.Single(windows);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => window.AppWindow.IsVisible && manager.HasVisibleMainWindow,
+                    "setup visible before shutdown");
+                manager.BeginShutdown();
+                visibilityChanges.Clear();
+
+                var changed = false;
+                window.AppWindow.Changed += (_, _) => changed = true;
+                window.AppWindow.Hide();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => changed && !window.AppWindow.IsVisible,
+                    "owned window changes during shutdown");
+                Assert.Empty(visibilityChanges);
+
+                var closed = false;
+                window.Closed += (_, _) => closed = true;
+                window.Close();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => closed, "owned window closes during shutdown");
+                Assert.Empty(visibilityChanges);
+            }
+            finally
+            {
+                await manager.CloseForShutdownAsync();
+            }
+        });
+    }
+
     private WindowManager CreateManager(Action<Window?> applyTheme, Action<bool>? visibilityChanged = null) =>
         new(ui.Dispatcher, new WindowManagerCallbacks(
             GetAppState: () => null,

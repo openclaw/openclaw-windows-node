@@ -112,8 +112,11 @@ internal sealed class WindowManager : IWindowManager
         _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
     }
 
-    private void OnMainWindowChanged(AppWindow sender, AppWindowChangedEventArgs args) =>
-        _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
+    private void OnMainWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!_isShuttingDown)
+            _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
+    }
 
     private void OnObservedMainWindowClosed(object sender, WindowEventArgs args)
     {
@@ -121,7 +124,8 @@ internal sealed class WindowManager : IWindowManager
         window.AppWindow.Changed -= OnMainWindowChanged;
         window.Closed -= OnObservedMainWindowClosed;
         _mainWindows.Remove(window);
-        _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
+        if (!_isShuttingDown)
+            _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
     }
 
     public bool IsChatVisible => ChatVisibilityPolicy.IsChatVisible(

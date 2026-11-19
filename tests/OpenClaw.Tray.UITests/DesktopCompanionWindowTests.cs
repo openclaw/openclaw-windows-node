@@ -44,17 +44,42 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             await TestSupport.WaitForRenderedConditionAsync(
                 () => window.AppWindow.IsVisible && Assert.IsType<TranslateTransform>(host.RenderTransform).Y == 0,
                 "same lobster restored through the bottom frame");
-            view.Hide();
-            view.Show();
-            await TestSupport.WaitForRenderedConditionAsync(
-                () => window.AppWindow.IsVisible && Assert.IsType<TranslateTransform>(host.RenderTransform).Y == 0,
-                "restore supersedes pending hide without a stale completion hiding the lobster");
             Assert.Same(host, window.Content);
             Assert.Same(mascot, Mascot(host));
             Assert.Equal(anchor, new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
                 window.AppWindow.Position.Y + window.AppWindow.Size.Height));
             Assert.Equal(0, hideRequests);
             Assert.DoesNotContain(VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot), popup => popup.IsOpen);
+        });
+
+    [Fact]
+    [Trait("Category", "AnimationPreferenceEnabled")]
+    public Task AnimatedRestore_ReversesAProgressedExitWithoutALateHide() =>
+        WithWindowAsync(async window =>
+        {
+            Assert.True(new Windows.UI.ViewManagement.UISettings().AnimationsEnabled,
+                "This regression requires native animations enabled.");
+            var host = Assert.IsType<ReactorHostControl>(window.Content);
+            var translation = Assert.IsType<TranslateTransform>(host.RenderTransform);
+            var view = (IDesktopCompanionView)window;
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => translation.Y == 0, "initial entrance completes");
+            view.Hide();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => translation.Y > 0 && translation.Y < host.ActualHeight,
+                "exit has progressed before reversing it",
+                () => $"Y={translation.Y}, Height={host.ActualHeight}, Visible={window.AppWindow.IsVisible}");
+            view.Show();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && translation.Y == 0,
+                "reversed entrance completes");
+            var observation = System.Diagnostics.Stopwatch.StartNew();
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+            {
+                Assert.True(window.AppWindow.IsVisible);
+                Assert.Equal(0, translation.Y);
+                return observation.Elapsed >= TestSupport.NegativeObservationTimeout;
+            }, "superseded exit cannot hide the restored lobster");
         });
 
     [Fact]
