@@ -21,7 +21,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
     {
         var progress = Props.Progress;
         var entrance = UseRef<Storyboard?>(null);
-        var reducedMotion = UseReducedMotion();
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
         var (now, setNow) = UseState(DateTimeOffset.UtcNow);
         UseEffect((Func<Action>)(() =>
         {

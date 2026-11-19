@@ -74,6 +74,11 @@ internal static class ChatMotion
     /// </summary>
     internal static bool? AnimationsOverride { get; set; }
 
+    /// <summary>Test-only override for components that subscribe to the platform reduced-motion setting.</summary>
+    internal static bool? ReducedMotionOverride { get; set; }
+
+    internal static bool IsReducedMotion(bool platformValue) => ReducedMotionOverride ?? platformValue;
+
     /// <summary>
     /// Rises the mounted control from <paramref name="rise"/> pixels below its slot, optionally
     /// fading it in, when <paramref name="enabled"/>. The unmount reset is registered on every

@@ -110,7 +110,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
         var reflow = reflowRef.Current ??= new ChatTranscriptReflow();
         var messageMotionScope = UseRef<string?>(null);
         var annotatedScrollBarRef = this.UseElementRef<WinUIAnnotatedScrollBar>();
-        var reducedMotion = UseReducedMotion();
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
         // Web's history skeleton is static under reduced motion or forced colors.
         var animateLoading = !reducedMotion && UseColorScheme() != ColorScheme.HighContrast;
         var loadingPulse = UseRef<FrameworkElement?>(null);
@@ -1641,10 +1641,23 @@ internal sealed class ReactorReasoningDisclosure : Component<ReactorReasoningDis
         var revealDetails = UseRef(false);
         var closing = UseRef(false);
         var closeVersion = UseRef(0);
-        var reducedMotion = UseReducedMotion();
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
         var timeline = Props.Timeline;
         var key = "reasoning|" + ChatToolActivityPresentation.ToolRowKey(
             timeline.SessionId, timeline.TimelineGeneration, Props.Entry.Id);
+        var closeTimers = UseRef(new ChatDisclosureCloseTimerSet());
+        var identity = (timeline.SessionId, timeline.TimelineGeneration, key);
+        var previousIdentity = UseRef(identity);
+        if (previousIdentity.Current != identity)
+        {
+            closeTimers.Current.CancelAll();
+            closing.Current = false;
+            revealDetails.Current = false;
+            closeVersion.Current++;
+            previousIdentity.Current = identity;
+        }
+        UseEffect((Func<Action>)(() => () => closeTimers.Current.CancelAll()),
+            timeline.SessionId ?? string.Empty, timeline.TimelineGeneration, key);
         var expanded = timeline.ToolExpansionState?.IsExpanded(key, timeline.ToolCallsCollapseVersion) ?? localExpanded;
         return ReactorChatTimeline.BuildReasoning(Props.Entry, Props.Active, expanded, value =>
         {
@@ -1653,15 +1666,17 @@ internal sealed class ReactorReasoningDisclosure : Component<ReactorReasoningDis
             // Closing keeps the thought mounted while it shrinks, then releases it.
             var version = ++closeVersion.Current;
             closing.Current = !value && !reducedMotion && ChatMotion.AnimationsEnabled;
+            closeTimers.Current.Cancel("reasoning");
             if (closing.Current)
             {
-                _ = Task.Delay(ChatMotion.DisclosureCloseHoldMilliseconds).ContinueWith(_ =>
+                closeTimers.Current.Schedule("reasoning",
+                    TimeSpan.FromMilliseconds(ChatMotion.DisclosureCloseHoldMilliseconds), () =>
                 {
                     if (closeVersion.Current != version)
                         return;
                     closing.Current = false;
                     setRenderVersion(++renderVersion.Current);
-                }, TaskScheduler.Default);
+                });
             }
             setLocalExpanded(value);
             setRenderVersion(++renderVersion.Current);

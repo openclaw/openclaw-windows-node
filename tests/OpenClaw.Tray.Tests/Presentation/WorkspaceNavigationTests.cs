@@ -944,14 +944,18 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain("NavigationViewPaneDisplayMode.LeftMinimal", code);
         Assert.DoesNotContain("NavView.CompactPaneLength =", code);
         Assert.Contains("CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic)", code);
+        var animation = code[code.IndexOf("private bool TryAnimatePane", StringComparison.Ordinal)..
+            code.IndexOf("private void SettlePane", StringComparison.Ordinal)];
+        var settle = code[code.IndexOf("private void SettlePane", StringComparison.Ordinal)..
+            code.IndexOf("private void PinPaneContent", StringComparison.Ordinal)];
         var toggle = code[code.IndexOf("private void OnTogglePane", StringComparison.Ordinal)..
             code.IndexOf("private void UpdatePanePresentation", StringComparison.Ordinal)];
         Assert.DoesNotContain("IsPaneVisible = false", toggle);
         Assert.DoesNotContain("LeftMinimal", toggle);
         // The animated width honors Windows animation settings, and the reopen row returns to its
         // XAML height: clearing the local value would leave it at zero and let content overlap.
-        Assert.Contains("UISettings().AnimationsEnabled", toggle);
-        Assert.Contains("ReopenPaneSlot.Height = ReopenPaneSlotHeight;", toggle);
+        Assert.Contains("ChatMotion.AnimationsEnabled", animation);
+        Assert.Contains("ReopenPaneSlot.Height = ReopenPaneSlotHeight;", settle);
         Assert.DoesNotContain("ReopenPaneSlot.ClearValue", code);
     }
 

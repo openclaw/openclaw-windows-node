@@ -3,8 +3,8 @@ using OpenClawTray.Chat;
 namespace OpenClaw.Tray.UITests;
 
 /// <summary>
-/// Temporarily sets whether chat motion runs. The test assembly turns chat motion off at load
-/// (see TestHostDpiInitializer) so layout proofs are deterministic; a motion proof opts back in.
+/// Temporarily controls chat motion. The test assembly turns motion off at load so layout proofs
+/// are deterministic; motion proofs can opt in and override the platform reduced-motion setting.
 /// </summary>
 /// <example>
 /// <code>
@@ -14,8 +14,17 @@ namespace OpenClaw.Tray.UITests;
 internal sealed class ChatMotionScope : IDisposable
 {
     private readonly bool? _previous = ChatMotion.AnimationsOverride;
+    private readonly bool? _previousReducedMotion = ChatMotion.ReducedMotionOverride;
 
-    public ChatMotionScope(bool enabled) => ChatMotion.AnimationsOverride = enabled;
+    public ChatMotionScope(bool enabled, bool? reducedMotion = null)
+    {
+        ChatMotion.AnimationsOverride = enabled;
+        ChatMotion.ReducedMotionOverride = reducedMotion;
+    }
 
-    public void Dispose() => ChatMotion.AnimationsOverride = _previous;
+    public void Dispose()
+    {
+        ChatMotion.AnimationsOverride = _previous;
+        ChatMotion.ReducedMotionOverride = _previousReducedMotion;
+    }
 }

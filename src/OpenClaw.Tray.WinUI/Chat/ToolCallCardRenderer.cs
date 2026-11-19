@@ -1149,7 +1149,23 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
         var closeState = UseRef(new ChatToolDetailsCloseState());
         var closingKeys = UseRef<IReadOnlySet<string>>(closeState.Current.Snapshot());
         var toggledKey = UseRef<string?>(null);
-        var reducedMotion = UseReducedMotion();
+        var closeTimers = UseRef(new ChatDisclosureCloseTimerSet());
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
+        var identity = (timeline.SessionId, timeline.TimelineGeneration, entry.Id, Props.IsPanel);
+        var previousIdentity = UseRef(identity);
+        var identityVersion = UseRef(0);
+        if (previousIdentity.Current != identity)
+        {
+            closeTimers.Current.CancelAll();
+            closeState.Current = new ChatToolDetailsCloseState();
+            closingKeys.Current = closeState.Current.Snapshot();
+            revealDetails.Current = false;
+            toggledKey.Current = null;
+            identityVersion.Current++;
+            previousIdentity.Current = identity;
+        }
+        UseEffect((Func<Action>)(() => () => closeTimers.Current.CancelAll()),
+            timeline.SessionId ?? string.Empty, timeline.TimelineGeneration, entry.Id, Props.IsPanel);
         if (Props.IsPanel)
             return ToolCallCardRenderer.BuildPanelDetailsCore(entry, result, recovery);
 
@@ -1159,25 +1175,30 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
             toggledKey.Current = key;
             // Closing keeps that disclosure's details mounted while they shrink, then releases them.
             var shouldClose = !expanded && !reducedMotion && ChatMotion.AnimationsEnabled;
-            var version = closeState.Current.SetClosing(key, shouldClose);
-            closingKeys.Current = closeState.Current.Snapshot();
+            closeTimers.Current.Cancel(key);
+            var state = closeState.Current;
+            var version = state.SetClosing(key, shouldClose);
+            var scheduledIdentityVersion = identityVersion.Current;
+            closingKeys.Current = state.Snapshot();
             if (shouldClose)
             {
-                _ = Task.Delay(ChatMotion.DisclosureCloseHoldMilliseconds).ContinueWith(_ =>
+                closeTimers.Current.Schedule(key, TimeSpan.FromMilliseconds(ChatMotion.DisclosureCloseHoldMilliseconds), () =>
                 {
-                    if (!closeState.Current.CompleteClose(key, version))
+                    if (identityVersion.Current != scheduledIdentityVersion ||
+                        !state.CompleteClose(key, version))
                         return;
-                    closingKeys.Current = closeState.Current.Snapshot();
-                    setExpansionVersion(closeState.Current.Revision);
-                }, TaskScheduler.Default);
+                    closingKeys.Current = state.Snapshot();
+                    setExpansionVersion(state.Revision);
+                });
             }
-            setExpansionVersion(closeState.Current.Revision);
+            setExpansionVersion(state.Revision);
         }
 
         return ToolCallCardRenderer.BuildStandaloneCore(
             timeline, entry, Props.IsNested, result, recovery, operation.Close,
             hovered || focused, value => setHovered(value), value => setFocused(value),
-            OnExpansionChanged, Props.Children, revealDetails.Current, closingKeys.Current, toggledKey.Current);
+            OnExpansionChanged, Props.Children, revealDetails.Current && !reducedMotion,
+            closingKeys.Current, toggledKey.Current);
     }
 }
 
@@ -1195,7 +1216,7 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
 {
     public override Element Render()
     {
-        var reducedMotion = UseReducedMotion();
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
         var (hovered, setHovered) = UseState(false, threadSafe: true);
         var (focused, setFocused) = UseState(false, threadSafe: true);
         var (_, setRenderVersion) = UseState(0, threadSafe: true);
@@ -1203,6 +1224,19 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
         var revealDetails = UseRef(false);
         var closing = UseRef(false);
         var closeVersion = UseRef(0);
+        var closeTimers = UseRef(new ChatDisclosureCloseTimerSet());
+        var identity = (Props.Timeline.SessionId, Props.Timeline.TimelineGeneration, Props.Activity.Key);
+        var previousIdentity = UseRef(identity);
+        if (previousIdentity.Current != identity)
+        {
+            closeTimers.Current.CancelAll();
+            closing.Current = false;
+            revealDetails.Current = false;
+            closeVersion.Current++;
+            previousIdentity.Current = identity;
+        }
+        UseEffect((Func<Action>)(() => () => closeTimers.Current.CancelAll()),
+            Props.Timeline.SessionId ?? string.Empty, Props.Timeline.TimelineGeneration, Props.Activity.Key);
         var summary = Props.Activity.Summary
             ?? throw new ArgumentException("An activity row requires a summary.", nameof(Props));
         var isExpanded = Props.ExpansionState.IsExpanded(
@@ -1225,15 +1259,17 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
             // Closing keeps the details mounted while they shrink, then releases them.
             var version = ++closeVersion.Current;
             closing.Current = !expanded && !reducedMotion && ChatMotion.AnimationsEnabled;
+            closeTimers.Current.Cancel("activity");
             if (closing.Current)
             {
-                _ = Task.Delay(ChatMotion.DisclosureCloseHoldMilliseconds).ContinueWith(_ =>
+                closeTimers.Current.Schedule("activity",
+                    TimeSpan.FromMilliseconds(ChatMotion.DisclosureCloseHoldMilliseconds), () =>
                 {
                     if (closeVersion.Current != version)
                         return;
                     closing.Current = false;
                     setRenderVersion(++renderVersion.Current);
-                }, TaskScheduler.Default);
+                });
             }
             setRenderVersion(nextRenderVersion);
         }
@@ -1249,7 +1285,7 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
             hovered || focused,
             value => setHovered(value),
             value => setFocused(value),
-            revealDetails.Current,
+            revealDetails.Current && !reducedMotion,
             closing.Current);
     }
 }
