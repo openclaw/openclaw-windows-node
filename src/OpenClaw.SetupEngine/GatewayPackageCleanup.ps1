@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory)][string]$Family,
     [string]$CleanupHostPath,
+    [string]$PhysicalProfile,
     [switch]$Register,
     [switch]$Preserve,
     [switch]$CreatedDistro,
@@ -81,6 +82,233 @@ function Test-PackageRemovedSince([string]$since) {
 function Register-CleanupTask {
     & (Join-Path $PSScriptRoot 'cleanup-task.ps1') -TaskName $taskName -HostPath $CleanupHostPath -Family $Family
 }
+function Get-CleanupHash([string]$text) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($text)))).Replace('-', '') }
+    finally { $sha.Dispose() }
+}
+function Enter-CleanupWriterLease([string]$path, [string]$prefix) {
+    # These names and normalization match PersistenceFileLease and DeviceIdentity.
+    $hash = Get-CleanupHash ([IO.Path]::GetFullPath($path).ToUpperInvariant())
+    $mutex = [Threading.Mutex]::new($false, $prefix + $hash)
+    try {
+        try { $acquired = $mutex.WaitOne([TimeSpan]::FromSeconds(15)) }
+        catch [Threading.AbandonedMutexException] { $acquired = $true }
+        if (-not $acquired) { throw 'The saved Gateway writer is busy. Cleanup remains pending.' }
+        return $mutex
+    } catch { $mutex.Dispose(); throw }
+}
+function Write-CleanupJson([string]$path, $value) {
+    $temporary = $path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        $value | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $temporary -Encoding UTF8
+        if (Test-Path -LiteralPath $path) { [IO.File]::Replace($temporary, $path, [System.Management.Automation.Language.NullString]::Value) }
+        else { [IO.File]::Move($temporary, $path) }
+    } finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force } }
+}
+function Test-CleanupEndpoint([string]$left, [string]$right) {
+    if ([string]::IsNullOrWhiteSpace($left) -or [string]::IsNullOrWhiteSpace($right)) { return $false }
+    if ($left -ceq $right) { return $true }
+    try {
+        $a = [Uri]$left; $b = [Uri]$right
+        return $a.IsAbsoluteUri -and $b.IsAbsoluteUri -and $a.IsLoopback -and $b.IsLoopback -and
+            $a.Scheme -eq $b.Scheme -and $a.Port -eq $b.Port -and $a.PathAndQuery -ceq $b.PathAndQuery -and
+            $a.Fragment -ceq $b.Fragment -and $a.UserInfo -ceq $b.UserInfo
+    } catch { return $false }
+}
+function Get-CleanupLegacyHash($settings) {
+    Get-CleanupHash (ConvertTo-Json -Compress -InputObject ([ordered]@{
+        GatewayUrl = $settings.GatewayUrl; Token = $settings.Token
+        BootstrapToken = $settings.BootstrapToken; UseSshTunnel = $settings.UseSshTunnel
+    }))
+}
+function Remove-NativeGatewayData([string]$dataDir, [scriptblock]$removePackage) {
+    # Called only after native installation ownership and surviving consumers have been checked.
+    # Keep the existing registry writer lease across capture, package removal and retirement.
+    # A durable, credential-free snapshot in owned.json fences retries against replacement records.
+    $registryPath = Join-Path $dataDir 'gateways.json'
+    $settingsPath = Join-Path $dataDir 'settings.json'
+    Assert-ManagedPath $registryPath
+    Assert-ManagedPath $settingsPath
+    $registryLease = Enter-CleanupWriterLease $registryPath 'Global\OpenClaw.Persistence.'
+    $settingsLease = $null
+    $identityLeases = [Collections.Generic.List[Threading.Mutex]]::new()
+    try {
+        $settingsLease = Enter-CleanupWriterLease $settingsPath 'Global\OpenClaw.Persistence.'
+        try {
+            $registry = if (Test-Path -LiteralPath $registryPath) {
+                Get-Content -LiteralPath $registryPath -Raw | ConvertFrom-Json
+            } else { [pscustomobject]@{ gateways = @(); activeId = $null } }
+            $settings = if (Test-Path -LiteralPath $settingsPath) {
+                Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+            } else { $null }
+        } catch { throw 'The saved Gateway registry or settings are invalid. Cleanup remains pending.' }
+        if ((Test-Path -LiteralPath $settingsPath) -and ($settings -isnot [pscustomobject] -or
+            ($null -ne $settings.PreferredGatewayId -and $settings.PreferredGatewayId -isnot [string]) -or
+            ($null -ne $settings.GatewayUrl -and $settings.GatewayUrl -isnot [string]) -or
+            ($null -ne $settings.UseSshTunnel -and $settings.UseSshTunnel -isnot [bool]))) {
+            throw 'The saved Gateway settings are invalid. Cleanup remains pending.'
+        }
+        if ($registry -isnot [pscustomobject] -or $null -eq $registry.gateways -or
+            $registry.gateways -isnot [Array] -or
+            ($null -ne $registry.activeId -and $registry.activeId -isnot [string])) {
+            throw 'The saved Gateway registry is invalid. Cleanup remains pending.'
+        }
+        $ids = @{}
+        foreach ($gateway in $registry.gateways) {
+            if ($gateway -isnot [pscustomobject] -or $gateway.id -isnot [string] -or
+                [string]::IsNullOrEmpty($gateway.id) -or $ids.ContainsKey($gateway.id)) {
+                throw 'The saved Gateway registry contains an invalid identity. Cleanup remains pending.'
+            }
+            $ids[$gateway.id] = $gateway
+        }
+        $plan = $record.NativeDataRemoval
+        if ($null -eq $plan) {
+            $targets = @($registry.gateways | Where-Object {
+                $_.isLocal -is [bool] -and $_.isLocal -and $null -eq $_.sshTunnel -and
+                $null -eq $_.setupManagedDistroName -and $_.nativePackageFamilyName -ceq $record.NativeFamily
+            } | ForEach-Object {
+                [pscustomobject]@{ Id = $_.id; RecordHash = (Get-CleanupHash (ConvertTo-Json -InputObject $_ -Depth 100 -Compress)); KeyHash = $null }
+            })
+            $legacyHash = $null
+            if ($settings.UseSshTunnel -ne $true -and @($targets | Where-Object {
+                Test-CleanupEndpoint $settings.GatewayUrl $ids[$_.Id].url
+            }).Count -gt 0) { $legacyHash = Get-CleanupLegacyHash $settings }
+            $plan = [pscustomobject]@{
+                InstallationId = $record.NativeInstallationId; DataDirectory = [IO.Path]::GetFullPath($dataDir)
+                Targets = $targets; LegacySettingsHash = $legacyHash
+            }
+        } elseif ($plan -isnot [pscustomobject] -or $plan.InstallationId -cne $record.NativeInstallationId -or
+            $plan.DataDirectory -ine [IO.Path]::GetFullPath($dataDir) -or
+            $null -eq $plan.Targets -or $plan.Targets -isnot [Array]) {
+            throw 'The pending native Gateway cleanup identity is invalid.'
+        }
+        $clearLegacy = $false
+        if ($null -ne $plan.LegacySettingsHash) {
+            if ($plan.LegacySettingsHash -isnot [string] -or $plan.LegacySettingsHash -notmatch '\A[A-F0-9]{64}\z') {
+                throw 'The pending native Gateway settings binding is invalid.'
+            }
+            if ((Get-CleanupLegacyHash $settings) -ceq $plan.LegacySettingsHash) { $clearLegacy = $true }
+            elseif (-not [string]::IsNullOrEmpty($settings.GatewayUrl) -or
+                $null -ne $settings.Token -or $null -ne $settings.BootstrapToken) {
+                throw 'The saved Gateway settings changed after cleanup started. They were preserved.'
+            }
+        }
+        $seen = @{}
+        foreach ($target in $plan.Targets) {
+            if ($target -isnot [pscustomobject] -or $target.Id -isnot [string] -or
+                $target.Id -notmatch '\A[A-Za-z0-9][A-Za-z0-9_-]{0,127}\z' -or
+                $target.Id -match '\A(CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])\z' -or
+                $target.RecordHash -isnot [string] -or $target.RecordHash -notmatch '\A[A-F0-9]{64}\z' -or
+                ($null -ne $target.KeyHash -and ($target.KeyHash -isnot [string] -or $target.KeyHash -notmatch '\A[A-F0-9]{64}\z')) -or
+                $seen.ContainsKey($target.Id)) {
+                throw 'The pending native Gateway cleanup target is invalid.'
+            }
+            $seen[$target.Id] = $true
+            if ($ids.ContainsKey($target.Id) -and
+                (Get-CleanupHash (ConvertTo-Json -InputObject $ids[$target.Id] -Depth 100 -Compress)) -cne $target.RecordHash) {
+                throw 'A saved Gateway changed after cleanup started. Its credentials were preserved.'
+            }
+            $identityDir = Join-Path (Join-Path $dataDir 'gateways') $target.Id
+            $keyPath = Join-Path $identityDir 'device-key-ed25519.json'
+            Assert-ManagedPath $keyPath
+            $identityLeases.Add((Enter-CleanupWriterLease $keyPath 'Local\OpenClaw.DeviceIdentity.'))
+            $keyHash = if (Test-Path -LiteralPath $keyPath) { Get-CleanupHash ([IO.File]::ReadAllText($keyPath)) } else { $null }
+            if ($null -eq $record.NativeDataRemoval) { $target.KeyHash = $keyHash }
+            elseif ($null -ne $keyHash -and $keyHash -cne $target.KeyHash) {
+                throw 'A Gateway device identity changed after cleanup started. It was preserved.'
+            }
+        }
+        if ($null -eq $record.NativeDataRemoval) {
+            $record | Add-Member NoteProperty NativeDataRemoval $plan -Force
+            Write-CleanupJson $recordPath $record
+        }
+        & $removePackage
+        # The callback must confirm package absence, including after an interrupted prior removal.
+        # Delete only the captured key, never recursively delete an identity directory.
+        foreach ($target in $plan.Targets) {
+            $identityDir = Join-Path (Join-Path $dataDir 'gateways') $target.Id
+            $keyPath = Join-Path $identityDir 'device-key-ed25519.json'
+            Assert-ManagedPath $keyPath
+            if (Test-Path -LiteralPath $keyPath) {
+                if ((Get-CleanupHash ([IO.File]::ReadAllText($keyPath))) -cne $target.KeyHash) {
+                    throw 'A Gateway device identity changed during cleanup. It was preserved.'
+                }
+                [IO.File]::Delete($keyPath)
+            }
+            if ((Test-Path -LiteralPath $identityDir) -and
+                -not @(Get-ChildItem -LiteralPath $identityDir -Force).Count) { [IO.Directory]::Delete($identityDir) }
+        }
+        $clearPreferred = $null -ne $settings.PreferredGatewayId -and $seen.ContainsKey($settings.PreferredGatewayId)
+        if ($clearLegacy) {
+            $settings.GatewayUrl = ''
+            $settings.PSObject.Properties.Remove('Token')
+            $settings.PSObject.Properties.Remove('BootstrapToken')
+        }
+        if ($clearPreferred) {
+            $settings.PreferredGatewayId = $null
+        }
+        if ($clearLegacy -or $clearPreferred) {
+            Write-CleanupJson $settingsPath $settings
+        }
+        if ($plan.Targets.Count -gt 0) {
+            $registry.gateways = @($registry.gateways | Where-Object { -not $seen.ContainsKey($_.id) })
+            if ($null -ne $registry.activeId -and $seen.ContainsKey($registry.activeId)) { $registry.activeId = $null }
+            Assert-ManagedPath $registryPath
+            Write-CleanupJson $registryPath $registry
+        }
+        # Persist completion before the worker unregisters itself. No broad NativeFamily receipt
+        # is emitted: a later startup must not reinterpret it against a replacement installation.
+        $record.OwnNativePackage = $false
+        $record.PSObject.Properties.Remove('NativeDataRemoval')
+        Write-CleanupJson $recordPath $record
+    } finally {
+        for ($index = $identityLeases.Count - 1; $index -ge 0; $index--) {
+            $identityLeases[$index].ReleaseMutex(); $identityLeases[$index].Dispose()
+        }
+        if ($null -ne $settingsLease) { $settingsLease.ReleaseMutex(); $settingsLease.Dispose() }
+        $registryLease.ReleaseMutex(); $registryLease.Dispose()
+    }
+}
+function Get-OwnedProfilePath([string]$kind) {
+    $dataName = switch -Regex ($Family) {
+        '\AOpenClawFoundation\.OpenClaw_[A-Za-z0-9]+\z' { 'OpenClawTray'; break }
+        '\AOpenClawFoundation\.OpenClaw\.Dev_[A-Za-z0-9]+\z' { 'OpenClawTray-Dev'; break }
+        default { throw 'The Companion data profile could not be identified. Cleanup remains pending.' }
+    }
+    switch ($kind) {
+        'Roaming' { return Join-Path ([Environment]::GetFolderPath('ApplicationData')) $dataName }
+        'Package' { return Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) "Packages\$Family\LocalCache\Roaming\$dataName" }
+        default { throw 'Native Gateway cleanup has no confirmed Companion profile. Credentials were preserved.' }
+    }
+}
+function Remove-OwnedNativeGateway([string]$dataDir, [string]$nativeMarker) {
+    if (-not $nativeMarker) {
+        $nativeMarker = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) "Packages\$($record.NativeFamily)\LocalState\companion-cleanup-owner.txt"
+    }
+    $ownsInstallation = $record.NativeInstallationId -and (Test-Path -LiteralPath $nativeMarker) -and
+        (Get-Content -LiteralPath $nativeMarker -Raw).Trim() -ceq $record.NativeInstallationId
+    if (-not $ownsInstallation -and $null -eq $record.NativeDataRemoval) { return }
+    # A shared Store package remains until the other installed Companion consumers leave.
+    if (Get-AppxPackage -PackageTypeFilter Main | Where-Object {
+        $_.Name -in @('OpenClawFoundation.OpenClaw', 'OpenClawFoundation.OpenClaw.Dev')
+    }) { throw 'Another Companion still uses the native Gateway. Cleanup remains pending.' }
+    if (-not $dataDir) { $dataDir = Get-OwnedProfilePath $record.NativeProfile }
+    Remove-NativeGatewayData $dataDir {
+        $native = @(Get-AppxPackage -Name OpenClawFoundation.OpenClawGateway -PackageTypeFilter Main |
+            Where-Object { $_.Publisher -eq 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC' -and $_.PackageFamilyName -eq $record.NativeFamily })
+        if ($native.Count -gt 0) {
+            if (-not $ownsInstallation -or -not (Test-Path -LiteralPath $nativeMarker) -or
+                (Get-Content -LiteralPath $nativeMarker -Raw).Trim() -cne $record.NativeInstallationId) {
+                throw 'Native Gateway ownership changed. Its credentials were preserved.'
+            }
+            $native | Remove-AppxPackage -ErrorAction Stop
+        }
+        if (Get-AppxPackage -PackageTypeFilter Main | Where-Object PackageFamilyName -eq $record.NativeFamily) {
+            throw 'Native Gateway removal is not confirmed. Cleanup remains pending.'
+        }
+    }
+}
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $lock = $null
 $deadline = [DateTimeOffset]::UtcNow.AddSeconds(150)
@@ -100,8 +328,12 @@ try {
         if ($property -notin $record.PSObject.Properties.Name) { $record | Add-Member NoteProperty $property $null }
     }
     if ($Preserve) {
-        Record-Removal $record.DistroName $record.InstallPath $record.NativeFamily
+        # Preserving/disowning a native installation is not evidence of its removal.
+        Record-Removal $record.DistroName $record.InstallPath $null
     } elseif ($Register) {
+        if ($null -ne $record.NativeDataRemoval) {
+            throw 'Native Gateway credential cleanup remains pending. Its ownership cannot be refreshed or rebound.'
+        }
         if (-not (Test-Path $sentinel)) {
             New-Item -ItemType Directory -Path (Split-Path $sentinel) -Force | Out-Null
             [Guid]::NewGuid().ToString('N') | Set-Content $sentinel
@@ -121,6 +353,11 @@ try {
             $record.InstallPath = Normalize-Path $InstallPath
             $record.RegistrationId = $registrations[0].PSChildName
         }
+        if ($OwnNativePackage -or ($record.OwnNativePackage -and -not $record.NativeProfile)) {
+            $kind = @('Package', 'Roaming') | Where-Object { (Get-OwnedProfilePath $_) -ieq $PhysicalProfile }
+            if (@($kind).Count -ne 1) { throw 'Cannot bind native cleanup to this Companion profile.' }
+            $record | Add-Member NoteProperty NativeProfile $kind -Force
+        }
         if ($OwnNativePackage) {
             $native = Get-AppxPackage -Name OpenClawFoundation.OpenClawGateway -PackageTypeFilter Main |
                 Where-Object Publisher -eq 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC'
@@ -132,7 +369,7 @@ try {
             $record.NativeInstallationId | Set-Content $nativeMarker
             $record.OwnNativePackage = $true
         }
-        $record | ConvertTo-Json | Set-Content $recordPath -Encoding UTF8
+        Write-CleanupJson $recordPath $record
         Register-CleanupTask
         exit 0
     } else {
@@ -191,21 +428,10 @@ try {
         }
         Record-Removal $record.DistroName $record.InstallPath $null
         $record.DistroName = $null
-        $record | ConvertTo-Json | Set-Content $recordPath -Encoding UTF8
+        Write-CleanupJson $recordPath $record
     }
     if ($record.OwnNativePackage) {
-        $nativeMarker = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) "Packages\$($record.NativeFamily)\LocalState\companion-cleanup-owner.txt"
-        if ($record.NativeInstallationId -and (Test-Path $nativeMarker) -and
-            (Get-Content $nativeMarker -Raw).Trim() -eq $record.NativeInstallationId) {
-            # A shared Store package remains until the other installed Companion consumers leave.
-            if (Get-AppxPackage -PackageTypeFilter Main | Where-Object {
-                $_.PackageFamilyName -ne $Family -and $_.Name -in @('OpenClawFoundation.OpenClaw', 'OpenClawFoundation.OpenClaw.Dev')
-            }) { exit 0 }
-            Get-AppxPackage -Name OpenClawFoundation.OpenClawGateway -PackageTypeFilter Main |
-                Where-Object { $_.Publisher -eq 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC' -and $_.PackageFamilyName -eq $record.NativeFamily } |
-                Remove-AppxPackage -ErrorAction Stop
-            Record-Removal $null $null $record.NativeFamily
-        }
+        Remove-OwnedNativeGateway
     }
     }
     if (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue) {
