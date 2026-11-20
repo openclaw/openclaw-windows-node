@@ -24,6 +24,8 @@
   <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>開啟通知</value></data>
   <data name="DesktopCompanion_Open" xml:space="preserve"><value>開啟 OpenClaw</value></data>
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>龍蝦大小</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>僅在其他 OpenClaw 視窗最小化時顯示</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>設定或聊天/儀表板視窗可見時隱藏。</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>調整龍蝦大小，不改變聊天或通知文字的大小。</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龍蝦設定</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>無法顯示桌面龍蝦。請在設定中關閉再開啟「桌面龍蝦」以重試。你仍然可以在 OpenClaw 中查看通知。</value></data>

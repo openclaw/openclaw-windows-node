@@ -27,6 +27,8 @@
   <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Open notifications</value></data>
   <data name="DesktopCompanion_Open" xml:space="preserve"><value>Open OpenClaw</value></data>
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Lobster size</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>Only show when other OpenClaw windows are minimized</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>Hide while Setup or the chat/dashboard window is visible.</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Resize the lobster without changing chat or notification text.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Desktop lobster settings</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>The desktop lobster could not be shown. Turn Desktop lobster off and on again in Settings to retry. Your notifications are still available in OpenClaw.</value></data>
