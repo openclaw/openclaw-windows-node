@@ -261,10 +261,43 @@ internal static class ChatMarkdownPresentation
                 // Compact thinking text keeps its tighter pre-web rhythm.
                 Spacing = compactSecondaryReading ? ChatVisuals.BlockGap : ChatVisuals.MessageBlockGap,
                 Children = stack.Children
-                    .Select((child, index) => ResetBlockEdges(Table(child), index == 0 || compactSecondaryReading))
+                    .Select((child, index) => ResetBlockEdges(StyleNestedTables(child), index == 0 || compactSecondaryReading))
                     .ToArray(),
             }
             : element;
+
+    private static Element StyleNestedTables(Element element)
+    {
+        switch (element)
+        {
+            case StackElement stack:
+                var stackChildren = StyleNestedTables(stack.Children);
+                return stackChildren is null ? stack : stack with { Children = stackChildren };
+            case GridElement grid:
+                var gridChildren = StyleNestedTables(grid.Children);
+                return Table(gridChildren is null ? grid : grid with { Children = gridChildren });
+            case BorderElement { Child: { } child } border:
+                var styledChild = StyleNestedTables(child);
+                return ReferenceEquals(child, styledChild) ? border : border with { Child = styledChild };
+            default:
+                return element;
+        }
+    }
+
+    private static Element[]? StyleNestedTables(IReadOnlyList<Element> children)
+    {
+        Element[]? styledChildren = null;
+        for (var index = 0; index < children.Count; index++)
+        {
+            var child = children[index];
+            var styledChild = StyleNestedTables(child);
+            if (ReferenceEquals(child, styledChild))
+                continue;
+            styledChildren ??= children.ToArray();
+            styledChildren[index] = styledChild;
+        }
+        return styledChildren;
+    }
 
     // The first and last blocks add no outer gap; only later headings keep their extra lead-in.
     private static Element ResetBlockEdges(Element element, bool dropTop)
@@ -364,7 +397,7 @@ internal static class ChatMarkdownPresentation
     /// Web-parity table: Reactor's message-level table grid (Auto rows, Star columns, so long cells
     /// keep wrapping at narrow widths) gets a rounded frame, 1px cell rules and a tinted header row.
     /// Reactor's Table hook only receives rows with TextSelection enabled, so the built grid is
-    /// restyled instead; tables nested in lists or quotes keep Reactor's plain grid.
+    /// restyled instead; the recursive element pass applies this to tables nested in lists or quotes.
     /// </summary>
     private static Element Table(Element block)
     {
@@ -389,11 +422,12 @@ internal static class ChatMarkdownPresentation
                 .BorderThickness(0, 0, at.Column == columns - 1 ? 0 : 1, at.Row == rows - 1 ? 0 : 1)
                 .Grid(row: at.Row, column: at.Column);
         });
-        return Border(grid with { Children = [header, .. cells] })
+        var frame = (BorderElement)Border(grid with { Children = [header, .. cells] })
             .CornerRadius(ChatVisuals.TableRadius)
             .BorderThickness(1)
             .BorderBrush(stroke)
             .Background(Theme.Ref("ChatCardBrush"));
+        return frame with { Attached = grid.Attached };
     }
 
     private static Element Format(Element element, double size, bool heading)

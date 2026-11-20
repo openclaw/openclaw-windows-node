@@ -61,7 +61,6 @@ public sealed class ReactorChatMarkdownContractTests
         // Table hook is not used because it receives no rows without TextSelection.
         Assert.DoesNotContain("Table = ChatMarkdownPresentation.Table", timeline, StringComparison.Ordinal);
         Assert.Contains("TableHeaderBackground = null", timeline, StringComparison.Ordinal);
-        Assert.Contains("ResetBlockEdges(Table(child)", presentation, StringComparison.Ordinal);
         // Fenced code keeps Reactor's single literal run (so reconcile never rebuilds it and
         // selection survives) and is colored by theme-resolved highlighters.
         Assert.Contains("ApplyCodeSyntax(text, code, language);", presentation, StringComparison.Ordinal);
@@ -76,8 +75,8 @@ public sealed class ReactorChatMarkdownContractTests
     [Fact]
     public void ChatMarkdown_DoesNotUseReactorCrossBlockSelection()
     {
-        // Reactor preview.18's MarkdownTextSelection host rescans native text geometry on every
-        // LayoutUpdated, which made typing and streaming slow. Re-enable it only with a fixed package.
+        // Keep preview.18 cross-block selection out of the interim path until upstream fixes and
+        // matched long-chat latency, frame-time and selection-parity proof are available.
         var tray = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
         foreach (var file in Directory.EnumerateFiles(tray, "*.cs", SearchOption.AllDirectories))
         {

@@ -1362,12 +1362,14 @@ inert images, list measurement, timeline keys and scroll-follow remain with
 their existing owners.
 
 Assistant Markdown text, code and table blocks are individually selectable with
-native WinUI text selection. Cross-block selection through Reactor's
-`MarkdownTextSelection` is not used: its preview.18 host rescans native text
-geometry on every layout pass, which slowed typing and streaming. Re-enable it
-only with a Reactor package that tracks selection geometry on demand, proven
-against typing and streaming latency. The whole-message and code Copy buttons
-keep their own clipboard and feedback paths.
+native WinUI text selection. Reactor preview.18's `MarkdownTextSelection` is
+not used as an interim mitigation while upstream fixes and matched long-chat
+typing and streaming latency/frame-time proof are pending.
+This does not provide cross-block selection or click-out deselection parity.
+Restore those behaviors in a separate downstream change only after the fixed
+Reactor package is released and selection parity and performance are verified.
+The whole-message and code Copy buttons keep their own clipboard and feedback
+paths.
 
 Assistant Markdown accepts balanced, block-level `<details>` wrappers with a
 nonempty `<summary>` as an OpenClaw extension. The summary may follow the

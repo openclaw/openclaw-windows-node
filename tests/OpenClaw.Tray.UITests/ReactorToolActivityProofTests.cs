@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Animation;
@@ -26,6 +27,25 @@ public sealed class ReactorToolActivityProofTests
     private const string ListGlyph = "\uE8FD";
     private const string ChevronRightGlyph = "\uE76C";
     private const string ChevronDownGlyph = "\uE70D";
+
+    private static int ReadElapsedSeconds(string text)
+    {
+        var separator = text.LastIndexOf('\u00b7');
+        Assert.True(separator >= 0 && separator < text.Length - 1, $"Elapsed time is missing from '{text}'.");
+        var totalSeconds = 0;
+        foreach (var part in text[(separator + 1)..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var value = int.Parse(part.AsSpan(0, part.Length - 1), CultureInfo.InvariantCulture);
+            totalSeconds += part[^1] switch
+            {
+                'h' => value * 3600,
+                'm' => value * 60,
+                's' => value,
+                _ => throw new InvalidOperationException($"Unexpected elapsed-time unit in '{part}'."),
+            };
+        }
+        return totalSeconds;
+    }
 
     private static int WorkDividerCount(DependencyObject root) =>
         FindLogical<Border>(root).Count(border => border.Height == 1);
@@ -576,8 +596,9 @@ public sealed class ReactorToolActivityProofTests
         {
             using var theme = new ChatThemeProofScope("Light");
             using var host = new ReactorHostControl();
+            var startedAt = DateTimeOffset.UtcNow.AddSeconds(-65);
             host.Mount(_ => Component<ReactorRunProgress, ReactorRunProgressProps>(new(new(
-                DateTimeOffset.UtcNow.AddSeconds(-65), null, "Working", true, false, OutputTokens: 12345))));
+                startedAt, null, "Working", true, false, OutputTokens: 12345))));
             _ui.Container.Children.Add(host);
             try
             {
@@ -592,11 +613,25 @@ public sealed class ReactorToolActivityProofTests
                 Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", text.Text);
                 Assert.Contains("1m", text.Text);
                 Assert.IsNotType<LinearGradientBrush>(text.Foreground);
-                var initial = text.Text;
-                await WaitForRenderedConditionAsync(() => text.Text != initial, "the running clock ticks");
-                Assert.Equal(1, row.Opacity);
-                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", text.Text);
-                Assert.IsNotType<LinearGradientBrush>(text.Foreground);
+                var initialElapsedSeconds = ReadElapsedSeconds(text.Text);
+                await WaitForRenderedConditionAsync(
+                    () => FindLogical<TextBlock>(host).Any(block =>
+                        AutomationProperties.GetAutomationId(block) == "ChatRunProgressText" &&
+                        ReadElapsedSeconds(block.Text) > initialElapsedSeconds),
+                    "the running clock advances",
+                    () => string.Join(" | ", FindLogical<TextBlock>(host)
+                        .Where(block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressText")
+                        .Select(block => block.Text)));
+                var updatedText = Assert.Single(FindLogical<TextBlock>(host),
+                    block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressText");
+                var updatedRow = Assert.Single(FindLogical<Grid>(host),
+                    grid => AutomationProperties.GetAutomationId(grid) == "ChatRunProgress");
+                Assert.Same(text, updatedText);
+                Assert.Same(row, updatedRow);
+                Assert.Equal(1, updatedRow.Opacity);
+                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", updatedText.Text);
+                Assert.True(ReadElapsedSeconds(updatedText.Text) > initialElapsedSeconds);
+                Assert.IsNotType<LinearGradientBrush>(updatedText.Foreground);
             }
             finally
             {
