@@ -1,6 +1,6 @@
 ---
 name: winnode
-description: Invoke and troubleshoot OpenClaw Windows-node commands through the local winnode CLI and MCP endpoint, including command argument schemas and A2UI JSONL calls.
+description: Invoke and troubleshoot Windows-node commands, and offer optional Windows widgets for dashboards and trackers with user-approved plugin installation.
 ---
 
 <!--
@@ -30,6 +30,26 @@ argument shape, and the A2UI v0.8 JSONL grammar. It is shipped alongside
 `winnode.exe` so an agent can read it once and emit token-efficient calls.
 
 ---
+
+## Offer Windows widgets for dashboards
+
+When a user asks for a dashboard, tracker or at-a-glance Windows information,
+offer a native Windows summary widget when useful, without replacing or blocking
+the requested web dashboard. Check whether plugin `windows-widgets` and tool
+`windows_widgets` are already available. If absent, explain the compatible
+packaged Companion and paired Windows-node requirements, then ask whether the
+user wants to install the plugin. Do not install, enable, change permissions or
+schedule updates without explicit approval, and respect a declined offer.
+
+Verify the publisher, exact source and supported versions before providing an
+install command. The experiment lives in `plugins/windows-widgets` in
+`openclaw/openclaw-windows-node`; it is not necessarily released on ClawHub or
+included in the installed Companion. If discovery finds no reviewed package,
+report that limitation instead of guessing a registry name. After installation,
+follow the plugin's skill and provide the widget's creation preview or a clear
+preview blocker. Dashboard links must be credential-free and satisfy the
+existing public HTTPS policy; do not embed private endpoints or claim local
+Gateway dashboard links are supported.
 
 ## Invocation shape
 
@@ -205,6 +225,93 @@ errors. MCP converts typed semantic failure to `isError:true`; `winnode` exits 1
 An explicit binary/create call without a channel returns `DUPLEX_REQUIRED`.
 See [local framed transport](../../../docs/MCP_MODE.md#file-channel-extension-v1)
 for the optional authenticated lease protocol. It is not standard MCP streaming.
+
+### widgets.list
+List cached snapshots and Windows provider support/pinned count. No arguments.
+Experimental opt-in: start Companion with `OPENCLAW_ENABLE_WIDGETS_POC=1`.
+Available through both Gateway node invocation and local MCP when enabled.
+Returns `{ widgets, host: { supported, pinnedCount, reason }, requiresUserPin: true }`.
+Cached snapshots are not proof of display. Windows 11 requires a packaged
+provider and the user to pin **OpenClaw Tracker** in the Widgets Board.
+The normal unpackaged test app can cache snapshots, but cannot register a
+Windows widget provider. No command installs software or pins widgets.
+
+### widgets.upsert
+Persist a data-only snapshot and update existing pinned instances.
+Requires the same experimental opt-in as `widgets.list`; it publishes information
+on an ambient Windows surface. Only send content the user authorized for display.
+```json
+{"id":"mercury","title":"Mercury retrograde","value":"Yes","detail":"According to the selected source.","sourceUrl":"https://mercuryretrogradeapi.com/","observedAt":"2026-01-01T12:00:00Z","staleAfterMinutes":120}
+```
+`id`: 1-64 lowercase letters/digits/hyphens, beginning with a letter or digit.
+Limits: title 100 characters, value 120, detail 600, source URL 2048.
+`sourceUrl` must be an absolute HTTPS link without credentials or a loopback host.
+`observedAt` must be a non-future ISO 8601 observation time. `staleAfterMinutes`
+defaults to 120 and accepts 5-10080. Unknown fields and conflicting/older
+observations fail. A presentation-only change may keep the same observation
+timestamp; it cannot change the observed facts. Maximum 20 snapshots per profile.
+Optional `presentation` carries a full native `card`, optional `data` object
+and scalar-key `initialState`. No preset names are accepted in new requests.
+```json
+{"presentation":{"card":{"type":"AdaptiveCard","version":"1.6","body":[{"type":"TextBlock","text":"${title}","weight":"Bolder","wrap":true},{"type":"TextBlock","text":"${value}","size":"ExtraLarge","wrap":true}]}}}
+```
+Merge this fragment into a full snapshot, not a standalone upsert.
+Native card properties/elements pass through, including backgroundImage,
+headers, rich text, facts, tables, columns, inputs and native actions. Versions
+1.0-1.6 are accepted. Windows decides actual host support, layout and palette.
+Use `$when`/`$data` on body content and Windows `$host` size/theme/settings
+bindings. Presentation data lives under `content`, native instance state under
+`state`; source facts remain read-only. The provider appends observation/source.
+Execute verbs: `widget.set` (input IDs match declared state keys),
+`widget.increment` (`data.key`, optional `amount`), `widget.toggle` (`data.key`),
+`widget.reset`, `widget.refresh` (cached rendering, no source fetch).
+`widget.lighting` is a separately opted-in native click contract, not a node
+command: literal `status`/`release`, `color` plus `#RRGGBB`, or fixed
+`preset`/`color`/optional `accentColor`, with `associatedInputs: "none"`.
+Only actions declared in the selected current card may reach the separately
+installed DynamicLightingDriver. It requires Windows-local `widget-lighting.json`
+consent. Publication, polling and rendering never apply lighting effects.
+Controls target the driver's first discovered device. Provider-owned
+`lighting.message` reports the last check or acknowledgment, not verified
+physical state. See the [experiment guide](../../../plugins/windows-widgets/README.md#manual-snapshots-and-lighting-controls).
+Automatic card refresh may only use `widget.refresh`. Execute actions are
+gated on authenticated host context. OpenUrl uses public HTTPS;
+ShowCard/ToggleVisibility support depends on the Widgets Board version.
+Limits: presentation 65536 UTF-8 bytes, 256 JSON objects, JSON depth 24,
+initialState 4096 bytes, whole snapshot 524288 bytes including artwork. URLs require public HTTPS
+without credentials, custom ports or local/IP hosts. URL bindings use direct
+`${$root.content.path}` references, not computed expressions. Windows may fetch
+public imagery; the provider does not, and offline loading is not guaranteed.
+Optional `presentation.assets` maps agent-chosen valid names to `{base64: PNG}`.
+Image/background/icon resources can reference `openclaw-asset:<name>`, literally
+or via direct content bindings. No fixed design/asset inventory is built in.
+PNG artwork is bounded to 262144 decoded bytes total and 4096 pixels per side;
+the 65536-byte layout/data/state limit excludes assets. The provider expands
+validated resource references without external image requests; expanded native
+templates are capped at 1048576 UTF-8 bytes. Missing assets fail explicitly.
+The Gateway plugin's `artworkFiles` input encodes selected Gateway-local files
+into this map. The native node never accepts those paths. Arbitrary data/file/
+package URLs remain rejected, and OpenUrl/source links remain HTTPS-only.
+These checks do not replace Windows image decoding or native rendering proof.
+No generated C#/shell commands, HTML web widgets, authentication configuration,
+local files or data URLs. IDs beginning `openclaw-` are provider-reserved.
+See the [plugin presentation reference](../../../plugins/windows-widgets/README.md#prompt-designed-native-cards)
+for native interactions, saved-preset migration, policy limits and examples.
+Returns `{ saved: true, host: { supported, pinnedCount, reason }, requiresUserPin: true }`.
+`supported: false` means cache-only, not visible publication. A provider failure
+after persistence returns a tool error; retrying the identical snapshot is safe.
+Snapshots live in the current Companion profile's `widgets` directory.
+The provider reads the cache independently and renders stale timestamps offline.
+
+### widgets.delete
+Remove a cached snapshot. Requires the experimental opt-in.
+```json
+{"id":"mercury"}
+```
+Returns `{ deleted, host: { supported, pinnedCount, reason }, requiresUserPin: true }`.
+Idempotent. Does not unpin Windows instances or stop the OpenClaw plugin's
+refresh schedule. Stop the tracker in the plugin before deleting its snapshot.
+Pinned instances bound to a deleted tracker show the empty/configuration state.
 
 ### system.notify
 Show a Windows toast notification.

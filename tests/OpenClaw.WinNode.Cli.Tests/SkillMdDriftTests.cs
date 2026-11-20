@@ -107,6 +107,7 @@ public class SkillMdDriftTests
             new SttCapability(NullLogger.Instance),
             new SystemCapability(NullLogger.Instance),
             new TtsCapability(NullLogger.Instance),
+            new WidgetCapability(NullLogger.Instance),
         };
 
         using var ollamaCapability = new OllamaCapability(NullLogger.Instance);
