@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OpenClaw.Shared\OpenClaw.Shared.csproj" />
     <ProjectReference Include="..\OpenClaw.GatewayFixtureHost\OpenClaw.GatewayFixtureHost.csproj" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Chat\LobsterVisits\LobsterdexFile.cs" Link="Chat\LobsterdexFile.cs" />
     <Using Include="OpenClaw.TestSupport" />
   </ItemGroup>
 

@@ -4564,6 +4564,13 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   </data>
   <data name="ChatLobster_Dismiss" xml:space="preserve"><value>Sluiten</value></data>
   <data name="ChatLobster_DismissForever" xml:space="preserve"><value>Sluiten en niet meer tonen</value></data>
+  <data name="SettingsLobsterdex.Header" xml:space="preserve"><value>Kreeftendex</value></data>
+  <data name="SettingsLobsterdexIntro.Text" xml:space="preserve"><value>Kreeften die dit Hub-profiel hebben bezocht.</value></data>
+  <data name="Lobsterdex_Loading" xml:space="preserve"><value>Kreeftendex laden…</value></data>
+  <data name="Lobsterdex_Empty" xml:space="preserve"><value>Nog geen kreeften vastgelegd. Let op bezoekers wanneer je een nieuwe sessie start.</value></data>
+  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>De Kreeftendex kon niet worden gelezen. Klap de sectie in en open deze opnieuw om het nog eens te proberen. Neem contact op met ondersteuning voordat je het verzamelbestand wijzigt als het probleem blijft bestaan.</value></data>
+  <data name="Lobsterdex_FirstSeen" xml:space="preserve"><value>Voor het eerst gezien op {0:D}</value></data>
+  <data name="Lobsterdex_ShinySeen" xml:space="preserve"><value>Eerste glanzende bezoeker gezien op {0:D}</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacybeheer</value>
   </data>
