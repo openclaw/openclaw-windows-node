@@ -903,6 +903,8 @@ public class LocalInferenceQualificationTests
     [InlineData("b10655-cuda13-arm64", "b10655")]
     [InlineData("b11026-cuda13-x64", "b11026")]
     [InlineData("b11026-cuda13-arm64", "b11026")]
+    [InlineData("b11320-cuda13-x64", "b11320")]
+    [InlineData("b11320-cuda13-arm64", "b11320")]
     public void FindInstalled_ResolvesRetiredRuntimeSoExistingInstallsStayLaunchable(
         string runtimeId,
         string expectedReleaseTag)
@@ -915,6 +917,19 @@ public class LocalInferenceQualificationTests
         Assert.Equal(runtimeId, installed.Id);
         Assert.Equal(expectedReleaseTag, installed.ReleaseTag);
         Assert.False(string.Equals(LlamaRuntimeCatalog.ReleaseTag, installed.ReleaseTag, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// llama-server writes context checkpoints into slot files from b11700 on. The Windows
+    /// app's prefix cache restores a saved system-prompt state after a restart, and on a hybrid
+    /// model an older build restores a state a real request cannot reuse (it logs "forcing full
+    /// prompt re-processing"), so the pinned runtime must not move back below it.
+    /// </summary>
+    [Fact]
+    public void PinnedRuntime_IsNewEnoughForSlotFilesToCarryContextCheckpoints()
+    {
+        Assert.StartsWith("b", LlamaRuntimeCatalog.ReleaseTag, StringComparison.Ordinal);
+        Assert.True(int.Parse(LlamaRuntimeCatalog.ReleaseTag.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture) >= 11700);
     }
 
     [Fact]

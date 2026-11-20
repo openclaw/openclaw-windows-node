@@ -41,7 +41,15 @@ public class NemotronBoltRuntimeTests
         var runtime = Assert.IsType<LlamaRuntimeVariant>(LlamaRuntimeCatalog.Find(RuntimeArchitecture.Arm64, BoltFamily));
         var stable = LlamaRuntimeCatalog.Find(RuntimeArchitecture.Arm64)!;
 
-        Assert.Equal(stable.Artifacts.Single(a => a.Role == ArtifactRole.RuntimeDependency),
-            runtime.Artifacts.Single(a => a.Role == ArtifactRole.RuntimeDependency));
+        var shared = stable.Artifacts.Single(a => a.Role == ArtifactRole.RuntimeDependency);
+        var bolt = runtime.Artifacts.Single(a => a.Role == ArtifactRole.RuntimeDependency);
+
+        // The same CUDA runtime bytes, whichever stable release currently carries them.
+        Assert.Equal(shared.RelativePath, bolt.RelativePath);
+        Assert.Equal(shared.SizeBytes, bolt.SizeBytes);
+        Assert.Equal(shared.Sha256, bolt.Sha256);
+        // Bolt installs recorded the release this archive was downloaded from. Moving the stable
+        // runtime must not change that address, or their receipts stop matching the catalog.
+        Assert.Equal("b11320", Assert.IsType<GitHubReleaseSource>(bolt.Source).ReleaseTag);
     }
 }
