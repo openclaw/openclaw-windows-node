@@ -369,9 +369,18 @@ function Get-WindowText($Window) {
     }
     return $text -join "`n"
 }
+function Test-ClientControl($Control) {
+    $parent = [Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($Control)
+    while ($parent) {
+        if ($parent.Current.ControlType -eq [Windows.Automation.ControlType]::TitleBar) { return $false }
+        if ($parent.Current.ControlType -eq [Windows.Automation.ControlType]::Window) { return $true }
+        $parent = [Windows.Automation.TreeWalker]::ControlViewWalker.GetParent($parent)
+    }
+    return $false
+}
 function Find-Control($Window, [string]$Name, $Type) {
     $matches = @($Window.FindAll([Windows.Automation.TreeScope]::Descendants, [Windows.Automation.Condition]::TrueCondition) |
-        Where-Object { $_.Current.ControlType -eq $Type -and ($_.Current.Name -replace '&', '') -eq $Name -and -not $_.Current.IsOffscreen })
+        Where-Object { $_.Current.ControlType -eq $Type -and ($_.Current.Name -replace '&', '') -eq $Name -and -not $_.Current.IsOffscreen -and (Test-ClientControl $_) })
     if ($matches.Count -gt 1) { throw "Ambiguous owned control: $Name" }
     if ($matches.Count -eq 1) { return $matches[0] }
     return $null
