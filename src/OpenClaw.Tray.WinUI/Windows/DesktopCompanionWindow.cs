@@ -74,7 +74,6 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _frameMonitor = DesktopCompanionNative.CreateFrameMonitor(_hwnd);
         _bubbleTimer.Tick += OnBubbleTimeout;
         _host.Loaded += OnLoaded;
-        _host.LayoutUpdated += OnHostLayoutUpdated;
         _host.KeyDown += OnKeyDown;
         _host.RenderTransform = _visibilityTransform;
         _uiSettings.AnimationsEnabledChanged += OnAnimationsEnabledChanged;
@@ -217,6 +216,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidSizeChange) UpdateRegion();
         if (args.DidPositionChange || args.DidSizeChange) RefreshBubblePlacement();
     }
 
@@ -340,7 +340,6 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _bubblePopup.HorizontalOffset = _nudge ? 4.01 : 4;
     }
 
-    private void OnHostLayoutUpdated(object? sender, object args) => UpdateRegion();
     private void OnBubbleSizeChanged(object sender, SizeChangedEventArgs args) => UpdateBubblePopup();
     private void OnBubbleTimeout(object? sender, object args) => Present(null);
     private void OnBubbleEntered(object sender, PointerRoutedEventArgs args)
@@ -546,7 +545,6 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _host.Loaded -= OnLoaded;
-        _host.LayoutUpdated -= OnHostLayoutUpdated;
         _host.KeyDown -= OnKeyDown;
         _bubbleHost.KeyDown -= OnBubbleKeyDown;
         _bubbleHost.RemoveHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnBubblePressed));
