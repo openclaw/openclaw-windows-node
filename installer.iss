@@ -567,18 +567,16 @@ end;
 
 function RunModelHelper(Selection: Integer; var Eligible: Integer): Boolean;
 var
-  Params, Mask, ReportText: String;
+  Params, ReportText: String;
   Code: Integer;
 begin
   Result := False;
   Eligible := 0;
   DeleteFile(ExpandConstant('{tmp}\model-report.txt'));
-  DeleteFile(ExpandConstant('{tmp}\model-selection.txt'));
   Params := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' +
     AddQuotes(ExpandConstant('{tmp}\Uninstall-DownloadedModels.ps1')) +
     ' -DataDirectory ' + AddQuotes(ExpandConstant('{userappdata}\{#MyInstallDir}')) +
     ' -ReportPath ' + AddQuotes(ExpandConstant('{tmp}\model-report.txt')) +
-    ' -SelectionPath ' + AddQuotes(ExpandConstant('{tmp}\model-selection.txt')) +
     ' -CancellationPath ' + AddQuotes(ExpandConstant('{tmp}\model-cancel.txt')) +
     ' -SelectionMask ' + IntToStr(Selection);
   if Selection <> 0 then Params := Params + ' -ConfirmDestructive';
@@ -586,10 +584,10 @@ begin
       Params, '', SW_HIDE, ewWaitUntilTerminated, Code) then Exit;
   if not ReadModelText(ExpandConstant('{tmp}\model-report.txt'), ReportText) then Exit;
   ModelSummary := ReportText;
-  if (Code <> 0) and (Code <> 1) then Exit;
-  if not ReadModelText(ExpandConstant('{tmp}\model-selection.txt'), Mask) then Exit;
-  Eligible := StrToIntDef(Trim(Mask), 0);
-  if (Eligible < 0) or (Eligible > 15) then Eligible := 0;
+  // The supervisor returns this reserved success range only after its worker exits.
+  // Ordinary PowerShell errors never become an eligible selection.
+  if (Code < 32) or (Code > 47) then Exit;
+  Eligible := Code - 32;
   Result := True;
 end;
 
@@ -621,9 +619,9 @@ begin
   ModelScanButton.Enabled := False;
   ModelContinueButton.Enabled := False;
   DeleteFile(ExpandConstant('{tmp}\model-cancel.txt'));
-  ModelDetails.Text := 'Checking ownership and downloaded model files. Cancel stops this read-only check.';
+  ModelDetails.Text := 'Checking ownership and downloaded model files. Please wait.';
   try
-    // Exec pumps window messages while waiting, so Cancel remains available.
+    // Synchronous Exec disables this form until the helper exits.
     if CheckCompletedStoreMigration <> 0 then
       ModelSummary := 'Store migration or uncertain ownership requires preservation. Models are kept; sizes were not scanned.'
     else if not ModelScanCancelled then
@@ -653,11 +651,9 @@ function ShowModelReport(Choosing: Boolean): Boolean;
 var
   CancelButton: TNewButton;
 begin
-  ModelDialog := CreateCustomForm;
+  ModelDialog := CreateCustomForm(ScaleX(640), ScaleY(440), True, True);
   try
     ModelDialog.Caption := 'Downloaded voice models';
-    ModelDialog.ClientWidth := ScaleX(640);
-    ModelDialog.ClientHeight := ScaleY(440);
     ModelDialog.OnCloseQuery := @ModelPreviewCloseQuery;
     ModelRemoveCheck := TNewCheckBox.Create(ModelDialog);
     ModelRemoveCheck.Parent := ModelDialog;
@@ -714,8 +710,8 @@ begin
     'Sizes have not been measured. Gateway removal is a separate choice.';
   if UninstallSilent() then Exit;
   if GetEnv('OPENCLAW_TRAY_DATA_DIR') <> '' then
-    ModelSummary := 'A custom app-data directory is configured. Models are kept; sizes were not scanned.' +
-      #13#10 + 'Configured path: ' + GetEnv('OPENCLAW_TRAY_DATA_DIR') + #13#10 + ModelSummary
+    ModelSummary := 'A custom app-data directory is configured. Models are kept; sizes were not scanned.' + #13#10 +
+      'Configured path: ' + GetEnv('OPENCLAW_TRAY_DATA_DIR') + #13#10 + ModelSummary
   else if MigrationOperationUnavailable then
     ModelSummary := 'Migration ownership could not be checked. Models are kept.' + #13#10 + ModelSummary
   else
@@ -746,8 +742,8 @@ begin
   end;
   UninstallProgressForm.StatusLabel.Caption := 'Checking and removing selected voice models...';
   if not RunModelHelper(ModelCleanupSelection, Ignored) then
-    ModelSummary := 'Model cleanup could not be completed or verified. Some selected files may remain.' +
-      #13#10 + ModelSummary;
+    ModelSummary := 'Model cleanup could not be completed or verified. Some selected files may remain.' + #13#10 +
+      ModelSummary;
 end;
 
 procedure EnsureLocalGatewayCleanupChoice;

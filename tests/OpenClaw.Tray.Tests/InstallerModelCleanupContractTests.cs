@@ -41,6 +41,11 @@ public sealed class InstallerModelCleanupContractTests
         Assert.DoesNotContain("LocalGatewayCleanupSucceeded", cleanup);
         Assert.DoesNotContain("DelTree", cleanup);
         Assert.Contains("ShowModelReport(False);", source);
+        // Reserved completion codes, not an independent selection file, carry the preview.
+        Assert.Contains("if (Code < 32) or (Code > 47) then Exit;", source);
+        Assert.Contains("Eligible := Code - 32;", source);
+        Assert.DoesNotContain("model-selection.txt", source);
+        Assert.DoesNotContain("-SelectionPath", source);
     }
 
     [Theory]

@@ -223,7 +223,7 @@ public sealed class KokoroUninstallFilesTests
             new[] { pack.Model, pack.VoicesFile }.Select(asset =>
                 (pack.PackId, asset.FileName, asset.DownloadUrl, asset.Sha256, asset.SizeBytes))).ToArray();
         var cleanup = KokoroDownloadCatalog.All.Select(asset =>
-            (asset.PackId, asset.FileName, asset.Url, asset.Sha256, asset.SizeBytes)).ToArray();
+            (asset.PackId, asset.FileName, asset.Url, (string?)asset.Sha256, asset.SizeBytes)).ToArray();
         Assert.Equal(downloads, cleanup);
     }
 
@@ -242,17 +242,17 @@ public sealed class KokoroUninstallFilesTests
         Directory.CreateDirectory(data);
         var output = await UninstallScriptHost.RunAsync(temp, ["ConvertTo-CleanProcessOutput"], """
             $cancelPath = Join-Path $AppRoot 'cancel.txt'
-            $expected = 0
+            $expected = 32
             if ($env:OPENCLAW_TEST_CANCEL_MODELS -eq 'True') {
                 [IO.File]::WriteAllText($cancelPath, 'cancel')
-                $expected = 2
+                $expected = 49
             }
-            & (Join-Path $AppRoot 'Uninstall-DownloadedModels.ps1') -DataDirectory (Join-Path $AppRoot 'data with spaces') -ReportPath (Join-Path $AppRoot 'report.txt') -SelectionPath (Join-Path $AppRoot 'selection.txt') -CancellationPath $cancelPath
+            & (Join-Path $AppRoot 'Uninstall-DownloadedModels.ps1') -DataDirectory (Join-Path $AppRoot 'data with spaces') -ReportPath (Join-Path $AppRoot 'report.txt') -CancellationPath $cancelPath
             if ($LASTEXITCODE -ne $expected) { throw "Unexpected model helper result: $LASTEXITCODE" }
-            Write-Output ([IO.File]::ReadAllText((Join-Path $AppRoot 'selection.txt')))
+            Write-Output $LASTEXITCODE
             Write-Output ([IO.File]::ReadAllText((Join-Path $AppRoot 'report.txt')))
             """, new Dictionary<string, string?> { ["OPENCLAW_TEST_CANCEL_MODELS"] = cancel.ToString() });
-        Assert.StartsWith("0", output.Trim());
+        Assert.StartsWith(cancel ? "49" : "32", output.Trim());
         Assert.Contains(cancel ? "cancelled before starting" : "Absent:", output);
         Assert.Contains(data, output);
         if (!cancel) Assert.Contains("sizes were not scanned", output);

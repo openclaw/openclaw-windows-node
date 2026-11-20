@@ -7,12 +7,14 @@
     A nonzero selection requires -ConfirmDestructive. The C# owner re-verifies every
     selected file, pins its ancestors, and deletes using its verified file handle.
     Reports are local to this uninstall, never telemetry or an ownership receipt.
+    Exit 32..47 is a completed preview with a four-bit eligible-file mask (code - 32).
+    Removal returns 32 on completion, 48 when incomplete; 49 means unavailable/unknown.
+    Keeping success codes separate from ordinary PowerShell errors fails closed.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$DataDirectory,
     [Parameter(Mandatory = $true)][string]$ReportPath,
-    [Parameter(Mandatory = $true)][string]$SelectionPath,
     [ValidateRange(0, 15)][int]$SelectionMask = 0,
     [string]$CancellationPath = '',
     [switch]$ConfirmDestructive,
@@ -40,7 +42,7 @@ try {
         $arguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
             (Join-Path $PSScriptRoot 'Uninstall-DownloadedModels.ps1'),
             '-DataDirectory', $DataDirectory, '-ReportPath', $ReportPath,
-            '-SelectionPath', $SelectionPath, '-SelectionMask', [string]$SelectionMask, '-Worker')
+            '-SelectionMask', [string]$SelectionMask, '-Worker')
         if ($ConfirmDestructive) { $arguments += '-ConfirmDestructive' }
         # Every value is quoted using Windows argv backslash rules.
         $quoted = foreach ($argument in $arguments) {
@@ -76,11 +78,10 @@ try {
         (Join-Path $PSScriptRoot 'KokoroUninstallFiles.cs')) -ErrorAction Stop
     $result = [OpenClaw.Shared.Audio.KokoroUninstallFiles]::Run($DataDirectory, $SelectionMask)
     [IO.File]::WriteAllText($ReportPath, $result.Text, $encoding)
-    [IO.File]::WriteAllText($SelectionPath, [string]$result.EligibleMask, $encoding)
-    if (-not $result.Complete) { exit 1 }
-    exit 0
+    if ($SelectionMask -eq 0) { exit (32 + $result.EligibleMask) }
+    if (-not $result.Complete) { exit 48 }
+    exit 32
 } catch {
-    [IO.File]::WriteAllText($SelectionPath, '0', $encoding)
     $message = @(
         'Model cleanup could not be completed or verified. Files may remain; no complete-cleanup claim is made.',
         "Model path: $DataDirectory\models\kokoro",
@@ -88,5 +89,5 @@ try {
         $_.Exception.Message
     ) -join [Environment]::NewLine
     [IO.File]::WriteAllText($ReportPath, $message, $encoding)
-    exit 2
+    exit 49
 }
