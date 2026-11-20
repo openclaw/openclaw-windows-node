@@ -12,6 +12,7 @@ internal sealed record StartupTaskDescription(
 public static class WindowsStartupTaskRegistration
 {
     public const string TaskName = "OpenClaw Companion";
+    private const string BackgroundLaunchArgument = "--background";
 
     public static bool Register(string trayExecutablePath, string taskName = TaskName)
     {
@@ -138,17 +139,24 @@ public static class WindowsStartupTaskRegistration
         actual.Enabled && actual.EnabledLogonTrigger &&
         string.Equals(actual.Path, "\\" + taskName.TrimStart('\\'), StringComparison.OrdinalIgnoreCase) &&
         string.Equals(actual.PrincipalSid, principalSid, StringComparison.Ordinal) &&
-        string.IsNullOrWhiteSpace(actual.Arguments) && string.IsNullOrWhiteSpace(actual.WorkingDirectory) &&
+        string.Equals(actual.Arguments?.Trim(), BackgroundLaunchArgument, StringComparison.Ordinal) &&
+        string.IsNullOrWhiteSpace(actual.WorkingDirectory) &&
         string.Equals(Path.GetFullPath(actual.Executable.Trim('"')), Path.GetFullPath(executable), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The command every autostart registration runs at logon. The argument keeps the logon launch
+    /// from opening a window, so the scheduled task and both Run key writers must share it.
+    /// </summary>
+    public static string CreateBackgroundLaunchCommand(string trayExecutablePath) =>
+        Quote(Path.GetFullPath(trayExecutablePath)) + " " + BackgroundLaunchArgument;
 
     internal static ProcessStartInfo CreateRegisterProcessStartInfo(string trayExecutablePath, string taskName = TaskName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(taskName);
-        var fullPath = Path.GetFullPath(trayExecutablePath);
         return CreateStartInfo(
             "/Create",
             "/TN", taskName,
-            "/TR", Quote(fullPath) + " --background",
+            "/TR", CreateBackgroundLaunchCommand(trayExecutablePath),
             "/SC", "ONLOGON",
             "/F");
     }
