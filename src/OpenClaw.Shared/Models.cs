@@ -2,6 +2,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 
 namespace OpenClaw.Shared;
@@ -2569,23 +2570,89 @@ public class DiscoveredGateway
     public bool TlsEnabled { get; set; }
     public string? TlsFingerprint { get; set; }
 
-    public string ConnectionUrl
+    public string ConnectionUrl => FormatEndpoint(TlsEnabled ? "wss" : "ws");
+
+    public string HttpUrl => FormatEndpoint(TlsEnabled ? "https" : "http");
+
+    /// <summary>
+    /// Builds a scheme/host/port URL. IPv6 literals are bracketed. A host that
+    /// is not a DNS name or an IP address, or a port outside 1..65535, yields
+    /// an empty string so discovery cannot prefill a URL that will not connect.
+    /// </summary>
+    private string FormatEndpoint(string scheme)
     {
-        get
-        {
-            var scheme = TlsEnabled ? "wss" : "ws";
-            var host = Host ?? LanHost ?? "localhost";
-            return $"{scheme}://{host}:{Port}";
-        }
+        return TryFormatEndpoint(scheme, Host ?? LanHost, Port, out var url) ? url : "";
     }
 
-    public string HttpUrl
+    internal static bool TryFormatEndpoint(string scheme, string? host, int port, out string url)
     {
-        get
+        url = "";
+        if (port is < 1 or > 65535 || string.IsNullOrWhiteSpace(host))
+            return false;
+
+        if (!TryFormatHost(host, out var authorityHost))
+            return false;
+
+        // Keep a numeric zone as %12. Percent-encoding it to %2512 makes
+        // Uri.IdnHost report interface 2512, so ClientWebSocket selects the
+        // wrong adapter. UriBuilder's escaped host has that effect.
+        url = $"{scheme}://{authorityHost}:{port}";
+        return Uri.TryCreate(url, UriKind.Absolute, out var parsed) && parsed.Port == port;
+    }
+
+    private static bool TryFormatHost(string host, out string authorityHost)
+    {
+        authorityHost = "";
+        var trimmed = host.Trim();
+        if (trimmed.IndexOfAny([' ', '\t', '\r', '\n', '@', '/', '?', '#', '\\']) >= 0)
+            return false;
+
+        var bare = trimmed.Length >= 2 && trimmed[0] == '[' && trimmed[^1] == ']'
+            ? trimmed[1..^1]
+            : trimmed;
+        var zoneAt = bare.IndexOf('%');
+        var zone = zoneAt > 0 ? bare[(zoneAt + 1)..] : "";
+        if (zoneAt > 0)
+            bare = bare[..zoneAt];
+
+        if (IPAddress.TryParse(bare, out var address) &&
+            address.AddressFamily == AddressFamily.InterNetworkV6)
         {
-            var scheme = TlsEnabled ? "https" : "http";
-            var host = Host ?? LanHost ?? "localhost";
-            return $"{scheme}://{host}:{Port}";
+            if (zone.Length > 0 && !IsZoneToken(zone))
+                return false;
+            authorityHost = BracketIpv6(address, zone);
+            return true;
         }
+
+        if (Uri.CheckHostName(trimmed) is UriHostNameType.Dns or UriHostNameType.IPv4)
+        {
+            authorityHost = trimmed;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string BracketIpv6(IPAddress address, string? zone = null)
+    {
+        var literal = address.ToString();
+        var percent = literal.IndexOf('%');
+        if (percent >= 0)
+            literal = literal[..percent];
+        if (!string.IsNullOrEmpty(zone))
+            literal += "%" + zone;
+        return "[" + literal + "]";
+    }
+
+    private static bool IsZoneToken(string zone)
+    {
+        if (zone.Length is 0 or > 64)
+            return false;
+        foreach (var ch in zone)
+        {
+            if (ch is not ((>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or '-' or '_' or '.'))
+                return false;
+        }
+        return true;
     }
 }
