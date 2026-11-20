@@ -389,7 +389,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Build dependencies belong to the declared app revision, not the E2E harness.
-          & ./scripts/Initialize-ReactorPackages.ps1 -DestinationDirectory (Join-Path (Get-Location) 'artifacts/reactor-packages')
+          & ./scripts/Initialize-ReactorPackages.ps1
           dotnet restore src/OpenClaw.Tray.WinUI -r win-x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore

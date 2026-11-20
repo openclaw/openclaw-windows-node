@@ -1020,8 +1020,9 @@ Signing on those allowlists. Because these are NTFS hardlinks, signing the
 staged file signs the real payload file.
 
 After signing, CI verifies the actual payload directory, not the staging folder.
-If hardlink signing does not affect the payload, the verifier fails before
-release artifacts are created.
+The verifier checks the OpenClaw signature on first-party binaries and the
+Microsoft signature on the bundled Reactor assemblies before creating release
+artifacts.
 
 ## Expected release workflow jobs
 

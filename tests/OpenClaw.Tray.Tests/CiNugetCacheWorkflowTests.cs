@@ -75,8 +75,8 @@ public sealed class CiNugetCacheWorkflowTests
             sharedCacheLaneCount,
             CountOccurrences(
                 otherJobs,
-                "key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}"));
-        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-"));
+                "key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}"));
+        Assert.Equal(sharedCacheLaneCount, CountOccurrences(otherJobs, "restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-"));
     }
 
     [Fact]
