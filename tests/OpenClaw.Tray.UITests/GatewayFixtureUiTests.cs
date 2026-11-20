@@ -23,6 +23,10 @@ public sealed class GatewayFixtureUiFactAttribute : FactAttribute
 [Collection("Gateway fixture UI")]
 public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 {
+    private static readonly TimeSpan SettingsWindowTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_SETTINGS_WINDOW_TIMEOUT_SECONDS"), out var windowSeconds)
+            && windowSeconds > 0 ? TimeSpan.FromSeconds(windowSeconds) : TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan SettingsWindowPollInterval = TimeSpan.FromMilliseconds(100);
     private const string HandoffSettleTimeoutVariable = "OPENCLAW_GATEWAY_FIXTURE_HANDOFF_TIMEOUT_SECONDS";
     // Sender process, app relaunch, verify RPC and receipt persistence; hosted runners exceeded 20 s.
     private static readonly TimeSpan HandoffSettleTimeout =
@@ -2557,10 +2561,38 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
         OwnedWindowCapture.Save(run, SettingsWindow(run), name);
     }
 
-    private static AutomationElement SettingsWindow(GatewayFixtureRun run) =>
-        AppWindows(run).Single(candidate =>
+    private static AutomationElement? FindSettingsWindow(GatewayFixtureRun run)
+    {
+        var matches = AppWindows(run).Where(candidate =>
             candidate.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsPageMarker")) is not null);
+                new PropertyCondition(AutomationElement.AutomationIdProperty, "SessionsPageMarker")) is not null).ToArray();
+        return matches.Length switch
+        {
+            0 => null,
+            1 => matches[0],
+            _ => throw new InvalidOperationException("Multiple owned windows contain SessionsPageMarker.")
+        };
+    }
+
+    private static AutomationElement SettingsWindow(GatewayFixtureRun run)
+    {
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (watch.Elapsed < SettingsWindowTimeout)
+        {
+            try
+            {
+                if (FindSettingsWindow(run) is { } window)
+                    return window;
+            }
+            catch (ElementNotAvailableException)
+            {
+                // A relayout can remove a peer while its descendants are being enumerated.
+            }
+            Thread.Sleep(SettingsWindowPollInterval); // test-timing-exception: Poll synchronous UIA acquisition, not a layout settle.
+        }
+        throw new TimeoutException(
+            $"Timed out waiting for the owned Sessions window. Artifacts: {run.ArtifactsDirectory}");
+    }
 
     private static int ChatWindowCount(GatewayFixtureRun run) =>
         AppWindows(run).Count(window =>
