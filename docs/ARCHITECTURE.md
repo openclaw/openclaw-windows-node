@@ -287,7 +287,7 @@ new attempt. This boundary does not change release signing or Windows policy.
 | Experimental browser setup-completion handoff | Removed; all completion activation goes through the native receipt owner, including visible rejection of obsolete handles | closed |
 | Explicit AI preparation continuation, fresh auth-URL admission and bounded restart wait | `GatewayAiSetupController` | authoritative |
 | Continuous AI provider dialog visibility and exact row-command admission | `AiSetupPage` | authoritative |
-| Focused AI discovery display grouping | `AiSetupPresentationModel` | authoritative |
+| Focused AI discovery display grouping | `AiSetupPresentationModel` partitions account and model-service choices without mutation or label-based locality inference; `AiSetupPage` owns presentation-only path navigation and blocks changes during active or unconfirmed work | authoritative |
 | Setup installation three-phase overview and exact step-count projection | `SetupInstallationProgress`; `SetupPhaseStatus` renders native status icons/text; `ProgressPage` retains logs and real download progress | authoritative |
 | Onboarding Local AI readiness, fresh-unsupported visibility projection and cancellable read-only observation | `LocalAiOnboardingSnapshot` + `LocalAiOnboardingObservation` | authoritative |
 | Same-window Local AI admission and runtime action bridge | `ISetupLocalAiHost` + `SetupLocalAiHost`; route inspection shared with Settings through `LocalAiSetupRouteResolver` | authoritative |

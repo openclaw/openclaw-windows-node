@@ -10254,4 +10254,12 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Suivez le travail délégué depuis cette conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets et onglets publiés par cette session.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Aucun panneau n'est encore disponible pour cette conversation.</value></data>
+  <data name="Onboarding_AiSetup_PathTitle" xml:space="preserve"><value>Donnez une intelligence à OpenClaw.</value></data>
+  <data name="Onboarding_AiSetup_PathDetail" xml:space="preserve"><value>Choisissez comment connecter votre IA.</value></data>
+  <data name="Onboarding_AiSetup_AccountPath" xml:space="preserve"><value>Connecter un compte IA</value></data>
+  <data name="Onboarding_AiSetup_AccountPathDetail" xml:space="preserve"><value>Utilisez une connexion existante, connectez un fournisseur ou saisissez une clé API.</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPath" xml:space="preserve"><value>Utiliser un modèle local</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPathDetail" xml:space="preserve"><value>Utilisez un service de modèles détecté ou examinez la configuration de l’IA locale sur ce PC. Les services de modèles peuvent fonctionner sur un autre ordinateur.</value></data>
+  <data name="Onboarding_AiSetup_BackToPaths" xml:space="preserve"><value>Retour aux choix IA</value></data>
+  <data name="Onboarding_AiSetup_MoreModelServices" xml:space="preserve"><value>Autres options de services de modèles</value></data>
 </root>

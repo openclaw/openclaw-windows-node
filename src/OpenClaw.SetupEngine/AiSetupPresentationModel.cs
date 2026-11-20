@@ -1,5 +1,8 @@
 namespace OpenClaw.SetupEngine;
 
+/// <summary>Navigation only. Choosing a path never selects or activates a provider.</summary>
+public enum AiSetupConnectionPath { Choice, Account, LocalModel }
+
 /// <summary>
 /// Presentation-only groups from one successful Gateway discovery. Missing/failed
 /// discovery is not an empty catalog, and displaying a group never selects it.
@@ -28,38 +31,56 @@ public sealed record AiSetupPresentationModel
         IReadOnlySet<GatewayAiSetupChoiceKind> supportedChoices,
         bool discoveryFailed = false, bool apiKeyFormRequested = false,
         string? gatewayId = null, string? localGatewayId = null, string? localModelRef = null,
-        bool hasLocalChoice = false)
+        bool hasLocalChoice = false, AiSetupConnectionPath path = AiSetupConnectionPath.Choice)
     {
         if (detection is null || discoveryFailed)
             return new() { DiscoveryFailed = discoveryFailed };
 
         var candidates = supportedChoices.Contains(GatewayAiSetupChoiceKind.Candidate)
             ? detection.Candidates.Where(candidate => candidate.ModelTarget is null &&
+                MatchesPath(IsModelService(candidate.ModelRef.Split('/')[0]), path) &&
                 !(gatewayId is not null && gatewayId == localGatewayId && localModelRef is not null &&
                   candidate.ModelRef == localModelRef)).ToArray() : [];
         var auth = supportedChoices.Contains(GatewayAiSetupChoiceKind.Auth)
-            ? detection.AuthOptions.Where(option => option.ModelTarget is null).ToArray() : [];
+            ? detection.AuthOptions.Where(option => option.ModelTarget is null && MatchesPath(IsModelService(option), path)).ToArray() : [];
         var manual = supportedChoices.Contains(GatewayAiSetupChoiceKind.ManualProvider)
-            ? detection.ManualProviders.Where(option => option.ModelTarget is null).ToArray() : [];
+            ? detection.ManualProviders.Where(option => option.ModelTarget is null && MatchesPath(IsModelService(option), path)).ToArray() : [];
         return new()
         {
             HasDetection = true,
-            HasLocalChoice = hasLocalChoice,
+            HasLocalChoice = path != AiSetupConnectionPath.Account && hasLocalChoice,
             HasUtilityChoices = detection.Candidates.Any(candidate => candidate.ModelTarget is not null) ||
                 detection.ManualProviders.Concat(detection.AuthOptions).Concat(detection.PrepareOptions)
                     .Any(option => option.ModelTarget is not null),
             Candidates = candidates.ToArray(),
             RecommendedInstalls = candidates.Length == 0
                 ? detection.RecommendedInstalls.Where(option =>
+                    MatchesPath(IsModelService(option), path) &&
                     GatewayAiSetupPresentation.TryGetExternalUri(option.Website, out _)).ToArray() : [],
-            UnavailableCandidates = detection.UnavailableCandidates.ToArray(),
+            UnavailableCandidates = detection.UnavailableCandidates.Where(option =>
+                MatchesPath(IsModelService(option.BrandId) || IsModelService(option.Id) ||
+                    detection.AuthOptions.Any(auth => auth.Id == option.AuthOptionId && IsModelService(auth)) ||
+                    detection.ManualProviders.Any(manual => manual.Id == option.ManualProviderId && IsModelService(manual)), path)).ToArray(),
             PrepareOptions = supportedChoices.Contains(GatewayAiSetupChoiceKind.Prepare)
-                ? detection.PrepareOptions.Where(option => option.ModelTarget is null).ToArray() : [],
+                ? detection.PrepareOptions.Where(option => option.ModelTarget is null && MatchesPath(IsModelService(option), path)).ToArray() : [],
             FeaturedSignIn = auth.Where(option => option.Featured).ToArray(),
             MoreSignIn = auth.Where(option => !option.Featured).ToArray(),
             ManualProviders = manual.ToArray(),
             NativeSessionCatalogPreferenceRequired = detection.NativeSessionCatalogPreferenceRequired,
-            ShowApiKeyForm = manual.Length > 0 && (candidates.Length == 0 && !hasLocalChoice || apiKeyFormRequested),
+            ShowApiKeyForm = manual.Length > 0 && apiKeyFormRequested,
         };
     }
+
+    // Match producer IDs, not translated labels, endpoint hosts, or credential flags.
+    // Unknown/custom providers stay reachable under accounts. A model service is not
+    // necessarily on this PC. Windows' managed runtime also uses the llamacpp ID.
+    private static bool IsModelService(string? provider) => provider is "ollama" or "lmstudio" or "llama-cpp" or "llamacpp";
+    private static bool IsModelService(GatewayAiSetupProvider provider) =>
+        IsModelService(provider.BrandId) || IsModelService(provider.Id);
+    private static bool MatchesPath(bool modelService, AiSetupConnectionPath path) => path switch
+    {
+        AiSetupConnectionPath.Account => !modelService,
+        AiSetupConnectionPath.LocalModel => modelService,
+        _ => true,
+    };
 }

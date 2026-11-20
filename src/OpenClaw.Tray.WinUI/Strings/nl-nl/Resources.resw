@@ -10255,4 +10255,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Volg gedelegeerd werk vanuit dit gesprek.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets en tabbladen die deze sessie heeft gepubliceerd.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Er zijn nog geen panelen beschikbaar voor dit gesprek.</value></data>
+  <data name="Onboarding_AiSetup_PathTitle" xml:space="preserve"><value>Laat OpenClaw denken.</value></data>
+  <data name="Onboarding_AiSetup_PathDetail" xml:space="preserve"><value>Kies hoe je je AI wilt verbinden.</value></data>
+  <data name="Onboarding_AiSetup_AccountPath" xml:space="preserve"><value>Een AI-account verbinden</value></data>
+  <data name="Onboarding_AiSetup_AccountPathDetail" xml:space="preserve"><value>Gebruik een bestaande aanmelding, verbind een provider of voer een API-sleutel in.</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPath" xml:space="preserve"><value>Een lokaal model gebruiken</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPathDetail" xml:space="preserve"><value>Gebruik een gedetecteerde modelservice of bekijk de instellingen voor lokale AI op deze pc. Modelservices kunnen op een andere computer draaien.</value></data>
+  <data name="Onboarding_AiSetup_BackToPaths" xml:space="preserve"><value>Terug naar AI-keuzes</value></data>
+  <data name="Onboarding_AiSetup_MoreModelServices" xml:space="preserve"><value>Meer modelserviceopties</value></data>
 </root>

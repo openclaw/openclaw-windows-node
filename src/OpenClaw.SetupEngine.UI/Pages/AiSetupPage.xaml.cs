@@ -69,6 +69,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     private bool _rendering;
     private readonly ProviderSetupDialog _providerDialog = new();
     private AiSetupPresentationModel _presentation = new();
+    private AiSetupConnectionPath _connectionPath;
     private bool _apiKeyFormRequested;
     private bool _cancelling;
     private bool _providerOperationActive;
@@ -100,6 +101,17 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     {
         InitializeComponent();
         TitleText.Text = S("Title.Text");
+        AccountPathTitle.Text = S("AccountPath");
+        AccountPathDescription.Text = S("AccountPathDetail");
+        LocalModelPathTitle.Text = S("LocalModelPath");
+        LocalModelPathDescription.Text = S("LocalModelPathDetail");
+        AccountPathTile.Glyph = FluentIconCatalog.Operator;
+        LocalModelPathTile.Glyph = FluentIconCatalog.Devices;
+        AutomationProperties.SetName(AccountPathButton, S("AccountPath"));
+        AutomationProperties.SetHelpText(AccountPathButton, S("AccountPathDetail"));
+        AutomationProperties.SetName(LocalModelPathButton, S("LocalModelPath"));
+        AutomationProperties.SetHelpText(LocalModelPathButton, S("LocalModelPathDetail"));
+        PathBackButton.Content = S("BackToPaths");
         CloseBlockedSetupButton.Content = SetupLocalization.GetString("Onboarding_Ready_Close");
         OpenLocalAiLogsButton.Content = S("OpenLocalAiLogs");
         CandidatesHeading.Text = SetupLocalization.GetString("Onboarding_V4_DetectedAi.Text");
@@ -107,7 +119,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         RecommendedDetail.Text = S("RecommendedDetail");
         UnavailableHeading.Text = S("Unavailable");
         LocalGroupHeading.Text = S("LocalTitle");
-        LocalGroupDescription.Text = S("LocalGroupDescription");
+        LocalGroupDescription.Text = S("LocalModelPathDetail");
         SignInHeading.Text = S("ConnectProvider");
         CloudDescription.Text = S("CloudDetail");
         LocalAiTitle.Text = S("LocalTitle");
@@ -183,7 +195,10 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         else
             _prepared = _args.Preparation?.Take();
         if (_args.InstallAndUse is not null)
+        {
+            _connectionPath = AiSetupConnectionPath.LocalModel;
             TitleText.Text = S("LocalInstalling");
+        }
         _providerDialog.NativeRecoveryRequested += NativeRecoveryRequested;
         if (_args.NativeSession is { IsIsolated: false } native)
         {
@@ -548,7 +563,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             apiKeyFormRequested: _apiKeyFormRequested, gatewayId: Client!.Route.GatewayId,
             localGatewayId: local?.ReplacesDetectedChoice == true ? local.Target?.GatewayId : null,
             localModelRef: local?.ReplacesDetectedChoice == true ? local.ModelRef : null,
-            hasLocalChoice: local?.ShowLocalChoice == true);
+            hasLocalChoice: local?.ShowLocalChoice == true, path: _connectionPath);
         _rendering = true;
         try
         {
@@ -568,12 +583,15 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             UnavailableSection.Visibility = Visible(_presentation.UnavailableCandidates.Count > 0);
             PrepareSection.Visibility = Visible(_presentation.PrepareOptions.Count > 0);
             var hasSignIn = _presentation.FeaturedSignIn.Count + _presentation.MoreSignIn.Count > 0;
+            SignInHeading.Text = S(_connectionPath == AiSetupConnectionPath.LocalModel ? "MoreModelServices" : "ConnectProvider");
+            CloudDescription.Visibility = Visible(_connectionPath != AiSetupConnectionPath.LocalModel);
             SignInSection.Visibility = Visible(hasSignIn || _presentation.ManualProviders.Count > 0);
             ProviderGroup.Visibility = Visible(hasSignIn);
             FeaturedSignInChoices.Visibility = Visible(_presentation.FeaturedSignIn.Count > 0);
             ApiKeySection.Visibility = Visible(_presentation.ManualProviders.Count > 0);
             ApiKeyForm.Visibility = Visible(_presentation.ShowApiKeyForm);
             MoreExpander.Visibility = Visible(_presentation.MoreSignIn.Count > 0);
+            MoreExpander.Header = S(_connectionPath == AiSetupConnectionPath.LocalModel ? "MoreModelServices" : "More.Header");
             MoreExpander.IsExpanded = false;
             NoChoicesText.Visibility = Visible(!_presentation.HasChoices);
             ApiKeyInput.Password = "";
@@ -605,6 +623,35 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         ApiKeyForm.StartBringIntoView();
         ApiProviderPicker.Focus(FocusState.Programmatic);
         Render();
+    }
+
+    private bool CanChangeConnectionPath => !_closed && !_busy && !_localActionBusy && !BackdropLocked &&
+        !ManagerRecoveryBlocked && _args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
+        Client?.Phase is null or GatewayAiSetupPhase.Idle or GatewayAiSetupPhase.Choosing or
+            GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected;
+
+    private void AccountPath_Click(object sender, RoutedEventArgs e) => ChangeConnectionPath(AiSetupConnectionPath.Account);
+    private void LocalModelPath_Click(object sender, RoutedEventArgs e) => ChangeConnectionPath(AiSetupConnectionPath.LocalModel);
+    private void PathBack_Click(object sender, RoutedEventArgs e) => ChangeConnectionPath(AiSetupConnectionPath.Choice);
+
+    private void ChangeConnectionPath(AiSetupConnectionPath path)
+    {
+        if (!CanChangeConnectionPath) return;
+        var previous = _connectionPath;
+        CancelProviderViewportRestore();
+        _connectionPath = path;
+        // Reproject the current snapshot only. Navigation never rediscovers, selects,
+        // activates, cancels or otherwise changes the Gateway. Clear secrets when leaving.
+        _apiKeyFormRequested = false;
+        ApiKeyInput.Password = "";
+        if (Client is { HasCurrentDiscovery: true, Detection: { } detection })
+            ApplyDetection(detection);
+        Render();
+        ChoicesScroller.ChangeView(null, 0, null, disableAnimation: true);
+        if (path == AiSetupConnectionPath.Choice)
+            (previous == AiSetupConnectionPath.LocalModel ? LocalModelPathButton : AccountPathButton).Focus(FocusState.Programmatic);
+        else
+            PathBackButton.Focus(FocusState.Programmatic);
     }
 
     private void Choice_Changed(object sender, SelectionChangedEventArgs e)
@@ -1124,6 +1171,22 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             }
             CloseBlockedSetupButton.Visibility = Visible(ManagerRecoveryBlocked && _args?.CloseSetupWindow is not null);
             var freezeBackdrop = _providerBackdrop is not null;
+            var choosingPath = _connectionPath == AiSetupConnectionPath.Choice;
+            var showPaths = _args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
+                Client?.Phase is not (GatewayAiSetupPhase.ClassicWizardRequired or GatewayAiSetupPhase.Verified);
+            ConnectionPathChoices.Visibility = Visible(showPaths && choosingPath);
+            PathContent.Visibility = Visible(!choosingPath);
+            PathBackButton.Visibility = Visible(showPaths && !choosingPath);
+            PathBackButton.IsEnabled = AccountPathButton.IsEnabled = LocalModelPathButton.IsEnabled = CanChangeConnectionPath;
+            if (CanChangeConnectionPath && (_choicesPrepared || _localAdmissionFailed || _presentation.DiscoveryFailed) ||
+                freezeBackdrop && _connectionPath != AiSetupConnectionPath.Choice && !ManagerRecoveryBlocked &&
+                _args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null)
+                TitleText.Text = S(_connectionPath switch
+                {
+                    AiSetupConnectionPath.Account => "AccountPath",
+                    AiSetupConnectionPath.LocalModel => "LocalModelPath",
+                    _ => "PathTitle",
+                });
             if (!freezeBackdrop) RenderLocalAi(phase);
             SetupWindow.Active?.SetCompanionMood(phase == GatewayAiSetupPhase.Verified ? OnboardingMascotMood.Celebrating
                 : _busy || phase is GatewayAiSetupPhase.Running or GatewayAiSetupPhase.VerificationRequired
@@ -1147,7 +1210,12 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
             });
             if (!freezeBackdrop)
             {
-                StatusText.Text = ManagerRecoveryBlocked ? S("ManagerRecoveryBlocked") :
+                StatusText.Text = CanChangeConnectionPath ? S(_connectionPath switch
+                {
+                    AiSetupConnectionPath.Account => "AccountPathDetail",
+                    AiSetupConnectionPath.LocalModel => "LocalModelPathDetail",
+                    _ => "PathDetail",
+                }) : ManagerRecoveryBlocked ? S("ManagerRecoveryBlocked") :
                     _managerClientReplaced ? S("Reconnecting") :
                     _busy && _activityKey is not null && !ProviderPending ? S(_activityKey) : status;
                 SetupActivitySteps.Visibility = Visible(_activities.Count > 0 && !ProviderPending &&
@@ -1160,8 +1228,9 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
                     (phase is GatewayAiSetupPhase.Choosing or GatewayAiSetupPhase.Cancelled or GatewayAiSetupPhase.Rejected));
                 CandidatesSection.Visibility = Visible(ChoicePanel.Visibility == Visibility.Visible &&
                     _presentation.Candidates.Count > 0);
-                LocalGroupHeader.Visibility = Visible(LocalAiSection.Visibility == Visibility.Visible ||
-                    ChoicePanel.Visibility == Visibility.Visible && PrepareSection.Visibility == Visibility.Visible);
+                LocalGroupHeader.Visibility = Visible(_connectionPath == AiSetupConnectionPath.LocalModel &&
+                    CandidatesSection.Visibility == Visibility.Visible && LocalAiSection.Visibility == Visibility.Visible);
+                LocalGroupDescription.Visibility = Visibility.Collapsed;
                 LegacyButton.Visibility = phase == GatewayAiSetupPhase.ClassicWizardRequired ? Visibility.Visible : Visibility.Collapsed;
             }
             else
@@ -1314,6 +1383,7 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
     {
         var snapshot = _localObservation?.Snapshot ?? new(LocalAiOnboardingState.UnsupportedGateway);
         LocalAiSection.Visibility = Visible(_args?.ExpectedConfiguredModelRef is null && _localExpectedModel is null &&
+            _connectionPath == AiSetupConnectionPath.LocalModel &&
             AiSetupReadinessPresentation.ShowLocalChoice(
                 _args?.NativeSession is not null || _managedNative, _nativeLocalAiTransport is not null, snapshot));
         var state = snapshot.State;
@@ -1340,10 +1410,12 @@ public sealed partial class AiSetupPage : Page, IAsyncDisposable
         };
         var providerPending = _providerOperationActive || phase is GatewayAiSetupPhase.Running or GatewayAiSetupPhase.Uncertain or
             GatewayAiSetupPhase.VerificationRequired;
-        LocalAiCard.IsClickEnabled = _localObservation is not null && !_localActionBusy && !providerPending &&
+        LocalAiCard.IsClickEnabled = _connectionPath == AiSetupConnectionPath.LocalModel &&
+            _localObservation is not null && !_localActionBusy && !providerPending &&
             AiSetupReadinessPresentation.ShowLocalRecovery(_busy, _managerClientReplaced, snapshot) &&
             (snapshot.CanReview && _args?.ReviewLocalAi is not null || snapshot.CanUse || snapshot.CanRefresh);
-        LocalAiCard.IsEnabled = !_busy && !_managerClientReplaced && !_localActionBusy &&
+        LocalAiCard.IsEnabled = _connectionPath == AiSetupConnectionPath.LocalModel &&
+            !_busy && !_managerClientReplaced && !_localActionBusy &&
             !providerPending && state != LocalAiOnboardingState.Checking;
         AutomationProperties.SetHelpText(LocalAiCard, detail + " " + LocalAiActionText.Text + " " +
             S("LocalExplanation"));

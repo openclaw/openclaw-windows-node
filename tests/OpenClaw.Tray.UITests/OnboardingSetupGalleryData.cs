@@ -24,7 +24,14 @@ internal static class OnboardingSetupGalleryData
         "tailscale" => new(typeof(GatewaySetupDetailPage), "Tailscale Serve", "DetailTitle"),
         "local-review" => new(typeof(GatewaySetupDetailPage), "Local AI", "DetailTitle"),
         "networking" => new(typeof(GatewaySetupDetailPage), "WSL networking consent", "DetailTitle"),
-        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), "Set up your AI", "TitleText"),
+        "ai-return" when scene.State == "verification" => new(typeof(AiSetupPage), "Your AI needs attention", "TitleText"),
+        "ai" when scene.State == "classic" => new(typeof(AiSetupPage), "Preparing your AI choices", "TitleText"),
+        "ai" or "ai-return" or "dialog" => new(typeof(AiSetupPage), ConnectionPathFor(scene) switch
+        {
+            AiSetupConnectionPath.Choice => "Get OpenClaw thinking.",
+            AiSetupConnectionPath.LocalModel => "Use a local model",
+            _ => "Connect an AI account",
+        }, "TitleText"),
         "preview" when scene.State.StartsWith("wizard", StringComparison.Ordinal) =>
             new(typeof(WizardPage), "OpenClaw onboard"),
         "preview" when scene.State == "milestone" =>
@@ -38,6 +45,11 @@ internal static class OnboardingSetupGalleryData
         }, "TitleText"),
         _ => throw new InvalidOperationException($"Gallery scene has no semantic header contract: {scene.Id}"),
     };
+
+    internal static AiSetupConnectionPath ConnectionPathFor(Scene scene) =>
+        scene.State == "paths" ? AiSetupConnectionPath.Choice :
+        Enum.TryParse<LocalAiOnboardingState>(scene.State, out _) || scene.State is "other-local" or "simplified-local"
+            ? AiSetupConnectionPath.LocalModel : AiSetupConnectionPath.Account;
 
     internal static IReadOnlyList<Scene> RequiredScenes { get; } =
     [
@@ -77,6 +89,7 @@ internal static class OnboardingSetupGalleryData
         new("09-progress-gateway", "preview", "progress"),
         new("09-progress-local-ai", "preview", "progress-local-ai"),
         new("09-gateway-installed-milestone", "preview", "milestone"),
+        new("10-ai-connection-paths", "ai", "paths"),
         new("10-ai-local-checking", "ai", "Checking"),
         new("10-ai-local-set-up", "ai", "SetUp"),
         new("10-ai-local-start-and-use", "ai", "StartAndUse"),

@@ -10325,4 +10325,12 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Follow delegated work from this conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets and tabs this session published.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>No panels are available for this conversation yet.</value></data>
+  <data name="Onboarding_AiSetup_PathTitle" xml:space="preserve"><value>Get OpenClaw thinking.</value></data>
+  <data name="Onboarding_AiSetup_PathDetail" xml:space="preserve"><value>Choose how to connect your AI.</value></data>
+  <data name="Onboarding_AiSetup_AccountPath" xml:space="preserve"><value>Connect an AI account</value></data>
+  <data name="Onboarding_AiSetup_AccountPathDetail" xml:space="preserve"><value>Use an existing sign-in, connect a provider, or enter an API key.</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPath" xml:space="preserve"><value>Use a local model</value></data>
+  <data name="Onboarding_AiSetup_LocalModelPathDetail" xml:space="preserve"><value>Use a detected model service or review Local AI setup on this PC. Model services may run on another computer.</value></data>
+  <data name="Onboarding_AiSetup_BackToPaths" xml:space="preserve"><value>Back to AI choices</value></data>
+  <data name="Onboarding_AiSetup_MoreModelServices" xml:space="preserve"><value>More model-service options</value></data>
 </root>

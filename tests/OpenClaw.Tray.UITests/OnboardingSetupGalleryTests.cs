@@ -861,6 +861,15 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
             ? Find<InfoBar>(page, "ErrorBar").IsOpen
             : state == "classic" ? Find<Button>(page, "LegacyButton").Visibility == Visibility.Visible
             : Find<StackPanel>(page, "ChoicePanel").Visibility == Visibility.Visible, "fake AI discovery/verification");
+        var connectionPath = ConnectionPathFor(result.Scene);
+        if (expected is null && state != "classic" && connectionPath != AiSetupConnectionPath.Choice)
+        {
+            var pathCard = Find<SetupActionCard>(page, connectionPath == AiSetupConnectionPath.LocalModel
+                ? "LocalModelPathButton" : "AccountPathButton");
+            await TestSupport.WaitForSettingsCardReadyAsync(page, pathCard);
+            await OnboardingNativeProof.InvokeSettingsCardAsync(window, pathCard);
+            await WaitAsync(() => Find<StackPanel>(page, "PathContent").Visibility == Visibility.Visible, "selected AI path");
+        }
         if (state is "more" or "providers")
         {
             var more = Find<SettingsExpander>(page, "MoreExpander");
@@ -894,37 +903,37 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
         }
         if (state is "providers" or "other-local")
         {
-            var panel = Find<StackPanel>(page, "ChoicePanel");
-            var prepare = Find<StackPanel>(page, "PrepareSection");
-            var providers = Find<StackPanel>(page, "SignInSection");
-            var detected = Find<StackPanel>(page, "CandidatesSection");
-            var pageChoices = Assert.IsType<StackPanel>(detected.Parent);
-            Assert.True(pageChoices.Children.IndexOf(detected) < pageChoices.Children.IndexOf(Find<StackPanel>(page, "LocalGroupHeader")));
-            Assert.True(panel.Children.IndexOf(prepare) < panel.Children.IndexOf(providers));
-            Assert.Equal("Local AI", Find<TextBlock>(page, "LocalGroupHeading").Text);
-            Assert.Equal("Cloud-based AI", Find<TextBlock>(page, "SignInHeading").Text);
-            Assert.Null(page.FindName("LocalAiHeading"));
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "ConnectionPathChoices").Visibility);
+            Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "PathContent").Visibility);
             if (state == "providers")
             {
-                Assert.Contains(TestSupport.FindDescendants<TextBlock>(detected), text => text.Text == "Claude on your Gateway");
-                result.Facts.Add("Saved cloud-provider access remains a detected Gateway choice above Local AI and setup options.");
+                Assert.Contains(TestSupport.FindDescendants<TextBlock>(Find<StackPanel>(page, "CandidatesSection")),
+                    text => text.Text == "Claude on your Gateway");
+                Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "LocalAiSection").Visibility);
+                result.Facts.Add("Account path retains detected account access, sign-in and explicit API Keys.");
             }
-            result.Facts.Add("Detected Gateway choices precede managed Local AI, Ollama, LM Studio, cloud provider cards, API Keys and the separate manual form.");
+            else
+            {
+                Assert.Equal(2, Find<ItemsControl>(page, "PrepareChoices").Items.Count);
+                Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "SignInSection").Visibility);
+                result.Facts.Add("Model-service path retains Ollama and LM Studio setup without cloud sign-in rows.");
+            }
         }
         if (state == "simplified-local")
         {
             Assert.Equal("Set up a local model", Find<TextBlock>(page, "LocalAiTitle").Text);
-            Assert.Equal("Set up a model on this PC, or connect to LM Studio or Ollama.",
-                Find<TextBlock>(page, "LocalGroupDescription").Text);
+            Assert.Contains("Model services may run on another computer.",
+                Find<TextBlock>(page, "StatusText").Text);
             Assert.Equal("Runs on this PC without provider usage charges. We'll help you set up a model suited to your hardware.",
                 Find<TextBlock>(page, "LocalAiDescription").Text);
             Assert.Contains(TestSupport.FindDescendants<TextBlock>(page), text =>
                 text.Text == "Connect to Ollama on this PC or another host, using local or cloud models.");
             Assert.Equal(Visibility.Visible, Find<RecommendedBadge>(page, "LocalAiRecommendedBadge").Visibility);
             Assert.Equal(2, Find<ItemsControl>(page, "PrepareChoices").Items.Count);
-            Assert.Single(Find<ItemsControl>(page, "FeaturedSignInChoices").Items);
+            Assert.Empty(Find<ItemsControl>(page, "FeaturedSignInChoices").Items);
             Assert.Equal("Local AI", Find<TextBlock>(page, "LocalGroupHeading").Text);
-            Assert.Equal("Cloud-based AI", Find<TextBlock>(page, "SignInHeading").Text);
+            Assert.Equal("More model-service options", Find<TextBlock>(page, "SignInHeading").Text);
+            Assert.Equal(Visibility.Collapsed, Find<StackPanel>(page, "SignInSection").Visibility);
         }
         if (state == "installs-only")
         {
