@@ -135,6 +135,9 @@ public sealed record LocalModelRunRecipe
     public PinnedArtifact? VisionProjector { get; }
 }
 
+/// <summary>The reasoning effort vocabulary verified for a managed model template.</summary>
+public enum LocalModelReasoningProfile { Unspecified, Qwen38, QwenOnOff }
+
 /// <summary>A downloadable GGUF model and its deterministic llama-server recipe.</summary>
 public sealed record LocalModelInfo(
     string Id,
@@ -150,7 +153,8 @@ public sealed record LocalModelInfo(
     string RuntimeFamily = "llama.cpp",
     long MinimumSystemMemoryBytes = 0,
     long MinimumFreeDiskBytes = 0,
-    LocalCustomModelRecipe? CustomRecipe = null);
+    LocalCustomModelRecipe? CustomRecipe = null,
+    LocalModelReasoningProfile ReasoningProfile = LocalModelReasoningProfile.Unspecified);
 
 /// <summary>The capacity-sensitive settings selected for one model launch.</summary>
 public sealed record LocalInferenceRunProfile
@@ -270,7 +274,8 @@ public static partial class LocalModelCatalog
                 IsDefault: true,
                 IsExplicitAlternative: false,
                 SupportsVision: false,
-                RecommendationPriority: 400),
+                RecommendationPriority: 400,
+                ReasoningProfile: LocalModelReasoningProfile.Qwen38),
             new LocalModelInfo(
                 Qwen35BModelId,
                 "Qwen3.6 35B-A3B (UD-Q4_K_M)",
@@ -290,7 +295,8 @@ public static partial class LocalModelCatalog
                 IsDefault: false,
                 IsExplicitAlternative: true,
                 SupportsVision: false,
-                RecommendationPriority: 300),
+                RecommendationPriority: 300,
+                ReasoningProfile: LocalModelReasoningProfile.QwenOnOff),
             new LocalModelInfo(
                 Qwen27BModelId,
                 "Qwen3.6 27B (Q4_K_M)",
@@ -309,7 +315,8 @@ public static partial class LocalModelCatalog
                 IsDefault: false,
                 IsExplicitAlternative: true,
                 SupportsVision: false,
-                RecommendationPriority: 200),
+                RecommendationPriority: 200,
+                ReasoningProfile: LocalModelReasoningProfile.QwenOnOff),
             // RTX Spark SKU recipes below, offered by RtxSparkInferenceSelector
             // keyed off the detected Spark unified-memory SKU. RecommendationPriority: 0
             // alone does not exclude a model from the generic dGPU default pick --
@@ -337,7 +344,8 @@ public static partial class LocalModelCatalog
                 IsDefault: false,
                 IsExplicitAlternative: false,
                 SupportsVision: false,
-                RecommendationPriority: 0),
+                RecommendationPriority: 0,
+                ReasoningProfile: LocalModelReasoningProfile.QwenOnOff),
             new LocalModelInfo(
                 Qwen38_27B_DFlashModelId,
                 "Qwen3.8 27B (UD-Q4_K_M, DFlash)",
@@ -366,7 +374,8 @@ public static partial class LocalModelCatalog
                 IsDefault: false,
                 IsExplicitAlternative: false,
                 SupportsVision: false,
-                RecommendationPriority: 0),
+                RecommendationPriority: 0,
+                ReasoningProfile: LocalModelReasoningProfile.Qwen38),
             new LocalModelInfo(
                 Bonsai2ModelId,
                 "Bonsai 2 27B (PTQ1_0, experimental)",
@@ -422,7 +431,8 @@ public static partial class LocalModelCatalog
                 IsDefault: false,
                 IsExplicitAlternative: false,
                 SupportsVision: false,
-                RecommendationPriority: 0),
+                RecommendationPriority: 0,
+                ReasoningProfile: LocalModelReasoningProfile.QwenOnOff),
             new LocalModelInfo(
                 Qwen35B_IQ4XSModelId,
                 "Qwen3.6 35B-A3B (UD-IQ4_XS)",
@@ -442,7 +452,8 @@ public static partial class LocalModelCatalog
                 IsDefault: false,
                 IsExplicitAlternative: false,
                 SupportsVision: false,
-                RecommendationPriority: 0),
+                RecommendationPriority: 0,
+                ReasoningProfile: LocalModelReasoningProfile.QwenOnOff),
         });
 
     private static readonly IReadOnlyDictionary<string, ReadOnlyCollection<LocalInferenceRunProfile>>

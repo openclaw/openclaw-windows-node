@@ -20,6 +20,10 @@
 //   LocalAiGatewayCommandOutcome applied = await transport.ApplyBatchAsync(
 //       batchJson, cancellationToken);
 //
+//   // Schema check only: the same dry-run, with no write.
+//   LocalAiGatewayCommandOutcome accepted = await transport.ValidateBatchAsync(
+//       batchJson, cancellationToken);
+//
 // Routed is false only when the pinned distro is missing, ambiguous, or
 // drifted, so the command never started and Detail holds the resolver's
 // reason. Routed true means the CLI ran; Result carries ExitCode,
@@ -56,6 +60,9 @@ internal interface ILocalAiGatewayConfigurationTransport
         IReadOnlyList<string> arguments, CancellationToken cancellationToken);
     Task<LocalAiGatewayCommandOutcome> ApplyBatchAsync(
         string batch, CancellationToken cancellationToken);
+    /// <summary>Validates a batch against the installed Gateway schema without writing it.</summary>
+    Task<LocalAiGatewayCommandOutcome> ValidateBatchAsync(
+        string batch, CancellationToken cancellationToken);
 }
 
 internal sealed class WslLocalAiGatewayConfigurationTransport(
@@ -78,7 +85,15 @@ internal sealed class WslLocalAiGatewayConfigurationTransport(
     }
 
     public Task<LocalAiGatewayCommandOutcome> ApplyBatchAsync(
-        string batch, CancellationToken cancellationToken)
+        string batch, CancellationToken cancellationToken) =>
+        RunBatchAsync(batch, apply: true, cancellationToken);
+
+    public Task<LocalAiGatewayCommandOutcome> ValidateBatchAsync(
+        string batch, CancellationToken cancellationToken) =>
+        RunBatchAsync(batch, apply: false, cancellationToken);
+
+    private Task<LocalAiGatewayCommandOutcome> RunBatchAsync(
+        string batch, bool apply, CancellationToken cancellationToken)
     {
         string encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(batch));
         // stdin prevents wsl.exe from expanding the Linux temporary-file variable.
@@ -88,7 +103,7 @@ internal sealed class WslLocalAiGatewayConfigurationTransport(
             "trap 'rm -f \"$batch_file\"' EXIT\n" +
             $"printf '%s' '{encoded}' | base64 -d > \"$batch_file\"\n" +
             "openclaw config set --batch-file \"$batch_file\" --dry-run\n" +
-            "openclaw config set --batch-file \"$batch_file\"\n";
+            (apply ? "openclaw config set --batch-file \"$batch_file\"\n" : string.Empty);
         return RunInManagedDistroAsync(
             ["/usr/bin/env", $"PATH={FixedPath}", "/bin/sh", "-s"],
             cancellationToken, script);

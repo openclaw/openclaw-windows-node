@@ -13,6 +13,8 @@ internal interface ILocalAiGatewayAtomicConfigurationTransport
     Task<LocalAiGatewayConfigurationSnapshot> CaptureAsync(CancellationToken ct);
     Task ApplyAsync(LocalAiGatewayConfigurationSnapshot expected, JsonElement patch, CancellationToken ct,
         IReadOnlyList<string>? replacePaths = null);
+    /// <summary>Reports, without writing, whether the Gateway model schema accepts effort metadata.</summary>
+    Task<bool> SupportsEffortMetadataAsync(CancellationToken ct);
 }
 
 /// <summary>
@@ -84,6 +86,23 @@ internal sealed class LocalAiGatewayRpcConfigurationTransport : ILocalAiGatewayA
             throw new InvalidDataException("The Gateway did not acknowledge the persisted configuration revision.");
         LastConfirmedHash = hash.GetString();
         RequireOwner();
+    }
+
+    public async Task<bool> SupportsEffortMetadataAsync(CancellationToken ct)
+    {
+        RequireOwner();
+        // config.patch has no dry-run. Every protocol-4 Gateway that predates
+        // the effort keys serves config.schema, so one that does not list it is newer.
+        if (!_transport.Methods.Contains("config.schema", StringComparer.Ordinal))
+            return true;
+        var response = await _transport.RequestAsync("config.schema", new { }, 15_000, ct).ConfigureAwait(false);
+        RequireOwner();
+        if (response.ValueKind != JsonValueKind.Object)
+            throw new InvalidDataException("The Gateway did not return a configuration schema.");
+        // Never log the schema: only whether it names every effort key.
+        string schema = response.GetRawText();
+        return LocalAiGatewayProviderDefinition.EffortMetadataKeys.All(
+            key => schema.Contains(key, StringComparison.Ordinal));
     }
 
     private void RequireOwner()

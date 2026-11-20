@@ -10252,4 +10252,7 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>追蹤此對話中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此工作階段發布的小工具和索引標籤。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此對話尚無可用的面板。</value></data>
+  <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>無法驗證已儲存的本機 AI 路由。請保留端點並協調原始 Gateway 的設定。</value></data>
+  <data name="LocalAi_GatewayProviderRejected" xml:space="preserve"><value>Gateway 拒絕了本機 AI 提供者設定，未寫入任何內容。請更新 OpenClaw Gateway 後再試一次。</value></data>
+  <data name="LocalAi_GatewayProviderCheckFailed" xml:space="preserve"><value>Gateway 無法確認它接受哪種本機 AI 設定，未寫入任何內容。請重新連線 Gateway 後再試一次。</value></data>
 </root>
