@@ -13,6 +13,12 @@ namespace OpenClawTray.A2UI.DataModel;
 /// </summary>
 public sealed class DataModelStore
 {
+    /// <summary>
+    /// Cap on distinct surface ids, including data-only models. The router
+    /// uses this same bound for visual hosts.
+    /// </summary>
+    internal const int MaxSurfaces = 64;
+
     // Per-update caps. Bounded so an adversarial dataModelUpdate can't drive the
     // UI thread into an OOM or a million-entry loop. Sized to dwarf realistic
     // catalogs while still rejecting obvious abuse.
@@ -38,10 +44,29 @@ public sealed class DataModelStore
         {
             if (!_surfaces.TryGetValue(surfaceId, out var model))
             {
+                if (_surfaces.Count >= MaxSurfaces)
+                    throw new InvalidOperationException($"A2UI surface cap ({MaxSurfaces}) reached.");
                 model = new SurfaceModel(seed != null ? (JsonObject)seed.DeepClone() : new JsonObject());
                 _surfaces[surfaceId] = model;
             }
             return new DataModelObservable(model, _dispatcher);
+        }
+    }
+
+    /// <summary>
+    /// Keeps an existing surface or creates an empty one while under
+    /// <see cref="MaxSurfaces"/>. Returns false when a new id would pass the cap.
+    /// </summary>
+    internal bool TryEnsureSurface(string surfaceId)
+    {
+        lock (_lock)
+        {
+            if (_surfaces.ContainsKey(surfaceId))
+                return true;
+            if (_surfaces.Count >= MaxSurfaces)
+                return false;
+            _surfaces[surfaceId] = new SurfaceModel(new JsonObject());
+            return true;
         }
     }
 
@@ -52,6 +77,8 @@ public sealed class DataModelStore
         {
             if (!_surfaces.TryGetValue(surfaceId, out model))
             {
+                if (_surfaces.Count >= MaxSurfaces)
+                    return;
                 model = new SurfaceModel(seed != null ? (JsonObject)seed.DeepClone() : new JsonObject());
                 _surfaces[surfaceId] = model;
                 return;
@@ -61,9 +88,9 @@ public sealed class DataModelStore
         new DataModelObservable(model, _dispatcher).NotifyAllPaths();
     }
 
-    public void Remove(string surfaceId)
+    public bool Remove(string surfaceId)
     {
-        lock (_lock) { _surfaces.Remove(surfaceId); }
+        lock (_lock) { return _surfaces.Remove(surfaceId); }
     }
 
     public void RemoveAll()
@@ -84,15 +111,13 @@ public sealed class DataModelStore
         if (entries.Count > MaxEntriesPerUpdate)
             return;
 
+        if (!TryEnsureSurface(surfaceId))
+            return;
+
         SurfaceModel model;
         lock (_lock)
         {
-            if (!_surfaces.TryGetValue(surfaceId, out var existing))
-            {
-                existing = new SurfaceModel(new JsonObject());
-                _surfaces[surfaceId] = existing;
-            }
-            model = existing;
+            model = _surfaces[surfaceId];
         }
 
         var changed = new List<string>(entries.Count);
