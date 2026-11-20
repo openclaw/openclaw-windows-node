@@ -102,6 +102,15 @@ public static class SetupExistingGatewayClassifier
 
     public static bool HasUsableGatewayRecord(GatewayRegistry registry, GatewayRecord record)
     {
+        // CredentialResolver still uses a shared or bootstrap token when the
+        // identity file is corrupt. Reading the file first throws and hides
+        // that record from setup detection.
+        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken)
+            || !string.IsNullOrWhiteSpace(record.BootstrapToken))
+        {
+            return true;
+        }
+
         var identityDir = registry.GetIdentityDirectory(record.Id);
         var hasOperatorDeviceToken = DeviceIdentity.HasStoredDeviceTokenForRole(
             identityDir,
@@ -109,12 +118,6 @@ public static class SetupExistingGatewayClassifier
             NullLogger.Instance);
         var hasNodeDeviceToken = !hasOperatorDeviceToken
             && DeviceIdentity.HasStoredDeviceTokenForRole(identityDir, "node", NullLogger.Instance);
-
-        if (!string.IsNullOrWhiteSpace(record.SharedGatewayToken)
-            || !string.IsNullOrWhiteSpace(record.BootstrapToken))
-        {
-            return true;
-        }
 
         return hasOperatorDeviceToken || hasNodeDeviceToken;
     }

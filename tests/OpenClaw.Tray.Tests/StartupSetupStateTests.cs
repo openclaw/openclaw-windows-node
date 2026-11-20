@@ -404,7 +404,48 @@ public class StartupSetupStateTests
     }
 
     [Fact]
-    public void ExistingGatewayInventory_ValidatesCorruptActiveIdentityBeforeHealthyInactiveRecord()
+    public void ExistingGatewayInventory_CorruptActiveIdentityWithBootstrapToken_IsUsable()
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "corrupt-active",
+            Url = "wss://corrupt.example.com",
+            BootstrapToken = "bootstrap-token"
+        });
+        WriteCorruptIdentity(registry, "corrupt-active");
+        registry.SetActive("corrupt-active");
+
+        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.Equal(
+            SetupExistingGatewayKind.ExternalOnly,
+            SetupExistingGatewayClassifier.ClassifyWithoutWslProbe(registry, settings, temp.Path));
+    }
+
+    [Fact]
+    public void ExistingGatewayInventory_InactiveCorruptIdentityWithSharedToken_IsUsable()
+    {
+        using var temp = TempSettings.Create();
+        var settings = new SettingsManager(temp.Path);
+        var registry = new GatewayRegistry(temp.Path);
+        registry.AddOrUpdate(new GatewayRecord
+        {
+            Id = "corrupt-inactive",
+            Url = "wss://corrupt.example.com",
+            SharedGatewayToken = "shared-token"
+        });
+        WriteCorruptIdentity(registry, "corrupt-inactive");
+
+        Assert.False(StartupSetupState.RequiresSetup(settings, temp.Path, registry));
+        Assert.Equal(
+            SetupExistingGatewayKind.ExternalOnly,
+            SetupExistingGatewayClassifier.ClassifyWithoutWslProbe(registry, settings, temp.Path));
+    }
+
+    [Fact]
+    public void ExistingGatewayInventory_CorruptActiveIdentityWithoutToken_StillThrowsBeforeInactiveRecord()
     {
         using var temp = TempSettings.Create();
         var settings = new SettingsManager(temp.Path);
@@ -418,12 +459,9 @@ public class StartupSetupStateTests
         registry.AddOrUpdate(new GatewayRecord
         {
             Id = "corrupt-active",
-            Url = "wss://corrupt.example.com",
-            BootstrapToken = "bootstrap-token"
+            Url = "wss://corrupt.example.com"
         });
-        var identityDir = registry.GetIdentityDirectory("corrupt-active");
-        Directory.CreateDirectory(identityDir);
-        File.WriteAllText(Path.Combine(identityDir, "device-key-ed25519.json"), "{");
+        WriteCorruptIdentity(registry, "corrupt-active");
         registry.SetActive("corrupt-active");
 
         Assert.Throws<DeviceIdentityLoadException>(
@@ -728,6 +766,13 @@ public class StartupSetupStateTests
         var settings = new SettingsManager(temp.Path) { GatewayUrl = gatewayUrl };
 
         Assert.True(StartupSetupState.RequiresSetup(settings, temp.Path));
+    }
+
+    private static void WriteCorruptIdentity(GatewayRegistry registry, string gatewayId)
+    {
+        var identityDir = registry.GetIdentityDirectory(gatewayId);
+        Directory.CreateDirectory(identityDir);
+        File.WriteAllText(Path.Combine(identityDir, "device-key-ed25519.json"), "{");
     }
 
     private static void StoreDeviceToken(string dataPath)
