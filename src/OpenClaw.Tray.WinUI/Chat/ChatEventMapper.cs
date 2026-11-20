@@ -746,6 +746,10 @@ internal static class ChatEventMapper
             ? property.GetString() ?? string.Empty
             : string.Empty;
 
+    /// <summary>Display form of a Gateway-supplied failure explanation, with credentials redacted.</summary>
+    internal static string SanitizeGatewayErrorText(string error) =>
+        TokenSanitizer.SanitizeLogMessage(error);
+
     private static string ResolveErrorText(AgentEventInfo evt)
     {
         if (!string.IsNullOrWhiteSpace(evt.Summary))
@@ -754,7 +758,7 @@ internal static class ChatEventMapper
         // Gateway lifecycle failures carry their explanation in data.error.
         var error = StringProperty(evt.Data, "error");
         if (!string.IsNullOrWhiteSpace(error))
-            return TokenSanitizer.SanitizeLogMessage(error);
+            return SanitizeGatewayErrorText(error);
 
         var message = StringProperty(evt.Data, "message");
         return string.IsNullOrWhiteSpace(message) ? "Agent error" : message;
