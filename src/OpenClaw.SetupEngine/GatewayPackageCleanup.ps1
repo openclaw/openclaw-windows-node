@@ -81,6 +81,54 @@ function Test-PackageRemovedSince([string]$since) {
 function Register-CleanupTask {
     & (Join-Path $PSScriptRoot 'cleanup-task.ps1') -TaskName $taskName -HostPath $CleanupHostPath -Family $Family
 }
+function Invoke-NativeTeardownCommand([string]$alias) {
+    # Keep process exit and redirected output inside one budget, below the worker's 180 s caller limit.
+    $timeoutMilliseconds = 120000
+    $configuredTimeout = 0
+    if ([int]::TryParse($env:OPENCLAW_GATEWAY_CLEANUP_TEARDOWN_TIMEOUT_MS, [ref]$configuredTimeout) -and
+        $configuredTimeout -gt 0 -and $configuredTimeout -le $timeoutMilliseconds) {
+        $timeoutMilliseconds = $configuredTimeout
+    }
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $alias
+    $start.Arguments = 'teardown --force --json'
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $start.RedirectStandardOutput = $true
+    $start.RedirectStandardError = $true
+    $elapsed = [Diagnostics.Stopwatch]::StartNew()
+    $process = [Diagnostics.Process]::Start($start)
+    try {
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        $remaining = [Math]::Max(0, $timeoutMilliseconds - [int]$elapsed.ElapsedMilliseconds)
+        if (-not $process.WaitForExit($remaining)) {
+            try { $process.Kill() } catch { }
+            throw 'Native Gateway teardown timed out; its outcome is unconfirmed. Cleanup remains pending.'
+        }
+        $remaining = [Math]::Max(0, $timeoutMilliseconds - [int]$elapsed.ElapsedMilliseconds)
+        if (-not [Threading.Tasks.Task]::WaitAll([Threading.Tasks.Task[]]@($stdout, $stderr), $remaining)) {
+            throw 'Native Gateway teardown output is incomplete. Cleanup remains pending.'
+        }
+        # Do not persist raw CLI output, which can contain account/profile details.
+        [pscustomobject]@{ ExitCode = $process.ExitCode; Stdout = $stdout.Result }
+    } finally { $process.Dispose() }
+}
+function Invoke-NativeGatewayTeardown($package) {
+    $alias = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) "Microsoft\WindowsApps\$($package.PackageFamilyName)\clawctl.exe"
+    if (-not (Test-Path -LiteralPath $alias -PathType Leaf)) {
+        throw 'The owned Gateway teardown CLI is unavailable. Cleanup remains pending.'
+    }
+    $command = Invoke-NativeTeardownCommand $alias
+    try { $result = ConvertFrom-Json -InputObject $command.Stdout -ErrorAction Stop }
+    catch { throw 'Native Gateway teardown returned an invalid result. Cleanup remains pending.' }
+    # Released clawctl teardown confirms recovery removal before reporting these terminal states.
+    if ($command.ExitCode -ne 0 -or $result -isnot [pscustomobject] -or
+        $result.ok -isnot [bool] -or -not $result.ok -or $result.command -cne 'teardown' -or
+        $result.gateway.state -cne 'records-removed' -or $result.session.state -cnotin @('removed', 'not-configured')) {
+        throw 'Native Gateway teardown did not confirm success. Cleanup remains pending.'
+    }
+}
 New-Item -ItemType Directory -Path $root -Force | Out-Null
 $lock = $null
 $deadline = [DateTimeOffset]::UtcNow.AddSeconds(150)
@@ -201,9 +249,21 @@ try {
             if (Get-AppxPackage -PackageTypeFilter Main | Where-Object {
                 $_.PackageFamilyName -ne $Family -and $_.Name -in @('OpenClawFoundation.OpenClaw', 'OpenClawFoundation.OpenClaw.Dev')
             }) { exit 0 }
-            Get-AppxPackage -Name OpenClawFoundation.OpenClawGateway -PackageTypeFilter Main |
-                Where-Object { $_.Publisher -eq 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC' -and $_.PackageFamilyName -eq $record.NativeFamily } |
-                Remove-AppxPackage -ErrorAction Stop
+            $native = @(Get-AppxPackage -Name OpenClawFoundation.OpenClawGateway -PackageTypeFilter Main |
+                Where-Object { $_.Publisher -eq 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC' -and $_.PackageFamilyName -eq $record.NativeFamily })
+            if ($native.Count -ne 1) { throw 'The owned Gateway package could not be confirmed. Cleanup remains pending.' }
+            Invoke-NativeGatewayTeardown $native[0]
+            # Teardown can take time. Do not remove a replaced package or a newly shared installation.
+            $current = @(Get-AppxPackage -Name OpenClawFoundation.OpenClawGateway -PackageTypeFilter Main |
+                Where-Object { $_.Publisher -eq $native[0].Publisher -and $_.PackageFullName -eq $native[0].PackageFullName })
+            if ($current.Count -ne 1 -or -not (Test-Path $nativeMarker) -or
+                (Get-Content $nativeMarker -Raw).Trim() -ne $record.NativeInstallationId) {
+                throw 'Native Gateway ownership changed during teardown. Cleanup remains pending.'
+            }
+            if (Get-AppxPackage -PackageTypeFilter Main | Where-Object {
+                $_.PackageFamilyName -ne $Family -and $_.Name -in @('OpenClawFoundation.OpenClaw', 'OpenClawFoundation.OpenClaw.Dev')
+            }) { exit 0 }
+            Remove-AppxPackage -Package $native[0].PackageFullName -ErrorAction Stop
             Record-Removal $null $null $record.NativeFamily
         }
     }
