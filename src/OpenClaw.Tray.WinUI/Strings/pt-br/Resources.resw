@@ -4574,6 +4574,14 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
     <value>Mostrar o raciocínio fornecido pelo assistente na conversa.</value>
   </data>
+  <data name="SettingsRow_ShowLobsterVisits_Header.Text" xml:space="preserve">
+    <value>Visitas da lagosta</value>
+  </data>
+  <data name="SettingsRow_ShowLobsterVisits_Description.Text" xml:space="preserve">
+    <value>Às vezes uma lagosta aparece quando você inicia uma nova sessão. Clique nela com o botão direito para dispensá-la.</value>
+  </data>
+  <data name="ChatLobster_Dismiss" xml:space="preserve"><value>Dispensar</value></data>
+  <data name="ChatLobster_DismissForever" xml:space="preserve"><value>Dispensar e não mostrar novamente</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacidade</value>
   </data>

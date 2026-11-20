@@ -179,6 +179,20 @@ machine from OpenClaw commit `4cffd43ee043275f6a4c693aaacee8d8e5a61288`:
   and [named timers](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-timers.ts)
 - [Offline grace window](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/app/gateway-store.availability.ts)
 
+`LobsterSvg.cs`, `LobsterPaint.cs`, `LobsterSprites.cs`, `LobsterArtwork.cs`,
+`LobsterArtworkCanvas.cs`, `LobsterMotion.cs` and `LobsterMotionPlayer.cs`
+vendor the SVG sprite markup and port the artwork composition, paint
+variables and keyframe animations from the same commit:
+
+- [Artwork](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-artwork.tsx),
+  [sprites](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-sprites.tsx),
+  [wild sprites](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-sprites-wild.tsx),
+  [hats](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-hat-sprites.tsx),
+  [static sprite](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-sprite.tsx)
+  and [moon phase](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-moon.ts)
+- [Scene view](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/components/lobster-pet-scene-view.tsx)
+  and [styles and keyframes](https://github.com/openclaw/openclaw/blob/4cffd43ee043275f6a4c693aaacee8d8e5a61288/ui/src/styles/lobster-pet.css)
+
 No web script is executed at runtime. The OpenClaw MIT notice below applies to
 these adaptations.
 

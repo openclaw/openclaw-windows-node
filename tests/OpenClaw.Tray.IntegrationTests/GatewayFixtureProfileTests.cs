@@ -224,6 +224,22 @@ public sealed class GatewayFixtureProfileTests
         Assert.Empty(start.ArgumentList);
     }
 
+    [Fact]
+    public void LobsterSeedReachesOnlyTheAppItWasPinnedFor()
+    {
+        using var app = CreateFakeSupportedApp();
+        using var profile = new GatewayFixtureProfile(Endpoint, "fixture-token");
+        using var environment = new EnvironmentScope("OPENCLAW_LOBSTER_VISITS_SEED", "7");
+
+        // An inherited seed never escapes into the isolated app.
+        Assert.False(profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233)
+            .Environment.ContainsKey("OPENCLAW_LOBSTER_VISITS_SEED"));
+
+        profile.LobsterVisitSeed = 42;
+        Assert.Equal("42", profile.CreateStartInfo(app.Combine("OpenClaw.Tray.WinUI.exe"), 49233)
+            .Environment["OPENCLAW_LOBSTER_VISITS_SEED"]);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

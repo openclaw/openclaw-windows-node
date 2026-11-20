@@ -4555,6 +4555,14 @@
   <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
     <value>在对话中显示助手提供的推理内容。</value>
   </data>
+  <data name="SettingsRow_ShowLobsterVisits_Header.Text" xml:space="preserve">
+    <value>龙虾来访</value>
+  </data>
+  <data name="SettingsRow_ShowLobsterVisits_Description.Text" xml:space="preserve">
+    <value>开始新会话时，偶尔会有一只龙虾来访。右键单击它即可将其关闭。</value>
+  </data>
+  <data name="ChatLobster_Dismiss" xml:space="preserve"><value>关闭</value></data>
+  <data name="ChatLobster_DismissForever" xml:space="preserve"><value>关闭且不再显示</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>隐私</value>
   </data>

@@ -59,6 +59,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _notifyInfo;
     private bool _showChatToolCalls;
     private bool _showChatThinking = true;
+    private bool _showLobsterVisits = true;
 
     public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands)
     {
@@ -267,6 +268,20 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         }
     }
 
+    /// <summary>
+    /// "Lobster visits" persists the setting. Live new-chat composers observe the settings store and add or
+    /// remove their visitor; the visitor's "Dismiss and don't show again" writes the same setting.
+    /// </summary>
+    public bool ShowLobsterVisits
+    {
+        get => _showLobsterVisits;
+        set
+        {
+            if (SetField(ref _showLobsterVisits, value) && !_loading)
+                Persist(e => e.ShowLobsterVisits = value);
+        }
+    }
+
     public void Activate(object? parameter)
     {
         IsActive = true;
@@ -374,6 +389,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _notifyInfo, s.NotifyInfo, nameof(NotifyInfo));
             SetField(ref _showChatToolCalls, s.ShowChatToolCalls, nameof(ShowChatToolCalls));
             SetField(ref _showChatThinking, s.ShowChatThinking, nameof(ShowChatThinking));
+            SetField(ref _showLobsterVisits, s.ShowLobsterVisits, nameof(ShowLobsterVisits));
         }
         finally
         {

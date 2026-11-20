@@ -172,6 +172,7 @@ internal static class ChatSnapshotProjector
             ContextTokens = session.ContextTokens,
             LastRunId = session.LastRunId,
             RunStatus = session.Status,
+            HasActiveRun = session.HasActiveRun,
             LastRunStopped = SessionRunState.HasStoppedLastRun(session),
             RuntimeMs = session.RuntimeMs,
             EndedAt = session.EndedAt,

@@ -1,5 +1,6 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClawTray.Chat.LobsterVisits;
 using OpenClawTray.Presentation;
 using System;
 using System.Collections.Generic;
@@ -93,9 +94,12 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
     private ChatComposerInputs? _inputs;
     private ChatSessionModelCatalog? _sessionModelCatalog;
     private long _latestInputsRevision;
-    private long _sandboxSettingsVersion = -1;
+    private long _settingsVersion = -1;
     private long _sandboxStatusVersion = -1;
     private bool _systemRunEnabled = true;
+    private bool _lobsterVisitsEnabled = true;
+    private bool _showsLobsterVisitor;
+    private string? _lobsterVisitSession;
     private SandboxStatus _sandboxAvailability = SandboxStatus.Checking;
 
     public ChatComposerViewModel(IUiDispatcher dispatcher, bool initialSpeakerMuted)
@@ -133,18 +137,45 @@ internal sealed class ChatComposerViewModel : INotifyPropertyChanged, IDisposabl
         : null;
     public SandboxStatus SandboxStatus => _systemRunEnabled ? _sandboxAvailability : SandboxStatus.Disabled;
 
-    public void ApplySandboxSettings(SettingsSnapshot snapshot)
+    /// <summary>The device-local "Lobster visits" setting for the new-session composer's visitor.</summary>
+    public bool LobsterVisitsEnabled => _lobsterVisitsEnabled;
+
+    /// <summary>Whether the composer hosts the lobster visitor; see <see cref="LobsterComposerVisits.ShowVisitor"/>.</summary>
+    public bool ShowsLobsterVisitor => _showsLobsterVisitor;
+
+    /// <summary>Re-evaluates the visitor from the committed composer inputs, keeping it sticky for an empty session.</summary>
+    public void ApplyLobsterVisitorInputs(ChatComposerInputs inputs)
+    {
+        ArgumentNullException.ThrowIfNull(inputs);
+        MutateIfChanged(() =>
+        {
+            var (show, session) = LobsterComposerVisits.ShowVisitor(
+                _lobsterVisitSession, inputs.ShowPlacementPickers, inputs.CurrentThread.Id, inputs.PlacementTargetIsEmpty);
+            _lobsterVisitSession = session;
+            if (show == _showsLobsterVisitor)
+                return false;
+            _showsLobsterVisitor = show;
+            return true;
+        });
+    }
+
+    /// <summary>
+    /// Applies the composer's settings (system tools and Lobster visits). Snapshots can arrive out of order, so one
+    /// older than the last applied is ignored for every setting it carries.
+    /// </summary>
+    public void ApplySettings(SettingsSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         MutateIfChanged(() =>
         {
-            if (snapshot.Version <= _sandboxSettingsVersion)
+            if (snapshot.Version <= _settingsVersion)
                 return false;
-            _sandboxSettingsVersion = snapshot.Version;
-            if (_systemRunEnabled == snapshot.NodeSystemRunEnabled)
+            _settingsVersion = snapshot.Version;
+            if (_systemRunEnabled == snapshot.NodeSystemRunEnabled && _lobsterVisitsEnabled == snapshot.ShowLobsterVisits)
                 return false;
 
             _systemRunEnabled = snapshot.NodeSystemRunEnabled;
+            _lobsterVisitsEnabled = snapshot.ShowLobsterVisits;
             return true;
         });
     }
