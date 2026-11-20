@@ -2097,6 +2097,41 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.DoesNotContain(timeline.Entries, entry => entry.Text == "Agent error");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GatewayFailureReason_WithRedactedUrlAppearsOnceInEitherArrivalOrder(bool chatFrameFirst)
+    {
+        const string reason = "Request to https://provider.example/v1/chat?api_key=querysecretvalue failed";
+        var (bridge, provider, snapshots, _) = CreateProvider([MainSession()]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseAgent(MakeAgentEvent("lifecycle", """{"phase":"start"}""", runId: "failed-run"));
+        var lifecycle = MakeAgentEvent(
+            "lifecycle",
+            JsonSerializer.Serialize(new Dictionary<string, string> { ["phase"] = "error", ["error"] = reason }),
+            runId: "failed-run");
+        var terminal = new ChatMessageInfo
+        {
+            SessionKey = "main", Role = "assistant", RunId = "failed-run",
+            State = "error", ErrorMessage = reason,
+        };
+
+        if (chatFrameFirst)
+            bridge.RaiseChat(terminal);
+        bridge.RaiseAgent(lifecycle);
+        if (!chatFrameFirst)
+            bridge.RaiseChat(terminal);
+
+        var timeline = snapshots[^1].Timelines["main"];
+        Assert.False(timeline.TurnActive);
+        var row = Assert.Single(timeline.Entries, entry =>
+            entry.Kind == ChatTimelineItemKind.Status && entry.Tone == ChatTone.Error);
+        Assert.StartsWith("Request to https://", row.Text);
+        Assert.DoesNotContain("querysecretvalue", row.Text);
+    }
+
     [Fact]
     public async Task GatewayFailureReason_KeepsADifferentTerminalChatError()
     {

@@ -1187,7 +1187,27 @@ public sealed class ChatEventMapperTests
         var text = Assert.IsType<ChatErrorEvent>(mapped.Event).Text;
         Assert.DoesNotContain("shortsecret", text);
         Assert.DoesNotContain("querysecret", text);
-        Assert.Contains("[REDACTED]", text);
+        Assert.StartsWith("api_key=", text);
+        Assert.NotEqual("Agent error", text);
+    }
+
+    [Fact]
+    public void Map_LifecycleErrorRedactsBareProviderKeyInGatewayExplanation()
+    {
+        const string key = "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD";
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(
+            new Dictionary<string, string> { ["phase"] = "error", ["error"] = "Incorrect API key provided: " + key }));
+
+        var mapped = ChatEventMapper.Map(new AgentEventInfo
+        {
+            Stream = "lifecycle",
+            SessionKey = "main",
+            Data = document.RootElement.Clone(),
+        });
+
+        var text = Assert.IsType<ChatErrorEvent>(mapped.Event).Text;
+        Assert.DoesNotContain(key, text);
+        Assert.StartsWith("Incorrect API key provided:", text);
     }
 
     [Fact]

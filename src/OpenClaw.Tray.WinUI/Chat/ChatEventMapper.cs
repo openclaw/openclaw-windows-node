@@ -746,9 +746,13 @@ internal static class ChatEventMapper
             ? property.GetString() ?? string.Empty
             : string.Empty;
 
-    /// <summary>Display form of a Gateway-supplied failure explanation, with credentials redacted.</summary>
+    /// <summary>
+    /// Display form of a Gateway-supplied failure explanation: log redaction (URL query secrets, key=value
+    /// credentials, local identity) followed by the display redaction and length cap that the terminal chat
+    /// frame's error text already gets (bare provider keys, bearer tokens).
+    /// </summary>
     internal static string SanitizeGatewayErrorText(string error) =>
-        TokenSanitizer.SanitizeLogMessage(error);
+        NativeToolProjector.SanitizeToolDisplayValue(TokenSanitizer.SanitizeLogMessage(error));
 
     private static string ResolveErrorText(AgentEventInfo evt)
     {
