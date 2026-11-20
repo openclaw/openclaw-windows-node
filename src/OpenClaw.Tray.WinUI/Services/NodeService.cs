@@ -677,6 +677,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             () => settingsDirectory,
             GetOrProbeMxcAvailability,
             _logger,
+            scratchRoot: string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_LOCALAPPDATA_DIR"))
+                ? MxcWindowsRequestContext.GetPackagedScratchRoot()
+                : null,
             contextProvider: () => MxcWindowsRequestContext.Capture(settingsDirectory),
             fileWorker: new OpenClaw.Shared.FileTransfer.InstalledFileWorkerResolver(typeof(NodeService).Assembly));
         return new MxcCommandRunner(_sandboxExecutor);
