@@ -1,0 +1,110 @@
+name: Inno uninstall media proof
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - installer.iss
+      - scripts/Uninstall-DownloadedModels.ps1
+      - scripts/capture-inno-model-uninstall.ps1
+      - src/OpenClaw.Shared/Audio/Kokoro*.cs
+      - .github/workflows/inno-uninstall-media.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inno-media-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Real Inno uninstall screenshots and video
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      RequireSignedCleanupHost: 'false'
+      RequireSignedFileWorker: 'false'
+      OPENCLAW_REPO_ROOT: ${{ github.workspace }}
+      PROOF_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Prepare installer and recording tools
+        shell: pwsh
+        run: |
+          choco install innosetup ffmpeg -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Capture prerequisites could not be installed.' }
+          ffmpeg -version
+          ./scripts/Set-CiDesktopResolution.ps1
+
+      - name: Build complete candidate Dev installer
+        shell: pwsh
+        run: |
+          ./scripts/Initialize-ReactorPackages.ps1
+          ./scripts/build-inno-local.ps1 -Arch x64 -Dev -Fast
+          if ($LASTEXITCODE -ne 0) { throw 'Candidate installer build failed.' }
+
+      - name: Fetch verified released baseline
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseline = git rev-parse 'v2026.11.3^{commit}'
+          if ($LASTEXITCODE -ne 0 -or $baseline -ne '66b9b5a559a0651da3aa6ce7ae3d183fbd87cb1c') {
+            throw 'The baseline release tag moved or is unavailable.'
+          }
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/v2026.11.3" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline release lookup failed.' }
+          $assets = @($release.assets | Where-Object name -eq 'OpenClawCompanion-Setup-x64.exe')
+          if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[0-9a-fA-F]{64}$') {
+            throw 'Baseline requires one installer with a published SHA256 digest.'
+          }
+          $path = Join-Path $env:RUNNER_TEMP 'OpenClawCompanion-2026.11.3-baseline.exe'
+          Invoke-WebRequest -Uri $assets[0].browser_download_url -OutFile $path -TimeoutSec 180
+          if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $assets[0].digest.Substring(7)) {
+            throw 'Baseline installer digest mismatch.'
+          }
+          $signature = Get-AuthenticodeSignature -LiteralPath $path
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'CN=OpenClaw Foundation(?:,|$)') {
+            throw 'Baseline installer signature is not the expected valid publisher.'
+          }
+          "INNO_BEFORE_INSTALLER=$path" >> $env:GITHUB_ENV
+
+      - name: Capture real uninstall choices and outcomes
+        shell: powershell -NoProfile -STA -ExecutionPolicy Bypass -File {0}
+        run: |
+          $parameters = @{
+            BeforeInstaller = $env:INNO_BEFORE_INSTALLER
+            AfterInstaller = (Resolve-Path 'Output/OpenClawCompanion-Dev-Setup-x64.exe').Path
+            BeforeRevision = '66b9b5a559a0651da3aa6ce7ae3d183fbd87cb1c'
+            AfterRevision = (git rev-parse HEAD)
+            OutputDirectory = (Join-Path $env:GITHUB_WORKSPACE 'TestResults/InnoUninstallMedia')
+            BeforeReleaseUrl = 'https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.3'
+            ConfirmDisposableHost = $true
+          }
+          ./scripts/capture-inno-model-uninstall.ps1 @parameters
+
+      - name: Retain sanitized media and provenance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: inno-uninstall-media
+          path: TestResults/InnoUninstallMedia/
+          if-no-files-found: error
+          retention-days: 14
