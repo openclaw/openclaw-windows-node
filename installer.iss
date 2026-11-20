@@ -153,6 +153,10 @@ Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameter
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent; Check: ShouldLaunchTray
 
 [Code]
+const
+  ModelPreviewPollMilliseconds = 100;
+  ModelStartupGraceSeconds = 30;
+  ModelStopGraceSeconds = 10;
 var
   VCRuntimeInstallSucceeded: Boolean;
   LocalGatewayCleanupChoiceInitialized: Boolean;
@@ -169,6 +173,17 @@ var
   ModelDetails: TNewMemo;
   ModelRemoveCheck: TNewCheckBox;
   ModelScanButton, ModelContinueButton: TNewButton;
+  ModelPreviewTimer: THandle;
+  ModelPreviewDeadline: Int64;
+  ModelInvocation: Integer;
+  ModelReportPath, ModelCancelPath: String;
+
+function SetModelTimer(Window: THandle; Id: THandle; Interval: LongWord; Callback: THandle): THandle;
+  external 'SetTimer@user32.dll stdcall';
+function KillModelTimer(Window: THandle; Id: THandle): Boolean;
+  external 'KillTimer@user32.dll stdcall';
+function ModelTickCount: Int64;
+  external 'GetTickCount64@kernel32.dll stdcall';
 
 function ChooseModelCleanup: Boolean; forward;
 
@@ -538,19 +553,24 @@ begin
     MigrateLegacyBackgroundLaunch;
 end;
 
-function ReadModelText(Path: String; var Value: String): Boolean;
+function ReadModelCompletion(var Code: Integer): Boolean;
 var
   Lines: TArrayOfString;
   I: Integer;
 begin
-  Value := '';
-  Result := LoadStringsFromFile(Path, Lines);
-  if not Result then Exit;
-  for I := 0 to GetArrayLength(Lines) - 1 do
+  Result := False;
+  Code := -1;
+  if not LoadStringsFromFile(ModelReportPath, Lines) then Exit;
+  if GetArrayLength(Lines) < 2 then Exit;
+  Code := StrToIntDef(Lines[0], -1);
+  if (Code < 32) or (Code > 50) then Exit;
+  ModelSummary := '';
+  for I := 1 to GetArrayLength(Lines) - 1 do
   begin
-    if I > 0 then Value := Value + #13#10;
-    Value := Value + Lines[I];
+    if I > 1 then ModelSummary := ModelSummary + #13#10;
+    ModelSummary := ModelSummary + Lines[I];
   end;
+  Result := True;
 end;
 
 function StageModelHelper: Boolean;
@@ -565,30 +585,42 @@ begin
     ExpandConstant('{tmp}\KokoroUninstallFiles.cs'), False);
 end;
 
-function RunModelHelper(Selection: Integer; var Eligible: Integer): Boolean;
+function StartModelHelper(Selection: Integer; Wait: TExecWait; var Code: Integer): Boolean;
 var
-  Params, ReportText: String;
-  Code: Integer;
+  Params: String;
 begin
-  Result := False;
-  Eligible := 0;
-  DeleteFile(ExpandConstant('{tmp}\model-report.txt'));
+  Inc(ModelInvocation);
+  ModelReportPath := ExpandConstant('{tmp}\model-result-') + IntToStr(ModelInvocation) + '.txt';
+  ModelCancelPath := ExpandConstant('{tmp}\model-cancel-') + IntToStr(ModelInvocation) + '.txt';
   Params := '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' +
     AddQuotes(ExpandConstant('{tmp}\Uninstall-DownloadedModels.ps1')) +
     ' -DataDirectory ' + AddQuotes(ExpandConstant('{userappdata}\{#MyInstallDir}')) +
-    ' -ReportPath ' + AddQuotes(ExpandConstant('{tmp}\model-report.txt')) +
-    ' -CancellationPath ' + AddQuotes(ExpandConstant('{tmp}\model-cancel.txt')) +
+    ' -ReportPath ' + AddQuotes(ModelReportPath) +
+    ' -CancellationPath ' + AddQuotes(ModelCancelPath) +
     ' -SelectionMask ' + IntToStr(Selection);
   if Selection <> 0 then Params := Params + ' -ConfirmDestructive';
-  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
-      Params, '', SW_HIDE, ewWaitUntilTerminated, Code) then Exit;
-  if not ReadModelText(ExpandConstant('{tmp}\model-report.txt'), ReportText) then Exit;
-  ModelSummary := ReportText;
-  // The supervisor returns this reserved success range only after its worker exits.
-  // Ordinary PowerShell errors never become an eligible selection.
-  if (Code < 32) or (Code > 47) then Exit;
-  Eligible := Code - 32;
-  Result := True;
+  Result := Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+    Params, '', SW_HIDE, Wait, Code);
+end;
+
+procedure StopModelPreviewTimer;
+begin
+  if ModelPreviewTimer <> 0 then
+  begin
+    KillModelTimer(0, ModelPreviewTimer);
+    ModelPreviewTimer := 0;
+  end;
+end;
+
+procedure FinishModelPreview;
+begin
+  StopModelPreviewTimer;
+  ModelScanRunning := False;
+  ModelDetails.Text := ModelSummary;
+  ModelRemoveCheck.Enabled := ModelPreviewEligible <> 0;
+  ModelScanButton.Enabled := ModelScanAllowed;
+  ModelContinueButton.Enabled := True;
+  if ModelScanCancelled then ModelDialog.Close;
 end;
 
 procedure CancelModelPreview(Sender: TObject);
@@ -596,11 +628,11 @@ begin
   if ModelScanRunning then
   begin
     ModelScanCancelled := True;
-    SaveStringToFile(ExpandConstant('{tmp}\model-cancel.txt'), 'cancel', False);
-    ModelDetails.Text := 'Cancelling the model check. No model removal has started.';
+    SaveStringToFile(ModelCancelPath, 'cancel', False);
+    ModelDetails.Text := 'Cancelling the model check. Waiting for the worker to stop; no model removal has started.';
   end
   else
-    ModelDialog.ModalResult := mrCancel;
+    ModelDialog.Close;
 end;
 
 procedure ModelPreviewCloseQuery(Sender: TObject; var CanClose: Boolean);
@@ -609,41 +641,70 @@ begin
   if not CanClose then CancelModelPreview(Sender);
 end;
 
-procedure CheckModelPreview(Sender: TObject);
+procedure ModelPreviewTick(Window: THandle; Message: LongWord; Timer: THandle; Time: LongWord);
+var
+  Code: Integer;
 begin
-  ModelScanRunning := True;
-  ModelScanCancelled := False;
+  if (Timer <> ModelPreviewTimer) or not ModelScanRunning then Exit;
+  if FileExists(ModelReportPath) then
+  begin
+    // This file is atomically published by the supervisor, never by the worker.
+    // A late receipt from another invocation has a different filename.
+    if not ReadModelCompletion(Code) then Code := 50;
+    if Code = 50 then
+    begin
+      StopModelPreviewTimer;
+      SaveStringToFile(ModelCancelPath, 'cancel', False);
+      ModelScanCancelled := True;
+      MsgBox('The model check could not confirm completion. Uninstall will stop without starting model removal.', mbError, MB_OK);
+    end
+    else if (Code >= 32) and (Code <= 47) then
+      ModelPreviewEligible := Code - 32;
+    FinishModelPreview;
+  end
+  else if ModelTickCount >= ModelPreviewDeadline then
+  begin
+    StopModelPreviewTimer;
+    SaveStringToFile(ModelCancelPath, 'cancel', False);
+    ModelScanCancelled := True;
+    MsgBox('The model check did not report completion within its time limit. Uninstall will stop; worker exit is unconfirmed.', mbError, MB_OK);
+    FinishModelPreview;
+  end;
+end;
+
+procedure CheckModelPreview(Sender: TObject);
+var
+  Code, Seconds: Integer;
+begin
   ModelPreviewEligible := 0;
   ModelRemoveCheck.Checked := False;
   ModelRemoveCheck.Enabled := False;
+  if not StageModelHelper then
+  begin
+    ModelDetails.Text := 'The model helper is unavailable. Models are kept.';
+    Exit;
+  end;
+  ModelScanRunning := True;
+  ModelScanCancelled := False;
   ModelScanButton.Enabled := False;
   ModelContinueButton.Enabled := False;
-  DeleteFile(ExpandConstant('{tmp}\model-cancel.txt'));
-  ModelDetails.Text := 'Checking ownership and downloaded model files. Please wait.';
-  try
-    // Synchronous Exec disables this form until the helper exits.
-    if CheckCompletedStoreMigration <> 0 then
-      ModelSummary := 'Store migration or uncertain ownership requires preservation. Models are kept; sizes were not scanned.'
-    else if not ModelScanCancelled then
-    begin
-      if StageModelHelper then
-      begin
-        if not RunModelHelper(0, ModelPreviewEligible) then
-        begin
-          ModelPreviewEligible := 0;
-          ModelSummary := 'Model inventory is unavailable. No model removal will be attempted.' + #13#10 + ModelSummary;
-        end;
-      end
-      else
-        ModelSummary := 'The model helper is unavailable. Models are kept.' + #13#10 + ModelSummary;
-    end;
-  finally
-    ModelScanRunning := False;
-    ModelDetails.Text := ModelSummary;
-    ModelRemoveCheck.Enabled := ModelPreviewEligible <> 0;
-    ModelScanButton.Enabled := ModelScanAllowed;
-    ModelContinueButton.Enabled := True;
-    if ModelScanCancelled then ModelDialog.ModalResult := mrCancel;
+  ModelDetails.Text := 'Checking downloaded model files. Cancel stops this read-only check.';
+  Seconds := StrToIntDef(GetEnv('OPENCLAW_MODEL_UNINSTALL_PROCESS_TIMEOUT_SECONDS'), 180);
+  if (Seconds < 30) or (Seconds > 900) then Seconds := 180;
+  ModelPreviewDeadline := ModelTickCount + (Seconds + ModelStartupGraceSeconds + ModelStopGraceSeconds) * 1000;
+  ModelPreviewTimer := SetModelTimer(0, 0, ModelPreviewPollMilliseconds, CreateCallback(@ModelPreviewTick));
+  if ModelPreviewTimer = 0 then
+  begin
+    ModelSummary := 'The model check could not start. Models are kept.';
+    FinishModelPreview;
+    Exit;
+  end;
+  // No synchronous wait: Inno must not disable the custom form while scanning.
+  // Preview is read-only. Store ownership is rechecked at the deletion boundary.
+  if not StartModelHelper(0, ewNoWait, Code) then
+  begin
+    ModelSummary := 'The model helper could not start. Models are kept.';
+    FinishModelPreview;
   end;
 end;
 
@@ -694,6 +755,7 @@ begin
     if Choosing and Result and ModelRemoveCheck.Checked then
       ModelCleanupSelection := ModelPreviewEligible;
   finally
+    StopModelPreviewTimer;
     ModelDialog.Free;
   end;
 end;
@@ -726,7 +788,7 @@ end;
 
 procedure RunSelectedModelCleanup;
 var
-  Ignored: Integer;
+  Code, ReportCode: Integer;
 begin
   if ModelCleanupSelection = 0 then Exit;
   // Preserve on changed Store ownership, independently of the Gateway choice.
@@ -741,9 +803,13 @@ begin
     Exit;
   end;
   UninstallProgressForm.StatusLabel.Caption := 'Checking and removing selected voice models...';
-  if not RunModelHelper(ModelCleanupSelection, Ignored) then
-    ModelSummary := 'Model cleanup could not be completed or verified. Some selected files may remain.' + #13#10 +
-      ModelSummary;
+  if StartModelHelper(ModelCleanupSelection, ewWaitUntilTerminated, Code) then
+  begin
+    if ReadModelCompletion(ReportCode) then
+      if (Code = 32) and (ReportCode = Code) then Exit;
+  end;
+  ModelSummary := 'Model cleanup could not be completed or verified. Some selected files may remain.' + #13#10 +
+    ModelSummary;
 end;
 
 procedure EnsureLocalGatewayCleanupChoice;

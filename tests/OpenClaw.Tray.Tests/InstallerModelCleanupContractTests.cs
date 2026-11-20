@@ -15,7 +15,7 @@ public sealed class InstallerModelCleanupContractTests
         Assert.Contains("ModelCleanupSelection := 0;", choice);
         Assert.True(choice.IndexOf("ModelCleanupSelection := 0;", StringComparison.Ordinal)
             < choice.IndexOf("if UninstallSilent() then Exit;", StringComparison.Ordinal));
-        Assert.DoesNotContain("RunModelHelper", choice);
+        Assert.DoesNotContain("StartModelHelper", choice);
         Assert.DoesNotContain("CheckCompletedStoreMigration", choice);
         Assert.Contains("Result := ShowModelReport(True);", choice);
         Assert.Contains("ModelRemoveCheck.Checked := False;", source);
@@ -23,7 +23,8 @@ public sealed class InstallerModelCleanupContractTests
         Assert.Contains("ModelScanButton.OnClick := @CheckModelPreview;", source);
         Assert.Contains("CancelButton.OnClick := @CancelModelPreview;", source);
         Assert.Contains("CanClose := not ModelScanRunning;", source);
-        Assert.Contains("if ModelScanCancelled then ModelDialog.ModalResult := mrCancel;", source);
+        Assert.Contains("if ModelScanCancelled then ModelDialog.Close;", source);
+        Assert.DoesNotContain("ModelDialog.ModalResult", source);
         Assert.Contains("Result := ChooseModelCleanup;", source); // Cancel aborts admission.
     }
 
@@ -36,16 +37,32 @@ public sealed class InstallerModelCleanupContractTests
         Assert.Contains("if ModelCleanupSelection = 0 then Exit;", cleanup);
         Assert.Contains("if MigrationOperationUnavailable then", cleanup);
         Assert.True(cleanup.IndexOf("CheckCompletedStoreMigration <> 0", StringComparison.Ordinal)
-            < cleanup.IndexOf("RunModelHelper(ModelCleanupSelection", StringComparison.Ordinal));
+            < cleanup.IndexOf("StartModelHelper(ModelCleanupSelection, ewWaitUntilTerminated", StringComparison.Ordinal));
         Assert.DoesNotContain("LocalGatewayCleanupRequested", cleanup);
         Assert.DoesNotContain("LocalGatewayCleanupSucceeded", cleanup);
         Assert.DoesNotContain("DelTree", cleanup);
         Assert.Contains("ShowModelReport(False);", source);
-        // Reserved completion codes, not an independent selection file, carry the preview.
-        Assert.Contains("if (Code < 32) or (Code > 47) then Exit;", source);
-        Assert.Contains("Eligible := Code - 32;", source);
+        // Only an atomic completion receipt can authorize the preview mask.
+        Assert.Contains("if not ReadModelCompletion(Code) then Code := 50;", source);
+        Assert.Contains("else if (Code >= 32) and (Code <= 47) then", source);
+        Assert.Contains("ModelPreviewEligible := Code - 32;", source);
         Assert.DoesNotContain("model-selection.txt", source);
         Assert.DoesNotContain("-SelectionPath", source);
+    }
+
+    [Fact]
+    public void Preview_ObservesCompletionWithoutDisablingItsCancelControls()
+    {
+        var source = Installer;
+        var preview = source[source.IndexOf("procedure CheckModelPreview", StringComparison.Ordinal)..];
+        preview = preview[..preview.IndexOf("function ShowModelReport", StringComparison.Ordinal)];
+        Assert.Contains("StartModelHelper(0, ewNoWait, Code)", preview);
+        Assert.DoesNotContain("ewWaitUntilTerminated", preview);
+        Assert.DoesNotContain("CheckCompletedStoreMigration", preview);
+        Assert.Contains("CreateCallback(@ModelPreviewTick)", preview);
+        Assert.Contains("Inc(ModelInvocation);", source);
+        Assert.Contains("if (Timer <> ModelPreviewTimer) or not ModelScanRunning then Exit;", source);
+        Assert.Contains("finally\n    StopModelPreviewTimer;\n    ModelDialog.Free;", source);
     }
 
     [Theory]
