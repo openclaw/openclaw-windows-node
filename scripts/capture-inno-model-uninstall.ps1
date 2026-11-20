@@ -157,6 +157,9 @@ function Update-OwnedTree($Run) {
             if ($parent.Process.HasExited -and $created -gt $parent.Process.ExitTime.ToUniversalTime()) { continue }
             $process = Get-Process -Id $id -ErrorAction SilentlyContinue
             if (-not $process -or $process.HasExited) { continue }
+            # Get-Process opens its native handle lazily. Retain it while the child
+            # is alive so its terminal exit code remains queryable after teardown.
+            $null = $process.Handle
             # CIM and Process report the same kernel creation timestamp at different precision.
             if ([Math]::Abs(($process.StartTime.ToUniversalTime() - $created).TotalMilliseconds) -gt 1) { continue }
             if (-not $item.ExecutablePath) { throw "Cannot verify descendant path for PID $id." }
