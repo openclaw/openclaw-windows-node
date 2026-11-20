@@ -81,6 +81,9 @@ ArchitecturesAllowed=x64
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
+[Messages]
+UninstallAppRunningError=%1 is still running in the background. Closing Workspace does not exit Companion.%n%nRight-click the desktop lobster and choose Close Companion. If the lobster is hidden, open the OpenClaw icon in the notification area (including hidden icons) and choose Close.%n%nWait for Companion to close, then click OK to continue uninstalling, or Cancel to exit.
+
 ; publish folder should be passed via /Dpublish=publish-x64 or /Dpublish=publish-arm64
 #ifndef publish
   #define publish "publish"

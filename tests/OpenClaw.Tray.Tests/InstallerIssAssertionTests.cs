@@ -15,6 +15,22 @@ namespace OpenClaw.Tray.Tests;
 public sealed class InstallerIssAssertionTests
 {
     [Fact]
+    public void UninstallRunningPrompt_ExplainsGracefulExitAndRetainsRetryAndCancel()
+    {
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var message = Assert.Single(iss.Split('\n'),
+            line => line.StartsWith("UninstallAppRunningError=", StringComparison.Ordinal));
+
+        Assert.Contains("%1", message);
+        Assert.Contains("Right-click the desktop lobster", message);
+        Assert.Contains("Close Companion", message);
+        Assert.Contains("notification area", message);
+        Assert.Contains("OK", message);
+        Assert.Contains("Cancel", message);
+        Assert.Contains("AppMutex={#MyMutex}", iss);
+    }
+
+    [Fact]
     public void Installer_HasAppMutexMatchingTraySingleInstance()
     {
         var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));

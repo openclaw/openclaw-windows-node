@@ -579,7 +579,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             () => new DesktopCompanionWindow(
                 () => _windowManager?.ShowHub("notifications"),
                 () => ShowHub("chat"),
-                () => ShowHub("settings")),
+                () => ShowHub("settings"),
+                ExitApplication),
             exception =>
             {
                 Logger.Error($"Desktop lobster failed: {exception.GetType().Name}: {exception.Message}");
