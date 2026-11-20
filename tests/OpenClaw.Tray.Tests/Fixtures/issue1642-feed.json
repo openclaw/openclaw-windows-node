@@ -1,0 +1,119 @@
+{
+  "latest": {
+    "id": 4,
+    "tag_name": "v2026.9.4",
+    "name": "v2026.9.4",
+    "body": "<!-- openclaw-update: ordinary -->",
+    "draft": false,
+    "prerelease": false,
+    "published_at": "2026-10-01T00:00:00Z",
+    "created_at": "2026-10-01T00:00:00Z",
+    "url": "https://api.github.com/repos/openclaw/openclaw-windows-node/releases/4",
+    "html_url": "https://example.invalid/release/4",
+    "assets": [
+      {
+        "id": 40,
+        "name": "OpenClawTray-2026.9.4-win-x64.zip",
+        "content_type": "application/zip",
+        "size": 1,
+        "state": "uploaded",
+        "browser_download_url": "https://example.invalid/no-download",
+        "url": "https://example.invalid/no-download"
+      }
+    ]
+  },
+  "releases": [
+    {
+      "id": 1,
+      "tag_name": "v2026.9.5-alpha.10",
+      "name": "v2026.9.5-alpha.10",
+      "body": "<!-- openclaw-update: ordinary -->",
+      "draft": false,
+      "prerelease": true,
+      "published_at": "2026-10-01T00:00:00Z",
+      "created_at": "2026-10-01T00:00:00Z",
+      "url": "https://api.github.com/repos/openclaw/openclaw-windows-node/releases/1",
+      "html_url": "https://example.invalid/release/1",
+      "assets": [
+        {
+          "id": 10,
+          "name": "OpenClawTray-2026.9.5-alpha.10-win-x64.zip",
+          "content_type": "application/zip",
+          "size": 1,
+          "state": "uploaded",
+          "browser_download_url": "https://example.invalid/no-download",
+          "url": "https://example.invalid/no-download"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "tag_name": "v2026.9.5-alpha.117",
+      "name": "v2026.9.5-alpha.117",
+      "body": "<!-- openclaw-update: ordinary -->",
+      "draft": false,
+      "prerelease": true,
+      "published_at": "2026-10-01T00:00:00Z",
+      "created_at": "2026-10-01T00:00:00Z",
+      "url": "https://api.github.com/repos/openclaw/openclaw-windows-node/releases/2",
+      "html_url": "https://example.invalid/release/2",
+      "assets": [
+        {
+          "id": 20,
+          "name": "OpenClawTray-2026.9.5-alpha.117-win-x64.zip",
+          "content_type": "application/zip",
+          "size": 1,
+          "state": "uploaded",
+          "browser_download_url": "https://example.invalid/no-download",
+          "url": "https://example.invalid/no-download"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "tag_name": "v2026.9.5-alpha.97",
+      "name": "v2026.9.5-alpha.97",
+      "body": "<!-- openclaw-update: ordinary -->",
+      "draft": false,
+      "prerelease": true,
+      "published_at": "2026-10-01T00:00:00Z",
+      "created_at": "2026-10-01T00:00:00Z",
+      "url": "https://api.github.com/repos/openclaw/openclaw-windows-node/releases/3",
+      "html_url": "https://example.invalid/release/3",
+      "assets": [
+        {
+          "id": 30,
+          "name": "OpenClawTray-2026.9.5-alpha.97-win-x64.zip",
+          "content_type": "application/zip",
+          "size": 1,
+          "state": "uploaded",
+          "browser_download_url": "https://example.invalid/no-download",
+          "url": "https://example.invalid/no-download"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "tag_name": "v2026.9.4",
+      "name": "v2026.9.4",
+      "body": "<!-- openclaw-update: ordinary -->",
+      "draft": false,
+      "prerelease": false,
+      "published_at": "2026-10-01T00:00:00Z",
+      "created_at": "2026-10-01T00:00:00Z",
+      "url": "https://api.github.com/repos/openclaw/openclaw-windows-node/releases/4",
+      "html_url": "https://example.invalid/release/4",
+      "assets": [
+        {
+          "id": 40,
+          "name": "OpenClawTray-2026.9.4-win-x64.zip",
+          "content_type": "application/zip",
+          "size": 1,
+          "state": "uploaded",
+          "browser_download_url": "https://example.invalid/no-download",
+          "url": "https://example.invalid/no-download"
+        }
+      ]
+    }
+  ]
+}
