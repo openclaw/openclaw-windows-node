@@ -164,8 +164,16 @@ function Update-OwnedTree($Run) {
             $uiAllowed = $false
             if ($Run.Uninstaller -and [IO.Path]::GetFileName($path) -ieq '_unins.tmp') {
                 Assert-OrdinaryPath $path
-                if (-not $path.StartsWith([IO.Path]::GetTempPath(), [StringComparison]::OrdinalIgnoreCase) -or
-                    (Get-Digest $path) -ne $Run.ImageHash) { throw 'Inno self-copy does not match the owned uninstaller.' }
+                # Inno can inherit an 8.3 TEMP spelling while .NET expands it.
+                # Compare the existing long paths, retaining the ancestry and byte checks.
+                $copyPath = [InnoCaptureWindow]::LongPath($path)
+                $tempRoot = [InnoCaptureWindow]::LongPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+                $copyHash = Get-Digest $path
+                if (-not $copyPath.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+                    $copyHash -ne $Run.ImageHash) {
+                    $script:Proof.rejectedSelfCopy = @{ path = $path; canonicalPath = $copyPath; tempRoot = $tempRoot; sha256 = $copyHash; expectedSha256 = $Run.ImageHash }
+                    throw 'Inno self-copy does not match the owned uninstaller. See rejectedSelfCopy in proof.json.'
+                }
                 $uiAllowed = $true
             }
             $Run.Nodes[$id] = [pscustomobject]@{
@@ -317,6 +325,15 @@ public static class InnoCaptureWindow {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint GetLongPathName(string path, System.Text.StringBuilder result, uint size);
+    public static string LongPath(string path) {
+        var result = new System.Text.StringBuilder(32768);
+        uint count = GetLongPathName(path, result, (uint)result.Capacity);
+        if (count == 0 || count >= result.Capacity)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "Cannot resolve existing capture path.");
+        return result.ToString();
+    }
 }
 '@
     $null = [InnoCaptureWindow]::SetProcessDPIAware()
