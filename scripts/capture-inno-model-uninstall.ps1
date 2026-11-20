@@ -106,6 +106,9 @@ function Wait-Condition([string]$Description, [scriptblock]$Condition, [int]$Sec
 # an observed descendant, created during its parent's lifetime, with identical
 # bytes. Missing intermediate ancestry fails closed rather than guessing by name.
 function Start-OwnedProcess([string]$Path, [string[]]$Arguments, [string]$Purpose, [switch]$Uninstaller) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "Executable for $Purpose does not exist: $Path"
+    }
     $info = [Diagnostics.ProcessStartInfo]::new($Path)
     $info.UseShellExecute = $false
     $info.CreateNoWindow = -not $Uninstaller
@@ -121,7 +124,9 @@ function Start-OwnedProcess([string]$Path, [string[]]$Arguments, [string]$Purpos
     $info.Arguments = $quoted -join ' '
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $info
-    if (-not $process.Start()) { throw "Could not start $Purpose." }
+    try {
+        if (-not $process.Start()) { throw "Process.Start returned false." }
+    } catch { throw "Could not start $Purpose at ${Path}: $($_.Exception.Message)" }
     $node = [pscustomobject]@{
         Process = $process; Id = $process.Id; StartUtc = $process.StartTime.ToUniversalTime()
         Path = $Path; UiAllowed = [bool]$Uninstaller; ParentId = $PID
@@ -726,13 +731,13 @@ try {
     $script:Proof.diagnosticsDirectory = $script:WorkDirectory
     $script:Proof.before = @{ installer = $BeforeInstaller; sha256 = Get-Digest $BeforeInstaller; sourceRevision = $BeforeSourceRevision; buildIdentity = $BeforeBuildIdentity; releaseUrl = $BeforeReleaseUrl; provenance = 'caller-supplied release/source attribution; actual hash recorded' }
     $script:Proof.after = @{ installer = $AfterInstaller; sha256 = Get-Digest $AfterInstaller; sourceRevision = $AfterSourceRevision; buildIdentity = $AfterBuildIdentity; identity = 'full locally built unsigned Dev installer' }
-    $git = (Get-Command git -CommandType Application -ErrorAction Stop).Source
+    $git = (Get-Command git -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     $head = (Invoke-Native $git @('-C', (Join-Path $PSScriptRoot '..'), 'rev-parse', 'HEAD') 'source-revision').Trim()
     if ($head -cne $AfterSourceRevision.ToLowerInvariant()) { throw 'AfterSourceRevision does not match capture checkout.' }
     $script:Proof.captureScriptSha256 = Get-Digest $PSCommandPath
     # Discover WinApp before native inspection. UIA is retained for Inno self-copy
     # lifetime ownership; never invent version-specific WinApp selectors or flags.
-    $winapp = Get-Command winapp -CommandType Application -ErrorAction SilentlyContinue
+    $winapp = Get-Command winapp -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($winapp) {
         $script:Proof.tools.winapp = (Invoke-Native $winapp.Source @('--version') 'winapp-version').Trim()
         $schema = Invoke-Native $winapp.Source @('--cli-schema') 'winapp-schema'
@@ -743,8 +748,8 @@ try {
         $script:Proof.tools.ui = 'UIAutomationClient/InvokePattern scoped to Inno descendants; CopyFromScreen window crop.'
     }
     Save-Proof
-    $script:Ffmpeg = (Get-Command ffmpeg -CommandType Application -ErrorAction Stop).Source
-    $script:Ffprobe = (Get-Command ffprobe -CommandType Application -ErrorAction Stop).Source
+    $script:Ffmpeg = (Get-Command ffmpeg -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $script:Ffprobe = (Get-Command ffprobe -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
     $script:Proof.tools.ffmpeg = (Invoke-Native $script:Ffmpeg @('-version') 'ffmpeg-version').Split("`n")[0]
     $gatewayBefore = Assert-FreshHost
     Write-Json 'gateway-before.json' $gatewayBefore
