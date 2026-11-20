@@ -177,12 +177,14 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
 
         var result = await CreateCoordinator(commands).PublishAsync(install);
 
-        // Gateway 2026.6.1-2026.6.4 admits protocol 4 but rejects thinkingLevelMap:
+        // Gateway 2026.6.1 admits protocol 4 but rejects thinkingLevelMap:
         // the working pre-effort route is current there, so nothing is withdrawn.
+        // The rejection is confirmed by a second dry-run before the fallback.
         Assert.True(result.Success, result.Detail);
-        Assert.Equal(2, commands.ValidatedBatches.Count);
+        Assert.Equal(3, commands.ValidatedBatches.Count);
         Assert.Contains("thinkingLevelMap", commands.ValidatedBatches[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("thinkingLevelMap", commands.ValidatedBatches[1], StringComparison.Ordinal);
+        Assert.Contains("thinkingLevelMap", commands.ValidatedBatches[1], StringComparison.Ordinal);
+        Assert.DoesNotContain("thinkingLevelMap", commands.ValidatedBatches[2], StringComparison.Ordinal);
         Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
         Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
         Assert.Equal(-1, commands.FirstApplyIndex);
@@ -208,6 +210,8 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         var withdrawn = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
         Assert.True(withdrawn.Success, withdrawn.Detail);
         Assert.Null(commands.ProviderJson);
+        // Withdrawal never waits on the shape check.
+        Assert.Empty(commands.ValidatedBatches);
         var published = await coordinator.PublishAsync(restarted);
 
         Assert.True(published.Success, published.Detail);
@@ -215,14 +219,32 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         Assert.False(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, restarted));
         Assert.Equal(commands.ProviderJson, commands.ActiveProviderJson);
         Assert.Equal(managedPrimary, commands.PrimaryModel);
-        // The withdrawal decided the shape; publication reuses it instead of probing again.
-        Assert.Equal(2, commands.ValidatedBatches.Count);
-        int unset = commands.Calls.FindIndex(call => call.Contains("unset"));
-        Assert.All(commands.ValidationCallIndexes, index => Assert.InRange(index, 0, unset - 1));
+        // Publication decided the shape before its write.
+        Assert.Equal(3, commands.ValidatedBatches.Count);
+        Assert.All(commands.ValidationCallIndexes,
+            index => Assert.InRange(index, 0, commands.FirstApplyIndex - 1));
     }
 
     [Fact]
-    public async Task WslEndpointCycle_GatewayRejectingBothShapesNeverWithdrawsRoute()
+    public async Task WslEndpointCycle_WithdrawalNeverWaitsOnTheShapeCheck()
+    {
+        var install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        // Even a Gateway that would reject every provider: the runtime also
+        // withdraws through an endpoint cycle to take the route off an untrusted listener.
+        var commands = new FakeWslCommandRunner(LegacyProviderJson(install), managedPrimary) { RejectEveryProvider = true };
+
+        var withdrawn = await CreateCoordinator(commands).QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
+
+        Assert.True(withdrawn.Success, withdrawn.Detail);
+        Assert.Empty(commands.ValidatedBatches);
+        Assert.Null(commands.ProviderJson);
+        Assert.Null(commands.ActiveProviderJson);
+        Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task WslPublish_GatewayRejectingBothShapesWritesNothing()
     {
         var install = Install(28_765);
         string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
@@ -232,20 +254,40 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
             new LocalAiGatewayDistroResolver(CreateRegistry(ManagedRecord("managed", "OpenClawGateway"))),
             NullLogger.Instance, key => $"localized:{key}");
 
-        var withdrawn = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
         var published = await coordinator.PublishAsync(install);
 
-        Assert.False(withdrawn.Success);
-        Assert.Equal("localized:LocalAi_GatewayProviderRejected", withdrawn.Detail);
         Assert.False(published.Success);
         Assert.Equal("localized:LocalAi_GatewayProviderRejected", published.Detail);
-        Assert.Equal(4, commands.ValidatedBatches.Count);
+        Assert.Equal(3, commands.ValidatedBatches.Count);
         Assert.DoesNotContain(commands.Calls, call => call.Contains("unset"));
         Assert.DoesNotContain(commands.Calls, call => call.Contains("restart"));
         Assert.Equal(-1, commands.FirstApplyIndex);
         Assert.Equal(legacy, commands.ProviderJson);
         Assert.Equal(legacy, commands.ActiveProviderJson);
         Assert.Equal(managedPrimary, commands.PrimaryModel);
+    }
+
+    [Fact]
+    public async Task WslPublish_OneFailedDryRunDoesNotDowngradeToTheLegacyShape()
+    {
+        var install = Install(28_765);
+        string managedPrimary = LocalAiGatewayProviderDefinition.BuildPrimaryModel(install);
+        var commands = new FakeWslCommandRunner(RedactApiKey(LegacyProviderJson(install)), managedPrimary)
+        {
+            ApplyWritesBatch = true,
+            FailedValidations = [0],
+        };
+
+        var result = await CreateCoordinator(commands).PublishAsync(install);
+
+        // A Gateway that accepts effort metadata, with one unrelated CLI failure:
+        // the repeated dry-run passes and the current shape is published.
+        Assert.True(result.Success, result.Detail);
+        Assert.Equal(2, commands.ValidatedBatches.Count);
+        Assert.All(commands.ValidatedBatches,
+            batch => Assert.Contains("thinkingLevelMap", batch, StringComparison.Ordinal));
+        Assert.True(LocalAiGatewayProviderDefinition.MatchesProviderJson(commands.ProviderJson!, install));
+        Assert.Equal(commands.ProviderJson, commands.ActiveProviderJson);
     }
 
     [Theory]
@@ -292,28 +334,35 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
     }
 
     [Fact]
-    public async Task RpcQuiesce_EndpointCycleKeepsRouteWhenSchemaCannotBeRead()
+    public async Task RpcEndpointCycle_WithdrawsWithoutSchemaCheckAndPublishWritesNothingWhenSchemaCannotBeRead()
     {
         var install = Install(28_765, "cloud/prior");
         var transport = new AtomicTransport("{}") { FailSchema = true };
         transport.SetManaged(install);
-        string before = transport.Config.ToJsonString();
-        var coordinator = new LocalAiGatewayProviderCoordinator(
-            transport, () => "actual-local-secret", NullLogger.Instance, key => $"localized:{key}");
+        StripEffortMetadata((JsonObject)transport.Config["models"]!["providers"]!["llamacpp"]!["models"]![0]!);
 
-        var cycle = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
+        // The runtime withdraws through an endpoint cycle and, as in production,
+        // publishes through a separate coordinator instance.
+        var cycle = await new LocalAiGatewayProviderCoordinator(
+                transport, () => "actual-local-secret", NullLogger.Instance, key => $"localized:{key}")
+            .QuiesceAsync(install, LocalAiQuiesceReason.EndpointCycle);
 
-        Assert.False(cycle.Success);
-        Assert.Equal("localized:LocalAi_GatewayProviderCheckFailed", cycle.Detail);
-        Assert.DoesNotContain("sensitive", cycle.Detail);
-        Assert.Empty(transport.Patches);
-        Assert.Equal(before, transport.Config.ToJsonString());
-
-        // Teardown publishes nothing afterwards, so it needs no schema decision.
-        var teardown = await coordinator.QuiesceAsync(install, LocalAiQuiesceReason.Teardown);
-        Assert.True(teardown.Success, teardown.Detail);
-        Assert.Equal(1, transport.SchemaChecks);
+        Assert.True(cycle.Success, cycle.Detail);
+        Assert.Equal(0, transport.SchemaChecks);
         Assert.Null(transport.Config["models"]?["providers"]?["llamacpp"]);
+        string withdrawn = transport.Config.ToJsonString();
+        int patches = transport.Patches.Count;
+
+        var published = await new LocalAiGatewayProviderCoordinator(
+                transport, () => "actual-local-secret", NullLogger.Instance, key => $"localized:{key}")
+            .PublishAsync(install);
+
+        Assert.False(published.Success);
+        Assert.Equal("localized:LocalAi_GatewayProviderCheckFailed", published.Detail);
+        Assert.DoesNotContain("sensitive", published.Detail);
+        Assert.Equal(1, transport.SchemaChecks);
+        Assert.Equal(patches, transport.Patches.Count);
+        Assert.Equal(withdrawn, transport.Config.ToJsonString());
     }
 
     /// <summary>The exact provider shape published before effort metadata was added.</summary>
@@ -1386,6 +1435,8 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
         /// <summary>Models Gateway 2026.6.1-2026.6.4: protocol 4, but no thinkingLevelMap in its model schema.</summary>
         public bool RejectEffortMetadata { get; init; }
         public bool RejectEveryProvider { get; init; }
+        /// <summary>Zero-based dry-run ordinals that fail once for a reason unrelated to the schema.</summary>
+        public HashSet<int> FailedValidations { get; init; } = [];
         /// <summary>Persists the provider and primary from an applied batch instead of the preset values.</summary>
         public bool ApplyWritesBatch { get; init; }
         public Action<int>? CommandObserved { get; init; }
@@ -1427,6 +1478,8 @@ public sealed class LocalAiGatewayProviderCoordinatorTests
                 {
                     ValidatedBatches.Add(batch);
                     ValidationCallIndexes.Add(Calls.Count - 1);
+                    if (FailedValidations.Contains(ValidatedBatches.Count - 1))
+                        return Result(1, string.Empty, "config file is locked");
                     return rejected ? Result(1, string.Empty, "Unrecognized key: \"thinkingLevelMap\"") : Result(0, string.Empty);
                 }
                 if (rejected)

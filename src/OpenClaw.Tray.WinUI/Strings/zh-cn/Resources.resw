@@ -10108,6 +10108,6 @@
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此会话发布的小组件和选项卡。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此对话暂无可用的面板。</value></data>
   <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>无法验证已保存的本地 AI 路由。请保留端点并协调原 Gateway 的配置。</value></data>
-  <data name="LocalAi_GatewayProviderRejected" xml:space="preserve"><value>Gateway 拒绝了本地 AI 提供程序配置。已保留当前的本地 AI 路由；请更新 OpenClaw Gateway 后重试。</value></data>
-  <data name="LocalAi_GatewayProviderCheckFailed" xml:space="preserve"><value>Gateway 无法确认它接受哪种本地 AI 配置。已保留当前的本地 AI 路由；请重新连接 Gateway 后重试。</value></data>
+  <data name="LocalAi_GatewayProviderRejected" xml:space="preserve"><value>Gateway 拒绝了本地 AI 提供程序配置，未写入任何内容。请更新 OpenClaw Gateway 后重试。</value></data>
+  <data name="LocalAi_GatewayProviderCheckFailed" xml:space="preserve"><value>Gateway 无法确认它接受哪种本地 AI 配置，未写入任何内容。请重新连接 Gateway 后重试。</value></data>
 </root>

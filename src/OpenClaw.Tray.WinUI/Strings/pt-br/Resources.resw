@@ -10161,6 +10161,6 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets e guias publicados por esta sessão.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Ainda não há painéis disponíveis para esta conversa.</value></data>
   <data name="LocalAi_GatewaySavedRouteVerification" xml:space="preserve"><value>Não foi possível verificar a rota de IA local salva. Preserve o endpoint e reconcilie o Gateway original.</value></data>
-  <data name="LocalAi_GatewayProviderRejected" xml:space="preserve"><value>O Gateway rejeitou a configuração do provedor de IA local. A rota de IA local atual foi mantida; atualize o OpenClaw Gateway e tente novamente.</value></data>
-  <data name="LocalAi_GatewayProviderCheckFailed" xml:space="preserve"><value>O Gateway não conseguiu confirmar qual configuração de IA local aceita. A rota de IA local atual foi mantida; reconecte o Gateway e tente novamente.</value></data>
+  <data name="LocalAi_GatewayProviderRejected" xml:space="preserve"><value>O Gateway rejeitou a configuração do provedor de IA local; nada foi gravado. Atualize o OpenClaw Gateway e tente novamente.</value></data>
+  <data name="LocalAi_GatewayProviderCheckFailed" xml:space="preserve"><value>O Gateway não conseguiu confirmar qual configuração de IA local aceita; nada foi gravado. Reconecte o Gateway e tente novamente.</value></data>
 </root>
