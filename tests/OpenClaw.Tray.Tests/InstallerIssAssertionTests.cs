@@ -95,7 +95,8 @@ public sealed class InstallerIssAssertionTests
         Assert.Contains("[Code]", iss);
         Assert.Contains("Uninstall-LocalGateway.ps1", iss);
         Assert.Contains("UninstallSilent()", iss);
-        Assert.Contains("LocalGatewayCleanupRequested := True", iss);
+        Assert.DoesNotContain("LocalGatewayCleanupRequested := True", iss);
+        Assert.Contains("{param:RemoveLocalGateway|no}", iss);
         Assert.Contains("{#MyDistroName} WSL distro", iss);
         Assert.Contains("MB_YESNO or MB_DEFBUTTON2", iss);
         Assert.Contains("ExpandConstant('{sys}\\WindowsPowerShell\\v1.0\\powershell.exe')", iss);

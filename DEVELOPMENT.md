@@ -581,8 +581,9 @@ Consequences to expect while both are installed:
   "Setup has detected that OpenClaw Companion is currently running". Quit the
   Store app before installing or uninstalling the Inno build.
 - Inno uninstall asks whether to also remove the local WSL gateway. **No** is the
-  default and keeps it. A silent uninstall (`/SILENT`, `/VERYSILENT`) always
-  removes the gateway.
+  default and keeps it. A silent uninstall (`/SILENT`, `/VERYSILENT`), which is what
+  `winget uninstall` runs by default, also keeps it unless `/RemoveLocalGateway=yes`
+  is passed.
 
 To make the Store build the one that runs, quit the Inno build and launch the
 Store entry, or uninstall the Inno build.

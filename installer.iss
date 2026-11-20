@@ -556,8 +556,14 @@ begin
 
   if UninstallSilent() then
   begin
-    LocalGatewayCleanupRequested := True;
-    Log('Silent uninstall: local gateway cleanup will run automatically.');
+    // Nobody can answer the dialog below, and package managers uninstall silently by default.
+    // Removing the WSL gateway is unrecoverable, so an unattended caller has to ask for it.
+    LocalGatewayCleanupRequested :=
+      CompareText(ExpandConstant('{param:RemoveLocalGateway|no}'), 'yes') = 0;
+    if LocalGatewayCleanupRequested then
+      Log('Silent uninstall: /RemoveLocalGateway=yes requested local gateway cleanup.')
+    else
+      Log('Silent uninstall: preserving the {#MyDistroName} WSL distro and generated state. Pass /RemoveLocalGateway=yes to remove them.');
   end
   else
   begin
