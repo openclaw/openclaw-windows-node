@@ -261,6 +261,7 @@ public sealed class LocalAiHardwareProfileTests(UIThreadFixture ui, ITestOutputH
                     (long)vramGiB << 30, CudaMajorVersion: 13, StableId: "synthetic-profile-proof")], false);
 #if !LOCAL_AI_BASELINE
             hardware = hardware with { LocalAiDiskSpace = new(20L << 30, 20L << 30, true) };
+            hardware = hardware with { Gpus = hardware.Gpus.Select(gpu => gpu with { ComputeCapability = new Version(8, 9) }).ToArray() };
 #endif
             return hardware;
         }

@@ -52,6 +52,23 @@ public sealed class LocalManagedInferenceProfileTests
     }
 
     [Fact]
+    public void VoltaWithoutAFittingModel_ReportsGpuMemoryNotCudaCapability()
+    {
+        // TITAN V on an R580 driver: only the CUDA 12 llama.cpp build can run it, and
+        // the CUDA-13-only Bonsai build must not turn the verdict into "incompatible".
+        HostHardwareInfo hardware = Hardware(12);
+        hardware = hardware with
+        {
+            Gpus = [hardware.Gpus[0] with { CudaMajorVersion = 13, ComputeCapability = new Version(7, 0) }],
+        };
+
+        var result = LocalInferenceEligibility.Evaluate(hardware);
+
+        Assert.Equal(LocalInferenceEligibilityFailureCode.InsufficientGpuMemory, result.FailureCode);
+        Assert.Equal(LlamaRuntimeCatalog.X64Cuda12RuntimeId, result.Plan!.Runtime.Id);
+    }
+
+    [Fact]
     public void MissingResourceFacts_AreRetryable()
     {
         var result = LocalInferenceEligibility.Evaluate(Hardware(8) with { LocalAiDiskSpace = null });
@@ -90,7 +107,8 @@ public sealed class LocalManagedInferenceProfileTests
     {
         var result = LocalInferenceEligibility.Evaluate(Hardware(8) with
         {
-            Gpus = [new GpuInfo(GpuVendor.Amd, "AMD", 8 * GiB, 8 * GiB, CudaMajorVersion: 13, StableId: "GPU-amd")]
+            Gpus = [new GpuInfo(GpuVendor.Amd, "AMD", 8 * GiB, 8 * GiB, CudaMajorVersion: 13, StableId: "GPU-amd",
+                ComputeCapability: new Version(12, 0))]
         });
         Assert.False(result.CanInstall);
     }
@@ -126,5 +144,6 @@ public sealed class LocalManagedInferenceProfileTests
     internal static HostHardwareInfo Hardware(int vram, int ram = 32, int disk = 20, int? freeVram = null) =>
         new(RuntimeArchitecture.X64, ram * GiB, ram * GiB,
             [new GpuInfo(GpuVendor.Nvidia, "NVIDIA RTX 4060", vram * GiB, (freeVram ?? vram) * GiB,
-                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060")], false, new(disk * GiB, disk * GiB, true));
+                CudaMajorVersion: 13, StableId: "GPU-synthetic-4060", ComputeCapability: new Version(12, 0))], false,
+            new(disk * GiB, disk * GiB, true));
 }

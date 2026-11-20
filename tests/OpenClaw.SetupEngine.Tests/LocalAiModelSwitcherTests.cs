@@ -238,7 +238,7 @@ public sealed class LocalAiModelSwitcherTests
 
     private static HostHardwareInfo Hardware(long vram) =>
         new(System.Runtime.InteropServices.Architecture.X64, 64 * GiB, 48 * GiB,
-            [new GpuInfo(GpuVendor.Nvidia, "NVIDIA Test", vram, vram, DriverVersion: "620.0", CudaMajorVersion: 13, StableId: "GPU-test")],
+            [new GpuInfo(GpuVendor.Nvidia, "NVIDIA Test", vram, vram, DriverVersion: "620.0", CudaMajorVersion: 13, StableId: "GPU-test", ComputeCapability: new Version(12, 0))],
             false, new LocalAiDiskSpaceInfo(500 * GiB, 500 * GiB, true));
 
     private static LocalCustomModelRecipe Recipe(long size) =>

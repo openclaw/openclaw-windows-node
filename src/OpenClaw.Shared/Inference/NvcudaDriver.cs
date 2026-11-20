@@ -36,6 +36,10 @@ internal static class NvcudaDriver
     internal const int CudaErrorUnknown = 999;
     internal const int CudaUuidSize = 16;
 
+    // CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MAJOR / _MINOR from cuda.h.
+    private const int ComputeCapabilityMajorAttribute = 75;
+    private const int ComputeCapabilityMinorAttribute = 76;
+
     private const int DeviceNameCapacity = 256;
 
     /// <summary>
@@ -99,6 +103,19 @@ internal static class NvcudaDriver
                     MemoryMarshal.CreateReadOnlySpan(ref uuid, 1));
                 return ToCudaVisibleDevicesSelector(bytes);
             },
+            null);
+
+    /// <summary>
+    /// Reads the device compute capability. A device attribute query needs no
+    /// context, so this runs directly after <c>cuInit</c>.
+    /// </summary>
+    internal static Version? TryReadComputeCapability(int device) =>
+        TryNative(
+            () => CuDeviceGetAttribute(out int major, ComputeCapabilityMajorAttribute, device) == CudaSuccess &&
+                CuDeviceGetAttribute(out int minor, ComputeCapabilityMinorAttribute, device) == CudaSuccess &&
+                major > 0 && minor >= 0
+                    ? new Version(major, minor)
+                    : (Version?)null,
             null);
 
     /// <summary>
@@ -203,6 +220,10 @@ internal static class NvcudaDriver
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("nvcuda.dll", EntryPoint = "cuDeviceGetUuid_v2", CallingConvention = CallingConvention.StdCall)]
     private static extern int CuDeviceGetUuid(out CudaUuid uuid, int device);
+
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    [DllImport("nvcuda.dll", EntryPoint = "cuDeviceGetAttribute", CallingConvention = CallingConvention.StdCall)]
+    private static extern int CuDeviceGetAttribute(out int value, int attribute, int device);
 
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("nvcuda.dll", EntryPoint = "cuCtxCreate_v2", CallingConvention = CallingConvention.StdCall)]

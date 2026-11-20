@@ -184,7 +184,8 @@ public sealed class LocalAiPortHandoffTests
                 FreeGpuVisibleMemoryBytes: 48_585_498_624,
                 DriverVersion: "616.00",
                 CudaMajorVersion: 13,
-                StableId: "GPU-SPARK"),
+                StableId: "GPU-SPARK",
+                ComputeCapability: new Version(12, 0)),
         ],
         VulkanAvailable: false);
 
@@ -197,7 +198,8 @@ public sealed class LocalAiPortHandoffTests
                 GpuVendor.Nvidia,
                 "NVIDIA RTX Spark N1X (6144-core Blackwell RTX GPU)",
                 CudaMajorVersion: 13,
-                StableId: "GPU-SPARK"),
+                StableId: "GPU-SPARK",
+                ComputeCapability: new Version(12, 0)),
         ],
         VulkanAvailable: false);
 
@@ -213,7 +215,8 @@ public sealed class LocalAiPortHandoffTests
                 FreeGpuVisibleMemoryBytes: 24L * 1024 * 1024 * 1024,
                 DriverVersion: "616.00",
                 CudaMajorVersion: 13,
-                StableId: "GPU-z"),
+                StableId: "GPU-z",
+                ComputeCapability: new Version(12, 0)),
             new GpuInfo(
                 GpuVendor.Nvidia,
                 "NVIDIA tie GPU a",
@@ -221,7 +224,8 @@ public sealed class LocalAiPortHandoffTests
                 FreeGpuVisibleMemoryBytes: 24L * 1024 * 1024 * 1024,
                 DriverVersion: "616.00",
                 CudaMajorVersion: 13,
-                StableId: "GPU-a"),
+                StableId: "GPU-a",
+                ComputeCapability: new Version(12, 0)),
         ],
         VulkanAvailable: false);
 
