@@ -28,17 +28,14 @@ can help update the branch when needed.
 
 <!--
 Describe the concrete user, product, or operational problem.
-In 1-3 short, plain-language sentences, explain what someone is trying to do,
-what goes wrong or is missing, and why it matters. For a fix, include the trigger
-when known. For other changes, describe the need without inventing a bug.
+In 1–3 plain sentences, say who is affected, what happens today, and why it
+matters to them. For a bug, name the trigger if known. For a feature or internal
+work, describe the need in the actual workflow without inventing harm.
+Could a reader understand the problem without knowing your proposed fix?
 
-Illustrative wording, not a report of a current bug:
-Good: "When connecting Companion to a gateway, users cannot tell that pairing
-approval is still needed, so they do not know how to finish connecting."
-Bad: "Fixes missing approval-state handling in the connection manager."
-
-Describe the experienced problem, not just the code change. Save function names,
-missing checks, and the root-cause walkthrough for the explanation below.
+Good: "Background checks can use up a new user's model allowance before they've
+asked the assistant to monitor anything."
+Bad: "Turn off periodic checks on fresh installs."
 -->
 
 ## User Impact
