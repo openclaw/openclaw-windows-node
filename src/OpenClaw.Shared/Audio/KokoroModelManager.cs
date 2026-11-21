@@ -34,6 +34,7 @@ public sealed class KokoroModelManager
     public const string DefaultVoiceId = "af_maple";
 
     private const string InstallMarkerSuffix = ".installing";
+    private const string LarroyReleaseBase = "https://github.com/larroy/kokoro.cpp/releases/download/voices_model_files/";
 
     // Static so two managers over the same data directory coalesce against the
     // same in-flight download. Ordinal: pack ids are fixed catalog keys.
@@ -67,8 +68,10 @@ public sealed class KokoroModelManager
     public static readonly KokoroModelPackInfo[] AvailablePacks =
     [
         new("v1.1-en-zh", "English and Chinese (Kokoro v1.1)",
-            ModelAsset(KokoroDownloadCatalog.EnglishModel),
-            ModelAsset(KokoroDownloadCatalog.EnglishVoices),
+            new KokoroAssetInfo("kokoro-v1.1-zh.onnx", LarroyReleaseBase + "kokoro-v1.1-zh.onnx",
+                "eefec708cbc7aba8e8129b5c2f7cb92e1fe7d281af1e1dd451592d9ff0714a0d", 343_605_188),
+            new KokoroAssetInfo("voices-v1.1-zh.bin", LarroyReleaseBase + "voices-v1.1-zh.bin",
+                "e678019845e6cfe3b7c34531779396b28f509451b91e6535d5dc09bbf11a4be5", 53_792_177),
             [
                 new("af_maple", "English (US): Maple", "en-US"),
                 new("af_sol", "English (US): Sol", "en-US"),
@@ -76,17 +79,17 @@ public sealed class KokoroModelManager
                 .. ChineseVoiceIds.Select(id => new KokoroVoiceInfo(id, $"中文 (CN): {id}", "zh-CN")),
             ]),
         new("v1.0-es", "Español (Kokoro v1.0)",
-            ModelAsset(KokoroDownloadCatalog.SpanishModel),
-            ModelAsset(KokoroDownloadCatalog.SpanishVoices),
+            new KokoroAssetInfo("kokoro-v1.0.onnx",
+                "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+                "7d5df8ecf7d4b1878015a32686053fd0eebe2bc377234608764cc0ef3636a6c5", 325_532_387),
+            new KokoroAssetInfo("voices-v1.0-es.bin", LarroyReleaseBase + "voices-v1.0-es.bin",
+                "cdaf0ecca101f3738763f6e3a13b63d46137909b8ebcf9de2be4ef2a73014c52", 1_566_778),
             [
                 new("ef_dora", "Español (ES): Dora", "es-ES"),
                 new("em_alex", "Español (ES): Alex", "es-ES"),
                 new("em_santa", "Español (ES): Santa", "es-ES"),
             ]),
     ];
-
-    private static KokoroAssetInfo ModelAsset(KokoroDownloadAsset asset) =>
-        new(asset.FileName, asset.Url, asset.Sha256, asset.SizeBytes);
 
     private readonly string _packsDirectory;
     private readonly IOpenClawLogger _logger;
