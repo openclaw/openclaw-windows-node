@@ -26,7 +26,7 @@ public static class GatewayChatUrlBuilder
         if (!GatewayUrlHelper.TryNormalizeWebSocketUrl(gatewayUrl, out var normalizedGatewayUrl) ||
             !Uri.TryCreate(normalizedGatewayUrl, UriKind.Absolute, out var gatewayUri))
         {
-            errorMessage = $"Invalid gateway URL: {gatewayUrl}";
+            errorMessage = $"Invalid gateway URL: {GatewayUrlHelper.SanitizeForDisplay(gatewayUrl)}";
             return false;
         }
 

@@ -175,7 +175,7 @@ internal sealed class TrayMenuPresenter
         {
             Kind = TrayMenuElementKind.StatusCard,
             Text = gatewayUri is null ? statusText : $"{statusText} · {gatewayUri.Host}:{gatewayUri.Port}",
-            Detail = gatewayUri?.ToString(),
+            Detail = gatewayUri is null ? null : GatewayUrlHelper.SanitizeForDisplay(gatewayUri.ToString()),
             Accent = isConnected ? TrayMenuAccent.Success : TrayMenuAccent.Neutral,
         });
 
