@@ -5,7 +5,8 @@
     Standalone, current-user OpenClaw cleanup for demo/test devices. Dry-run by default.
 .DESCRIPTION
     Preview first, then repeat with -ConfirmDestructive. Removes release Companion
-    and native Gateway packages, supported Inno installs, and ordinary app profiles.
+    and native Gateway packages, supported Inno installs, ordinary app profiles, and
+    Companion's per-user Gateway cleanup tasks and their files.
     Runs native MXC teardown BEFORE removing the Gateway package. No build, Copilot,
     Python, or repository dependencies. Use Windows PowerShell as the affected user.
 
@@ -570,6 +571,15 @@ function Assert-CleanStartupExecutable([string]$Executable, [string[]]$OwnedRoot
     throw "Startup executable is outside selected ownership roots: $path"
 }
 
+function Get-CleanTaskPrincipalSid($Task) {
+    $principal = $Task.Principal.UserId
+    if ([string]::IsNullOrWhiteSpace($principal)) { throw 'Startup task has no identifiable principal.' }
+    if ($principal -notmatch '^S-1-') {
+        $principal = ([Security.Principal.NTAccount]$principal).Translate([Security.Principal.SecurityIdentifier]).Value
+    }
+    return $principal
+}
+
 function Get-CleanStartup([bool]$Dev, [string[]]$OwnedRoots) {
     $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
     $names = @('OpenClawTray')
@@ -591,17 +601,77 @@ function Get-CleanStartup([bool]$Dev, [string[]]$OwnedRoots) {
     }
     $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
     foreach ($task in Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -in $taskNames }) {
-        $principal = $task.Principal.UserId
-        if ([string]::IsNullOrWhiteSpace($principal)) { throw 'Startup task has no identifiable principal.' }
-        if ($principal -notmatch '^S-1-') {
-            $principal = ([Security.Principal.NTAccount]$principal).Translate([Security.Principal.SecurityIdentifier]).Value
-        }
+        $principal = Get-CleanTaskPrincipalSid $task
         $actions = @($task.Actions)
         if ($principal -ne $sid -or $actions.Count -ne 1 -or $task.TaskPath -ne '\') {
             throw "Startup task has unexpected ownership. Inspect it manually: $($task.TaskPath)$($task.TaskName)"
         }
         Assert-CleanStartupExecutable $actions[0].Execute $OwnedRoots
         [pscustomobject]@{ Kind = 'Task'; Name = $task.TaskName; Key = $task.TaskPath; Value = (Export-ScheduledTask -InputObject $task) }
+    }
+}
+
+function Get-CleanGatewayCleanupRoot {
+    return Join-Path $env:USERPROFILE '.openclaw-companion\cleanup'
+}
+
+function Test-CleanCompanionFamily([string]$Family, [bool]$Dev) {
+    if ($Family -cmatch '^OpenClawFoundation\.OpenClaw\.Dev_[a-z0-9]{13}$') { return $Dev }
+    return $Family -cmatch '^OpenClawFoundation\.OpenClaw_[a-z0-9]{13}$'
+}
+
+function Get-CleanGatewayCleanupProfiles([bool]$Dev) {
+    $root = Get-CleanGatewayCleanupRoot
+    if (-not (Test-Path -LiteralPath $root)) { return }
+    Get-ChildItem -LiteralPath $root -Directory -Force |
+        Where-Object { Test-CleanCompanionFamily $_.Name $Dev } |
+        ForEach-Object { $_.FullName }
+}
+
+# Selection never depends on the task's files. A task whose folder is gone can only be removed here.
+function Get-CleanGatewayCleanupTasks([bool]$Dev) {
+    $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $prefix = "OpenClaw Gateway cleanup - $sid - "
+    $root = Get-CleanGatewayCleanupRoot
+    $powershell = Get-CleanFullPath (Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe')
+    foreach ($task in Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName.StartsWith($prefix, [StringComparison]::Ordinal) }) {
+        $family = $task.TaskName.Substring($prefix.Length)
+        if (-not (Test-CleanCompanionFamily $family $Dev)) { continue }
+        $directory = Get-CleanFullPath (Join-Path $root $family)
+        $actions = @($task.Actions)
+        $hosted = $false
+        $legacy = $false
+        if ($actions.Count -eq 1 -and -not [string]::IsNullOrWhiteSpace($actions[0].Execute)) {
+            $execute = Get-CleanFullPath ([string]$actions[0].Execute).Trim('"')
+            $arguments = [string]$actions[0].Arguments
+            $hosted = (Split-Path -Parent $execute) -ieq $directory -and
+                (Split-Path -Leaf $execute) -match '^cleanup-host-[0-9A-Fa-f]{64}\.exe$' -and $arguments -ceq $family
+            # Companion releases before the windowless host registered PowerShell directly.
+            $legacy = $execute -ieq $powershell -and
+                $arguments.EndsWith("-File `"$directory\cleanup.ps1`" -Family $family", [StringComparison]::OrdinalIgnoreCase)
+        }
+        if ((Get-CleanTaskPrincipalSid $task) -ne $sid -or $task.TaskPath -ne '\' -or -not ($hosted -or $legacy)) {
+            throw "Gateway cleanup task has unexpected ownership. Inspect it manually: $($task.TaskPath)$($task.TaskName)"
+        }
+        [pscustomobject]@{ Kind = 'Task'; Name = $task.TaskName; Key = $task.TaskPath; Value = (Export-ScheduledTask -InputObject $task) }
+    }
+}
+
+function Remove-CleanTask($Entry) {
+    $task = @(Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -eq $Entry.Name -and $_.TaskPath -eq $Entry.Key })
+    if ($task.Count -gt 0) {
+        if ((Export-ScheduledTask -InputObject $task[0]) -ne $Entry.Value) { throw "Startup task changed: $($Entry.Name)" }
+        Unregister-ScheduledTask -InputObject $task[0] -Confirm:$false -ErrorAction Stop
+    }
+}
+
+function Remove-CleanEmptyGatewayCleanupRoots {
+    $root = Get-CleanGatewayCleanupRoot
+    foreach ($path in @($root, (Split-Path -Parent $root))) {
+        $full = Assert-CleanPath $path
+        if ((Test-Path -LiteralPath $full) -and -not @(Get-ChildItem -LiteralPath $full -Force).Count) {
+            Remove-Item -LiteralPath $full -Force -ErrorAction Stop
+        }
     }
 }
 
@@ -890,6 +960,7 @@ function Invoke-OpenClawClean {
         $profiles += Join-Path $root 'OpenClawTray'
         if ($Dev) { $profiles += Join-Path $root 'OpenClawTray-Dev' }
     }
+    $profiles += @(Get-CleanGatewayCleanupProfiles $Dev)
     $profiles += $Extra
     foreach ($extraPath in $Extra) {
         $extraFull = Assert-CleanPath $extraPath
@@ -934,6 +1005,7 @@ function Invoke-OpenClawClean {
     if ($Models) { $modelsToRemove = @(Get-CleanModels $files | Sort-Object Path -Unique) }
     $processes = @(Get-CleanProcesses $ownedRoots)
     $startup = @(Get-CleanStartup $Dev $ownedRoots)
+    $cleanupTasks = @(Get-CleanGatewayCleanupTasks $Dev)
     $gateways = @($packages | Where-Object { $_.Name -in @('OpenClawFoundation.OpenClawGateway','OpenClaw.Gateway') })
     foreach ($gateway in $gateways) {
         $alias = Join-Path $env:LOCALAPPDATA "Microsoft\WindowsApps\$($gateway.PackageFamilyName)\clawctl.exe"
@@ -953,7 +1025,11 @@ function Invoke-OpenClawClean {
     }
     foreach ($model in $modelsToRemove) { Write-Host "REMOVE shared model: $($model.Path) ($($model.Size) bytes; digest checked before removal)" }
     foreach ($process in $processes) { Write-Host "STOP PID $($process.ProcessId): $($process.ExecutablePath) [$($process.CreationDate)]" }
-    foreach ($entry in $startup) { Write-Host "REMOVE $($entry.Kind): $($entry.Key)\$($entry.Name)" }
+    foreach ($entry in @($startup) + @($cleanupTasks)) { Write-Host "REMOVE $($entry.Kind): $($entry.Key)\$($entry.Name)" }
+    $cleanupRoot = Get-CleanGatewayCleanupRoot
+    foreach ($path in @($cleanupRoot, (Split-Path -Parent $cleanupRoot)) | Where-Object { Test-Path -LiteralPath $_ }) {
+        Write-Host "REMOVE if empty after cleanup: $path"
+    }
     foreach ($distro in $distros) {
         $action = if ($distro -in $selectedDistros) { 'DESTROY WSL filesystem' } else { 'PRESERVE WSL' }
         Write-Host "${action}: $distro"
@@ -988,6 +1064,7 @@ function Invoke-OpenClawClean {
             models = $modelsToRemove
             processes = @($processes | Select-Object ProcessId, CreationDate, ExecutablePath)
             startup = @($startup | Select-Object Kind, Key, Name)
+            gatewayCleanupTasks = @($cleanupTasks | Select-Object Key, Name)
             removeDistros = $selectedDistros
             preserveDistros = @($distros | Where-Object { $_ -notin $selectedDistros })
         } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $Reports 'plan.json') -Encoding UTF8
@@ -1015,6 +1092,8 @@ function Invoke-OpenClawClean {
             Write-Host "TEARDOWN: $($gateway.PackageFullName)"
             Invoke-CleanTeardown $gateway $Reports
         }
+        # An armed task reacts to package removal: it could race this run or unregister a preserved distro.
+        foreach ($entry in $cleanupTasks) { Remove-CleanTask $entry }
         foreach ($package in @($gateways) + @($packages | Where-Object { $_ -notin $gateways })) {
             Write-Host "UNINSTALL: $($package.PackageFullName)"
             Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
@@ -1030,11 +1109,7 @@ function Invoke-OpenClawClean {
                     }
                 }
             } else {
-                $task = @(Get-ScheduledTask -ErrorAction Stop | Where-Object { $_.TaskName -eq $entry.Name -and $_.TaskPath -eq $entry.Key })
-                if ($task.Count -gt 0) {
-                    if ((Export-ScheduledTask -InputObject $task[0]) -ne $entry.Value) { throw "Startup task changed: $($entry.Name)" }
-                    Unregister-ScheduledTask -InputObject $task[0] -Confirm:$false -ErrorAction Stop
-                }
+                Remove-CleanTask $entry
             }
         }
         foreach ($distro in $selectedDistros) {
@@ -1063,6 +1138,7 @@ function Invoke-OpenClawClean {
                 Write-Host "REMOVED profile: $profile"
             }
         }
+        Remove-CleanEmptyGatewayCleanupRoots
         foreach ($model in $modelsToRemove) {
             $null = Assert-CleanPath $model.Path
             if (Test-Path -LiteralPath $model.Path) {
@@ -1078,6 +1154,7 @@ function Invoke-OpenClawClean {
             if (Test-Path -LiteralPath $path) { throw "Target remains: $path" }
         }
         if (@(Get-CleanStartup $Dev $ownedRoots).Count -gt 0) { throw 'A startup entry remains.' }
+        if (@(Get-CleanGatewayCleanupTasks $Dev).Count -gt 0) { throw 'A Gateway cleanup task remains.' }
         $afterRecords = @(Get-CleanDistroRecords)
         $afterDistros = @($afterRecords | ForEach-Object { $_.Name })
         foreach ($distro in $selectedDistros) {
