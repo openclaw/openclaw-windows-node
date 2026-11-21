@@ -17,32 +17,58 @@ namespace OpenClawTray.Dialogs;
 /// already-sanitized command text plus context rows and offers Deny / Allow Once /
 /// Allow Always.
 ///
-/// Security posture: the allow buttons are never default-focused and stay disabled for
-/// a short delay so the dialog cannot be click-through approved; Escape, the X button,
-/// and Alt+F4 all resolve to Deny.
+/// Security posture: the prompt opens from a background gateway event, so it never takes
+/// the foreground or keyboard focus from the application the user is typing in. Every
+/// decision button, Deny included, stays disabled for a short delay after the prompt is
+/// first rendered so a stray click or keystroke cannot decide it. Once the user activates
+/// the prompt and it is armed, focus moves to Deny so Enter can never approve. Escape
+/// (after the delay), the X button, and Alt+F4 all resolve to Deny.
 /// </summary>
 public sealed class ExecApprovalDialog : WindowEx
 {
     [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
-    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    private static extern bool FlashWindowEx(ref FLASHWINFO pwfi);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FLASHWINFO
+    {
+        public uint cbSize;
+        public IntPtr hwnd;
+        public uint dwFlags;
+        public uint uCount;
+        public uint dwTimeout;
+    }
 
     private static readonly IntPtr HWND_TOPMOST = new(-1);
     private static readonly IntPtr HWND_NOTOPMOST = new(-2);
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint FLASHW_TRAY = 0x0002;
+    private const uint FLASHW_TIMERNOFG = 0x000C;
 
-    private static readonly TimeSpan AllowArmDelay = TimeSpan.FromMilliseconds(1500);
+    private const int WindowWidth = 520;
+    private const int WindowHeight = 400;
+
+    private static readonly TimeSpan DecisionArmDelay = TimeSpan.FromMilliseconds(1500);
+    private static readonly TimeSpan FirstFrameFallback = TimeSpan.FromSeconds(1);
 
     private readonly TaskCompletionSource<ExecApprovalPromptOutcome> _tcs =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Button _denyButton;
     private readonly Button _allowOnceButton;
     private readonly Button _allowAlwaysButton;
+    private readonly Grid _windowContent;
 
     private DispatcherTimer? _armTimer;
+    private DispatcherTimer? _firstFrameFallbackTimer;
+    private bool _armDelayStarted;
+    private bool _decisionsArmed;
+    private bool _windowActive;
+    private bool _denyFocusApplied;
     private ExecApprovalPromptOutcome _outcome = ExecApprovalPromptOutcome.Deny;
 
     private readonly bool _allowAlwaysAvailable;
@@ -57,8 +83,7 @@ public sealed class ExecApprovalDialog : WindowEx
 
         var windowTitle = $"{AppIdentity.DisplayName} - {LocalizationHelper.GetString("ExecApproval_WindowTitle")}";
         Title = windowTitle;
-        this.SetWindowSize(520, 400);
-        this.CenterOnScreen();
+        PlaceCenteredWithoutActivating();
         this.SetIcon("Assets\\openclaw.ico");
         SystemBackdrop = new MicaBackdrop();
         ExtendsContentIntoTitleBar = true;
@@ -201,6 +226,7 @@ public sealed class ExecApprovalDialog : WindowEx
 
         Grid.SetRow(root, 1);
         outerGrid.Children.Add(root);
+        _windowContent = outerGrid;
         Content = outerGrid;
 
         // Escape denies from anywhere in the window.
@@ -217,45 +243,115 @@ public sealed class ExecApprovalDialog : WindowEx
         outerGrid.KeyboardAcceleratorPlacementMode =
             Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
 
+        Activated += OnWindowActivated;
         Closed += OnWindowClosed;
-        ArmAllowGuard();
+        ArmDecisionGuard();
     }
 
     /// <summary>
-    /// Activates the window, forces it to the foreground (it opens from a background
-    /// gateway event), and returns the user's decision. Closing via X or Alt+F4 denies.
+    /// Shows the prompt above other windows without activating it, so keystrokes keep
+    /// going to the application the user is working in, and returns the user's decision.
+    /// Closing via X or Alt+F4 denies.
     /// </summary>
     public Task<ExecApprovalPromptOutcome> ShowAsync()
     {
-        Activate();
+        AppWindow.Show(activateWindow: false);
         try
         {
             var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
             if (hwnd != IntPtr.Zero)
             {
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-                SetForegroundWindow(hwnd);
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                // Taskbar attention cue in place of taking focus; stops once the user
+                // switches to the prompt.
+                var flash = new FLASHWINFO
+                {
+                    cbSize = (uint)Marshal.SizeOf<FLASHWINFO>(),
+                    hwnd = hwnd,
+                    dwFlags = FLASHW_TRAY | FLASHW_TIMERNOFG,
+                };
+                FlashWindowEx(ref flash);
             }
         }
         catch { /* best-effort */ }
 
-        // Initial focus lands on Deny so Enter can never approve.
-        _denyButton.Focus(FocusState.Programmatic);
+        // No focus on open: the user brings the prompt forward by clicking or switching
+        // to it, and only then does Deny receive focus (see FocusDenyAfterUserActivation).
+        if (_firstFrameFallbackTimer is null)
+        {
+            CompositionTarget.Rendering += OnFirstFrameRendering;
+            _firstFrameFallbackTimer = new DispatcherTimer { Interval = FirstFrameFallback };
+            _firstFrameFallbackTimer.Tick += (_, _) => StartArmDelay();
+            _firstFrameFallbackTimer.Start();
+        }
         return _tcs.Task;
     }
 
     private void Decide(ExecApprovalPromptOutcome outcome)
     {
-        if (IsClosed) return;
+        // Decisions, Escape included, are ignored until the guard arms. Closing the
+        // window (X or Alt+F4) still resolves Deny at any time.
+        if (IsClosed || !_decisionsArmed) return;
         _outcome = outcome;
         Close();
     }
 
-    // Anti-clickthrough: allow buttons arm after a short delay, independently of
-    // command length or scroll position. Deny is always active.
-    private void ArmAllowGuard()
+    // Restores the keyboard safeguard without taking focus: Deny is focused only after
+    // the user has activated the prompt and decisions are armed, once per prompt.
+    private void OnWindowActivated(object sender, WindowActivatedEventArgs args)
     {
+        _windowActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        FocusDenyAfterUserActivation();
+    }
+
+    private void FocusDenyAfterUserActivation()
+    {
+        if (IsClosed || _denyFocusApplied || !_decisionsArmed || !_windowActive) return;
+        _denyFocusApplied = true;
+        _denyButton.Focus(FocusState.Programmatic);
+    }
+
+    // WinUIEx SetWindowSize and CenterOnScreen call SetWindowPos without SWP_NOACTIVATE.
+    // AppWindow placement never requests activation.
+    private void PlaceCenteredWithoutActivating()
+    {
+        var scale = this.GetDpiForWindow() / 96d;
+        var area = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(
+            AppWindow.Id, Microsoft.UI.Windowing.DisplayAreaFallback.Nearest).WorkArea;
+        var width = Math.Min((int)Math.Round(WindowWidth * scale), area.Width);
+        var height = Math.Min((int)Math.Round(WindowHeight * scale), area.Height);
+        AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(
+            area.X + Math.Max(0, (area.Width - width) / 2),
+            area.Y + Math.Max(0, (area.Height - height) / 2),
+            width, height));
+    }
+
+    // Rendering is raised before each frame on the UI thread, so wait until this window's
+    // content is loaded; the arm delay then runs from the prompt's first render pass.
+    private void OnFirstFrameRendering(object? sender, object e)
+    {
+        if (!_windowContent.IsLoaded) return;
+        StartArmDelay();
+    }
+
+    // Starts the arm delay once: from the first render pass, or from the fallback if no
+    // frame is observed, so the prompt can never stay undecidable.
+    private void StartArmDelay()
+    {
+        CompositionTarget.Rendering -= OnFirstFrameRendering;
+        _firstFrameFallbackTimer?.Stop();
+        if (_armDelayStarted || IsClosed) return;
+        _armDelayStarted = true;
+        _armTimer?.Start();
+    }
+
+    // Anti-clickthrough: every decision button starts disabled and arms together after a
+    // short delay from the first render pass, independently of command length or scroll
+    // position. A prompt that appears under the pointer or keyboard cannot be decided early.
+    private void ArmDecisionGuard()
+    {
+        _denyButton.IsEnabled = false;
         _allowOnceButton.IsEnabled = false;
         _allowAlwaysButton.IsEnabled = false;
         var hint = LocalizationHelper.GetString("ExecApproval_ArmHint");
@@ -263,18 +359,20 @@ public sealed class ExecApprovalDialog : WindowEx
         if (_allowAlwaysAvailable)
             ToolTipService.SetToolTip(_allowAlwaysButton, hint);
 
-        _armTimer = new DispatcherTimer { Interval = AllowArmDelay };
+        _armTimer = new DispatcherTimer { Interval = DecisionArmDelay };
         _armTimer.Tick += (_, _) =>
         {
             _armTimer?.Stop();
             if (IsClosed) return;
 
+            _decisionsArmed = true;
+            _denyButton.IsEnabled = true;
             _allowOnceButton.IsEnabled = true;
             _allowAlwaysButton.IsEnabled = _allowAlwaysAvailable;
             ToolTipService.SetToolTip(_allowOnceButton, null);
             ToolTipService.SetToolTip(_allowAlwaysButton, null);
+            FocusDenyAfterUserActivation();
         };
-        _armTimer.Start();
     }
 
     private static Border BuildConfusableWarning()
@@ -306,6 +404,9 @@ public sealed class ExecApprovalDialog : WindowEx
     {
         IsClosed = true;
         _armTimer?.Stop();
+        _firstFrameFallbackTimer?.Stop();
+        CompositionTarget.Rendering -= OnFirstFrameRendering;
+        Activated -= OnWindowActivated;
         Closed -= OnWindowClosed;
         _tcs.TrySetResult(_outcome);
     }
