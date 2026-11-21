@@ -88,9 +88,14 @@ public static class InteractiveGatewayCredentialResolver
                 return true;
             }
 
-            // Fall back to standard credential resolution (DeviceToken → Bootstrap)
+            // Device and bootstrap tokens come from this URL's identity directory.
+            // The root copy can be stamped for an older URL, and the settings
+            // file can still hold that older token without a stamp.
             var resolver = new CredentialResolver(identityReader);
-            var resolved = resolver.ResolveOperator(active, registry!.GetIdentityDirectory(active.Id));
+            var identityDirectory = LegacyStartupDeviceToken.SelectIdentityDirectory(
+                registry!.GetIdentityDirectory(active.Id),
+                active.Url);
+            var resolved = resolver.ResolveOperator(active, identityDirectory);
             if (resolved != null)
             {
                 if (authorizeCredential is not null &&
@@ -108,11 +113,18 @@ public static class InteractiveGatewayCredentialResolver
             }
 
             if (active.NativePackageFamilyName is not null ||
-                !string.Equals(active.Url, effectiveGatewayUrl, StringComparison.OrdinalIgnoreCase))
+                !string.Equals(
+                    LegacyStartupDeviceToken.EndpointIdentityKey(active.Url),
+                    LegacyStartupDeviceToken.EndpointIdentityKey(effectiveGatewayUrl),
+                    StringComparison.Ordinal))
             {
                 credential = null;
                 return false;
             }
+
+            // The settings identity file can still hold an older device token.
+            // A matching URL may use the legacy shared or bootstrap token only.
+            settingsDirectory = Path.Combine(settingsDirectory, "no-legacy-device-identity");
         }
 
         var gatewayUrl = effectiveGatewayUrl;

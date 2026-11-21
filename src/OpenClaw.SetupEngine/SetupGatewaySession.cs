@@ -54,7 +54,10 @@ public sealed class SetupGatewaySession : IAsyncDisposable
             GatewayDashboardBinding.Capture(active) != completion.EndpointBinding ||
             !SetupCompletionAuthority.IsValid(completion.IdentityBinding, completion.SessionKey, completion.AgentId))
             throw new InvalidOperationException("The verified Gateway changed before setup completed. Return to that Gateway and verify again.");
-        SetupCompletionAuthority.RequirePersistedIdentity(registry.GetIdentityDirectory(active.Id), completion.IdentityBinding);
+        var identityDirectory = LegacyStartupDeviceToken.SelectIdentityDirectory(
+            registry.GetIdentityDirectory(active.Id),
+            active.Url);
+        SetupCompletionAuthority.RequirePersistedIdentity(identityDirectory, completion.IdentityBinding);
     }
 
     public static async Task<SetupGatewaySession> ConnectAsync(
@@ -80,7 +83,9 @@ public sealed class SetupGatewaySession : IAsyncDisposable
         }
         LocalAiOnboardingUse.RequireGateway(expectedGatewayId, record.Id);
         RequireCurrentGateway();
-        var identityPath = registry.GetIdentityDirectory(record.Id);
+        var identityPath = LegacyStartupDeviceToken.SelectIdentityDirectory(
+            registry.GetIdentityDirectory(record.Id),
+            record.Url);
         var deviceToken = DeviceIdentity.TryReadStoredDeviceToken(identityPath);
         var token = deviceToken ?? record.SharedGatewayToken ?? record.BootstrapToken
             ?? throw new InvalidOperationException("No gateway credential found.");
