@@ -22,7 +22,10 @@ internal sealed class SetupWindowSizingController : IDisposable
         _window.AppWindow.Changed += WindowChanged;
         _window.Closed += WindowClosed;
         ApplyMinimumSize();
-        var initial = SetupWindowSizing.InitialPixels(GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(window)));
+        var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));
+        var work = WorkArea();
+        var initial = SetupWindowSizing.FitInitialPixels(SetupWindowSizing.InitialPixels(dpi), work,
+            SetupWindowSizing.FitMinimumPixels(SetupWindowSizing.MinimumPixels(dpi), work));
         _window.AppWindow.Resize(new Windows.Graphics.SizeInt32(initial.Width, initial.Height));
         if (_content.IsLoaded) AttachRoot();
     }
@@ -53,11 +56,18 @@ internal sealed class SetupWindowSizingController : IDisposable
     {
         if (_disposed || _window.AppWindow.Presenter is not OverlappedPresenter presenter) return;
         var dpi = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(_window));
-        var minimum = SetupWindowSizing.MinimumPixels(dpi);
+        var minimum = SetupWindowSizing.FitMinimumPixels(SetupWindowSizing.MinimumPixels(dpi), WorkArea());
         if (presenter.PreferredMinimumWidth != minimum.Width)
             presenter.PreferredMinimumWidth = minimum.Width;
         if (presenter.PreferredMinimumHeight != minimum.Height)
             presenter.PreferredMinimumHeight = minimum.Height;
+    }
+
+    // The display the window is on now; recomputed when it moves to another monitor.
+    private (int Width, int Height) WorkArea()
+    {
+        var work = DisplayArea.GetFromWindowId(_window.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        return (work.Width, work.Height);
     }
 
     private void WindowClosed(object sender, WindowEventArgs args) => Dispose();

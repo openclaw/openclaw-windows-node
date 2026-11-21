@@ -36,12 +36,18 @@ internal sealed record GatewayDirectConnectResult(
 /// </summary>
 internal sealed class GatewayDirectConnectService
 {
+    private const string TerminalTimeoutMessage = "Timed out waiting for the gateway connection.";
+    private const int DeadlineOpen = 0;
+    private const int DeadlineExpired = 1;
+    private const int DeadlineCompleted = 2;
+
     private readonly IGatewayConnectionManager _connectionManager;
     private readonly GatewayRegistry _registry;
     private readonly SettingsManager _settings;
     private readonly Action _reconcileRuntimeTunnel;
     private readonly IOpenClawLogger _logger;
     private readonly TimeSpan _terminalTimeout;
+    private readonly TimeProvider _timeProvider;
 
     public GatewayDirectConnectService(
         IGatewayConnectionManager connectionManager,
@@ -49,7 +55,8 @@ internal sealed class GatewayDirectConnectService
         SettingsManager settings,
         Action reconcileRuntimeTunnel,
         IOpenClawLogger logger,
-        TimeSpan? terminalTimeout = null)
+        TimeSpan? terminalTimeout = null,
+        TimeProvider? timeProvider = null)
     {
         _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
@@ -58,6 +65,7 @@ internal sealed class GatewayDirectConnectService
             throw new ArgumentNullException(nameof(reconcileRuntimeTunnel));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _terminalTimeout = terminalTimeout ?? TimeSpan.FromSeconds(15);
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<GatewayDirectConnectResult> ConnectAsync(
@@ -455,6 +463,24 @@ internal sealed class GatewayDirectConnectService
     {
         var completion = new TaskCompletionSource<GatewayConnectionSnapshot>(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        using var attempt = new CancellationTokenSource();
+        var connectReturned = 0;
+        // ConnectAsync starts the transport and returns; the transport's lifetime stays linked
+        // to the attempt token. The native deadline and a successful terminal state race for
+        // one decision, so a deadline callback that is already running cannot cancel a
+        // connection that was reported as successful.
+        var deadlineState = DeadlineOpen;
+
+        bool TryClaimSuccess() =>
+            Interlocked.CompareExchange(ref deadlineState, DeadlineCompleted, DeadlineOpen) != DeadlineExpired;
+
+        void OnDeadline(object? _)
+        {
+            if (Interlocked.CompareExchange(ref deadlineState, DeadlineExpired, DeadlineOpen) != DeadlineOpen)
+                return;
+            try { attempt.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
 
         void OnStateChanged(object? sender, GatewayConnectionSnapshot snapshot)
         {
@@ -462,47 +488,63 @@ internal sealed class GatewayDirectConnectService
                 IsTerminal(snapshot))
             {
                 completion.TrySetResult(snapshot);
+                // While ConnectAsync is still running, the deadline still bounds it; the main
+                // path claims success after it returns if the completion is already set.
+                if (Volatile.Read(ref connectReturned) == 1)
+                    TryClaimSuccess();
             }
         }
 
+        // An expired native attempt is a timeout, not a user cancellation.
+        void ClaimSuccessOrThrow()
+        {
+            if (!nativeSetup || (TryClaimSuccess() && !attempt.IsCancellationRequested))
+                return;
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new TimeoutException(TerminalTimeoutMessage);
+        }
+
         _connectionManager.StateChanged += OnStateChanged;
-        using var attempt = new CancellationTokenSource();
         using var cancellation = cancellationToken.Register(attempt.Cancel);
-        if (nativeSetup)
-            attempt.CancelAfter(_terminalTimeout);
+        using var deadline = nativeSetup
+            ? _timeProvider.CreateTimer(OnDeadline, null, _terminalTimeout, Timeout.InfiniteTimeSpan)
+            : null;
         try
         {
             if (nativeSetup)
                 await _connectionManager.ConnectAsync(recordId, attempt.Token);
             else
                 await _connectionManager.ConnectAsync(recordId);
+            Interlocked.Exchange(ref connectReturned, 1);
+            if (completion.Task.IsCompleted)
+                TryClaimSuccess();
             cancellationToken.ThrowIfCancellationRequested();
             var current = _connectionManager.CurrentSnapshot;
             if (string.Equals(current.GatewayId, recordId, StringComparison.Ordinal) &&
                 IsTerminal(current))
             {
-                if (nativeSetup)
-                    attempt.Token.ThrowIfCancellationRequested();
+                ClaimSuccessOrThrow();
                 return current;
             }
 
-            var timeout = Task.Delay(_terminalTimeout, cancellationToken);
+            var timeout = Task.Delay(_terminalTimeout, _timeProvider, cancellationToken);
             var completed = await Task.WhenAny(completion.Task, timeout);
-            if (completed == completion.Task)
+            // completion resumes asynchronously, so the deadline can win WhenAny after the
+            // terminal state already arrived. Report that state instead of a timeout.
+            if (completed == completion.Task || completion.Task.IsCompleted)
             {
-                if (nativeSetup)
-                    attempt.Token.ThrowIfCancellationRequested();
+                ClaimSuccessOrThrow();
                 return await completion.Task;
             }
             if (nativeSetup)
                 attempt.Cancel();
             cancellationToken.ThrowIfCancellationRequested();
-            throw new TimeoutException("Timed out waiting for the gateway connection.");
+            throw new TimeoutException(TerminalTimeoutMessage);
         }
         finally
         {
             // A successfully committed connection must outlive the editor's cancellation scope.
-            attempt.CancelAfter(Timeout.InfiniteTimeSpan);
+            deadline?.Dispose();
             _connectionManager.StateChanged -= OnStateChanged;
         }
     }

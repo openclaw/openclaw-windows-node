@@ -71,16 +71,6 @@ public sealed partial class WorkspacePage : Page
         };
     }
 
-    private void OnPageSizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        var available = e.NewSize.Width;
-        if (double.IsNaN(available) || available <= 0) return;
-        var max = ContentRoot.MaxWidth;
-        ContentRoot.Width = double.IsNaN(max) || double.IsInfinity(max)
-            ? available
-            : Math.Min(available, max);
-    }
-
     public void Initialize()
     {
         if (_appState != null) _appState.PropertyChanged -= OnAppStateChanged;

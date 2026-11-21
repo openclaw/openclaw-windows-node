@@ -241,9 +241,9 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 if (textScale <= 1)
                 {
                     Assert.True(scroll.ViewportHeight >= 280);
-                    Assert.InRange(header.ActualHeight, OnboardingMascot.HeroSize, 300);
+                    Assert.InRange(header.ActualHeight, 1, 300);
                 }
-                OnboardingNativeProof.AssertHeroLayout(Find<OnboardingMascot>(page, "MascotHero"), output);
+                OnboardingNativeProof.AssertFullyVisible((await OnboardingNativeProof.CompanionAsync(page)).Mascot, root);
                 OnboardingNativeProof.AssertFullyVisible(header, root);
                 Assert.Empty(TestSupport.FindDescendants<ListViewItem>(scroll));
                 using (await OnboardingNativeProof.CaptureAsync(window, $"ai-focused-default-{theme}", output,
@@ -466,7 +466,18 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             // Opening the form already scheduled an animated bring-into-view.
             // Capture its settled viewport, not an intermediate compositor offset.
             await TestSupport.WaitForRenderedConditionAsync(
-                () => viewportSettled && scroll.VerticalOffset > 0, "API key form finishes scrolling before opening provider");
+                () => viewportSettled, "API key form finishes scrolling before opening provider",
+                () => $"offset={scroll.VerticalOffset}; scrollable={scroll.ScrollableHeight}; viewport={scroll.ViewportHeight}");
+            if (scroll.VerticalOffset == 0)
+            {
+                // The form can already be in view; preserve a known non-zero backdrop offset that keeps it visible.
+                var inputTop = input.TransformToVisual(scroll).TransformPoint(new Windows.Foundation.Point(0, 0)).Y;
+                var target = Math.Min(scroll.ScrollableHeight, Math.Floor(inputTop) - 1);
+                Assert.True(target > 0, $"input top {inputTop}, scrollable {scroll.ScrollableHeight}");
+                scroll.ChangeView(null, target, null, true);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => viewportSettled && scroll.VerticalOffset > 0, "backdrop scrolled before opening provider");
+            }
             var offset = scroll.VerticalOffset;
             var candidates = Find<ItemsControl>(page, "CandidateChoices").ItemsSource;
             var subtitle = Find<TextBlock>(page, "StatusText").Text;
@@ -1269,7 +1280,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     [InlineData(LocalAiOnboardingState.Use, ElementTheme.Light)]
     [InlineData(LocalAiOnboardingState.Use, ElementTheme.Dark)]
     [Trait("Category", "NativeOnboardingProof")]
-    public async Task LocalAi_FullWindowCentersHeadingAndShowsStateGroupsAndFooter(
+    public async Task LocalAi_FullWindowShowsHeadingStateGroupsAndFooter(
         LocalAiOnboardingState state, ElementTheme theme)
     {
         var localHost = new PageLocalAiHost(state);
@@ -1279,15 +1290,14 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             var grid = Assert.IsType<Grid>(page.Content);
             var heading = Find<TextBlock>(page, "TitleText");
             var subtitle = Find<TextBlock>(page, "StatusText");
-            var mascot = Find<OnboardingMascot>(page, "MascotHero");
             var scroll = Assert.Single(grid.Children.OfType<ScrollViewer>());
-            var footer = Assert.Single(grid.Children.OfType<Grid>(), child => Grid.GetRow(child) == 2);
+            var footer = Assert.Single(grid.Children.OfType<StackPanel>(), child => Grid.GetRow(child) == 2);
             var card = Find<SettingsCard>(page, "LocalAiCard");
             var scale = root.XamlRoot.RasterizationScale;
             Windows.Foundation.Rect Bounds(FrameworkElement element) => element.TransformToVisual(root)
                 .TransformBounds(new Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
             var header = Find<StackPanel>(page, "AiHeader");
-            Assert.Same(header, mascot.Parent);
+            Assert.Same(header, heading.Parent);
             Assert.Equal(HorizontalAlignment.Stretch, header.HorizontalAlignment);
             foreach (var text in new[] { heading, subtitle })
             {
@@ -1295,21 +1305,19 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 Assert.False(text.IsTextTrimmed);
                 OnboardingNativeProof.AssertFullyVisible(text, root);
             }
-            OnboardingNativeProof.AssertHeroLayout(mascot, output);
-            Assert.True(Bounds(mascot).Bottom <= Bounds(heading).Top);
-            Assert.Equal(TextAlignment.Center, heading.TextAlignment);
-            Assert.Equal(TextAlignment.Center, subtitle.TextAlignment);
+            Assert.True(Bounds(heading).Bottom <= Bounds(subtitle).Top);
+            Assert.Equal(TextAlignment.Left, heading.TextAlignment);
+            Assert.Equal(TextAlignment.Left, subtitle.TextAlignment);
             var textScale = new Windows.UI.ViewManagement.UISettings().TextScaleFactor;
             if (textScale <= 1)
             {
-                Assert.InRange(header.ActualHeight, OnboardingMascot.HeroSize, 300);
+                Assert.InRange(header.ActualHeight, 1, 300);
                 Assert.True(scroll.ViewportHeight >= 280, $"Actual AI body: {scroll.ViewportHeight} DIPs.");
             }
             Assert.Equal(0, NativeProofLayout.PhysicalPixels(scroll.ScrollableWidth, scale));
             Assert.Equal("Connect an AI provider or model.", subtitle.Text);
             Assert.Equal(theme, page.ActualTheme);
             Assert.Equal(theme, heading.ActualTheme);
-            OnboardingNativeProof.AssertFullyVisible(mascot, root);
             OnboardingNativeProof.AssertFullyVisible(footer, root);
             OnboardingNativeProof.AssertFullyVisible(card, scroll);
             OnboardingNativeProof.AssertFullyVisible(Find<TextBlock>(page, "LocalAiTitle"), scroll);
@@ -1331,7 +1339,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
                 $"onboarding-ai-full-{state}-{theme}-local", output,
                 ["Set up your AI", "Refresh"],
                 new { state, theme, titleBounds = Bounds(heading), subtitleBounds = Bounds(subtitle),
-                    heroBounds = Bounds(mascot), localBounds = Bounds(card), footerBounds = Bounds(footer),
+                    heroBounds = Bounds(header), localBounds = Bounds(card), footerBounds = Bounds(footer),
                     headerHeight = header.ActualHeight, viewportHeight = scroll.ViewportHeight, textScale },
                 requiredContent: page)) { }
             var originalOffset = scroll.VerticalOffset;
@@ -1702,7 +1710,9 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             var card = Find<SettingsCard>(page, "LocalAiCard");
             await TestSupport.WaitForSettingsCardReadyAsync(page, card);
             card.IsClickEnabled = false;
-            var error = await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() => InvokeLocalAiAsync(page));
+            // The card cannot become ready again, so prove the timeout report without the full render budget.
+            var error = await Assert.ThrowsAnyAsync<Xunit.Sdk.XunitException>(() =>
+                InvokeLocalAiAsync(page, TestSupport.NegativeObservationTimeout));
             Assert.Contains("AiSetupPage.LocalAiCard ready for invocation", error.Message);
             Assert.Contains("IsLoaded=True", error.Message);
             Assert.Contains("IsEnabled=True", error.Message);
@@ -2208,7 +2218,7 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
     {
         var steps = Find<StackPanel>(page, "StepsPanel");
         Assert.Equal(4, steps.Children.Count);
-        var status = Assert.IsType<SetupPhaseStatus>(Assert.IsType<SettingsCard>(steps.Children[3]).Content);
+        var status = Assert.IsType<SetupPhaseStatus>(steps.Children[3]);
         Assert.True(Find<ProgressRing>(status, "RunningIcon").IsActive);
         Assert.Equal(Visibility.Collapsed, Find<FontIcon>(status, "CompleteIcon").Visibility);
     }
@@ -2529,10 +2539,10 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
         provider.Invoke();
     }
 
-    private Task InvokeLocalAiAsync(AiSetupPage page) =>
-        InvokeCardAsync(Find<SettingsCard>(page, "LocalAiCard"));
+    private Task InvokeLocalAiAsync(AiSetupPage page, TimeSpan? readinessTimeout = null) =>
+        InvokeCardAsync(Find<SettingsCard>(page, "LocalAiCard"), readinessTimeout);
 
-    private Task InvokeCardAsync(SettingsCard card)
+    private Task InvokeCardAsync(SettingsCard card, TimeSpan? readinessTimeout = null)
     {
         if (_nativeProof)
             return OnboardingNativeProof.InvokeSettingsCardAsync(ui.TestWindow, card);
@@ -2545,12 +2555,12 @@ public sealed class OnboardingAiPageTests(UIThreadFixture ui, ITestOutputHelper 
             "RecommendedInstallCard" => "RecommendedInstall_Click",
             _ => throw new InvalidOperationException($"Unsupported AI setup card: {card.Name}")
         };
-        return InvokeReadyCardAsync(page, card, handler);
+        return InvokeReadyCardAsync(page, card, handler, readinessTimeout);
     }
 
-    private async Task InvokeReadyCardAsync(AiSetupPage page, SettingsCard card, string handler)
+    private async Task InvokeReadyCardAsync(AiSetupPage page, SettingsCard card, string handler, TimeSpan? readinessTimeout = null)
     {
-        await TestSupport.WaitForSettingsCardReadyAsync(page, card);
+        await TestSupport.WaitForSettingsCardReadyAsync(page, card, readinessTimeout);
         TestSupport.InvokeSettingsCardAction(page, card, handler);
         await ui.YieldToRenderAsync();
     }

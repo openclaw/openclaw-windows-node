@@ -23,14 +23,15 @@ namespace OpenClaw.Tray.UITests;
 /// </summary>
 public static class TestSupport
 {
-    public static Task WaitForSettingsCardReadyAsync(Page page, SettingsCard card) =>
+    public static Task WaitForSettingsCardReadyAsync(Page page, SettingsCard card, TimeSpan? timeout = null) =>
         WaitForRenderedConditionAsync(
             () => card.IsLoaded && card.IsEnabled && card.IsClickEnabled &&
                 page.XamlRoot is not null && ReferenceEquals(page.XamlRoot, card.XamlRoot),
             $"{page.GetType().Name}.{card.Name} ready for invocation",
             () => $"IsLoaded={card.IsLoaded}, IsEnabled={card.IsEnabled}, " +
                 $"IsClickEnabled={card.IsClickEnabled}, PageHasXamlRoot={page.XamlRoot is not null}, " +
-                $"SameXamlRoot={ReferenceEquals(page.XamlRoot, card.XamlRoot)}");
+                $"SameXamlRoot={ReferenceEquals(page.XamlRoot, card.XamlRoot)}",
+            timeout);
 
     /// <summary>Exercise the XAML-wired action boundary, not the toolkit's native input provider.</summary>
     public static void InvokeSettingsCardAction(Page page, SettingsCard card, string handler)
@@ -84,14 +85,24 @@ public static class TestSupport
     }
 
     private const string RenderedConditionTimeoutVariable = "OPENCLAW_UI_RENDER_WAIT_TIMEOUT_SECONDS";
-    private static readonly TimeSpan RenderedConditionTimeout =
+    internal static readonly TimeSpan RenderedConditionTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(RenderedConditionTimeoutVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(10);
     // Re-check even when no frame renders (off-screen windows, dynamically inserted children).
     private static readonly TimeSpan RenderedConditionPollInterval = TimeSpan.FromMilliseconds(50);
 
+    private const string NegativeObservationTimeoutVariable = "OPENCLAW_UI_NEGATIVE_WAIT_TIMEOUT_SECONDS";
+    /// <summary>
+    /// Bounded observation for tests that expect a wait to time out after the precondition is already
+    /// fixed (a disabled card, an absent element). Such tests prove the timeout path, so they need not
+    /// spend the full production or rendered-condition budget waiting for an outcome that cannot change.
+    /// </summary>
+    public static readonly TimeSpan NegativeObservationTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(NegativeObservationTimeoutVariable), out var negativeSeconds) && negativeSeconds > 0
+            ? TimeSpan.FromSeconds(negativeSeconds) : TimeSpan.FromSeconds(2);
+
     public static async Task WaitForRenderedConditionAsync(
-        Func<bool> predicate, string operation, Func<string>? diagnostics = null)
+        Func<bool> predicate, string operation, Func<string>? diagnostics = null, TimeSpan? timeout = null)
     {
         var settled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         void Evaluate()
@@ -111,7 +122,7 @@ public static class TestSupport
         try
         {
             Evaluate();
-            await settled.Task.WaitAsync(RenderedConditionTimeout);
+            await settled.Task.WaitAsync(timeout ?? RenderedConditionTimeout);
         }
         catch (TimeoutException)
         {

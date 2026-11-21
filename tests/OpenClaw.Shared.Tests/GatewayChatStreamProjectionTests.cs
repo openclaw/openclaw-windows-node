@@ -21,6 +21,19 @@ public sealed class GatewayChatStreamProjectionTests
     }
 
     [Fact]
+    public void EmptyReplacementWithFullSnapshot_PreservesClearSignal()
+    {
+        var projected = new GatewayChatStreamProjection().Project(Frame("""
+            {"sessionKey":"s","runId":"r","state":"delta","replace":true,"deltaText":"",
+             "message":{"role":"assistant","content":[{"type":"text","text":""}]}}
+            """), 1, out _);
+        var payload = projected!.Value.GetProperty("payload");
+
+        Assert.Equal("", Text(projected));
+        Assert.True(payload.GetProperty("replace").GetBoolean());
+    }
+
+    [Fact]
     public void ReplacementIsUnsignedAndAppendPreservesMixedPhases()
     {
         var owner = new GatewayChatStreamProjection();

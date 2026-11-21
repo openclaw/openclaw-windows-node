@@ -2,6 +2,7 @@
 <Page x:Class="OpenClawTray.Pages.DebugPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:presentation="using:OpenClawTray.Presentation"
       xmlns:controls="using:Microsoft.UI.Xaml.Controls"
       xmlns:toolkit="using:CommunityToolkit.WinUI.Controls"
       xmlns:helpers="using:OpenClawTray.Helpers">
@@ -25,6 +26,18 @@
 
     <Page.Resources>
         <x:Double x:Key="DiagSettingsCardSpacing">4</x:Double>
+        <Style x:Key="DiagnosticsStatusNeutral" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource TextFillColorSecondaryBrush}"/>
+        </Style>
+        <Style x:Key="DiagnosticsStatusSuccess" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource SystemFillColorSuccessBrush}"/>
+        </Style>
+        <Style x:Key="DiagnosticsStatusCaution" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource SystemFillColorCautionBrush}"/>
+        </Style>
+        <Style x:Key="DiagnosticsStatusCritical" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource SystemFillColorCriticalBrush}"/>
+        </Style>
         <Style x:Key="DiagSectionHeaderTextBlockStyle"
                BasedOn="{StaticResource BodyStrongTextBlockStyle}"
                TargetType="TextBlock">
@@ -45,47 +58,51 @@
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollMode="Disabled">
                 <Grid HorizontalAlignment="Stretch">
-                <StackPanel HorizontalAlignment="Stretch"
-                            MaxWidth="900"
-                            Padding="24,24,24,24"
+                <StackPanel presentation:PageContentLayout.IsEnabled="True"
                             Spacing="{StaticResource DiagSettingsCardSpacing}">
 
                     <!-- Title block (in-stack, same column as cards). -->
+                    <StackPanel Spacing="4" Margin="0,0,0,12">
                     <TextBlock x:Uid="DiagnosticsPage_Title"
                                Text="Diagnostics"
                                AutomationProperties.AutomationId="DebugPageMarker"
-                               Style="{StaticResource TitleTextBlockStyle}"
-                               Margin="0,0,0,2"/>
+                               Style="{StaticResource TitleTextBlockStyle}"/>
                     <TextBlock x:Uid="DiagnosticsPage_Subtitle"
                                Text="Inspect, export, and troubleshoot your OpenClaw installation."
                                TextWrapping="Wrap"
                                Style="{StaticResource CaptionTextBlockStyle}"
-                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                               Margin="0,0,0,12"/>
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
 
-                    <!-- Top status InfoBar. Both actions render as
-                         HyperlinkButtons inside InfoBar.Content (matches
-                         the Win11 Settings convention — see Settings →
-                         System → Storage). Padding=0 strips button chrome
-                         so they read as inline links flush with the
-                         message text. -->
-                    <controls:InfoBar x:Uid="DebugPage_Status" x:Name="StatusInfoBar"
-                                      IsOpen="True"
-                                      IsClosable="False"
-                                      Severity="Informational"
-                                      Title="Status"
-                                      Margin="0,0,0,12">
-                        <controls:InfoBar.Content>
-                            <StackPanel Orientation="Horizontal"
-                                        Spacing="20"
-                                        Margin="0,4,0,8">
-                                <HyperlinkButton x:Uid="DiagnosticsPage_ManageOnConnection"
-                                                 Content="Manage on Connection page"
-                                                 Click="OnManageOnConnection"
-                                                 Padding="0"/>
-                            </StackPanel>
-                        </controls:InfoBar.Content>
-                    </controls:InfoBar>
+                    <Grid x:Name="ConnectionStatusRow" ColumnSpacing="12" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Ellipse x:Name="ConnectionStatusDot" Width="10" Height="10"
+                                 Style="{StaticResource DiagnosticsStatusNeutral}"
+                                 VerticalAlignment="Center"
+                                 AutomationProperties.AccessibilityView="Raw"/>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"
+                                   AutomationProperties.AutomationId="DiagnosticsConnectionStatus"
+                                   AutomationProperties.LiveSetting="Polite">
+                            <Run x:Name="ConnectionStatusTitle" FontWeight="SemiBold"/>
+                            <Run Text="  "/>
+                            <Run x:Name="ConnectionStatusMessage"/>
+                        </TextBlock>
+                        <HyperlinkButton x:Uid="DiagnosticsPage_ManageOnConnection"
+                                         x:Name="ManageConnectionLink" Grid.Column="2"
+                                         HorizontalAlignment="Right" VerticalAlignment="Center"
+                                         Content="Manage on Connection page"
+                                         Click="OnManageOnConnection"
+                                         Padding="0"/>
+                    </Grid>
 
                     <!-- Gateway — shown only when the active gateway is an
                          app-managed WSL distro we can run commands in
@@ -290,14 +307,6 @@
                                Text="Developer tools"
                                Style="{StaticResource DiagSectionHeaderTextBlockStyle}"/>
 
-                    <controls:InfoBar IsOpen="True"
-                                      IsClosable="False"
-                                      Severity="Warning"
-                                      x:Uid="DiagnosticsPage_DeveloperWarning"
-                                      Title="For engineers"
-                                      Message="These tools may change app behavior, restart the app, or open experimental UI."
-                                      Margin="0,0,0,4"/>
-
                     <toolkit:SettingsExpander x:Uid="DiagnosticsPage_Expander_OpenTelemetry"
                                             Header="OpenTelemetry connection"
                                             Description="Sends a small diagnostic probe only to the OTLP collector endpoint you configure.">
@@ -402,9 +411,7 @@
             <Grid x:Name="DetailView"
                   Visibility="Collapsed"
                   HorizontalAlignment="Stretch">
-                <Grid MaxWidth="900"
-                      HorizontalAlignment="Stretch"
-                      Padding="24,24,24,24"
+                <Grid presentation:PageContentLayout.IsEnabled="True"
                       RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>

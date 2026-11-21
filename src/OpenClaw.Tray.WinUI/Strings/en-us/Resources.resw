@@ -17,6 +17,21 @@
       </xsd:complexType>
     </xsd:element>
   </xsd:schema>
+  <data name="DesktopCompanion_Expander.Header" xml:space="preserve"><value>Desktop lobster</value></data>
+  <data name="DesktopCompanion_Expander.Description" xml:space="preserve"><value>Keep an animated lobster on your desktop. Notification text appears in speech bubbles, even when OpenClaw is in the background. Drag to move; right-click for options.</value></data>
+  <data name="DesktopCompanion_Name" xml:space="preserve"><value>OpenClaw desktop lobster</value></data>
+  <data name="DesktopCompanion_QuickChat" xml:space="preserve"><value>Quick chat</value></data>
+  <data name="DesktopCompanion_QuickReply" xml:space="preserve"><value>Quick reply</value></data>
+  <data name="DesktopCompanion_ChatFailed" xml:space="preserve"><value>Chat could not open. Try again.</value></data>
+  <data name="DesktopCompanion_Dismiss" xml:space="preserve"><value>Dismiss bubble</value></data>
+  <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Open notifications</value></data>
+  <data name="DesktopCompanion_Open" xml:space="preserve"><value>Open OpenClaw</value></data>
+  <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Lobster size</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>Only show when other OpenClaw windows are minimized</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>Hide while Setup or the chat/dashboard window is visible.</value></data>
+  <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Resize the lobster without changing chat or notification text.</value></data>
+  <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Desktop lobster settings</value></data>
+  <data name="DesktopCompanion_Failed" xml:space="preserve"><value>The desktop lobster could not be shown. Turn Desktop lobster off and on again in Settings to retry. Your notifications are still available in OpenClaw.</value></data>
   <!-- ==================== SettingsWindow.xaml ==================== -->
   <!-- Section headers -->
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
@@ -2334,8 +2349,11 @@ Use one of these options:
   <data name="VoiceSettingsPage_ModelHeader.Text" xml:space="preserve">
     <value>Speech Model</value>
   </data>
-  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Speech-to-text is disabled. Configure models here, then enable the capability in Permissions when you're ready.</value>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Speech-to-text is disabled</value>
+  </data>
+  <data name="VoiceSettingsPage_SttCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Enable it in Permissions to change these settings.</value>
   </data>
   <data name="VoiceSettingsPage_OpenPermissionsLink.Content" xml:space="preserve">
     <value>Open Permissions</value>
@@ -2406,8 +2424,11 @@ Use one of these options:
   <data name="VoiceSettingsPage_VoiceDescription.Text" xml:space="preserve">
     <value>Choose the voice used when reading responses aloud.</value>
   </data>
-  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Text" xml:space="preserve">
-    <value>Text-to-speech is disabled. Configure providers and voices here, then enable the capability in Permissions when you're ready.</value>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Title" xml:space="preserve">
+    <value>Text-to-speech is disabled</value>
+  </data>
+  <data name="VoiceSettingsPage_TtsCapabilityDisabledNotice.Message" xml:space="preserve">
+    <value>Enable it in Permissions to change the local voice settings.</value>
   </data>
   <data name="VoiceSettingsPage_TtsProviderCombo.Header" xml:space="preserve">
     <value>Provider</value>
@@ -2484,13 +2505,13 @@ Use one of these options:
   <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.Header" xml:space="preserve">
     <value>Voice ID</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. male-qn-qingse</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxModelBox.Header" xml:space="preserve">
     <value>Model</value>
   </data>
-  <data name="VoiceSettingsPage_MiniMaxModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_MiniMaxModelField.PlaceholderText" xml:space="preserve">
     <value>speech-2.8-hd</value>
   </data>
   <data name="VoiceSettingsPage_MiniMaxRegionCombo.Header" xml:space="preserve">
@@ -2861,16 +2882,85 @@ Use one of these options:
     <value>Done</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>COMPACTED HISTORY</value>
+    <value>Context compacted</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} tokens · {2} saved</value>
+    <value>saved {0} tokens ({1}%)</value>
   </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>The compacted transcript is preserved as a checkpoint. Open session checkpoints to branch or restore from that compacted view.</value>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>System</value>
   </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>Open checkpoints</value>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>Automation</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>System · automation recovery</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>Automation failed.</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>System · Gateway restarted</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>System · injected context</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>System · background task</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>Model fallback: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>Returned to selected model: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>Reason: {0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>Couldn’t finish this reply</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} didn’t accept the saved credentials</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} reports a billing problem</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} times</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>Copy error</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>Error details</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>Created</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>Updated</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>Archived</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>Restored</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>Learned</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>Undo</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>Undoing…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>Undone</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>Couldn’t undo the skill change. Try again.</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>New session</value>
@@ -2958,14 +3048,32 @@ Use one of these options:
   <data name="Chat_Composer_Accessibility_Reasoning" xml:space="preserve">
     <value>Reasoning</value>
   </data>
-  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
-    <value>Tokens per second: latest model response, mean (μ), and 95th percentile (p95) over recent model calls in this session. ~ marks a live estimate while streaming.</value>
+  <data name="Chat_ContextUsage_Open" xml:space="preserve">
+    <value>Open context usage details</value>
   </data>
-  <data name="Chat_ContextUsage_Tooltip" xml:space="preserve">
-    <value>Context window usage</value>
+  <data name="Chat_ContextUsage_SummaryFormat" xml:space="preserve">
+    <value>Session context usage: {0} of {1} ({2}%)</value>
   </data>
-  <data name="Chat_Composer_Placeholder_Connected" xml:space="preserve">
-    <value>Message Assistant (Enter to send)</value>
+  <data name="Chat_ContextUsage_ContextWindow" xml:space="preserve">
+    <value>Context window</value>
+  </data>
+  <data name="Chat_ContextUsage_LatestRunTokens" xml:space="preserve">
+    <value>Latest run tokens</value>
+  </data>
+  <data name="Chat_ContextUsage_Input" xml:space="preserve">
+    <value>Input</value>
+  </data>
+  <data name="Chat_ContextUsage_Output" xml:space="preserve">
+    <value>Output</value>
+  </data>
+  <data name="Chat_ContextUsage_Title" xml:space="preserve">
+    <value>Context usage details</value>
+  </data>
+  <data name="Chat_Composer_InputHelp" xml:space="preserve">
+    <value>Enter to send, Shift+Enter for a new line.</value>
+  </data>
+  <data name="Chat_Composer_Placeholder_ConnectedFormat" xml:space="preserve">
+    <value>Message {0}</value>
   </data>
   <data name="Chat_Composer_Placeholder_Connecting" xml:space="preserve">
     <value>Connecting…</value>
@@ -3257,6 +3365,12 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>The connection dropped before the gateway accepted this message.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Could not confirm whether the message was sent. Check the conversation before trying again.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>This conversation is busy. Your draft is still here; try again when it is ready.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Abort failed</value>
   </data>
@@ -3267,7 +3381,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Assistant replied</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Connection lost: response interrupted.</value>
+    <value>Connection lost while waiting for the response. Check the conversation before sending again.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Gateway timeline event dropped</value>
@@ -3656,7 +3770,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_LegacyChat_Header.Text" xml:space="preserve">
     <value>Use gateway's web chat interface</value>
   </data>
-  <data name="SettingsRow_Notifications_Header.Text" xml:space="preserve">
+  <data name="SettingsRow_Notifications_Header.Header" xml:space="preserve">
     <value>Show notifications</value>
   </data>
   <data name="SettingsRow_NotifSound_Header.Text" xml:space="preserve">
@@ -3899,10 +4013,10 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_Location_Description.Text" xml:space="preserve">
     <value>Lets agents read device location via location.* commands.</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsVoiceIdBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsVoiceIdField.PlaceholderText" xml:space="preserve">
     <value>e.g. 21m00Tcm4TlvDq8ikWAM</value>
   </data>
-  <data name="VoiceSettingsPage_ElevenLabsModelBox.PlaceholderText" xml:space="preserve">
+  <data name="VoiceSettingsPage_ElevenLabsModelField.PlaceholderText" xml:space="preserve">
     <value>e.g. eleven_turbo_v2</value>
   </data>
   <data name="ConnectionStatusWindow.Title" xml:space="preserve">
@@ -3926,11 +4040,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionPage_Inactive.Text" xml:space="preserve">
     <value>Inactive</value>
   </data>
-  <data name="ConnectionPage_SeeSessions.Content" xml:space="preserve">
-    <value>See sessions ›</value>
+  <data name="ConnectionPage_SeeSessions.Header" xml:space="preserve">
+    <value>See sessions</value>
   </data>
-  <data name="ConnectionPage_SeeInstances.Content" xml:space="preserve">
-    <value>See instances ›</value>
+  <data name="ConnectionPage_SeeInstances.Header" xml:space="preserve">
+    <value>See instances</value>
   </data>
   <data name="ConnectionPage_NodeMode.Text" xml:space="preserve">
     <value>Node mode</value>
@@ -3947,8 +4061,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="ConnectionPage_Connect2.Content" xml:space="preserve">
     <value>Connect</value>
   </data>
-  <data name="ConnectionPage_ManagePermissions.Content" xml:space="preserve">
-    <value>Manage permissions ›</value>
+  <data name="ConnectionPage_Title.Text" xml:space="preserve">
+    <value>Connection</value>
+  </data>
+  <data name="ConnectionPage_ManagePermissions.Header" xml:space="preserve">
+    <value>Manage permissions</value>
   </data>
   <data name="ConnectionPage_HelpUsFixThis.Text" xml:space="preserve">
     <value>Help us fix this connection:</value>
@@ -4196,7 +4313,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SandboxPage_ProgramsTheAgentRuns.Text" xml:space="preserve">
     <value>Programs the agent runs on this PC are contained.</value>
   </data>
-  <data name="SandboxPage_WhatGetsContained.Text" xml:space="preserve">
+  <data name="SandboxPage_WhatGetsContained.Header" xml:space="preserve">
     <value>What gets contained</value>
   </data>
   <data name="SandboxPage_SeeWhichCommandsThis.Text" xml:space="preserve">
@@ -4287,7 +4404,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Read &amp; write</value>
   </data>
   <data name="SandboxPage_ToolDirectoriesOnYour.Text" xml:space="preserve">
-    <value>Windows runtime folders and private scratch space remain available. Being on PATH does not grant access. Reapply a preset to reset folder choices.</value>
+    <value>Protected folders stay blocked. Windows runtime folders stay available; being on PATH grants no access.</value>
   </data>
   <data name="SandboxPage_CustomFolders.Text" xml:space="preserve">
     <value>Additional folders</value>
@@ -4310,11 +4427,17 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SandboxPage_AddFolder.Content" xml:space="preserve">
     <value>Add folder</value>
   </data>
+  <data name="SandboxPage_AddFolderTitle.Text" xml:space="preserve">
+    <value>Add a new folder</value>
+  </data>
   <data name="SandboxPage_Clipboard.Text" xml:space="preserve">
-    <value>📋 Clipboard</value>
+    <value>Clipboard</value>
+  </data>
+  <data name="SandboxPage_ClipboardAccess.Text" xml:space="preserve">
+    <value>Clipboard access</value>
   </data>
   <data name="SandboxPage_ClipboardOftenContainsPasswords.Text" xml:space="preserve">
-    <value>Clipboard often contains passwords, tokens, and private text. Read access may leak this to the agent (and over the internet, if enabled).</value>
+    <value>Clipboard often holds passwords and private text. Read access exposes it to the agent.</value>
   </data>
   <data name="SandboxPage_NoneDefault.Content" xml:space="preserve">
     <value>None (default)</value>
@@ -4329,7 +4452,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Read &amp; write</value>
   </data>
   <data name="SandboxPage_Network.Text" xml:space="preserve">
-    <value>📡 Network</value>
+    <value>Network</value>
   </data>
   <data name="SandboxPage_AllowInternet.Header" xml:space="preserve">
     <value>Allow internet</value>
@@ -4341,7 +4464,7 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
     <value>Local network devices and shares are not included yet.</value>
   </data>
   <data name="SandboxPage_Limits.Text" xml:space="preserve">
-    <value>⏱ Limits</value>
+    <value>Limits</value>
   </data>
   <data name="SandboxPage_CommandTimeout30Sec.Text" xml:space="preserve">
     <value>Command timeout: 30 sec</value>
@@ -4524,8 +4647,11 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>
   </data>
-  <data name="SettingsPage_RemoveLocalGateway.Content" xml:space="preserve">
+  <data name="SettingsPage_RemoveLocalGateway.Text" xml:space="preserve">
     <value>Remove Local Gateway</value>
+  </data>
+  <data name="SettingsPage_RemoveLocalGatewayAction.Content" xml:space="preserve">
+    <value>Remove</value>
   </data>
   <data name="SettingsPage_Saved.Title" xml:space="preserve">
     <value>Saved</value>
@@ -4823,7 +4949,25 @@ Make sure the gateway is running.</value>
     <value>Shared token</value>
   </data>
   <data name="ConnectionPage_TapToCopySharedToken" xml:space="preserve">
-    <value>Tap to copy shared token</value>
+    <value>Shared Gateway credential. Click to copy it. Keep it private.</value>
+  </data>
+  <data name="ConnectionPage_TopologyTooltip" xml:space="preserve">
+    <value>How this PC reaches the Gateway. {0} means this PC; {1} means the local network; Tailscale and SSH use those connections; {2} means another host.</value>
+  </data>
+  <data name="ConnectionPage_HostnameTooltip" xml:space="preserve">
+    <value>{0} is the Windows PC running Companion and its Windows node capabilities, not necessarily the Gateway host.</value>
+  </data>
+  <data name="ConnectionPage_ClientsTooltip" xml:space="preserve">
+    <value>Connected clients reported by the Gateway. Open Systems in the web dashboard.</value>
+  </data>
+  <data name="ConnectionPage_ChannelsTooltip" xml:space="preserve">
+    <value>Ready channels: {0}/{1}.
+{2}
+
+Open Channels in the web dashboard.</value>
+  </data>
+  <data name="ConnectionPage_UsageTooltip" xml:space="preserve">
+    <value>Estimated Gateway usage cost for today (UTC), in US dollars. Open Usage in the web dashboard.</value>
   </data>
   <data name="ConnectionPage_TopologyViaSshTunnel" xml:space="preserve">
     <value>via SSH tunnel</value>
@@ -5726,7 +5870,7 @@ Make sure the gateway is running.</value>
     <value>Removal failed</value>
   </data>
   <data name="SettingsPage_RemoveLocalGatewayButton" xml:space="preserve">
-    <value>Remove Local Gateway</value>
+    <value>Remove</value>
   </data>
   <data name="SettingsPage_RemovingDistro" xml:space="preserve">
     <value>Removing distro…</value>
@@ -5748,6 +5892,12 @@ Make sure the gateway is running.</value>
   </data>
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
+  </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>The Gateway is running on more than one port but did not attest which listeners belong to its isolated session, so Companion did not send credentials. Gateway features such as MCP apps or a plugin's local proxy open additional ports. Update the Gateway MSIX, then retry. Listener attestation also requires Windows 11 26100.4770 or later.</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>The Gateway is running, but its listener on port {0} did not answer Companion's Gateway protocol check in time, so Companion did not send credentials. Retry in a moment.</value>
   </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
@@ -6184,7 +6334,7 @@ Make sure the gateway is running.</value>
   <data name="Command_GoToDefaultModel_Subtitle" xml:space="preserve"><value>Choose the model the Gateway uses</value></data>
   <data name="LocalAiPage_ModelSelector.Header" xml:space="preserve"><value>Model</value></data>
   <data name="LocalAiPage_CustomModelBox.Header" xml:space="preserve"><value>Custom Hugging Face model (optional)</value></data>
-  <data name="LocalAiPage_CustomModelBox.PlaceholderText" xml:space="preserve"><value>owner/repo, owner/repo:Q4_K_M, or a huggingface.co link</value></data>
+  <data name="LocalAiPage_CustomModelBoxField.PlaceholderText" xml:space="preserve"><value>owner/repo, owner/repo:Q4_K_M, or a huggingface.co link</value></data>
   <data name="LocalAiPage_CustomModelHint.Text" xml:space="preserve"><value>Public, single-file GGUF models only. When this is filled in, it is used instead of the selection above.</value></data>
   <data name="LocalAiPage_FitWarning.Title" xml:space="preserve"><value>This model may not fit</value></data>
   <data name="LocalAiPage_FitWarningFormat" xml:space="preserve"><value>It needs about {0:F1} GB of GPU memory and {1} has {2:F1} GB. It may fail to start or run slowly.</value></data>
@@ -6213,7 +6363,7 @@ Make sure the gateway is running.</value>
   <data name="DefaultModelPage_ModelSelector.Header" xml:space="preserve"><value>Default model</value></data>
   <data name="DefaultModelPage_ApplyButton.Content" xml:space="preserve"><value>Use this model</value></data>
   <data name="DefaultModelPage_RefreshButton.Content" xml:space="preserve"><value>Refresh</value></data>
-  <data name="DefaultModelPage_ManageLocalAiButton.Content" xml:space="preserve"><value>Manage Local AI</value></data>
+  <data name="DefaultModelPage_ManageLocalAiButton.Header" xml:space="preserve"><value>Manage Local AI</value></data>
   <data name="DefaultModelPage_LocalAiOptionFormat" xml:space="preserve"><value>Local AI: {0}</value></data>
   <data name="DefaultModelPage_RequiresAuthFormat" xml:space="preserve"><value>{0} (sign in to the provider first)</value></data>
   <data name="DefaultModelPage_Applied" xml:space="preserve"><value>The default model was updated.</value></data>
@@ -6227,7 +6377,7 @@ Make sure the gateway is running.</value>
   <data name="DefaultModelPage_ProviderSignInMethod.Header" xml:space="preserve"><value>Sign-in method</value></data>
   <data name="DefaultModelPage_SignInButton.Content" xml:space="preserve"><value>Sign in</value></data>
   <data name="DefaultModelPage_CustomProviderId.Header" xml:space="preserve"><value>Provider ID</value></data>
-  <data name="DefaultModelPage_CustomProviderId.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
+  <data name="DefaultModelPage_CustomProviderIdField.PlaceholderText" xml:space="preserve"><value>my-endpoint</value></data>
   <data name="DefaultModelPage_CustomProviderBaseUrl.Header" xml:space="preserve"><value>Base URL</value></data>
   <data name="DefaultModelPage_CustomProviderApi.Header" xml:space="preserve"><value>API type</value></data>
   <data name="DefaultModelPage_CustomApiOpenAiCompletions.Content" xml:space="preserve"><value>OpenAI-compatible (Chat Completions)</value></data>
@@ -6235,7 +6385,7 @@ Make sure the gateway is running.</value>
   <data name="DefaultModelPage_CustomApiAnthropic.Content" xml:space="preserve"><value>Anthropic Messages</value></data>
   <data name="DefaultModelPage_CustomProviderApiKey.Header" xml:space="preserve"><value>API key (optional for OpenAI-compatible)</value></data>
   <data name="DefaultModelPage_CustomProviderModels.Header" xml:space="preserve"><value>Model IDs</value></data>
-  <data name="DefaultModelPage_CustomProviderModels.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
+  <data name="DefaultModelPage_CustomProviderModelsField.PlaceholderText" xml:space="preserve"><value>model-a, model-b</value></data>
   <data name="DefaultModelPage_AddCustomProviderButton.Content" xml:space="preserve"><value>Add provider</value></data>
   <data name="DefaultModelPage_ProviderConnectedFormat" xml:space="preserve"><value>{0} (connected)</value></data>
   <data name="DefaultModelPage_ProviderCatalogLoading" xml:space="preserve"><value>Loading providers...</value></data>
@@ -6301,10 +6451,12 @@ Make sure the gateway is running.</value>
   <data name="Chat_Model_Search" xml:space="preserve"><value>Search models</value></data>
   <data name="Chat_Model_AddProvider" xml:space="preserve"><value>Add model provider...</value></data>
   <data name="Chat_Attachment_Remove" xml:space="preserve"><value>Remove attachment</value></data>
+  <data name="Chat_Attachment_RemoveNamedFormat" xml:space="preserve"><value>Remove attachment {0}</value></data>
   <data name="Chat_Timeline_Loading" xml:space="preserve"><value>Loading messages...</value></data>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 queued message</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copied</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Copy failed</value></data>
+  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Message text</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Faster</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Smarter</value></data>
@@ -6319,7 +6471,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Flow_AutoStartToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Launch OpenClaw at sign-in</value></data>
   <data name="ChatDashboardButton.Content" xml:space="preserve"><value>Dashboard</value></data>
   <data name="ChatDashboardHint.Text" xml:space="preserve"><value>Channels, integrations and gateway settings</value></data>
-  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw is your AI assistant for getting things done on your PC.</value></data>
+  <data name="Onboarding_Flow_WelcomeDescription.Text" xml:space="preserve"><value>OpenClaw connects an AI assistant to the tools on your PC. You choose what it can do, and you can change that any time.</value></data>
   <data name="Onboarding_AiSetup_Title.Text" xml:space="preserve"><value>Set up your AI</value></data>
   <data name="Onboarding_AiSetup_CatalogOptIn" xml:space="preserve"><value>Discover existing provider conversations (optional)</value></data>
   <data name="Onboarding_AiSetup_Starting" xml:space="preserve"><value>Starting provider setup…</value></data>
@@ -6419,7 +6571,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_HostUnavailable.Title" xml:space="preserve"><value>Connection editor is unavailable in this setup host</value></data>
   <data name="Onboarding_V2_HostUnavailable.Message" xml:space="preserve"><value>Open setup from the Companion app to use its native connection editor.</value></data>
   <data name="Onboarding_V2_Back.Content" xml:space="preserve"><value>Back</value></data>
-  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>PC capabilities</value></data>
+  <data name="Onboarding_V2_CapabilitiesTitle.Text" xml:space="preserve"><value>What can your assistant use?</value></data>
   <data name="Onboarding_V2_CapabilitiesIntro.Text" xml:space="preserve"><value>Choose what agents may use on this PC. These choices do not grant Windows privacy access or execution approval.</value></data>
   <data name="Onboarding_V2_NodeMode.Header" xml:space="preserve"><value>Node mode</value></data>
   <data name="Onboarding_V2_NodeMode.Description" xml:space="preserve"><value>Offer this PC's capabilities through a connected Gateway.</value></data>
@@ -6444,8 +6596,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ReplacementWarning.Title" xml:space="preserve"><value>This replacement can permanently delete WSL data</value></data>
   <data name="Onboarding_V2_ReplacementWarning.Message" xml:space="preserve"><value>Only the named WSL installation is replaced. Other saved Gateway connections stay available.</value></data>
   <data name="Onboarding_V2_ReturnToReview.Content" xml:space="preserve"><value>Return to review</value></data>
-  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>WSL Gateway setup</value></data>
-  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Review what will change before installation starts.</value></data>
+  <data name="Onboarding_V2_ReviewTitle.Text" xml:space="preserve"><value>Ready to install</value></data>
+  <data name="Onboarding_V2_ReviewIntro.Text" xml:space="preserve"><value>Here’s what will happen on this PC.</value></data>
   <data name="Onboarding_V2_CliCard.Header" xml:space="preserve"><value>OpenClaw CLI</value></data>
   <data name="Onboarding_V2_GatewayCard.Header" xml:space="preserve"><value>Local Gateway service</value></data>
   <data name="Onboarding_V2_LocalAiReview.Header" xml:space="preserve"><value>Local AI</value></data>
@@ -6456,15 +6608,13 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_ReviewRequired.Title" xml:space="preserve"><value>Review the required choices</value></data>
   <data name="Onboarding_V2_ReviewRequired.Message" xml:space="preserve"><value>Review selected Local AI and Tailscale prerequisites, and confirm any WSL replacement before installing.</value></data>
   <data name="Onboarding_V2_Install.Content" xml:space="preserve"><value>Install</value></data>
-  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Welcome to OpenClaw</value></data>
+  <data name="Onboarding_V2_WelcomeTitle.Text" xml:space="preserve"><value>Meet your new sidekick.</value></data>
   <data name="Onboarding_V2_WelcomeChat.Header" xml:space="preserve"><value>Chat with your AI</value></data>
   <data name="Onboarding_V2_WelcomeChat.Description" xml:space="preserve"><value>Use native Chat with an AI provider you choose.</value></data>
   <data name="Onboarding_V2_WelcomePc.Header" xml:space="preserve"><value>Let agents help on this PC</value></data>
   <data name="Onboarding_V2_WelcomePc.Description" xml:space="preserve"><value>Choose which PC capabilities to enable. Windows permissions and execution approvals remain separate.</value></data>
   <data name="Onboarding_V2_WelcomeGateway.Header" xml:space="preserve"><value>Keep your Gateway under your control</value></data>
-  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Run a private WSL Gateway here or connect to an existing one.</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Before you get started</value></data>
-  <data name="Onboarding_V2_WelcomeTrust.Message" xml:space="preserve"><value>AI agents are powerful and giving them access to your PC carries risks. They can make mistakes, change or delete files, or expose private information.&#x0a;&#x0a;You can control and limit OpenClaw’s access to your PC.</value></data>
+  <data name="Onboarding_V2_WelcomeGateway.Description" xml:space="preserve"><value>Run a private Gateway on this PC or connect to an existing one.</value></data>
   <data name="Onboarding_V2_Continue.Content" xml:space="preserve"><value>Continue</value></data>
   <data name="Onboarding_V2_Retry.Content" xml:space="preserve"><value>Try again</value></data>
   <data name="Onboarding_V2_AlternativeRoutes.Content" xml:space="preserve"><value>Remote, local MCP or set up later</value></data>
@@ -6486,7 +6636,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V2_TailscaleTrust.Header" xml:space="preserve"><value>Trust Tailscale identities for Gateway authentication</value></data>
   <data name="Onboarding_V2_TailscaleTrust.Description" xml:space="preserve"><value>Off by default. Enable only if your tailnet ACLs should participate in Gateway access control.</value></data>
   <data name="Onboarding_V2_TailscaleTrustToggle.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Trust Tailscale identities</value></data>
-  <data name="Onboarding_V2_WindowTitle.Text" xml:space="preserve"><value>OpenClaw Setup</value></data>
+  <data name="Onboarding_V2_WindowTitle.Text" xml:space="preserve"><value>OpenClaw setup</value></data>
   <data name="Onboarding_V2_NetworkConsentRecorded" xml:space="preserve"><value>WSL networking consent recorded</value></data>
   <data name="Onboarding_V2_ReviewNetworking" xml:space="preserve"><value>Review WSL networking changes</value></data>
   <data name="Onboarding_V2_TailscaleChecking" xml:space="preserve"><value>Checking Windows Tailscale...</value></data>
@@ -6550,8 +6700,8 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_AiSetup_ArtworkAction_Prepare" xml:space="preserve"><value>Connect / Set up</value></data>
   <data name="Onboarding_AiSetup_ArtworkUnavailable" xml:space="preserve"><value>Provider logo unavailable ({0}). Provider setup is still available.</value></data>
   <data name="Onboarding_V3_ProfileHeading.Text" xml:space="preserve"><value>What your agent can do</value></data>
-  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Choose a preset. Open Fine-tune to inspect or change individual capabilities.</value></data>
-  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Fine-tune</value></data>
+  <data name="Onboarding_V3_ProfileHelp.Text" xml:space="preserve"><value>Start with a set that suits you. Change it any time.</value></data>
+  <data name="Onboarding_V3_FineTune.Text" xml:space="preserve"><value>Choose tools individually</value></data>
   <data name="Onboarding_V3_TransportRequired.Title" xml:space="preserve"><value>Capabilities are unavailable</value></data>
   <data name="Onboarding_V3_TransportRequired.Message" xml:space="preserve"><value>Turn on Node mode or Local MCP Server to use these capabilities. Your choices are kept.</value></data>
   <data name="Onboarding_V3_ProfileCustom.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Custom: choose individual capabilities</value></data>
@@ -6616,10 +6766,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_V4_StepCount" xml:space="preserve"><value>{0} of {1} steps complete</value></data>
   <data name="Onboarding_V4_StatusCancelled" xml:space="preserve"><value>Cancelled</value></data>
   <data name="Onboarding_V5_DownloadMeasurement" xml:space="preserve"><value>{0} of {1}</value></data>
-  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>Your AI is ready</value></data>
-  <data name="Onboarding_Ready_Chat.Header" xml:space="preserve"><value>Talk to my agent</value></data>
-  <data name="Onboarding_Ready_Chat.Description" xml:space="preserve"><value>Open Chat with your agent.</value></data>
-  <data name="Onboarding_Ready_Chat.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Talk to my agent</value></data>
+  <data name="Onboarding_Ready_Heading.Text" xml:space="preserve"><value>All set!</value></data>
   <data name="Onboarding_Ready_Return.Content" xml:space="preserve"><value>Check readiness again</value></data>
   <data name="Onboarding_AiSetup_Preparing" xml:space="preserve"><value>Preparing your AI choices</value></data>
   <data name="Onboarding_Loading_Gateway" xml:space="preserve"><value>Preparing Gateway</value></data>
@@ -6648,7 +6795,6 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Finishing_Heading.Text" xml:space="preserve"><value>Finishing setup</value></data>
   <data name="Onboarding_Finishing_Detail.Text" xml:space="preserve"><value>Applying your choices, restarting OpenClaw, and checking your AI. This may take a few minutes.</value></data>
   <data name="Onboarding_Finishing_Interrupted" xml:space="preserve"><value>Setup completion needs attention. No AI action will be repeated automatically. Close this window, check the saved Gateway in Connection, then explicitly reopen AI setup to verify it.</value></data>
-  <data name="Onboarding_Ready_Model" xml:space="preserve"><value>Verified model: {0}</value></data>
   <data name="Onboarding_Ready_Verifying" xml:space="preserve"><value>Rechecking the same Gateway, agent, and model...</value></data>
   <data name="Onboarding_Ready_Finalizing" xml:space="preserve"><value>Finishing your Windows setup choices...</value></data>
   <data name="Onboarding_Ready_Opening" xml:space="preserve"><value>Opening your selected app page...</value></data>
@@ -6669,7 +6815,7 @@ Make sure the gateway is running.</value>
   <data name="Onboarding_Ready_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Onboarding_Ready_Close" xml:space="preserve"><value>Close</value></data>
   <data name="Onboarding_Copy_SafetyLink.Content" xml:space="preserve"><value>Learn more about risks and safety</value></data>
-  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Set up OpenClaw</value></data>
+  <data name="Onboarding_Copy_GatewayTitle.Text" xml:space="preserve"><value>Where should OpenClaw live?</value></data>
   <data name="Onboarding_Copy_GatewayIntro.Text" xml:space="preserve"><value>The Gateway connects your AI assistant to your apps and tools. Choose where it runs. You can change this later.</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Gateway setup method</value></data>
   <data name="Onboarding_Copy_GatewaySelector.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.HelpText" xml:space="preserve"><value>Choose one Gateway setup method.</value></data>
@@ -7212,7 +7358,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SandboxPage_FolderAccessFormat" xml:space="preserve"><value>Access for {0}</value></data>
   <data name="SandboxPage_RemoveFolderFormat" xml:space="preserve"><value>Remove permission for {0}</value></data>
   <data name="SandboxPage_FolderList.Text" xml:space="preserve"><value>Folders</value></data>
-  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Choose what the agent can do in each folder. No access blocks that folder, but explicitly listed subfolders keep their own access. Protected folders stay blocked.</value></data>
+  <data name="SandboxPage_FolderListHelp.Text" xml:space="preserve"><value>Choose what the agent can do in each folder; explicitly listed subfolders keep their own access.</value></data>
   <data name="SandboxPage_NoAccess.Content" xml:space="preserve"><value>No access</value></data>
   <data name="SandboxPage_Profile.Text" xml:space="preserve"><value>User profile</value></data>
   <data name="SandboxPage_OneDrive.Text" xml:space="preserve"><value>OneDrive</value></data>
@@ -7276,6 +7422,19 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>This session is no longer empty, so the pending location selection was cancelled. Review the session and send again to continue in its current location.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>The Gateway did not confirm the selected model or reasoning options. Review them and try again.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>The Gateway could not create the new chat. Check the connection and try again.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>The Gateway may have created this chat, but its response was not confirmed, so this draft cannot be sent. Open the chat from the session list if it appears, or start a new chat.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>Location choices are unavailable. This chat will use the Gateway's default location.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Send a message to create this chat before using lifecycle commands.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Refresh questions</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Question answered</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Question cancelled</value></data>
@@ -7632,7 +7791,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Sandbox settings</value>
   </data>
   <data name="Chat_Composer_Sandbox_Available" xml:space="preserve">
-    <value>Available</value>
+    <value>On</value>
   </data>
   <data name="Chat_Composer_Sandbox_Compatibility" xml:space="preserve">
     <value>Compatibility</value>
@@ -7670,14 +7829,6 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Run_ElapsedSeconds" xml:space="preserve"><value>{2}s</value></data>
   <data name="Chat_Questions_Resolving" xml:space="preserve"><value>This question is being resolved. Refresh to check its status.</value></data>
   <data name="Chat_Questions_InvalidAnswer" xml:space="preserve"><value>Choose a valid answer for each question.</value></data>
-  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>Operator authentication</value></data>
-  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>Gateway credential</value></data>
-  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>Personal Tailscale identity</value></data>
-  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>Requires a secure Tailscale Gateway address and personal identity support on the Gateway. No shared token is sent.</value></data>
-  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>Personal sign-in changed</value></data>
-  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>Reconnect this Gateway in OpenClaw Companion, then reopen the Dashboard.</value></data>
-  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>Personal sign-in is unavailable. Reconnect in the app.</value></data>
-  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>Personal sign-in requires a secure wss:// Tailscale Gateway address ending in .ts.net, without an SSH tunnel.</value></data>
   <data name="SearchInput.PlaceholderText" xml:space="preserve"><value>Search OpenClaw</value></data>
   <data name="SearchInput.AutomationProperties.Name" xml:space="preserve"><value>Search OpenClaw</value></data>
   <data name="Search_Results" xml:space="preserve"><value>Search results</value></data>
@@ -7768,15 +7919,43 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Full output could not be loaded.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>Full output requires the saved result identity and a verified current account.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Show full output</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>More output available</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} more lines</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} more line</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Retry</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>New messages. Jump to latest</value></data>
   <data name="Chat_JumpLatest" xml:space="preserve"><value>Jump to latest</value></data>
+  <data name="Chat_HistoryNavigation" xml:space="preserve"><value>Chat message navigation</value></data>
+  <data name="Chat_HistoryNavigation_Help" xml:space="preserve"><value>Use Up and Down to jump between messages, or Home and End for the first and latest message.</value></data>
   <data name="Chat_Children_Summary" xml:space="preserve"><value>{0} subagents, {1} working, {2} need attention</value></data>
-  <data name="Chat_Children_Idle" xml:space="preserve"><value>Idle</value></data>
   <data name="Chat_Run_Subagents" xml:space="preserve"><value>Waiting for subagents</value></data>
   <data name="Chat_Tool_Preparing" xml:space="preserve"><value>Preparing input</value></data>
   <data name="Chat_Tool_FailedInline" xml:space="preserve"><value>failed</value></data>
+  <data name="Chat_Activity_SubagentOne" xml:space="preserve"><value>{0} subagent</value></data>
+  <data name="Chat_Activity_SubagentMany" xml:space="preserve"><value>{0} subagents</value></data>
+  <data name="Chat_Activity_FailedCount" xml:space="preserve"><value>{0} failed</value></data>
+  <data name="Chat_Tool_SubagentRunning" xml:space="preserve"><value>running</value></data>
+  <data name="Chat_Tool_SubagentStopped" xml:space="preserve"><value>stopped</value></data>
+  <data name="Chat_Tool_FilesCount" xml:space="preserve"><value>{0} files</value></data>
+  <data name="Chat_ToolVerb_Read" xml:space="preserve"><value>Read</value></data>
+  <data name="Chat_ToolVerb_Edit" xml:space="preserve"><value>Edit</value></data>
+  <data name="Chat_ToolVerb_Editing" xml:space="preserve"><value>Editing</value></data>
+  <data name="Chat_ToolVerb_Edited" xml:space="preserve"><value>Edited</value></data>
+  <data name="Chat_ToolVerb_Create" xml:space="preserve"><value>Create</value></data>
+  <data name="Chat_ToolVerb_Creating" xml:space="preserve"><value>Creating</value></data>
+  <data name="Chat_ToolVerb_Created" xml:space="preserve"><value>Created</value></data>
+  <data name="Chat_ToolVerb_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Chat_ToolVerb_Deleting" xml:space="preserve"><value>Deleting</value></data>
+  <data name="Chat_ToolVerb_Deleted" xml:space="preserve"><value>Deleted</value></data>
+  <data name="Chat_ToolVerb_Change" xml:space="preserve"><value>Change</value></data>
+  <data name="Chat_ToolVerb_Changing" xml:space="preserve"><value>Changing</value></data>
+  <data name="Chat_ToolVerb_Changed" xml:space="preserve"><value>Changed</value></data>
+  <data name="Chat_ToolVerb_Write" xml:space="preserve"><value>Write</value></data>
+  <data name="Chat_ToolVerb_Writing" xml:space="preserve"><value>Writing</value></data>
+  <data name="Chat_ToolVerb_Wrote" xml:space="preserve"><value>Wrote</value></data>
+  <data name="Chat_ToolVerb_Searched" xml:space="preserve"><value>Searched</value></data>
+  <data name="Chat_ToolVerb_Fetched" xml:space="preserve"><value>Fetched</value></data>
   <data name="Chat_Tool_Completed" xml:space="preserve"><value>Completed</value></data>
   <data name="Chat_Review_Required" xml:space="preserve"><value>Provider review required</value></data>
   <data name="Chat_Review_Warning" xml:space="preserve"><value>Provider review warning</value></data>
@@ -7785,6 +7964,17 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Review_Denied" xml:space="preserve"><value>Provider review did not approve the request</value></data>
   <data name="Chat_History_CursorStalled" xml:space="preserve"><value>Older history did not advance. Try again after reloading the conversation.</value></data>
   <data name="Chat_Review_Web" xml:space="preserve"><value>Review this request in web chat before continuing.</value></data>
+  <data name="Chat_Review_PausedTitle" xml:space="preserve"><value>Session paused as a precaution</value></data>
+  <data name="Chat_Review_StoppedTitle" xml:space="preserve"><value>Session stopped as a precaution</value></data>
+  <data name="Chat_Review_PausedBody" xml:space="preserve"><value>The provider couldn&apos;t confirm the agent understood your instructions. Review its findings before continuing.</value></data>
+  <data name="Chat_Review_PausedNoFindingsBody" xml:space="preserve"><value>The provider paused this session. Review this request in web chat before continuing.</value></data>
+  <data name="Chat_Review_StoppedBody" xml:space="preserve"><value>The provider stopped this session without reviewable findings. It can&apos;t continue.</value></data>
+  <data name="Chat_Review_StoppedWithFindingsBody" xml:space="preserve"><value>The provider stopped this session. Review its findings before starting more work.</value></data>
+  <data name="Chat_Review_Review" xml:space="preserve"><value>Review findings</value></data>
+  <data name="Chat_Review_Findings" xml:space="preserve"><value>Provider findings</value></data>
+  <data name="Chat_Review_ContinuationTitle" xml:space="preserve"><value>Continuation message</value></data>
+  <data name="Chat_Review_NoContinuation" xml:space="preserve"><value>This session can&apos;t continue. It remains stopped.</value></data>
+  <data name="Chat_Review_Close" xml:space="preserve"><value>Close</value></data>
   <data name="Chat_Review_TimedOut" xml:space="preserve"><value>Provider review timed out</value></data>
   <data name="Chat_Review_Aborted" xml:space="preserve"><value>Provider review canceled</value></data>
   <data name="Systems_AddSystem" xml:space="preserve"><value>Add a system</value></data>
@@ -7812,7 +8002,7 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Systems_ConnectionRequired" xml:space="preserve"><value>Connect to the Gateway to use this action.</value></data>
   <data name="Systems_ConnectedApps" xml:space="preserve"><value>Connected apps</value></data>
   <data name="Systems_DevicesAndGateway" xml:space="preserve"><value>Devices and Gateway</value></data>
-  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Devices and Gateway {0}</value></data>
+  <data name="Systems_DevicesAndGatewayCount" xml:space="preserve"><value>Devices and Gateway ({0})</value></data>
   <data name="Systems_Issues" xml:space="preserve"><value>Issues</value></data>
   <data name="Systems_LastKnownOffline" xml:space="preserve"><value>Last known offline</value></data>
   <data name="Systems_LastKnownOnline" xml:space="preserve"><value>Last known online</value></data>
@@ -7928,6 +8118,21 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Settings</value>
     <comment>Large title at the top of the Settings sidebar.</comment>
   </data>
+  <data name="Chat_Subagents_Title" xml:space="preserve"><value>Subagents</value></data>
+  <data name="Chat_Subagents_Empty" xml:space="preserve"><value>No subagents in the current session list.</value></data>
+  <data name="Chat_Subagents_PillName" xml:space="preserve"><value>Subagents: {0} running, {1} finished</value></data>
+  <data name="Chat_Subagents_Running" xml:space="preserve"><value>Running</value></data>
+  <data name="Chat_Subagents_Queued" xml:space="preserve"><value>Queued</value></data>
+  <data name="Chat_Subagents_Done" xml:space="preserve"><value>Done</value></data>
+  <data name="Chat_Subagents_Stopped" xml:space="preserve"><value>Stopped</value></data>
+  <data name="Chat_Subagents_Failed" xml:space="preserve"><value>Failed</value></data>
+  <data name="Chat_Files_Title" xml:space="preserve"><value>Files</value></data>
+  <data name="Chat_Files_PillName" xml:space="preserve"><value>Session files: {0}</value></data>
+  <data name="Chat_Files_Empty" xml:space="preserve"><value>No files in this session yet.</value></data>
+  <data name="Chat_Files_Loading" xml:space="preserve"><value>Loading files...</value></data>
+  <data name="Chat_Files_Unsupported" xml:space="preserve"><value>This Gateway does not provide session files.</value></data>
+  <data name="Chat_Files_Failed" xml:space="preserve"><value>Files could not be loaded. Refresh to try again.</value></data>
+  <data name="Chat_Files_Refresh" xml:space="preserve"><value>Refresh files</value></data>
   <data name="Automations_AgentScope" xml:space="preserve">
     <value>Agent: {0}</value>
   </data>
@@ -8946,6 +9151,54 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   </data>
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>{0} widgets aren't available on Windows yet.</value>
+  </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>Session progress</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>You no longer have access to this session's progress.</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>No progress yet</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>Progress details will appear here when the session reports them.</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>Progress could not be refreshed.</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>Loading progress</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>Showing the last progress received. The latest refresh failed.</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>Completed</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>In progress</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>Pending</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>{0}: {1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>{0} of {1} steps completed</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>Progress unavailable</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>This connection cannot read progress card data from the Gateway.</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>Updated {0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>Update time unavailable</value>
   </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>This report has invalid data.</value>
@@ -9984,15 +10237,104 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="SessionsHub_UnroutedShown" xml:space="preserve"><value>unrouted shown</value></data>
   <data name="SessionsHub_ArchivedNamedChannel" xml:space="preserve"><value>Archived "{0}" ({1}).</value></data>
   <data name="SessionsHub_DismissNotice" xml:space="preserve"><value>Dismiss notification</value></data>
+  <data name="Onboarding_Steps_ChooseTools" xml:space="preserve"><value>Choose your PC tools</value></data>
+  <data name="Onboarding_Steps_ChooseToolsDetail" xml:space="preserve"><value>Start with the access that suits you.</value></data>
+  <data name="Onboarding_Steps_SetUp" xml:space="preserve"><value>Set up</value></data>
+  <data name="Onboarding_Steps_SetUpDetail" xml:space="preserve"><value>OpenClaw installs. You can keep using your PC.</value></data>
+  <data name="Onboarding_Steps_ConnectAi" xml:space="preserve"><value>Connect your AI</value></data>
+  <data name="Onboarding_Steps_ConnectAiDetail" xml:space="preserve"><value>Use a provider or a model you choose.</value></data>
+  <data name="Onboarding_Steps_StartChatting" xml:space="preserve"><value>Start chatting</value></data>
+  <data name="Onboarding_Steps_StartChattingDetail" xml:space="preserve"><value>Open Chat and say hello.</value></data>
+  <data name="Onboarding_Steps_ItemName" xml:space="preserve"><value>{0}, {1}</value></data>
+  <data name="Onboarding_Steps_StateUpcoming" xml:space="preserve"><value>not started</value></data>
+  <data name="Onboarding_Steps_StateCurrent" xml:space="preserve"><value>current step</value></data>
+  <data name="Onboarding_Steps_StateDone" xml:space="preserve"><value>done</value></data>
+  <data name="Onboarding_Steps_StateSkipped" xml:space="preserve"><value>skipped</value></data>
+  <data name="Onboarding_Bubble_Welcome" xml:space="preserve"><value>Hi. Let’s get you set up.</value></data>
+  <data name="Onboarding_Bubble_Gateway" xml:space="preserve"><value>Pick a home for me.</value></data>
+  <data name="Onboarding_Bubble_Connect" xml:space="preserve"><value>Point me to your Gateway.</value></data>
+  <data name="Onboarding_Bubble_Capabilities" xml:space="preserve"><value>You decide what I can do.</value></data>
+  <data name="Onboarding_Bubble_Tools" xml:space="preserve"><value>Flip the ones you want.</value></data>
+  <data name="Onboarding_Bubble_Plan" xml:space="preserve"><value>Here’s the plan.</value></data>
+  <data name="Onboarding_Bubble_MoreOptions" xml:space="preserve"><value>A couple more options.</value></data>
+  <data name="Onboarding_Bubble_Confirm" xml:space="preserve"><value>One thing to confirm first.</value></data>
+  <data name="Onboarding_Bubble_Working" xml:space="preserve"><value>Working on it…</value></data>
+  <data name="Onboarding_Bubble_Installed" xml:space="preserve"><value>My new home is ready.</value></data>
+  <data name="Onboarding_Bubble_Ai" xml:space="preserve"><value>Pick a brain for me.</value></data>
+  <data name="Onboarding_Bubble_Checking" xml:space="preserve"><value>Checking in with your AI.</value></data>
+  <data name="Onboarding_Bubble_Ready" xml:space="preserve"><value>Ready when you are.</value></data>
+  <data name="Onboarding_Bubble_Done" xml:space="preserve"><value>We did it.</value></data>
+  <data name="Onboarding_Bubble_Failed" xml:space="preserve"><value>That didn’t work.</value></data>
+  <data name="Onboarding_Bubble_Restart" xml:space="preserve"><value>Almost there.</value></data>
+  <data name="Onboarding_Welcome_Safety.Text" xml:space="preserve"><value>AI agents are powerful, and giving them access to your PC carries risks. They can make mistakes, change or delete files, or expose private information. You can control and limit OpenClaw’s access to your PC.</value></data>
+  <data name="Onboarding_Tools_OnNow" xml:space="preserve"><value>On now: {0}</value></data>
+  <data name="Onboarding_Review_ShowCommands" xml:space="preserve"><value>Show exact commands and file locations</value></data>
+  <data name="Onboarding_Review_HideCommands" xml:space="preserve"><value>Hide exact commands and file locations</value></data>
+  <data name="Onboarding_Progress_ShowDetails" xml:space="preserve"><value>Show details</value></data>
+  <data name="Onboarding_Progress_HideDetails" xml:space="preserve"><value>Hide details</value></data>
+  <data name="Onboarding_Progress_OpenLog.Content" xml:space="preserve"><value>Open log file</value></data>
+  <data name="Onboarding_Ready_Prompt" xml:space="preserve"><value>OpenClaw is ready to go</value></data>
+  <data name="Onboarding_Ready_OpenChat" xml:space="preserve"><value>Open chat</value></data>
+  <data name="Onboarding_Ready_ModelTitle" xml:space="preserve"><value>AI ready</value></data>
+  <data name="Onboarding_Ready_CapabilitiesDescription" xml:space="preserve"><value>Editable any time in Companion Settings</value></data>
+  <data name="Onboarding_Ready_CapabilitiesTitle" xml:space="preserve"><value>Capability profile applied</value></data>
+  <data name="Onboarding_Ready_PairedDescription" xml:space="preserve"><value>This PC is connected and ready to use</value></data>
+  <data name="Onboarding_Ready_PairedTitle" xml:space="preserve"><value>Device paired</value></data>
+  <data name="Onboarding_Ready_GatewayDescription" xml:space="preserve"><value>Hosted on this PC</value></data>
+  <data name="Onboarding_Complete_RestartTitle" xml:space="preserve"><value>Restart Windows to continue</value></data>
+  <data name="Onboarding_Complete_RestartPrompt" xml:space="preserve"><value>OpenClaw needs to restart Windows to finish the installation. Save your work first.</value></data>
+  <data name="Onboarding_V2_WelcomeTrust.Title" xml:space="preserve"><value>Before you get started</value></data>
+  <data name="Onboarding_Ready_GatewayNativeTitle" xml:space="preserve"><value>Native Gateway running</value></data>
+  <data name="Onboarding_Ready_GatewayWslTitle" xml:space="preserve"><value>WSL Gateway running</value></data>
+  <data name="Onboarding_Ready_GatewayWslDescription" xml:space="preserve"><value>Hosted on this PC in WSL</value></data>
+  <data name="Onboarding_Ready_GatewayConnectedTitle" xml:space="preserve"><value>Gateway connected</value></data>
+  <data name="Onboarding_Ready_GatewayLocalDescription" xml:space="preserve"><value>Running on this PC</value></data>
+  <data name="Onboarding_Ready_GatewayRemoteTitle" xml:space="preserve"><value>Remote Gateway connected</value></data>
+  <data name="Onboarding_Ready_GatewayVerifiedDescription" xml:space="preserve"><value>Verified for this setup</value></data>
+  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Open details beside chat</value></data>
+  <data name="Chat_Tool_OpenFile" xml:space="preserve"><value>Open file {0}</value></data>
+  <data name="Chat_Tool_OpenSubagent" xml:space="preserve"><value>Open subagent {0}</value></data>
+  <data name="Chat_Tool_DiffStat" xml:space="preserve"><value>{0} lines added, {1} lines removed</value></data>
+  <data name="Chat_Panel_File" xml:space="preserve"><value>File</value></data>
+  <data name="Chat_File_Loading" xml:space="preserve"><value>Loading file…</value></data>
+  <data name="Chat_File_Empty" xml:space="preserve"><value>This file is empty.</value></data>
+  <data name="Chat_File_Missing" xml:space="preserve"><value>This file no longer exists.</value></data>
+  <data name="Chat_File_NotPreviewable" xml:space="preserve"><value>This file can't be shown as text. It may be an image, a binary file or too large.</value></data>
+  <data name="Chat_File_Unavailable" xml:space="preserve"><value>Couldn't load this file. It may be outside the session workspace or too large.</value></data>
+  <data name="Chat_File_Unsupported" xml:space="preserve"><value>This Gateway can't open workspace files.</value></data>
+  <data name="Chat_File_Stale" xml:space="preserve"><value>The connection changed before the file loaded.</value></data>
+  <data name="Chat_File_Retry" xml:space="preserve"><value>Retry</value></data>
+  <data name="Chat_Panel_Details" xml:space="preserve"><value>Tool details</value></data>
+  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>These details are no longer available. Reconnect if needed, then reopen the tool from the current conversation.</value></data>
+  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Resize conversation panel</value></data>
+  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Use Left and Right arrow keys to resize. Home selects the minimum width; End selects the maximum width.</value></data>
+  <data name="Chat_Panel_Back" xml:space="preserve"><value>Back to conversation</value></data>
+  <data name="Chat_Panel_Show" xml:space="preserve"><value>Show panel</value></data>
+  <data name="Chat_Panel_Tabs" xml:space="preserve"><value>Conversation panels</value></data>
+  <data name="Onboarding_Finishing_CollectLogs.Content" xml:space="preserve"><value>Collect logs</value></data>
+  <data name="Onboarding_Finishing_CollectLogsFailed" xml:space="preserve"><value>Logs could not be collected ({0}). Try again.</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Automation]AutomationProperties.Name" xml:space="preserve"><value>Refresh</value></data>
+  <data name="PageAction_Refresh.[using:Microsoft.UI.Xaml.Controls]ToolTipService.ToolTip" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Chat_Panel_Dashboard" xml:space="preserve"><value>Dashboard</value></data>
+  <data name="WorkspaceShell_SidePanelShow" xml:space="preserve"><value>Show side panel</value></data>
+  <data name="WorkspaceShell_SidePanelMinimize" xml:space="preserve"><value>Minimize side panel</value></data>
+  <data name="WorkspaceShell_SidePanelExpand" xml:space="preserve"><value>Expand side panel</value></data>
+  <data name="WorkspaceShell_SidePanelRestore" xml:space="preserve"><value>Restore split</value></data>
+  <data name="Chat_Panel_Launcher" xml:space="preserve"><value>Explore panels</value></data>
+  <data name="Chat_Panel_LauncherFiles" xml:space="preserve"><value>Files this session edited or read.</value></data>
+  <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Follow delegated work from this conversation.</value></data>
+  <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets and tabs this session published.</value></data>
+  <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>No panels are available for this conversation yet.</value></data>
+  <data name="ConnectionPage_OperatorAuthentication.Header" xml:space="preserve"><value>Operator authentication</value></data>
+  <data name="ConnectionPage_SharedAuthentication.Content" xml:space="preserve"><value>Gateway credential</value></data>
+  <data name="ConnectionPage_PersonalAuthentication.Content" xml:space="preserve"><value>Personal Tailscale identity</value></data>
+  <data name="ConnectionPage_PersonalHint.Text" xml:space="preserve"><value>Requires a secure Tailscale Gateway address and personal identity support on the Gateway. No shared token is sent.</value></data>
+  <data name="PersonalDashboard_RecoveryTitle.Text" xml:space="preserve"><value>Personal sign-in changed</value></data>
+  <data name="PersonalDashboard_RecoveryDetail.Text" xml:space="preserve"><value>Reconnect this Gateway in OpenClaw Companion, then reopen the Dashboard.</value></data>
+  <data name="PersonalDashboard_Unavailable" xml:space="preserve"><value>Personal sign-in is unavailable. Reconnect in the app.</value></data>
+  <data name="ConnectionPage_PersonalRouteRequired" xml:space="preserve"><value>Personal sign-in requires a secure wss:// Tailscale Gateway address ending in .ts.net, without an SSH tunnel.</value></data>
   <data name="ConnectionPage_PersonalIdentityHeader" xml:space="preserve"><value>Personal sign-in unavailable</value></data>
   <data name="ConnectionPage_PersonalIdentityUnverified" xml:space="preserve"><value>Your Tailscale identity could not be verified. Reconnect this Gateway. Shared credentials will not be used.</value></data>
   <data name="ConnectionPage_PersonalIdentityReverificationRequired" xml:space="preserve"><value>Your Tailscale identity needs to be verified again. Reconnect this Gateway. Shared credentials will not be used.</value></data>
   <data name="ConnectionPage_PersonalIdentityRecoveryIncomplete" xml:space="preserve"><value>Personal sign-in failed, and recovery did not complete. Review Connection settings before retrying.</value></data>
-  <data name="Chat_Panel_OpenDetails" xml:space="preserve"><value>Open details beside chat</value></data>
-  <data name="Chat_Panel_Details" xml:space="preserve"><value>Tool details</value></data>
-  <data name="Chat_Panel_Unavailable" xml:space="preserve"><value>These details are no longer available. Reconnect if needed, then reopen the tool from the current conversation.</value></data>
-  <data name="Chat_Panel_Resize" xml:space="preserve"><value>Resize details panel</value></data>
-  <data name="Chat_Panel_ResizeHelp" xml:space="preserve"><value>Use Left and Right arrow keys to resize. Home selects the minimum width; End selects the maximum width.</value></data>
-  <data name="Chat_Panel_Back" xml:space="preserve"><value>Back to conversation</value></data>
-  <data name="Chat_Panel_Show" xml:space="preserve"><value>Show details</value></data>
 </root>

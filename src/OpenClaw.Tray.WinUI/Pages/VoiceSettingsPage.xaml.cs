@@ -177,16 +177,20 @@ public sealed partial class VoiceSettingsPage : Page
         var settings = CurrentApp.Settings;
         if (settings == null)
         {
-            SttCapabilityNotice.Visibility = Visibility.Collapsed;
-            TtsCapabilityNotice.Visibility = Visibility.Collapsed;
+            SttCapabilityNotice.IsOpen = false;
+            TtsCapabilityNotice.IsOpen = false;
+            SttSettings.IsEnabled = true;
+            TtsSettings.IsEnabled = true;
             return;
         }
 
         var sttEnabled = settings?.NodeSttEnabled == true;
         var ttsEnabled = settings?.NodeTtsEnabled == true;
 
-        SttCapabilityNotice.Visibility = sttEnabled ? Visibility.Collapsed : Visibility.Visible;
-        TtsCapabilityNotice.Visibility = ttsEnabled ? Visibility.Collapsed : Visibility.Visible;
+        SttCapabilityNotice.IsOpen = !sttEnabled;
+        TtsCapabilityNotice.IsOpen = !ttsEnabled;
+        SttSettings.IsEnabled = sttEnabled;
+        TtsSettings.IsEnabled = ttsEnabled;
     }
 
     private void OnModelChanged(object sender, SelectionChangedEventArgs e)

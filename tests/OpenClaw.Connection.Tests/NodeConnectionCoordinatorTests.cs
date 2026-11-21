@@ -6,6 +6,10 @@ namespace OpenClaw.Connection.Tests;
 
 public sealed class NodeConnectionCoordinatorTests
 {
+    private static readonly TimeSpan StepTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
+            ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
+
     [Fact]
     public async Task SupersededGeneration_DoesNotWriteSnapshot()
     {
@@ -127,6 +131,148 @@ public sealed class NodeConnectionCoordinatorTests
 
         Assert.Equal(NodeStartOutcome.Faulted, failed.Outcome);
         Assert.Equal(NodeAutomaticStartDisposition.Start, automaticPlan.Disposition);
+        await coordinator.StopAsync();
+    }
+
+    [Fact]
+    public Task SupersedingNodeWhileStatusDispatchHoldsConnectorLock_DoesNotDeadlock() =>
+        VerifyNodeCancellationLockOrderAsync(supersede: true);
+
+    [Fact]
+    public Task RetiringNodeWhileStatusDispatchHoldsConnectorLock_DoesNotDeadlock() =>
+        VerifyNodeCancellationLockOrderAsync(supersede: false);
+
+    private static async Task VerifyNodeCancellationLockOrderAsync(bool supersede)
+    {
+        using var temp = new TempDirectory("openclaw-node-lock-order-");
+        using var meter = new Meter("openclaw-node-lock-order-tests");
+        var registry = new GatewayRegistry(temp.Path);
+        var record = new GatewayRecord
+        {
+            Id = "gw-1",
+            Url = "wss://gateway.example",
+            SharedGatewayToken = "shared-token"
+        };
+        registry.AddOrUpdate(record);
+        var attemptLeases = new AlwaysCurrentAttemptLeaseSource();
+        var security = new AllowEndpointCredentialSecurity();
+        var lifecycle = new FakeNodeLifecycleSource(
+            new NodeConnectionTarget(
+                new GatewayAttemptStamp(1, record.Id),
+                record,
+                registry.GetIdentityDirectory(record.Id),
+                UseV2Signature: false),
+            shouldStart: true);
+        using var connectEntered = new ManualResetEventSlim();
+        using var cancellationEntered = new ManualResetEventSlim();
+        using var releaseStatusDispatch = new ManualResetEventSlim();
+        using var releaseCancellationCallback = new ManualResetEventSlim();
+        using var cancellationCallbackObservedDisposed = new ManualResetEventSlim();
+        var clientLifecycleLock = new object();
+        var connectCount = 0;
+        var connector = new TestNodeConnector();
+        connector.ConnectAsyncCallback = cancellationToken =>
+        {
+            if (Interlocked.Increment(ref connectCount) > 1)
+                return Task.CompletedTask;
+
+            _ = cancellationToken.Register(() =>
+            {
+                cancellationEntered.Set();
+                lock (clientLifecycleLock)
+                {
+                    if (!releaseCancellationCallback.Wait(StepTimeout))
+                        throw new TimeoutException("Timed out waiting to finish cancellation callback.");
+                    try
+                    {
+                        cancellationToken.WaitHandle.WaitOne(0);
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        cancellationCallbackObservedDisposed.Set();
+                    }
+                }
+            });
+
+            // Match NodeConnector's synchronous status dispatch under its lifecycle lock.
+            lock (clientLifecycleLock)
+            {
+                connectEntered.Set();
+                if (!releaseStatusDispatch.Wait(StepTimeout))
+                    throw new TimeoutException("Timed out waiting to dispatch node status.");
+                connector.RaiseStatusChanged(ConnectionStatus.Connecting);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        };
+        var state = new RecordingNodeStateSink();
+        var coordinator = new NodeConnectionCoordinator(
+            lifecycle,
+            state,
+            state,
+            attemptLeases,
+            security,
+            CreateBootstrap(registry, attemptLeases, security),
+            new FixedCredentialResolver(new GatewayCredential(
+                "shared-token",
+                IsBootstrapToken: false,
+                CredentialResolver.SourceSharedGatewayToken)),
+            connector,
+            NullLogger.Instance,
+            new ConnectionDiagnostics(),
+            _ => Task.CompletedTask,
+            meter.CreateCounter<long>("attempts"),
+            meter.CreateHistogram<double>("duration"));
+        connector.StatusChanged += (_, status) => coordinator.HandleStatusChanged(status);
+
+        var start = RunOnDedicatedThread(() => coordinator.StartAsync(1));
+        Task<NodeStartResult>? replacement = null;
+        Task? retire = null;
+        try
+        {
+            Assert.True(
+                connectEntered.Wait(StepTimeout),
+                "Node connect did not enter its lifecycle-locked callback window.");
+
+            if (supersede)
+                replacement = RunOnDedicatedThread(() => coordinator.StartAsync(1));
+            else
+                retire = RunOnDedicatedThread(async () =>
+                {
+                    await coordinator.RetireAsync();
+                    return true;
+                });
+            Assert.True(
+                cancellationEntered.Wait(StepTimeout),
+                "The replacement or retirement did not cancel the active node operation.");
+            releaseStatusDispatch.Set();
+
+            Assert.Equal(
+                NodeStartOutcome.Superseded,
+                (await start.WaitAsync(StepTimeout)).Outcome);
+            releaseCancellationCallback.Set();
+
+            if (replacement is not null)
+            {
+                await Task.WhenAll(start, replacement).WaitAsync(StepTimeout);
+                Assert.Equal(NodeStartOutcome.Started, (await replacement).Outcome);
+            }
+            else
+            {
+                await Task.WhenAll(start, retire!).WaitAsync(StepTimeout);
+            }
+
+            Assert.False(
+                cancellationCallbackObservedDisposed.IsSet,
+                "The operation CTS was disposed before its cancellation callback finished.");
+        }
+        finally
+        {
+            releaseStatusDispatch.Set();
+            releaseCancellationCallback.Set();
+        }
+
         await coordinator.StopAsync();
     }
 
@@ -583,6 +729,19 @@ public sealed class NodeConnectionCoordinatorTests
             null;
     }
 
+    private sealed class FixedCredentialResolver(GatewayCredential credential) : ICredentialResolver
+    {
+        public GatewayCredential? ResolveOperator(
+            GatewayRecord record,
+            string identityPath) =>
+            credential;
+
+        public GatewayCredential? ResolveNode(
+            GatewayRecord record,
+            string identityPath) =>
+            credential;
+    }
+
     private sealed class TrackingAttemptLeaseSource : IGatewayAttemptLeaseSource
     {
         private readonly SemaphoreSlim _semaphore = new(1, 1);
@@ -660,9 +819,32 @@ public sealed class NodeConnectionCoordinatorTests
         public void Release() => _release.Set();
     }
 
+    private static Task<T> RunOnDedicatedThread<T>(Func<Task<T>> operation)
+    {
+        var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                completion.SetResult(operation().GetAwaiter().GetResult());
+            }
+            catch (Exception ex)
+            {
+                completion.SetException(ex);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "node-coordinator-lock-order-test"
+        };
+        thread.Start();
+        return completion.Task;
+    }
+
     private sealed class TestNodeConnector : INodeConnector
     {
         public bool ThrowOnDisconnect { get; init; }
+        public Func<CancellationToken, Task>? ConnectAsyncCallback { get; set; }
         public bool IsConnected => false;
         public PairingStatus PairingStatus => PairingStatus.Unknown;
         public string? NodeDeviceId => "node-1";
@@ -687,7 +869,10 @@ public sealed class NodeConnectionCoordinatorTests
             string identityPath,
             bool useV2Signature,
             CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+            ConnectAsyncCallback?.Invoke(cancellationToken) ?? Task.CompletedTask;
+
+        public void RaiseStatusChanged(ConnectionStatus status) =>
+            StatusChanged?.Invoke(this, status);
 
         public Task DisconnectAsync() =>
             ThrowOnDisconnect

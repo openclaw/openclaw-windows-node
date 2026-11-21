@@ -22,6 +22,9 @@ internal sealed record ChatCopyButtonProps(
 /// <summary>Per-button, content-fenced feedback. No clipboard contents are retained beyond the view props.</summary>
 internal sealed class ChatCopyButton : Component<ChatCopyButtonProps>
 {
+    /// <summary>How long "Copied" or "Copy failed" stays before the button returns to its idle label.</summary>
+    internal static readonly TimeSpan DefaultResetAfter = TimeSpan.FromSeconds(2);
+
     private enum Status { Idle, Copied, Failed }
     private readonly record struct Feedback(string Identity, string Text, Status Status, long Sequence);
 
@@ -70,8 +73,16 @@ internal sealed class ChatCopyButton : Component<ChatCopyButtonProps>
                 return;
 
             setFeedback(new(props.Identity, props.Text, success ? Status.Copied : Status.Failed, sequence));
+        }
+
+        // The reset window starts when the feedback reaches the native button, not at the click. A UI
+        // thread that stays busy past the window after a click would otherwise reset the feedback
+        // before it is ever rendered or announced.
+        void StartReset(long sequence)
+        {
+            cancel.Current?.Invoke();
             var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-            timer.Interval = props.ResetAfter ?? TimeSpan.FromSeconds(2);
+            timer.Interval = current.Current.ResetAfter ?? DefaultResetAfter;
             timer.IsRepeating = false;
             TypedEventHandler<DispatcherQueueTimer, object> tick = (_, _) =>
             {
@@ -127,6 +138,8 @@ internal sealed class ChatCopyButton : Component<ChatCopyButtonProps>
                     return;
                 announced.Current = feedback.Sequence;
                 var sequence = feedback.Sequence;
+                if (mounted.Current && sequence == generation.Current)
+                    StartReset(sequence);
                 button.DispatcherQueue.TryEnqueue(() =>
                 {
                     if (mounted.Current && sequence == generation.Current && button.IsLoaded)

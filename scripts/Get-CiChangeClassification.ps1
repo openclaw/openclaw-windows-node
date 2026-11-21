@@ -3,10 +3,10 @@
     Classifies changed paths into conservative CI validation lanes.
 
 .DESCRIPTION
-    Pull requests receive explicit lane decisions from recognized project
-    boundaries. Unknown paths, build or workflow infrastructure, project files,
-    classifier contracts, invalid revisions, empty diffs, and non-PR events
-    select every lane fail-closed.
+    Pull requests and merge-queue groups receive explicit lane decisions from
+    recognized project boundaries. Unknown paths, build or workflow
+    infrastructure, project files, classifier contracts, invalid revisions,
+    empty diffs, and other events select every lane fail-closed.
 #>
 
 [CmdletBinding()]
@@ -338,7 +338,8 @@ function Add-PathImpact {
     return $false
 }
 
-if ($EventName -ne "pull_request") {
+# A merge group is classified from its own diff (queue base to merge group head), like a pull request.
+if ($EventName -notin @("pull_request", "merge_group")) {
     $decisionReason = 'non-pull-request-event'
     $paths = @($ChangedPaths)
     Complete-Impact (New-FullImpact -IncludeArm64)

@@ -1,5 +1,8 @@
 using System.Collections.Immutable;
+using System.Text.Json;
+using OpenClaw.Shared;
 using OpenClaw.Shared.Dashboards;
+using OpenClawTray.Services;
 
 namespace OpenClawTray.Dashboards;
 
@@ -9,6 +12,22 @@ internal enum BoardWidgetTicketFailure
     RepeatedRejection,
 }
 
+internal enum BoardProgressLoadStatus
+{
+    Loading,
+    Ready,
+    Empty,
+    Unavailable,
+    Denied,
+    Error,
+}
+
+/// <summary>
+/// One progress widget's view. <paramref name="Stale"/> marks a retained card whose
+/// latest refresh failed transiently; denied and unsupported reads never keep a card.
+/// </summary>
+internal sealed record BoardProgressViewState(BoardProgressLoadStatus Status, BoardProgressCard? Card, bool Stale = false);
+
 internal sealed record BoardDocumentSnapshot(
     DashboardLoadStatus Status,
     BoardSnapshot? Board,
@@ -16,11 +35,12 @@ internal sealed record BoardDocumentSnapshot(
     string ActiveTabId,
     ImmutableHashSet<string> VisitedTabs,
     ImmutableDictionary<string, BoardWidgetTicketFailure> TicketFailures,
+    ImmutableDictionary<string, BoardProgressViewState> ProgressCards,
     ImmutableArray<PluginWidgetKind> PluginWidgetKinds,
     Uri? GatewayOrigin)
 {
     public static BoardDocumentSnapshot Initial { get; } = new(
-        DashboardLoadStatus.Loading, null, null, "", [], [], [], null);
+        DashboardLoadStatus.Loading, null, null, "", [], [], [], [], null);
 }
 
 /// <summary>
@@ -43,7 +63,11 @@ internal sealed class BoardDocumentModel : IDisposable
     private readonly Func<TimeSpan, Action, IDisposable> _schedule;
     private readonly Dictionary<string, int> _unauthorizedCounts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _waitingForTicket = new(StringComparer.Ordinal);
+    // Keyed by the normalized Gateway scope key, so aliases of one session share one read.
+    private readonly Dictionary<string, ProgressRead> _progressReads = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _widgetProgressTargets = new(StringComparer.Ordinal);
     private readonly object _loadGate = new();
+    private BoardSessionDefaults? _sessionDefaults;
     private IDisposable? _renewal;
     private int _generation;
     private int _refreshQueued;
@@ -52,6 +76,25 @@ internal sealed class BoardDocumentModel : IDisposable
     private Task _loadTask = Task.CompletedTask;
     private (string TabId, int AfterGeneration)? _pendingFocus;
     private bool _disposed;
+
+    private sealed class ProgressRead(string key, ProgressCardTarget target)
+    {
+        public string Key { get; } = key;
+        public ProgressCardTarget Target { get; } = target;
+        public BoardProgressViewState State { get; set; } = new(BoardProgressLoadStatus.Loading, null);
+        public bool HasAttempted { get; set; }
+        public bool InFlight { get; set; }
+        public bool RefreshPending { get; set; }
+        /// <summary>A change was announced that no successful read has applied yet.</summary>
+        public bool Dirty { get; set; }
+    }
+
+    private enum ProgressReadFailure
+    {
+        Transient,
+        Unavailable,
+        Denied,
+    }
 
     public BoardDocumentModel(
         IBoardGatewayClient client,
@@ -72,6 +115,8 @@ internal sealed class BoardDocumentModel : IDisposable
             };
         _client.BoardChanged += OnBoardChanged;
         _client.BoardCommandReceived += OnBoardCommand;
+        _client.ProgressCardChanged += OnProgressCardChanged;
+        _client.SessionListChanged += OnSessionListChanged;
     }
 
     public BoardDocumentSnapshot Snapshot { get; private set; } = BoardDocumentSnapshot.Initial;
@@ -95,6 +140,12 @@ internal sealed class BoardDocumentModel : IDisposable
             _loading = true;
             return _loadTask = RunLoadsAsync();
         }
+    }
+
+    public Task RefreshAsync()
+    {
+        RefreshProgressCards();
+        return LoadAsync();
     }
 
     private async Task RunLoadsAsync()
@@ -198,6 +249,18 @@ internal sealed class BoardDocumentModel : IDisposable
         _waitingForTicket.Remove(name);
         Publish(Snapshot with { TicketFailures = Snapshot.TicketFailures.Remove(name) });
         QueueRefresh();
+    }
+
+    public void RetryProgress(string widgetName)
+    {
+        if (!_widgetProgressTargets.TryGetValue(widgetName, out var key) ||
+            !_progressReads.TryGetValue(key, out var read))
+            return;
+        read.HasAttempted = false;
+        if (read.State.Card is null)
+            read.State = new(BoardProgressLoadStatus.Loading, null);
+        RequestProgressRead(read);
+        Publish(Snapshot);
     }
 
     private BoardDocumentSnapshot AcceptTickets(
@@ -352,8 +415,211 @@ internal sealed class BoardDocumentModel : IDisposable
     {
         if (_disposed)
             return;
-        Snapshot = snapshot;
-        Changed?.Invoke(snapshot);
+        var next = ReconcileProgress(snapshot, out var toLoad);
+        Snapshot = next;
+        Changed?.Invoke(next);
+        foreach (var read in toLoad)
+            RequestProgressRead(read);
+    }
+
+    private BoardDocumentSnapshot ReconcileProgress(BoardDocumentSnapshot snapshot, out List<ProgressRead> toLoad)
+    {
+        toLoad = [];
+        var board = snapshot.Board;
+        var activeWidgets = board is null
+            ? Array.Empty<BoardWidget>()
+            : board.WidgetsForTab(snapshot.ActiveTabId)
+                .Where(widget => BoardWidgetBodyPolicy.Resolve(widget, snapshot.PluginWidgetKinds) == BoardWidgetBodyKind.Progress)
+                .ToArray();
+        var groups = activeWidgets
+            .Select(widget => (Widget: widget, Target: ProgressTarget(widget)))
+            .GroupBy(item => ProgressCardSessionIdentity.NormalizeSessionKeyForComparison(item.Target.WireKey), StringComparer.Ordinal)
+            .ToArray();
+        var activeKeys = groups.Select(group => group.Key).ToHashSet(StringComparer.Ordinal);
+        foreach (var key in _progressReads.Keys.Where(key => !activeKeys.Contains(key)).ToArray())
+            _progressReads.Remove(key);
+        _widgetProgressTargets.Clear();
+
+        var canRead = _client.IsConnectedToGateway && BoardAccessPolicy.CanReadProgress(_client);
+        var progressCards = ImmutableDictionary.CreateBuilder<string, BoardProgressViewState>(StringComparer.Ordinal);
+        foreach (var group in groups)
+        {
+            if (!_progressReads.TryGetValue(group.Key, out var read))
+            {
+                read = new ProgressRead(group.Key, group.First().Target);
+                _progressReads.Add(group.Key, read);
+            }
+
+            var widgetNames = group.Select(item => item.Widget.Name).ToArray();
+            foreach (var name in widgetNames)
+                _widgetProgressTargets[name] = group.Key;
+
+            if (!BoardAccessPolicy.CanReadProgress(_client))
+            {
+                read.State = new(BoardProgressLoadStatus.Unavailable, null);
+                read.HasAttempted = true;
+            }
+            else if (!canRead && read.State.Card is null)
+            {
+                read.State = new(BoardProgressLoadStatus.Unavailable, null);
+            }
+            else if (canRead && !read.HasAttempted && !read.InFlight)
+            {
+                if (read.State.Card is null)
+                    read.State = new(BoardProgressLoadStatus.Loading, null);
+                toLoad.Add(read);
+            }
+            foreach (var name in widgetNames)
+                progressCards[name] = read.State;
+        }
+
+        return snapshot with { ProgressCards = progressCards.ToImmutable() };
+    }
+
+    /// <summary>
+    /// Matches the web widget target: <c>props.sessionKey</c> when present, owned by the
+    /// agent its key names or else the board session's agent. <c>props.agentId</c> is not
+    /// an authority, so a widget cannot point a bare key at another agent.
+    /// </summary>
+    private ProgressCardTarget ProgressTarget(BoardWidget widget)
+    {
+        var sessionKey = _target.SessionKey;
+        if (widget.Props is { ValueKind: JsonValueKind.Object } props &&
+            props.TryGetProperty("sessionKey", out var sessionValue) &&
+            sessionValue.ValueKind == JsonValueKind.String &&
+            !string.IsNullOrWhiteSpace(sessionValue.GetString()))
+            sessionKey = sessionValue.GetString()!.Trim();
+        var agentId = ProgressCardSessionIdentity.TryParseAgentSessionKey(sessionKey, out var keyAgentId, out _) ? keyAgentId
+            : ProgressCardSessionIdentity.TryParseAgentSessionKey(_target.SessionKey, out var boardAgentId, out _) ? boardAgentId
+            : _target.AgentId;
+        return ProgressCardSessionIdentity.Resolve(new BoardSessionTarget(sessionKey, agentId), SessionDefaults());
+    }
+
+    // The first hello's defaults hold for this model; a reconnect builds a new model.
+    private BoardSessionDefaults? SessionDefaults() => _sessionDefaults ??= _client.SessionDefaults;
+
+    private bool IsCurrent(ProgressRead read) =>
+        !_disposed && _progressReads.TryGetValue(read.Key, out var current) && ReferenceEquals(current, read);
+
+    private void RequestProgressRead(ProgressRead read)
+    {
+        if (_disposed || !_client.IsConnectedToGateway || !BoardAccessPolicy.CanReadProgress(_client))
+            return;
+        if (read.InFlight)
+        {
+            read.RefreshPending = true;
+            return;
+        }
+        read.InFlight = true;
+        read.HasAttempted = true;
+        _ = LoadProgressAsync(read);
+    }
+
+    private async Task LoadProgressAsync(ProgressRead read)
+    {
+        BoardProgressCard? card = null;
+        ProgressReadFailure? failure = null;
+        try
+        {
+            card = await _client.GetProgressCardAsync(read.Target).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            failure = ClassifyProgressFailure(ex);
+            Logger.Warn($"Progress card read failed ({ex.GetType().Name}, {GatewayRequestErrors.Code(ex) ?? "local"}).");
+        }
+
+        _post(() =>
+        {
+            if (!IsCurrent(read))
+                return;
+            read.InFlight = false;
+            read.State = failure switch
+            {
+                // A reread replaces the card even at a lower revision: a reset session restarts at 1.
+                null => new(card is null ? BoardProgressLoadStatus.Empty : BoardProgressLoadStatus.Ready, card),
+                ProgressReadFailure.Transient => read.State.Card is { } previousCard
+                    ? new(BoardProgressLoadStatus.Ready, previousCard, Stale: true)
+                    : new(BoardProgressLoadStatus.Error, null),
+                ProgressReadFailure.Denied => new(BoardProgressLoadStatus.Denied, null),
+                _ => new(BoardProgressLoadStatus.Unavailable, null),
+            };
+            if (failure is null)
+                read.Dirty = false;
+            var refreshAgain = read.RefreshPending;
+            read.RefreshPending = false;
+            Publish(Snapshot);
+            if (refreshAgain && IsCurrent(read))
+                RequestProgressRead(read);
+        });
+    }
+
+    /// <summary>
+    /// Denied reads clear the card like the web client: the caller may no longer see
+    /// that session. Unsupported reads are unavailable. Anything else keeps the last
+    /// card as stale so a transient failure does not blank visible progress.
+    /// </summary>
+    private static ProgressReadFailure ClassifyProgressFailure(Exception ex)
+    {
+        if (ex is NotSupportedException)
+            return ProgressReadFailure.Unavailable;
+        var code = GatewayRequestErrors.Code(ex);
+        var detailCode = GatewayRequestErrors.DetailCode(ex);
+        if (code == "METHOD_NOT_FOUND" || code == "FORBIDDEN" && detailCode == "MISSING_SCOPE")
+            return ProgressReadFailure.Unavailable;
+        if (code == "FORBIDDEN" || detailCode == GatewayRequestErrors.SessionParticipationRequired)
+            return ProgressReadFailure.Denied;
+        return ProgressReadFailure.Transient;
+    }
+
+    private void RefreshProgressCards()
+    {
+        foreach (var read in _progressReads.Values.ToArray())
+            RequestProgressRead(read);
+    }
+
+    private void OnProgressCardChanged(object? sender, BoardProgressChangedEvent e)
+    {
+        _post(() =>
+        {
+            if (_disposed)
+                return;
+            foreach (var read in _progressReads.Values.ToArray())
+            {
+                if (!ProgressCardSessionIdentity.SameSession(e.SessionKey, read.Target.WireKey))
+                    continue;
+                if (!read.InFlight && !read.Dirty && e.Revision is { } revision &&
+                    read.State.Card is { } card && card.Revision >= revision)
+                    continue;
+                read.Dirty = true;
+                RequestProgressRead(read);
+            }
+        });
+    }
+
+    /// <summary>A reset or deleted session ends its card; drop it and reread so revisions can restart.</summary>
+    private void OnSessionListChanged(object? sender, SessionListChange e)
+    {
+        if (e.Reason is not ("reset" or "delete") || string.IsNullOrWhiteSpace(e.SessionKey))
+            return;
+        _post(() =>
+        {
+            if (_disposed)
+                return;
+            var eventKey = ProgressCardSessionIdentity.Resolve(new BoardSessionTarget(e.SessionKey, e.AgentId), SessionDefaults()).WireKey;
+            var changed = false;
+            foreach (var read in _progressReads.Values.ToArray())
+            {
+                if (!ProgressCardSessionIdentity.SameSession(eventKey, read.Target.WireKey))
+                    continue;
+                read.State = new(BoardProgressLoadStatus.Loading, null);
+                read.Dirty = true;
+                RequestProgressRead(read);
+                changed = true;
+            }
+            if (changed)
+                Publish(Snapshot);
+        });
     }
 
     public void Dispose()
@@ -363,6 +629,10 @@ internal sealed class BoardDocumentModel : IDisposable
         _renewal?.Dispose();
         _client.BoardChanged -= OnBoardChanged;
         _client.BoardCommandReceived -= OnBoardCommand;
+        _client.ProgressCardChanged -= OnProgressCardChanged;
+        _client.SessionListChanged -= OnSessionListChanged;
+        _progressReads.Clear();
+        _widgetProgressTargets.Clear();
         Changed = null;
     }
 }

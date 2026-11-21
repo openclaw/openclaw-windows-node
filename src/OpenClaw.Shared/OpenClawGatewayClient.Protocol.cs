@@ -241,6 +241,16 @@ public partial class OpenClawGatewayClient
             _logger.Warn($"sessions.create timed out: {ex.Message}");
             return CreateSessionCreationTimeoutResult();
         }
+        catch (GatewayConnectionLostException ex)
+        {
+            _logger.Warn($"sessions.create connection was lost before confirmation: {ex.Message}");
+            return CreateSessionCreationConnectionLostResult();
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.Warn($"sessions.create was interrupted before confirmation: {ex.Message}");
+            return CreateSessionCreationConnectionLostResult();
+        }
         catch (InvalidOperationException ex) when (IsUnknownMethodError(ex.Message))
         {
             _logger.Warn("sessions.create unsupported on gateway");
@@ -265,7 +275,15 @@ public partial class OpenClawGatewayClient
     internal static SessionCreateResult CreateSessionCreationTimeoutResult() => new()
     {
         Ok = false,
+        OutcomeUncertain = true,
         Error = "The gateway did not respond before session creation timed out. Check the session list to see whether a new session was created before trying again."
+    };
+
+    internal static SessionCreateResult CreateSessionCreationConnectionLostResult() => new()
+    {
+        Ok = false,
+        OutcomeUncertain = true,
+        Error = "The Gateway did not confirm session creation before the request was interrupted. Check the session list before trying again."
     };
 
     internal static Dictionary<string, object?> BuildSessionCreateParameters(
@@ -326,6 +344,7 @@ public partial class OpenClawGatewayClient
             return new SessionCreateResult
             {
                 Ok = false,
+                OutcomeUncertain = true,
                 Error = "sessions.create returned no session key"
             };
         }
@@ -704,7 +723,10 @@ public partial class OpenClawGatewayClient
 
         if (!hasFile)
         {
-            return new SessionFileContent { Key = key, Path = path, Missing = true, IsSupported = true };
+            return new SessionFileContent
+            {
+                Key = key, Path = path, Missing = true, IsSupported = true, Reason = GetStringSafe(payload, "reason"),
+            };
         }
 
         return new SessionFileContent
@@ -718,8 +740,59 @@ public partial class OpenClawGatewayClient
             Size = GetLongOrNull(file, "size"),
             UpdatedAt = ParseUnixTimestampMs(file, "updatedAtMs"),
             Missing = GetOptionalBool(file, "missing") ?? false,
+            ContentEncoding = GetString(file, "contentEncoding"),
+            PreviewKind = GetString(file, "previewKind"),
+            Reason = GetStringSafe(payload, "reason"),
             IsSupported = true
         };
+    }
+
+    /// <summary>
+    /// Reads one session file for a chat tool row on the connection identified by
+    /// <paramref name="expectedConnectionEpoch"/>. The deadline covers queueing, sending and waiting;
+    /// a hello-ok that is still pending fails as unavailable rather than unsupported. No retry.
+    /// </summary>
+    public async Task<SessionFileContent> ReadSessionFileAsync(
+        string key, string path, long expectedConnectionEpoch, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        cancellationToken.ThrowIfCancellationRequested();
+        var timeoutMs = int.TryParse(Environment.GetEnvironmentVariable(SessionFileReadTimeoutEnvironmentVariable),
+            out var configured) && configured > 0 ? configured : SessionFileReadTimeoutMs;
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeoutMs);
+        JsonElement payload;
+        try
+        {
+            payload = await SendResponseRequestAsync("sessions.files.get", new { sessionKey = key, path }, timeoutMs,
+                expectedConnectionEpoch, deadline.Token).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) when (IsUnknownMethodError(ex.Message))
+        {
+            return new SessionFileContent { Key = key, Path = path, IsSupported = false };
+        }
+        catch (InvalidOperationException ex) when (
+            GatewayRequestErrors.TryGetCodes(ex, out _, out var kind) &&
+            kind is GatewayRequestErrors.SessionFileNotFound or GatewayRequestErrors.SessionFileExpired
+                or GatewayRequestErrors.SessionFileTooLarge &&
+            SessionMutationConnectionEpoch == expectedConnectionEpoch)
+        {
+            // Settled answers about the file, not failures: retrying cannot change them.
+            return kind == GatewayRequestErrors.SessionFileTooLarge
+                ? new SessionFileContent { Key = key, Path = path, IsSupported = true }
+                : new SessionFileContent { Key = key, Path = path, IsSupported = true, Missing = true };
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or InvalidOperationException &&
+            deadline.IsCancellationRequested)
+        {
+            // A queued send abandoned by cancellation reports a changed connection; report the real cause.
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new TimeoutException("Timed out waiting for sessions.files.get response", ex);
+        }
+        if (SessionMutationConnectionEpoch != expectedConnectionEpoch)
+            throw new InvalidOperationException("The Gateway connection changed during sessions.files.get.");
+        return ParseSessionFileContent(payload, key, path);
     }
 
     private static SessionFileEntry ParseFileEntry(JsonElement item) => new()

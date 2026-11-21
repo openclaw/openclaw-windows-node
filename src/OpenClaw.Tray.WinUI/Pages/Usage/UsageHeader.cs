@@ -142,7 +142,7 @@ internal static class UsageHeader
             state.Phase == UsageLoadPhase.Loading
                 ? ProgressRing().Size(20, 20).AutomationName(S("Usage_Refreshing")).AutomationId("UsageRefreshing").WithKey("refreshing")
                 : IconButton("\uE72C", S("Usage_Refresh"), controller.Refresh, "UsageRefresh",
-                    state.Availability != UsageAvailability.Disconnected).WithKey("refresh"))
+                    state.Availability != UsageAvailability.Disconnected, pageAction: true).WithKey("refresh"))
             .HAlign(layout.Narrow ? HorizontalAlignment.Left : HorizontalAlignment.Right)
             .VAlign(VerticalAlignment.Center).AutomationId("UsageFilterOptions");
         var wide = layout.Tier == PageWidthTier.Wide;
@@ -213,8 +213,9 @@ internal static class UsageHeader
     }
 
     public static Element OpenWebButton(UsagePageState state, Action openWebUsage, string automationId = "UsageOpenWeb") =>
-        Button(HStack(6, TextBlock(S("Usage_OpenWeb")).TextWrapping(TextWrapping.NoWrap),
-                TextBlock("\uE8A7").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(14)), openWebUsage)
+        Button(TextBlock("\uE8A7").AccessibilityHidden().FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(16), openWebUsage)
+            .SubtleButton().Size(32, 32).Padding(0)
+            .VAlign(VerticalAlignment.Center)
             .IsEnabled(state.Availability != UsageAvailability.Disconnected)
             .ToolTip(S("Usage_OpenWebHint")).HelpText(S("Usage_OpenWebHint"))
             .AutomationName(S("Usage_OpenWeb")).AutomationId(automationId);

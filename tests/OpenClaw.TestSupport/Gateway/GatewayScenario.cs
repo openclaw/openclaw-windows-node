@@ -40,6 +40,8 @@ public sealed partial class GatewayScenario
     public const string VoiceSessionKey = "agent:main:fixture-voice";
     public const string VoiceTitle = "Fixture: historical realtime voice";
     public const string VoiceFinalSentinel = "FIXTURE VOICE FINAL: all historical voice messages loaded.";
+    public const string MarkdownSelectionSessionKey = "agent:main:fixture-markdown-selection";
+    public const string MarkdownSelectionTitle = "Fixture: Markdown selection";
     public const string OwnerProfileId = "fixture-owner";
 
     private static readonly DateTimeOffset Epoch = new(2026, 8, 20, 12, 0, 0, TimeSpan.Zero);
@@ -75,6 +77,7 @@ public sealed partial class GatewayScenario
 
     public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
         : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
+        : ContainsSession(MarkdownSelectionSessionKey) ? "markdown-selection"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
     public int ProtocolVersion => GatewayProtocolContract.CurrentVersion;
@@ -295,6 +298,16 @@ public sealed partial class GatewayScenario
         return new([.. browse._sessions, voice with { Messages = messages }], browse._reads);
     }
 
+    public const string ProgressSessionKey = "agent:main:dashboard:fixture-progress";
+    public const string ProgressSessionTitle = "Fixture: progress conversation";
+
+    public static GatewayScenario CreateChatProgress()
+    {
+        var browse = CreateBrowse(allowChatSend: true);
+        var progress = CreateSession(ProgressSessionKey, ProgressSessionTitle, "main", "browse", browse._sessions.Length, []);
+        return new([.. browse._sessions, progress], browse._reads, allowChatSend: true);
+    }
+
     public static GatewayScenario CreateBrowse(bool allowAgentCreation = false, bool requireAgentSelection = false,
         bool allowSessionMutations = false, bool allowChatSend = false, bool publishedModelCatalog = false)
     {
@@ -445,6 +458,20 @@ public sealed partial class GatewayScenario
             publishedModelCatalog: publishedModelCatalog);
     }
 
+    /// <summary>Creates synthetic Markdown history for shipped-app text-selection proof.</summary>
+    public static GatewayScenario CreateMarkdownSelection(string markdownMessage)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(markdownMessage);
+        var browse = CreateBrowse();
+        var selection = CreateSession(MarkdownSelectionSessionKey, MarkdownSelectionTitle, "main", "browse", 5,
+        [
+            "FIXTURE SELECTION BEFORE: a separate message must not be copied.",
+            markdownMessage,
+            "FIXTURE SELECTION AFTER: a separate message must not be copied."
+        ]);
+        return new([.. browse._sessions, selection], browse._reads);
+    }
+
     /// <summary>
     /// Creates a browse fixture with a profile whose avatar eligibility is resolved by the Gateway.
     /// It intentionally omits hasAvatar; when email is null, it also omits emails.
@@ -544,6 +571,8 @@ public sealed partial class GatewayScenario
             return hubResponse;
         if (_boards is not null && method == "board.get")
             return _boards.GetBoard(parameters);
+        if (_boards is not null && method == "progressCard.get")
+            return _boards.GetProgressCard(parameters);
         if (_boards is not null && method == "sessions.list" && OptionalString(parameters, "source") == "dashboard")
             return _boards.ListSessions(parameters);
         if (_inboxFeed is not null)

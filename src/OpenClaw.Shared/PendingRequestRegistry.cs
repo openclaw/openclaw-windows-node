@@ -157,14 +157,18 @@ internal sealed class PendingRequestRegistry
         return true;
     }
 
-    internal void Drain(GatewayConnectionLostException? wizardDisconnect = null)
+    internal void Drain(GatewayConnectionLostException? wizardDisconnect = null) =>
+        CaptureDrain(wizardDisconnect)();
+
+    /// <summary>Closes this generation now and returns its waiter completions for execution outside the transport lock.</summary>
+    internal Action CaptureDrain(GatewayConnectionLostException? wizardDisconnect = null)
     {
         Entry[] entries;
         lock (_gate)
         {
             if (!_open && _entries.Count == 0)
             {
-                return;
+                return static () => { };
             }
 
             _open = false;
@@ -173,7 +177,7 @@ internal sealed class PendingRequestRegistry
             _entries.Clear();
         }
 
-        FaultDrainedEntries(entries, wizardDisconnect);
+        return () => FaultDrainedEntries(entries, wizardDisconnect);
     }
 
     private RegistrationHandle Register(Entry entry)

@@ -1,3 +1,4 @@
+extern alias TrayRuntime;
 using System.Reflection;
 using System.Text;
 using System.Text.Encodings.Web;
@@ -18,6 +19,7 @@ using OpenClawTray.Chat;
 using OpenClawTray.Services;
 using Windows.Foundation;
 using static OpenClaw.Tray.UITests.TestSupport;
+using FluentIconCatalog = TrayRuntime::OpenClawTray.Helpers.FluentIconCatalog;
 
 namespace OpenClaw.Tray.UITests;
 
@@ -163,8 +165,7 @@ public sealed partial class ReactorChatLayoutProofTests
             state = ChatTimelineReducer.Apply(state, new ChatReasoningStreamEvent("proof-run", "reason",
                 "I will inspect the supplied files before editing.", 1000));
             await PublishAsync();
-            await ui.RunOnUIAsync(() =>
-                Assert.Contains("I will inspect the supplied files before editing.", ReadToolText(surface)));
+            await OpenReasoningAsync(surface, "I will inspect the supplied files before editing.", "Feedback-thinking-collapsed");
             await CaptureAsync(surface, "Feedback-supplied-thinking");
             await ui.RunOnUIAsync(() => Assert.Contains("Thinking",
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(FindControl<Grid>(host, "ChatRunProgress"))));
@@ -176,7 +177,7 @@ public sealed partial class ReactorChatLayoutProofTests
             state = ChatTimelineReducer.Apply(state, new ChatProgressEvent(
                 "Retrying the model request", DateTimeOffset.UtcNow.AddSeconds(5).ToUnixTimeMilliseconds()));
             await PublishAsync();
-            await ui.RunOnUIAsync(() => Assert.Contains("Retrying in", FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+            await ui.RunOnUIAsync(() => Assert.Contains("Retrying in", FindControl<TextBlock>(host, "ChatRunProgressStatus").Text));
             await CaptureAsync(surface, "Feedback-retry");
 
             void Tool(string data, int sequence) => state = ChatTimelineReducer.Apply(state,
@@ -226,7 +227,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 snapshot.Threads[0] with { WaitingForSubagents = true,
                     ProviderReview = new("provider-review", "proof-run", "Synthetic review explanation",
                         "Continue only after reviewing the request.", false) },
-                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof",
+                new ChatThread { Id = "child", Title = "Inspecting results", ParentSessionKey = "proof", IsSubagent = true,
                     Activity = ChatActivity.Working, CurrentActivity = "Checking the synthetic change" }] };
             await PublishAsync();
             await ResumeFollowingAsync(surface);
@@ -234,7 +235,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
                 var progress = FindDescendants<TextBlock>(surface).SingleOrDefault(text =>
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatRunProgressText");
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatRunProgressStatus");
                 if (progress is null || !progress.Text.Contains("Waiting for subagents", StringComparison.Ordinal))
                     return false;
                 var scroll = Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView;
@@ -243,20 +244,47 @@ public sealed partial class ReactorChatLayoutProofTests
                 return bounds.Top >= 0 && bounds.Bottom <= scroll.ActualHeight;
             }, "visible waiting-for-subagents feedback"));
             await CaptureAsync(surface, "Feedback-child-wait");
-            await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatChildActivity").IsExpanded = true);
-            await ui.RunOnUIAsync(() => FindControl<Expander>(surface, "ChatProviderReview").IsExpanded = true);
-            await SettleAsync();
-            await AwaitDisclosureAnimationsAsync(surface);
-            await CaptureAsync(surface, "Feedback-provider-review");
             await ui.RunOnUIAsync(() =>
             {
-                var details = FindControl<ScrollViewer>(surface, "ChatActivityDetails");
-                details.ChangeView(null, details.ScrollableHeight, null, disableAnimation: true);
+                var review = FindControl<Border>(surface, "ChatProviderReview");
+                Assert.Equal("Session stopped as a precaution. " +
+                    "The provider stopped this session. Review its findings before starting more work.",
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(review));
+                Assert.DoesNotContain(FindDescendants<Expander>(surface), expander =>
+                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(expander) == "ChatProviderReview");
+                var composerBounds = Bounds(FindControl<TextBox>(surface, "ChatComposerInput"), surface);
+                var reviewBounds = Bounds(review, surface);
+                Assert.True(reviewBounds.Bottom <= composerBounds.Top);
+                Assert.InRange(reviewBounds.Width, 0, ChatVisuals.ReadingWidth + 1);
+                Invoke(FindControl<Button>(review, "ChatProviderReviewOpen"));
             });
-            await SettleAsync();
+            ContentDialog? findings = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                findings = VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+                    .SelectMany(popup => popup.Child is ContentDialog direct
+                        ? new[] { direct } : FindDescendants<ContentDialog>(popup.Child)).SingleOrDefault();
+                return findings is { IsLoaded: true };
+            }, "provider findings dialog"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var text = FindDescendants<TextBlock>(findings!).Select(block => block.Text).ToArray();
+                Assert.Contains("Provider findings", text);
+                Assert.Contains("Synthetic review explanation", text);
+                Assert.Contains("This session can't continue. It remains stopped.", text);
+            });
+            await CaptureAsync(surface, "Feedback-provider-review");
+            await ui.RunOnUIAsync(() => findings!.Hide());
+            await UntilAsync(() => !VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot)
+                    .Any(popup => popup.Child is ContentDialog), "provider findings dialog closed");
+            await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
+            await UntilAsync(() => FindOptional<Grid>(surface, "ChatSubagent_child") is { IsLoaded: true },
+                "Subagents tab with the waiting child");
             await CaptureAsync(surface, "Feedback-child-details");
+            await ui.RunOnUIAsync(() => CloseSubagentsTab(surface));
+            await UntilAsync(() => PanelCollapsed(surface), "Subagents tab closed");
             await ui.RunOnUIAsync(() => Assert.Contains("Waiting for subagents",
-                FindControl<TextBlock>(host, "ChatRunProgressText").Text));
+                FindControl<TextBlock>(host, "ChatRunProgressStatus").Text));
 
             RecordPhase("append transcript");
             snapshot = snapshot with { Threads = [snapshot.Threads[0] with
@@ -273,11 +301,31 @@ public sealed partial class ReactorChatLayoutProofTests
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             var transcriptScroll = await ui.RunOnUIAsync(() => Task.FromResult(
                 Assert.Single(FindDescendants<ItemsView>(surface)).ScrollView));
-            Task AwaitBottomAsync() => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            string DescribeBottom()
+            {
+                var repeater = transcriptScroll.Content as ItemsRepeater;
+                var count = repeater?.ItemsSourceView.Count ?? 0;
+                var expected = count > 0 ? repeater!.ItemsSourceView.GetAt(count - 1) : null;
+                var tail = count > 0 ? repeater!.TryGetElement(count - 1) as FrameworkElement : null;
+                var bounds = tail?.TransformToVisual(transcriptScroll).TransformBounds(
+                    new Windows.Foundation.Rect(0, 0, tail.ActualWidth, tail.ActualHeight));
+                var geometry = $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
+                    $"extent={transcriptScroll.ExtentHeight}; viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
+                    $"anchorRatio={transcriptScroll.VerticalAnchorRatio:R}; nativeAnchorRatio={transcriptScroll.ScrollPresenter?.VerticalAnchorRatio:R}; " +
+                    $"repeaterPresent={repeater is not null}; itemCount={count}; tailLoaded={tail?.IsLoaded}; " +
+                    $"tailTop={bounds?.Top}; tailBottom={bounds?.Bottom}; tailHeight={tail?.ActualHeight}; " +
+                    $"tailMatchesSource={tail is not null && expected is not null && ReferenceEquals(tail.DataContext, expected)}";
+                // Query only after timeout: CurrentAnchor can resolve the native anchor selection.
+                var anchor = transcriptScroll.CurrentAnchor;
+                return geometry + $"; queriedAnchorType={anchor?.GetType().Name}; " +
+                    $"queriedAnchorIndex={(anchor is not null && repeater is not null ? repeater.GetElementIndex(anchor) : -1)}; " +
+                    $"queriedAnchorIsTail={tail is not null && ReferenceEquals(anchor, tail)}";
+            }
+            Task AwaitBottomAsync(string operation = "jump reaches the exact transcript bottom") => ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                 () => transcriptScroll.State == ScrollingInteractionState.Idle &&
                     Math.Abs(transcriptScroll.ScrollableHeight - transcriptScroll.VerticalOffset) <= 1,
-                "jump reaches the exact transcript bottom",
-                () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; state={transcriptScroll.State}"));
+                operation,
+                DescribeBottom));
             async Task ScrollAwayAsync()
             {
                 // Establish reader intent through the normal transcript keyboard-focus path.
@@ -323,20 +371,25 @@ public sealed partial class ReactorChatLayoutProofTests
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
                     () => transcriptScroll.State == ScrollingInteractionState.Idle &&
                         transcriptScroll.VerticalOffset <= 1 &&
-                        FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
+                        FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal").Opacity == 1,
                     "reader at the top with the jump control visible",
                     () => $"offset={transcriptScroll.VerticalOffset}; maximum={transcriptScroll.ScrollableHeight}; " +
                         $"viewport={transcriptScroll.ViewportHeight}; state={transcriptScroll.State}; " +
-                        $"jump={FindControl<Button>(surface, "ChatJumpLatest").Opacity}"));
+                        $"jump={FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal").Opacity}"));
             }
             var viewportBeforeJump = await ui.RunOnUIAsync(() => Task.FromResult(
                 transcriptScroll.ViewportHeight));
             await ScrollAwayAsync();
             var readerOffset = await ui.RunOnUIAsync(() => Task.FromResult(transcriptScroll.VerticalOffset));
+            // The control rises into place; its geometry is asserted once that render-only reveal settles.
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Bounds(FindControl<Button>(surface, "ChatJumpLatest"), surface).Bottom <=
+                    Bounds(transcriptScroll, surface).Bottom,
+                "jump control settled inside the transcript"));
             await ui.RunOnUIAsync(() =>
             {
                 var jump = FindControl<Button>(surface, "ChatJumpLatest");
-                Assert.Equal(1, jump.Opacity);
+                Assert.Equal(1, FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal").Opacity);
                 Assert.True(Bounds(jump, surface).Bottom <= Bounds(transcriptScroll, surface).Bottom);
                 Assert.Equal(viewportBeforeJump, transcriptScroll.ViewportHeight, precision: 1);
             });
@@ -350,7 +403,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Equal(readerOffset, transcriptScroll.VerticalOffset, precision: 1);
                 Assert.Equal(viewportBeforeJump, transcriptScroll.ViewportHeight, precision: 1);
                 var jump = FindControl<Button>(surface, "ChatJumpLatest");
-                Assert.Equal(1, jump.Opacity);
+                Assert.Equal(1, FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal").Opacity);
                 Assert.Contains("New messages", Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(jump));
                 AssertJumpIcon(jump);
                 Invoke(jump);
@@ -360,7 +413,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 var jump = FindControl<Button>(surface, "ChatJumpLatest");
-                Assert.Equal(0, jump.Opacity);
+                Assert.Equal(0, FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal").Opacity);
                 Assert.False(jump.IsEnabled);
                 Assert.False(jump.IsHitTestVisible);
                 Assert.False(jump.IsTabStop);
@@ -374,7 +427,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
                     "\n\n" + string.Join("\n\n", Enumerable.Repeat($"Streamed section {index}.", 5))));
                 await PublishAsync();
-                await AwaitBottomAsync();
+                await AwaitBottomAsync($"streamed section {index} reaches the exact transcript bottom");
             }
             state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
             await PublishAsync();
@@ -402,17 +455,17 @@ public sealed partial class ReactorChatLayoutProofTests
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
             await AwaitBottomAsync();
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => transcriptScroll.VerticalAnchorRatio == 1,
-                "bottom anchoring restored after the corrected jump"));
+                () => transcriptScroll.VerticalAnchorRatio > 0 && transcriptScroll.VerticalAnchorRatio < 1,
+                "content anchoring restored after the corrected jump"));
             await CaptureAsync(surface, "Feedback-resized-jump-latest");
 
             state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Reply after resized jump.", IsStreaming: true));
             await PublishAsync();
-            await AwaitBottomAsync();
+            await AwaitBottomAsync("streaming reply after resized jump reaches the exact transcript bottom");
             state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent(
                 "\n\n" + string.Join("\n\n", Enumerable.Repeat("Keep following after the corrected jump.", 20))));
             await PublishAsync();
-            await AwaitBottomAsync();
+            await AwaitBottomAsync("streamed continuation after resized jump reaches the exact transcript bottom");
             state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent());
             await PublishAsync();
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
@@ -464,7 +517,7 @@ public sealed partial class ReactorChatLayoutProofTests
     [InlineData(480, "close")]
     [InlineData(480, "profile-same")]
     [InlineData(480, "profile-different")]
-    public async Task ConversationParity_RecoveryReadsTheSavedResultOnlyAfterTheDetailsAction(int width, string action)
+    public async Task ConversationParity_RecoveryReadsTheSavedResultOnlyFromTheSidePanel(int width, string action)
     {
         OnboardingNativeProof.AssertIsolatedRoots();
         Assert.Equal(Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR")!, "openclaw-tray.log"),
@@ -566,11 +619,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 });
                 await SettleAsync();
                 await AwaitInitialTailAsync(surface, key, initial.Timelines[key].Entries.Last().Id);
-                await ui.RunOnUIAsync(() =>
-                    FindControl<Expander>(surface, $"ChatToolActivity_{entry.Id}").IsExpanded = true);
-                await SettleAsync();
+                // The lone recovered call is its own row, so it opens directly.
                 var expander = await ui.RunOnUIAsync(() =>
                 {
+                    Assert.DoesNotContain(FindDescendants<Expander>(surface), control =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control) ==
+                            $"ChatToolActivity_{entry.Id}");
                     var control = FindControl<Expander>(surface, $"ChatToolCall_{entry.Id}");
                     control.IsExpanded = true;
                     return Task.FromResult(control);
@@ -578,14 +632,19 @@ public sealed partial class ReactorChatLayoutProofTests
                 await SettleAsync();
                 await RevealHeaderAsync(surface, expander);
                 Assert.DoesNotContain(server.Requests, request => request.Method == "chat.message.get");
-                var output = await ui.RunOnUIAsync(() => Task.FromResult(FindDescendants<RichTextBlock>(expander).Last()));
-                await CaptureAsync(surface, $"ToolRecovery-{width}-{action}-preview");
                 await ui.RunOnUIAsync(() =>
                 {
-                    var load = FindControl<Button>(expander, "ChatToolOutputLoad");
-                    Invoke(load);
-                    Invoke(load);
+                    var row = Disclosure(expander);
+                    Assert.DoesNotContain(FindDescendants<TextBlock>(row), text =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
+                    Assert.DoesNotContain(FindDescendants<Button>(row), button =>
+                        Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "ChatToolOutputLoad");
+                    Invoke(FindControl<Button>(row, $"ChatToolDetails_{entry.Id}"));
                 });
+                await SettleAsync();
+                var reader = await ui.RunOnUIAsync(() =>
+                    Task.FromResult(FindControl<ScrollViewer>(surface, "ConversationToolDetailsReader")));
+                var output = await ui.RunOnUIAsync(() => Task.FromResult(FindDescendants<RichTextBlock>(reader).Last()));
                 await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
                 await SettleAsync();
                 await CaptureAsync(surface, $"ToolRecovery-{width}-{action}-loading");
@@ -607,9 +666,12 @@ public sealed partial class ReactorChatLayoutProofTests
                     await ui.RunOnUIAsync(() =>
                     {
                         if (action == "cancel")
-                            Invoke(FindControl<Button>(expander, "ChatToolOutputCancel"));
+                            Invoke(FindControl<Button>(reader, "ChatToolOutputCancel"));
                         else
-                            expander.IsExpanded = false;
+                        {
+                            var item = (TabViewItem)FindControl<TabView>(surface, "ConversationPanelTabs").TabItems[0];
+                            Invoke(FindDescendants<Button>(item).Single(button => button.Name == "CloseButton"));
+                        }
                     });
                     await SettleAsync();
                 }
@@ -621,8 +683,8 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.False(bridge.ToolDetailsProfileState.IsAvailable);
                     await ui.RunOnUIAsync(() =>
                     {
-                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
-                        Assert.DoesNotContain(FindDescendants<Button>(expander), button =>
+                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(reader));
+                        Assert.DoesNotContain(FindDescendants<Button>(reader), button =>
                             Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(button) == "ChatToolOutputLoad");
                     });
                     Assert.Single(server.Requests, request => request.Method == "chat.message.get");
@@ -634,14 +696,22 @@ public sealed partial class ReactorChatLayoutProofTests
                     await SettleAsync();
                     await ui.RunOnUIAsync(() =>
                     {
-                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
-                        expander.IsExpanded = true;
+                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(reader));
+                        if (action == "close")
+                            Invoke(FindControl<Button>(Disclosure(expander), $"ChatToolDetails_{entry.Id}"));
                     });
                     await SettleAsync();
-                    Assert.Single(server.Requests, request => request.Method == "chat.message.get");
-                    await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(expander, "ChatToolOutputLoad")));
+                    reader = await ui.RunOnUIAsync(() =>
+                        Task.FromResult(FindControl<ScrollViewer>(surface, "ConversationToolDetailsReader")));
+                    output = await ui.RunOnUIAsync(() =>
+                        Task.FromResult(FindDescendants<RichTextBlock>(reader).Last()));
+                    if (action == "cancel")
+                    {
+                        Assert.Single(server.Requests, request => request.Method == "chat.message.get");
+                        await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(reader, "ChatToolOutputLoad")));
+                    }
                 }
-                await WaitForRecoveryAsync(expander);
+                await WaitForRecoveryAsync(reader);
                 if (action == "profile-same")
                 {
                     previousProfile = bridge.ToolDetailsProfileState;
@@ -650,20 +720,15 @@ public sealed partial class ReactorChatLayoutProofTests
                     await ProfileSettled(previousProfile.Revision);
                     Assert.True(bridge.ToolDetailsProfileState.IsAvailable);
                     Assert.NotEqual(previousProfile, bridge.ToolDetailsProfileState);
-                    await ui.RunOnUIAsync(() =>
-                    {
-                        Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(expander));
-                        Invoke(FindControl<Button>(expander, "ChatToolOutputLoad"));
-                    });
-                    await WaitForRecoveryAsync(expander);
+                    await WaitForRecoveryAsync(reader);
                 }
                 await ui.RunOnUIAsync(() =>
                 {
-                    Assert.Contains(output, FindDescendants<RichTextBlock>(expander));
-                    Assert.Contains("RECOVERED OUTPUT TAIL", ReadToolText(expander));
+                    Assert.Contains(output, FindDescendants<RichTextBlock>(reader));
+                    Assert.Contains("RECOVERED OUTPUT TAIL", ReadToolText(reader));
+                    Assert.DoesNotContain("RECOVERED OUTPUT TAIL", ReadToolText(Disclosure(expander)));
                     Assert.Equal("Preserve this draft.", FindControl<TextBox>(surface, "ChatComposerInput").Text);
-                    var scroll = FindDescendants<ScrollViewer>(expander).Last();
-                    scroll.ChangeView(null, scroll.ScrollableHeight, null, true);
+                    reader.ChangeView(null, reader.ScrollableHeight, null, true);
                 });
                 await SettleAsync();
                 await CaptureAsync(surface, $"ToolRecovery-{width}-{action}-recovered");
@@ -684,10 +749,10 @@ public sealed partial class ReactorChatLayoutProofTests
         finally { release.Set(); }
     }
 
-    private async Task WaitForRecoveryAsync(Expander expander)
+    private async Task WaitForRecoveryAsync(DependencyObject reader)
     {
         var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (!await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(expander).Contains("RECOVERED OUTPUT TAIL"))))
+        while (!await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(reader).Contains("RECOVERED OUTPUT TAIL"))))
         {
             Assert.True(DateTime.UtcNow < deadline, "The recovered result was not displayed.");
             await SettleAsync();
@@ -747,15 +812,15 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await SettleAsync();
             await AwaitInitialTailAsync(surface, key, snapshot.Timelines[key].Entries.Last().Id);
+            await OpenReasoningAsync(surface, "PARITY THINKING");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Single(FindDescendants<TextBlock>(surface),
                     block => block.Text.StartsWith("Assistant ·", StringComparison.Ordinal));
-                Assert.Contains("PARITY THINKING", ReadToolText(surface));
                 var group = Assert.Single(FindDescendants<Expander>(surface), control =>
                     Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(control).StartsWith("ChatToolActivity_"));
                 Assert.False(group.IsExpanded);
-                Assert.InRange(group.ActualHeight, 32, 40);
+                Assert.InRange(Math.Round(group.ActualHeight, 3), 32, 40);
             });
             await CaptureAsync(surface, $"ConversationParity-{width}-collapsed");
             await ui.RunOnUIAsync(() =>
@@ -773,15 +838,36 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await SettleAsync();
             await RevealHeaderAsync(surface, commandControl);
-            var commandText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(commandControl)));
+            var commandText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(Disclosure(commandControl))));
+            Assert.DoesNotContain("PARITY OUTPUT TAIL", commandText);
+            await ui.RunOnUIAsync(() =>
+            {
+                var row = Disclosure(commandControl);
+                Assert.Equal("+99 more lines", FindControl<TextBlock>(row,
+                    $"ChatToolMoreLines_{command.Id}").Text);
+                Invoke(FindControl<Button>(row, $"ChatToolDetails_{command.Id}"));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindOptional<ScrollViewer>(surface, "ConversationToolDetailsReader") is { } reader &&
+                    ReadToolText(reader).Contains("PARITY OUTPUT TAIL", StringComparison.Ordinal),
+                "full retained output remains readable through the Details panel"));
+            var panelText = await ui.RunOnUIAsync(() => Task.FromResult(
+                ReadToolText(FindControl<ScrollViewer>(surface, "ConversationToolDetailsReader"))));
+            Assert.Contains("PARITY OUTPUT TAIL", panelText);
+            await ui.RunOnUIAsync(() =>
+            {
+                var tabs = FindControl<TabView>(surface, "ConversationPanelTabs");
+                var selected = Assert.IsType<TabViewItem>(tabs.SelectedItem);
+                Invoke(Assert.Single(FindDescendants<Button>(selected), button => button.Name == "CloseButton"));
+            });
             await CaptureAsync(surface, $"ConversationParity-{width}-command-expanded");
             await ui.RunOnUIAsync(() =>
             {
-                var output = FindDescendants<ScrollViewer>(commandControl).LastOrDefault();
+                var output = FindDescendants<ScrollViewer>(Disclosure(commandControl)).LastOrDefault();
                 output?.ChangeView(null, output.ScrollableHeight, null, true);
             });
             await SettleAsync();
-            await ui.RunOnUIAsync(() => FindDescendants<ScrollViewer>(commandControl).Last()
+            await ui.RunOnUIAsync(() => FindDescendants<ScrollViewer>(Disclosure(commandControl)).Last()
                 .StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false, VerticalAlignmentRatio = 0 }));
             await SettleAsync();
             await CaptureAsync(surface, $"ConversationParity-{width}-command-tail");
@@ -794,7 +880,7 @@ public sealed partial class ReactorChatLayoutProofTests
             });
             await SettleAsync();
             await RevealHeaderAsync(surface, genericControl);
-            var genericText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(genericControl)));
+            var genericText = await ui.RunOnUIAsync(() => Task.FromResult(ReadToolText(Disclosure(genericControl))));
             await CaptureAsync(surface, $"ConversationParity-{width}-generic-expanded");
             if (Environment.GetEnvironmentVariable("OPENCLAW_VISUAL_TEST_DIR") is { Length: > 0 } directory)
                 await File.WriteAllTextAsync(Path.Combine(directory, $"conversation-{width}.json"), JsonSerializer.Serialize(new
@@ -803,11 +889,11 @@ public sealed partial class ReactorChatLayoutProofTests
                     inputSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(wire.RootElement.GetRawText()))),
                     commandText, genericText,
                     hasCommandTail = commandText.Contains("PARITY COMMAND TAIL"),
-                    hasOutputTail = commandText.Contains("PARITY OUTPUT TAIL"),
+                    hasOutputTail = panelText.Contains("PARITY OUTPUT TAIL"),
                     hasGenericOptions = genericText.Contains("includeDocs"),
                 }, new JsonSerializerOptions { WriteIndented = true }));
             Assert.Contains("PARITY COMMAND TAIL", commandText);
-            Assert.Contains("PARITY OUTPUT TAIL", commandText);
+            Assert.Contains("PARITY OUTPUT TAIL", panelText);
             Assert.Contains("includeDocs", genericText);
         }, initialThreadId: key, renderProvider: source, interactiveKeyboard: true);
     }
@@ -839,6 +925,130 @@ public sealed partial class ReactorChatLayoutProofTests
             await SettleAsync();
             await AwaitInitialTailAsync(surface, "proof", state.Entries.Last().Id);
         }, interactiveKeyboard: true);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ConversationParity_SendAtTailLandsWithoutJumpFlashAndReleasesHolds(bool animations)
+    {
+        await WithChatAsync(800, async (surface, _, session, provider) =>
+        {
+            using var motion = new ChatMotionScope(enabled: animations);
+            var snapshot = await provider.LoadAsync();
+            var entries = System.Collections.Immutable.ImmutableList.CreateBuilder<ChatTimelineItem>();
+            for (var turn = 0; turn < 12; turn++)
+            {
+                entries.Add(new($"u{turn}", ChatTimelineItemKind.User, $"Prompt number {turn}"));
+                entries.Add(new($"a{turn}", ChatTimelineItemKind.Assistant,
+                    "A **settled answer**.\n\n```csharp\nvar ready = true;\n```\n\n| Check | Result |\n| --- | --- |\n| Provider | Not contacted |"));
+            }
+            var state = snapshot.Timelines["proof"] with { Entries = entries.ToImmutable() };
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = state },
+            }));
+            await AwaitInitialTailAsync(surface, "proof", "a11");
+
+            ScrollView? scroll = null;
+            ItemsRepeater? repeater = null;
+            FrameworkElement? reveal = null;
+            string? jumpShown = null;
+            var sent = ChatTimelineReducer.AddLocalUser(state, "Land this prompt at the tail", "sent-1");
+            var sentKey = $"|id:{sent.Entries.Last().Id}";
+            EventHandler<object> sampleJump = (_, _) =>
+            {
+                if (jumpShown is null && (reveal!.Opacity > 0 || reveal.IsHitTestVisible))
+                    jumpShown = $"offset={scroll!.VerticalOffset}; maximum={scroll.ScrollableHeight}; opacity={reveal.Opacity}";
+            };
+            List<FrameworkElement> RowHosts() => FindDescendants<ItemContainer>(repeater!)
+                .Where(container => ReferenceEquals(VisualTreeHelper.GetParent(container), repeater))
+                .SelectMany(container => FindDescendants<ChatMotionHost>(container).Cast<FrameworkElement>())
+                .ToList();
+            static string? RowKey(object? carrier) =>
+                carrier?.GetType().GetProperty("Key", BindingFlags.Instance | BindingFlags.Public)?.GetValue(carrier) as string;
+            bool Landed()
+            {
+                var source = repeater!.ItemsSourceView;
+                var count = source?.Count ?? 0;
+                var sentIndex = Enumerable.Range(0, count)
+                    .LastOrDefault(index => RowKey(source!.GetAt(index))?.EndsWith(sentKey, StringComparison.Ordinal) == true, -1);
+                // The prompt is followed by the run's working row, so the transcript's last row lands
+                // at the bottom and the prompt stays visible above it.
+                if (scroll!.State != ScrollingInteractionState.Idle
+                    || scroll.VerticalOffset < scroll.ScrollableHeight - 1
+                    || sentIndex < 0
+                    || !RowInView(source!, sentIndex)
+                    || !RowInView(source!, count - 1))
+                    return false;
+                // A held row keeps a static translation until its glide starts from it.
+                return RowHosts().All(host => host.Translation == System.Numerics.Vector3.Zero);
+            }
+            bool RowInView(Microsoft.UI.Xaml.Controls.ItemsSourceView source, int index)
+            {
+                if (repeater!.TryGetElement(index) is not ItemContainer { Child: Border { Child: FrameworkElement content } } row
+                    || !ReferenceEquals(row.DataContext, source.GetAt(index))
+                    || content.ActualHeight <= 0)
+                    return false;
+                var bounds = content.TransformToVisual(scroll).TransformBounds(
+                    new Rect(0, 0, content.ActualWidth, content.ActualHeight));
+                return bounds.Top >= 0 && bounds.Bottom <= scroll!.ActualHeight + 1;
+            }
+            await ui.RunOnUIAsync(async () =>
+            {
+                var items = Assert.Single(FindDescendants<ItemsView>(surface));
+                scroll = items.ScrollView;
+                repeater = FindDescendants<ItemsRepeater>(items).First();
+                reveal = FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal");
+                await WaitForRenderedConditionAsync(() => reveal.Opacity == 0 && !reveal.IsHitTestVisible,
+                    "the jump control hidden at the tail before the send");
+                CompositionTarget.Rendering += sampleJump;
+                try
+                {
+                    session.ViewModel.SetDraft("Land this prompt at the tail");
+                    Invoke(FindControl<Button>(surface, "ChatComposerPrimaryAction"));
+                    provider.Publish(snapshot with
+                    {
+                        Timelines = new Dictionary<string, ChatTimelineState> { ["proof"] = sent },
+                    });
+                    await WaitForRenderedConditionAsync(Landed, "the sent prompt landed at the tail with every row released",
+                        () => $"offset={scroll.VerticalOffset}; maximum={scroll.ScrollableHeight}; state={scroll.State}; " +
+                            $"translations={string.Join(",", RowHosts().Select(host => host.Translation.Y))}; " +
+                            $"count={repeater.ItemsSourceView?.Count}; sentKey={sentKey}; jump={jumpShown}; " +
+                            $"lastKey={(repeater.ItemsSourceView is { Count: > 0 } view ? RowKey(view.GetAt(view.Count - 1)) : null)}; " +
+                            $"realized={repeater.TryGetElement((repeater.ItemsSourceView?.Count ?? 0) - 1) is not null}");
+                    await SettleAsync(); // test-timing-exception: negative probe: a landed send must not drift off the tail on later frames
+                    Assert.True(Landed(), "The sent prompt left the tail after landing.");
+                    // Held and gliding rows draw outside their slots, so nothing between a row and
+                    // the list may clip them; a rounded container hid whole rows mid-glide.
+                    foreach (var container in FindDescendants<ItemContainer>(repeater!)
+                        .Where(container => ReferenceEquals(VisualTreeHelper.GetParent(container), repeater)))
+                    {
+                        var host = Assert.IsType<Border>(container.Child).Child;
+                        for (var node = VisualTreeHelper.GetParent(host);
+                             node is not null && !ReferenceEquals(node, repeater);
+                             node = VisualTreeHelper.GetParent(node))
+                        {
+                            var radius = node switch
+                            {
+                                Grid grid => grid.CornerRadius,
+                                StackPanel panel => panel.CornerRadius,
+                                Border border => border.CornerRadius,
+                                ContentPresenter presenter => presenter.CornerRadius,
+                                _ => default,
+                            };
+                            Assert.True(radius == default && (node as UIElement)?.Clip is null,
+                                $"{node.GetType().Name} clips transcript rows to their slots (radius {radius}).");
+                        }
+                    }
+                }
+                finally
+                {
+                    CompositionTarget.Rendering -= sampleJump;
+                }
+                Assert.True(jumpShown is null, $"The jump control flashed during the send landing: {jumpShown}");
+            });
+        });
     }
 
     [Fact]
@@ -1022,13 +1232,40 @@ public sealed partial class ReactorChatLayoutProofTests
         });
         try { await completion.Task.WaitAsync(TimeSpan.FromSeconds(5)); }
         finally { await ui.RunOnUIAsync(() => scroll!.ScrollCompleted -= Completed); }
-        await SettleAsync();
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () =>
+            {
+                var top = control.TransformToVisual(surface).TransformPoint(default).Y;
+                return top >= 0 && top <= surface.ActualHeight - 40;
+            },
+            "the disclosure header to be visible after scrolling",
+            () => $"Header top={control.TransformToVisual(surface).TransformPoint(default).Y}; requested={targetOffset}; scroll offset={scroll!.VerticalOffset}; maximum={scroll.ScrollableHeight}; request={requestId}"));
+    }
+
+    // Thinking starts collapsed behind a tool-row disclosure whose leading chevron tracks its state;
+    // open it and wait for its Markdown before reading.
+    private async Task OpenReasoningAsync(FrameworkElement root, string expectedText, string? collapsedCapture = null)
+    {
+        static bool IsReasoning(Expander row) =>
+            Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(row) == "ChatReasoning";
+        static string LeadingGlyph(Expander row) => FindDescendants<TextBlock>(
+            FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>(row)
+                .First(button => button.Name == "ExpanderHeader")).First().Text;
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () => FindDescendants<Expander>(root).Any(IsReasoning), "the collapsed reasoning disclosure"));
+        if (collapsedCapture is not null)
+            await CaptureAsync(root, collapsedCapture);
         await ui.RunOnUIAsync(() =>
         {
-            var top = control.TransformToVisual(surface).TransformPoint(default).Y;
-            Assert.True(top >= 0 && top <= surface.ActualHeight - 40,
-                $"Header top={top}; requested={targetOffset}; scroll offset={scroll!.VerticalOffset}; maximum={scroll.ScrollableHeight}; request={requestId}");
+            var reasoning = Assert.Single(FindDescendants<Expander>(root), IsReasoning);
+            Assert.False(reasoning.IsExpanded);
+            Assert.Equal(FluentIconCatalog.ChevronR, LeadingGlyph(reasoning));
+            reasoning.IsExpanded = true;
         });
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+            () => ReadToolText(root).Contains(expectedText, StringComparison.Ordinal) &&
+                LeadingGlyph(Assert.Single(FindDescendants<Expander>(root), IsReasoning)) == FluentIconCatalog.ChevronDown,
+            "the opened reasoning text and its down chevron"));
     }
 
     private static string ReadToolText(DependencyObject root) => string.Join("\n",
@@ -1045,14 +1282,28 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private sealed class ConversationParityBridge(ChatHistoryInfo history, SessionInfo session) : IChatGatewayBridge
     {
+        public SessionInfo[] Children { get; set; } = [];
+        public SessionFileList? Files { get; set; }
+        public async Task<SessionFileList> ListSessionFilesAsync(string sessionKey)
+        {
+            // A real read completes after the render that started it.
+            await Task.Yield();
+            return Files ?? new SessionFileList { Key = sessionKey, IsSupported = false };
+        }
+        public System.Collections.Concurrent.ConcurrentQueue<string> HistoryRequests { get; } = new();
         public bool IsConnected => true;
+        public ChatToolDetailsProfileState ToolDetailsProfileState => new(1, true);
         public ConnectionStatus CurrentStatus => ConnectionStatus.Connected;
         public string MainSessionKey => history.SessionKey;
         public bool HasHandshakeSnapshot => true;
-        public SessionInfo[] GetSessionList() => [session.Clone()];
+        public SessionInfo[] GetSessionList() => new[] { session }.Concat(Children).Select(row => row.Clone()).ToArray();
         public ModelsListInfo? GetCurrentModelsList() => null;
         public void StartProactiveBootstrap() => SessionsUpdated?.Invoke(this, GetSessionList());
-        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey) => Task.FromResult(history);
+        public Task<ChatHistoryInfo> RequestChatHistoryAsync(string? sessionKey)
+        {
+            HistoryRequests.Enqueue(sessionKey ?? "");
+            return Task.FromResult(history);
+        }
         public Task<CommandCatalog> ListCommandsAsync(CommandCatalogQuery? query = null) =>
             Task.FromResult(new CommandCatalog { IsSupported = false });
         public Task SendChatMessageAsync(string message, string? sessionKey, string? sessionId,

@@ -39,7 +39,7 @@ non-Dev Release binary as well as Debug; an empty page or MCP snapshot is not
 equivalent to visible native history proof. Streaming still needs separate
 coverage.
 
-Both Reactor packages use `0.1.0-preview.17`, including the recycled-anchor
+Both Reactor packages use `0.1.0-preview.18`, including the recycled-anchor
 workaround introduced in preview.16 from
 [microsoft/microsoft-ui-reactor#1214](https://github.com/microsoft/microsoft-ui-reactor/pull/1214).
 This is a Reactor workaround for
@@ -59,7 +59,7 @@ including previews, in the authoritative NuGet feeds for
 [Microsoft.UI.Reactor](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor/index.json)
 and [Microsoft.UI.Reactor.Advanced](https://api.nuget.org/v3-flatcontainer/microsoft.ui.reactor.advanced/index.json),
 and the [upstream releases](https://github.com/microsoft/microsoft-ui-reactor/releases).
-The [official preview.17 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.17)
+The [official preview.18 release](https://github.com/microsoft/microsoft-ui-reactor/releases/tag/v0.1.0-preview.18)
 now supplies the hash-verified packages used here. Keep both references aligned.
 Preview.17 requires `System.Drawing.Common` `10.0.14` or newer; the tray's direct
 reference meets that floor.
@@ -182,9 +182,62 @@ The host compatibility fixture is not evidence for these MXC assertions.
 
 Setup's `CapabilitiesConfig` uses the same file command IDs as the live handler
 for initial node pairing and the Gateway command allowlist. This does not enable
-the Gateway's `file-transfer` plugin, grant its path rules, or bypass node trust.
-Existing Gateway registrations still require approval when their declared
-command surface grows.
+the Gateway's `file-transfer` plugin or bypass node trust. Existing Gateway
+registrations still require approval when their declared command surface grows.
+
+The Gateway's `file-transfer` plugin is deny-by-default, so every file request
+fails with `NO_POLICY` until this node has an entry. While the operator and the
+paired node are connected, `GatewayFileAccessPolicySync` gives it one in
+`plugins.entries.file-transfer.config.nodes.<nodeId>` (`policyVersion: 2`) with
+`**` in `allowReadPaths` and `allowWritePaths`, which matches every Windows
+path. The Gateway forwards file requests, and the Node Sandbox on the node
+decides access. A blocked request costs one node round trip and returns
+`PERMISSION_DENIED` with a message that names the cause (outside the allowed
+folders, read-only, or protected) and, where it applies, that the user can change
+access in Node Sandbox settings, without listing the folders. A later request
+succeeds as soon as the user grants access. Sandbox changes need no Gateway
+write. The entry also bypasses the Gateway's own `ask` prompts for this node.
+
+The Gateway uses only the first matching entry (node ID, its Gateway display name
+from `node.list`'s `displayName` field, then `"*"`). A new node entry would hide
+that effective entry, so it starts with a one-time copy of its `ask`, `maxBytes`,
+`followSymlinks` and `denyPaths`. Later edits to the display-name or `"*"` entry
+no longer apply to this node; edit its node ID entry instead.
+Companion only appends `**` to this node's two allow lists and never removes an
+entry: the Gateway rejects config writes that shrink a file below half its size
+(`size-drop`), and existing rules are harmless beside `**`. Setup writes the
+Gateway's node command allowlist (`gateway.nodes.commands.allow`, or the legacy
+`gateway.nodes.allowCommands` when only it exists) once, so Gateways set up
+before the file commands shipped lack them. The write that first gives this node
+`**` also appends any missing file commands that `gateway.nodes.commands.deny`
+does not block. Once this node allows all, Companion leaves that Gateway-wide
+allowlist alone, so an administrator's later removal stands. The allowlist
+extends platform defaults, and changing it hot-reloads. A node whose declared
+command surface grew still needs `openclaw nodes approve`; Companion does not
+approve itself. A `policyVersion` other than 2 is left unchanged and nothing is
+written. Administrator rules,
+other nodes and `literalGrants` are preserved. The write is skipped once confirmed for the current
+operator client and connection epoch. A timed-out or "persisted but not applied"
+write is read back once rather than replayed. A saved entry counts as synced only
+when `config.get` reports `appliedConfigHash` equal to `configRevisionHash`
+(Gateways that omit both are trusted) and that snapshot still allows this node.
+The sync polls for up to 60 seconds of elapsed time
+(`OPENCLAW_GATEWAY_FILE_POLICY_APPLY_WAIT_MS`) because plugin reloads can defer
+behind active work, then logs the entry as pending. A
+plugin reload held by work that never settles keeps the old, deny-by-default
+generation active until the Gateway restarts; Companion does not reload plugins
+or restart the Gateway itself. It requires `operator.admin` and declines to write
+while unreviewed legacy rules exist (`openclaw file-transfer approvals migrate`).
+These and failed writes appear only in the Companion log (`[file-policy]`), not
+in the UI. Each connection gets one
+attempt, including one that fails with an error; repeated state changes never
+replay a write, and the next connection (including a Gateway restart) tries
+again. On positively unsupported Windows, file commands run uncontained, so
+Companion writes no entry and the Gateway keeps its own deny-by-default policy.
+After a failed Sandbox availability probe nothing is written; Companion rechecks
+every 5 seconds, up to 12 times per connection, until a probe succeeds. `GatewayFileAccessPolicyTests`
+and `GatewayFileAccessPolicySyncTests` cover merge planning and connection
+binding with a fake client, not a real Gateway write.
 
 CLI `FileWorkerProcessTests` also run the real worker through MCP and winnode
 using the explicit uncontained compatibility adapter and test-owned folders.
@@ -557,7 +610,7 @@ Local MCP clients also see MCP-only `app.*` commands such as `app.navigate`, `ap
   process that could use the SDK-default appdata paths.
 - Output retains bounded UTF-8 bytes per stream, including truncation markers; BOMs can be fragmented and discarded bytes continue to drain. Shared incremental capture exposes complete characters (including 1-3 byte short output) before EOF. Deadline responses preserve captured stdout/stderr without waiting for cleanup. `[truncated]` denotes either a byte-budget limit or capture cut off before EOF, including a deadline before any output arrived. Incomplete BOMs/characters at a cutoff are not invented; real EOF still uses the decoder's replacement behavior.
 - One command deadline covers launch/wait/drains. Direct root exit is independent of output EOF: at most 500 ms of post-exit drain grace fits inside the remaining deadline. Native execution observes and caches root exit through the SDK's non-finalizing `TryGetExitCode` before calling `WaitAsync`. A known root exit retains its exit code rather than becoming a timeout because a descendant holds a pipe or SDK finalization crosses the deadline. Incomplete capture uses the existing truncation marker when it fits the byte budget. Native SDK finalization still reaps descendants and completes teardown before ownership is released. Only unsupported-Windows host compatibility execution leaves intentional background descendants running after normal root exit.
-- Host pipe readers use cancellable public `ReadAsync`; native SDK readers use synchronous `Read` interrupted by `IMxcStreamCloser`. Cancellation returns promptly while a late launch, blocked kill or pending SDK finalization remains owned. Capacity (eight owners) is held until readers, native tasks and the scratch cleanup attempt finish. In host compatibility execution, a background descendant retaining scratch as its cwd can prevent directory deletion; that failure is logged, not remedied by killing the background application. Running commands retain their immutable policy; pending commands revalidate settings and approvals before spawn.
+- Host pipe readers use cancellable public `ReadAsync`; native SDK readers use synchronous `Read` on dedicated (non-thread-pool) workers, interrupted by `IMxcStreamCloser`. Cancellation returns promptly while a late launch, blocked kill or pending SDK finalization remains owned. Capacity (eight owners) is held until readers, native tasks and the scratch cleanup attempt finish. In host compatibility execution, a background descendant retaining scratch as its cwd can prevent directory deletion; that failure is logged, not remedied by killing the background application. Running commands retain their immutable policy; pending commands revalidate settings and approvals before spawn.
 - Cleanup uses the operation's atomically created directory identity and
   retained no-follow ancestry, not a GUID name or manifest. Ended owned
   operations get bounded sharing-violation retries; later admission retries

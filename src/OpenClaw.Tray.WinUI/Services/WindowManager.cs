@@ -8,6 +8,7 @@
 // </summary>
 using System.Runtime.InteropServices;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Connection;
@@ -47,7 +48,8 @@ internal sealed record WindowManagerCallbacks(
     Func<ISettingsStore?>? GetSettingsStore = null,
     Func<LocalAiGatewayLifecycle?>? GetLocalAiGatewayLifecycle = null,
     Func<SetupNativePreparation, CancellationToken, Task>? PublishNativePreparation = null,
-    Func<SetupNativeCompletion, string, CancellationToken, Task<bool>>? OpenSetupDashboard = null);
+    Func<SetupNativeCompletion, string, CancellationToken, Task<bool>>? OpenSetupDashboard = null,
+    Action<bool>? MainWindowVisibilityChanged = null);
 
 /// <summary>
 /// Coordinates every application-owned window and transitions between workspace, onboarding and setup UI.
@@ -63,6 +65,7 @@ internal sealed partial class WindowManager : IWindowManager
 
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly WindowManagerCallbacks _callbacks;
+    private readonly HashSet<Window> _mainWindows = [];
     private Window? _keepAliveWindow;
     private WorkspaceWindow? _workspaceWindow;
     private Window? _lastActiveMainWindow;
@@ -96,6 +99,34 @@ internal sealed partial class WindowManager : IWindowManager
             _workspaceWindow is { IsClosed: false } ? _workspaceWindow : null;
 
     public bool IsHubOpen => !_isShuttingDown && _workspaceWindow is { IsClosed: false };
+
+    public bool HasVisibleMainWindow => !_isShuttingDown && _mainWindows.Any(window =>
+        window.AppWindow.IsVisible &&
+        window.AppWindow.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Minimized });
+
+    private void ObserveMainWindowVisibility(Window window)
+    {
+        _mainWindows.Add(window);
+        window.AppWindow.Changed += OnMainWindowChanged;
+        window.Closed += OnObservedMainWindowClosed;
+        _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
+    }
+
+    private void OnMainWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (!_isShuttingDown)
+            _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
+    }
+
+    private void OnObservedMainWindowClosed(object sender, WindowEventArgs args)
+    {
+        if (sender is not Window window) return;
+        window.AppWindow.Changed -= OnMainWindowChanged;
+        window.Closed -= OnObservedMainWindowClosed;
+        _mainWindows.Remove(window);
+        if (!_isShuttingDown)
+            _callbacks.MainWindowVisibilityChanged?.Invoke(HasVisibleMainWindow);
+    }
 
     public bool IsChatVisible => ChatVisibilityPolicy.IsChatVisible(
         _isShuttingDown,
@@ -322,6 +353,7 @@ internal sealed partial class WindowManager : IWindowManager
         {
             var passive = new OpenClaw.SetupEngine.UI.SetupLoadingWindow();
             _restartProgressWindow = passive;
+            ObserveMainWindowVisibility(passive);
             passive.Closed += (_, _) =>
             {
                 if (ReferenceEquals(_restartProgressWindow, passive)) _restartProgressWindow = null;
@@ -365,8 +397,11 @@ internal sealed partial class WindowManager : IWindowManager
             {
                 _readyWindow?.Close();
                 ShowHub("connection");
-            });
+            },
+            gatewayId => _callbacks.GetGatewayRegistry()?.GetById(gatewayId),
+            collectLogs: ShowSetupDiagnosticsAsync);
         _readyWindow = ready;
+        ObserveMainWindowVisibility(ready);
         ready.Closed += (_, _) =>
         {
             if (!ReferenceEquals(_readyWindow, ready)) return;
@@ -503,6 +538,7 @@ internal sealed partial class WindowManager : IWindowManager
             }
 
             _workspaceWindow = new WorkspaceWindow(state, notifications, ShowConnectionStatus);
+            ObserveMainWindowVisibility(_workspaceWindow);
             _callbacks.ApplyTheme(_workspaceWindow);
             _workspaceWindow.SettingsSaved += OnWorkspaceSettingsSaved;
             _workspaceWindow.Closed += OnWorkspaceClosed;
@@ -895,6 +931,7 @@ internal sealed partial class WindowManager : IWindowManager
                     _callbacks.GetGatewayRegistry() is { } registry
                     ? new SetupNativeConnectionHost(directConnect, registry, new AppLogger(), NotifyIncompleteNativeConnection)
                     : null,
+                collectLogs: ShowSetupDiagnosticsAsync,
                 commandLineArgs: SetupWindowArgumentProjection.Project(
                     _callbacks.GetStartupArgs(),
                     _callbacks.IsDeepLinkArg,
@@ -903,6 +940,7 @@ internal sealed partial class WindowManager : IWindowManager
                 Title = AppIdentity.DecorateWindowTitle("OpenClaw Setup"),
             };
             _setupWindow = setupWindow;
+            ObserveMainWindowVisibility(setupWindow);
             _callbacks.ApplyTheme(setupWindow);
             setupWindow.AdvancedSetupRequested += _callbacks.AdvancedSetupRequested;
             setupWindow.SetupCompleted += _callbacks.SetupCompleted;
@@ -946,6 +984,38 @@ internal sealed partial class WindowManager : IWindowManager
 
             Logger.Error($"Failed to open setup window: {ex}");
             return (null, false);
+        }
+    }
+
+    private async Task ShowSetupDiagnosticsAsync(FrameworkElement page)
+    {
+        if (_isShuttingDown || page.XamlRoot is not { } root)
+            throw new InvalidOperationException("The setup diagnostics window is unavailable.");
+        var app = (App)Application.Current;
+        var state = app.BuildCommandCenterState();
+        var events = app.GetConnectionDiagnosticEvents().ToArray();
+        var bundle = await Task.Run(() => DiagnosticsBundleBuilder.Build(state, events));
+        if (_isShuttingDown || !page.IsLoaded || !ReferenceEquals(page.XamlRoot, root))
+            throw new InvalidOperationException("The setup diagnostics window has closed.");
+        var dialog = new DiagnosticsBundleDialog
+        {
+            XamlRoot = root,
+            Title = LocalizationHelper.GetString("DiagnosticsBundleDialog_DiagnosticsBundle.Title"),
+        };
+        dialog.Configure(bundle,
+            LocalizationHelper.GetString("DiagnosticsBundleDialog_ReviewBeforeSharingMessage.Text"),
+            $"openclaw-setup-diagnostics-{DateTime.Now:yyyyMMdd-HHmmss}.txt",
+            ResolveWindowHandle);
+        await dialog.ShowAsync();
+
+        IntPtr ResolveWindowHandle()
+        {
+            if (!page.IsLoaded || _isShuttingDown) return IntPtr.Zero;
+            if (_setupWindow is { IsClosed: false } setup && ReferenceEquals((setup.Content as FrameworkElement)?.XamlRoot, root))
+                return WinRT.Interop.WindowNative.GetWindowHandle(setup);
+            if (_readyWindow is { IsClosed: false } ready && ReferenceEquals((ready.Content as FrameworkElement)?.XamlRoot, root))
+                return WinRT.Interop.WindowNative.GetWindowHandle(ready);
+            return IntPtr.Zero;
         }
     }
 

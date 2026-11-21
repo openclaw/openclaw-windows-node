@@ -31,9 +31,16 @@ public sealed partial class ChatPage : Page
     private static App CurrentApp => (App)Microsoft.UI.Xaml.Application.Current!;
     private Window? _ownerWindow;
     internal event Action<string, string?>? SessionSelected;
+    internal event Action<string, string>? SessionPromoted;
     private string? _pendingSessionKey;
+    private readonly Dictionary<string, ChatDraft> _pendingDrafts = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _knownCreatedSessionKeys = new(StringComparer.Ordinal);
+    private object? _draftAuthorityIdentity;
+    private string? _deferredWebViewSessionKey;
+    private bool _composerHadUnsentContent;
     private readonly PendingVoiceActivation _pendingVoice = new();
     private MountedReactorChat? _reactorHost;
+    private ChatDashboardBinding? _dashboards;
     private string _userDisplayName = "";
     private Microsoft.UI.Xaml.Media.ImageSource? _userProfilePicture;
     private IChatDataProvider? _mountedProvider;
@@ -52,6 +59,16 @@ public sealed partial class ChatPage : Page
     private int _surfaceGeneration;
 
     internal string? CurrentSessionKey => _reactorHost?.CurrentThreadId ?? _mountedThreadId;
+
+    /// <summary>Side-panel state of the visible native chat, or null while none is mounted or shown.</summary>
+    internal ChatConversationPanelState? ConversationPanels =>
+        ChatHost.Visibility == Visibility.Visible ? _reactorHost?.ConversationPanels : null;
+
+    /// <summary>A banner shows above the native chat, which a side panel joined to the caption row would cover.</summary>
+    internal bool HasBannerAboveChat => SpeechStatusBar.IsOpen;
+
+    /// <summary>Raised on the UI thread when <see cref="ConversationPanels"/> or <see cref="HasBannerAboveChat"/> may have changed.</summary>
+    internal event Action? ConversationPanelsChanged;
 
     internal void ApplyUserIdentity(string displayName, Microsoft.UI.Xaml.Media.ImageSource? profilePicture)
     {
@@ -148,6 +165,9 @@ public sealed partial class ChatPage : Page
                 ApplyChatSurface(source);
             },
             outcome => Logger.Debug($"[SetupChat] {outcome}"));
+        // Setup and placeholder states hide a retained chat host; window chrome must stop mirroring it.
+        ChatHost.RegisterPropertyChangedCallback(VisibilityProperty, (_, _) => ConversationPanelsChanged?.Invoke());
+        SpeechStatusBar.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) => ConversationPanelsChanged?.Invoke());
         Unloaded += OnUnloaded;
     }
 
@@ -189,6 +209,7 @@ public sealed partial class ChatPage : Page
             app.SettingsChanged -= OnSettingsSaved;
             app.ChatProviderChanged -= OnAppChatProviderChanged;
         }
+        _dashboards?.Detach();
 
         if (App.Current is App app2)
             app2.SpeakerMuteChanged -= OnSpeakerMuteChanged;
@@ -234,6 +255,7 @@ public sealed partial class ChatPage : Page
             app.ChatProviderChanged += OnAppChatProviderChanged;
             app.SpeakerMuteChanged -= OnSpeakerMuteChanged;
             app.SpeakerMuteChanged += OnSpeakerMuteChanged;
+            (_dashboards ??= new ChatDashboardBinding(DispatcherQueue)).Attach(app);
         }
 
         // Also react to Workspace's diagnostic renderer override.
@@ -311,6 +333,59 @@ public sealed partial class ChatPage : Page
 
     internal void InvalidatePendingSessionNavigation() => _reactorHost?.InvalidatePendingSessionNavigation();
 
+    internal string QueueNewChatDraft(
+        IChatDataProvider provider, string? agentId, bool useGatewayDefaultAgent = false)
+    {
+        BindDraftAuthority(provider);
+        var draft = ChatDraft.Create(agentId, useGatewayDefaultAgent);
+        _pendingDrafts.Add(draft.Key, draft);
+        return draft.Key;
+    }
+
+    private ChatDraft[] TakePendingDrafts(IChatDataProvider provider)
+    {
+        BindDraftAuthority(provider);
+        if (!HasUnsentComposerContent)
+            foreach (var key in _pendingDrafts.Where(pair => pair.Value.IsCompleted)
+                         .Select(pair => pair.Key).ToArray())
+                _pendingDrafts.Remove(key);
+        return _pendingDrafts.Values.Where(draft => !draft.IsCompleted).ToArray();
+    }
+
+    private void BindDraftAuthority(IChatDataProvider provider)
+    {
+        var identity = GetDraftAuthorityIdentity(provider);
+        if (_draftAuthorityIdentity is not null && !ReferenceEquals(_draftAuthorityIdentity, identity))
+        {
+            _pendingDrafts.Clear();
+            _knownCreatedSessionKeys.Clear();
+        }
+        _draftAuthorityIdentity = identity;
+    }
+
+    private static object GetDraftAuthorityIdentity(IChatDataProvider provider) =>
+        provider is OpenClawChatDataProvider native
+            ? native.GatewayAuthorityIdentity
+            : provider;
+
+    internal void RememberCreatedSession(string sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey)) return;
+        if (CurrentApp.ChatProvider is { } provider)
+            BindDraftAuthority(provider);
+        _knownCreatedSessionKeys.Add(sessionKey);
+        _reactorHost?.MarkCreatedSession(sessionKey);
+    }
+
+    private void RememberCreatedSession(IChatDataProvider provider, string sessionKey)
+    {
+        var identity = provider is OpenClawChatDataProvider native
+            ? native.GatewayAuthorityIdentity
+            : provider;
+        if (!ReferenceEquals(_draftAuthorityIdentity, identity)) return;
+        RememberCreatedSession(sessionKey);
+    }
+
     internal void ClearRemovedSession(string key)
     {
         CurrentApp.ChatSpeech?.StopGatewaySpeaking();
@@ -321,6 +396,9 @@ public sealed partial class ChatPage : Page
         _pendingWebViewSessionKey = null;
         if (CurrentApp.PendingChatSessionKey == key)
             CurrentApp.PendingChatSessionKey = null;
+        if (CurrentApp.PendingChatDashboardSessionKey == key)
+            CurrentApp.PendingChatDashboardSessionKey = null;
+        _dashboards?.CancelPendingOpen();
         InvalidateNativeSetupForNavigation();
         _pendingVoice.Cancel();
         _navigationCts?.Cancel();
@@ -348,6 +426,85 @@ public sealed partial class ChatPage : Page
         (App.Current as App)?.ChatSpeech?.SetSpeechTarget(sessionKey);
         _mountedThreadId = sessionKey;
         SessionSelected?.Invoke(sessionKey, previousSessionKey);
+    }
+
+    private void OnComposerSessionPromoted(
+        IChatDataProvider sourceProvider,
+        string draftKey,
+        string sessionKey)
+    {
+        if (CurrentApp.ChatProvider is not { } currentProvider)
+            return;
+        var currentIdentity = GetDraftAuthorityIdentity(currentProvider);
+        if (!ReferenceEquals(currentIdentity, GetDraftAuthorityIdentity(sourceProvider)))
+        {
+            BindDraftAuthority(currentProvider);
+            return;
+        }
+
+        BindDraftAuthority(currentProvider);
+        if (!_pendingDrafts.TryGetValue(draftKey, out var draft) ||
+            !string.Equals(draft.TargetKey, sessionKey, StringComparison.Ordinal))
+            return;
+
+        var activeSessionKey = _pendingSessionKey
+            ?? CurrentApp.PendingChatSessionKey
+            ?? _reactorHost?.CurrentThreadId
+            ?? _mountedThreadId;
+        var isActivePromotion =
+            string.Equals(activeSessionKey, draftKey, StringComparison.Ordinal) ||
+            string.Equals(activeSessionKey, sessionKey, StringComparison.Ordinal);
+        var newlyKnown = !_knownCreatedSessionKeys.Contains(sessionKey);
+        if (newlyKnown)
+            RememberCreatedSession(currentProvider, sessionKey);
+        SessionPromoted?.Invoke(draftKey, sessionKey);
+        if (!isActivePromotion)
+            return;
+
+        _pendingSessionKey = sessionKey;
+        if (_pageActive && draft.IsCompleted)
+            ApplyChatSurface("draft session materialized");
+    }
+
+    private bool HasPendingDraftForActiveSession()
+    {
+        var activeSessionKey = _pendingSessionKey
+            ?? CurrentApp.PendingChatSessionKey
+            ?? _reactorHost?.CurrentThreadId
+            ?? _mountedThreadId;
+        if (string.IsNullOrWhiteSpace(activeSessionKey))
+            return false;
+        var hasUnsentContent = HasUnsentComposerContent;
+        return _pendingDrafts.Values.Any(draft =>
+            (!draft.IsCompleted || hasUnsentContent) &&
+            (string.Equals(draft.Key, activeSessionKey, StringComparison.Ordinal) ||
+             string.Equals(draft.TargetKey, activeSessionKey, StringComparison.Ordinal)));
+    }
+
+    private bool HasUnsentComposerContent => _reactorHost?.HasUnsentComposerContent == true;
+
+    private void OnComposerChanged(IChatDataProvider sourceProvider)
+    {
+        if (!_pageActive ||
+            CurrentApp.ChatProvider is not { } currentProvider ||
+            !ReferenceEquals(
+                GetDraftAuthorityIdentity(currentProvider),
+                GetDraftAuthorityIdentity(sourceProvider)))
+        {
+            return;
+        }
+
+        var hasUnsentContent = HasUnsentComposerContent;
+        if (hasUnsentContent == _composerHadUnsentContent)
+            return;
+        _composerHadUnsentContent = hasUnsentContent;
+
+        if (!hasUnsentContent &&
+            CurrentApp.Settings is { } settings &&
+            ChatSurfaceResolver.UseLegacyWebChat(settings.UseLegacyWebChat))
+        {
+            QueueSurfaceRefresh("composer cleared");
+        }
     }
 
     private void OnWorkspaceOpenConnection(object sender, RoutedEventArgs e) =>
@@ -385,7 +542,10 @@ public sealed partial class ChatPage : Page
             return;
         }
 
-        if (ChatSurfaceResolver.UseLegacyWebChat(settings.UseLegacyWebChat))
+        if (ChatSurfaceResolver.ShouldUseLegacyWebChat(
+            ChatSurfaceResolver.UseLegacyWebChat(settings.UseLegacyWebChat),
+            HasPendingDraftForActiveSession(),
+            HasUnsentComposerContent))
             _ = ApplyWebViewSurfaceAsync(settings, generation);
         else
             ShowReactorSurface();
@@ -498,11 +658,25 @@ public sealed partial class ChatPage : Page
         var pendingSessionKey = _pendingSessionKey ?? (App.Current as App)?.PendingChatSessionKey;
         if (!string.IsNullOrEmpty(pendingSessionKey))
         {
+            _deferredWebViewSessionKey = pendingSessionKey;
             _pendingSessionKey = null;
-            if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
+            if (App.Current is App currentApp)
+            {
+                currentApp.PendingChatSessionKey = null;
+                if (currentApp.PendingChatDashboardSessionKey == pendingSessionKey)
+                    _dashboards?.RequestOpen(pendingSessionKey);
+                else
+                    _dashboards?.CancelPendingOpen();
+                currentApp.PendingChatDashboardSessionKey = null;
+            }
         }
         var threadIdToMount = pendingSessionKey ?? _mountedThreadId;
         var forceRemount = !string.IsNullOrEmpty(pendingSessionKey);
+        var newDrafts = provider is not null && composerFactory is not null
+            ? TakePendingDrafts(provider) : [];
+        if (_reactorHost is not null && ReferenceEquals(_mountedProvider, provider))
+            foreach (var draft in newDrafts)
+                _reactorHost.RegisterDraft(draft);
         if (forceRemount && _reactorHost is not null
             && ReferenceEquals(_mountedProvider, provider)
             && _reactorHost.TrySelectSession(pendingSessionKey!))
@@ -570,7 +744,15 @@ public sealed partial class ChatPage : Page
             {
                 if (_pageActive && ReferenceEquals(_reactorHost, mountedHost))
                     CurrentApp.ChatSpeech?.SetSpeechTarget(sessionKey);
-            });
+            },
+            onSessionCreated: sessionKey => RememberCreatedSession(provider, sessionKey),
+            onSessionPromoted: (draftKey, sessionKey) =>
+                OnComposerSessionPromoted(provider, draftKey, sessionKey),
+            onComposerChanged: () => OnComposerChanged(provider));
+        foreach (var draft in newDrafts)
+            composerSession.Controller.RegisterDraft(draft);
+        foreach (var key in _knownCreatedSessionKeys)
+            composerSession.Placement?.MarkCreatedSession(key);
         mountedHost = ownerWindow.MountReactorChat(
             ChatHost,
             provider,
@@ -578,27 +760,20 @@ public sealed partial class ChatPage : Page
             initialThreadId: threadIdToMount,
             onReadAloud: readAloud,
             onStopSpeaking: () => app?.StopChatSpeaking(),
-            onOpenCheckpoints: OpenSessionCheckpoints,
             initialThreadIsExplicitSelection: !string.IsNullOrEmpty(pendingSessionKey),
             userDisplayName: _userDisplayName,
             userProfilePicture: _userProfilePicture,
-            agentRosterSource: app?.AppState);
+            agentRosterSource: app?.AppState,
+            dashboards: _dashboards);
         _reactorHost = mountedHost;
         _mountedProvider = provider;
         _mountedThreadId = threadIdToMount;
+        _composerHadUnsentContent = mountedHost.HasUnsentComposerContent;
+        ConversationPanelsChanged?.Invoke();
         CurrentApp.ChatSpeech?.SetSpeechTarget(_reactorHost?.CurrentThreadId ?? threadIdToMount);
 
         ConsumePendingVoice();
     }
-
-    private void OpenSessionCheckpoints(string sessionKey) =>
-        AsyncEventHandlerGuard.Run(
-            () => SessionCheckpointDialogCoordinator.ShowAsync(
-                XamlRoot,
-                sessionKey,
-                isHostAvailable: () => _pageActive && XamlRoot is not null),
-            new OpenClawTray.AppLogger(),
-            nameof(OpenSessionCheckpoints));
 
     private IChatDataProvider? ResolveChatProvider(App? app)
     {
@@ -859,13 +1034,27 @@ public sealed partial class ChatPage : Page
 
     private void ShowWebViewSurface(InteractiveGatewayCredential? credential)
     {
+        if (HasUnsentComposerContent)
+        {
+            ShowReactorSurface();
+            return;
+        }
+
         _pendingVoice.Cancel();
         // Consume pending session key for WebView mode.
-        var pendingSessionKey = _pendingSessionKey ?? (App.Current as App)?.PendingChatSessionKey;
+        var pendingSessionKey = _pendingSessionKey
+            ?? _deferredWebViewSessionKey
+            ?? (App.Current as App)?.PendingChatSessionKey;
+        _deferredWebViewSessionKey = null;
         if (!string.IsNullOrEmpty(pendingSessionKey))
         {
             _pendingSessionKey = null;
-            if (App.Current is App currentApp) currentApp.PendingChatSessionKey = null;
+            if (App.Current is App currentApp)
+            {
+                currentApp.PendingChatSessionKey = null;
+                currentApp.PendingChatDashboardSessionKey = null;
+            }
+            _dashboards?.CancelPendingOpen();
             _pendingWebViewSessionKey = pendingSessionKey;
         }
         else
@@ -912,9 +1101,7 @@ public sealed partial class ChatPage : Page
         var url = _chatUrl;
         if (!string.IsNullOrEmpty(_pendingWebViewSessionKey))
         {
-            var baseUrl = System.Text.RegularExpressions.Regex.Replace(_chatUrl, @"[&?]session=[^&]*", "");
-            var separator = baseUrl.Contains('?') ? "&" : "?";
-            url = $"{baseUrl}{separator}session={Uri.EscapeDataString(_pendingWebViewSessionKey)}";
+            url = ChatSurfaceResolver.BuildChatUrlForSession(_chatUrl, _pendingWebViewSessionKey);
             _pendingWebViewSessionKey = null;
         }
 
@@ -956,6 +1143,7 @@ public sealed partial class ChatPage : Page
         _mountedThreadId = null;
         try { host?.Dispose(); }
         catch (Exception ex) { Logger.Debug($"ChatPage: Reactor host dispose tear-down race: {ex.Message}"); }
+        if (host is not null) ConversationPanelsChanged?.Invoke();
     }
 
     private async Task InitializeWebViewAsync(InteractiveGatewayCredential credential, int generation)

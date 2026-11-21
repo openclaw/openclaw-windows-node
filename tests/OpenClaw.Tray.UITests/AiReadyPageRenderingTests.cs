@@ -19,19 +19,84 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHelper output)
 {
+    [Fact]
+    public async Task FinishingFailureMergesReadinessRefreshWithoutBypassingRetryGuards()
+    {
+        await ui.RunOnUIAsync(async () =>
+        {
+            var page = new AiCompletionPage();
+            var retries = 0;
+            var refreshes = 0;
+            var collections = 0;
+            var collection = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            page.ShowFailure();
+            Func<FrameworkElement, Task> collectLogs = async source =>
+            {
+                Assert.Same(page, source);
+                collections++;
+                await collection.Task;
+            };
+            page.ConfigureRecovery(() =>
+            {
+                refreshes++;
+                page.ShowFailure(retry: () => retries++);
+            }, collectLogs);
+            var readiness = Assert.IsType<Button>(page.FindName("RetryButton"));
+            var collect = Assert.IsType<Button>(page.FindName("CollectLogsButton"));
+            Assert.Equal(Visibility.Visible, readiness.Visibility);
+            Assert.Equal(Visibility.Visible, collect.Visibility);
+            var check = typeof(AiCompletionPage).GetMethod("Retry_Click", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            check.Invoke(page, [readiness, new RoutedEventArgs()]);
+            Assert.Equal(1, refreshes);
+            Assert.Equal(1, retries);
+            page.ConfigureRecovery(() =>
+            {
+                refreshes++;
+                page.ShowFailure();
+            }, collectLogs);
+            check.Invoke(page, [readiness, new RoutedEventArgs()]);
+            Assert.Equal(2, refreshes);
+            Assert.Equal(1, retries);
+            var click = typeof(AiCompletionPage).GetMethod("CollectLogs_Click", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            page.ConfigureRecovery(() => refreshes++, collectLogs);
+            Assert.False(collect.IsEnabled);
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            Assert.Equal(1, collections);
+            Assert.Equal(2, refreshes);
+            Assert.Equal(1, retries);
+            collection.SetResult();
+            await TestSupport.WaitForRenderedConditionAsync(() => collect.IsEnabled, "log collection settles");
+
+            page.ConfigureRecovery(() => refreshes++, _ => Task.FromException(new IOException("private fixture content")));
+            click.Invoke(page, [collect, new RoutedEventArgs()]);
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => Assert.IsType<TextBlock>(page.FindName("DiagnosticsStatus")).Visibility == Visibility.Visible,
+                "log collection failure is visible");
+            var status = Assert.IsType<TextBlock>(page.FindName("DiagnosticsStatus"));
+            Assert.Contains("IOException", status.Text);
+            Assert.DoesNotContain("private fixture content", status.Text);
+            Assert.True(collect.IsEnabled);
+            Assert.Equal(1, retries);
+            Assert.Null(page.FindName("RefreshButton"));
+            Assert.Null(page.FindName("CloseButton"));
+        });
+    }
+
     [Theory]
     [InlineData(SetupNativeCompletionPhase.PageDrain, "Closing the previous AI setup page timed out.")]
     [InlineData(SetupNativeCompletionPhase.Connection, "Connecting to the native Gateway timed out.")]
     [InlineData(SetupNativeCompletionPhase.ModelRecovery, "Waiting for Local AI recovery timed out.")]
     [InlineData(SetupNativeCompletionPhase.ModelVerification, "Verifying the selected AI model timed out.")]
     [InlineData(SetupNativeCompletionPhase.Verification, "Verification timed out or was cancelled.")]
-    public async Task FinishingFailureRetainsSafePhaseGuidanceAndActionableClose(
+    public async Task FinishingFailureRetainsSafePhaseGuidanceAndReadinessRecovery(
         SetupNativeCompletionPhase phase, string expected)
     {
         await ui.RunOnUIAsync(() =>
         {
             var page = new AiCompletionPage();
-            var closed = 0;
+            var refreshed = 0;
             var error = Assert.IsType<SetupNativeCompletionTimeoutException>(Activator.CreateInstance(
                 typeof(SetupNativeCompletionTimeoutException), BindingFlags.Instance | BindingFlags.NonPublic,
                 binder: null, args: [phase, new IOException("private fixture content")], culture: null));
@@ -40,20 +105,20 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
             System.Diagnostics.Trace.Listeners.Add(listener);
             try
             {
-                page.ShowFailure(error: error, close: () => closed++);
+                page.ShowFailure(error: error);
+                page.ConfigureRecovery(() => refreshed++, collectLogs: null);
                 listener.Flush();
                 Assert.StartsWith(expected, Assert.IsType<TextBlock>(page.FindName("Detail")).Text);
                 Assert.DoesNotContain("private fixture content", trace.ToString());
                 Assert.Contains("phase: " + phase, trace.ToString());
                 Assert.False(Assert.IsType<ProgressBar>(page.FindName("Progress")).Visibility == Visibility.Visible);
-                Assert.Equal(Visibility.Collapsed, Assert.IsType<Button>(page.FindName("RetryButton")).Visibility);
                 Assert.Equal(Visibility.Collapsed, Assert.IsType<Button>(page.FindName("BackButton")).Visibility);
-                var close = Assert.IsType<Button>(page.FindName("CloseButton"));
-                Assert.Equal(Visibility.Visible, close.Visibility);
-                Assert.Equal("Close", close.Content);
-                typeof(AiCompletionPage).GetMethod("Close_Click", BindingFlags.Instance | BindingFlags.NonPublic)!
-                    .Invoke(page, [close, new RoutedEventArgs()]);
-                Assert.Equal(1, closed);
+                var readiness = Assert.IsType<Button>(page.FindName("RetryButton"));
+                Assert.Equal(Visibility.Visible, readiness.Visibility);
+                typeof(AiCompletionPage).GetMethod("Retry_Click", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(page, [readiness, new RoutedEventArgs()]);
+                Assert.Equal(1, refreshed);
+                Assert.Null(page.FindName("CloseButton"));
             }
             finally { System.Diagnostics.Trace.Listeners.Remove(listener); }
         });
@@ -110,7 +175,8 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 progress.AppWindow.Move(new(-32000, -32000));
                 await ready.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 ready.CommitPresentation();
-                var frame = Assert.IsType<Frame>(ready.Content);
+                var shell = Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupShellLayout>(ready.Content);
+                var frame = shell.Frame;
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
                 var readyRoot = Assert.IsType<Grid>(page.Content);
                 var progressRoot = Assert.IsType<SetupLoadingView>(progress.Content);
@@ -125,7 +191,7 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                     Assert.Equal(2, applied.Count);
                     Assert.Contains(ready, applied);
                     Assert.Contains(progress, applied);
-                    Assert.Equal(theme, frame.RequestedTheme);
+                    Assert.Equal(theme, shell.RequestedTheme);
                     Assert.Equal(theme, progressRoot.RequestedTheme);
                     Assert.Same(page, frame.Content);
                     output.WriteLine($"Live theme {theme}: Ready={readyRoot.ActualTheme}; restart progress={progressRoot.ActualTheme}.");
@@ -140,14 +206,14 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 preference = null;
                 manager.ApplyThemeToOpenWindows();
                 await ui.YieldToRenderAsync();
-                Assert.Equal(ElementTheme.Default, frame.RequestedTheme);
+                Assert.Equal(ElementTheme.Default, shell.RequestedTheme);
                 Assert.Equal(ElementTheme.Default, progressRoot.RequestedTheme);
                 applied.Clear();
                 manager.BeginShutdown();
                 preference = SettingsManager.AppThemeDark;
                 manager.ApplyThemeToOpenWindows();
                 Assert.Empty(applied);
-                Assert.Equal(ElementTheme.Default, frame.RequestedTheme);
+                Assert.Equal(ElementTheme.Default, shell.RequestedTheme);
                 Assert.Equal(ElementTheme.Default, progressRoot.RequestedTheme);
             }
             finally
@@ -193,13 +259,18 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
             try
             {
                 var route = await VerifySyntheticAsync(proof, CancellationToken.None);
+                var verificationAttempts = 0;
                 window = OnboardingNativeProof.CreateWindow(() => new SetupReadyWindow(
-                    ct => VerifySyntheticAsync(proof, ct),
+                    ct =>
+                    {
+                        verificationAttempts++;
+                        return VerifySyntheticAsync(proof, ct);
+                    },
                     (_, _) => throw new InvalidOperationException("Must not navigate"),
                     _ => new Observation(), () => { }, () => { }));
                 SetupWindowMinimumSizeTests.AssertInitialWindowSize(window, output);
                 var size = window.AppWindow.Size;
-                var frame = Assert.IsType<Frame>(window.Content);
+                var frame = Assert.IsType<OpenClaw.SetupEngine.UI.Controls.SetupShellLayout>(window.Content).Frame;
                 using var navigation = OnboardingNativeProof.TrackNavigation(frame);
                 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                     window.Activate();
@@ -210,32 +281,38 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 await TestSupport.WaitForRenderedConditionAsync(() => frame.Content is AiReadyPage { IsLoaded: true },
                     "native ready page mounted");
                 var page = Assert.IsType<AiReadyPage>(frame.Content);
-                var chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
+                var chatActionPanel = Assert.IsType<SetupFooterPanel>(page.FindName("ChatActionPanel"));
                 Assert.Equal(Visibility.Collapsed, chatActionPanel.Visibility);
-                Assert.NotEqual("Your AI is ready", Assert.IsType<TextBlock>(page.FindName("Heading")).Text);
+                Assert.NotEqual("All set!", Assert.IsType<TextBlock>(page.FindName("Heading")).Text);
                 window.Invalidate();
                 var beforeConsumption = Assert.IsType<AiCompletionPage>(frame.Content);
                 var returnButton = Assert.IsType<Button>(beforeConsumption.FindName("BackButton"));
                 Assert.Equal(Visibility.Visible, returnButton.Visibility);
                 Assert.True(returnButton.IsEnabled);
-                Assert.Equal(Visibility.Collapsed,
-                    Assert.IsType<Button>(beforeConsumption.FindName("RetryButton")).Visibility);
+                var readiness = Assert.IsType<Button>(beforeConsumption.FindName("RetryButton"));
+                Assert.Equal(Visibility.Visible, readiness.Visibility);
+                typeof(AiCompletionPage).GetMethod("Retry_Click", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .Invoke(beforeConsumption, [readiness, new RoutedEventArgs()]);
+                Assert.Same(beforeConsumption, frame.Content);
+                Assert.Equal(0, verificationAttempts);
                 await window.ShowReadyAsync(await VerifySyntheticAsync(proof, CancellationToken.None), CancellationToken.None);
                 page = Assert.IsType<AiReadyPage>(frame.Content);
-                chatActionPanel = Assert.IsType<StackPanel>(page.FindName("ChatActionPanel"));
+                chatActionPanel = Assert.IsType<SetupFooterPanel>(page.FindName("ChatActionPanel"));
                 var root = Assert.IsType<Grid>(page.Content);
                 await OnboardingNativeProof.ApplyThemeSurfaceAsync(root, theme);
                 window.CommitPresentation();
                 Assert.Equal(Visibility.Visible, chatActionPanel.Visibility);
-                var chatAction = Assert.IsType<SetupActionCard>(page.FindName("ChatAction"));
+                var chatAction = Assert.IsType<Button>(page.FindName("ChatAction"));
                 Assert.Same(chatAction, Assert.Single(chatActionPanel.Children));
                 Assert.True(chatAction.IsEnabled);
                 Assert.Null(page.FindName("SkipButton"));
                 Assert.Null(page.FindName("ReturnButton"));
                 Assert.Null(page.FindName("FinishButton"));
                 Assert.Null(page.FindName("RecommendedBadge"));
-                Assert.Equal("Talk to my agent",
-                    Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(chatAction));
+                Assert.Equal("Open chat", chatAction.Content);
+                Assert.Equal("synthetic/model", Assert.IsType<TextBlock>(page.FindName("ModelSummary")).Text);
+                Assert.Equal(Visibility.Visible, Assert.IsType<StackPanel>(page.FindName("SummaryPanel")).Visibility);
+                Assert.Equal("AI ready", Assert.IsType<TextBlock>(page.FindName("ModelTitle")).Text);
                 Assert.False(Assert.IsType<InfoBar>(page.FindName("ErrorBar")).IsOpen);
                 Assert.False(Directory.Exists(Path.Combine(data, "setup-dashboard-handoff")));
                 Assert.False(File.Exists(Path.Combine(data, "settings.json")));
@@ -250,11 +327,11 @@ public sealed class AiReadyPageRenderingTests(UIThreadFixture ui, ITestOutputHel
                 if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPENCLAW_UI_PROOF_DIR")))
                 {
                     using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-{theme}", output,
-                        ["Talk to my agent"], requiredContent: page)) { }
+                        ["Open chat"], requiredContent: page)) { }
                     chatAction.IsEnabled = false;
                     Assert.False(chatAction.IsEnabled);
                     using (await OnboardingNativeProof.CaptureAsync(window, $"followup-native-ready-disabled-{theme}", output,
-                        ["Talk to my agent"], requiredContent: page)) { }
+                        ["Open chat"], requiredContent: page)) { }
                     chatAction.IsEnabled = true;
                 }
                 window.Invalidate();

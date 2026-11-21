@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClawTray.Helpers;
 
 namespace OpenClaw.SetupEngine.UI.Pages;
@@ -18,6 +19,7 @@ public sealed partial class CapabilitiesPage : Page
     {
         InitializeComponent();
         AutomationProperties.SetName(FineTuneExpander, SetupLocalization.GetString("Onboarding_V3_FineTune.Text"));
+        SetupRowPresentation.StyleHeaders(NodeModeCard, McpCard, OllamaCard, StartupPreferenceRow);
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -59,7 +61,7 @@ public sealed partial class CapabilitiesPage : Page
                 ApplyPresentation();
             };
             _toggles[capability] = toggle;
-            var icon = FluentIconCatalog.Build(Glyph(capability), 20);
+            var icon = FluentIconCatalog.Build(Glyph(capability), 18);
             icon.IsTextScaleFactorEnabled = false;
             var card = new SettingsCard
             {
@@ -68,6 +70,7 @@ public sealed partial class CapabilitiesPage : Page
                 HeaderIcon = icon,
                 Content = toggle,
             };
+            SetupRowPresentation.StyleHeaders(card);
             FineTuneExpander.Items.Add(card);
             if (capability == SetupCapability.Browser) _browserCard = card;
         }
@@ -91,12 +94,13 @@ public sealed partial class CapabilitiesPage : Page
         var previous = _applying;
         _applying = true;
         ProfileSelector.SelectedIndex = _draft.Profile == SetupCapabilityProfile.Custom ? -1 : (int)_draft.Profile;
+        SetupGlyphTile.SyncSelection(ProfileSelector);
         CustomProfileText.Visibility = _draft.Profile == SetupCapabilityProfile.Custom ? Visibility.Visible : Visibility.Collapsed;
         FineTuneExpander.IsExpanded = _draft.FineTuneExpanded;
         var selected = SetupCapabilityProfiles.Ordered.Where(_draft.GetCapability).Select(capability =>
             SetupLocalization.GetString($"PermissionsPage_Cap_{(capability == SetupCapability.System ? "SystemRun" : capability.ToString())}_Label")).ToArray();
         SelectedSummary.Text = selected.Length > 0
-            ? string.Join(", ", selected)
+            ? SetupLocalization.Format("Onboarding_Tools_OnNow", string.Join(", ", selected))
             : SetupLocalization.GetString("Onboarding_V2_NoCapabilities");
         foreach (var (capability, toggle) in _toggles)
         {
@@ -127,6 +131,7 @@ public sealed partial class CapabilitiesPage : Page
     {
         if (!_applying && _draft is not null)
             _draft.FineTuneExpanded = FineTuneExpander.IsExpanded;
+        SetupWindow.Active?.SetCompanionLine(FineTuneExpander.IsExpanded ? "Onboarding_Bubble_Tools" : "Onboarding_Bubble_Capabilities");
     }
 
     private void Transport_Toggled(object sender, RoutedEventArgs e)

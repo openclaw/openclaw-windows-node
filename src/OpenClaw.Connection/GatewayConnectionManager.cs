@@ -636,7 +636,8 @@ public sealed partial class GatewayConnectionManager :
 
             var operatorOperationCancellation = _operationCts!.Token;
             async Task<ReconnectAuthorizationResult> AuthorizeLiveCredentialHandoffAsync(
-                CancellationToken cancellationToken)
+                CancellationToken cancellationToken,
+                bool allowRuntimeStart)
             {
                 // Clear the assistant-media HTTP credential up front so any
                 // in-flight media request never outlives this handoff attempt;
@@ -651,7 +652,8 @@ public sealed partial class GatewayConnectionManager :
                             IsAutomaticReconnectAllowed(record.Id),
                         operatorOperationCancellation,
                         cancellationToken,
-                        "operator")
+                        "operator",
+                        allowRuntimeStart)
                     .ConfigureAwait(false);
                 if (!authorization.Allowed &&
                     authorization.FailureKind != GatewayErrorKind.Unknown)
@@ -694,7 +696,8 @@ public sealed partial class GatewayConnectionManager :
                             var httpAuthorization = await AuthorizeCredentialForEndpointAsync(
                                     currentRecord,
                                     reconnectHttpCredential,
-                                    cancellationToken)
+                                    cancellationToken,
+                                    allowRuntimeStart: allowRuntimeStart)
                                 .ConfigureAwait(false);
                             if (IsCurrentGatewayAttempt(gen, record.Id) &&
                                 IsAutomaticReconnectAllowed(record.Id))
@@ -719,10 +722,12 @@ public sealed partial class GatewayConnectionManager :
                 return authorization;
             }
 
+            // The handshake runs on an already-open socket, so it may only re-inspect ownership.
+            // Starting or waiting for the Gateway happens before the reconnect opens a new socket.
             lifecycle.DataClient.HandshakeAuthorizationAsync =
-                AuthorizeLiveCredentialHandoffAsync;
+                cancellationToken => AuthorizeLiveCredentialHandoffAsync(cancellationToken, allowRuntimeStart: false);
             lifecycle.DataClient.ReconnectAuthorizationAsync =
-                AuthorizeLiveCredentialHandoffAsync;
+                cancellationToken => AuthorizeLiveCredentialHandoffAsync(cancellationToken, allowRuntimeStart: true);
             _activeLifecycle = lifecycle;
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs
             {
@@ -1115,15 +1120,25 @@ public sealed partial class GatewayConnectionManager :
         }
     }
 
-    public async Task DisconnectByUserAsync()
+    public async Task DisconnectByUserAsync(string? gatewayId = null)
     {
         ThrowIfDisposed();
         await _transitionSemaphore.WaitAsync();
         try
         {
-            var gatewayId = _registry.ActiveGatewayId;
-            if (gatewayId is not null)
-                SetGatewayConnectionIntent(gatewayId, shouldBeConnected: false);
+            var targetGatewayId = gatewayId ?? _registry.ActiveGatewayId;
+            if (targetGatewayId is not null)
+                SetGatewayConnectionIntent(targetGatewayId, shouldBeConnected: false);
+
+            // Saved-row removal has already cleared the registry's active id. Pin teardown
+            // to its live owner so a queued switch cannot disconnect the replacement.
+            // A failed connect/stop can retain runtime or published state without a client.
+            var ownedGatewayId = _activeGatewayRecordId ?? _nativeGatewayRecord?.Id
+                ?? _stateMachine.Current.GatewayId;
+            if (gatewayId is not null &&
+                !string.Equals(ownedGatewayId, gatewayId, StringComparison.Ordinal))
+                return;
+
             await DisconnectCoreAsync(stopNativeGateway: true);
         }
         finally
@@ -1190,42 +1205,41 @@ public sealed partial class GatewayConnectionManager :
         await _transitionSemaphore.WaitAsync(cancellationToken);
         try
         {
-            if (!IsAutomaticReconnectAllowed(gatewayId))
-                return false;
-
-            if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
-                return false;
-
-            cancellationToken.ThrowIfCancellationRequested();
-            await DisconnectCoreAsync();
-            cancellationToken.ThrowIfCancellationRequested();
-
-            // Re-validate under the same semaphore hold before connecting: an out-of-band SetActive
-            // (e.g. a UI gateway switch that mutates the registry outside this manager) could have
-            // changed the active gateway while we were disconnecting. Fail closed if so.
-            if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
-                return false;
-            if (!IsAutomaticReconnectAllowed(gatewayId))
-                return false;
-
-            // Connect the PINNED gateway id, not "whatever is active now" — ConnectCoreAsync otherwise
-            // re-reads ActiveGatewayId, which the UI can mutate outside this semaphore, so an
-            // unpinned connect could bring up a different gateway than the one this repair targeted.
-            await ConnectCoreAsync(gatewayId, operation: "reconnect");
-
-            // Report whether a connection was actually LAUNCHED for the pinned gateway. ConnectCoreAsync
-            // bails to the Error state (without creating a client) when the record was removed mid-flight
-            // or credential resolution failed — returning true there would let auto-repair treat a
-            // credential failure as "reconnected, just unverified" and restart WSL, which cannot fix
-            // credentials. Require a non-Error operator state AND the pinned record still active.
-            return _stateMachine.Current.OperatorState is not RoleConnectionState.Error
-                && _registry.GetById(gatewayId) is not null
-                && string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal);
+            return await ReconnectIfCurrentCoreAsync(gatewayId, cancellationToken);
         }
         finally
         {
             _transitionSemaphore.Release();
         }
+    }
+
+    /// <summary>Caller must hold <see cref="_transitionSemaphore"/>.</summary>
+    private async Task<bool> ReconnectIfCurrentCoreAsync(
+        string gatewayId,
+        CancellationToken cancellationToken)
+    {
+        if (!IsAutomaticReconnectAllowed(gatewayId))
+            return false;
+
+        if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
+            return false;
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await DisconnectCoreAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Registry writes can occur outside the transition semaphore.
+        if (!string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal))
+            return false;
+        if (!IsAutomaticReconnectAllowed(gatewayId))
+            return false;
+
+        await ConnectCoreAsync(gatewayId, operation: "reconnect");
+
+        // Credential failure or record removal must not look like a launched reconnect to auto-repair.
+        return _stateMachine.Current.OperatorState is not RoleConnectionState.Error
+            && _registry.GetById(gatewayId) is not null
+            && string.Equals(_registry.ActiveGatewayId, gatewayId, StringComparison.Ordinal);
     }
 
     public async Task<bool> RecoverSshTunnelAsync(SshTunnelExit tunnelExit)
@@ -2452,12 +2466,13 @@ public sealed partial class GatewayConnectionManager :
         GatewayRecord record,
         GatewayCredential credential,
         CancellationToken cancellationToken,
-        bool requireSshTunnelOwnership = false)
+        bool requireSshTunnelOwnership = false,
+        bool allowRuntimeStart = true)
     {
         if (record.NativePackageFamilyName is not null)
         {
             return await NativeGatewayEndpointSecurity.AuthorizeAsync(
-                _nativeGatewayRuntime, record, cancellationToken).ConfigureAwait(false);
+                _nativeGatewayRuntime, record, cancellationToken, allowRuntimeStart).ConfigureAwait(false);
         }
         if (record.SshTunnel is not null)
         {
@@ -2542,7 +2557,8 @@ public sealed partial class GatewayConnectionManager :
         Func<bool> isCurrentAttempt,
         CancellationToken operationCancellationToken,
         CancellationToken handshakeCancellationToken,
-        string role)
+        string role,
+        bool allowRuntimeStart = true)
     {
         var budget = expectedRecord.NativePackageFamilyName is not null
             ? NativeGatewayEndpointSecurity.CredentialHandoffTimeout : _credentialHandoffTimeout;
@@ -2577,7 +2593,8 @@ public sealed partial class GatewayConnectionManager :
                     currentRecord,
                     credential,
                     linkedCts.Token,
-                    requireSshTunnelOwnership: true)
+                    requireSshTunnelOwnership: true,
+                    allowRuntimeStart: allowRuntimeStart)
                 .ConfigureAwait(false);
             if (!isCurrentAttempt())
             {
@@ -2611,9 +2628,10 @@ public sealed partial class GatewayConnectionManager :
             return new ReconnectAuthorizationResult(
                 authorization.Allowed,
                 authorization.FailureKind,
-                authorization.Detail);
+                authorization.Detail,
+                authorization.Retryable);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException error)
         {
             if (!isCurrentAttempt() || operationCancellationToken.IsCancellationRequested)
             {
@@ -2623,12 +2641,16 @@ public sealed partial class GatewayConnectionManager :
                     $"{role} connection attempt was superseded or canceled.");
             }
 
+            // The outer budget can expire during Companion's own start, which the runtime rolls back.
+            // Retrying would repeat that start, so that timeout stays terminal. A budget spent only
+            // observing (waiting for the lifecycle gate or an external start) started nothing.
             return new ReconnectAuthorizationResult(
                 false,
                 GatewayErrorKind.Network,
                 expectedRecord.NativePackageFamilyName is not null
                     ? $"Timed out starting or re-verifying the owned native Gateway before the {role} credential handoff."
-                    : $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.");
+                    : $"Timed out re-verifying the owned SSH listener before the {role} credential handoff.",
+                Retryable: error is NativeGatewayObservationCanceledException);
         }
     }
 
@@ -3362,7 +3384,8 @@ public sealed partial class GatewayConnectionManager :
             Func<bool> isCurrentAttempt,
             CancellationToken operationCancellationToken,
             CancellationToken handshakeCancellationToken,
-            string role) =>
+            string role,
+            bool allowRuntimeStart) =>
         AuthorizeCredentialHandoffAsync(
             expectedRecord,
             credential,
@@ -3370,7 +3393,8 @@ public sealed partial class GatewayConnectionManager :
             isCurrentAttempt,
             operationCancellationToken,
             handshakeCancellationToken,
-            role);
+            role,
+            allowRuntimeStart);
 
     Task<bool> IEndpointCredentialSecurity.IsRecoverySafeEndpointAsync(
         GatewayRecord record,
@@ -3405,14 +3429,19 @@ public sealed partial class GatewayConnectionManager :
         try
         {
             await _reconnectDelay(TimeSpan.FromMilliseconds(200)).ConfigureAwait(false);
-            if (_disposed ||
-                !((INodeLifecycleSource)this).IsCurrentLifecycle(request.Attempt) ||
-                request.Attempt.GatewayRecordId is null)
+            if (_disposed || request.Attempt.GatewayRecordId is null)
             {
                 return;
             }
 
-            await ReconnectIfCurrentAsync(request.Attempt.GatewayRecordId)
+            using var lease = await ((IGatewayAttemptLeaseSource)this)
+                .AcquireCurrentAttemptAsync(request.Attempt, CancellationToken.None)
+                .ConfigureAwait(false);
+            if (lease is null)
+                return;
+
+            await ReconnectIfCurrentCoreAsync(
+                    request.Attempt.GatewayRecordId, CancellationToken.None)
                 .ConfigureAwait(false);
         }
         catch (ObjectDisposedException)

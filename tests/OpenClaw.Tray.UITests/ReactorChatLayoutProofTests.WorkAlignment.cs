@@ -15,11 +15,13 @@ extern alias TrayRuntime;
 
 using System.Collections.Immutable;
 using System.Text.Json.Nodes;
+using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using OpenClaw.Chat;
+using OpenClawTray.Chat;
 using Windows.Foundation;
 using static OpenClaw.Tray.UITests.TestSupport;
 using AutomationProperties = Microsoft.UI.Xaml.Automation.AutomationProperties;
@@ -41,10 +43,12 @@ public sealed partial class ReactorChatLayoutProofTests
     private const double WorkStatusGap = 6;
     private const double WorkCategoryGlyphSize = 14;
     private const double WorkDisclosureGlyphSize = 12;
-    private const double WorkHeaderTextSize = 13;
+    private const double WorkActivityTitleSize = 12;
+    private const double WorkInlineTextSize = 13;
     private const double WorkHeaderMinimum = 31.5;
     private const double WorkHeaderMaximum = 40;
     private const double WorkDetailMaxHeight = 240;
+    private const double WorkDetailMaxWidth = 240;
     private const double WorkDetailInsetX = 12;
     private const double WorkDetailInsetY = 8;
     private const double WorkCommandInputRightInset = 58;
@@ -67,7 +71,9 @@ public sealed partial class ReactorChatLayoutProofTests
     private static ImmutableList<ChatTimelineItem> ExpandedWorkEntries()
     {
         var command = "dotnet test " + string.Join(" ", Enumerable.Repeat("Synthetic.Project.Tests.csproj", 8));
-        var longOutput = string.Join("\n", Enumerable.Range(1, 40).Select(line => $"Synthetic output line {line:00}"));
+        // Wrapped lines keep the twelve-line inline preview taller than its scroll cap at both widths.
+        var longOutput = string.Join("\n", Enumerable.Range(1, 40)
+            .Select(line => $"Synthetic output line {line:00}: {new string('x', 160)}"));
         var longPath = @"C:\Synthetic\Workspace\Projects\Alignment\Source\Components\Presentation\Nested\Folders\Deliberately\Long\ToolInputPath.cs";
         return ImmutableList.Create(
             new ChatTimelineItem("user", ChatTimelineItemKind.User, "Inspect the synthetic project."),
@@ -163,6 +169,11 @@ public sealed partial class ReactorChatLayoutProofTests
                     var footer = FindControl<FrameworkElement>(surface, $"ChatMessageFooter_{id}");
                     Assert.Equal(0, footer.Opacity);
                     Assert.False(footer.IsHitTestVisible);
+                    var transition = Assert.IsType<ScalarTransition>(footer.OpacityTransition);
+                    if (new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+                        Assert.InRange(transition.Duration.TotalMilliseconds, 120, 200);
+                    else
+                        Assert.Equal(TimeSpan.Zero, transition.Duration);
                     Assert.True(footer.ActualHeight > 0);
                     measured[id] = Bounds(footer, surface);
                 }
@@ -189,16 +200,20 @@ public sealed partial class ReactorChatLayoutProofTests
                         Assert.Equal(bounds[candidate], Bounds(footer, surface));
                         Assert.All(FindDescendants<TextBlock>(footer),
                             text => Assert.IsNotType<LinearGradientBrush>(text.Foreground));
-                        var metadata = Assert.Single(FindDescendants<TextBlock>(footer),
+                        Assert.DoesNotContain(FindDescendants<TextBlock>(footer),
                             text => text.Text.Contains("private-model", StringComparison.Ordinal));
                         var copy = Assert.Single(FindDescendants<Button>(footer), button =>
                             AutomationProperties.GetAutomationId(button).StartsWith("ChatCopy_", StringComparison.Ordinal));
                         var glyph = Assert.Single(FindDescendants<TextBlock>(copy));
+                        Assert.Equal(32, copy.ActualWidth, NativeLayoutPrecision);
+                        Assert.Equal(32, copy.ActualHeight, NativeLayoutPrecision);
+                        if (candidate == "hover-user")
+                            continue;
+                        var metadata = Assert.Single(FindDescendants<TextBlock>(footer),
+                            text => text.Text == "Assistant");
                         var metadataBounds = Bounds(metadata, surface);
                         var glyphBounds = Bounds(glyph, surface);
                         Assert.InRange(metadataBounds.Height, 17.5, 18.5);
-                        Assert.Equal(32, copy.ActualWidth);
-                        Assert.Equal(32, copy.ActualHeight);
                         AssertWorkAligned($"{candidate} footer text and copy glyph vertical center",
                             metadataBounds.Top + metadataBounds.Height / 2,
                             glyphBounds.Top + glyphBounds.Height / 2, WorkCenterTolerance);
@@ -215,6 +230,68 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.Equal(0, FindControl<FrameworkElement>(surface, $"ChatMessageFooter_{id}").Opacity);
             });
         }, initialThreadId: ExpandedWorkKey, renderProvider: provider);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task MessageFooters_KeepRecordedTimeWithoutModelOrUsageDetails(bool showTools)
+    {
+        await WithChatAsync(1100, async (surface, rootHost, _, _) =>
+        {
+            var localTime = new DateTime(2026, 11, 14, 12, 34, 0);
+            var timestamp = new DateTimeOffset(localTime, TimeZoneInfo.Local.GetUtcOffset(localTime));
+            var expectedTime = localTime.ToString("h:mm tt");
+            var ids = new[] { "footer-user", "footer-assistant" };
+            var timeline = new ChatTimelinePresentationContext("footer-proof",
+                [new(ids[0], ChatTimelineItemKind.User, "A sent message."),
+                 new(ids[1], ChatTimelineItemKind.Assistant, "A completed answer.")],
+                false, null,
+                EntryMetadata: ids.ToDictionary(id => id, _ => new ChatEntryMetadata(timestamp, "recorded-model")),
+                AssistantSenderLabel: "Echo",
+                DefaultModel: "private-model",
+                DefaultUsageSummary: "29.9K/936.0K (3%)",
+                ShowToolCalls: showTools,
+                OnReadAloud: _ => Task.CompletedTask);
+            ReactorHostControl? host = null;
+            try
+            {
+                await ui.RunOnUIAsync(() =>
+                {
+                    host = new ReactorHostControl();
+                    host.Mount(_ => Microsoft.UI.Reactor.Factories.Component<ReactorChatTimeline, ReactorChatTimelineProps>(
+                        new(ReactorChatTimelineMode.Timeline, timeline)));
+                    surface.Child = host;
+                });
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                    () => ids.All(id => FindDescendants<FrameworkElement>(surface).Any(element =>
+                        AutomationProperties.GetAutomationId(element) == $"ChatMessageFooter_{id}")),
+                    "both timestamp footers render"));
+                await ui.RunOnUIAsync(() =>
+                {
+                    foreach (var id in ids)
+                    {
+                        var footer = FindControl<FrameworkElement>(surface, $"ChatMessageFooter_{id}");
+                        var labels = FindDescendants<TextBlock>(footer).Select(text => text.Text).ToArray();
+                        var recordedTime = Assert.Single(FindDescendants<TextBlock>(footer),
+                            text => text.Text.Contains(expectedTime, StringComparison.Ordinal));
+                        Assert.Equal(1, recordedTime.Opacity);
+                        Assert.All(Ancestors(recordedTime).OfType<UIElement>().TakeWhile(element => element != footer),
+                            element => Assert.Equal(1, element.Opacity));
+                        Assert.DoesNotContain(labels, text =>
+                            text.Contains("model", StringComparison.Ordinal) || text.Contains("936.0K", StringComparison.Ordinal));
+                        Assert.Equal(id == ids[0] ? 1 : 2, FindDescendants<Button>(footer).Count());
+                        if (id == ids[1])
+                            Assert.Contains(labels, text => text.StartsWith("Echo", StringComparison.Ordinal));
+                    }
+                });
+            }
+            finally
+            {
+                if (host is not null)
+                    await ui.RunOnUIAsync(() => { surface.Child = rootHost; host.Dispose(); });
+            }
+        });
     }
 
     [Theory]
@@ -244,9 +321,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 Assert.Single(FindDescendants<Expander>(surface)).IsExpanded = true;
             });
             await SettleAsync();
-            await ui.RunOnUIAsync(() => Assert.Single(FindDescendants<Expander>(surface),
-                expander => !expander.IsExpanded).IsExpanded = true);
-            await SettleAsync();
+            // The lone failed call is its own collapsed step row inside Worked; there is no group to open.
+            await ui.RunOnUIAsync(() =>
+            {
+                var row = Assert.Single(FindDescendants<Expander>(surface), expander => !expander.IsExpanded);
+                Assert.Equal("ChatToolCall_tool", AutomationProperties.GetAutomationId(row));
+            });
             await AwaitDisclosureAnimationsAsync(surface);
 
             foreach (var viewport in new[] { width, width == 480 ? 1100 : 480 })
@@ -267,7 +347,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     AssertWorkHeader(surface, tool, Bounds(tool, surface), "tool");
                     var header = Assert.IsAssignableFrom<DependencyObject>(tool.Header);
                     var title = Assert.Single(FindDescendants<TextBlock>(header),
-                        text => text.Text.StartsWith("dotnet test ", StringComparison.Ordinal));
+                        text => text.Text.StartsWith("$ dotnet test ", StringComparison.Ordinal));
                     var status = Assert.Single(FindDescendants<TextBlock>(header), text => text.Text == "failed");
                     var icon = Assert.Single(FindDescendants<TextBlock>(header),
                         text => text.Text != title.Text && text.Text != status.Text);
@@ -276,7 +356,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.InRange(Math.Abs(iconBounds.Left - finalBounds.Left), 0, 1);
                     Assert.InRange(statusBounds.Right, finalBounds.Left, finalBounds.Right + 1);
                     Assert.True(title.IsTextTrimmed, "A long command must ellipsize without displacing its status.");
-                    Assert.InRange(tool.ActualHeight, 32, 40);
+                    Assert.InRange(Math.Round(tool.ActualHeight, NativeLayoutPrecision), 32, 40);
                     AssertComposerBounds(surface);
                 });
             }
@@ -390,7 +470,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 var worked = Assert.Single(FindDescendants<Expander>(surface),
-                    row => !Ancestors(row).OfType<Expander>().Any());
+                    row => DisclosureOwner(row) is null);
                 Assert.True(Assert.Single(OwnWorkDescendants<ToggleButton>(worked)).Focus(FocusState.Keyboard));
             });
             await SettleAsync();
@@ -413,8 +493,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 surface.Height = 1300;
             });
             await AwaitWorkRowsAsync(surface, "the collapsed Worked row", rows => rows.Count == 1 && !rows[0].IsExpanded);
-            var worked = await ui.RunOnUIAsync(() => Task.FromResult(
-                WorkLabel(Assert.Single(RealizedTimelineElements<Expander>(surface)))));
+            var worked = await ui.RunOnUIAsync(() =>
+            {
+                var row = Assert.Single(RealizedTimelineElements<Expander>(surface));
+                Assert.True(IsCompletedWorkRow(row), $"{WorkLabel(row)} is not recognized as the completed-work row.");
+                return Task.FromResult(WorkLabel(row));
+            });
             const string activity = "ChatToolActivity_execTool";
             string[] leaves =
                 ["ChatToolCall_execTool", "ChatToolCall_readTool", "ChatToolCall_editTool", "ChatToolCall_grepTool"];
@@ -609,17 +693,29 @@ public sealed partial class ReactorChatLayoutProofTests
         return id.Length > 0 ? id : AutomationProperties.GetName(row);
     }
 
+    // The completed-work rollup is identified by its sanitized "thread:…|generation:…|work:…" key, not by its
+    // localized "Worked" label.
+    private static bool IsCompletedWorkRow(Expander row) =>
+        System.Text.RegularExpressions.Regex.IsMatch(AutomationProperties.GetAutomationId(row),
+            "^ChatToolActivity_thread_.+_generation_[0-9]+_work_");
+
     private static Expander WorkRow(Border surface, string label) =>
         Assert.Single(RealizedTimelineElements<Expander>(surface), row => WorkLabel(row) == label);
 
-    // Descendants whose nearest Expander is the owner, so a row never inherits its nested rows' elements.
+    // Descendants whose disclosure is the owner, so a row never inherits its nested rows' elements.
     private static IEnumerable<T> OwnWorkDescendants<T>(Expander owner) where T : DependencyObject =>
-        FindDescendants<T>(owner).Where(element =>
-            ReferenceEquals(Ancestors(element).OfType<Expander>().FirstOrDefault(), owner));
+        FindDescendants<T>(Disclosure(owner)).Where(element => ReferenceEquals(DisclosureOwner(element), owner));
 
     // Collapsed rows keep their content in the tree with stale geometry, so only measure rows every ancestor shows.
-    private static bool IsWorkRowShown(Expander row) =>
-        Ancestors(row).OfType<Expander>().All(owner => owner.IsExpanded);
+    private static bool IsWorkRowShown(Expander row)
+    {
+        for (var owner = DisclosureOwner(row); owner is not null; owner = DisclosureOwner(owner))
+        {
+            if (!owner.IsExpanded)
+                return false;
+        }
+        return true;
+    }
 
     private static bool IsWorkGuide(Border border) =>
         border.Width == 1 && AutomationProperties.GetAccessibilityView(border) == AccessibilityView.Raw;
@@ -738,7 +834,8 @@ public sealed partial class ReactorChatLayoutProofTests
         foreach (var row in RealizedTimelineElements<Expander>(surface).Where(IsWorkRowShown).ToList())
         {
             var label = WorkLabel(row);
-            var bounds = Bounds(row, surface);
+            // A row spans its header and the details rendered below it.
+            var bounds = Bounds((FrameworkElement)Disclosure(row), surface);
             AssertWorkRowEdges(surface, row, bounds, column, label);
             AssertWorkHeader(surface, row, bounds, label);
             var hasGuide = row.IsExpanded && AssertWorkGuide(surface, row, bounds, label);
@@ -751,7 +848,7 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private static void AssertWorkRowEdges(Border surface, Expander row, Rect bounds, Rect column, string label)
     {
-        if (Ancestors(row).OfType<Expander>().FirstOrDefault() is { } owner)
+        if (DisclosureOwner(row) is { } owner)
         {
             var ownerBounds = Bounds(owner, surface);
             var guide = OwnWorkDescendants<Border>(owner).SingleOrDefault(IsWorkGuide);
@@ -784,10 +881,37 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} header right", headerBounds.Right, rowBounds.Right, WorkEdgeTolerance);
 
         var texts = WorkHeaderTexts(surface, row);
-        Assert.True(texts.Count is 2 or 3,
-            $"{label}: expected an icon, a title and an optional status, found {texts.Count} text blocks.");
+        // The completed-work header follows the web work group: its label starts the row with no leading glyph,
+        // and a trailing chevron keeps its slot, shown only while the header is hovered or focused.
+        if (IsCompletedWorkRow(row))
+        {
+            Assert.True(texts.Count == 2, $"{label}: expected the label and its chevron, found {texts.Count} text blocks.");
+            var (workTitle, chevron) = (texts[0], texts[1]);
+            AssertWorkAligned($"{label} title left", Bounds(workTitle, surface).Left, rowBounds.Left, WorkEdgeTolerance);
+            AssertWorkAligned($"{label} title font size", workTitle.FontSize, WorkActivityTitleSize, 0.1);
+            Assert.True(FluentIconCatalog.IsPuaGlyph(chevron.Text), $"{label}: the trailing header text is not an icon glyph.");
+            Assert.True(chevron.Text is FluentIconCatalog.ChevronR or FluentIconCatalog.ChevronDown,
+                $"{label}: only a disclosure chevron may follow the Worked label.");
+            Assert.False(chevron.IsTextScaleFactorEnabled, $"{label}: the chevron must not scale with the text size.");
+            AssertWorkAligned($"{label} chevron font size", chevron.FontSize, WorkDisclosureGlyphSize, 0.1);
+            Assert.True(Bounds(chevron, surface).Left >= Bounds(workTitle, surface).Right - WorkEdgeTolerance,
+                $"{label}: the chevron must follow the label.");
+            var workCenter = headerBounds.Top + headerBounds.Height / 2;
+            foreach (var text in texts)
+            {
+                var bounds = Bounds(text, surface);
+                AssertWorkAligned($"{label} header text vertical centre", bounds.Top + bounds.Height / 2,
+                    workCenter, WorkCenterTolerance);
+            }
+            return;
+        }
+        Assert.True(texts.Count is >= 2 and <= 4,
+            $"{label}: expected an icon, a title, an optional detail and an optional status, found {texts.Count} text blocks.");
         var icon = texts[0];
         var title = texts[1];
+        // Like the web, read, search and fetch rows show a dimmed detail beside the title, in the title's own grid.
+        if (texts.Count == 4)
+            Assert.Same(VisualTreeHelper.GetParent(title), VisualTreeHelper.GetParent(texts[2]));
         Assert.True(FluentIconCatalog.IsPuaGlyph(icon.Text), $"{label}: the first header text is not an icon glyph.");
         Assert.False(icon.IsTextScaleFactorEnabled, $"{label}: the icon must not scale with the text size.");
         var disclosureGlyph = icon.Text is FluentIconCatalog.ChevronR or FluentIconCatalog.ChevronDown;
@@ -796,8 +920,15 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} icon left", Bounds(icon, surface).Left, rowBounds.Left, WorkEdgeTolerance);
         AssertWorkAligned($"{label} title left", Bounds(title, surface).Left, rowBounds.Left + WorkIconColumn,
             WorkEdgeTolerance);
-        foreach (var text in texts.Skip(1))
-            AssertWorkAligned($"{label} header text font size", text.FontSize, WorkHeaderTextSize, 0.1);
+        AssertWorkAligned($"{label} title font size", title.FontSize,
+            title.Text == WorkToolInput ? WorkInlineTextSize : WorkActivityTitleSize, 0.1);
+        // A dimmed detail is width-capped and takes the quieter title size; a trailing status keeps the inline size.
+        foreach (var text in texts.Skip(2))
+        {
+            var detail = text.MaxWidth == WorkDetailMaxWidth;
+            AssertWorkAligned($"{label} {(detail ? "detail" : "status")} font size", text.FontSize,
+                detail ? WorkActivityTitleSize : WorkInlineTextSize, 0.1);
+        }
         var headerCenter = headerBounds.Top + headerBounds.Height / 2;
         for (var index = 0; index < texts.Count; index++)
         {
@@ -805,8 +936,9 @@ public sealed partial class ReactorChatLayoutProofTests
             AssertWorkAligned($"{label} header text {index} vertical centre", bounds.Top + bounds.Height / 2,
                 headerCenter, WorkCenterTolerance);
         }
-        if (texts.Count == 3)
-            AssertWorkAligned($"{label} status gap", Bounds(texts[2], surface).Left - Bounds(title, surface).Right,
+        for (var index = 2; index < texts.Count; index++)
+            AssertWorkAligned($"{label} header text {index} gap",
+                Bounds(texts[index], surface).Left - Bounds(texts[index - 1], surface).Right,
                 WorkStatusGap, WorkNestedTolerance);
         Assert.True(Bounds(texts[^1], surface).Right <= rowBounds.Right + WorkEdgeTolerance,
             $"{label}: the last header text extends past the row.");
@@ -888,13 +1020,32 @@ public sealed partial class ReactorChatLayoutProofTests
             WorkEdgeTolerance);
         AssertWorkAligned($"{label} input/output divider right", sectionDivider.Right, Bounds(sections[0], surface).Right,
             WorkEdgeTolerance);
+        var last = Bounds(sections[^1], surface);
+        var outcomeTop = last.Bottom;
+        var remaining = panel.Children.OfType<TextBlock>().Where(text =>
+            AutomationProperties.GetAutomationId(text).StartsWith("ChatToolMoreLines_", StringComparison.Ordinal)).ToList();
+        if (label == "ChatToolCall_execTool")
+        {
+            var more = Assert.Single(remaining);
+            Assert.Equal("+28 more lines", more.Text);
+            Assert.Equal(new Thickness(12, 0, 12, 8), more.Margin);
+            Assert.Equal(12, more.FontSize);
+            var moreBounds = Bounds(more, surface);
+            AssertWorkAligned($"{label} remaining lines top", moreBounds.Top, last.Bottom, WorkEdgeTolerance);
+            AssertWorkAligned($"{label} remaining lines left", moreBounds.Left, last.Left + WorkDetailInsetX,
+                WorkEdgeTolerance);
+            Assert.True(moreBounds.Right <= last.Right - WorkDetailInsetX + WorkEdgeTolerance,
+                $"{label}: remaining-lines text extends into the card's right inset.");
+            outcomeTop = moreBounds.Bottom + WorkDetailInsetY;
+        }
+        else
+            Assert.Empty(remaining);
         if (footers.Count == 0)
             return new WorkCardSummary(null, scrolls);
 
-        var last = Bounds(sections[^1], surface);
         var divider = Bounds(dividers[^1], surface);
         var footer = Bounds(footers[0], surface);
-        AssertWorkAligned($"{label} divider top", divider.Top, last.Bottom, WorkEdgeTolerance);
+        AssertWorkAligned($"{label} divider top", divider.Top, outcomeTop, WorkEdgeTolerance);
         AssertWorkAligned($"{label} divider left", divider.Left, last.Left, WorkEdgeTolerance);
         AssertWorkAligned($"{label} divider right", divider.Right, last.Right, WorkEdgeTolerance);
         AssertWorkAligned($"{label} footer top", footer.Top, divider.Bottom + WorkStatusGap, WorkEdgeTolerance);
@@ -931,7 +1082,7 @@ public sealed partial class ReactorChatLayoutProofTests
             element => AutomationProperties.GetAutomationId(element) == id);
         var row = Bounds(Part<Grid>("ChatRunProgress"), surface);
         var claw = Bounds(Part<Grid>("ChatRunProgressClaw"), surface);
-        var text = Bounds(Part<TextBlock>("ChatRunProgressText"), surface);
+        var text = Bounds(Part<TextBlock>("ChatRunProgressStatus"), surface);
         AssertWorkAligned("progress left", row.Left, column.Left, WorkEdgeTolerance);
         AssertWorkAligned("progress right", row.Right, column.Right, WorkEdgeTolerance);
         Assert.True(row.Height >= 27.5, $"progress row height: expected at least 28, measured {row.Height:0.##}.");

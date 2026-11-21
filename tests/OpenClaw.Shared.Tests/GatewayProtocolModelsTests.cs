@@ -750,6 +750,23 @@ public class GatewayProtocolModelsTests
         Assert.Equal("missing.txt", content.Path);
     }
 
+    [Fact]
+    public void ParseSessionFileContent_ReadsPreviewEncodingAndRefusalReason()
+    {
+        var image = OpenClawGatewayClient.ParseSessionFileContent(Parse("""
+            {"file":{"path":"a.png","missing":false,"content":"iVBORw0KGgo=","contentEncoding":"base64","previewKind":"image"}}
+            """), "main", "a.png");
+        Assert.Equal("base64", image.ContentEncoding);
+        Assert.Equal("image", image.PreviewKind);
+        Assert.Null(image.Reason);
+
+        var refused = OpenClawGatewayClient.ParseSessionFileContent(Parse("""
+            {"root":"/work","file":{"path":"secret.txt","missing":true},"reason":"outside_session_boundary"}
+            """), "main", "../secret.txt");
+        Assert.True(refused.Missing);
+        Assert.Equal("outside_session_boundary", refused.Reason);
+    }
+
     // ── sessions.compaction.* ──
 
     [Fact]

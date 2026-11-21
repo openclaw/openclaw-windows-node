@@ -106,7 +106,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
     [InlineData(true, ElementTheme.Dark, 480)]
     [InlineData(true, ElementTheme.Light, 760)]
     [InlineData(true, ElementTheme.Dark, 760)]
-    public async Task NativePackagePages_KeepSharedHeroProgressAndActionsVisible(
+    public async Task NativePackagePages_KeepHeroAndActionsVisible(
         bool wizard, ElementTheme theme, int width)
     {
         await ui.ResetContainerAsync();
@@ -130,14 +130,8 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     new SetupConfig()));
                 var page = Assert.IsAssignableFrom<Page>(frame.Content);
                 await WaitAsync(() => page.IsLoaded, "native package preview Loaded");
-                var mascot = Find<OnboardingMascot>(page, wizard ? "MascotHero" : "ProgressMascot");
-                mascot.IsAnimationEnabled = false;
-                var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
-                progress.Update(OnboardingFlowPolicy.GetStages(SetupGatewayRoute.Native, new SetupConfig(), includeReadyChoice: !wizard),
-                    wizard ? OnboardingStage.AiSetup : OnboardingStage.Install);
-                Assert.Equal(wizard ? 5 : 6, progress.Children.Count);
-                Assert.Equal(20, Assert.IsType<Border>(progress.Children[wizard ? 4 : 3]).Width);
-                Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(progress)));
+                var hero = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<StackPanel>(),
+                    panel => Grid.GetRow(panel) == 0);
                 string[] actions;
                 if (wizard)
                 {
@@ -154,10 +148,8 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     Assert.Equal(4, rows.Count);
                     foreach (var row in rows)
                     {
-                        var card = Assert.IsType<SettingsCard>(row);
-                        Assert.False(card.IsClickEnabled);
-                        Assert.False(string.IsNullOrWhiteSpace(Assert.IsType<string>(card.Header)));
-                        Assert.IsType<SetupPhaseStatus>(card.Content);
+                        var status = Assert.IsType<SetupPhaseStatus>(row);
+                        Assert.False(string.IsNullOrWhiteSpace(status.Header));
                     }
                     Find<Button>(page, "RetryButton").Visibility = Visibility.Visible;
                     actions = ["BackButton", "RetryButton"];
@@ -165,9 +157,9 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 root.UpdateLayout();
                 await ui.YieldToRenderAsync();
                 var footer = Find<Grid>(page, "NavigationFooter");
-                var progressBounds = progress.TransformToVisual(footer).TransformBounds(
-                    new(0, 0, progress.ActualWidth, progress.ActualHeight));
-                Assert.True(progressBounds.Width > 0 && progressBounds.Height > 0);
+                var heroBounds = hero.TransformToVisual(footer).TransformBounds(
+                    new(0, 0, hero.ActualWidth, hero.ActualHeight));
+                Assert.True(heroBounds.Width > 0 && heroBounds.Height > 0);
                 var previousRight = 0d;
                 foreach (var name in actions)
                 {
@@ -178,15 +170,14 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     if (!wizard)
                     {
                         Assert.InRange(bounds.Width, 100, footer.ActualWidth / 2 - 8);
-                        Assert.Equal(name == "BackButton" ? HorizontalAlignment.Left : HorizontalAlignment.Right,
-                            action.HorizontalAlignment);
+                        Assert.Equal(HorizontalAlignment.Right, action.HorizontalAlignment);
                     }
                     Assert.True(bounds.Left >= previousRight - 0.1);
                     Assert.True(bounds.Right <= footer.ActualWidth + 0.1);
-                    Assert.True(progressBounds.Bottom <= bounds.Top);
+                    Assert.True(heroBounds.Bottom <= bounds.Top);
                     previousRight = bounds.Right;
                 }
-                OnboardingNativeProof.AssertFullyVisible(mascot, root);
+                OnboardingNativeProof.AssertFullyVisible(hero, root);
                 OnboardingNativeProof.AssertFullyVisible(footer, root);
                 await OnboardingArtworkRenderingTests.SaveProofAsync(root,
                     $"native-package-{(wizard ? "wizard" : "install")}-{theme}-{width}", output);
@@ -381,8 +372,8 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                 var handle = WinRT.Interop.WindowNative.GetWindowHandle(ui.TestWindow);
                 OnboardingNativeProof.AssertProductDpi(ui.TestWindow);
                 using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"{_run}-shared-fixture-dpi",
-                    output, ["Welcome to OpenClaw", "Continue"])) { }
-                await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(handle, "Welcome to OpenClaw");
+                    output, ["Meet your new sidekick.", "Continue"])) { }
+                await OnboardingNativeProof.AssertNativeLabelAfterWpfLoadAsync(handle, "Meet your new sidekick.");
                 await ui.YieldToRenderAsync();
                 await ui.RunOnUIAsync(async () =>
                 {
@@ -390,7 +381,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                     OnboardingNativeProof.AssertProductDpi(ui.TestWindow);
                     OnboardingNativeProof.TraceDpiContext("Regression: same HWND after MTA WPF/UIA and next callback", ui.TestWindow);
                     using (await OnboardingNativeProof.CaptureAsync(ui.TestWindow, $"{_run}-shared-fixture-after-uia",
-                        output, ["Welcome to OpenClaw", "Continue"])) { }
+                        output, ["Meet your new sidekick.", "Continue"])) { }
                 });
             }
             finally
@@ -580,7 +571,7 @@ public sealed class OnboardingSetupGalleryTests(UIThreadFixture ui, ITestOutputH
                         case "security":
                             await MountedAsync<SecurityNoticePage>(frame);
                             if (scene.State == "halo")
-                                SetHalo(Find<OnboardingMascot>((Page)frame.Content, "MascotHero"));
+                                SetHalo(SetupCompanion.Find((Page)frame.Content)!.Mascot);
                             break;
                         case "welcome":
                             window.NavigateToWelcome();

@@ -41,7 +41,7 @@ attempts and explicit retries share its original monotonic deadline. Deadline or
 window cancellation ends the presentation wait, not ownership of an admitted
 write or restart. Delegates receive cooperative cancellation, but cleanup still
 joins the actual work and prior page drain.
-Retry and Back are unavailable while that work remains pending, and expiry cannot
+Completion retries and Back are unavailable while that work remains pending, and expiry cannot
 admit another attempt. An uncertain finalization cannot replay unless the existing
 owner confirms that only committed finalization remains to resume. A late restart
 publication, including a committed-publication failure, never authorizes a second
@@ -54,9 +54,22 @@ runtime checks alone do not prove that a full, potentially longer chat turn has 
 Readiness is withdrawn when the live Gateway reports configuration changes,
 without replaying setup or model activation. Unrelated chat usage and metadata
 updates do not withdraw readiness. Finishing failures retain
-localized timeout-phase guidance. If safe retry or Back is unavailable, Close
-remains available. Once a restart process has launched, failed shutdown scheduling
+localized timeout-phase guidance. If safe retry or Back is unavailable, the
+window's title-bar close action remains available. Once a restart process has launched, failed shutdown scheduling
 cannot launch another restart through Retry.
+
+On a finishing failure, **Back** and **Check readiness again** share the bottom
+footer row. **Check readiness again** first updates recovery availability, then
+retries completion only when the existing owner permits it. Pending, expired or
+uncertain work is not replayed. There is no separate Refresh or Close button.
+**Collect logs** stays left-aligned below the failure message and opens the same sanitized diagnostics preview used in
+Settings, including this Companion profile's latest setup logs. Review the
+preview before copying or saving it. Collection failures stay visible on the
+page and can be retried. Native pre-restart completion failures also record the
+failed stage and sanitized exception in the setup log.
+If returning with **Back** fails during cleanup, readiness and navigation remain
+unavailable. **Collect logs** remains visible, and the title-bar close action can
+close the window. A readiness refresh cannot bypass the failed cleanup.
 
 WSL Local AI withdrawal confirms a Gateway restart even when the saved provider
 is already absent. A previous Companion process may have removed the saved route
@@ -65,9 +78,13 @@ prove that uncertainty cleared across Companion restarts. A completed managed
 startup that remains stopped or uninstalled fails
 readiness promptly instead of waiting for the full recovery deadline.
 
-Native installation keeps Back at the left and Cancel setup (or Retry setup) at
-the right, using the same content-sized, 100 px minimum buttons as earlier setup
-screens. Progress stays centered on its own row and action labels can wrap.
+Native installation keeps its actions right-aligned in the footer: Back, then
+Cancel setup (or Retry setup). Both share the setup footer minimum width
+(`SetupFooterButtonMinWidth`, 180 DIPs) and their labels can wrap. Installation
+progress is shown in the page body and in the companion's step timeline, not on
+a separate footer row. Other setup pages use `SetupFooterPanel`, which keeps
+actions in one right-aligned row and stacks them one per row when the page
+column is too narrow, including longer localized finishing-failure labels.
 
 The Gateway chooser shows Local AI availability in a subtle, transparent status row
 below all three choices and above "Remote, local MCP or set up later", not inside
@@ -326,18 +343,27 @@ The native path:
    Native console output and scoped terminal/restart/cancel recovery appear only
    for errors, skipped/unavailable console output or uncertain outcomes in the
    shared page/provider dialog. Healthy provider selection has no extra native controls.
-4. The verified chooser offers **Talk to my agent**.
+4. The verified ready screen offers **Open chat**.
    Choosing a destination rechecks the same Gateway, package
    family and runtime contract, signing identity, agent, session and primary model.
    After draining the operator, setup retains isolated stop ownership through
    the explicit package restart. The legacy path first stops its own runtime
    and restores its reload setting. Both check the selected
-   local/loopback/token configuration, runs `config validate --json`, restarts
-   with owned-listener proof and runs authenticated `gateway health --json`.
-   It also verifies the exact primary model on the restarted runtime. A failed
-   gate remains retryable and does not publish the staged record.
-5. Stops the setup-owned runtime before reloading and updating the registry.
-   The isolated runtime leaves a pre-existing service running on detach.
+   local/loopback/token configuration, run `config validate --json`, and restart
+   with owned-listener proof. Focused finalization then uses one authenticated
+   operator connection for `health` (without an active probe) and exact primary
+   model verification. Post-restart authorization, typed startup retries and
+   health consume the existing admission window; restart and model verification
+   retain their own existing bounds and the outer completion deadline.
+   Neither automatic pairing nor credential recovery is allowed during finalization.
+   A failed gate does not publish the staged record or permit mutation replay.
+5. Keeps the verified isolated Gateway running, publishes the staged registry
+   record, then releases runtime ownership to the normal connection manager.
+   The legacy path stops its setup-owned runtime before publication.
+   An isolated finalization timeout or cancellation retains runtime ownership
+   until explicit setup disposal instead of stopping ongoing startup in a
+   `finally` block. Disposal still cleans up owned starts and preserves a
+   pre-existing service.
    The selected destination uses the same protected restart receipt as WSL.
    The normal connection manager owns the native runtime after restart and
    supplies the authorized connection for another fresh verification before
@@ -458,15 +484,16 @@ the [artwork section](#artwork-and-motion) covers motion and asset packaging.
 ### Verified native completion
 
 `AiReadyPage` is mounted only through the setup window's current verified
-completion coordinator. Its celebrating mascot and "Your AI is ready" heading
-follow real primary-model verification, not discovery or browser sign-in.
-Showing the page creates no pending handoff and performs no finalization.
+completion coordinator. Its "All set!" heading, graduation-cap celebration and
+summary rows follow real primary-model verification, not discovery or browser
+sign-in. Showing the page creates no pending handoff and performs no finalization.
 
-The final screen has one action: **Talk to my agent**, which opens Chat for the
-verified agent. There is no recommendation badge or prompt implying multiple
-destinations.
-There are no bottom Return or Skip buttons; the progress dots remain. Selecting
-a card is the final action, with no extra Finish button. This removes the new
+The final screen mirrors `CompletePage`'s success layout: rows with success
+checks for the local Gateway, device pairing, the applied capability profile and
+**AI ready** (the verified primary model), and one footer action, **Open chat**,
+which opens Chat for the verified agent. There is no recommendation badge or
+prompt implying multiple destinations, and no Return, Skip or Finish button.
+Open chat is the final action. This removes the new
 Channels and Skills setup destinations; ordinary Dashboard access from
 Connection settings and the tray remains unchanged. The Chat action does not
 sign in to channels, change channel configuration, or install skills.
@@ -506,12 +533,23 @@ Companion uses a five-minute absolute startup budget from before the package sta
 request, with ten seconds for confirmation after a late acknowledgement, subject to
 the caller deadline (at most 310 seconds for start/status), then still requires
 fresh selected-port and process-sequence ownership proof. It never treats an
-`unhealthy`/`starting` observation as ready, waits for
-an unrelated pre-existing start, or retries the start command while polling.
-If a listener appears between a pending status and the host snapshot, one immediate
+`unhealthy`/`starting` observation as ready, or retries the start command while
+polling. A pre-existing `starting` service (for example after
+`clawctl gateway-service restart`) is observed within the same startup budget
+without taking start, stop or rollback ownership; it receives credentials only
+after a fresh `running` attestation and the full listener checks. A listener that
+appears before that attestation keeps the wait going but is not trusted, and a
+momentarily unreadable (`unknown`) state is reported as unavailable inspection.
+If the startup budget expires while the service is still starting, later reconnect
+attempts read status once per backoff step instead of waiting another full budget,
+until the state changes. Configuration is never repaired while the service is
+`starting`. A pre-existing `unhealthy` service is not waited on; reconnect
+observes it again after its normal capped backoff.
+For a start Companion requested (or still owns), if a listener appears between a
+pending status and the host snapshot, one immediate
 status recheck may admit only a fresh `running` attestation. The full selected-port,
 listener and process-sequence checks still run; another pending status or failed
-attribution rejects the start.
+attribution rejects that start.
 The startup budget defaults to five minutes. Set `OPENCLAW_NATIVE_GATEWAY_START_TIMEOUT`
 to whole seconds (30 to 3600) before starting Companion to change it; the published
 connection phase and credential handoff budgets follow it. Only the published connection
@@ -531,6 +569,30 @@ ownership failures do not retry. Caller cancellation remains cancellation.
 An exhausted session needs new setup preparation rather than another connection retry.
 This does not require the Gateway's broad `/startupz` sidecar readiness to finish
 before an operator connection is attempted.
+
+Focused finalization starts its admission budget after configuration validation
+and the runtime-owned restart, preserving the existing startup allowance. It
+shares the remainder through operator admission and authenticated health.
+The health RPC also retains the configured native CLI
+timeout as an upper bound; it does not receive a fresh startup window.
+Health and exact-model verification must remain on the same authenticated
+connection generation. The classic compatibility wizard retains its separate
+`gateway health --json --timeout` check.
+
+Failed focused finalization ends that admission operation, but cannot replay
+its mutations. An explicit Back/Close Local AI withdrawal can establish its
+own bounded connection instead of inheriting an exhausted finishing budget.
+An unavailable ownership inspection still blocks credentials and publication;
+it retains runtime ownership just like a readiness timeout, rather than being
+treated as proof of a foreign listener.
+
+The health/startup contract was checked directly in Store package
+`2026.11.100.0` ARM64 on 2026-11-13. Its bundled OpenClaw `2026.11.1`
+`dist/build-info.json` identifies commit
+`4ffdd2047d192dd65554de3c8c46c0e0197c6e2a`. The shipped CLI dispatches `health`
+without probe parameters, honors the explicit RPC timeout, and the server emits
+typed retryable `UNAVAILABLE` with reason `startup-sidecars`. This is installed
+source evidence, not live delayed-start proof or a minimum-version claim.
 
 The current package status contract does not expose attempt-bound startup-phase
 progress. Repeated unchanged status snapshots and unverified Gateway log lines

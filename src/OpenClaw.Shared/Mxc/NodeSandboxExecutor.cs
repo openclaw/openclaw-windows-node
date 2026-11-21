@@ -35,6 +35,9 @@ public sealed class NodeSandboxExecutor : IDisposable
         info => new MxcProcessLifetime.HostProcess(Process.Start(info) ??
             throw new IOException("The approved process could not be started."));
     internal Func<string, MxcFolderAdmission.Metadata?> ReadPhysicalMetadata { get; set; } = MxcFolderAdmission.ReadMetadata;
+    // Clock for the per-command execution deadline. Tests substitute a manual clock so the deadline
+    // expires only after the observable state it races against, not after scheduler-dependent wall time.
+    internal TimeProvider DeadlineTimeProvider { get; init; } = TimeProvider.System;
 
     public NodeSandboxExecutor(
         NodeSandboxPolicyStore policies,
@@ -128,8 +131,8 @@ public sealed class NodeSandboxExecutor : IDisposable
         var stop = new CancellationTokenSource();
         var timeout = workload.ExecutionTimeout(policy.Settings.SandboxTimeoutMs);
         var mode = (int)NodeToolExecutionMode.Sandbox;
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        deadline.CancelAfter(timeout);
+        using var deadlineTimer = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeout), DeadlineTimeProvider);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct, deadlineTimer.Token);
         var admissionStop = deadline.Token;
         // Register before scheduling: canceled callers can return before scratch exists.
         var completion = TrackOwnedOperation();

@@ -236,8 +236,16 @@ sessions, and the entire footer disappear, and content fills the vacated width.
 While the pane is hidden, the same footer control shows only Dashboard and the
 bell in the native `TitleBar` right header; it collapses again when the pane
 reopens or Settings is shown, so the actions never appear twice.
-The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
-controls without a second layout step. Native motion preferences still apply.
+With Windows animations on, the pane's width eases over 220 ms (cubic in and
+out) once per drawn frame (`WorkspacePaneAnimator`), so the content beside it
+widens or narrows with the pane instead of snapping to its final width under
+the native 160ms slide. The pane's content keeps its full width and slides
+with the pane's trailing edge, and the reopen row grows or shrinks in step so
+the content moves down or up with the slide. A close hides the pane only once
+it reaches zero width; a toggle during the motion reverses from the current
+width. Dashboard and the bell fade into the title bar over 150 ms. With Windows
+animations off, the native slide goes directly to zero width and `PaneClosed`
+hides offscreen controls without a second layout step.
 Both toggle states share a stable overlay position outside the animated pane,
 so native focus restoration and intermediate layout cannot move the target.
 A floating-style subtle reopen button reserves a dedicated 56 DIP row at
@@ -444,6 +452,15 @@ orchestration. Three narrower owners sit behind it:
 - `DevicePairApprovalCoordinator` owns typed device role-upgrade approval and its
   one-in-flight plus one-queued bounded node reconnect workflow.
 
+Scheduled operator reconnects acquire the current lifecycle-attempt lease before
+disconnecting or connecting. A disconnect that wins the transition queue invalidates
+that attempt, even when the active Gateway id and user intent remain unchanged.
+Removing the active saved Gateway commits `RemoveAndSave` before disconnecting,
+so a failed save leaves the live connection and user intent unchanged. After a
+successful save, `DisconnectByUserAsync(gatewayId)` records intent for the removed
+Gateway and tears down only that live owner under the transition semaphore. A
+queued switch cannot disconnect the replacement Gateway or change its intent.
+
 `GatewayRegistry`, `CredentialResolver`, `ConnectionStateMachine`,
 `NodeConnector`, `SshTunnelService/Manager`, `SetupCodeDecoder`, and connection
 interfaces/DTOs/enums remain separate. This project has zero WinUI dependencies
@@ -463,7 +480,15 @@ attempt owns a new generation, including while its HTTP upgrade is pending.
 Successful handshakes and failed transport attempts clear stored startup state
 rather than relabeling a network error as startup.
 Reconnect and pre-credential handshake authorization still run on every fresh
-socket. Native setup retains its existing 20-second handshake wait and linked
+socket. A denial is terminal unless the endpoint owner marks
+`ReconnectAuthorizationResult.Retryable` for a structured temporary cause, such
+as a package-managed native Gateway that is restarting. The reconnect loop then
+reports `Error`, sends no credential, and authorizes again after its normal
+capped backoff. Setup flows never mark denials retryable. For native Gateways only
+reconnect authorization, before a new socket opens, may start or wait for the
+Gateway; handshake authorization on an already-accepted socket only re-inspects
+ownership, so a peer that accepted the socket cannot receive credentials after
+the real Gateway takes the port. Native setup retains its existing 20-second handshake wait and linked
 cancellation lifetime. If that deadline expires while a typed startup rejection
 is current, it throws `GatewayStartupUnavailableException`, not an auth or
 pairing failure, without extending the deadline or changing credentials.
@@ -968,6 +993,29 @@ For an app-owned setup-managed local WSL gateway (`WslKeepAlivePolicy.IsSetupMan
 - **Local setup**: `NodeService.ConnectAsync()` creates its own client (used only during WSL local gateway setup)
 
 Both paths dispose old clients before creating new ones.
+
+Within a client, `WebSocketClientBase` reports transport loss once per current
+socket generation, including client abort, oversized messages and listen errors.
+Oversized-message cleanup runs before waiting for the peer's close handshake.
+`OpenClawGatewayClient.OnDisconnected` is the invalidation owner: it clears the
+live handshake, canonical session key and advertised methods/capabilities, and
+fails wizard requests with `GatewayConnectionLostException`; other pending
+waiters are canceled. Listen errors use that same cleanup before publishing
+Error. Invalidation is serialized with socket publication; transport events and
+node invocation cancellation run outside that lock. Superseded listeners and
+disposal do not invalidate a replacement connection. Client-initiated aborts
+still run that cleanup but do not add a Disconnected status or observation;
+their callers keep their existing Error or quiet-retry policy. Each loss
+callback runs separately, so a failing step is logged without skipping the
+remaining cleanup, status notifications or the client-owned reconnect. Status
+delivery stops once the client is disposed or the connection is replaced, so a
+stale Disconnected cannot follow a newer connection's Connecting.
+
+Health checks capture their socket and generation before sending or starting
+recovery. Backoff and reconnect authorization recheck that ownership, so delayed
+health work cannot replace a newer open socket. An explicit `ConnectAsync` may
+still publish a new attempt; failed or closed attempts retain the existing
+single-flight recovery policy.
 
 ## Setup-code and pairing flow
 

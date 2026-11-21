@@ -106,6 +106,20 @@ If a command fails:
 
 Notes:
 
+- Build from a real Git checkout or linked worktree with full history. GitVersion
+  requires repository metadata even when a test command builds product projects.
+  Build workflows must use `fetch-depth: 0`; a source-only guest sync is not a
+  build-ready checkout. For guest builds, prepare a full-history clone at the
+  intended revision before overlaying task-owned source changes.
+  See [#896 (Preflight GitVersion repository history before build)](https://github.com/openclaw/openclaw-windows-node/pull/896).
+- Keep focused-test and suite results as separate receipts, qualified by head,
+  command/filter, execution host, and pass/fail/skip counts. An isolated pass does
+  not clear a failure in the containing suite or shard. Investigate shared-state
+  or ordering effects in the failing batch, rerun the affected suite or shard,
+  and preserve the original failure alongside later results. If the required
+  lane remains unverified, report that gap rather than calling it green.
+  For a recorded Tray suite failure with an isolated pass, see
+  [#2183 (test(ui): prove search focus and keep the reconnect failure receipts)](https://github.com/openclaw/openclaw-windows-node/pull/2183).
 - If a build/test is blocked by a file lock, stop only a verified task-owned process and rerun. Do not stop another session's app or service; report that lock as a blocker.
 - For missing local Windows prerequisites, start with `.\scripts\setup-dev.ps1 -CheckOnly`. Install with `.\scripts\setup-dev.ps1` only when authorized, then rerun validation. `-AgentReadiness` separately reports optional agent tooling and unverified runtime-proof capabilities without installing or authenticating.
 - **First-run gotcha**: `dotnet test --no-restore` silently no-ops in a fresh worktree where the test `bin/` doesn't exist yet (reports "Build succeeded in 0.5s" then exits 0 with no tests run). For first-run validation, either omit `--no-restore` OR run `dotnet build` on the test project first. Subsequent reruns honor `--no-restore` correctly.
@@ -244,23 +258,23 @@ repository's existing P0–P3 review gate. Follow the
 <!-- colophon:start -->
 ## Design system
 
-This repository has a living design system at [`DESIGN.md`](DESIGN.md). These files are the **source of truth for design** - tokens, component intent, and principles - and are framework-agnostic. `components.jsonc` shows design intent for preview; it is **not** shipping code.
-**Read it before creating or changing any UI.** To ship, port the design into this app's implementation using the port target(s) below - don't copy `components.jsonc` verbatim.
+This repository has a living design system at [`DESIGN.md`](DESIGN.md). These files are the **source of truth for design** (tokens, component intent, and principles) and are framework-agnostic. `components.jsonc` shows design intent for preview; it is **not** shipping code.
+**Read it before creating or changing any UI.** To ship, port the design into this app's implementation using the port target(s) below. Don't copy `components.jsonc` verbatim.
 
-- `DESIGN.md` - design tokens and rationale: brand, colors, typography, spacing, radii, shadows, principles.
-- `.agents/design/components.jsonc` - the component patterns to reuse (structure, variants, states).
+- `DESIGN.md`: design tokens and rationale: brand, colors, typography, spacing, radii, shadows, principles.
+- `.agents/design/components.jsonc`: the component patterns to reuse (structure, variants, states).
 
 Generate UI from these tokens and patterns: use token names (e.g. `accent`, `ink`, spacing step `4`, radius `md`), not raw hex or ad-hoc px; reuse the documented components instead of inventing new ones; honor the brand voice; and avoid the system's listed anti-references. If you need a value the system doesn't cover, add it to `DESIGN.md` rather than hard-coding a one-off.
 
 Use the **Colophon** tool/canvas to inspect, edit, and preview this system when available. Install the optional plugin with `copilot plugin install karkarl/colophon`. Without the extension, read and edit the files directly; Colophon is not required.
 
-**Port targets** - how a design becomes shipping code here (design stays the source of truth; these say what each surface ships as and which reference/skill to port it with):
-- Default: ships as Native WinUI 3 / C# (Windows Fluent) - port via https://github.com/microsoft/win-dev-skills (helper agent: win-dev-skills)
-- area "chat", components ChatBubble, ChatComposer, ChatThread: ships as Reactor (Microsoft.UI.Reactor) - port via https://github.com/microsoft/microsoft-ui-reactor (no helper agent yet)
+**Port targets**: how a design becomes shipping code here (design stays the source of truth; these say what each surface ships as and which reference/skill to port it with):
+- Default: ships as Native WinUI 3 / C# (Windows Fluent). Port via https://github.com/microsoft/win-dev-skills (helper agent: win-dev-skills)
+- area "chat", components ChatBubble, ChatComposer, ChatThread: ships as Reactor (Microsoft.UI.Reactor). Port via https://github.com/microsoft/microsoft-ui-reactor (no helper agent yet)
 - Canonical implementation owner: OpenClaw Windows (openclaw/openclaw-windows-node)
 - Examples kept aligned via: Tokens are captured by manual inspection of the app's WinUI 3 XAML/C# Fluent resources; re-inspect and update this file when the app's ThemeResource mappings or SystemAccentColor usage change.
 
-Colors in `DESIGN.md` are **preview-only** swatches. When a color has a `resource` (e.g. a WinUI `ThemeResource` key), bind that resource in code - never hard-code the preview hex - so light, dark, and high-contrast themes stay correct. The shipping implementation is canonical; treat `components.jsonc` and the token values as derived visual examples, not a parallel upstream source.
+Colors in `DESIGN.md` are **preview-only** swatches. When a color has a `resource` (e.g. a WinUI `ThemeResource` key), bind that resource in code, never hard-code the preview hex, so light, dark, and high-contrast themes stay correct. The shipping implementation is canonical; treat `components.jsonc` and the token values as derived visual examples, not a parallel upstream source.
 
-<sub>Managed by [Colophon](https://github.com/karkarl/colophon) - edit `DESIGN.md` to change the system; this block only points to it.</sub>
+<sub>Managed by [Colophon](https://github.com/karkarl/colophon). Edit `DESIGN.md` to change the system; this block only points to it.</sub>
 <!-- colophon:end -->

@@ -27,6 +27,12 @@ public sealed partial class WorkspaceWindow : WindowEx
     private const string SettingsShortcutText = "Ctrl+,";
     private const double SidebarMinContentWidth = 480;
     private const double SidebarMaxWidth = 480;
+    private const int TitleBarActionsFadeMilliseconds = 150;
+    // Matches ReopenPaneSlot's Height in WorkspaceWindow.xaml.
+    private const double ReopenPaneSlotHeight = 56;
+    private readonly WorkspacePaneAnimator _paneAnimator;
+    // The open state an animated pane toggle is heading to; null when the pane is at rest.
+    private bool? _paneTarget;
     private readonly AppState _state;
     private readonly Action _openTimeline;
     private readonly AppNotificationService _notifications;
@@ -36,11 +42,15 @@ public sealed partial class WorkspaceWindow : WindowEx
     private readonly WorkspaceNavigationHistory _navigation = new();
     private readonly WorkspaceSessionOrder _sessionOrder = new();
     private readonly ChatPage _chat = new();
+    // Side-panel state of the mounted chat, mirrored by the title-bar toggle and Expand buttons.
+    private OpenClawTray.Chat.ChatConversationPanelState? _sidePanel;
+    private readonly WorkspaceTitleRow _titleRow;
+    private bool _titleRowLayoutQueued;
     private readonly GatewayStatusContent _gatewayStatusContent = new();
     private readonly Flyout _gatewayStatusFlyout = new() { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.TopEdgeAlignedLeft };
     private readonly FlyoutShowRequest _workspaceSearchShow;
     // Sidebar rows keyed by session key; SyncSessionItems keeps MenuItems in step with these.
-    private readonly Dictionary<string, NavigationViewItem> _sessionItems = new(StringComparer.Ordinal);
+    private readonly KeyedMenuRows _sessionItems = new(poolRetiredRows: true);
     private bool _updating;
     private bool _creatingSession;
     // Session switches commit sidebar/navigation state synchronously; the chat surface is
@@ -58,6 +68,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private SettingsShellView? _settings;
     private SettingsShellView? _preparedSettings;
     private Microsoft.UI.Xaml.Controls.Control? _chatFocus;
+    private string? _chatFocusSessionKey;
 
     /// <summary>Raised when a Settings page saved a user setting.</summary>
     internal event EventHandler? SettingsSaved;
@@ -79,6 +90,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     {
         InitializeComponent();
         _state = state;
+        _paneAnimator = new WorkspacePaneAnimator(ApplyAnimatedPaneWidth);
         WorkspaceSearchFlyout.FlyoutPresenterStyle = SearchHost.CreatePresenterStyle();
         _search = new(CaptureSearch, new Presentation.Adapters.WinUIDispatcher(DispatcherQueue),
             category => Logger.Warn($"[Search] {category}"));
@@ -110,15 +122,22 @@ public sealed partial class WorkspaceWindow : WindowEx
             () => OpenCompanion(CompanionPageId.Connection),
             () => ((IAppCommands)CurrentApp).Reconnect());
         Title = Text("Title");
+        // The window keeps its localized name while the content shows the active session title.
+        AutomationProperties.SetName(WorkspaceTitleBar, Title);
         this.SetWindowSize(1280, 860);
         ExtendsContentIntoTitleBar = true;
-        WorkspaceTitleBar.IconSource = new BitmapIconSource
-        {
-            UriSource = new Uri(BrandAssets.RedBotMarkUri),
-            ShowAsMonochrome = false
-        };
         this.SetIcon("Assets\\openclaw.ico");
         SetTitleBar(WorkspaceTitleBar);
+        // The default Transparent brush is hit-testable and would take clicks meant for the side panel's
+        // tabs under the bar; null paints nothing over Mica and lets those clicks through.
+        WorkspaceTitleBar.Background = null;
+        // Tall caption buttons share one row with the side panel's tabs and toggle, as in the web Control UI.
+        AppWindow.TitleBar.PreferredHeightOption = Microsoft.UI.Windowing.TitleBarHeightOption.Tall;
+        WorkspaceTitleBar.SizeChanged += (_, _) => QueueTitleRowLayout();
+        _titleRow = new WorkspaceTitleRow(AppWindow, WorkspaceTitleBar, TitleBarRightActions,
+            SessionTitleHost, TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
+        // A joined side panel would cover the operation banner above chat, so the row is withdrawn while it shows.
+        OperationInfo.RegisterPropertyChangedCallback(InfoBar.IsOpenProperty, (_, _) => QueueTitleRowLayout());
         NewAgentLabel.Text = LocalizationHelper.GetString("AgentCreation_Title");
         AutomationProperties.SetName(NewAgentOption, NewAgentLabel.Text);
         // ComboBox temporarily removes its selected presentation while the popup is open.
@@ -138,8 +157,15 @@ public sealed partial class WorkspaceWindow : WindowEx
             if (Destination.Page == WorkspacePageId.Home) _chat.Initialize(this);
         };
         _chat.SessionSelected += OnChatSessionSelected;
+        _chat.SessionPromoted += OnChatSessionPromoted;
+        _chat.ConversationPanelsChanged += OnChatPanelsChanged;
         Closed += OnClosed;
         Root.Loaded += OnLoaded;
+        // Additional mouse-button presses arrive as moves while another button is held.
+        // Observe both routes even when a child control handles the event.
+        var navigationPointerHandler = new Microsoft.UI.Xaml.Input.PointerEventHandler(OnNavigationPointerChanged);
+        Root.AddHandler(UIElement.PointerPressedEvent, navigationPointerHandler, handledEventsToo: true);
+        Root.AddHandler(UIElement.PointerMovedEvent, navigationPointerHandler, handledEventsToo: true);
         // The no-gateway accessibility fixture publishes its explicit roster before this window exists.
         RefreshSidebar(rosterUpdated:
             _state.AgentsListUnsupported ||
@@ -325,7 +351,11 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void OnChatSessionSelected(string sessionKey, string? previousSessionKey)
     {
-        if (IsClosed || !_navigation.SelectChatSession(sessionKey, previousSessionKey))
+        if (IsClosed)
+            return;
+
+        var navigated = _navigation.SelectChatSession(sessionKey, previousSessionKey);
+        if (!navigated)
             return;
 
         var session = _state.Sessions.FirstOrDefault(session => session.Key == sessionKey)
@@ -334,6 +364,41 @@ public sealed partial class WorkspaceWindow : WindowEx
         RefreshSidebar();
         UpdateNavigationSelection();
         UpdateHistoryButtons();
+    }
+
+    private void OnChatSessionPromoted(string draftKey, string sessionKey)
+    {
+        if (IsClosed)
+            return;
+
+        if (_navigation.Current.SessionKey == draftKey)
+        {
+            if (_navigation.PromoteSession(draftKey, sessionKey))
+                RenderDestination();
+        }
+        else if (_navigation.PromoteSession(draftKey, sessionKey))
+        {
+            UpdateNavigationSelection();
+            UpdateHistoryButtons();
+        }
+
+        _ = RefreshSessionsAfterDraftPromotionAsync();
+    }
+
+    private async Task RefreshSessionsAfterDraftPromotionAsync()
+    {
+        if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true } client)
+            return;
+
+        try
+        {
+            await client.RequestSessionsAsync();
+        }
+        catch (Exception ex)
+        {
+            if (!IsClosed && ReferenceEquals(client, CurrentApp.GatewayClient))
+                ReportError("refresh-sessions", ex);
+        }
     }
 
     internal void NavigateNativeSetup(SetupNativeNavigationRequest request)
@@ -402,6 +467,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             QueueChatApply();
             UpdateNavigationSelection();
             UpdateHistoryButtons();
+            UpdateTitleBarActions();
             return;
         }
         ContentHost.Children.Clear();
@@ -419,6 +485,7 @@ public sealed partial class WorkspaceWindow : WindowEx
 
         UpdateNavigationSelection();
         UpdateHistoryButtons();
+        UpdateTitleBarActions();
         if (ContentHost.Children.FirstOrDefault() is FrameworkElement content)
             SignalContentReady(content);
     }
@@ -471,6 +538,7 @@ public sealed partial class WorkspaceWindow : WindowEx
             _chatFocus = Root.XamlRoot is { } root
                 ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(root) as Microsoft.UI.Xaml.Controls.Control
                 : null;
+            _chatFocusSessionKey = SessionKeyOf(_chatFocus);
             _chat.SuspendSurface();
             NavigationSection.Visibility = Visibility.Collapsed;
             SettingsSection.Visibility = Visibility.Visible;
@@ -482,8 +550,8 @@ public sealed partial class WorkspaceWindow : WindowEx
         UpdateNavigationSelection();
         UpdateHistoryButtons();
         var tag = Destination.CompanionTag ?? "settings";
+        // SettingsShellView publishes the accessibility readiness signal once the page has settled.
         view.ShowSection(tag);
-        AccessibilityNavigationSignal.WritePageReady(view.CurrentPage?.GetType().Name ?? nameof(SettingsShellView));
     }
 
     /// <summary>
@@ -504,7 +572,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         _settings?.ContentOnly = false;
         _settings?.SetHostContentTopInset(0);
         SettingsSection.Margin = new Thickness(0);
-        EmbeddedPageBackground.Visibility = Visibility.Collapsed;
         ContentHost.Visibility = Visibility.Visible;
         SettingsSection.Visibility = Visibility.Collapsed;
         SettingsHistoryBar.Visibility = Visibility.Collapsed;
@@ -513,11 +580,27 @@ public sealed partial class WorkspaceWindow : WindowEx
         HideFooterFlyouts();
         UpdateTitleBarActions();
         if (focus is not null)
+        {
+            // A pooled session row can be rebound to another session while Settings is open (see
+            // SyncSessionItems). Restore focus to a session row only if it still shows the same session.
+            var focusSession = _chatFocusSessionKey;
             DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
             {
-                if (!IsClosed && Destination.Page != WorkspacePageId.Settings && focus.IsLoaded)
+                if (!IsClosed && Destination.Page != WorkspacePageId.Settings && focus.IsLoaded &&
+                    (SessionKeyOf(focus) is not { } current || current == focusSession))
                     focus.Focus(FocusState.Programmatic);
             });
+        }
+        _chatFocusSessionKey = null;
+    }
+
+    // Focus may sit on a descendant of the row (for example its presenter), so walk up the visual tree.
+    private static string? SessionKeyOf(object? control)
+    {
+        for (var node = control as DependencyObject; node is not null; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (node is NavigationViewItem { Tag: WorkspaceSession session })
+                return session.Key;
+        return null;
     }
 
     private void OnSettingsWorkspaceRoute(string tag)
@@ -651,6 +734,8 @@ public sealed partial class WorkspaceWindow : WindowEx
 
     private void UpdateNavigationSelection()
     {
+        QueueTitleRowLayout();
+        UpdateWorkspaceContentTopAllocation();
         var wasUpdating = _updating;
         _updating = true;
         try
@@ -779,35 +864,32 @@ public sealed partial class WorkspaceWindow : WindowEx
     /// <summary>
     /// Reconciles one sidebar section in place. Rows are cached by session key so a reused
     /// row keeps its container; destroying the selected row inside SelectionChanged forced
-    /// NavigationView to reselect and re-layout on every session switch.
+    /// NavigationView to reselect and re-layout on every session switch. Rows that leave the list
+    /// stay alive in a pool (see <see cref="KeyedMenuRows"/>) so WinUI cannot call into a collected
+    /// row on the next pane change; new sessions take pooled rows first.
     /// </summary>
     private void SyncSessionItems(
-        Dictionary<string, NavigationViewItem> cache, IReadOnlyList<WorkspaceSession> sessions,
-        string automationPrefix, int start)
+        KeyedMenuRows rows, IReadOnlyList<WorkspaceSession> sessions, string automationPrefix, int start)
     {
-        var desired = new List<object>(sessions.Count);
-        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var byKey = new Dictionary<string, WorkspaceSession>(StringComparer.Ordinal);
         foreach (var session in sessions)
-        {
-            keys.Add(session.Key);
-            if (cache.TryGetValue(session.Key, out var item))
+            byKey.TryAdd(session.Key, session);
+        var keys = sessions.Select(session => session.Key).ToList();
+        var shown = rows.Sync(NavView.MenuItems, start, keys,
+            key => CreateSessionItem(byKey[key], automationPrefix),
+            (key, row) =>
             {
-                if (!Equals(item.Tag, session))
-                    ApplySessionItem(item, session);
-            }
-            else
-            {
-                item = CreateSessionItem(session, automationPrefix);
-                cache[session.Key] = item;
-            }
-            desired.Add(item);
-        }
-        foreach (var (key, item) in cache.Where(entry => !keys.Contains(entry.Key)).ToArray())
+                // A pooled row may have been the selected row of an earlier session.
+                var item = (NavigationViewItem)row;
+                item.IsSelected = false;
+                AutomationProperties.SetAutomationId(item, $"{automationPrefix}:{key}");
+                ApplySessionItem(item, byKey[key]);
+            });
+        foreach (var (key, row) in keys.Distinct(StringComparer.Ordinal).Zip(shown))
         {
-            NavView.MenuItems.Remove(item);
-            cache.Remove(key);
+            if (row is NavigationViewItem item && !Equals(item.Tag, byKey[key]))
+                ApplySessionItem(item, byKey[key]);
         }
-        WorkspaceItemsSync.Arrange(NavView.MenuItems, start, desired);
     }
 
     private NavigationViewItem CreateSessionItem(WorkspaceSession session, string automationPrefix)
@@ -912,15 +994,15 @@ public sealed partial class WorkspaceWindow : WindowEx
         }
     }
 
-    private async Task NewSessionAsync()
+    private Task NewSessionAsync()
     {
         if (_creatingSession)
-            return;
+            return Task.CompletedTask;
         if (CurrentApp.GatewayClient is not { IsConnectedToGateway: true } client)
         {
             ShowError(Text("ConnectionRequired"));
             OpenCompanion(CompanionPageId.Connection);
-            return;
+            return Task.CompletedTask;
         }
 
         RefreshSidebar();
@@ -928,12 +1010,19 @@ public sealed partial class WorkspaceWindow : WindowEx
         {
             ShowError(Text("SelectAssistant"));
             AssistantSelector.Focus(FocusState.Programmatic);
-            return;
+            return Task.CompletedTask;
         }
 
-        await CreateAndSelectSessionAsync(
-            client, new SessionCreateRequest { AgentId = SelectedAgentId },
-            "create-session", "SessionFailed", "SessionUnsupported");
+        if (CurrentApp.ChatProvider is not { PlacementGateway: not null } provider)
+        {
+            ShowError(Text("SessionUnsupported"));
+            return Task.CompletedTask;
+        }
+        SelectSession(_chat.QueueNewChatDraft(
+            provider,
+            SelectedAgentId,
+            useGatewayDefaultAgent: SelectedAgentId is null));
+        return Task.CompletedTask;
     }
 
     private Task ForkSessionAsync(SessionCreateRequest request)
@@ -966,6 +1055,8 @@ public sealed partial class WorkspaceWindow : WindowEx
                 return;
             }
             SelectSession(result.Key);
+            if (string.Equals(operation, "fork-session", StringComparison.Ordinal))
+                _chat.RememberCreatedSession(result.Key);
             await client.RequestSessionsAsync();
         }
         catch (Exception ex)
@@ -1296,25 +1387,154 @@ public sealed partial class WorkspaceWindow : WindowEx
     }
     private void OnBack(object sender, RoutedEventArgs e) => NavigateBack();
     private void OnForward(object sender, RoutedEventArgs e) => NavigateForward();
+    private void OnNavigationPointerChanged(object sender, Microsoft.UI.Xaml.Input.PointerRoutedEventArgs e)
+    {
+        var update = e.GetCurrentPoint(Root).Properties.PointerUpdateKind;
+        if (update == Microsoft.UI.Input.PointerUpdateKind.XButton1Pressed)
+        {
+            e.Handled = true;
+            NavigateBack();
+        }
+        else if (update == Microsoft.UI.Input.PointerUpdateKind.XButton2Pressed)
+        {
+            e.Handled = true;
+            NavigateForward();
+        }
+    }
+
     private void OnTogglePane(object sender, RoutedEventArgs e)
     {
         var open = !NavView.IsPaneOpen;
+        if (_paneTarget is { } heading)
+            open = !heading;
+        if (TryAnimatePane(open))
+            return;
         if (open)
         {
+            NavView.OpenPaneLength = SidebarColumn.ActualWidth;
             NavView.IsPaneVisible = true;
         }
         NavView.IsPaneOpen = open;
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            if (!IsClosed)
-                (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
-        });
+        FocusPaneToggle();
     }
+
+    private void FocusPaneToggle() => DispatcherQueue.TryEnqueue(() =>
+    {
+        if (!IsClosed)
+            (NavView.IsPaneOpen ? CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic);
+    });
+
+    // With Windows animations on, the pane width eases frame by frame and the content beside it
+    // follows, while the reopen row grows or shrinks in step. The pane stays logically open until
+    // a close lands at zero width. Returns false when animations are off, so the pane changes at once.
+    private bool TryAnimatePane(bool open)
+    {
+        if (!OpenClawTray.Chat.ChatMotion.AnimationsEnabled)
+        {
+            if (_paneTarget is not null)
+                SettlePane();
+            return false;
+        }
+        var length = SidebarColumn.ActualWidth;
+        if (length <= 0)
+            return false;
+        var from = _paneAnimator.IsRunning ? _paneAnimator.Current : open ? 0 : length;
+        _paneTarget = open;
+        PinPaneContent(length);
+        SidebarSplitter.Visibility = Visibility.Collapsed;
+        ReopenPaneSlot.Visibility = Visibility.Visible;
+        if (open && !NavView.IsPaneOpen)
+        {
+            NavView.OpenPaneLength = from;
+            NavView.IsPaneVisible = true;
+            NavView.IsPaneOpen = true;
+            FocusPaneToggle();
+        }
+        _paneAnimator.Run(from, open ? length : 0, () =>
+        {
+            if (IsClosed)
+                return;
+            var closing = _paneTarget == false;
+            SettlePane();
+            if (closing)
+                FinishAnimatedPaneClose();
+        });
+        return true;
+    }
+
+    private void ApplyAnimatedPaneWidth(double width)
+    {
+        NavView.OpenPaneLength = Math.Max(0, width);
+        // The reopen row grows as the pane leaves (and shrinks as it returns), so the content
+        // below it moves down with the slide instead of dropping 56 DIP when the close lands.
+        var length = SidebarColumn.ActualWidth;
+        ReopenPaneSlot.Height = length > 0
+            ? ReopenPaneSlotHeight * Math.Clamp(1 - width / length, 0, 1)
+            : ReopenPaneSlotHeight;
+        if (_settings is { } settings && IsSettingsVisible)
+            UpdateEmbeddedPageTopAllocation(settings);
+    }
+
+    // Ends an animated toggle at its target width and returns the reopen row and pane content
+    // to their layout values.
+    private void SettlePane()
+    {
+        _paneAnimator.Cancel();
+        var open = _paneTarget != false;
+        _paneTarget = null;
+        PinPaneContent(null);
+        ReopenPaneSlot.Height = ReopenPaneSlotHeight;
+        NavView.OpenPaneLength = open ? SidebarColumn.ActualWidth : 0;
+        UpdatePanePresentation();
+    }
+
+    // While the width animates, the pane's content keeps its full width and slides with the
+    // pane's trailing edge instead of re-wrapping at every intermediate width.
+    private void PinPaneContent(double? width)
+    {
+        if (FindTemplatePart(NavView, "PaneContentGrid") is not FrameworkElement content)
+            return;
+        if (width is { } pinned)
+        {
+            content.Width = pinned;
+            content.HorizontalAlignment = HorizontalAlignment.Right;
+        }
+        else
+        {
+            content.ClearValue(FrameworkElement.WidthProperty);
+            content.ClearValue(FrameworkElement.HorizontalAlignmentProperty);
+        }
+    }
+
+    private static DependencyObject? FindTemplatePart(DependencyObject root, string name)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is FrameworkElement { Name: var childName } && childName == name)
+                return child;
+            if (FindTemplatePart(child, name) is { } match)
+                return match;
+        }
+        return null;
+    }
+
+    private void UpdateWorkspaceContentTopAllocation()
+    {
+        var top = Destination.Page == WorkspacePageId.Notifications
+            ? (NavView.IsPaneOpen ? WorkspaceSettingsLayout.NavigationChromeHeight : 0)
+            : 32;
+        WorkspaceContentLayout.Margin = new Thickness(0, top, 0, 0);
+    }
+
     private void UpdatePanePresentation()
     {
-        SidebarSplitter.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        // An animated toggle keeps the splitter hidden and the reopen row present until it lands.
+        var atRest = _paneTarget is null;
+        SidebarSplitter.Visibility = NavView.IsPaneOpen && atRest ? Visibility.Visible : Visibility.Collapsed;
+        UpdateWorkspaceContentTopAllocation();
         ReopenPaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
-        ReopenPaneSlot.Visibility = ReopenPaneButton.Visibility;
+        ReopenPaneSlot.Visibility = NavView.IsPaneOpen && atRest ? Visibility.Collapsed : Visibility.Visible;
         CollapsePaneButton.Visibility = NavView.IsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
         if (_settings is { } settings && IsSettingsVisible)
             ApplySettingsPresentation(settings);
@@ -1356,6 +1576,8 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnSidebarSizeChanged(object sender, SizeChangedEventArgs e)
     {
         NavView.OpenPaneLength = e.NewSize.Width;
+        // The full-bleed title bar starts where the pane ends, so it follows the resized sidebar.
+        ShellLeadColumn.Width = new GridLength(e.NewSize.Width);
         if (_settings is { } settings && IsSettingsVisible)
             UpdateEmbeddedPageTopAllocation(settings);
     }
@@ -1373,7 +1595,6 @@ public sealed partial class WorkspaceWindow : WindowEx
         ContentHost.Visibility = embedded ? Visibility.Collapsed : Visibility.Visible;
         var paneOpen = NavView.IsPaneOpen;
         UpdateEmbeddedPageTopAllocation(view);
-        EmbeddedPageBackground.Visibility = embedded ? Visibility.Visible : Visibility.Collapsed;
         SettingsHistoryBar.Visibility = embedded && paneOpen ? Visibility.Collapsed : Visibility.Visible;
         EmbeddedOperationInfo.Severity = OperationInfo.Severity;
         EmbeddedOperationInfo.Message = OperationInfo.Message;
@@ -1401,21 +1622,132 @@ public sealed partial class WorkspaceWindow : WindowEx
         var visibility = WorkspaceFooterPlacement.ShowTitleBarActions(
             settingsFooterVisible: settingsFooterVisible,
             chatPaneOpen: NavView.IsPaneOpen) ? Visibility.Visible : Visibility.Collapsed;
-        if (TitleBarFooter.Visibility == visibility) return;
-        if (visibility == Visibility.Collapsed) TitleBarFooter.HideFlyouts();
-        TitleBarFooter.Visibility = visibility;
-        // TitleBar refreshes its pointer pass-through regions only on its own size or template
-        // changes, not when RightHeader content shows or hides. Recompute after the new layout so
-        // real clicks reach Dashboard and the bell instead of dragging the window.
-        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        UpdateSidePanelButtons();
+        if (TitleBarFooter.Visibility != visibility)
         {
-            if (!IsClosed) WorkspaceTitleBar.RecomputeDragRegions();
+            if (visibility == Visibility.Collapsed) TitleBarFooter.HideFlyouts();
+            TitleBarFooter.Visibility = visibility;
+            if (visibility == Visibility.Visible)
+                FadeInTitleBarFooter();
+        }
+        QueueTitleRowLayout();
+    }
+
+    // Dashboard and the bell move to the title bar as the pane closes; they fade in there instead
+    // of popping. Windows animations off shows them at once.
+    private void FadeInTitleBarFooter()
+    {
+        if (!OpenClawTray.Chat.ChatMotion.AnimationsEnabled)
+            return;
+        TitleBarFooter.OpacityTransition = null;
+        TitleBarFooter.Opacity = 0;
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (IsClosed) return;
+            TitleBarFooter.OpacityTransition = new ScalarTransition
+            {
+                Duration = TimeSpan.FromMilliseconds(TitleBarActionsFadeMilliseconds),
+            };
+            TitleBarFooter.Opacity = 1;
         });
     }
+
+    private void OnTitleBarRightActionsSizeChanged(object sender, SizeChangedEventArgs e) => QueueTitleRowLayout();
+
+    private void OnSessionTitleSizeChanged(object sender, SizeChangedEventArgs e) => QueueTitleRowLayout();
+
+    // Coalesces geometry updates after the triggering layout pass.
+    private void QueueTitleRowLayout()
+    {
+        if (_titleRowLayoutQueued || IsClosed) return;
+        _titleRowLayoutQueued = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            _titleRowLayoutQueued = false;
+            if (!IsClosed) UpdateTitleRowLayout();
+        });
+    }
+
+    private void UpdateTitleRowLayout()
+    {
+        var key = Destination.Page == WorkspacePageId.Home
+            ? Destination.SessionKey ?? _chat.CurrentSessionKey : null;
+        var session = _agentSelection.HasSessionAccess
+            ? _state.Sessions.FirstOrDefault(session => session.Key == key) : null;
+        var title = session is null ? "" : SessionTitleFormatter.Format(session, _state.Sessions);
+        SessionTitleText.Text = title;
+        ToolTipService.SetToolTip(SessionTitleText, title);
+        SessionTitleHost.Visibility = string.IsNullOrWhiteSpace(title) ? Visibility.Collapsed : Visibility.Visible;
+        _titleRow.Update(_sidePanel, IsChatSurfaceShown() && !OperationInfo.IsOpen && !_chat.HasBannerAboveChat,
+            // Expanded tabs also leave the session title and reopen-sidebar button clear.
+            NavView.IsPaneOpen ? 0 : PaneToggleChrome.ActualWidth);
+    }
+
+    private void OnChatPanelsChanged()
+    {
+        if (IsClosed) return;
+        var next = _chat.ConversationPanels;
+        if (!ReferenceEquals(next, _sidePanel))
+        {
+            if (_sidePanel is not null) _sidePanel.Changed -= OnSidePanelChanged;
+            _sidePanel = next;
+            if (next is not null) next.Changed += OnSidePanelChanged;
+        }
+        UpdateTitleBarActions();
+    }
+
+    private void OnSidePanelChanged()
+    {
+        if (IsClosed) return;
+        UpdateTitleBarActions();
+        QueueTitleRowLayout();
+    }
+
+    private bool IsChatSurfaceShown() =>
+        _sidePanel is not null && Destination.Page == WorkspacePageId.Home
+        && SettingsSection.Visibility != Visibility.Visible
+        && ContentHost.Visibility == Visibility.Visible && ContentHost.Children.Contains(_chat);
+
+    /// <summary>Mirrors the chat side panel in the title bar.</summary>
+    private void UpdateSidePanelButtons()
+    {
+        var panel = _sidePanel;
+        var chatVisible = IsChatSurfaceShown();
+        var toggle = chatVisible ? Visibility.Visible : Visibility.Collapsed;
+        var expand = chatVisible && panel!.CanExpand ? Visibility.Visible : Visibility.Collapsed;
+        if (panel is not null)
+        {
+            var split = panel.Presented && !panel.IsExpanded;
+            SetTitleBarLabel(ToggleSidePanelButton, Text(split ? "SidePanelMinimize" : "SidePanelShow"));
+            SetTitleBarLabel(ExpandSidePanelButton, Text(panel.IsExpanded ? "SidePanelRestore" : "SidePanelExpand"));
+            ExpandSidePanelIcon.Glyph = panel.IsExpanded ? FluentIconCatalog.BackToWindow : FluentIconCatalog.FullScreen;
+        }
+        ToggleSidePanelButton.Visibility = toggle;
+        ExpandSidePanelButton.Visibility = expand;
+    }
+
+    private static void SetTitleBarLabel(Button button, string label)
+    {
+        AutomationProperties.SetName(button, label);
+        ToolTipService.SetToolTip(button, label);
+    }
+
+    private void OnToggleSidePanel(object sender, RoutedEventArgs e) => _sidePanel?.ToggleOpen();
+
+    private void OnExpandSidePanel(object sender, RoutedEventArgs e) => _sidePanel?.ToggleExpanded();
     private void OnPaneClosed(NavigationView sender, object args)
     {
         if (NavView.IsPaneOpen || IsClosed) return;
         NavView.IsPaneVisible = false;
+        // An animated close lands at zero width; the hidden pane gets its length back for the next open.
+        NavView.OpenPaneLength = SidebarColumn.ActualWidth;
+    }
+
+    // An animated close has already slid the pane to zero width, so the native close that follows
+    // has nothing left to slide; PaneClosed then hides the pane as it does for any close.
+    private void FinishAnimatedPaneClose()
+    {
+        NavView.IsPaneOpen = false;
+        FocusPaneToggle();
     }
     internal void NavigateBack()
     {
@@ -1759,6 +2091,7 @@ public sealed partial class WorkspaceWindow : WindowEx
     private void OnClosed(object sender, WindowEventArgs args)
     {
         IsClosed = true;
+        _paneAnimator.Cancel();
         WorkspaceSearchFlyout.Hide();
         _search.Dispose();
         _profileAutoFill.ProfileChanged -= OnProfileAutoFilled;
@@ -1786,5 +2119,10 @@ public sealed partial class WorkspaceWindow : WindowEx
         _chatFocus = null;
         _chat.CloseSurface();
         _chat.SessionSelected -= OnChatSessionSelected;
+        _chat.SessionPromoted -= OnChatSessionPromoted;
+        _chat.ConversationPanelsChanged -= OnChatPanelsChanged;
+        if (_sidePanel is not null) _sidePanel.Changed -= OnSidePanelChanged;
+        _sidePanel = null;
+        _titleRow.Dispose();
     }
 }

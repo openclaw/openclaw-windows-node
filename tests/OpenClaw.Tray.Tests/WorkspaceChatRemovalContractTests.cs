@@ -90,7 +90,10 @@ public sealed class WorkspaceChatRemovalContractTests
     public void EachRenderer_ConsumesAppPendingSessionWithoutHubFallback(string signature)
     {
         var method = Method(Read(@"src\OpenClaw.Tray.WinUI\Pages\ChatPage.xaml.cs"), signature);
-        Assert.Contains("_pendingSessionKey ?? (App.Current as App)?.PendingChatSessionKey", method);
+        Assert.Contains("_pendingSessionKey", method);
+        Assert.Contains("PendingChatSessionKey", method);
+        if (signature.StartsWith("private void ShowWebViewSurface", StringComparison.Ordinal))
+            Assert.Contains("_deferredWebViewSessionKey", method);
         Assert.Contains("_pendingSessionKey = null;", method);
         Assert.Contains("currentApp.PendingChatSessionKey = null;", method);
     }

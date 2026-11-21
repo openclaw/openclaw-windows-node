@@ -172,6 +172,43 @@ public class SetupStepsTests : IDisposable
     }
 
     [Fact]
+    public async Task PairingAuthorization_RestartRecoveryHandshake_RejectsRelayWithoutGuestOwnerOnFirstProbe()
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            ++attempts == 1
+                ? new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.UnknownListener,
+                    18789,
+                    FailureReason:
+                        GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening)
+                : new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                    18789));
+        using var client = new OpenClawGatewayClient(
+            "ws://localhost:18789",
+            "synthetic-operator-token",
+            identityPath: Path.Combine(_tempDir, "handshake-identity"));
+
+        // The handshake runs on an already-open socket, so a later owner proof would not
+        // cover that socket's peer even during restart recovery.
+        PairOperatorStep.ApplyReconnectAuthorization(
+            client,
+            context,
+            provenanceRetryCount: 30,
+            provenanceRetryDelay: TimeSpan.Zero);
+        var result = await client.HandshakeAuthorizationAsync!(CancellationToken.None);
+
+        Assert.False(result.Allowed);
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
     public async Task PairingEndpointTrust_RestartWait_RetriesSnapshotChangeOnly()
     {
         var context = CreateContext(new SetupConfig
@@ -199,6 +236,44 @@ public class SetupStepsTests : IDisposable
 
         Assert.Null(result);
         Assert.Equal(2, attempts);
+    }
+
+    [Theory]
+    [InlineData(false, 1, false)]
+    [InlineData(true, 2, true)]
+    public async Task PairingEndpointTrust_RelayWithoutGuestOwner_WaitsOnlyBeforeConnection(
+        bool beforeConnectionAfterRestart,
+        int expectedAttempts,
+        bool expectedTrusted)
+    {
+        var context = CreateContext(new SetupConfig
+        {
+            DistroName = "OpenClawGateway",
+            GatewayUrl = "ws://localhost:18789"
+        });
+        var attempts = 0;
+        context.EndpointProvenanceProbe = (_, _) => Task.FromResult(
+            ++attempts == 1
+                ? new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.UnknownListener,
+                    18789,
+                    FailureReason:
+                        GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening)
+                : new GatewayEndpointProvenance(
+                    GatewayEndpointProvenanceKind.ExpectedManagedGateway,
+                    18789));
+
+        var result = await PairOperatorStep.EnsurePairingEndpointTrustedAsync(
+            context,
+            CancellationToken.None,
+            noListenerRetryCount: 30,
+            noListenerRetryDelay: TimeSpan.Zero,
+            beforeConnectionAfterRestart: beforeConnectionAfterRestart);
+
+        Assert.Equal(expectedTrusted, result is null);
+        Assert.Equal(expectedAttempts, attempts);
+        if (!expectedTrusted)
+            Assert.Equal(StepOutcome.FailedTerminal, result!.Outcome);
     }
 
     [Theory]

@@ -6,7 +6,8 @@ internal readonly record struct EndpointCredentialAuthorization(
     bool Allowed,
     GatewayErrorKind FailureKind,
     string Detail,
-    EndpointOwnershipProof? OwnershipProof = null)
+    EndpointOwnershipProof? OwnershipProof = null,
+    bool Retryable = false)
 {
     internal static EndpointCredentialAuthorization AllowedResult { get; } =
         new(true, GatewayErrorKind.Unknown, string.Empty);
@@ -43,6 +44,11 @@ internal interface IEndpointCredentialSecurity
         GatewayCredential credential,
         CancellationToken cancellationToken);
 
+    /// <param name="allowRuntimeStart">
+    /// False on an already-open socket: only fresh ownership inspection may run there. Starting or
+    /// waiting for a Gateway belongs before a new socket is opened, because a foreign peer that
+    /// accepted this socket can keep it after the real Gateway later takes the listening port.
+    /// </param>
     async Task<ReconnectAuthorizationResult> AuthorizeCredentialHandoffAsync(
         GatewayRecord expectedRecord,
         GatewayCredential credential,
@@ -50,7 +56,8 @@ internal interface IEndpointCredentialSecurity
         Func<bool> isCurrentAttempt,
         CancellationToken operationCancellationToken,
         CancellationToken handshakeCancellationToken,
-        string role)
+        string role,
+        bool allowRuntimeStart = true)
     {
         if (!isCurrentAttempt())
         {
@@ -89,7 +96,8 @@ internal interface IEndpointCredentialSecurity
         return new(
             authorization.Allowed,
             authorization.FailureKind,
-            authorization.Detail);
+            authorization.Detail,
+            authorization.Retryable);
     }
 
     Task<bool> IsRecoverySafeEndpointAsync(

@@ -87,7 +87,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     private int _sharedCredentialConnects;
     private int _deviceTokenRejections;
     private static readonly JsonElement EmptyParameters = JsonSerializer.SerializeToElement(new { });
-    private sealed record ActiveConnection(WebSocket Socket, SemaphoreSlim SendLock, CancellationToken CancellationToken)
+    private sealed record ActiveConnection(WebSocket Socket, SemaphoreSlim SendLock, CancellationToken CancellationToken,
+        bool ChatOnlyAssistantText = false)
     {
         public int Borrowers { get; set; }
         public bool Retired { get; set; }
@@ -182,9 +183,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     {
         ActiveConnection[] targets;
         lock (_sync) targets = _authenticatedConnections.Values.ToArray();
+        // The Gateway omits agent assistant text for clients that render chat frames only.
+        var assistantText = eventName == "agent" && IsAssistantTextEvent(JsonSerializer.SerializeToElement(payload));
         var delivered = 0;
         foreach (var target in targets)
         {
+            if (assistantText && target.ChatOnlyAssistantText)
+                continue;
             try
             {
                 using var send = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token, target.CancellationToken);
@@ -201,6 +206,19 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         // authoritative for reconnect; never retain message or question content here.
         lock (_sync) _events.Add(new GatewayFixtureEvent(eventName, delivered));
     }
+
+    private const string ChatOnlyAssistantTextCapability = "chat-only-assistant-text";
+
+    private static bool HasCapability(JsonElement parameters, string capability) =>
+        parameters.ValueKind == JsonValueKind.Object &&
+        parameters.TryGetProperty("caps", out var caps) &&
+        caps.ValueKind == JsonValueKind.Array &&
+        caps.EnumerateArray().Any(cap => cap.ValueKind == JsonValueKind.String && cap.GetString() == capability);
+
+    private static bool IsAssistantTextEvent(JsonElement payload) =>
+        ReadString(payload, "stream") == "assistant" &&
+        payload.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object &&
+        (ReadString(data, "text") is not null || ReadString(data, "delta") is not null);
 
     private bool _refuseConnections;
 
@@ -374,22 +392,48 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     }
 
     public Task PublishChatRunEventAsync(string sessionKey, string runId, string stream, object data,
+        CancellationToken cancellationToken = default) =>
+        PublishChatRunEventAsync("agent", sessionKey, runId, stream, data, cancellationToken);
+
+    public Task PublishSessionToolEventAsync(string sessionKey, string runId, object data,
+        CancellationToken cancellationToken = default) =>
+        PublishChatRunEventAsync("session.tool", sessionKey, runId, "tool", data, cancellationToken);
+
+    private Task PublishChatRunEventAsync(string eventName, string sessionKey, string runId, string stream, object data,
         CancellationToken cancellationToken = default)
     {
         ValidateChatRun(sessionKey, runId);
-        if (stream is not ("lifecycle" or "assistant" or "tool"))
-            throw new ArgumentException("Expected a lifecycle, assistant or tool stream.", nameof(stream));
+        if (stream is not ("lifecycle" or "assistant" or "tool" or "item"))
+            throw new ArgumentException("Expected a lifecycle, assistant, tool or item stream.", nameof(stream));
         ArgumentNullException.ThrowIfNull(data);
-        return PublishEventAsync(new
+        var message = new
         {
-            type = "event", @event = "agent",
+            type = "event", @event = eventName,
             payload = new
             {
                 sessionKey, runId, stream, data,
                 seq = Interlocked.Increment(ref _chatEventSequence),
                 ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             }
-        }, cancellationToken);
+        };
+        if (!IsAssistantTextEvent(JsonSerializer.SerializeToElement(message.payload)))
+            return PublishEventAsync(message, cancellationToken);
+        return PublishAssistantTextAsync(message, cancellationToken);
+    }
+
+    // Like the Gateway, agent assistant text is withheld from clients that render chat frames only.
+    private async Task PublishAssistantTextAsync(object message, CancellationToken cancellationToken)
+    {
+        var acquired = AcquireConnections(onlyOpen: true);
+        try
+        {
+            if (acquired.Length == 0)
+                throw new InvalidOperationException("No authenticated fixture connection is available.");
+            var targets = acquired.Where(target => !target.ChatOnlyAssistantText).ToArray();
+            if (targets.Length > 0)
+                await PublishEventAsync(targets, message, cancellationToken);
+        }
+        finally { ReleaseConnections(acquired); }
     }
 
     public Task PublishChatFinalAsync(string sessionKey, string runId, string text,
@@ -404,6 +448,32 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }, cancellationToken);
     }
 
+    /// <summary>Publishes the producer's optional terminal content and authoritative display-tail override.</summary>
+    public Task PublishChatTerminalAsync(string sessionKey, string runId, string state,
+        string? text = null, IReadOnlyList<object>? displayContent = null, bool yielded = false,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        if (state is not ("final" or "error" or "aborted"))
+            throw new ArgumentException("Expected a terminal chat state.", nameof(state));
+        var payload = new Dictionary<string, object?>
+        {
+            ["sessionKey"] = sessionKey, ["runId"] = runId, ["state"] = state,
+            ["seq"] = Interlocked.Increment(ref _chatEventSequence),
+        };
+        if (yielded)
+            payload["yielded"] = true;
+        if (text is not null)
+        {
+            var message = new Dictionary<string, object?> { ["role"] = "assistant",
+                ["content"] = new[] { new { type = "text", text } } };
+            if (displayContent is not null)
+                message["openclawDisplayContent"] = displayContent;
+            payload["message"] = message;
+        }
+        return PublishEventAsync(new { type = "event", @event = "chat", payload }, cancellationToken);
+    }
+
     public Task PublishChatSnapshotAsync(string sessionKey, string runId, string text,
         bool includeRunId, CancellationToken cancellationToken = default)
     {
@@ -416,6 +486,30 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
             {
                 sessionKey, runId = includeRunId ? runId : null,
                 message = new { role = "assistant", content = text }
+            }
+        }, cancellationToken);
+    }
+
+    public Task PublishPersistedAssistantAsync(string sessionKey, string runId, string messageId,
+        int messageSequence, string text, CancellationToken cancellationToken = default)
+    {
+        ValidateChatRun(sessionKey, runId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        return PublishEventAsync(new
+        {
+            type = "event", @event = "session.message",
+            payload = new
+            {
+                sessionKey, runId, hasActiveRun = true, activeRunIds = new[] { runId },
+                messageId, messageSeq = messageSequence,
+                message = new
+                {
+                    role = "assistant", timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    __openclaw = new { id = messageId, seq = messageSequence, runId },
+                    content = new[] { new { type = "text", text,
+                        textSignature = JsonSerializer.Serialize(new { v = 1, id = messageId, phase = "final_answer" }) } },
+                }
             }
         }, cancellationToken);
     }
@@ -559,6 +653,13 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
 
     public Task PublishSelfProfileChangedAsync() =>
         BroadcastAsync("sessions.changed", new { reason = "profile-identity" });
+
+    /// <summary>Publishes synthetic channel health and presence through the real Gateway event path.</summary>
+    public Task PublishHealthAsync(object payload)
+    {
+        lock (_sync) _readResponses["health"] = _ => payload;
+        return BroadcastAsync("health", payload);
+    }
 
     public void FailSearchRead(string method) => OverrideSearchRead(method, _ =>
         throw new FixtureRequestException("FIXTURE_SEARCH_FAILURE", "Synthetic read failure."));
@@ -705,6 +806,19 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
     public Task NotifyChatMetadataChangedAsync(CancellationToken cancellationToken = default) =>
         PublishEventAsync(new { type = "event", @event = "chat.metadata.changed",
             payload = new { modelCatalogChanged = false, authChanged = false } }, cancellationToken);
+
+    public Task NotifyProgressCardChangedAsync(string sessionKey, int revision, CancellationToken cancellationToken = default)
+    {
+        var boards = _scenario.Boards
+            ?? throw new InvalidOperationException("The fixture server has no dashboard scenario.");
+        boards.SetProgressCard(sessionKey, revision, $"Fixture progress revision {revision}.");
+        return PublishEventAsync(new
+        {
+            type = "event",
+            @event = "progressCard.changed",
+            payload = new { sessionKey, revision },
+        }, cancellationToken);
+    }
 
     private async Task PublishEventAsync(object message, CancellationToken cancellationToken)
     {
@@ -882,12 +996,7 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                         (_scenario.ContainsSession(key ?? "") || Interactive?.ContainsSession(key ?? "") == true) ? key : key is null ? null : "<unknown>",
                         SafeApprovalDecision(method!, parameters),
                         SafeApprovalId(method!, parameters),
-                        method == "connect" &&
-                        parameters.ValueKind == JsonValueKind.Object &&
-                        parameters.TryGetProperty("caps", out var caps) &&
-                        caps.ValueKind == JsonValueKind.Array &&
-                        caps.EnumerateArray().Any(cap =>
-                            cap.ValueKind == JsonValueKind.String && cap.GetString() == "exec-approvals"),
+                        method == "connect" && HasCapability(parameters, "exec-approvals"),
                         method == "models.list" && ReadString(parameters, "view") is "default" or "configured" or "all"
                             ? ReadString(parameters, "view") : null,
                         method == "models.list" && parameters.ValueKind == JsonValueKind.Object
@@ -938,7 +1047,8 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
                             authenticated = true;
                             lock (_sync)
                                 _authenticatedConnections[connectionId] =
-                                    activeConnection = new ActiveConnection(socket, sendLock, connection.Token);
+                                    activeConnection = new ActiveConnection(socket, sendLock, connection.Token,
+                                        HasCapability(parameters, ChatOnlyAssistantTextCapability));
                             Complete(requestIndex, "ok");
                             _handshake.TrySetResult();
                         }

@@ -83,6 +83,15 @@ public sealed record FileWorkerAdmission(
 
 public sealed record FileDataAccess(string[] ReadonlyPaths, string[] ReadwritePaths, string[] DeniedPaths, string[] ProtectedPaths)
 {
+    // The Gateway forwards these messages to the agent. They name the cause and the user's remedy,
+    // without listing the allowed folders.
+    internal const string ProtectedMessage =
+        "This path is protected on this PC and the Node Sandbox always blocks it.";
+    internal const string OutsideMessage =
+        "This path is outside the folders the Node Sandbox on this PC allows. The user can grant access to it in Node Sandbox settings.";
+    internal const string ReadOnlyMessage =
+        "This folder is read-only in the Node Sandbox on this PC. The user can allow writing to it in Node Sandbox settings.";
+
     private enum Right { Read, Write, Deny }
     public void Demand(string path, bool write)
     {
@@ -91,9 +100,12 @@ public sealed record FileDataAccess(string[] ReadonlyPaths, string[] ReadwritePa
             .Concat(ReadonlyPaths.Select(p => (p, Right.Read)))
             .Concat(DeniedPaths.Select(p => (p, Right.Deny)));
         var right = SandboxPathRules.Effective(path, boundaries);
-        if (ProtectedPaths.Any(p => SandboxPathRules.Within(path, SandboxPathRules.Normalize(p))) ||
-            right is null or Right.Deny || (write && right != Right.Write))
-            throw new FileCommandException("PERMISSION_DENIED", "The current Sandbox data policy does not allow this operation.");
+        if (ProtectedPaths.Any(p => SandboxPathRules.Within(path, SandboxPathRules.Normalize(p))))
+            throw new FileCommandException("PERMISSION_DENIED", ProtectedMessage);
+        if (right is null or Right.Deny)
+            throw new FileCommandException("PERMISSION_DENIED", OutsideMessage);
+        if (write && right != Right.Write)
+            throw new FileCommandException("PERMISSION_DENIED", ReadOnlyMessage);
     }
 }
 

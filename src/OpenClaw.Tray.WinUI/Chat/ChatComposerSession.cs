@@ -24,6 +24,8 @@ public sealed class ChatComposerSession : IDisposable
     private bool _hostVisible = true;
     private bool _composerVisible = true;
     private bool _conversationVisible = true;
+    internal event Action? InputFocusRequested;
+    internal bool IsInputFocusPending { get; private set; }
     private readonly ISettingsStore _settingsStore;
     private readonly SandboxStatusStore _sandboxStatus;
 
@@ -83,10 +85,20 @@ public sealed class ChatComposerSession : IDisposable
         ApplyVisibility();
         if (!visible)
         {
+            IsInputFocusPending = false;
             ViewModel.SetVoiceTranscript(null);
             ViewModel.SetVoiceAudioLevel(0);
         }
     }
+
+    internal void RequestInputFocus()
+    {
+        if (Volatile.Read(ref _disposed) != 0 || !_hostVisible) return;
+        IsInputFocusPending = true;
+        InputFocusRequested?.Invoke();
+    }
+
+    internal void CompleteInputFocus() => IsInputFocusPending = false;
 
     internal void SetConversationVisible(bool visible)
     {
@@ -105,6 +117,8 @@ public sealed class ChatComposerSession : IDisposable
             return;
 
         _settingsStore.Changed -= OnSettingsChanged;
+        IsInputFocusPending = false;
+        InputFocusRequested = null;
         _sandboxStatus.Changed -= OnSandboxStatusChanged;
         Controller.Dispose();
         Placement?.Dispose();

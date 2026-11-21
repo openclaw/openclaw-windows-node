@@ -4,10 +4,21 @@ using OpenClaw.Connection;
 
 namespace OpenClawTray.Helpers;
 
+/// <summary>A nonce challenge received from the trusted personal Gateway Dashboard.</summary>
+/// <param name="Id">The request identifier to correlate with the Dashboard reply.</param>
+/// <param name="Nonce">The Gateway-issued nonce included in the signed response.</param>
+/// <param name="SignedAt">The Gateway-issued Unix timestamp, in milliseconds.</param>
 public sealed record PersonalGatewayAuthChallenge(string Id, string Nonce, long SignedAt);
 
+/// <summary>Validates and parses Dashboard challenges for the current personal Gateway route.</summary>
 public static class PersonalGatewayAuthChallengeParser
 {
+    /// <summary>Parses a challenge only when its source belongs to the expected Gateway Dashboard.</summary>
+    /// <param name="messageJson">The serialized message received from the Dashboard.</param>
+    /// <param name="sourceUrl">The sending document URL reported by the native host.</param>
+    /// <param name="expectedGatewayUrl">The Gateway route whose identity is being verified.</param>
+    /// <param name="challenge">The parsed challenge, or <see langword="null"/> when rejected.</param>
+    /// <returns><see langword="true"/> only for a well-formed challenge from the expected trusted route.</returns>
     public static bool TryParse(
         string messageJson,
         string sourceUrl,

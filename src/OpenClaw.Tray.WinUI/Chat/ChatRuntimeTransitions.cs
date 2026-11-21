@@ -88,6 +88,8 @@ internal sealed record ChatHistoryCommitToken(
     long ResetGeneration,
     long ReplacementGeneration);
 
+internal sealed record ChatHistoryRunLease(string RunId, string SessionId, long StartSequence);
+
 internal sealed record ChatHistoryReplacementTransition(
     ChatDataSnapshot Snapshot,
     ChatHistoryCommitToken Token);
@@ -121,6 +123,7 @@ internal sealed record ChatOpenedLifecycleTransition(
 
 internal sealed record ChatSendCommit(
     bool IsCurrent,
+    bool IsResetCurrent,
     ChatDataSnapshot? AcceptedSnapshot,
     ChatDataSnapshot? RequeuedSnapshot,
     string? StaleRunIdToAbort,

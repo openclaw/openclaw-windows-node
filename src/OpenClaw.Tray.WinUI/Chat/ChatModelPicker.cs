@@ -15,7 +15,6 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using OpenClaw.Chat;
-using OpenClawTray.Services;
 using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
@@ -30,7 +29,8 @@ internal sealed record ChatModelPickerProps(
     string? CurrentProvider,
     bool Enabled,
     Action<ChatModelChoice> Select,
-    double AvailableWidth);
+    double AvailableWidth,
+    Element? Reasoning = null);
 
 /// <summary>Provides the generated Reactor wrapper for <see cref="NativeChatModelPicker"/>.</summary>
 [GenerateReactorWrapper(typeof(NativeChatModelPicker), AutoDiscover = false,
@@ -49,7 +49,8 @@ internal sealed class ChatModelPicker : Component<ChatModelPickerProps>
         var view = UseRef<NativeChatModelPicker?>(null);
         return Flyout(
             props.Target.OnMountAdd(control => anchor.Current = (Button)control),
-            NativeChatModelPickerElement.NativeChatModelPicker()
+            ScrollViewer(VStack(0,
+                NativeChatModelPickerElement.NativeChatModelPicker()
                 .Set(content =>
                 {
                     view.Current = content;
@@ -57,19 +58,21 @@ internal sealed class ChatModelPicker : Component<ChatModelPickerProps>
                     {
                         Props.Select(choice);
                         anchor.Current?.Flyout?.Hide();
-                    }, () =>
-                    {
-                        // Direct settings navigation, like the voice readiness dialogs; the composer host has no navigation callback.
-                        anchor.Current?.Flyout?.Hide();
-                        (Application.Current as IAppCommands)?.Navigate("model");
-                    });
+                    }, null);
                 })
                 .OnUnmount(control =>
                 {
                     view.Current = null;
                     ((NativeChatModelPicker)control).Dispose();
-                }))
+                }),
+                props.Reasoning is { } reasoning
+                    ? VStack(0,
+                        Border(null).Height(1).Background(Theme.Ref("ChatStrokeBrush")).Margin(0, 1, 0, 1),
+                        reasoning.Margin(4, 2, 4, 4))
+                    : Empty()))
+                .MaxHeight(520)
+                .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled))
             .Opened(() => view.Current?.RestoreCommittedSelection())
-            .Set(flyout => flyout.Placement = FlyoutPlacementMode.TopEdgeAlignedRight);
+            .Set(ChatVisuals.StylePicker);
     }
 }

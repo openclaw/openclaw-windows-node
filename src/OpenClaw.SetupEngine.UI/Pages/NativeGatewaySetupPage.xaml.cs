@@ -45,15 +45,11 @@ public sealed partial class NativeGatewaySetupPage : Page
             var status = new SetupPhaseStatus();
             status.Apply(SetupInstallationStatus.Pending);
             var header = SetupLocalization.GetString($"Onboarding_Native_{key}");
-            var row = new SettingsCard
-            {
-                Header = header,
-                Content = status,
-            };
-            AutomationProperties.SetAutomationId(row, $"NativeGateway{key}");
+            status.Header = header;
+            AutomationProperties.SetAutomationId(status, $"NativeGateway{key}");
             _rows.Add(status);
             _stepHeaders.Add(header);
-            StepsPanel.Children.Add(row);
+            StepsPanel.Children.Add(status);
         }
         Loaded += (_, _) => StartOperation();
         Unloaded += (_, _) => _operationCts?.Cancel();

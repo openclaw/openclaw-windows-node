@@ -33,6 +33,7 @@ static class FluentIconCatalog
     public const string Hostname = "\uE977";       // Devices/IT — single hostname/system info pill
     public const string Permissions = "\uEA18";    // Shield
     public const string Sandbox = Permissions;    // Shared protection metaphor.
+    public const string SandboxOn = "\uF760";      // ShieldTask (shield with check); Segoe Fluent Icons only, absent from Win10 MDL2
     public const string SandboxStrict = "\uE72E";  // Lock
 
     // ── Capabilities (per-permission glyphs) ───────────────────────
@@ -51,6 +52,8 @@ static class FluentIconCatalog
     public const string Dashboard = "\uE774";      // Globe
     public const string OpenInBrowser = "\uE8A7";  // OpenInNewWindow — top-right dashboard launcher icon
     public const string OpenPane = "\uE8A0";       // OpenPane - open content beside the conversation
+    public const string FullScreen = "\uE740";     // FullScreen - expand the chat side panel over the conversation
+    public const string BackToWindow = "\uE73F";   // BackToWindow - restore the chat side panel beside the conversation
     public const string Chat = "\uE8BD";           // Message
     public const string CanvasAct = "\uE790";      // Color (palette) - matches Canvas permission glyph
     public const string VoiceAct = "\uE720";       // Microphone
@@ -80,13 +83,19 @@ static class FluentIconCatalog
 
     // ── Affordances ────────────────────────────────────────────────
     public const string ChevronR = "\uE76C";       // ChevronRight
+    public const string Subagent = "\uE99A";       // Robot — chat subagents pill and rows
     public const string ChevronDown = "\uE70D";    // ChevronDown
     public const string BulletedList = "\uE8FD";   // BulletedList, chat tool activity summary row
     public const string Stop = "\uE71A";           // Stop
+    public const string StopFilled = "\uE73B";     // CheckboxFill, a solid square for the composer's Stop action
     public const string ChatSubmit = "\uE74A";     // Up, specific to sending a chat turn
     public const string ChatJumpLatest = "\uE74B"; // Down, returns to the latest chat content
-    public const string ChatAttach = "\uE723";     // Paperclip, opens the existing attachment picker
+    public const string ChatAttach = "\uE710";     // Add (plus), opens the attachment picker like the web composer's plus menu
     public const string Check = "\uE73E";          // CheckMark
+    public const string Lightbulb = "\uEA80";      // Lightbulb, the chat's learned-skill notice
+    public const string Undo = "\uE7A7";           // Undo, reverts a learned-skill change
+    public const string Compass = "\uE812";        // MapCompassTop, plugin steering notices
+    public const string Cpu = "\uEEA1";            // CPU, internal system notices; Segoe Fluent Icons only
 
     // ── Diagnostics page glyphs ────────────────────────────────────
     // Added 2026-05 for the Diagnostics surface
@@ -99,6 +108,7 @@ static class FluentIconCatalog
     public const string Copy = "\uE8C8";           // Copy — copy-to-clipboard affordance
     public const string Document = "\uE8A5";       // Document — recent log / log file
     public const string Refresh = "\uE72C";        // Refresh — re-read a snapshot (distinct from Sync E895)
+    public const string Download = "\uE896";       // Download — save a chat file attachment
     // Reset aliases Refresh (U+E72C). Both share the "restart from scratch"
     // metaphor; the named constant keeps Reconfigure call sites semantically
     // distinct from data-refresh call sites even though the glyph is the same.

@@ -249,9 +249,12 @@ internal static class NativeToolProjector
             {
                 // Free-form tool input is literal text, not necessarily serialized arguments.
             }
-            return new(ExecApprovalCommandDisplaySanitizer.SanitizeWarningText(text));
+            var sanitized = ExecApprovalCommandDisplaySanitizer.SanitizeWarningTextWithStatus(text);
+            return new(sanitized.Text,
+                Lossy: sanitized.Redacted || sanitized.Truncated || sanitized.Oversized || ChangesLineCount(text));
         }
-        var safe = SafeInputNode(input);
+        var loss = new InputLoss();
+        var safe = SafeInputNode(input, loss);
         string? command = null;
         string? preview = null;
         if (safe is JsonObject args)
@@ -272,28 +275,74 @@ internal static class NativeToolProjector
             if (args.Count == 0 && command is not null)
                 return new("", command, preview);
         }
-        return new(ChatContentFormatting.TruncateForChatEntry(
-            ExecApprovalSecretRedactor.Redact(safe?.ToJsonString(DetailJsonOptions) ?? "null")), command, preview);
+        var json = safe?.ToJsonString(DetailJsonOptions) ?? "null";
+        var redacted = ExecApprovalSecretRedactor.Redact(json);
+        var bounded = ChatContentFormatting.TruncateForChatEntry(redacted);
+        return new(bounded, command, preview, Lossy: loss.Value || json != redacted || bounded != redacted);
     }
 
-    private static JsonNode? SafeInputNode(JsonElement input)
+    /// <summary>Set when redaction or truncation changed any projected input value.</summary>
+    private sealed class InputLoss
+    {
+        internal bool Value;
+    }
+
+    /// <summary>
+    /// Parses redacted disclosure input back into its arguments. Returns null when the input was
+    /// withheld, free-form, or cut so that it is no longer valid JSON. String values remain
+    /// untrusted and may still carry <see cref="IsCutDisplayText"/> markers.
+    /// </summary>
+    internal static JsonObject? ReadInputArguments(ChatToolInputDetails? details)
+    {
+        if (details is null || details.Unavailable || string.IsNullOrWhiteSpace(details.Text))
+            return null;
+        try
+        {
+            return JsonNode.Parse(details.Text) as JsonObject;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>True when sanitized input text no longer holds the complete original value.</summary>
+    internal static bool IsCutDisplayText(string text) =>
+        text.EndsWith(ExecApprovalCommandDisplaySanitizer.TruncationMarker, StringComparison.Ordinal) ||
+        text == ExecApprovalCommandDisplaySanitizer.WarningOversizedMarker;
+
+    private static JsonNode? SafeInputNode(JsonElement input, InputLoss loss)
     {
         if (input.ValueKind == JsonValueKind.Object)
         {
             var result = new JsonObject();
             foreach (var property in input.EnumerateObject())
-                result[property.Name] = IsCredentialArgument(property.Name)
-                    ? JsonValue.Create("[redacted]") : SafeInputNode(property.Value);
+            {
+                var credential = IsCredentialArgument(property.Name);
+                loss.Value |= credential;
+                result[property.Name] = credential
+                    ? JsonValue.Create("[redacted]") : SafeInputNode(property.Value, loss);
+            }
             return result;
         }
         return input.ValueKind switch
         {
-            JsonValueKind.Array => new JsonArray(input.EnumerateArray().Select(SafeInputNode).ToArray()),
-            JsonValueKind.String => JsonValue.Create(
-                ExecApprovalCommandDisplaySanitizer.SanitizeWarningText(input.GetString() ?? "")),
+            JsonValueKind.Array => new JsonArray(input.EnumerateArray().Select(item => SafeInputNode(item, loss)).ToArray()),
+            JsonValueKind.String => SafeString(input.GetString() ?? "", loss),
             _ => JsonNode.Parse(input.GetRawText()),
         };
     }
+
+    private static JsonNode SafeString(string text, InputLoss loss)
+    {
+        var sanitized = ExecApprovalCommandDisplaySanitizer.SanitizeWarningTextWithStatus(text);
+        loss.Value |= sanitized.Redacted || sanitized.Truncated || sanitized.Oversized || ChangesLineCount(text);
+        return JsonValue.Create(sanitized.Text);
+    }
+
+    // Display turns Unicode line and paragraph separators into LF, which the tool's own line count did not.
+    private static bool ChangesLineCount(string text) =>
+        text.Contains('\u2028', StringComparison.Ordinal) || text.Contains('\u2029', StringComparison.Ordinal);
 
     private static bool IsCredentialArgument(string key)
     {

@@ -129,7 +129,7 @@ internal sealed class ReactorDisconnectedDashboards : Component<DashboardsRootPr
                 notice))
             .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
             .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
-            .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
+            .Padding(HorizontalPadding(TierFor(width)), PaddingTop, HorizontalPadding(TierFor(width)), PaddingBottom)
             .HAlign(HorizontalAlignment.Center);
         return Border(DashboardsStates.VerticalScroll(content))
             .Margin(0, state.TopInset, 0, 0)
@@ -232,6 +232,7 @@ internal static class DashboardsStates
 
     public static ButtonElement IconButton(string glyph, string label, Action onClick, string automationId) =>
         Button(Icon(FontIcon(glyph)), onClick)
+            .SubtleButton().Size(32, 32).Padding(0)
             .ToolTip(label)
             .AutomationName(label)
             .AutomationId(automationId);
@@ -429,7 +430,7 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
             })
             .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
             .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
-            .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
+            .Padding(HorizontalPadding(TierFor(width)), PaddingTop, HorizontalPadding(TierFor(width)), PaddingBottom)
             .HAlign(HorizontalAlignment.Center)
             .AutomationId("DashboardsGallery");
         return Grid([GridSize.Star()], [GridSize.Star()],
@@ -467,15 +468,10 @@ internal sealed class ReactorDashboardGallery : Component<DashboardGalleryProps>
                             () => { }, "DashboardsGalleryMore")
                         .Set(button => button.Flyout = more)
                     : state.Connected && state.OpenWebDashboards is { } openWeb
-                    ? Button(
-                            HStack(8,
-                                Icon(FontIcon(DashboardsGlyphs.OpenInBrowser)).VAlign(VerticalAlignment.Center),
-                                TextBlock(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))),
-                            openWeb)
+                    ? DashboardsStates.IconButton(DashboardsGlyphs.OpenInBrowser,
+                            LocalizationHelper.GetString("Dashboards_OpenWebGallery"), openWeb, "DashboardsOpenWeb")
                         .VAlign(VerticalAlignment.Top)
                         .ToolTip(LocalizationHelper.GetString("Dashboards_OpenWebGallery_GalleryHint"))
-                        .AutomationName(LocalizationHelper.GetString("Dashboards_OpenWebGallery"))
-                        .AutomationId("DashboardsOpenWeb")
                     : Empty(),
                 state.Connected
                     ? DashboardsStates.IconButton(DashboardsGlyphs.Refresh, LocalizationHelper.GetString("Dashboards_Refresh"), refresh, "DashboardsRefresh")

@@ -20,11 +20,12 @@ public sealed partial class GatewayFixtureUiTests
 
             Invoke(FindById(run, "WorkspaceSearch")!);
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search flyout from button");
-            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox")!.Current.HasKeyboardFocus
-                || FindById(run, "WorkspaceSearchBox")!.FindFirst(TreeScope.Descendants,
-                    new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true)) is not null,
+            await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is { } box && (box.Current.HasKeyboardFocus
+                || box.FindFirst(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true)) is not null),
                 "search box focus");
-            OwnedWindowCapture.Save(run, window, "main-search-open.png", FindById(run, "WorkspaceSearchBox")!);
+            OwnedWindowCapture.Save(run, window, "main-search-open.png",
+                await WaitForElementByIdAsync(run, "WorkspaceSearchBox", "focused search box for capture"));
             await EscapeAndAssertDraftAsync(run, window, identity, expectComposerFocus: false);
 
             foreach (var chord in new[] { "^k", "^e" })
@@ -43,7 +44,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => ComposerText(run).Contains(OrderingProbe), "ordering probe reaches the composer after Ctrl+F");
             Assert.Null(FindById(run, "WorkspaceSearchBox"));
             Assert.Equal(MainSearchDraft, ComposerText(run).Replace(OrderingProbe, string.Empty));
-            ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).SetValue(MainSearchDraft);
+            ((ValuePattern)(await WaitForElementByIdAsync(run, "ChatComposerInput", "composer after the ordering probe"))
+                .GetCurrentPattern(ValuePattern.Pattern)).SetValue(MainSearchDraft);
         });
     }
 
@@ -61,18 +63,20 @@ public sealed partial class GatewayFixtureUiTests
             SetForeground(window);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search with collapsed sidebar");
-            OwnedWindowCapture.Save(run, window, "main-search-collapsed-sidebar.png", FindById(run, "WorkspaceSearchBox")!);
+            OwnedWindowCapture.Save(run, window, "main-search-collapsed-sidebar.png",
+                await WaitForElementByIdAsync(run, "WorkspaceSearchBox", "collapsed-sidebar search box for capture"));
             await EscapeAndAssertDraftAsync(run, window, identity, expectComposerFocus: false);
 
             FocusComposer(run, window);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search before routing");
-            SearchEdit(run, "WorkspaceSearchBox").SetFocus();
+            (await SearchEditAsync(run, "WorkspaceSearchBox")).SetFocus();
             Send(run, window, "Settings{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SettingsPageMarker") is { Current.IsOffscreen: false },
                 "Settings route from main search");
             Assert.Null(FindById(run, "WorkspaceSearchBox"));
-            OwnedWindowCapture.Save(run, window, "main-search-routed-to-settings.png", FindById(run, "SettingsPageMarker")!);
+            OwnedWindowCapture.Save(run, window, "main-search-routed-to-settings.png",
+                await WaitForElementByIdAsync(run, "SettingsPageMarker", "routed Settings page for capture"));
 
             Send(run, window, "%{LEFT}");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false },
@@ -80,7 +84,7 @@ public sealed partial class GatewayFixtureUiTests
             // No SetFocus here: Back must restore composer focus by itself.
             await WaitUiAsync(run,             () => FindById(run, "ChatComposerInput") is { Current.HasKeyboardFocus: true },
                 "composer focus restored by Back after search routing");
-            Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
+            Assert.Equal(identity, (await WaitForElementByIdAsync(run, "ChatComposerInput", "composer after Back")).GetRuntimeId());
             Assert.Equal(MainSearchDraft, ComposerText(run));
         });
     }
@@ -108,7 +112,8 @@ public sealed partial class GatewayFixtureUiTests
                 await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is not null, $"Settings search from {chord}");
                 Assert.Null(FindById(run, "WorkspaceSearchBox"));
                 if (chord == "^f")
-                    OwnedWindowCapture.Save(run, window, "settings-ctrlf-search.png", FindById(run, "SettingsSearchBox")!);
+                    OwnedWindowCapture.Save(run, window, "settings-ctrlf-search.png",
+                        await WaitForElementByIdAsync(run, "SettingsSearchBox", "Settings search box for capture"));
                 Send(run, window, "{ESC}");
                 await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is null, $"Settings search closed after {chord}");
             }
@@ -126,13 +131,14 @@ public sealed partial class GatewayFixtureUiTests
             SetForeground(window);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search flyout");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             edit.SetFocus();
             const string unmatched = "zzqqxx-no-such-command";
             Send(run, window, unmatched);
             await WaitUiAsync(run, () => ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).Current.Value == unmatched,
                 "unmatched query typed");
-            OwnedWindowCapture.Save(run, window, "main-search-unmatched-query.png", FindById(run, "WorkspaceSearchBox")!);
+            OwnedWindowCapture.Save(run, window, "main-search-unmatched-query.png",
+                await WaitForElementByIdAsync(run, "WorkspaceSearchBox", "unmatched-query search box for capture"));
             Send(run, window, "{ENTER}");
 
             // Keys are processed in order: the probe after Enter reaching the same box proves Enter was
@@ -150,7 +156,7 @@ public sealed partial class GatewayFixtureUiTests
 
             Send(run, window, "%{LEFT}");
             await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.IsOffscreen: false }, "Back to chat");
-            Assert.Equal(identity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
+            Assert.Equal(identity, (await WaitForElementByIdAsync(run, "ChatComposerInput", "composer after Back")).GetRuntimeId());
             Assert.Equal(MainSearchDraft, ComposerText(run));
         });
     }
@@ -161,7 +167,7 @@ public sealed partial class GatewayFixtureUiTests
         await run.InvokeAsync("app.navigate", new { page = "chat" });
         await WaitVerifiedChatAsync(run);
         var window = FindHub(run);
-        var composer = FindById(run, "ChatComposerInput")!;
+        var composer = await WaitForElementByIdAsync(run, "ChatComposerInput", "composer before the search draft");
         ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).SetValue(MainSearchDraft);
         SetForeground(window);
         return (window, composer, composer.GetRuntimeId());
@@ -178,7 +184,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.Null(FindById(run, "WorkspaceSearchBox"));
             Send(run, window, "^e");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "icon-only search opened");
-            ((ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern)).SetValue("lighthouse");
+            ((ValuePattern)(await SearchEditAsync(run, "WorkspaceSearchBox")).GetCurrentPattern(ValuePattern.Pattern)).SetValue("lighthouse");
             await WaitUiAsync(run, () =>
             {
                 var results = FindById(run, "SearchResultsList");
@@ -187,8 +193,9 @@ public sealed partial class GatewayFixtureUiTests
                     results.FindAll(TreeScope.Descendants, Condition.TrueCondition).Cast<AutomationElement>()
                         .Any(item => item.Current.Name.Contains(GatewayScenario.MainSentinel, StringComparison.Ordinal));
             }, "message result with Gateway snippet inside the results list");
-            OwnedWindowCapture.Save(run, window, "main-search-message-result.png", FindById(run, "SearchResultsList")!);
-            SearchEdit(run, "WorkspaceSearchBox").SetFocus();
+            OwnedWindowCapture.Save(run, window, "main-search-message-result.png",
+                await WaitForElementByIdAsync(run, "SearchResultsList", "message result list for capture"));
+            (await SearchEditAsync(run, "WorkspaceSearchBox")).SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null, "search closed after activation");
             await WaitComposerSelectionAsync(run, GatewayScenario.MainSessionKey);
@@ -199,12 +206,33 @@ public sealed partial class GatewayFixtureUiTests
         });
     }
 
-    private static AutomationElement SearchEdit(GatewayFixtureRun run, string id)
+    // A search input seen by an earlier wait can be missing from the very next UIA lookup while its
+    // flyout settles, so re-acquire it until it is an enabled Edit that accepts a value.
+    private static async Task<AutomationElement> SearchEditAsync(GatewayFixtureRun run, string id)
     {
-        var element = FindById(run, id)!;
-        return element.Current.ControlType == ControlType.Edit ? element :
-            element.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))!;
+        AutomationElement? edit = null;
+        var state = "not polled";
+        try
+        {
+            await WaitUiAsync(run, () =>
+            {
+                edit = null;
+                var element = FindById(run, id);
+                var candidate = element?.Current.ControlType == ControlType.Edit ? element :
+                    element?.FindFirst(TreeScope.Descendants,
+                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit));
+                state = element is null ? "input missing" : candidate is null ? "no Edit" :
+                    !candidate.Current.IsEnabled ? "Edit disabled" :
+                    !candidate.TryGetCurrentPattern(ValuePattern.Pattern, out _) ? "Edit has no ValuePattern" : "ready";
+                if (state == "ready") edit = candidate;
+                return edit is not null;
+            }, $"{id} as an enabled Edit with ValuePattern");
+        }
+        catch (TimeoutException error)
+        {
+            throw new TimeoutException($"{error.Message} Last state: {state}.", error);
+        }
+        return edit!;
     }
 
     [GatewayFixtureUiFact]
@@ -221,23 +249,23 @@ public sealed partial class GatewayFixtureUiTests
             Invoke(FindById(run, "WorkspaceSearch")!);
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null &&
                 FindById(run, "SearchResult_0") is { Current.IsOffscreen: false }, "empty search popup");
-            Scan("empty");
-            var input = (ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern);
+            await ScanAsync("empty");
+            var input = (ValuePattern)(await SearchEditAsync(run, "WorkspaceSearchBox")).GetCurrentPattern(ValuePattern.Pattern);
             input.SetValue("camera");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true &&
                 FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                 "camera destination and settled source status");
-            Scan("results");
+            await ScanAsync("results");
             input.SetValue("zzqqxx-no-such-destination");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is null &&
                 FindById(run, "WorkspaceSearchBox") is { Current.IsOffscreen: false } inputStatus &&
                 !string.IsNullOrEmpty(inputStatus.Current.ItemStatus) &&
                 !inputStatus.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase), "unmatched accessible input status");
-            Scan("status");
+            await ScanAsync("status");
 
-            void Scan(string state)
+            async Task ScanAsync(string state)
             {
-                var popup = FindById(run, "WorkspaceSearchFlyout")!;
+                var popup = await WaitForElementByIdAsync(run, "WorkspaceSearchFlyout", $"search popup for the {state} scan");
                 Assert.DoesNotContain(popup.FindAll(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ScrollBar)).Cast<AutomationElement>(),
                     bar => !bar.Current.IsOffscreen && bar.Current.Orientation == OrientationType.Horizontal);
@@ -259,7 +287,7 @@ public sealed partial class GatewayFixtureUiTests
             var before = await run.InvokeAsync("app.settings.get", new { name = "NodeCameraEnabled" });
             Send(run, window, "^e");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "search opened");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("camera");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true,
                 "camera destination selected");
@@ -295,7 +323,7 @@ public sealed partial class GatewayFixtureUiTests
             SetForeground(window);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is not null, "Settings search");
-            edit = SearchEdit(run, "SettingsSearchBox");
+            edit = await SearchEditAsync(run, "SettingsSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("camera");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
                 .StartsWith("Camera.", StringComparison.Ordinal) == true, "Settings camera result");
@@ -330,13 +358,13 @@ public sealed partial class GatewayFixtureUiTests
             {
                 Send(run, window, "^k");
                 await WaitUiAsync(run, () => FindById(run, inputId) is not null, "shared search popup");
-                var edit = SearchEdit(run, inputId);
+                var edit = await SearchEditAsync(run, inputId);
                 ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(query);
                 await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
                     .StartsWith(title + ".", StringComparison.Ordinal) == true &&
                     FindById(run, inputId)?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                     "plain localized destination name and settled results");
-                var row = FindById(run, "SearchResult_0")!;
+                var row = await WaitForElementByIdAsync(run, "SearchResult_0", "settled destination row");
                 Assert.DoesNotContain("Go to", row.Current.Name, StringComparison.OrdinalIgnoreCase);
                 row.SetFocus();
                 await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is { Current.HasKeyboardFocus: true },
@@ -349,7 +377,7 @@ public sealed partial class GatewayFixtureUiTests
                     $"exact native {title} page");
                 if (query == "Models")
                 {
-                    var heading = FindById(run, marker)!;
+                    var heading = await WaitForElementByIdAsync(run, marker, "Models page heading");
                     Assert.Equal("Models", heading.Current.Name);
                     await WaitForStablePageGeometryAsync(run, window, heading.Current.BoundingRectangle.Left);
                     OwnedWindowCapture.Save(run, window, "models-page.png", heading);
@@ -379,12 +407,12 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Layout skill");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_4") is not null &&
                 FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                 "long skill results and settled status");
-            var list = FindById(run, "SearchResultsList")!;
+            var (list, scroll) = await SearchScrollAsync(run);
             var more = FindById(run, "SearchMore");
             Assert.NotNull(more);
             Assert.Null(list.FindFirst(TreeScope.Descendants,
@@ -394,13 +422,10 @@ public sealed partial class GatewayFixtureUiTests
                 "More results must be beside the search input, not after or over the result list.");
             Assert.Null(FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
                 "Enter: Open. Alt+Enter: Dashboard when available. Esc: Close.")));
-            var scrolling = list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern) ? list :
-                list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))!;
-            var scroll = (ScrollPattern)(pattern ?? scrolling.GetCurrentPattern(ScrollPattern.Pattern));
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
             await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_4")),
                 "last complete result without footer messages");
-            var last = FindById(run, "SearchResult_4")!;
+            var last = await WaitForElementByIdAsync(run, "SearchResult_4", "last complete result");
             Assert.Contains("Final line remains readable.", last.Current.Name);
             OwnedWindowCapture.Save(run, window, "search-no-footer.png", list);
             more!.SetFocus();
@@ -428,7 +453,8 @@ public sealed partial class GatewayFixtureUiTests
                 }
                 throw;
             }
-            Assert.Contains("Final line remains readable.", FindById(run, "SearchResult_5")!.Current.Name);
+            Assert.Contains("Final line remains readable.",
+                (await WaitForElementByIdAsync(run, "SearchResult_5", "expanded last result")).Current.Name);
             Assert.True(FindById(run, "SearchMore") is null or { Current.IsOffscreen: true });
             OwnedWindowCapture.Save(run, window, "search-expanded-last-description.png", list);
             Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
@@ -453,23 +479,24 @@ public sealed partial class GatewayFixtureUiTests
             });
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            ((ValuePattern)SearchEdit(run, "WorkspaceSearchBox").GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field");
+            ((ValuePattern)(await SearchEditAsync(run, "WorkspaceSearchBox")).GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field");
             await WaitUiAsync(run, () => FindById(run, "SearchMore") is not null &&
                 FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase) != true,
                 "both groups settled");
-            ScrollSearch(run);
-            FindById(run, "SearchMore")!.SetFocus();
+            await ScrollSearchAsync(run);
+            (await WaitForElementByIdAsync(run, "SearchMore", "More button after both groups settled")).SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_5") is { Current.HasKeyboardFocus: true } row &&
                 row.Current.Name.StartsWith("Fixture navigation field 6.", StringComparison.Ordinal),
                 "first new result in the earlier group");
             Assert.True(IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_5")));
-            ScrollSearch(run);
+            await ScrollSearchAsync(run);
             await WaitUiAsync(run, () => FindById(run, "SearchResult_13") is { Current.IsOffscreen: false } row &&
                 row.Current.Name.StartsWith("Fixture navigation field skill 6.", StringComparison.Ordinal),
                 "later group has its new result and shifted index");
             Assert.True(IsFullyVisibleInScrollViewport(FindById(run, "SearchResult_13")));
-            Assert.StartsWith("Fixture navigation field skill 1.", FindById(run, "SearchResult_8")!.Current.Name, StringComparison.Ordinal);
+            Assert.StartsWith("Fixture navigation field skill 1.",
+                (await WaitForElementByIdAsync(run, "SearchResult_8", "first later-group result")).Current.Name, StringComparison.Ordinal);
             Assert.True(FindById(run, "SearchMore") is null or { Current.IsOffscreen: true });
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "skills.update" or "chat.send");
         }, scenario: GatewayScenario.CreateSearchNavigation());
@@ -486,30 +513,32 @@ public sealed partial class GatewayFixtureUiTests
             run.Gateway.FailSearchRead("sessions.search");
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field");
             await WaitUiAsync(run, () => FindById(run, "SearchMore") is not null &&
                 FindById(run, "SearchRetry") is not null, "more and retry buttons");
             Assert.True(edit.Current.BoundingRectangle.Width >= 120,
                 "The query input must remain usable while More and Retry are both visible.");
-            ScrollSearch(run);
-            var before = ResultCount();
-            FindById(run, "SearchMore")!.SetFocus();
+            await ScrollSearchAsync(run);
+            var before = CountResults(await WaitForElementByIdAsync(run, "SearchResultsList", "result list before More"));
+            (await WaitForElementByIdAsync(run, "SearchMore", "More button")).SetFocus();
             Send(run, window, "{ENTER}");
-            await WaitUiAsync(run, () => ResultCount() > before, "native Enter expands results");
+            await WaitUiAsync(run, () => FindById(run, "SearchResultsList") is { } list && CountResults(list) > before,
+                "native Enter expands results");
             Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
             var requests = run.Gateway.Requests.Count(request => request.Method == "sessions.search");
             run.Gateway.ClearSearchReadOverride("sessions.search");
-            ScrollSearch(run);
-            FindById(run, "SearchRetry")!.SetFocus();
+            await ScrollSearchAsync(run);
+            (await WaitForElementByIdAsync(run, "SearchRetry", "Retry button")).SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => run.Gateway.Requests.Count(request => request.Method == "sessions.search") > requests &&
                 FindById(run, "SearchRetry") is null or { Current.IsOffscreen: true }, "native Enter retries the failed source");
             Assert.NotNull(FindById(run, "WorkspaceSearchBox"));
             Assert.Null(FindById(run, "ConfigPageMarker"));
-            OwnedWindowCapture.Save(run, window, "search-keyboard-more-retry.png", FindById(run, "SearchResultsList")!);
+            OwnedWindowCapture.Save(run, window, "search-keyboard-more-retry.png",
+                await WaitForElementByIdAsync(run, "SearchResultsList", "result list after Retry for capture"));
 
-            int ResultCount() => FindById(run, "SearchResultsList")!.FindAll(TreeScope.Descendants,
+            static int CountResults(AutomationElement list) => list.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem)).Count;
         }, scenario: scenario);
     }
@@ -523,7 +552,7 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture navigation field 8");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
                 .StartsWith("Fixture navigation field 8.", StringComparison.Ordinal) == true, "schema-only result");
@@ -532,7 +561,8 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "ConfigField:field8")),
                 "requested field in the absent optional section");
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "config.patch" or "config.set" or "config.apply");
-            OwnedWindowCapture.Save(run, window, "search-absent-config-field.png", FindById(run, "ConfigField:field8")!);
+            OwnedWindowCapture.Save(run, window, "search-absent-config-field.png",
+                await WaitForElementByIdAsync(run, "ConfigField:field8", "revealed config field for capture"));
         }, scenario: GatewayScenario.CreateSearchNavigation());
     }
 
@@ -545,7 +575,7 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Unrenderable navigation field");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
                 .StartsWith("Unrenderable navigation field.", StringComparison.Ordinal) == true, "unrenderable schema result");
@@ -554,17 +584,16 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindInApp(run,
                 new PropertyCondition(AutomationElement.NameProperty, "Unrenderable Navigation")) is not null,
                 "initial section without a renderable field");
-            var section = FindInApp(run, new AndCondition(
+            var section = await WaitForInAppAsync(run, new AndCondition(
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.TreeItem),
-                new PropertyCondition(AutomationElement.NameProperty, "\U0001F4C1 Optional Navigation")))!;
-            Assert.NotNull(section);
+                new PropertyCondition(AutomationElement.NameProperty, "\U0001F4C1 Optional Navigation")), "optional section tree item");
             section.SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => IsFullyVisibleInScrollViewport(FindById(run, "ConfigField:field1")) &&
                 section.Current.HasKeyboardFocus, "manual navigation retains tree focus and section-top scroll");
-            Assert.False(FindById(run, "ConfigField:field8")!.Current.HasKeyboardFocus);
-            Assert.Equal("unchanged", ((ValuePattern)FindById(run, "ConfigField:field8")!
-                .GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
+            var field8 = await WaitForElementByIdAsync(run, "ConfigField:field8", "unrevealed config field");
+            Assert.False(field8.Current.HasKeyboardFocus);
+            Assert.Equal("unchanged", ((ValuePattern)field8.GetCurrentPattern(ValuePattern.Pattern)).Current.Value);
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method is "config.patch" or "config.set");
         }, scenario: GatewayScenario.CreateSearchNavigation(includeUnrenderableSection: true));
     }
@@ -579,29 +608,28 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus
                 .Contains("searching", StringComparison.OrdinalIgnoreCase) != true &&
                 FindById(run, "SearchMore") is not null, "settled metadata");
-            ScrollSearch(run);
-            var previousRows = FindById(run, "SearchResultsList")!.FindAll(TreeScope.Descendants,
+            await ScrollSearchAsync(run);
+            var previousRows = (await WaitForElementByIdAsync(run, "SearchResultsList", "settled result list")).FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem))
                 .Cast<AutomationElement>().Select(item => item.Current.Name).ToHashSet();
-            Invoke(FindById(run, "SearchMore")!);
+            Invoke(await WaitForElementByIdAsync(run, "SearchMore", "More button"));
             await WaitUiAsync(run, () => FindInApp(run, new AndCondition(
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
                 new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true))) is { } revealed &&
                 !previousRows.Contains(revealed.Current.Name), "More focus handoff before metadata navigation");
-            ScrollSearch(run, 0);
+            await ScrollSearchAsync(run, 0);
             const string title = GatewayScenario.EmptyTitle;
             await WaitUiAsync(run, () => FindInApp(run, new PropertyCondition(
                 AutomationElement.NameProperty, title + ". main. ")) is { Current.IsOffscreen: false },
                 "metadata target visible after scrolling back");
-            var row = FindInApp(run, new AndCondition(
+            var row = await WaitForInAppAsync(run, new AndCondition(
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ListItem),
-                new PropertyCondition(AutomationElement.NameProperty, title + ". main. ")))!;
-            Assert.NotNull(row);
+                new PropertyCondition(AutomationElement.NameProperty, title + ". main. ")), "metadata target row");
             ((SelectionItemPattern)row.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             row.SetFocus();
             const string revised = title + " revised";
@@ -613,10 +641,7 @@ public sealed partial class GatewayFixtureUiTests
             Assert.True(IsFullyVisibleInScrollViewport(FindInApp(run,
                 new PropertyCondition(AutomationElement.NameProperty, revised + ". main. "))));
             edit.SetFocus();
-            var list = FindById(run, "SearchResultsList")!;
-            var scrollElement = list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern) ? list :
-                list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))!;
-            var scroll = (ScrollPattern)(pattern ?? scrollElement.GetCurrentPattern(ScrollPattern.Pattern));
+            var (_, scroll) = await SearchScrollAsync(run);
             Assert.True(scroll.Current.VerticallyScrollable);
             scroll.SetScrollPercent(ScrollPattern.NoScroll, 100);
             await WaitUiAsync(run, () => scroll.Current.VerticalScrollPercent >= 99, "result list scrolled to the end");
@@ -629,7 +654,8 @@ public sealed partial class GatewayFixtureUiTests
                 AutomationElement.NameProperty, updated + ". main. ")) is not null, "second metadata update");
             Assert.True(edit.Current.HasKeyboardFocus);
             Assert.True(scroll.Current.VerticalScrollPercent >= 99, "Metadata refresh reset the user's result scroll.");
-            row = FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, updated + ". main. "))!;
+            row = await WaitForInAppAsync(run, new PropertyCondition(AutomationElement.NameProperty, updated + ". main. "),
+                "updated metadata row");
             row.SetFocus();
             Send(run, window, "{ENTER}");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null && SessionSelected(run, updated),
@@ -649,14 +675,14 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture:");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox")?.Current.ItemStatus
                 .Contains("searching", StringComparison.OrdinalIgnoreCase) != true &&
                 FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
                     GatewayScenario.EmptyTitle + ". main. ")) is { Current.IsOffscreen: false }, "settled conversations");
-            var row = FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
-                GatewayScenario.EmptyTitle + ". main. "))!;
+            var row = await WaitForInAppAsync(run, new PropertyCondition(AutomationElement.NameProperty,
+                GatewayScenario.EmptyTitle + ". main. "), "settled conversation row");
             ((SelectionItemPattern)row.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             row.SetFocus();
             scenario.RenameSession(GatewayScenario.EmptySessionKey, "Renamed conversation");
@@ -664,7 +690,7 @@ public sealed partial class GatewayFixtureUiTests
             await WaitUiAsync(run, () => FindInApp(run, new PropertyCondition(AutomationElement.NameProperty,
                     GatewayScenario.EmptyTitle + ". main. ")) is null &&
                 edit.Current.HasKeyboardFocus, "vanished result returns focus to the query");
-            var selected = ((SelectionPattern)FindById(run, "SearchResultsList")!
+            var selected = ((SelectionPattern)(await WaitForElementByIdAsync(run, "SearchResultsList", "result list after the result vanished"))
                 .GetCurrentPattern(SelectionPattern.Pattern)).Current.GetSelection();
             var next = Assert.Single(selected);
             Assert.StartsWith(GatewayScenario.MainTitle + ".", next.Current.Name, StringComparison.Ordinal);
@@ -674,12 +700,12 @@ public sealed partial class GatewayFixtureUiTests
 
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup for last match");
-            edit = SearchEdit(run, "WorkspaceSearchBox");
+            edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Renamed conversation");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name
                 .StartsWith("Renamed conversation.", StringComparison.Ordinal) == true &&
                 !edit.Current.ItemStatus.Contains("searching", StringComparison.OrdinalIgnoreCase), "single settled match");
-            row = FindById(run, "SearchResult_0")!;
+            row = await WaitForElementByIdAsync(run, "SearchResult_0", "single settled match row");
             row.SetFocus();
             scenario.RenameSession(GatewayScenario.EmptySessionKey, "No longer matches");
             await run.Gateway.NotifySessionsChangedAsync();
@@ -707,7 +733,7 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "Workspace popup");
-            var input = SearchEdit(run, "WorkspaceSearchBox");
+            var input = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("camera");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Camera.", StringComparison.Ordinal) == true,
                 "setting target");
@@ -715,7 +741,7 @@ public sealed partial class GatewayFixtureUiTests
             Send(run, window, "{ENTER}");
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "SettingsSearchBox") is not null, "immediately reopened Settings popup");
-            input = SearchEdit(run, "SettingsSearchBox");
+            input = await SearchEditAsync(run, "SettingsSearchBox");
             ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Fixture: main conversation");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith(GatewayScenario.MainTitle + ".", StringComparison.Ordinal) == true,
                 "chat target after the old Workspace popup closed");
@@ -723,7 +749,7 @@ public sealed partial class GatewayFixtureUiTests
             Send(run, window, "{ENTER}");
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "immediately reopened Workspace popup");
-            input = SearchEdit(run, "WorkspaceSearchBox");
+            input = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue("lighthouse");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.Contains(GatewayScenario.MainSentinel, StringComparison.Ordinal) == true,
                 "remote search still works after the old Settings popup closed");
@@ -747,15 +773,16 @@ public sealed partial class GatewayFixtureUiTests
             var (window, _, _) = await PrepareChatWithDraftAsync(run);
             Send(run, window, "^k");
             await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is not null, "popup");
-            var edit = SearchEdit(run, "WorkspaceSearchBox");
+            var edit = await SearchEditAsync(run, "WorkspaceSearchBox");
             ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue("Navigation skill");
             await WaitUiAsync(run, () => FindById(run, "SearchResult_0")?.Current.Name.StartsWith("Navigation skill.", StringComparison.Ordinal) == true,
                 "selected-agent skill result");
-            Assert.Contains("Dashboard", FindById(run, "SearchResult_0")!.Current.Name);
+            var skillResult = await WaitForElementByIdAsync(run, "SearchResult_0", "selected-agent skill row");
+            Assert.Contains("Dashboard", skillResult.Current.Name);
             Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "skills.update");
             Assert.Null(FindInApp(run, new PropertyCondition(AutomationElement.NameProperty, "Foreign agent skill")));
             Assert.Null(FindById(run, "SkillsPageMarker"));
-            OwnedWindowCapture.Save(run, window, "search-skills-dashboard.png", FindById(run, "SearchResult_0")!);
+            OwnedWindowCapture.Save(run, window, "search-skills-dashboard.png", skillResult);
         }, scenario: GatewayScenario.CreateSearchNavigation());
     }
 
@@ -764,13 +791,33 @@ public sealed partial class GatewayFixtureUiTests
         NativeKeyboardProof.ActivateAsync(new IntPtr(window.Current.NativeWindowHandle)).GetAwaiter().GetResult();
     }
 
-    private static void ScrollSearch(GatewayFixtureRun run, double percent = 100)
+    private static async Task ScrollSearchAsync(GatewayFixtureRun run, double percent = 100)
     {
-        var list = FindById(run, "SearchResultsList")!;
-        var element = list.TryGetCurrentPattern(ScrollPattern.Pattern, out var pattern) ? list :
-            list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true))!;
-        var scroll = (ScrollPattern)(pattern ?? element.GetCurrentPattern(ScrollPattern.Pattern));
+        var (_, scroll) = await SearchScrollAsync(run);
         if (scroll.Current.VerticallyScrollable) scroll.SetScrollPercent(ScrollPattern.NoScroll, percent);
+    }
+
+    // Re-acquires the result list and its scroll host on each poll instead of trusting one lookup.
+    private static async Task<(AutomationElement List, ScrollPattern Scroll)> SearchScrollAsync(GatewayFixtureRun run)
+    {
+        AutomationElement? list = null;
+        ScrollPattern? scroll = null;
+        await WaitUiAsync(run, () =>
+        {
+            list = FindById(run, "SearchResultsList");
+            var host = list is null ? null : list.TryGetCurrentPattern(ScrollPattern.Pattern, out _) ? list :
+                list.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.IsScrollPatternAvailableProperty, true));
+            scroll = host?.GetCurrentPattern(ScrollPattern.Pattern) as ScrollPattern;
+            return scroll is not null;
+        }, "search result list with a scroll host");
+        return (list!, scroll!);
+    }
+
+    private static async Task<AutomationElement> WaitForInAppAsync(GatewayFixtureRun run, Condition condition, string description)
+    {
+        AutomationElement? element = null;
+        await WaitUiAsync(run, () => (element = FindInApp(run, condition)) is not null, description);
+        return element!;
     }
 
     private static bool IsFullyVisibleInScrollViewport(AutomationElement? element)
@@ -845,8 +892,9 @@ public sealed partial class GatewayFixtureUiTests
         FindById(run, "ChatComposerInput")!.SetFocus();
     }
 
-    private static string ComposerText(GatewayFixtureRun run) =>
-        ((ValuePattern)FindById(run, "ChatComposerInput")!.GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
+    // An empty value while the composer is briefly missing keeps waits polling and fails equality asserts clearly.
+    private static string ComposerText(GatewayFixtureRun run) => FindById(run, "ChatComposerInput") is { } composer
+        ? ((ValuePattern)composer.GetCurrentPattern(ValuePattern.Pattern)).Current.Value : "";
 
     private static async Task EscapeAndAssertDraftAsync(
         GatewayFixtureRun run, AutomationElement window, int[] composerIdentity, bool expectComposerFocus)
@@ -854,8 +902,8 @@ public sealed partial class GatewayFixtureUiTests
         Send(run, window, "{ESC}");
         await WaitUiAsync(run, () => FindById(run, "WorkspaceSearchBox") is null, "search flyout closed by Escape");
         if (expectComposerFocus)
-            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput")!.Current.HasKeyboardFocus, "composer focus restored by Escape");
-        Assert.Equal(composerIdentity, FindById(run, "ChatComposerInput")!.GetRuntimeId());
+            await WaitUiAsync(run, () => FindById(run, "ChatComposerInput") is { Current.HasKeyboardFocus: true }, "composer focus restored by Escape");
+        Assert.Equal(composerIdentity, (await WaitForElementByIdAsync(run, "ChatComposerInput", "composer after Escape")).GetRuntimeId());
         Assert.Equal(MainSearchDraft, ComposerText(run));
     }
 }

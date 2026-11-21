@@ -7,6 +7,9 @@ internal static class AccessibilityNavigationSignal
     private const string SignalPathEnvironmentVariable =
         "OPENCLAW_ACCESSIBILITY_NAVIGATION_SIGNAL";
 
+    internal static bool IsEnabled =>
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(SignalPathEnvironmentVariable));
+
     internal static void WritePageReady(string? pageName)
     {
         var signalPath = Environment.GetEnvironmentVariable(

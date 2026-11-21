@@ -58,12 +58,15 @@ public sealed class PersonalTailscaleGatewayClientTests
         await using var peer = new PersonalGatewayProtocolFixture();
         using var client = peer.CreateClient(identity.Path);
         var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var failureKind = new TaskCompletionSource<GatewayErrorKind>(TaskCreationOptions.RunContinuationsAsynchronously);
         client.AuthenticationFailed += (_, _) => failed.TrySetResult();
+        client.ConnectionFailure += (_, kind) => failureKind.TrySetResult(kind);
         await client.ConnectAsync();
         await peer.ChallengeAsync();
         var connect = await peer.ReceiveAsync();
         await peer.HelloAsync(connect, method, scope);
         await failed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(GatewayErrorKind.PersonalIdentityUnverified, await failureKind.Task.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Null(client.PersonalHandshakeConnectionEpoch);
         Assert.False(client.IsConnectedToGateway);
     }

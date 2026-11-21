@@ -5,8 +5,13 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:OpenClaw.SetupEngine.UI.Controls"
     xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:themes="using:OpenClaw.SetupEngine.UI.Themes"
     NavigationCacheMode="Disabled">
     <Page.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <themes:SetupResources />
+        </ResourceDictionary.MergedDictionaries>
         <Style x:Key="CompactChoice" TargetType="tk:SettingsCard">
             <Setter Property="MinHeight" Value="64" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
@@ -19,14 +24,16 @@
                              Style="{StaticResource CompactChoice}"
                              AutomationProperties.Name="{Binding Label}">
                 <controls:SetupActionCard.Header>
-                    <Grid ColumnDefinitions="Auto,*">
-                        <Viewbox Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center">
-                            <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
-                        </Viewbox>
-                        <StackPanel Grid.Column="1" Spacing="4">
-                            <TextBlock Text="{Binding Label}" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Detail}" Style="{StaticResource CaptionTextBlockStyle}"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                        <Border Width="40" Height="40" CornerRadius="8" VerticalAlignment="Center"
+                                Background="{ThemeResource SetupTileBrush}">
+                            <Viewbox Width="24" Height="24">
+                                <controls:ProviderArtwork Descriptor="{Binding Artwork}" Session="{Binding ArtworkSession}" />
+                            </Viewbox>
+                        </Border>
+                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding Label}" Style="{StaticResource SetupRowTitleTextStyle}" />
+                            <TextBlock Text="{Binding Detail}" Style="{StaticResource SetupRowDescriptionTextStyle}"
                                        Visibility="{Binding DetailVisibility}" />
                         </StackPanel>
                     </Grid>
@@ -38,8 +45,9 @@
         <DataTemplate x:Key="ProviderPickerTemplate">
             <TextBlock Text="{Binding Label}" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap" />
         </DataTemplate>
+        </ResourceDictionary>
     </Page.Resources>
-    <Grid RowDefinitions="Auto,*,Auto" Padding="40,4,40,24">
+    <Grid RowDefinitions="Auto,*,Auto" Padding="{StaticResource SetupPagePadding}">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup>
                 <VisualState x:Name="ManualStacked">
@@ -56,26 +64,20 @@
                 <VisualState x:Name="ManualHorizontal" />
             </VisualStateGroup>
         </VisualStateManager.VisualStateGroups>
-        <StackPanel x:Name="AiHeader" Spacing="4" HorizontalAlignment="Stretch">
-            <controls:OnboardingMascot x:Name="MascotHero" Mood="Curious" HorizontalAlignment="Center" />
-            <TextBlock x:Name="TitleText" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap"
-                       TextAlignment="Center" />
-            <TextBlock x:Name="StatusText" Style="{StaticResource BodyTextBlockStyle}" TextWrapping="Wrap"
-                       TextAlignment="Center" Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
-            <TextBlock x:Uid="Onboarding_Ai_CompletionConsent"
-                       Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" TextAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+        <StackPanel x:Name="AiHeader" Style="{StaticResource SetupHeroPanelStyle}">
+            <TextBlock x:Name="TitleText" Style="{StaticResource SetupHeroTitleTextStyle}" TextWrapping="Wrap" />
+            <TextBlock x:Name="StatusText" Style="{StaticResource SetupHeroSubtitleTextStyle}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
+            <TextBlock x:Name="CompletionConsentText" x:Uid="Onboarding_Ai_CompletionConsent" Style="{StaticResource SetupFootnoteTextStyle}" />
             <StackPanel x:Name="ProviderActivity" Spacing="16" Visibility="Collapsed">
                 <TextBlock x:Name="ProviderActivityStatus" Style="{StaticResource BodyTextBlockStyle}"
-                           TextWrapping="Wrap" TextAlignment="Center"
+                           TextWrapping="Wrap"
                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" AutomationProperties.LiveSetting="Polite" />
-                <ProgressBar x:Name="ProviderActivityProgress" IsIndeterminate="True" MaxWidth="320"
-                             HorizontalAlignment="Stretch" />
+                <ProgressBar x:Name="ProviderActivityProgress" IsIndeterminate="True" HorizontalAlignment="Stretch" />
                 <InfoBar x:Name="ProviderActivityError" IsOpen="False" IsClosable="False" Severity="Error" />
             </StackPanel>
         </StackPanel>
-        <ScrollViewer x:Name="ChoicesScroller" Grid.Row="1" Margin="0,24,0,16" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="12">
+        <ScrollViewer x:Name="ChoicesScroller" Grid.Row="1" Margin="{StaticResource SetupBodyMargin}" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="12" Margin="{StaticResource SetupGutterMargin}">
                 <InfoBar x:Name="ErrorBar" IsOpen="False" IsClosable="False" Severity="Error">
                     <InfoBar.ActionButton>
                         <Button x:Name="CloseBlockedSetupButton"
@@ -105,29 +107,32 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
                 <StackPanel x:Name="CandidatesSection" Spacing="8" Visibility="Collapsed">
-                    <TextBlock x:Name="CandidatesHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                    <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                    <TextBlock x:Name="CandidatesHeading" Style="{StaticResource SetupSectionTextStyle}" />
+                    <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource SetupHairlineBrush}">
                         <ItemsControl x:Name="CandidateChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
                     </Border>
                 </StackPanel>
                 <StackPanel x:Name="LocalGroupHeader" Spacing="4" Visibility="Collapsed">
-                    <TextBlock x:Name="LocalGroupHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                    <TextBlock x:Name="LocalGroupDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
+                    <TextBlock x:Name="LocalGroupHeading" Style="{StaticResource SetupSectionTextStyle}" />
+                    <TextBlock x:Name="LocalGroupDescription" Style="{StaticResource SetupFootnoteTextStyle}" />
                 </StackPanel>
                 <StackPanel x:Name="LocalAiSection" Spacing="8">
                     <tk:SettingsCard x:Name="LocalAiCard" IsClickEnabled="False" Click="LocalAi_Click"
+                                     Style="{StaticResource CompactChoice}"
                                      AutomationProperties.AutomationId="OnboardingLocalAiCard">
                         <tk:SettingsCard.Header>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Left">
-                                <TextBlock x:Name="LocalAiTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                                <controls:RecommendedBadge x:Name="LocalAiRecommendedBadge" Grid.Column="1" />
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                <controls:SetupGlyphTile x:Name="LocalAiTile" VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" HorizontalAlignment="Left">
+                                        <TextBlock x:Name="LocalAiTitle" Style="{StaticResource SetupRowTitleTextStyle}" />
+                                        <controls:RecommendedBadge x:Name="LocalAiRecommendedBadge" Grid.Column="1" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock x:Name="LocalAiDescription" Style="{StaticResource SetupRowDescriptionTextStyle}"
+                                               AutomationProperties.LiveSetting="Polite" />
+                                </StackPanel>
                             </Grid>
                         </tk:SettingsCard.Header>
-                        <tk:SettingsCard.Description>
-                            <TextBlock x:Name="LocalAiDescription" Style="{StaticResource CaptionTextBlockStyle}"
-                                       TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite" />
-                        </tk:SettingsCard.Description>
                         <TextBlock x:Name="LocalAiActionText" Style="{StaticResource BodyTextBlockStyle}"
                                    MaxWidth="112" TextWrapping="Wrap" />
                     </tk:SettingsCard>
@@ -135,8 +140,7 @@
                 <StackPanel x:Name="ChoicePanel" Spacing="12">
                     <InfoBar x:Name="UtilityNotice" IsOpen="True" IsClosable="False" Severity="Informational" Visibility="Collapsed" />
                     <StackPanel x:Name="PrepareSection" Spacing="8">
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <Border x:Name="PrepareDivider" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource SetupHairlineBrush}">
                             <ItemsControl x:Name="PrepareChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
                         </Border>
                     </StackPanel>
@@ -145,7 +149,7 @@
                         <TextBlock x:Name="CatalogPreferenceText" TextWrapping="Wrap" />
                     </CheckBox>
                     <StackPanel x:Name="UnavailableSection" Spacing="8">
-                        <TextBlock x:Name="UnavailableHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                        <TextBlock x:Name="UnavailableHeading" Style="{StaticResource SetupSectionTextStyle}" />
                         <ItemsControl x:Name="UnavailableCandidates">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
@@ -163,10 +167,9 @@
                         </ItemsControl>
                     </StackPanel>
                     <StackPanel x:Name="SignInSection" Spacing="8">
-                        <TextBlock x:Name="SignInHeading" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
-                        <TextBlock x:Name="CloudDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
-                        <Border x:Name="ProviderGroup" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <TextBlock x:Name="SignInHeading" Style="{StaticResource SetupSectionTextStyle}" />
+                        <TextBlock x:Name="CloudDescription" Style="{StaticResource SetupFootnoteTextStyle}" />
+                        <Border x:Name="ProviderGroup" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource SetupHairlineBrush}">
                         <StackPanel Spacing="0">
                         <ItemsControl x:Name="FeaturedSignInChoices" ItemTemplate="{StaticResource ChoiceTemplate}" />
                         <tk:SettingsExpander x:Name="MoreExpander" IsExpanded="False" HorizontalAlignment="Stretch"
@@ -179,17 +182,19 @@
                         </Border>
                     </StackPanel>
                     <StackPanel x:Name="ApiKeySection" Margin="0,12,0,0">
-                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8"
-                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1">
+                        <Border BorderThickness="0,1,0,0" BorderBrush="{ThemeResource SetupHairlineBrush}">
                             <StackPanel Spacing="0">
                                 <controls:SetupActionCard x:Name="ApiKeysButton" IsClickEnabled="True" InvokeRequested="ApiKeys_Click"
                                                  Style="{StaticResource CompactChoice}">
                                     <controls:SetupActionCard.Header>
-                                        <TextBlock x:Name="ApiKeysTitle" Style="{StaticResource BodyStrongTextBlockStyle}" TextWrapping="Wrap" />
+                                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                            <controls:SetupGlyphTile x:Name="ApiKeysTile" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                <TextBlock x:Name="ApiKeysTitle" Style="{StaticResource SetupRowTitleTextStyle}" />
+                                                <TextBlock x:Name="ApiKeysDescription" Style="{StaticResource SetupRowDescriptionTextStyle}" />
+                                            </StackPanel>
+                                        </Grid>
                                     </controls:SetupActionCard.Header>
-                                    <controls:SetupActionCard.Description>
-                                        <TextBlock x:Name="ApiKeysDescription" Style="{StaticResource CaptionTextBlockStyle}" TextWrapping="Wrap" />
-                                    </controls:SetupActionCard.Description>
                                     <TextBlock x:Name="ApiKeysActionText" Style="{StaticResource BodyTextBlockStyle}"
                                                MaxWidth="112" TextWrapping="Wrap" />
                                 </controls:SetupActionCard>
@@ -259,15 +264,10 @@
                 <ProgressBar x:Name="BusyProgress" IsIndeterminate="True" Visibility="Collapsed" />
             </StackPanel>
         </ScrollViewer>
-        <Grid Grid.Row="2" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button x:Name="RefreshButton" Click="Refresh_Click" />
-                <Button x:Name="LegacyButton" Click="Legacy_Click" Visibility="Collapsed" />
-            </StackPanel>
-            <controls:SetupProgressIndicator x:Name="FlowProgress" Grid.Column="1"
-                                            HorizontalAlignment="Center" VerticalAlignment="Center" />
-            <Button x:Name="ProviderCancelButton" Grid.Column="2" Click="Cancel_Click"
-                    MinWidth="100" HorizontalAlignment="Right" Visibility="Collapsed" />
-        </Grid>
+        <controls:SetupFooterPanel Grid.Row="2" Style="{StaticResource SetupNavPanelStyle}">
+            <Button x:Name="LegacyButton" Click="Legacy_Click" Visibility="Collapsed" Style="{StaticResource SetupSecondaryButtonStyle}" />
+            <Button x:Name="RefreshButton" Click="Refresh_Click" Style="{StaticResource SetupSecondaryButtonStyle}" />
+            <Button x:Name="ProviderCancelButton" Click="Cancel_Click" Visibility="Collapsed" Style="{StaticResource SetupSecondaryButtonStyle}" />
+        </controls:SetupFooterPanel>
     </Grid>
 </Page>

@@ -70,7 +70,62 @@ an installed-profile upgrade or Store migration.
 
 ## Build and explore
 
+### Retained live rows and history
+
+`InteractiveGatewayChatTests.HistoryReadMergesRetainedItemStreamWithoutLosingRunningState`
+uses the real WebSocket client, chat bridge and provider with the fixture's
+`PublishChatRunEventAsync` item frames and `OverrideChatRead` transcript response.
+It retains the same live tool row across an initial history read and a forced
+read while the tool is running, then verifies the saved result after completion.
+The test checks actual history-request counts and requires a single correlated
+tool row; it does not restart the provider or reconnect.
+
+Run this transport/provider regression without launching a desktop app:
+
+```powershell
+dotnet test .\tests\OpenClaw.Tray.Tests\OpenClaw.Tray.Tests.csproj --filter 'FullyQualifiedName~InteractiveGatewayChatTests.HistoryReadMergesRetainedItemStreamWithoutLosingRunningState'
+```
+
+For manual proof, selecting an already-loaded conversation only uses cached
+history, and reconnecting can clear the live timeline. Neither substitutes for
+observing retained live entries before a real history request and checking the
+merged result afterward. The fixture test is not native rendering or paired
+Gateway proof.
+
+### Live tool parent links
+
+The transport-only
+`InteractiveGatewayChatTests.SessionToolMirrorLinksAndCompletesExistingLiveChildWithoutHistory`
+case first publishes parent and child `agent` item frames, then sends the child's
+`session.tool` start and result through `PublishSessionToolEventAsync`.
+It verifies that the existing child acquires its parent link while the turn is
+running and completes without adding another tool row or requesting history.
+An ordinary lifecycle event on the same socket bounds observation even when
+the mirror is dropped. This proves the live provider boundary, not mounted UI
+nesting or a real Gateway.
+
+### Saved replies followed by final events
+
+The transport-only
+`InteractiveGatewayChatTests.FinalAfterPersistedReplyInLaterTurnRendersOnceWithoutHistoryReload`
+case drives two consecutive turns through the real client and provider.
+`PublishPersistedAssistantAsync` emits an identified `session.message` reply
+with a `final_answer` text signature before lifecycle end and the unsigned
+`chat` final. The test waits for the final to reach the provider, then checks
+one reply per turn, no streaming rows and no history requests. It does not
+reconnect or reconstruct the timeline to hide a duplicate.
+
 ### Assistant continuity capture
+
+`DisplayRetirementAndMessageLessTerminalsKeepNativeConversationUsable` exercises
+the real app through three consecutive conversation turns: a saved answer
+followed by an empty terminal display override, a message-less error, and a
+message-less abort. It checks native Send/Stop state, preview removal, one saved
+answer and absence of streaming rows, without using lifecycle end to mask a
+lost chat terminal. Main and dashboard conversation cases also retain public
+preamble progress; the dashboard case expands **Worked** and verifies the
+progress is visible inside it. With screenshots enabled, it captures each settled state.
+The fixture uses synthetic messages and does not contact a model provider.
 
 The opt-in UI case
 `SelectedAssistantAndConversationSurviveTransientRosterLossButNotAuthoritativeRemoval`
@@ -96,21 +151,23 @@ installed-app or live-provider behavior.
 a different compatibility path. After a fixture-owned reconnect, the actual
 client receives `unknown method: agents.list` while `sessions.list` still works.
 Workspace must show the legacy sessions and enable new-conversation creation
-with the Gateway's default target. The assistant selector remains unavailable,
-because no authoritative agent roster was delivered. A pending or failed listing
-is not treated as an explicitly unsupported method.
+with the Gateway's default target. New Chat remains local until the first message;
+that send uses `sessions.create` without an `agentId`, then sends to the confirmed
+Gateway-returned key. The assistant selector and location pickers remain unavailable,
+because no authoritative agent roster or placement catalog was delivered. A pending
+or failed listing is not treated as an explicitly unsupported method.
 
 The disconnected assistant menu still exposes its existing connection guidance.
 This does not authorize session creation or treat a pending connected roster as
 available.
 
-`VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
+`VerifiedSetupBindingClearsWhenOpeningLocalNewChat` starts with a real
 production handoff receipt and a synthetic model-verification response. It
-holds the fixture's session-creation response and checks that the prior bound
-setup warning is already cleared, then releases creation and observes the
-ordinary selected conversation. Existing warning recovery coverage checks the
-navigation path; the shutdown guard has a mounted WindowManager case. These
-are behavioral handoff checks, not source-text ordering assertions.
+checks that the prior bound setup warning is already cleared before the local
+draft opens and asserts that no session-creation request is sent until the first
+message. Existing warning recovery coverage checks the navigation path; the
+shutdown guard has a mounted WindowManager case. These are behavioral handoff
+checks, not source-text ordering assertions.
 
 Channels management lives in the Gateway Dashboard, and the native Channels
 page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its
@@ -139,9 +196,9 @@ CI builds the UI and integration test projects before running the fixture and
 passes `-NoBuild` to reuse their matching configuration and RID outputs. Local
 runs build the test projects by default. Neither path adds a separate MSBuild
 `Platform` output tree. Each test-project invocation retains a 900-second default
-deadline; `-TestTimeoutSeconds` accepts 1 through 1800 seconds. The ordinary hosted
-mock-Gateway scenarios step explicitly uses 1500 seconds inside its unchanged
-30-minute outer bound. Timeouts still terminate only the owned test process tree;
+deadline; `-TestTimeoutSeconds` accepts 1 through 1800 seconds. Each hosted
+mock-Gateway scenarios step (one per fixture shard) explicitly uses 1500 seconds inside
+its 30-minute outer bound, which also covers a full unsharded run. Timeouts still terminate only the owned test process tree;
 missing reports, zero tests, failures and skipped selected tests still fail proof.
 
 The same hosted job also builds the unsigned non-Dev Release app and runs both
@@ -288,6 +345,32 @@ as well. That option enables only its own child and still rejects failed,
 skipped, and zero-test runs. The ordinary UI filter continues to exclude those
 keyboard-only cases; `-NativeInputProof` does not select them.
 
+`MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent`
+uses synthetic history in the shipped app to select and copy across paragraphs,
+lists, code, a table and a native collapsed details block. It checks exact
+normalized clipboard text, excludes adjacent messages and collapsed body text,
+switches to a second conversation and back to verify that copying from the
+focused message cannot leak another conversation's text, and exercises edge
+scrolling in the production chat ItemsView. Returning to the same message may
+retain its own selection. The disclosure is scrolled into view before its
+expanded body is checked. This case uses native pointer, keyboard and clipboard
+input, so run it only on an authorized, exclusive interactive desktop:
+
+```powershell
+$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
+$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
+$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:TEMP 'openclaw-markdown-selection'
+$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
+dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
+  -p:Platform=ARM64 -r win-arm64 `
+  --filter 'FullyQualifiedName~MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent' `
+  --logger 'console;verbosity=normal'
+```
+
+The test captures only its owned app window. The fixture Gateway and profile are
+synthetic and disposable; this is not live Gateway, provider, or installed-app
+proof.
+
 ### Saved Gateway ownership and released profiles
 
 `GatewayManagement_UsesSavedOwnershipWithoutSetupState` renders native-only,
@@ -332,15 +415,24 @@ retain the two executable identities and actual result in `test-results-gateway-
 No private keys or raw profile files are published. A missing baseline, digest
 mismatch, failed case, or zero/skipped selection is not compatibility proof.
 
-The dedicated `windows-latest` Gateway fixture job runs this script against its explicitly
+The dedicated `windows-latest` Gateway fixture jobs run this script against their explicitly
 built Debug x64 app after installing the Windows App Runtime selected by
-`Directory.Build.props`. Its dedicated step passes `-NativeInputProof` to the
-wrapper on that owned interactive runner. The wrapper enables native input only
+`Directory.Build.props`. Each job's dedicated step passes `-NativeInputProof` to the
+wrapper on its owned interactive runner. The wrapper enables native input only
 in the ordinary fixture UI child and selects `Category=GatewayFixture` without
 keyboard-only cases, including the
-context-usage and chat-run correlation scenarios. The general UI test step
-excludes that category so each scenario runs once. TRX, synthetic request logs,
-run receipts and owned-window screenshots are uploaded in `test-results-gateway-fixture`
+context-usage and chat-run correlation scenarios. `gateway-fixture` runs shard
+`A` and `gateway-fixture-shard` runs shard `B` in parallel, selected through
+`OPENCLAW_GATEWAY_FIXTURE_UI_SHARD`; together they
+run each scenario once (see [CI impact fast paths](TEST_COVERAGE.md#ci-impact-fast-paths)).
+Both jobs build the UI and integration test projects. Only shard `A` runs the
+profile and application checks and the Release correlation steps. Promoting a
+candidate from before the split runs that candidate's runner, which ignores the
+shard variable, so both jobs run the full suite within the same 30-minute
+step budget.
+The general UI test step excludes that category so each scenario runs once. TRX,
+synthetic request logs, run receipts and owned-window screenshots are uploaded in
+`test-results-gateway-fixture` and `test-results-gateway-fixture-shard`
 under `GatewayFixture`, including on failure. Other keyboard/compositor proof
 opt-ins, production-shaped Release proof, real Gateway, WSL and MXC validation
 remain separate; this hosted smoke does not replace them.
@@ -351,15 +443,15 @@ screen/work-area receipt is retained at `Desktop\geometry.json` in `test-results
 The original two-width and visible-content assertions remain unchanged. The local
 fixture runner does not change your desktop resolution.
 
-The fixture job starts after change classification, independently of the native
-UI job, whenever `ui_tests` is selected. CI Gate requires both jobs to succeed;
+The fixture jobs start after change classification, independently of the native
+UI job, whenever `ui_tests` is selected. CI Gate requires every one of these jobs to succeed;
 a failed, cancelled or unexpectedly skipped fixture job cannot pass the gate.
 Fixture scenarios require successful build, runtime installation and desktop
 preflight. Stable-profile compatibility still runs after a scenario failure when
 those prerequisites succeeded, preserving separate results and screenshots.
 
 For failed fixture tests, browse screenshots without downloading a ZIP: open the workflow run's
-**Summary** and find **Mock Gateway screenshots** in the Gateway fixture job summary.
+**Summary** and find **Mock Gateway screenshots** in the failing Gateway fixture job's summary.
 The index contains only failed tests and interrupted runs with a failure capture,
 grouped by test with failure captures first. Click a capture filename to open its PNG
 in the browser. GitHub sign-in is required. Each PNG also appears individually
@@ -367,8 +459,9 @@ under **Artifacts**, with a test/capture name and unique fixture run ID.
 These previews use unarchived GitHub artifacts, retain the repository's normal
 artifact retention, and are published only when the fixture step fails.
 Successful tests do not create screenshot summary entries or individual PNG
-artifacts; their captures stay inside `test-results-gateway-fixture\GatewayFixture`.
-The `test-results-gateway-fixture` ZIP remains the complete diagnostic download, including
+artifacts; their captures stay inside the job's `GatewayFixture` directory.
+The `test-results-gateway-fixture` and `test-results-gateway-fixture-shard` ZIPs remain
+the complete diagnostic downloads, including
 TRX, request logs, run receipts and original screenshot paths. If no capture was
 produced, the summary says so; inspect the fixture step for a build/startup failure.
 
@@ -647,7 +740,7 @@ Before capture, verify that `project.assets.json` resolves the pinned
 `Microsoft.UI.Reactor` and `Microsoft.UI.Reactor.Advanced` versions, and record
 package provenance with the evidence. NU1603 is not successful integration, and
 exact version resolution alone does not establish app API compatibility. For a
-direct restore, first bootstrap preview.17 as described in
+direct restore, first bootstrap preview.18 as described in
 [Reactor compatibility proof](WINDOWS_NODE_TESTING.md#reactor-compatibility-proof).
 
 The same filter includes editor lifetime regressions: an unsaved draft survives
@@ -760,22 +853,23 @@ The test holds the selected session's initial history while sending a
 1,000-token request followed by a 1,500-token request. The second final is followed by an identical identityless,
 undated replay, then the held matching history at T-1 reports 1,000 tokens and
 20%. The history includes the complete transcript prefix, and the test checks
-that the final reply remains the last assistant entry. Its visible footer must
-remain `1.5K/5.0K (30%)`. It then exercises:
+that the final reply remains the last assistant entry. The composer's visible
+context indicator must remain `1.5K of 5.0K (30%)`; message footers do not carry
+usage details. It then exercises:
 
-| Listing timestamp | Wire usage | Required mounted footer |
+| Listing timestamp | Wire usage | Required mounted composer indicator |
 | --- | --- | --- |
-| T+10 | input 12, output 480, missing total, `totalTokensFresh=false` | `1.5K/5.0K (30%)` |
-| T+5 | valid total 800 | `800/5.0K (16%)` |
-| T+12 | valid total 600 | `600/5.0K (12%)` |
-| T+11, response held until after T+12 renders | valid total 1,200 | `600/5.0K (12%)` |
+| T+10 | input 12, output 480, missing total, `totalTokensFresh=false` | `1.5K of 5.0K (30%)` |
+| T+5 | valid total 800 | `800 of 5.0K (16%)` |
+| T+12 | valid total 600 | `600 of 5.0K (12%)` |
+| T+11, response held until after T+12 renders | valid total 1,200 | `600 of 5.0K (12%)` |
 
 A following `sessions.changed` request, with its reply held, acts as a wire
 barrier: all client subscribers for the preceding listing have finished before
 the native assertion, and another reply cannot repair a rewind before capture.
 No extra production debug command, provider replacement or timing sleep is used.
 Each asserted state always retains an owned-HWND PNG and adjacent JSON with
-footer UIA bounds, text and image SHA256, even without the screenshots flag.
+composer-indicator UIA bounds, text and image SHA256, even without the screenshots flag.
 `context-usage-proof.json` records the scenario and supporting final snapshot.
 
 Run from the worktree on an interactive Windows desktop (use `win-x64` on x64):
@@ -800,7 +894,7 @@ For a separate bounded computer-use capture, start an interactive host console:
 Select **Fixture Main**, then **Fixture: context usage Initial**. Send
 `Fixture usage: first request`, then `Fixture usage: repeat request` using the
 native composer. Enter `missing-total`, `lower800`, `lower600`, and
-`delayed1200` in the **host console**, capturing the footer after each changed
+`delayed1200` in the **host console**, capturing the composer indicator after each changed
 sidebar label appears. These controls only select synthetic listing replies
 and notify the real client. Unknown console controls do nothing. `stop`, Ctrl+C
 or the duration limit cleans up only this app/profile/server. The host prints
@@ -1002,7 +1096,7 @@ bitmap does not establish visible shell acceptance.
 Reactor preview.17 includes the dialog theme and pooled-background fixes that
 previously required a task-local preview.12 backport. Validate the released
 package identities and loaded DLL hashes, not the historical local override.
-Usage retains the aligned Core/Advanced preview.17 pair when integrating the
+Usage retains the aligned Core/Advanced preview.18 pair when integrating the
 shared page foundation and Windows App SDK 2.6.5. Its declarative export
 `ContentDialog` needs inherited theme and host-disposal handling, and its pooled
 count-pill `Border` needs resource-backed background precedence. The mounted
@@ -1013,7 +1107,7 @@ evidence that the newly merged package combination has passed native proof.
 `NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
 Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
 build or run commands; `build.ps1` and building through `run-app-local.ps1`
-already do this. The initializer verifies the official preview.17 release
+already do this. The initializer verifies the official preview.18 release
 digests without changing global NuGet configuration or clearing its cache.
 A successful build alone is not dark-dialog proof.
 The count-pill contrast regression also checks the actual native brush after
@@ -1276,8 +1370,8 @@ the message or idempotency key.
 
 | Interaction | Behavior |
 | --- | --- |
-| `streaming` | Lifecycle start, reasoning, paced assistant deltas, Markdown/code/table, final message and lifecycle end |
-| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message), rather than `agent` assistant deltas |
+| `streaming` | Lifecycle start, reasoning, paced assistant text on both `chat` deltas and `agent` assistant deltas, Markdown/code/table, final message and lifecycle end. Like the Gateway, the fixture omits agent assistant text for clients that advertise `chat-only-assistant-text` |
+| `chat-deltas` | The dedicated `chat` delta contract (`deltaText` and accumulated message) without `agent` assistant deltas |
 | `tools`, `tool-error` | Correlated tool start/result, success or failure, with tool-call/result transcript entries |
 | `tool-powershell` | A synthetic PowerShell command with variables, keywords and strings for input syntax-color proof, followed by literal output. Nothing executes |
 | `agent-activity` | Job activity, then `exec` and `apply_patch` activity items, each paired with correlated tool start/result events and transcript entries. All operations are inert |

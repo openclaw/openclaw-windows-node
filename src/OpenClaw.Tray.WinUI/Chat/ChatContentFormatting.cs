@@ -12,6 +12,22 @@ internal static class ChatContentFormatting
 {
     // Keep this value in sync with OpenClawChatDataProvider.MaxEntryTextBytes for test compatibility.
     private const int MaxEntryTextBytes = 256 * 1024;
+    private static readonly System.Text.RegularExpressions.Regex s_silentPreamble = new(
+        @"\A[\s*_`~]*NO_REPLY[\s*_`~]*\z",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant |
+        System.Text.RegularExpressions.RegexOptions.NonBacktracking);
+
+    internal static string NormalizePreamble(string text)
+    {
+        text = ChatMarkdownSanitizer.StripDeliveryDirectives(text).TrimEnd();
+        var start = 0;
+        while (text.IndexOf('\n', start) is >= 0 and var end &&
+            text.AsSpan(start, end - start).Trim().IsEmpty)
+            start = end + 1;
+        text = text[start..];
+        return s_silentPreamble.IsMatch(text) ? "" : text;
+    }
 
     /// <summary>
     /// Truncate <paramref name="text"/> to at most
@@ -216,6 +232,7 @@ internal static class ChatContentFormatting
             ReasoningText = e.ReasoningText is null ? null : TruncateForChatEntry(e.ReasoningText)
         },
         ChatMessageDeltaEvent e => e with { Text = TruncateForChatEntry(e.Text) },
+        ChatPreambleEvent e => e with { Text = TruncateForChatEntry(e.Text) },
         ChatToolStartEvent e => e with
         {
             Text = TruncateForChatEntry(e.Text),

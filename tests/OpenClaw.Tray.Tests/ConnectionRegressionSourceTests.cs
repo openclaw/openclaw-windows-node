@@ -25,7 +25,7 @@ public sealed class ConnectionRegressionSourceTests
         Assert.DoesNotContain("ConnectAndWaitForDirectConnectOutcomeAsync", pageSource);
         Assert.DoesNotContain("RollbackDirectConnect(", pageSource);
         Assert.Contains("ConnectAndWaitForTerminalStateAsync(", serviceSource);
-        Assert.Contains("Task.Delay(_terminalTimeout, cancellationToken)", serviceSource);
+        Assert.Contains("Task.Delay(_terminalTimeout, _timeProvider, cancellationToken)", serviceSource);
         Assert.Contains("Rollback(", serviceSource);
     }
 

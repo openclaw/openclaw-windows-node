@@ -7,11 +7,23 @@ namespace OpenClawTray.Chat;
 
 public sealed record ChatRunProgressPresentation(
     DateTimeOffset? StartedAt, DateTimeOffset? EndedAt, string Label, bool Active, bool Waiting,
-    long? OutputTokens = null, DateTimeOffset? RetryAt = null);
+    long? OutputTokens = null, DateTimeOffset? RetryAt = null)
+{
+    /// <summary>A yielded parent may still be waiting for work, even though its own turn is inactive.</summary>
+    public bool IsInProgress => Active || Waiting;
+}
 
 internal static class ChatRunProgressProjection
 {
     internal const string RetryLabel = "Retrying the model request";
+    internal const int StatusSwapMilliseconds = 220;
+
+    /// <summary>
+    /// True while a status swap started at <paramref name="startedAtMs"/> is still moving, so a newer
+    /// phase continues it instead of restarting. No swap has started before the first phase change.
+    /// </summary>
+    internal static bool IsStatusSwapInFlight(long? startedAtMs, long nowMs) =>
+        startedAtMs is { } started && nowMs - started < StatusSwapMilliseconds;
 
     internal static ChatRunProgressPresentation? Project(ChatTimelineState timeline, bool awaitingQuestion = false,
         bool awaitingSubagents = false)
@@ -22,16 +34,17 @@ internal static class ChatRunProgressProjection
             return null;
         var activeTool = timeline.Entries.LastOrDefault(entry =>
             entry.Kind == ChatTimelineItemKind.ToolCall && entry.ToolResult == ChatToolCallStatus.InProgress);
-        var currentReasoning = timeline.ReasoningStream is { Items.Count: > 0 } stream
+        var currentReasoning = timeline.ReasoningStream is { ActiveItemId: not null } stream
             && (timeline.RunUsage?.RunId is null || timeline.RunUsage.RunId == stream.RunId);
         var label = awaitingQuestion ? "Waiting for your answer"
             : timeline.PendingPermission is not null || timeline.ProgressText == "Waiting for approval" ? "Waiting for approval"
             : awaitingSubagents ? "Waiting for subagents"
             : timeline.ProgressText is { Length: > 0 } progress ? progress
             : activeTool is not null ? $"Running {activeTool.ToolName ?? "tool"}"
-            : timeline.ActiveReasoningId is not null ? "Thinking"
-            : timeline.ActiveAssistantId is not null ? "Responding"
-            : currentReasoning ? "Thinking" : "Working";
+            : timeline.ActiveReasoningId is not null || currentReasoning ? "Thinking"
+            : timeline.ActiveAssistantId is { } assistantId && timeline.Entries.LastOrDefault()?.Id == assistantId
+                ? "Responding"
+            : "Working";
         var retryAt = label == RetryLabel && timeline.ProgressRetryAtMs is { } retryAtMs
             ? DateTimeOffset.FromUnixTimeMilliseconds(retryAtMs) : (DateTimeOffset?)null;
         return new(timeline.TurnStartedAt, timeline.TurnEndedAt, label, timeline.TurnActive, waiting,

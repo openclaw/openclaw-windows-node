@@ -210,6 +210,27 @@ be published as latest.
 Release build jobs must check out full git history (`fetch-depth: 0`) so
 GitVersion can see tags.
 
+For tag-driven CI, the workflow verifies that both the checked-out `HEAD` and
+the peeled release tag match `OPENCLAW_RELEASE_SOURCE_SHA`, then creates a
+checkout-only `release/<tag>` branch at that commit. This uses the existing
+release-branch policy even after main and feature branches advance. It never
+pushes the branch or moves a release or MSIX reservation tag.
+
+Tagged builds and alpha promotions disable GitVersion normalization and fetching
+through `GitVersion_NoNormalizeEnabled` and `GitVersion_NoFetchEnabled`; the
+metadata action also disables normalization. GitVersion 6.8.2 supports these
+MSBuild properties as `-nonormalize` and `-nofetch`. Otherwise a retry can fail
+remote-tip inference when the release tag and annotated `msix-package/...`
+reservation point at the same commit. Branch, PR merge-ref, and merge-queue
+builds keep normalization enabled. Promotion source selection and checkout-only
+stable tags are unchanged.
+
+`scripts\test-release-branch-versioning.ps1` exercises the real pinned
+GitVersion.MsBuild package and metadata tool in disposable repositories. It
+reproduces the two-tag failure, executes the workflow's source-binding step,
+checks source/tag mismatch rejection, and verifies exact alpha/stable assembly
+versions on retry with newer main and feature refs present.
+
 Tagged CI runs verify that `github.ref_name` and the resolved release version
 match before build artifacts are published. For stable and alpha tags, the
 resolved version must equal GitVersion's `SemVer`. For numeric corrections, the

@@ -93,4 +93,51 @@ public sealed class ConnectionPageChannelMetricsTests
 
         Assert.Equal(3, ConnectionPageChannelMetrics.CountHealthyChannels(channels));
     }
+
+    [Fact]
+    public void Details_IdentifyTheUnreadyChannelAndItsError()
+    {
+        var channels = new[]
+        {
+            new ChannelHealth { Name = "telegram", Status = "running" },
+            new ChannelHealth { Name = "slack", Status = "error", Error = "  Sign in again  " },
+        };
+
+        Assert.Equal($"telegram: running{Environment.NewLine}slack: error (Sign in again)",
+            ConnectionPageChannelMetrics.BuildDetails(channels));
+    }
+
+    [Fact]
+    public void Details_ChangeWhenStatusOrErrorChangesWithoutChangingTheReadyCount()
+    {
+        var channels = new[]
+        {
+            new ChannelHealth { Name = "telegram", Status = "running" },
+            new ChannelHealth { Name = "slack", Status = "stopped" },
+        };
+        Assert.Equal(1, ConnectionPageChannelMetrics.CountHealthyChannels(channels));
+        Assert.Equal($"telegram: running{Environment.NewLine}slack: stopped",
+            ConnectionPageChannelMetrics.BuildDetails(channels));
+
+        channels[1].Status = "error";
+        channels[1].Error = "Reconnect required";
+
+        Assert.Equal(1, ConnectionPageChannelMetrics.CountHealthyChannels(channels));
+        Assert.Equal($"telegram: running{Environment.NewLine}slack: error (Reconnect required)",
+            ConnectionPageChannelMetrics.BuildDetails(channels));
+    }
+
+    [Fact]
+    public void Details_RedactCredentialsFromGatewayErrors()
+    {
+        var channels = new[]
+        {
+            new ChannelHealth { Name = "slack", Status = "error", Error = "Authorization: Bearer fixture-private-credential" },
+        };
+
+        var details = ConnectionPageChannelMetrics.BuildDetails(channels);
+
+        Assert.Contains("slack: error", details);
+        Assert.DoesNotContain("fixture-private-credential", details);
+    }
 }

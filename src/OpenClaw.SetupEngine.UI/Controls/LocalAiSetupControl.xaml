@@ -2,7 +2,15 @@
     x:Class="OpenClaw.SetupEngine.UI.Controls.LocalAiSetupControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:tk="using:CommunityToolkit.WinUI.Controls">
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    xmlns:themes="using:OpenClaw.SetupEngine.UI.Themes">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <themes:SetupResources />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
     <StackPanel Spacing="12">
         <TextBlock x:Name="LocalAiProfileSelectionText" TextWrapping="Wrap" Visibility="Collapsed"
                    AutomationProperties.AutomationId="LocalAiProfileSelectionText"
