@@ -139,7 +139,44 @@ Download and install WebView2 from [Microsoft](https://developer.microsoft.com/m
 - Make sure the OpenClaw gateway process is running.
 - Check Windows Firewall - if your gateway runs on a different machine, allow inbound traffic on port 18789.
 - See the log at `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` for connection errors.
-- For easy-button setup, repair, or remove failures, start with `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt`; Copilot CLI/debugging tools can use `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.jsonl`.
+- For local setup failures, use the [setup log for the route you ran](#local-setup-fails).
+
+### Local setup fails
+
+Start with **Open log file** in the setup window. For native Gateway setup, expand
+**Detailed activity**; for the WSL setup progress page, select **Show details**.
+The action selects the current run's log in File Explorer, resolving the actual
+file location for the active Companion profile, including packaged installs.
+
+If you need to find the file manually, these are the default release-profile
+locations. `<utc>` is the run's UTC timestamp in `yyyyMMdd-HHmmss` format.
+
+| Setup route | Log location |
+|---|---|
+| Native Gateway setup | `%APPDATA%\OpenClawTray\Logs\Setup\native-setup-<utc>.jsonl` |
+| WSL setup in the current onboarding window | `%APPDATA%\OpenClawTray\Logs\Setup\setup-engine-<utc>.jsonl` |
+| Legacy easy-button setup, repair, or remove | `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt` and `easy-setup-latest.jsonl`, with per-run `setup-*.jsonl` traces if that older flow produced them |
+
+`%APPDATA%` is the roaming profile, not `%LOCALAPPDATA%`. Dev builds use
+`OpenClawTray-Dev` instead of `OpenClawTray`. An isolated Companion launched with
+`OPENCLAW_TRAY_DATA_DIR` writes the current onboarding logs under
+`<OPENCLAW_TRAY_DATA_DIR>\Logs\Setup`; an explicitly configured setup log path
+can also change the WSL log location. Prefer the in-product action over guessing
+these paths. Legacy `easy-setup-latest` files are not produced by the current
+native or WSL onboarding pages, so their absence does not mean setup never ran.
+
+For a native failure, inspect the failed step and startup timeline in the JSONL
+log. If **Open log file** is absent, native setup may have been unable to create
+the file; do not assume a log exists. For the other native recovery actions, see
+[native setup failure recovery](ONBOARDING_WIZARD.md#native-startup-and-completion-deadlines).
+
+Copy the relevant logs to a safe location outside the Companion data folders
+**before uninstalling or cleaning up for a retry**. SetupEngine uninstall cleanup
+deletes both roaming and local `Logs` directories unless its `--preserve-logs`
+option is used. That option is specific to the SetupEngine CLI, not a guarantee
+for every uninstaller or clean-retest procedure. Review copied logs for private
+information before sharing them. See [Uninstalling](#uninstalling) for the
+supported removal paths.
 
 ### Need to inspect or edit the managed WSL gateway
 
@@ -160,7 +197,7 @@ See [issue #81](https://github.com/openclaw/openclaw-windows-node/issues/81) for
 - Make sure you paste the **entire** setup code - it's a single base64url-encoded string.
 - Check for accidental leading/trailing whitespace.
 - The code must be from a compatible gateway version. Try entering the gateway URL and token manually instead.
-- If the easy-button setup flow generated the code, check `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\easy-setup-latest.txt` for the failing phase and next action.
+- If local setup generated the code, check the [log for that setup route](#local-setup-fails) for the failing phase and next action.
 
 ### Connection test fails
 
@@ -168,7 +205,7 @@ See [issue #81](https://github.com/openclaw/openclaw-windows-node/issues/81) for
 - Check that your token is valid and hasn't expired.
 - If the gateway is on another machine, ensure Windows Firewall allows traffic on the gateway port.
 - See the log at `%LOCALAPPDATA%\OpenClawTray\openclaw-tray.log` for detailed error messages.
-- Easy-button setup diagnostics keep per-run JSONL traces at `%LOCALAPPDATA%\OpenClawTray\Logs\Setup\setup-*.jsonl` and update `easy-setup-latest.txt`/`.jsonl` after each run.
+- If the failure happened during local setup, check the [current run's setup log](#local-setup-fails); legacy easy-button filenames do not apply to current onboarding.
 
 ### Wizard shows "offline"
 
