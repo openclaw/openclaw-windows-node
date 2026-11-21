@@ -1,0 +1,144 @@
+# Temporary PR2328 acceptance infrastructure. DO NOT MERGE.
+name: Inno production identity acceptance
+
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - scripts/capture-inno-production-uninstall.ps1
+      - .github/workflows/inno-production-acceptance.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: inno-production-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    name: Production identity upgrade and uninstall acceptance
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      RequireSignedCleanupHost: 'false'
+      RequireSignedFileWorker: 'false'
+      PROOF_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      CANDIDATE_SHA: d6d009dbdff909d2c2df459a0534cb410d753414
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: tooling
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/checkout@v7
+        with:
+          path: candidate
+          ref: d6d009dbdff909d2c2df459a0534cb410d753414
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/cache/restore@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('candidate/**/*.csproj', 'candidate/**/Directory.Packages.props') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Validate harness and prepare disposable recording tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tokens = $null; $errors = $null
+          [Management.Automation.Language.Parser]::ParseFile((Resolve-Path tooling/scripts/capture-inno-production-uninstall.ps1), [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
+          if ((git -C candidate rev-parse HEAD) -ne $env:CANDIDATE_SHA) { throw 'Candidate checkout mismatch.' }
+          choco install innosetup ffmpeg -y --no-progress
+          if ($LASTEXITCODE -ne 0) { throw 'Capture prerequisites could not be installed.' }
+          ./candidate/scripts/Set-CiDesktopResolution.ps1
+
+      - name: Build full pinned candidate without Dev identity
+        working-directory: candidate
+        shell: pwsh
+        run: |
+          $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+          ./scripts/Initialize-ReactorPackages.ps1
+          ./build.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Required full build failed.' }
+          ./scripts/build-inno-local.ps1 -Arch x64 -Fast
+          if ($LASTEXITCODE -ne 0) { throw 'Production candidate installer build failed.' }
+          if ((Get-Content publish-local-x64/app-identity.txt -Raw).Trim() -cne 'release') { throw 'Not production identity.' }
+          if (git status --porcelain --untracked-files=no) { throw 'Tracked candidate source changed during build.' }
+
+      - name: Required shared and tray validation with synthetic profile
+        working-directory: candidate
+        shell: pwsh
+        run: |
+          $env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+          $env:OPENCLAW_TRAY_DATA_DIR = Join-Path $env:RUNNER_TEMP 'pr2328-unit-tests'
+          dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --logger 'trx;LogFileName=shared.trx' --results-directory ../TestResults/Validation
+          if ($LASTEXITCODE -ne 0) { throw 'Shared tests failed.' }
+          dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --logger 'trx;LogFileName=tray.trx' --results-directory ../TestResults/Validation
+          if ($LASTEXITCODE -ne 0) { throw 'Tray tests failed.' }
+          foreach ($name in 'shared','tray') {
+            [xml]$trx = Get-Content "../TestResults/Validation/$name.trx"
+            if ([int]$trx.TestRun.ResultSummary.Counters.executed -le 0) { throw 'No tests executed.' }
+          }
+
+      - name: Fetch signed official baseline and retain provenance
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $baseline = git -C candidate rev-parse 'v2026.11.3^{commit}'
+          if ($LASTEXITCODE -ne 0 -or $baseline -ne '66b9b5a559a0651da3aa6ce7ae3d183fbd87cb1c') { throw 'Baseline tag mismatch.' }
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/v2026.11.3" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Baseline release lookup failed.' }
+          $assets = @($release.assets | Where-Object name -eq 'OpenClawCompanion-Setup-x64.exe')
+          if ($assets.Count -ne 1 -or $assets[0].digest -notmatch '^sha256:[0-9a-fA-F]{64}$') { throw 'Baseline needs one published SHA256 asset.' }
+          $path = Join-Path $env:RUNNER_TEMP 'OpenClawCompanion-2026.11.3-baseline.exe'
+          Invoke-WebRequest -Uri $assets[0].browser_download_url -OutFile $path -TimeoutSec 180
+          if ((Get-FileHash -LiteralPath $path).Hash -ne $assets[0].digest.Substring(7)) { throw 'Baseline installer digest mismatch.' }
+          $signature = Get-AuthenticodeSignature -LiteralPath $path
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'CN=OpenClaw Foundation(?:,|$)') { throw 'Baseline signature mismatch.' }
+          New-Item TestResults/Provenance -ItemType Directory -Force | Out-Null
+          @{
+            baselineSource = $baseline; baselineSha256 = (Get-FileHash $path).Hash; baselineAssetId = $assets[0].id
+            baselineSigner = $signature.SignerCertificate.Subject; baselineThumbprint = $signature.SignerCertificate.Thumbprint
+            baselineSignature = [string]$signature.Status; candidateSource = (git -C candidate rev-parse HEAD)
+            toolingSource = (git -C tooling rev-parse HEAD); workflowSha = $env:GITHUB_SHA
+            candidateInstallerSha256 = (Get-FileHash candidate/Output/OpenClawCompanion-Setup-x64.exe).Hash
+            candidateSignature = [string](Get-AuthenticodeSignature candidate/Output/OpenClawCompanion-Setup-x64.exe).Status
+            runId = $env:GITHUB_RUN_ID; runAttempt = $env:GITHUB_RUN_ATTEMPT; platform = [Environment]::OSVersion.VersionString
+          } | ConvertTo-Json | Set-Content TestResults/Provenance/build.json
+          "INNO_BEFORE_INSTALLER=$path" >> $env:GITHUB_ENV
+
+      - name: Execute real production installed caller scenarios
+        shell: powershell -NoProfile -STA -ExecutionPolicy Bypass -File {0}
+        run: |
+          $parameters = @{
+            BeforeInstaller = $env:INNO_BEFORE_INSTALLER
+            AfterInstaller = (Resolve-Path 'candidate/Output/OpenClawCompanion-Setup-x64.exe').Path
+            BeforeRevision = '66b9b5a559a0651da3aa6ce7ae3d183fbd87cb1c'
+            AfterRevision = $env:CANDIDATE_SHA
+            CandidateRoot = (Resolve-Path candidate).Path
+            OutputDirectory = (Join-Path $env:GITHUB_WORKSPACE 'TestResults/InnoProductionAcceptance')
+            BeforeReleaseUrl = 'https://github.com/openclaw/openclaw-windows-node/releases/tag/v2026.11.3'
+            ConfirmDisposableHost = $true
+          }
+          ./tooling/scripts/capture-inno-production-uninstall.ps1 @parameters
+
+      - name: Retain sanitized proof and exact provenance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: inno-production-acceptance
+          path: TestResults/
+          if-no-files-found: error
+          retention-days: 14
