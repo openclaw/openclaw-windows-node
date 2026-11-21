@@ -864,10 +864,12 @@ function Test-MigrationLock($Install) {
         Save-Window $run $window 'migration-lock'
         Invoke-Control $run $window 'OK'
         $null = Wait-ProcessExit $run $script:StepSeconds
-        Assert-StillInstalled $Install 'migration-lock'
-        $script:Proof.scenarios.Add(@{ name = 'migration-lock'; outcome = 'passed'; lock = 'production prepare.lock held FileShare.None throughout attempted uninstall'; application = 'retained'; models = 'retained, hashes unchanged' })
-        Save-Proof
     } finally { $lock.Dispose() }
+    # The uninstall attempt has terminated while our exclusive lock was held.
+    # Release our own handle before inventory hashes read that same lock file.
+    Assert-StillInstalled $Install 'migration-lock'
+    $script:Proof.scenarios.Add(@{ name = 'migration-lock'; outcome = 'passed'; lock = 'production prepare.lock held FileShare.None throughout attempted uninstall'; application = 'retained'; models = 'retained, hashes unchanged' })
+    Save-Proof
 }
 function Set-MigrationFixture($Install, [switch]$Uncertain) {
     # Same record shape as MigrationRecordTests.CreateRecord, serialized by the
