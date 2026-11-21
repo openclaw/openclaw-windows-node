@@ -69,12 +69,21 @@ Win32 uninstallers, WSL distros, delete tasks, then registry and files. A
 failed teardown, package removal, uninstall, or WSL step stops the wipe before
 any file is deleted, so the remaining state can still be removed by a re-run.
 
+Requires Python 3.12 or newer for safe Windows junction handling.
+
 Usage:
   python wipe_openclaw_state.py            # dry run: report, delete nothing
   python wipe_openclaw_state.py --yes      # actually delete
 """
 
 from __future__ import annotations
+
+import sys
+
+# Path.is_junction() is required for safe traversal. Refuse before native imports
+# or initialization, including when a caller imports this module directly.
+if sys.version_info < (3, 12):
+    sys.exit("ERROR: wipe_openclaw_state.py requires Python 3.12 or newer for safe Windows junction handling.")
 
 import argparse
 import ctypes
@@ -85,7 +94,6 @@ import re
 import shutil
 import stat
 import subprocess
-import sys
 import time
 import winreg
 from ctypes import wintypes
@@ -101,7 +109,7 @@ GATEWAY_PACKAGE_NAMES = frozenset((
     "openclawfoundation.openclawgateway",  # Store
     "openclaw.gateway",  # retained development identity
 ))
-DEV_PATCH = re.compile(r"\A[a-z0-9](?:[a-z0-9-]{0,13}[a-z0-9])?\z")  # mirrors -Patch in Deploy-LocalPackage.ps1
+DEV_PATCH = re.compile(r"\A[a-z0-9](?:[a-z0-9-]{0,13}[a-z0-9])?\Z")  # mirrors -Patch in Deploy-LocalPackage.ps1
 GATEWAY_PACKAGE_PREFIX = "openclawfoundation.openclawgateway"  # Store name or Store-<dev patch>
 LXSS_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss"  # per-user WSL distro registrations (name + BasePath)
 NATIVE_SESSION = Path("LocalState", "OpenClawGatewayMSIX", "session.json")
