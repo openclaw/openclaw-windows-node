@@ -214,7 +214,6 @@
     "tests/OpenClaw.Tray.Tests/Presentation/LocalAiPageViewModelTests.cs": 3,
     "tests/OpenClaw.Tray.Tests/ProfileAutoFillCoordinatorTests.cs": 1,
     "tests/OpenClaw.Tray.Tests/SettingsManagerIsolationTests.cs": 4,
-    "tests/OpenClaw.Tray.Tests/SettingsSandboxPublicationTests.cs": 11,
     "tests/OpenClaw.Tray.Tests/SetupDashboardHandoffTests.cs": 1,
     "tests/OpenClaw.Tray.Tests/Usage/UsageExportWorkflowTests.cs": 1,
     "tests/OpenClaw.Tray.UITests/AccessibilityAppFixture.cs": 1,
