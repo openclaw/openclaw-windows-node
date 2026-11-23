@@ -305,6 +305,10 @@ jobs:
       shell: pwsh
       run: ./scripts/test-release-branch-versioning.ps1
 
+    - name: Validate candidate build GitVersion environment isolation
+      shell: pwsh
+      run: ./scripts/test-candidate-gitversion-environment.ps1
+
   proof-pool-contracts:
     name: Proof-pool contracts
     runs-on: windows-latest
