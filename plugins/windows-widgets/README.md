@@ -606,6 +606,16 @@ cannot replace newer ones. At the same observation time only presentation
 may change; conflicting source facts are rejected. Snapshots contain display data and source links,
 not source credentials or Gateway tokens.
 
+After a publication-policy update, rejected cached snapshots stay on disk but
+are omitted from `widgets.list` and provider rendering. Companion and the provider
+log the rejected widget ID without its content. Other valid widgets keep updating.
+Republish a valid snapshot for that ID to recover: a presentation-only repair
+can retain the observation time, while changed source facts (including the source
+URL) require a newer real observation. Older or conflicting observations still
+cannot overwrite the record. A corrupt record whose observation cannot be read
+requires explicit `widgets.delete` before publishing again; no cache file is
+silently deleted or migrated into a successful observation.
+
 Windows COM activation starts the same packaged executable with
 `--widget-provider`, taking a separate headless MTA path before WinUI/Companion
 startup. The provider reads snapshots, restores per-instance custom-state

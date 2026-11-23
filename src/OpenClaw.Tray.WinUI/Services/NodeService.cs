@@ -352,7 +352,7 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
         {
             Register(new WidgetCapability(
                 _logger,
-                new OpenClaw.Shared.Widgets.WidgetSnapshotStore(AppIdentity.ResolveRoamingDataDirectory()),
+                new OpenClaw.Shared.Widgets.WidgetSnapshotStore(AppIdentity.ResolveRoamingDataDirectory(), _logger),
                 OpenClawTray.Widgets.NativeWidgetProvider.Publish,
                 () => Environment.GetEnvironmentVariable(WidgetCapability.OptInVariable) == "1"));
         }

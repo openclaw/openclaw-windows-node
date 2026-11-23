@@ -363,6 +363,9 @@ test("native templates expose backgrounds, rich elements, data, host conditions,
     { type: "Image", url: "file:///C:/secret.png", altText: "Secret" },
     { type: "Image", url: "https://127.0.0.1/mercury.png", altText: "Loopback" },
     { type: "Image", url: "https://host.local./mercury.png", altText: "Local network" },
+    { type: "Image", url: "https://localhost./mercury.png", altText: "Loopback with trailing dot" },
+    { type: "Image", url: "https://server./mercury.png", altText: "Single label with trailing dot" },
+    { type: "Image", url: "https://127.1./mercury.png", altText: "Numeric host with trailing dot" },
     { type: "Image", url: "https://secret@science.nasa.gov/mercury.png", altText: "Credentials" },
     { type: "Image", url: "${state.image}", altText: "Computed" },
     { type: "Image", url: "${content.artwork}", altText: "Context-relative" },
@@ -396,6 +399,8 @@ test("template data cannot substitute unvalidated elements, actions or header re
     { header: "${$root.content.header}" },
     { metadata: "${$root.content.metadata}" },
     { body: [{ type: "Media", sources: "${$root.content.sources}" }] },
+    { body: [{ type: "Media", sources: [{ mimeType: "video/mp4", url: "https://example.com/video.mp4" }],
+      captionSources: "${$root.content.captions}" }] },
   ]) {
     assert.throws(() => validatePresentation({
       card: { ...design("Facts").card, ...change },
@@ -403,8 +408,22 @@ test("template data cannot substitute unvalidated elements, actions or header re
         elements: [{ type: "Container", selectAction: action }], elementType: "Image",
         header: { text: "Header", iconUrl: "file:///C:/private.png" },
         metadata: { webUrl: "https://example.com/unapproved-html" },
-        sources: [{ mimeType: "video/mp4", url: "file:///C:/private.mp4" }] },
+        sources: [{ mimeType: "video/mp4", url: "file:///C:/private.mp4" }],
+        captions: [{ mimeType: "vtt", url: "file:///C:/private.vtt", label: "English" }] },
     }), /literal/);
+  }
+});
+
+test("literal caption arrays retain public URLs and safe scalar bindings", () => {
+  for (const url of ["https://example.com./captions.vtt", "${$root.content.captionUrl}"]) {
+    const input = {
+      card: { type: "AdaptiveCard", version: "1.6", body: [{
+        type: "Media", sources: [{ mimeType: "video/mp4", url: "https://example.com/video.mp4" }],
+        captionSources: [{ mimeType: "vtt", url, label: "English" }],
+      }] },
+      data: { captionUrl: "https://example.com./captions.vtt" },
+    };
+    assert.deepEqual(validatePresentation(input), input);
   }
 });
 

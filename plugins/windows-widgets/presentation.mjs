@@ -3,7 +3,7 @@
 const verbs = ["widget.set", "widget.increment", "widget.toggle", "widget.reset", "widget.refresh", "widget.lighting"];
 export const MAX_ARTWORK_BYTES = 262144;
 const MAX_IMAGE_DIMENSION = 4096;
-const structureArrays = new Set(["body", "items", "columns", "images", "inlines", "rows", "cells", "actions", "layouts", "pages", "sources"]);
+const structureArrays = new Set(["body", "items", "columns", "images", "inlines", "rows", "cells", "actions", "layouts", "pages", "sources", "captionSources"]);
 const structureObjects = new Set(["selectAction", "inlineAction", "action", "card", "metadata"]);
 export const presentationSchema = {
   type: "object", additionalProperties: false, required: ["card"],

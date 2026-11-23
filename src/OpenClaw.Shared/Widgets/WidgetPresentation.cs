@@ -90,7 +90,7 @@ public sealed partial record WidgetPresentation(
                         property.Value.GetString()!.Contains("${", StringComparison.Ordinal);
                     if (property.Name.Contains("${", StringComparison.Ordinal) ||
                         (property.Name == "type" && (property.Value.ValueKind != JsonValueKind.String || binding)) ||
-                        (property.Name is "body" or "items" or "columns" or "images" or "inlines" or "rows" or "cells" or "actions" or "layouts" or "pages" or "sources"
+                        (property.Name is "body" or "items" or "columns" or "images" or "inlines" or "rows" or "cells" or "actions" or "layouts" or "pages" or "sources" or "captionSources"
                             && property.Value.ValueKind != JsonValueKind.Array) ||
                         (property.Name is "selectAction" or "inlineAction" or "action" or "card" or "metadata"
                             && property.Value.ValueKind != JsonValueKind.Object) ||
@@ -199,13 +199,17 @@ public sealed partial record WidgetPresentation(
 
     internal static void ValidatePublicUrl(string url)
     {
+        const string error = "Widget resources require public HTTPS URLs without credentials, custom ports, local hosts or computed URLs.";
         if (url.Length > 2_048 || url.Contains("${", StringComparison.Ordinal) ||
             !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps ||
             !uri.IsDefaultPort || uri.UserInfo.Length != 0 || uri.IsLoopback ||
-            uri.HostNameType != UriHostNameType.Dns || !uri.IdnHost.Contains('.') ||
+            uri.HostNameType != UriHostNameType.Dns)
+            throw new ArgumentException(error);
+        var host = uri.IdnHost.TrimEnd('.');
+        if (!host.Contains('.') || host.All(c => char.IsAsciiDigit(c) || c == '.') ||
             new[] { ".localhost", ".local", ".internal", ".home", ".lan" }
-                .Any(suffix => uri.IdnHost.TrimEnd('.').EndsWith(suffix, StringComparison.OrdinalIgnoreCase)))
-            throw new ArgumentException("Widget resources require public HTTPS URLs without credentials, custom ports, local hosts or computed URLs.");
+                .Any(suffix => host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)))
+            throw new ArgumentException(error);
     }
 
     /// <summary>Returns a detached card. Only the provider supplies facts and the state/data namespaces.</summary>

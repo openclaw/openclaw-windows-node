@@ -146,7 +146,7 @@ internal sealed class NativeWidgetProvider : IWidgetProvider, IWidgetProvider2, 
         }
     }
 
-    private static WidgetSnapshotStore Store() => new(AppIdentity.ResolveRoamingDataDirectory());
+    private static WidgetSnapshotStore Store() => new(AppIdentity.ResolveRoamingDataDirectory(), new AppLogger());
 
     // The native projection can return null before the first widget is pinned.
     private static IReadOnlyList<WidgetInfo> GetWidgets() => WidgetManager.GetDefault().GetWidgetInfos() ?? [];

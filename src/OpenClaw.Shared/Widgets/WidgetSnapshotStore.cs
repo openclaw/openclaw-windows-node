@@ -15,7 +15,7 @@ public sealed record WidgetSnapshot(
     [property: JsonPropertyName("presentation")] WidgetPresentation? Presentation = null);
 
 /// <summary>Companion writes snapshots atomically; the independently activated provider only reads them.</summary>
-public sealed partial class WidgetSnapshotStore(string dataDirectory)
+public sealed partial class WidgetSnapshotStore(string dataDirectory, IOpenClawLogger logger)
 {
     public const int MaxWidgets = 20;
     public const int MaxSnapshotBytes = 524_288;
@@ -40,17 +40,22 @@ public sealed partial class WidgetSnapshotStore(string dataDirectory)
 
     public static void Validate(WidgetSnapshot snapshot)
     {
+        ValidateObservation(snapshot);
+        WidgetPresentation.ValidatePublicUrl(snapshot.SourceUrl);
+        snapshot.Presentation?.Validate();
+    }
+
+    private static void ValidateObservation(WidgetSnapshot snapshot)
+    {
         ValidateId(snapshot.Id);
         ValidateText(snapshot.Title, 100, "title");
         ValidateText(snapshot.Value, 120, "value");
         ValidateText(snapshot.Detail, 600, "detail", allowEmpty: true);
         ValidateText(snapshot.SourceUrl, 2_048, "sourceUrl");
-        WidgetPresentation.ValidatePublicUrl(snapshot.SourceUrl);
         if (snapshot.ObservedAt == default || snapshot.ObservedAt > DateTimeOffset.UtcNow.AddMinutes(5))
             throw new ArgumentException("Widget observedAt must be a non-future observation timestamp.");
         if (snapshot.StaleAfterMinutes is < 5 or > 10_080)
             throw new ArgumentException("Widget staleAfterMinutes must be between 5 and 10080.");
-        snapshot.Presentation?.Validate();
     }
 
     public static WidgetSnapshot Parse(JsonElement args)
@@ -70,7 +75,18 @@ public sealed partial class WidgetSnapshotStore(string dataDirectory)
             var files = Directory.GetFiles(_directory, "*.json");
             if (files.Length > MaxWidgets)
                 throw new InvalidDataException("Widget snapshot limit exceeded.");
-            return files.Select(Read).OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
+            var snapshots = new List<WidgetSnapshot>();
+            foreach (var path in files)
+            {
+                try { snapshots.Add(Read(path)); }
+                catch (Exception ex) when (ex is ArgumentException or JsonException or InvalidDataException or InvalidOperationException or KeyNotFoundException)
+                {
+                    var id = Path.GetFileNameWithoutExtension(path);
+                    var safeId = ValidId().IsMatch(id) ? id : "(invalid id)";
+                    logger.Warn($"Saved widget '{safeId}' rejected ({ex.GetType().Name}). Republish a valid snapshot or delete it.");
+                }
+            }
+            return snapshots.OrderBy(s => s.Id, StringComparer.Ordinal).ToArray();
         }
     }
 
@@ -89,7 +105,7 @@ public sealed partial class WidgetSnapshotStore(string dataDirectory)
             var path = Path.Combine(_directory, snapshot.Id + ".json");
             if (File.Exists(path))
             {
-                var previous = Read(path);
+                var previous = Read(path, observationOnly: true);
                 if (previous.ObservedAt > snapshot.ObservedAt ||
                     (previous.ObservedAt == snapshot.ObservedAt &&
                      (previous with { Presentation = null }) != (snapshot with { Presentation = null })))
@@ -130,20 +146,26 @@ public sealed partial class WidgetSnapshotStore(string dataDirectory)
         }
     }
 
-    private static WidgetSnapshot Read(string path)
+    private static WidgetSnapshot Read(string path, bool observationOnly = false)
     {
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read,
             FileShare.ReadWrite | FileShare.Delete);
         if (stream.Length > MaxSnapshotBytes)
             throw new InvalidDataException("Saved widget snapshot exceeds the size limit.");
         var document = JsonNodeFromStream(stream);
-        if (document["presentation"] is System.Text.Json.Nodes.JsonObject presentation &&
+        // Compare bounded source facts without rendering or re-admitting an obsolete presentation.
+        if (observationOnly)
+            document.Remove("presentation");
+        else if (document["presentation"] is System.Text.Json.Nodes.JsonObject presentation &&
             !presentation.ContainsKey("card"))
             document["presentation"] = JsonSerializer.SerializeToNode(
                 WidgetPresentation.MigrateLegacy(JsonSerializer.SerializeToElement(presentation)), JsonOptions);
         var snapshot = document.Deserialize<WidgetSnapshot>(JsonOptions)
             ?? throw new InvalidDataException("Saved widget snapshot is empty.");
-        Validate(snapshot);
+        if (observationOnly)
+            ValidateObservation(snapshot);
+        else
+            Validate(snapshot);
         if (!string.Equals(Path.GetFileNameWithoutExtension(path), snapshot.Id, StringComparison.Ordinal))
             throw new InvalidDataException("Saved widget id does not match its file.");
         return snapshot;

@@ -19,11 +19,11 @@ public sealed class WidgetTests : IDisposable
     [Fact]
     public void Store_RecoversIndependentSnapshotsAndRejectsLateOrConflictingWrites()
     {
-        var store = new WidgetSnapshotStore(_directory);
+        var store = new WidgetSnapshotStore(_directory, NullLogger.Instance);
         store.Upsert(Mercury);
         store.Upsert(Mercury);
         store.Upsert(Mercury with { Id = "another", Value = "No" });
-        var recovered = new WidgetSnapshotStore(_directory).List();
+        var recovered = new WidgetSnapshotStore(_directory, NullLogger.Instance).List();
         Assert.Equal(2, recovered.Count);
         Assert.Equal("No", recovered.Single(s => s.Id == "another").Value);
         Assert.Equal("Yes", recovered.Single(s => s.Id == "mercury").Value);
@@ -46,8 +46,11 @@ public sealed class WidgetTests : IDisposable
     [InlineData("mercury", "https://printer.local:8443/status")]
     [InlineData("mercury", "https://server/status")]
     [InlineData("mercury", "https://example.com:8443/status")]
+    [InlineData("mercury", "https://localhost./")]
+    [InlineData("mercury", "https://server./")]
+    [InlineData("mercury", "https://127.1./")]
     public void Store_RejectsUnsafeIdentifiersAndSourceLinks(string id, string url) =>
-        Assert.Throws<ArgumentException>(() => new WidgetSnapshotStore(_directory).Upsert(Mercury with { Id = id, SourceUrl = url }));
+        Assert.Throws<ArgumentException>(() => new WidgetSnapshotStore(_directory, NullLogger.Instance).Upsert(Mercury with { Id = id, SourceUrl = url }));
 
     [Fact]
     public void Store_RejectsMissingFieldsAndOversizedData()
@@ -59,11 +62,100 @@ public sealed class WidgetTests : IDisposable
         Assert.Throws<JsonException>(() => WidgetSnapshotStore.Parse(JsonSerializer.SerializeToElement(new { id = "mercury", arbitraryScript = "bad" })));
     }
 
+    [Theory]
+    [InlineData("source")]
+    [InlineData("binding")]
+    [InlineData("malformed-target")]
+    public async Task Store_RejectedSnapshotsDoNotBlockOtherWidgetsOrValidatedRecovery(string rejectedCase)
+    {
+        var logger = new CapturingLogger();
+        var store = new WidgetSnapshotStore(_directory, logger);
+        store.Upsert(Mercury);
+        var path = Path.Combine(_directory, "widgets", "mercury.json");
+        var legacy = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        var obsoleteSource = rejectedCase == "source";
+        if (obsoleteSource)
+            legacy["sourceUrl"] = "https://example.com:8443/status";
+        else if (rejectedCase == "malformed-target")
+            legacy["presentation"] = JsonNode.Parse("""
+                {"card":{"type":"AdaptiveCard","version":"1.6","body":[
+                    {"type":"ActionSet","actions":[{"type":"Action.ToggleVisibility","targetElements":[{}]}]}]}}
+                """);
+        else
+            legacy["presentation"] = JsonNode.Parse("""
+                {"card":{"type":"AdaptiveCard","version":"1.6","body":[
+                    {"type":"Container","items":"${$root.content.items}"}]},
+                 "data":{"items":[{"type":"TextBlock","text":"Earlier supported binding"}]}}
+                """);
+        var original = legacy.ToJsonString();
+        File.WriteAllText(path, original);
+        var other = Mercury with { Id = "another" };
+        store.Upsert(other);
+
+        Assert.Equal(other, Assert.Single(store.List()));
+        Assert.Contains("'mercury'", Assert.Single(logger.Warnings));
+        Assert.DoesNotContain("https://", logger.Warnings[0]);
+        Assert.Equal(original, File.ReadAllText(path));
+        var capability = new WidgetCapability(NullLogger.Instance, store, update =>
+        {
+            // The provider reads all snapshots before updating any pinned instance.
+            _ = store.List();
+            return new(false, 0, "Synthetic cache-only host.");
+        });
+        var published = await capability.ExecuteAsync(new()
+        {
+            Command = "widgets.upsert",
+            Args = JsonSerializer.SerializeToElement(other with { ObservedAt = Observation.AddMinutes(1) })
+        });
+        Assert.True(published.Ok);
+        var payload = JsonSerializer.SerializeToElement(published.Payload);
+        Assert.True(payload.GetProperty("saved").GetBoolean());
+
+        Assert.Throws<ArgumentException>(() => store.Upsert(Mercury with { ObservedAt = Observation.AddSeconds(-1) }));
+        Assert.Throws<ArgumentException>(() => store.Upsert(Mercury with { Value = "Conflicting" }));
+        Assert.Equal(original, File.ReadAllText(path));
+        var replacement = obsoleteSource ? Mercury with { ObservedAt = Observation.AddMinutes(1) } : Mercury;
+        if (obsoleteSource)
+            Assert.Throws<ArgumentException>(() => store.Upsert(Mercury));
+        store.Upsert(replacement);
+        var recovered = new WidgetSnapshotStore(_directory, logger).List();
+        Assert.Equal(2, recovered.Count);
+        Assert.Equal(replacement, recovered.Single(snapshot => snapshot.Id == "mercury"));
+        Assert.Equal(Observation.AddMinutes(1), recovered.Single(snapshot => snapshot.Id == "another").ObservedAt);
+    }
+
+    [Theory]
+    [InlineData("observedAt", "not-a-timestamp")]
+    [InlineData("id", "different-widget")]
+    public void Store_RecoveryCannotOverwriteUnreadableOrMismatchedObservations(string property, string value)
+    {
+        var logger = new CapturingLogger();
+        var store = new WidgetSnapshotStore(_directory, logger);
+        store.Upsert(Mercury);
+        var path = Path.Combine(_directory, "widgets", "mercury.json");
+        var damaged = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        damaged[property] = value;
+        var original = damaged.ToJsonString();
+        File.WriteAllText(path, original);
+
+        Assert.Empty(store.List());
+        Assert.Contains("'mercury'", Assert.Single(logger.Warnings));
+        if (property == "observedAt")
+            Assert.Throws<JsonException>(() => store.Upsert(Mercury with { ObservedAt = Observation.AddMinutes(1) }));
+        else
+            Assert.Throws<InvalidDataException>(() => store.Upsert(Mercury with { ObservedAt = Observation.AddMinutes(1) }));
+        Assert.Equal(original, File.ReadAllText(path));
+
+        Assert.True(store.Delete("mercury"));
+        store.Upsert(Mercury);
+        Assert.Equal(Mercury, Assert.Single(store.List()));
+    }
+
     [Fact]
     public async Task Mcp_DiscoversAndInvokesProductionWidgetCapabilityWithoutClaimingDisplay()
     {
         var enabled = true;
-        var capability = new WidgetCapability(NullLogger.Instance, new(_directory), isEnabled: () => enabled);
+        var capability = new WidgetCapability(NullLogger.Instance, new(_directory, NullLogger.Instance), isEnabled: () => enabled);
         var bridge = new McpToolBridge(() => new[] { capability });
         var listed = await bridge.HandleRequestAsync("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""");
         using (var doc = JsonDocument.Parse(listed!))
@@ -78,7 +170,7 @@ public sealed class WidgetTests : IDisposable
         }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         var result = await bridge.HandleRequestAsync(request);
         Assert.Contains("saved", result!);
-        Assert.Equal(Mercury, Assert.Single(new WidgetSnapshotStore(_directory).List()));
+        Assert.Equal(Mercury, Assert.Single(new WidgetSnapshotStore(_directory, NullLogger.Instance).List()));
         var response = await capability.ExecuteAsync(new() { Command = "widgets.list" });
         using var payload = JsonDocument.Parse(JsonSerializer.Serialize(response.Payload, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.True(payload.RootElement.GetProperty("requiresUserPin").GetBoolean());
@@ -88,7 +180,7 @@ public sealed class WidgetTests : IDisposable
         Assert.Empty(capability.Commands);
         Assert.False((await capability.ExecuteAsync(new() { Command = "widgets.delete",
             Args = JsonSerializer.SerializeToElement(new { id = "mercury" }) })).Ok);
-        Assert.Single(new WidgetSnapshotStore(_directory).List());
+        Assert.Single(new WidgetSnapshotStore(_directory, NullLogger.Instance).List());
     }
 
     [Fact]
@@ -261,12 +353,12 @@ public sealed class WidgetTests : IDisposable
     [InlineData(330)]
     public void Store_AllowsRestylingWithoutInventingFreshnessButStillRejectsConflictingFacts(int offsetMinutes)
     {
-        var store = new WidgetSnapshotStore(_directory);
+        var store = new WidgetSnapshotStore(_directory, NullLogger.Instance);
         store.Upsert(Mercury);
         var styled = Mercury with { ObservedAt = Observation.ToOffset(TimeSpan.FromMinutes(offsetMinutes)),
             Presentation = Presentation() };
         store.Upsert(styled);
-        var saved = Assert.Single(new WidgetSnapshotStore(_directory).List());
+        var saved = Assert.Single(new WidgetSnapshotStore(_directory, NullLogger.Instance).List());
         Assert.Equal(Observation, saved.ObservedAt);
         Assert.Equal("AdaptiveCard", saved.Presentation!.Card.GetProperty("type").GetString());
         store.Upsert(saved);
@@ -286,6 +378,9 @@ public sealed class WidgetTests : IDisposable
     [InlineData("data:image/svg+xml,bad")]
     [InlineData("https://router.local/mercury.png")]
     [InlineData("https://host.internal./mercury.png")]
+    [InlineData("https://localhost./mercury.png")]
+    [InlineData("https://server./mercury.png")]
+    [InlineData("https://127.1./mercury.png")]
     [InlineData("${state.image}")]
     [InlineData("${content.image}")]
     [InlineData("openclaw-asset:../secret")]
@@ -309,6 +404,7 @@ public sealed class WidgetTests : IDisposable
     [InlineData("""{"header":"${$root.content.header}"}""")]
     [InlineData("""{"metadata":"${$root.content.metadata}"}""")]
     [InlineData("""{"body":[{"type":"Media","sources":"${$root.content.sources}"}]}""")]
+    [InlineData("""{"body":[{"type":"Media","sources":[{"mimeType":"video/mp4","url":"https://example.com/video.mp4"}],"captionSources":"${$root.content.captions}"}]}""")]
     public void Presentation_RejectsStructuralBindingsBeforeTheyCanBypassAdmission(string changes)
     {
         var card = JsonNode.Parse("""{"type":"AdaptiveCard","version":"1.6","body":[]}""")!.AsObject();
@@ -322,11 +418,30 @@ public sealed class WidgetTests : IDisposable
             elementType = "Image",
             header = new { text = "Header", iconUrl = "file:///C:/private.png" },
             metadata = new { webUrl = "https://example.com/unapproved-html" },
-            sources = new[] { new { mimeType = "video/mp4", url = "file:///C:/private.mp4" } }
+            sources = new[] { new { mimeType = "video/mp4", url = "file:///C:/private.mp4" } },
+            captions = new[] { new { mimeType = "vtt", url = "file:///C:/private.vtt", label = "English" } }
         });
         var presentation = new WidgetPresentation(JsonSerializer.SerializeToElement(card), data);
         var error = Assert.Throws<ArgumentException>(() => presentation.Validate());
         Assert.Contains("literal", error.Message);
+    }
+
+    [Theory]
+    [InlineData("https://example.com./captions.vtt")]
+    [InlineData("${$root.content.captionUrl}")]
+    public void Presentation_LiteralCaptionArraysAllowPublicUrlsAndScalarBindings(string url)
+    {
+        var presentation = new WidgetPresentation(JsonSerializer.SerializeToElement(new
+        {
+            type = "AdaptiveCard", version = "1.6",
+            body = new[] { new
+            {
+                type = "Media",
+                sources = new[] { new { mimeType = "video/mp4", url = "https://example.com/video.mp4" } },
+                captionSources = new[] { new { mimeType = "vtt", url, label = "English" } }
+            } }
+        }), JsonSerializer.SerializeToElement(new { captionUrl = "https://example.com./captions.vtt" }));
+        presentation.Validate();
     }
 
     [Theory]
@@ -362,9 +477,9 @@ public sealed class WidgetTests : IDisposable
         Assert.Equal(asset, presentation.Data!.Value.GetProperty("artwork").GetString());
         using var data = JsonDocument.Parse(payload.Data);
         Assert.Equal(asset, data.RootElement.GetProperty("content").GetProperty("artwork").GetString());
-        var store = new WidgetSnapshotStore(_directory);
+        var store = new WidgetSnapshotStore(_directory, NullLogger.Instance);
         store.Upsert(snapshot);
-        var recovered = Assert.Single(new WidgetSnapshotStore(_directory).List());
+        var recovered = Assert.Single(new WidgetSnapshotStore(_directory, NullLogger.Instance).List());
         Assert.Equal(PixelPng, recovered.Presentation!.Assets!.Value.GetProperty(name).GetProperty("base64").GetString());
     }
 
@@ -431,11 +546,11 @@ public sealed class WidgetTests : IDisposable
             type = "AdaptiveCard", version = "1.5",
             body = Enumerable.Range(0, 5).Select(_ => new { type = "Image", url = "openclaw-asset:portrait" }).ToArray()
         }) };
-        var store = new WidgetSnapshotStore(_directory);
+        var store = new WidgetSnapshotStore(_directory, NullLogger.Instance);
         store.Upsert(Mercury);
         Assert.Contains("Expanded widget artwork", Assert.Throws<ArgumentException>(
             () => store.Upsert(Mercury with { Presentation = amplified })).Message);
-        Assert.Null(Assert.Single(new WidgetSnapshotStore(_directory).List()).Presentation);
+        Assert.Null(Assert.Single(new WidgetSnapshotStore(_directory, NullLogger.Instance).List()).Presentation);
     }
 
     [Theory]
@@ -448,7 +563,7 @@ public sealed class WidgetTests : IDisposable
     [InlineData("""[{"type":"Media","sources":[{"mimeType":"video/mp4","url":"file:///secret"}]}]""")]
     public async Task Mcp_RejectsInvalidPresentationWithoutReplacingLastGoodSnapshot(string body)
     {
-        var store = new WidgetSnapshotStore(_directory);
+        var store = new WidgetSnapshotStore(_directory, NullLogger.Instance);
         store.Upsert(Mercury);
         var capability = new WidgetCapability(NullLogger.Instance, store);
         var response = await capability.ExecuteAsync(new()
@@ -554,7 +669,7 @@ public sealed class WidgetTests : IDisposable
     [InlineData("mystic", true)]
     public void Store_MigratesSavedPresetToCardButRejectsPresetsInNewRequests(string theme, bool nullBody)
     {
-        var store = new WidgetSnapshotStore(_directory);
+        var store = new WidgetSnapshotStore(_directory, NullLogger.Instance);
         store.Upsert(Mercury);
         var path = Path.Combine(_directory, "widgets", "mercury.json");
         var legacy = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
