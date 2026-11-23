@@ -179,13 +179,6 @@ internal sealed class LocalAiGatewayProviderCoordinator : ILocalAiEndpointLifecy
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(install);
-        return await PublishCoreAsync(install, cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<LocalAiEndpointLifecycleResult> PublishCoreAsync(
-        LocalAiResolvedInstall install,
-        CancellationToken cancellationToken)
-    {
         try
         {
             _ = LocalAiGatewayProviderDefinition.BuildProviderBatchJson(install);
