@@ -88,6 +88,12 @@ try {
         }
         Write-Host "RED: same build without property fails (exit $redExit) in the GitHub Actions exporter:"
         Write-Host $redText
+        # Keep restored project.assets.json, but require the green invocation to
+        # regenerate calculated JSON, source, properties and compiled metadata.
+        foreach ($relative in @('obj/gitversion.json', 'obj/Debug', 'bin', 'version-properties.txt')) {
+            $output = Join-Path $fixture $relative
+            if (Test-Path -LiteralPath $output) { Remove-Item -LiteralPath $output -Recurse -Force }
+        }
         $green = & dotnet build @arguments $property 2>&1
         if ($LASTEXITCODE -ne 0) { throw "Locked build with candidate workflow property failed: $green" }
         Write-Host ($green -join [Environment]::NewLine)
