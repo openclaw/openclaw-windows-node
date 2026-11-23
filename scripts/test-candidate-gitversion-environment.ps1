@@ -27,15 +27,9 @@ New-Item -ItemType Directory -Path $fixture | Out-Null
 try {
     $props = [xml](Get-Content (Join-Path $root 'src/Directory.Build.props') -Raw)
     $packageVersion = $props.SelectSingleNode('//PackageReference[@Include="GitVersion.MsBuild"]').Version
-    $workflow = Get-Content (Join-Path $root '.github/workflows/release-candidate-e2e.yml') -Raw
-    $builds = @([regex]::Matches($workflow, '(?m)^ +dotnet build [^\r\n]+'))
-    if ($builds.Count -ne 2) { throw 'Expected the maintained harness and declared app build commands.' }
+    # The C# workflow contract test binds both build commands to this property.
+    # This fixture separately verifies its real MSBuild and Windows IO behavior.
     $property = '/p:WriteVersionInfoToBuildLog=false'
-    foreach ($build in $builds) {
-        if (-not $build.Value.TrimEnd().EndsWith(" $property", [StringComparison]::Ordinal)) {
-            throw "Candidate build must suppress only build-server export: $($build.Value.Trim())"
-        }
-    }
     Invoke-FixtureGit init --quiet --initial-branch=main
     Invoke-FixtureGit config user.name 'Candidate version fixture'
     Invoke-FixtureGit config user.email 'candidate@example.invalid'
