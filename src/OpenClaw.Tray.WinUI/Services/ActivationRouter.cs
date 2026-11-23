@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
 using System.Threading;
@@ -33,6 +34,12 @@ internal sealed class ActivationRouter : IAsyncDisposable
         public CancellationTokenSource Cancellation { get; } = cancellation;
         public Task<bool>? Task { get; set; }
     }
+
+    /// <summary>
+    /// Test seam that runs after the listener creates a pipe instance and before it accepts a client.
+    /// Clients can connect in that window, so tests use it to hold the accept open.
+    /// </summary>
+    internal Func<CancellationToken, Task>? BeforeAcceptForTest { get; init; }
 
     public ActivationRouter(string protocolScheme, string pipeName, Action? migrationShutdown = null)
     {
@@ -228,6 +235,8 @@ internal sealed class ActivationRouter : IAsyncDisposable
                     PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
                     inBufferSize: DeepLinkSecurityPolicy.MaxIpcMessageBytes,
                     outBufferSize: 0);
+                if (BeforeAcceptForTest is { } beforeAccept)
+                    await beforeAccept(token);
                 await pipe.WaitForConnectionAsync(token);
                 var uri = await ReadIpcPayloadAsync(pipe, token);
                 if (uri == MigrationShutdownMessage)
@@ -301,11 +310,27 @@ internal sealed class ActivationRouter : IAsyncDisposable
         }
     }
 
+    // Connect and write. A receiver that is not listening fails fast so the caller can offer a manual close.
+    private static readonly TimeSpan MigrationShutdownRequestTimeout = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Bounds the listening receiver accepting and reading a migration shutdown request; allows for a
+    /// loaded older app. Tests shorten it to prove a timed-out request is withdrawn.
+    /// </summary>
+    internal TimeSpan MigrationShutdownReceiveTimeout { get; init; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Test seam that runs after the sender writes a migration shutdown request.</summary>
+    internal Action? AfterMigrationShutdownWrittenForTest { get; init; }
+
+    // Bounds withdrawing a timed-out request: cancel attempts while the drain ends (about 0.5 s at most).
+    private const int DrainCancelAttempts = 20;
+    private static readonly TimeSpan DrainCancelRetryDelay = TimeSpan.FromMilliseconds(25);
+
     [SupportedOSPlatform("windows")]
     public async Task<bool> RequestMigrationShutdownAsync(CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        timeout.CancelAfter(MigrationShutdownRequestTimeout);
         try
         {
             using var pipe = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out,
@@ -313,6 +338,11 @@ internal sealed class ActivationRouter : IAsyncDisposable
             await pipe.ConnectAsync(timeout.Token).ConfigureAwait(false);
             await pipe.WriteAsync(Encoding.UTF8.GetBytes(MigrationShutdownMessage), timeout.Token).ConfigureAwait(false);
             await pipe.FlushAsync(timeout.Token).ConfigureAwait(false);
+            AfterMigrationShutdownWrittenForTest?.Invoke();
+            // A client can connect before the receiver accepts. Closing before the receiver reads
+            // makes its accept fail with ERROR_NO_DATA and silently drops the request.
+            timeout.CancelAfter(MigrationShutdownReceiveTimeout);
+            await WaitForReceiverToReadAsync(pipe, timeout.Token).ConfigureAwait(false);
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or OperationCanceledException)
@@ -322,6 +352,44 @@ internal sealed class ActivationRouter : IAsyncDisposable
             return false;
         }
     }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task WaitForReceiverToReadAsync(PipeStream pipe, CancellationToken cancellationToken)
+    {
+        // WaitForPipeDrain blocks until the receiver reads, so give it its own thread and bound it.
+        var drain = Task.Factory.StartNew(
+            pipe.WaitForPipeDrain,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        try
+        {
+            await drain.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancel the blocked drain and let it end, so disposing the pipe really closes it before the
+            // caller sees the manual-close result. A receiver that has not accepted yet then drops the
+            // request. Cancel again in case the drain had not yet entered its flush.
+            for (var attempt = 0; attempt < DrainCancelAttempts && !drain.IsCompleted; attempt++)
+            {
+                CancelIoEx(pipe.SafePipeHandle, IntPtr.Zero);
+                await Task.WhenAny(drain, Task.Delay(DrainCancelRetryDelay, CancellationToken.None)).ConfigureAwait(false);
+            }
+            if (drain.IsCompletedSuccessfully)
+                return; // The receiver read the request just as the budget ran out.
+            _ = drain.ContinueWith(
+                static task => _ = task.Exception,
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            throw;
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CancelIoEx(SafeHandle handle, IntPtr overlapped);
 
     [SupportedOSPlatform("windows")]
     public async Task<bool> ForwardToPrimaryAsync(string uri, CancellationToken cancellationToken)
