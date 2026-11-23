@@ -1779,7 +1779,20 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 AssertComposerBounds(surface);
                 var attach = FindControl<Button>(surface, "ChatComposerAttach");
-                var attachGlyph = Assert.Single(FindDescendants<TextBlock>(attach));
+                var attachGlyphs = FindDescendants<TextBlock>(attach).ToArray();
+                if (attachGlyphs.Length != 1)
+                {
+                    var content = attach.Content as FrameworkElement;
+                    Console.Error.WriteLine(
+                        $"Attach glyph diagnostics: loaded={attach.IsLoaded}; enabled={attach.IsEnabled}; " +
+                        $"visibility={attach.Visibility}; size={attach.ActualWidth}x{attach.ActualHeight}; " +
+                        $"template={attach.Template?.GetType().FullName ?? "null"}; " +
+                        $"content={attach.Content?.GetType().FullName ?? "null"}; " +
+                        $"contentLoaded={content?.IsLoaded}; " +
+                        $"contentParent={(content is null ? "null" : VisualTreeHelper.GetParent(content)?.GetType().FullName ?? "null")}; " +
+                        $"visualDescendants={string.Join(", ", FindDescendants<DependencyObject>(attach).Select(element => element.GetType().FullName))}");
+                }
+                var attachGlyph = Assert.Single(attachGlyphs);
                 Assert.Equal(FluentIconCatalog.ChatAttach, attachGlyph.Text);
                 Assert.Equal(ChatVisuals.ComposerAttachGlyphSize, attachGlyph.FontSize);
                 var send = FindControl<Button>(surface, "ChatComposerPrimaryAction");
