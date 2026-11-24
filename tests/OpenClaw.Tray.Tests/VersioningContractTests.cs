@@ -64,6 +64,45 @@ public sealed class VersioningContractTests
     }
 
     [Fact]
+    public void GitVersionConsumers_OptOutOfTelemetry()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        var buildProperties = XDocument.Load(Path.Combine(repoRoot, "Directory.Build.props"));
+        Assert.Equal(
+            "$(GitVersion_CommandLineArguments) --telemetry-opt-out",
+            buildProperties.Descendants("GitVersion_CommandLineArguments").Single().Value);
+
+        foreach (var script in new[]
+                 {
+                     "Get-OpenClawVersion.ps1",
+                     "test-alpha-promotion-versioning.ps1",
+                     "test-release-branch-versioning.ps1"
+                 })
+        {
+            var source = File.ReadAllText(Path.Combine(repoRoot, "scripts", script));
+            var calls = Regex.Matches(source, @"(?m)^.*dotnet tool run dotnet-gitversion[^\r\n]*$");
+            Assert.NotEmpty(calls);
+            Assert.All(calls.Cast<Match>(), call => Assert.Contains("--telemetry-opt-out", call.Value));
+        }
+
+        foreach (var script in new[] { "test-release-branch-versioning.ps1", "test-candidate-gitversion-environment.ps1" })
+        {
+            Assert.Contains(
+                "<GitVersion_CommandLineArguments>--telemetry-opt-out</GitVersion_CommandLineArguments>",
+                File.ReadAllText(Path.Combine(repoRoot, "scripts", script)));
+        }
+
+        foreach (var workflow in new[] { "ci.yml", "daily-alpha-release.yml" })
+        {
+            var source = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", workflow));
+            var steps = Regex.Matches(source, @"(?ms)^(?<indent> +)- (?:name:|uses:).*?(?=^\k<indent>- |\z)");
+            var execute = Assert.Single(steps.Cast<Match>().Where(step =>
+                step.Value.Contains("uses: gittools/actions/gitversion/execute@", StringComparison.Ordinal)));
+            Assert.Matches(@"(?m)^ +GITVERSION_TELEMETRY_OPTOUT: '1'\r?$", execute.Value);
+        }
+    }
+
+    [Fact]
     public void GitVersion_MainBranchPreservesAlphaReleaseTags()
     {
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();

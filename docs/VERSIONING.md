@@ -212,6 +212,13 @@ be published as latest.
 Release build jobs must check out full git history (`fetch-depth: 0`) so
 GitVersion can see tags.
 
+Repository-owned version calculations opt out of [GitVersion 7 telemetry](https://github.com/GitTools/GitVersion/blob/7.0.1/docs/input/docs/usage/cli/telemetry-policy.md).
+`Directory.Build.props` appends `--telemetry-opt-out` to existing
+`GitVersion_CommandLineArguments`; direct CLI calls and isolated MSBuild
+fixtures pass the same option. The two GitTools execute steps set
+`GITVERSION_TELEMETRY_OPTOUT=1` for that step only. These settings do not change
+machine-wide environment variables or version calculation.
+
 For tag-driven CI, the workflow verifies that both the checked-out `HEAD` and
 the peeled release tag match `OPENCLAW_RELEASE_SOURCE_SHA`, then creates a
 checkout-only `release/<tag>` branch at that commit. This uses the existing

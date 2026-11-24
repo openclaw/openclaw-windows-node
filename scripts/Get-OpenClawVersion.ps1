@@ -28,7 +28,7 @@ try {
         }
     }
 
-    $gitVersionOutput = & dotnet tool run dotnet-gitversion -- --output json
+    $gitVersionOutput = & dotnet tool run dotnet-gitversion -- --output json --telemetry-opt-out
     if ($LASTEXITCODE -ne 0) {
         throw "GitVersion failed: $gitVersionOutput"
     }

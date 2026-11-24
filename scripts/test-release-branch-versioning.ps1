@@ -30,7 +30,7 @@ function Invoke-FixtureGit {
 
 function Assert-FixtureVersion {
     param([string]$Repository, [string]$ExpectedVersion, [string]$ExpectedSha)
-    $json = & dotnet tool run dotnet-gitversion -- $Repository --output json --no-normalize --no-cache
+    $json = & dotnet tool run dotnet-gitversion -- $Repository --output json --telemetry-opt-out --no-normalize --no-cache
     if ($LASTEXITCODE -ne 0) { throw 'GitVersion fixture execution failed. Run dotnet tool restore first.' }
     $version = $json | ConvertFrom-Json
     if ($version.SemVer -cne $ExpectedVersion) {
@@ -133,7 +133,7 @@ try {
         $env:GITHUB_REF = "refs/heads/$groupBranch"
         $env:GITHUB_SHA = $group
         try {
-            $json = & dotnet tool run dotnet-gitversion -- $queue --output json --no-cache
+            $json = & dotnet tool run dotnet-gitversion -- $queue --output json --telemetry-opt-out --no-cache
             if ($LASTEXITCODE -ne 0) { throw 'GitVersion failed on a merge queue branch.' }
         } finally {
             foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }
@@ -173,7 +173,10 @@ try {
         Copy-Item -LiteralPath (Join-Path $root 'GitVersion.yml') -Destination $source
         @"
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GitVersion_CommandLineArguments>--telemetry-opt-out</GitVersion_CommandLineArguments>
+  </PropertyGroup>
   <ItemGroup><PackageReference Include="GitVersion.MsBuild" Version="$packageVersion" PrivateAssets="all" /></ItemGroup>
 </Project>
 "@ | Set-Content (Join-Path $source 'VersionProbe.csproj')
