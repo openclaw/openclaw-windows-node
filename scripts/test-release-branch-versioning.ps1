@@ -191,8 +191,8 @@ try {
         $main = $candidate
         $reservation = 'msix-package/2026.11.3/305'
 
-        foreach ($attempt in @('initial', 'retry-negative', 'retry')) {
-            if ($attempt -eq 'retry-negative') {
+        foreach ($attempt in @('initial', 'retry-normalized', 'retry')) {
+            if ($attempt -eq 'retry-normalized') {
                 Invoke-FixtureGit $source tag -a $reservation $candidate -m 'MSIX reservation'
                 Invoke-FixtureGit $source commit --quiet --allow-empty -m 'Main moved beyond the release'
                 $main = (Invoke-FixtureGit $source rev-parse HEAD).Trim()
@@ -243,22 +243,15 @@ try {
                     } finally { Pop-Location }
                 }
                 $output = & dotnet build @arguments 2>&1
-                if ($attempt -eq 'retry-negative') {
-                    if ($LASTEXITCODE -eq 0 -or "$output" -notlike '*Found more than one remote tip*' -or
-                        "$output" -notlike "*refs/tags/$reservation^{}*" -or "$output" -notlike "*refs/tags/$tag*") {
-                        throw "Negative control did not reproduce the two-tag normalization failure: $output"
-                    }
-                    Write-Host "Reproduced $($case.Name): normalization rejects release and annotated reservation tips."
-                    continue
-                }
                 if ($LASTEXITCODE -ne 0) { throw "Release $attempt versioning failed: $output" }
                 if ($attempt -eq 'retry') {
                     # The metadata action must use the same no-normalization policy.
                     Assert-FixtureVersion $checkout $case.Version $candidate
-                    if ((Invoke-FixtureGit $checkout cat-file -t "refs/tags/$reservation").Trim() -cne 'tag' -or
-                        (Invoke-FixtureGit $checkout rev-parse "$reservation^{commit}").Trim() -cne $candidate) {
-                        throw 'Versioning changed the annotated reservation.'
-                    }
+                }
+                if ($attempt -ne 'initial' -and
+                    ((Invoke-FixtureGit $checkout cat-file -t "refs/tags/$reservation").Trim() -cne 'tag' -or
+                     (Invoke-FixtureGit $checkout rev-parse "$reservation^{commit}").Trim() -cne $candidate)) {
+                    throw 'Versioning changed the annotated reservation.'
                 }
                 $version = Get-Content (Join-Path $checkout 'obj\gitversion.json') -Raw | ConvertFrom-Json
                 $assembly = Join-Path $checkout 'bin\Debug\net10.0\VersionProbe.dll'
@@ -273,10 +266,10 @@ try {
                 foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }
             }
         }
-        Write-Host "Passed $($case.Name): initial and retry MSBuild versions match $($case.Version) at $candidate."
+        Write-Host "Passed $($case.Name): initial, normalized retry, and pinned retry MSBuild versions match $($case.Version) at $candidate."
     }
     Write-Host 'Passed real GitVersion regression: 4 release-branch fixtures (12 version/source checks) and 1 merge queue fixture (2 checks).'
-    Write-Host 'Passed 2 release-retry fixtures: 4 MSBuild version/source/assembly checks, 2 expected normalization failures, 2 metadata tool checks, 4 source/tag rejection checks.'
+    Write-Host 'Passed 2 release-retry fixtures: 6 MSBuild version/source/assembly checks including 2 normalized retries, 2 metadata tool checks, 4 source/tag rejection checks.'
 } finally {
     foreach ($name in $environmentNames) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])

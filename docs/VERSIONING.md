@@ -221,17 +221,17 @@ pushes the branch or moves a release or MSIX reservation tag.
 Tagged builds and alpha promotions disable GitVersion normalization and fetching
 through `GitVersion_NoNormalizeEnabled` and `GitVersion_NoFetchEnabled`; the
 metadata action also disables normalization. GitVersion 7.0.1 supports these
-MSBuild properties to keep the selected checkout and avoid fetching. Otherwise a
-retry can fail remote-tip inference when the release tag and annotated `msix-package/...`
-reservation point at the same commit. Branch, PR merge-ref, and merge-queue
-builds keep normalization enabled. Promotion source selection and checkout-only
-stable tags are unchanged.
+MSBuild properties to keep the selected checkout and avoid fetching. Branch,
+PR merge-ref, and merge-queue builds keep normalization enabled. Promotion
+source selection and checkout-only stable tags are unchanged.
 
 `scripts\test-release-branch-versioning.ps1` exercises the real pinned
 GitVersion.MsBuild package and metadata tool in disposable repositories. It
-reproduces the two-tag failure, executes the workflow's source-binding step,
-checks source/tag mismatch rejection, and verifies exact alpha/stable assembly
-versions on retry with newer main and feature refs present.
+checks retries with a release tag and annotated MSIX reservation at the same
+commit, with normalization both enabled and disabled. It executes the
+workflow's source-binding step, checks source/tag mismatch rejection, and
+verifies exact alpha/stable assembly versions with newer main and feature refs
+present.
 
 Tagged CI runs verify that `github.ref_name` and the resolved release version
 match before build artifacts are published. For stable and alpha tags, the
