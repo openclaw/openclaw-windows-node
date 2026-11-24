@@ -422,6 +422,21 @@ migration proof.
 
 ## Promote a published alpha to stable
 
+Every Tuesday at **18:00 UTC** (10 AM Pacific standard time, 11 AM Pacific
+daylight time), **Actions > Weekly stable promotion** selects the most recently
+published, non-draft canonical alpha release and dispatches **Promote alpha to
+stable** on main with `prepare=true`. It skips when no alpha exists or that
+alpha's version line is already stable.
+Selection uses publication time, not GitHub's stable-only Latest marker. If the
+selected alpha fails the existing eligibility checks, the run fails rather than
+silently selecting an older alpha.
+
+The scheduler only requests preparation. The request uses the same serialized
+promotion workflow, source/CI validation, rebuild, signing, and **stable-release**
+release-manager approval as manual preparation. It never approves publication. A pending approval is not cancelled
+by the next scheduled run. Store publication remains a separate central
+approval described in [Microsoft Store publication](MICROSOFT_STORE.md).
+
 Use **Actions > Promote alpha to stable**, on **main**, to select a published
 `vX.Y.Z-alpha.N` candidate. This is an additional supported release path: it
 promotes an approved ancestor of main instead of including every newer commit.
