@@ -235,10 +235,11 @@ source selection and checkout-only stable tags are unchanged.
 `scripts\test-release-branch-versioning.ps1` exercises the real pinned
 GitVersion.MsBuild package and metadata tool in disposable repositories. It
 checks retries with a release tag and annotated MSIX reservation at the same
-commit. Its normalization negative control requires a successful build with
-unchanged source and refs but a different version, demonstrating why release
-retries disable normalization. The supported retry executes the workflow's
-source-binding step, checks source/tag mismatch rejection, and verifies exact
+commit. Its alpha normalization negative control requires a successful build
+with unchanged source and refs but a different version, demonstrating why
+release retries disable normalization. The stable normalized retry still
+requires the exact release version. Pinned retries execute the workflow's
+source-binding step, check source/tag mismatch rejection, and verify exact
 alpha/stable assembly versions with newer main and feature refs present.
 
 Tagged CI runs verify that `github.ref_name` and the resolved release version

@@ -271,7 +271,7 @@ try {
                     head = $actualHead
                     originMain = $actualMain
                 } | ConvertTo-Json -Compress
-                if ($attempt -eq 'retry-normalized') {
+                if ($attempt -eq 'retry-normalized' -and $case.Name -eq 'alpha-retry') {
                     # Normalization succeeds but loses the selected release version.
                     if ([string]::IsNullOrWhiteSpace($version.SemVer) -or
                         $version.Sha -cne $candidate -or $actualHead -cne $candidate -or
@@ -291,10 +291,10 @@ try {
                 foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }
             }
         }
-        Write-Host "Passed $($case.Name): initial and pinned retry MSBuild versions match $($case.Version) at $candidate."
+        Write-Host "Passed $($case.Name): supported MSBuild versions match $($case.Version) at $candidate."
     }
     Write-Host 'Passed real GitVersion regression: 4 release-branch fixtures (12 version/source checks) and 1 merge queue fixture (2 checks).'
-    Write-Host 'Passed 2 release-retry fixtures: 4 supported MSBuild version/source/assembly checks, 2 normalized wrong-version controls with unchanged source and refs, 2 metadata tool checks, 4 source/tag rejection checks.'
+    Write-Host 'Passed 2 release-retry fixtures: 5 supported MSBuild version/source/assembly checks, 1 normalized alpha wrong-version control with unchanged source and refs, 2 metadata tool checks, 4 source/tag rejection checks.'
 } finally {
     foreach ($name in $environmentNames) {
         [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
