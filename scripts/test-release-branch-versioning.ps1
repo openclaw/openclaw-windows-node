@@ -263,7 +263,17 @@ try {
                     $productVersion -cne $case.Version -or
                     (Invoke-FixtureGit $checkout rev-parse HEAD).Trim() -cne $candidate -or
                     (Invoke-FixtureGit $checkout rev-parse refs/remotes/origin/main).Trim() -cne $main) {
-                    throw "Release $attempt selected the wrong version or source: $output"
+                    $details = [ordered]@{
+                        expectedVersion = $case.Version
+                        expectedSource = $candidate
+                        expectedMain = $main
+                        semVer = $version.SemVer
+                        sha = $version.Sha
+                        productVersion = $productVersion
+                        head = (Invoke-FixtureGit $checkout rev-parse HEAD).Trim()
+                        originMain = (Invoke-FixtureGit $checkout rev-parse refs/remotes/origin/main).Trim()
+                    } | ConvertTo-Json -Compress
+                    throw "Release $attempt selected the wrong version or source: $details. Build: $output"
                 }
             } finally {
                 foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }

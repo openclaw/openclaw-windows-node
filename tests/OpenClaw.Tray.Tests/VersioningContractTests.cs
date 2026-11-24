@@ -96,8 +96,8 @@ public sealed class VersioningContractTests
         {
             var source = File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", workflow));
             var steps = Regex.Matches(source, @"(?ms)^(?<indent> +)- (?:name:|uses:).*?(?=^\k<indent>- |\z)");
-            var execute = Assert.Single(steps.Cast<Match>().Where(step =>
-                step.Value.Contains("uses: gittools/actions/gitversion/execute@", StringComparison.Ordinal)));
+            var execute = Assert.Single(steps.Cast<Match>(), step =>
+                step.Value.Contains("uses: gittools/actions/gitversion/execute@", StringComparison.Ordinal));
             Assert.Matches(@"(?m)^ +GITVERSION_TELEMETRY_OPTOUT: '1'\r?$", execute.Value);
         }
     }
