@@ -9,8 +9,8 @@
 //   NativeThreadStackProbe.Start();                       // before the watched thread can stall
 //   var stack = NativeThreadStackProbe.Capture(threadId); // bounded; never throws
 //
-// Start creates and warms a dedicated worker, so a capture creates no thread and loads no DLL: a
-// stalled thread may hold the loader lock. The worker copies the target's registers from a
+// Start creates a dedicated worker that warms itself, so a capture creates no thread and loads no
+// DLL: a stalled thread may hold the loader lock. The worker copies the target's registers from a
 // PssCaptureSnapshot (which resumes the target before returning, so no thread stays suspended
 // while managed code runs) and walks with StackWalk64. The target keeps running, so the walk reads
 // the stack through ReadProcessMemory, which fails instead of faulting on a stale address.
@@ -64,7 +64,7 @@ internal static class NativeThreadStackProbe
         public readonly ManualResetEventSlim Done = new();
     }
 
-    /// <summary>Starts and warms the capture worker. Call before the watched thread can stall.</summary>
+    /// <summary>Starts the capture worker without waiting. Call before the watched thread can stall.</summary>
     internal static void Start()
     {
         if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
@@ -73,14 +73,13 @@ internal static class NativeThreadStackProbe
         {
             if (s_worker is not null)
                 return;
-            // Warm every path on this (parked) caller, so a later capture only reuses loaded code.
+            // The worker warms every path (P/Invokes, dbghelp, JIT) on the caller's stack before serving,
+            // so a later capture only reuses loaded code. The caller does not wait for it; a capture
+            // requested meanwhile is served after the warm-up.
             var caller = GetCurrentThreadId();
-            // Not disposed: a worker that warms up after the bounded wait still signals it.
-            var warmed = new ManualResetEventSlim();
             s_worker = new Thread(() =>
             {
                 SafeWalk(caller);
-                warmed.Set();
                 Serve();
             })
             {
@@ -88,7 +87,6 @@ internal static class NativeThreadStackProbe
                 Name = "NativeThreadStackProbe",
             };
             s_worker.Start();
-            warmed.Wait(WalkTimeout);
         }
     }
 
