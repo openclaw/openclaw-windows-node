@@ -39,11 +39,13 @@ from the same tag history.
 
 The repository-local tool manifest (`.config\dotnet-tools.json`) and MSBuild
 package reference (`src\Directory.Build.props`) are the authoritative local
-tool/package pins and currently target GitVersion 6.8.2. The CI workflow's
-`gittools/actions/gitversion/setup` step tracks the matching `6.8.x` line for
-workflow output computation. Keep the workflow action on the same major/minor
-line as the repository pins so the value injected into product metadata is
-computed by the same GitVersion release.
+tool/package pins and target GitVersion 7.0.1. Both workflow setup steps select
+that exact version through GitTools Actions v5. Keep the CLI, MSBuild package, and workflow pins
+aligned so product metadata and workflow outputs use the same release.
+
+`GitVersion.yml` uses the v7 `calculation` and `output` sections. Direct
+CLI callers use POSIX options such as `--output json`; no legacy
+configuration or argument-parser compatibility switch is required.
 
 ## Tagged and untagged builds
 
@@ -162,7 +164,7 @@ Actions schedules use UTC, so the workflow registers both possible UTC hours
 and runs only the one matching the current Pacific UTC offset. It compares the
 default-branch head with all published GitHub Releases and does nothing when
 one already points at that commit. It defers while an unpublished non-alpha tag
-points at the head. When changes exist, it uses the same GitVersion 6.8.x line
+points at the head. When changes exist, it uses the same GitVersion 7.0.1 release
 and compares that alpha with the canonical latest stable `openclaw/openclaw`
 release. A newer Gateway line starts at `vX.Y.Z-alpha.1`; otherwise the
 GitVersion alpha is kept. The workflow refuses to create a tag that is not
@@ -218,9 +220,9 @@ pushes the branch or moves a release or MSIX reservation tag.
 
 Tagged builds and alpha promotions disable GitVersion normalization and fetching
 through `GitVersion_NoNormalizeEnabled` and `GitVersion_NoFetchEnabled`; the
-metadata action also disables normalization. GitVersion 6.8.2 supports these
-MSBuild properties as `-nonormalize` and `-nofetch`. Otherwise a retry can fail
-remote-tip inference when the release tag and annotated `msix-package/...`
+metadata action also disables normalization. GitVersion 7.0.1 supports these
+MSBuild properties to keep the selected checkout and avoid fetching. Otherwise a
+retry can fail remote-tip inference when the release tag and annotated `msix-package/...`
 reservation point at the same commit. Branch, PR merge-ref, and merge-queue
 builds keep normalization enabled. Promotion source selection and checkout-only
 stable tags are unchanged.

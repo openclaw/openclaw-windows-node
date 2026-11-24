@@ -1,4 +1,6 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 
 namespace OpenClaw.Tray.Tests;
 
@@ -39,6 +41,29 @@ public sealed class VersioningContractTests
     }
 
     [Fact]
+    public void GitVersionConsumers_UseTheSameSupportedVersion()
+    {
+        var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
+        using var toolManifest = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(repoRoot, ".config", "dotnet-tools.json")));
+        var toolVersion = toolManifest.RootElement.GetProperty("tools")
+            .GetProperty("gitversion.tool").GetProperty("version").GetString()!;
+        var buildProperties = XDocument.Load(Path.Combine(repoRoot, "src", "Directory.Build.props"));
+        var packageVersion = buildProperties.Descendants("PackageReference")
+            .Single(package => (string?)package.Attribute("Include") == "GitVersion.MsBuild")
+            .Attribute("Version")?.Value;
+
+        Assert.Equal(toolVersion, packageVersion);
+        Assert.Matches(@"^7\.0\.[0-9]+$", toolVersion);
+        foreach (var workflow in new[] { "ci.yml", "daily-alpha-release.yml" })
+        {
+            Assert.Contains(
+                $"versionSpec: '{toolVersion}'",
+                File.ReadAllText(Path.Combine(repoRoot, ".github", "workflows", workflow)));
+        }
+    }
+
+    [Fact]
     public void GitVersion_MainBranchPreservesAlphaReleaseTags()
     {
         var repoRoot = TestRepositoryPaths.GetRepositoryRoot();
@@ -46,7 +71,7 @@ public sealed class VersioningContractTests
         var config = File.ReadAllText(configPath);
         var mainBranchMatch = Regex.Match(
             config,
-            @"(?ms)^  main:\s*$\r?\n(?<body>.*?)(?=^  \S|\z)",
+            @"(?ms)^    main:\s*$\r?\n(?<body>.*?)(?=^    \S|\z)",
             RegexOptions.CultureInvariant);
 
         Assert.True(mainBranchMatch.Success, "GitVersion.yml must configure the main branch.");
@@ -84,10 +109,10 @@ public sealed class VersioningContractTests
             "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1",
             dailyWorkflow);
         Assert.Contains(
-            "uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0",
+            "uses: gittools/actions/gitversion/setup@389fe43e6b0189b98c40c43553070ac029304635 # v5.0.0",
             dailyWorkflow);
         Assert.Contains(
-            "uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0",
+            "uses: gittools/actions/gitversion/execute@389fe43e6b0189b98c40c43553070ac029304635 # v5.0.0",
             dailyWorkflow);
         Assert.DoesNotContain("uses: actions/checkout@v", dailyWorkflow);
         Assert.DoesNotContain("uses: gittools/actions/gitversion/setup@v", dailyWorkflow);
@@ -113,7 +138,6 @@ public sealed class VersioningContractTests
         Assert.Contains("published_head_tag", dailyWorkflow);
         Assert.Contains("Deferring alpha release because main already has unpublished non-alpha tag", dailyWorkflow);
         Assert.Contains("steps.previous_release.outputs.changed == 'true'", dailyWorkflow);
-        Assert.Contains("versionSpec: '6.8.x'", dailyWorkflow);
         Assert.Contains("gh api repos/openclaw/openclaw/releases/latest", dailyWorkflow);
         Assert.Contains("./scripts/Resolve-DailyAlphaVersion.ps1", dailyWorkflow);
         Assert.Contains("GITVERSION_SEMVER: ${{ steps.gitversion.outputs.semVer }}", dailyWorkflow);
@@ -160,7 +184,6 @@ public sealed class VersioningContractTests
             Path.Combine(repoRoot, ".github", "workflows", "ci.yml"));
 
         Assert.Contains("- name: Resolve release version", workflow);
-        Assert.Contains("versionSpec: '6.8.x'", workflow);
         Assert.DoesNotContain("versionSpec: '6.4.x'", workflow);
         Assert.Contains(
             "'^(?<base>(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*))-(?<revision>\\d+)$'",

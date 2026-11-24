@@ -28,7 +28,7 @@ try {
         }
     }
 
-    $gitVersionOutput = & dotnet tool run dotnet-gitversion -- /output json 2>&1
+    $gitVersionOutput = & dotnet tool run dotnet-gitversion -- --output json
     if ($LASTEXITCODE -ne 0) {
         throw "GitVersion failed: $gitVersionOutput"
     }

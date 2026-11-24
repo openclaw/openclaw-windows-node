@@ -30,7 +30,7 @@ function Invoke-FixtureGit {
 
 function Assert-FixtureVersion {
     param([string]$Repository, [string]$ExpectedVersion, [string]$ExpectedSha)
-    $json = & dotnet tool run dotnet-gitversion -- $Repository /output json /nonormalize /nocache
+    $json = & dotnet tool run dotnet-gitversion -- $Repository --output json --no-normalize --no-cache
     if ($LASTEXITCODE -ne 0) { throw 'GitVersion fixture execution failed. Run dotnet tool restore first.' }
     $version = $json | ConvertFrom-Json
     if ($version.SemVer -cne $ExpectedVersion) {
@@ -133,7 +133,7 @@ try {
         $env:GITHUB_REF = "refs/heads/$groupBranch"
         $env:GITHUB_SHA = $group
         try {
-            $json = & dotnet tool run dotnet-gitversion -- $queue /output json /nocache
+            $json = & dotnet tool run dotnet-gitversion -- $queue --output json --no-cache
             if ($LASTEXITCODE -ne 0) { throw 'GitVersion failed on a merge queue branch.' }
         } finally {
             foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, $null) }

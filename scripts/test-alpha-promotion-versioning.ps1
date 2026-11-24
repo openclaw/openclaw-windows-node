@@ -22,7 +22,7 @@ function Invoke-FixtureGit {
 }
 function Get-FixtureVersion {
     param([string]$Repository = $fixture)
-    $json = & dotnet tool run dotnet-gitversion -- $Repository /output json /nonormalize /nocache
+    $json = & dotnet tool run dotnet-gitversion -- $Repository --output json --no-normalize --no-cache
     if ($LASTEXITCODE -ne 0) { throw 'GitVersion fixture execution failed. Run dotnet tool restore if the tool is missing.' }
     ($json | ConvertFrom-Json).SemVer
 }
