@@ -1837,7 +1837,20 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 AssertComposerBounds(surface);
                 var attach = FindControl<Button>(surface, "ChatComposerAttach");
-                var attachGlyph = Assert.Single(FindDescendants<TextBlock>(attach));
+                var attachGlyphs = FindDescendants<TextBlock>(attach).ToArray();
+                if (attachGlyphs.Length != 1)
+                {
+                    var content = attach.Content as FrameworkElement;
+                    Console.Error.WriteLine(
+                        $"Attach glyph diagnostics: loaded={attach.IsLoaded}; enabled={attach.IsEnabled}; " +
+                        $"visibility={attach.Visibility}; size={attach.ActualWidth}x{attach.ActualHeight}; " +
+                        $"template={attach.Template?.GetType().FullName ?? "null"}; " +
+                        $"content={attach.Content?.GetType().FullName ?? "null"}; " +
+                        $"contentLoaded={content?.IsLoaded}; " +
+                        $"contentParent={(content is null ? "null" : VisualTreeHelper.GetParent(content)?.GetType().FullName ?? "null")}; " +
+                        $"visualDescendants={string.Join(", ", FindDescendants<DependencyObject>(attach).Select(element => element.GetType().FullName))}");
+                }
+                var attachGlyph = Assert.Single(attachGlyphs);
                 Assert.Equal(FluentIconCatalog.ChatAttach, attachGlyph.Text);
                 Assert.Equal(ChatVisuals.ComposerAttachGlyphSize, attachGlyph.FontSize);
                 var send = FindControl<Button>(surface, "ChatComposerPrimaryAction");
@@ -1885,11 +1898,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
                 var assistantText = FindDescendants<RichTextBlock>(host)
                     .First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                Assert.False(assistantText.IsTextSelectionEnabled);
+                Assert.True(assistantText.IsTextSelectionEnabled);
                 Assert.Equal(14, assistantText.FontSize);
                 Assert.Equal("Segoe UI Variable Text", assistantText.FontFamily.Source);
                 Assert.Equal(TextWrapping.Wrap, assistantText.TextWrapping);
-                var assistantSurface = AssistantMessageSurface(assistantText);
+                var assistantSurface = Ancestors(assistantText).OfType<Border>().First();
                 Assert.Null(assistantSurface.Background);
                 Assert.Equal(new Thickness(0), assistantSurface.BorderThickness);
                 Assert.Equal(new Thickness(0), assistantSurface.Padding);
@@ -1918,7 +1931,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
+                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
             });
 
             // Resize and rerender the same mounted tree. Do not recreate the footer
@@ -1936,7 +1949,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 AssertComposerBounds(surface);
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
+                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
                 Assert.Same(originalInput, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Contains("A second line.", originalInput.Text, StringComparison.Ordinal);
             });
@@ -2118,7 +2131,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
+                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
             });
             await CaptureAsync(surface, $"ReleasedParity-{width}-viewport");
         }, "parity");
@@ -3552,7 +3565,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             string? previousLayout = null;
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
-                // Selection wrappers add a layout layer; measure gaps only once block bounds stop moving.
+                // Measure gaps only once block bounds stop moving.
                 var matches = FindDescendants<StackPanel>(host).Where(panel =>
                     panel.Children.Count == 4 && panel.Spacing == ChatVisuals.MessageBlockGap).Take(2).ToArray();
                 stack = matches.Length == 1 ? matches[0] : null;
@@ -4219,17 +4232,6 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
         var input = FindControl<TextBox>(surface, "ChatComposerInput");
         Assert.True(Bounds(input, surface).Bottom <= controls.Min(control => Bounds(control, surface).Top));
-    }
-
-    private static Border AssistantMessageSurface(RichTextBlock paragraph)
-    {
-        // The unpadded styling Border around Reactor's blocks is the message's prose surface;
-        // it sits inside the message's Markdown selection host.
-        var surface = Ancestors(paragraph).OfType<Border>().First();
-        Assert.Contains(Ancestors(surface).OfType<Control>(), control =>
-            FrameworkElementAutomationPeer.CreatePeerForElement(control)
-                ?.GetPattern(PatternInterface.Text) is ITextProvider);
-        return surface;
     }
 
     private static IEnumerable<DependencyObject> Ancestors(DependencyObject element)

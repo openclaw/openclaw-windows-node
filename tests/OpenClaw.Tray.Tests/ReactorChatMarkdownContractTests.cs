@@ -17,10 +17,13 @@ public sealed class ReactorChatMarkdownContractTests
             timeline.Replace("\r\n", "\n", StringComparison.Ordinal),
             StringComparison.Ordinal);
         Assert.Contains(
-            "var sanitized = ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true);",
+            "var sanitized = ChatMarkdownSanitizer.Sanitize(text ?? string.Empty, preserveWebLinks: true);",
             timeline,
             StringComparison.Ordinal);
         Assert.Contains("ChatMarkdownDisclosures.Parse(sanitized)", timeline, StringComparison.Ordinal);
+        // Streaming refreshes every realized row; unchanged messages must stay behind the props gate.
+        Assert.Contains("Component<ChatMarkdownView, ChatMarkdownProps>(new(text, tryCopy, compactSecondaryReading))",
+            timeline, StringComparison.Ordinal);
         Assert.Contains("Image = (alt, _) =>", timeline, StringComparison.Ordinal);
         // Web-parity links: Reactor's native hyperlink (http/https/mailto only), no inert override.
         Assert.DoesNotContain("LinkBuilder =", timeline, StringComparison.Ordinal);
@@ -43,9 +46,9 @@ public sealed class ReactorChatMarkdownContractTests
         Assert.DoesNotContain("BuildWrappingMarkdownListItem", timeline, StringComparison.Ordinal);
         Assert.Contains("Heading = ChatMarkdownPresentation.Heading", timeline, StringComparison.Ordinal);
         Assert.Contains("Paragraph = ChatMarkdownPresentation.Paragraph", timeline, StringComparison.Ordinal);
-        Assert.Contains("tryCopy: tryCopy, selectionOptions: selectionOptions)", timeline, StringComparison.Ordinal);
+        Assert.Contains("ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy)", timeline, StringComparison.Ordinal);
         // List items keep Reactor's Auto/Star wrapping row; the hook only places the marker.
-        Assert.Contains("row is not GridElement { Children: [var markerElement, var content] } grid", presentation, StringComparison.Ordinal);
+        Assert.Contains("row is not GridElement { Children: [TextBlockElement marker, var content] } grid", presentation, StringComparison.Ordinal);
         // Web-parity list rhythm and divider come from presentation hooks.
         Assert.Contains("UnorderedList = items => ChatMarkdownPresentation.List(items, compactSecondaryReading)", timeline, StringComparison.Ordinal);
         Assert.Contains("OrderedList = (_, items) => ChatMarkdownPresentation.List(items, compactSecondaryReading)", timeline, StringComparison.Ordinal);
@@ -54,17 +57,15 @@ public sealed class ReactorChatMarkdownContractTests
         Assert.Contains("BlockQuote = ChatMarkdownPresentation.BlockQuote", timeline, StringComparison.Ordinal);
         Assert.Contains("quote is not BorderElement { Child: { } content }", presentation, StringComparison.Ordinal);
         Assert.Contains("ThemeRef.Resolve(\"ChatMutedTextBrush\"", presentation, StringComparison.Ordinal);
-        // Web-parity tables: one flattened grid (aligned columns, unchanged copy order) in a rounded frame.
-        Assert.Contains("Table = ChatMarkdownPresentation.Table", timeline, StringComparison.Ordinal);
+        // Web-parity tables: Reactor's single table grid is restyled in a rounded frame; the
+        // Table hook is not used because it receives no rows without TextSelection.
+        Assert.DoesNotContain("Table = ChatMarkdownPresentation.Table", timeline, StringComparison.Ordinal);
         Assert.Contains("TableHeaderBackground = null", timeline, StringComparison.Ordinal);
-        Assert.Contains("rows.Select(row => (row as GridElement)?.Children.ToArray())", presentation, StringComparison.Ordinal);
         // Fenced code keeps Reactor's single literal run (so reconcile never rebuilds it and
         // selection survives) and is colored by theme-resolved highlighters.
         Assert.Contains("ApplyCodeSyntax(text, code, language);", presentation, StringComparison.Ordinal);
         Assert.Contains("ClearCodeSyntax((RichTextBlock)control);", presentation, StringComparison.Ordinal);
         Assert.DoesNotContain("XamlReader", presentation, StringComparison.Ordinal);
-        Assert.Contains("TextSelection = selectionOptions", timeline, StringComparison.Ordinal);
-        Assert.Contains("MarkdownTextSelection.Surface(label, Text(", timeline, StringComparison.Ordinal);
         Assert.Contains(
             "BuildAccessibleAssistantText(entry.Text, metadata?.AssistantContent)",
             timeline,
@@ -72,35 +73,16 @@ public sealed class ReactorChatMarkdownContractTests
     }
 
     [Fact]
-    public void MarkdownSelection_UsesOneReactorScopeAndFeedbackOnlyCopyResults()
+    public void ChatMarkdown_DoesNotUseReactorCrossBlockSelection()
     {
-        var root = TestRepositoryPaths.GetRepositoryRoot();
-        var message = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI",
-            "Chat", "ChatMarkdownMessageView.cs"));
-        var presentation = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI",
-            "Chat", "ChatMarkdownPresentation.cs"));
-
-        var timeline = File.ReadAllText(Path.Combine(root, "src", "OpenClaw.Tray.WinUI",
-            "Chat", "ReactorChatTimeline.cs"));
-        Assert.Matches(
-            @"BuildSafeMarkdown\(\s*string\? text, Func<string, bool>\? tryCopy = null, " +
-            @"bool compactSecondaryReading = false\)\s*=>\s*" +
-            @"Component<ChatMarkdownMessageView, ChatMarkdownMessageProps>\(\s*new\(\s*" +
-            @"text \?\? string.Empty,\s*tryCopy,\s*compactSecondaryReading\)\);",
-            timeline);
-        Assert.Matches(
-            @"MarkdownTextSelection\.Scope\(options,\s*ReactorChatTimeline\.BuildMessageMarkdown\(" +
-            @"\s*props\.Text, props\.TryCopyCode, options, props\.CompactSecondaryReading\)\)",
-            message);
-        Assert.Equal(1, message.Split("MarkdownTextSelection.Scope(", StringSplitOptions.None).Length - 1);
-        Assert.Contains("OnCopyResult = (_, success) =>", message, StringComparison.Ordinal);
-        Assert.DoesNotContain("Clipboard.", message, StringComparison.Ordinal);
-        Assert.DoesNotContain("TryCopyText", message, StringComparison.Ordinal);
-        Assert.Contains("Chat_Copy_Copied", message, StringComparison.Ordinal);
-        Assert.Contains("Chat_Copy_Failed", message, StringComparison.Ordinal);
-        Assert.Contains("MarkdownTextSelection.Surface(code, codeBody)", presentation, StringComparison.Ordinal);
-        Assert.Contains("MarkdownTextSelection.Visibility(expanded,", presentation, StringComparison.Ordinal);
-        Assert.Contains("ToolCallCardRenderer.BuildDisclosureHeader(expanded,", presentation, StringComparison.Ordinal);
-        Assert.Contains("MarkdownTextSelection.Surface(disclosure.Summary,", presentation, StringComparison.Ordinal);
+        // Keep preview.18 cross-block selection out of the interim path until upstream fixes and
+        // matched long-chat latency, frame-time and selection-parity proof are available.
+        var tray = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        foreach (var file in Directory.EnumerateFiles(tray, "*.cs", SearchOption.AllDirectories))
+        {
+            var source = File.ReadAllText(file);
+            Assert.False(source.Contains("MarkdownTextSelection", StringComparison.Ordinal), file);
+            Assert.False(source.Contains("TextSelection =", StringComparison.Ordinal), file);
+        }
     }
 }

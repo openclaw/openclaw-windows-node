@@ -94,7 +94,8 @@ file sealed class ItemsViewVerticalScrollControllerHandler
         else
         {
             positioner.TailVisibilityChanged = newElement.TailVisibilityChanged;
-            positioner.HistoryNavigation.Update(newElement.HistoryAnchors);
+            if (!oldElement.HistoryAnchors.SequenceEqual(newElement.HistoryAnchors))
+                positioner.HistoryNavigation.Update(newElement.HistoryAnchors);
             positioner.UpdateContentRevision(newElement.ContentRevision);
             if (!string.Equals(oldElement.InitialTailRequestKey, newElement.InitialTailRequestKey, StringComparison.Ordinal))
                 positioner.Request(

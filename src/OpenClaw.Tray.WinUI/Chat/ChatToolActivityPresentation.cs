@@ -522,7 +522,8 @@ public static class ChatToolActivityPresentation
     private static string NormalizeToolName(string? toolName)
     {
         var name = (toolName ?? string.Empty).Trim().ToLowerInvariant();
-        foreach (var prefix in new[] { "functions.", "tools.", "mcp." })
+        ReadOnlySpan<string> prefixes = ["functions.", "tools.", "mcp."];
+        foreach (var prefix in prefixes)
         {
             if (name.StartsWith(prefix, StringComparison.Ordinal))
                 name = name[prefix.Length..];
@@ -530,11 +531,16 @@ public static class ChatToolActivityPresentation
         return name.Replace('-', '_').Replace(' ', '_');
     }
 
-    private static bool Matches(string name, params string[] aliases) =>
-        aliases.Any(alias =>
-            string.Equals(name, alias, StringComparison.Ordinal)
-            || name.EndsWith($".{alias}", StringComparison.Ordinal)
-            || name.EndsWith($"_{alias}", StringComparison.Ordinal));
+    private static bool Matches(string name, params ReadOnlySpan<string> aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            if (name.EndsWith(alias, StringComparison.Ordinal)
+                && (name.Length == alias.Length || name[name.Length - alias.Length - 1] is '.' or '_'))
+                return true;
+        }
+        return false;
+    }
 
     private static string? ReadString(JsonObject? args, string propertyName) =>
         args?.TryGetPropertyValue(propertyName, out var node) == true
