@@ -47,7 +47,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
         // Distance from the window's top edge, so a header that joins the caption row can reach it.
         var (topOffset, setTopOffset) = UseState(0d);
         var topOffsetRef = UseRef(0d);
-        var layoutWatch = UseRef<EventHandler<object>?>(null);
+        var layoutWatch = UseRef<TypedEventHandler<FrameworkElement, EffectiveViewportChangedEventArgs>?>(null);
         var focus = UseRef<PanelInteraction?>(null);
         var tabView = UseRef<TabView?>(null);
         var motion = UseRef<PanelWidthMotion?>(null).Current ??= new PanelWidthMotion();
@@ -399,8 +399,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 var root = (FrameworkElement)control;
                 layoutWatch.Current = (_, _) =>
                 {
-                    // Only a host offered a title row needs its window offset (never the companion window).
-                    if (state.TitleRowHeight <= 0 || !root.IsLoaded || root.XamlRoot is null) return;
+                    if (!root.IsLoaded || root.XamlRoot is null) return;
                     double y;
                     try { y = root.TransformToVisual(null).TransformPoint(default).Y; }
                     catch (ArgumentException) { return; }
@@ -408,7 +407,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                     topOffsetRef.Current = y;
                     setTopOffset(y);
                 };
-                root.LayoutUpdated += layoutWatch.Current;
+                root.EffectiveViewportChanged += layoutWatch.Current;
             })
             .OnUnmount(control =>
             {
@@ -416,7 +415,7 @@ internal sealed class ReactorConversationPanelHost : Component<ReactorConversati
                 motion.Root = null;
                 motion.Frame = null;
                 ChatVisuals.StopObserving(control);
-                if (layoutWatch.Current is { } watch) ((FrameworkElement)control).LayoutUpdated -= watch;
+                if (layoutWatch.Current is { } watch) ((FrameworkElement)control).EffectiveViewportChanged -= watch;
                 layoutWatch.Current = null;
                 focus.Current?.Dispose();
                 focus.Current = null;

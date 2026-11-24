@@ -187,7 +187,7 @@ public sealed partial class GatewayFixtureUiTests
             await TriggerReadOnlySessionErrorAsync(run);
             await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback")?.Current.IsOffscreen == false,
                 "explicit operation error");
-            Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
+            Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Cached.Name);
             Invoke(HitToggle("WorkspaceTogglePane"));
             await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane")?.Current.IsOffscreen == false,
                 "collapsed Chat with banner");

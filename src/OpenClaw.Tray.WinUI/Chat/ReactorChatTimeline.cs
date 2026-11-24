@@ -978,25 +978,21 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     // URLs) are real WinUI hyperlinks in the Windows accent color, without an
     // underline, that open in the default browser. Reactor admits only http/https/mailto; any other
     // scheme renders as plain label text. Images and raw HTML stay inert.
+    // Realized rows refresh on every streamed delta; the component's props gate skips
+    // sanitizing, parsing and rebuilding messages whose text has not changed.
     internal static Element BuildSafeMarkdown(
-        string? text, Func<string, bool>? tryCopy = null, bool compactSecondaryReading = false)
-        => Component<ChatMarkdownMessageView, ChatMarkdownMessageProps>(
-            new(text ?? string.Empty, tryCopy, compactSecondaryReading));
+        string? text, Func<string, bool>? tryCopy = null, bool compactSecondaryReading = false) =>
+        Component<ChatMarkdownView, ChatMarkdownProps>(new(text, tryCopy, compactSecondaryReading));
 
-    internal static Element BuildMessageMarkdown(
-        string text, Func<string, bool>? tryCopy,
-        MarkdownTextSelectionOptions selectionOptions, bool compactSecondaryReading)
+    internal static Element RenderSafeMarkdown(string? text, Func<string, bool>? tryCopy, bool compactSecondaryReading)
     {
-        var sanitized = ChatMarkdownSanitizer.Sanitize(text, preserveWebLinks: true);
+        var sanitized = ChatMarkdownSanitizer.Sanitize(text ?? string.Empty, preserveWebLinks: true);
         var parts = ChatMarkdownDisclosures.Parse(sanitized);
         return ChatMarkdownPresentation.Disclosures(
-            parts,
-            markdown => BuildInertMarkdown(markdown, tryCopy, selectionOptions, compactSecondaryReading),
-            selectionOptions);
+            parts, markdown => BuildInertMarkdown(markdown, tryCopy, compactSecondaryReading));
     }
 
-    private static Element BuildInertMarkdown(string text, Func<string, bool>? tryCopy,
-        MarkdownTextSelectionOptions selectionOptions, bool compactSecondaryReading)
+    private static Element BuildInertMarkdown(string text, Func<string, bool>? tryCopy, bool compactSecondaryReading)
     {
         var options = new MarkdownOptions
         {
@@ -1007,40 +1003,19 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             ListItem = row => ChatMarkdownPresentation.ListItem(row, compactSecondaryReading),
             ThematicBreak = ChatMarkdownPresentation.ThematicBreak,
             BlockQuote = ChatMarkdownPresentation.BlockQuote,
-            Table = ChatMarkdownPresentation.Table,
             TableHeaderBackground = null,
             TableCellPadding = new Thickness(ChatVisuals.TableCellHorizontalInset, ChatVisuals.TableCellVerticalInset,
                 ChatVisuals.TableCellHorizontalInset, ChatVisuals.TableCellVerticalInset),
-            TextSelection = selectionOptions,
-            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(
-                code, language, tryCopy: tryCopy, selectionOptions: selectionOptions),
+            CodeBlock = (code, language) => ChatMarkdownPresentation.CodeBlock(code, language, tryCopy: tryCopy),
             CodeFontFamily = ChatVisuals.CodeFontFamily,
             // GitHub dialect (tables, strikethrough, task lists, URL/www/email autolinks)
             // without HTML, plus the web chat's `breaks: true` single-newline line breaks.
             ParserFlags = MarkdownParserFlags.DialectGitHub | MarkdownParserFlags.NoHtml |
                 MarkdownParserFlags.HardSoftBreaks,
-            Image = (alt, _) =>
-            {
-                var label = string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]";
-                return MarkdownTextSelection.Surface(label, Text(
-                    label,
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
-                    FontWeights.Normal,
-                    "ChatProseTextBrush")
-                    .FontFamily(ChatVisuals.BodyFontFamily)
-                    .IsTextSelectionEnabled(false));
-            },
-            HtmlBlock = raw =>
-            {
-                var label = ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw);
-                return MarkdownTextSelection.Surface(label, Text(
-                    label,
-                    compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
-                    FontWeights.Normal,
-                    "ChatProseTextBrush")
-                    .FontFamily(ChatVisuals.BodyFontFamily)
-                    .IsTextSelectionEnabled(false));
-            },
+            Image = (alt, _) => InertText(
+                string.IsNullOrWhiteSpace(alt) ? "[Image]" : $"[Image: {alt}]", compactSecondaryReading),
+            HtmlBlock = raw => InertText(
+                ChatMarkdownSanitizer.FlattenRawHtmlBlockToInertText(raw), compactSecondaryReading),
         };
 
         return ChatMarkdownPresentation.WithInlineStyling(
@@ -1048,6 +1023,14 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 Microsoft.UI.Reactor.Advanced.Factories.Markdown(text, options), compactSecondaryReading),
             compactSecondaryReading);
     }
+
+    private static Element InertText(string label, bool compactSecondaryReading) =>
+        Text(label,
+                compactSecondaryReading ? ChatVisuals.ReasoningSize : ChatVisuals.BodySize,
+                FontWeights.Normal,
+                "ChatProseTextBrush")
+            .FontFamily(ChatVisuals.BodyFontFamily)
+            .IsTextSelectionEnabled(true);
 
     private static Element BuildAssistantFooter(
         ReactorTimelineRow row,
