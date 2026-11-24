@@ -45,17 +45,20 @@ public sealed class NativeThreadStackProbeTests
         // The loader lock is process-wide: no GC may run while it is held, because a GC that needs
         // a new thread would wait for the lock forever.
         Assert.True(GC.TryStartNoGCRegion(NoGcBudgetBytes), "Could not reserve a no-GC region for the loader-lock hold.");
-        string stack;
+        var stack = string.Empty;
+        bool unlocked;
         try
         {
-            target.TakeLoaderLockAndPark();
             try
             {
+                target.TakeLoaderLockAndPark();
                 stack = CaptureWhenParked(target.NativeId, assertParked: false);
             }
             finally
             {
+                // Confirm the unlock before leaving the no-GC region.
                 target.Release();
+                unlocked = target.Join(CaptureBudget);
             }
         }
         finally
@@ -64,10 +67,10 @@ public sealed class NativeThreadStackProbeTests
                 GC.EndNoGCRegion();
         }
 
+        Assert.True(unlocked, "The target must release the loader lock and exit.");
         Assert.True(target.LoaderLockHeld, "The target must have held the loader lock during the capture.");
         Assert.StartsWith("ntdll.dll+", stack, StringComparison.OrdinalIgnoreCase);
         Assert.Matches(ContentFreeStack, stack);
-        Assert.True(target.Join(CaptureBudget), "The target must release the loader lock and exit.");
     }
 
     private static string CaptureWhenParked(uint nativeId, bool assertParked = true)
@@ -96,7 +99,7 @@ public sealed class NativeThreadStackProbeTests
         public ParkedThread()
         {
             // Bind the native calls now: binding under the loader lock could need it.
-            Marshal.PrelinkAll(typeof(ParkedThread));
+            NativeThreadStackProbe.PrelinkDeclaredImports(typeof(ParkedThread));
             _thread = new Thread(Run) { IsBackground = true };
             _thread.Start();
             Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref _nativeId) != 0, CaptureBudget));
@@ -144,7 +147,8 @@ public sealed class NativeThreadStackProbeTests
                 return;
             _loaderLockHeld = true;
             SetEvent(parked);
-            WaitForSingleObject(release, uint.MaxValue);
+            // Bounded, so an unforeseen loader-lock deadlock fails the test instead of hanging the shard.
+            WaitForSingleObject(release, (uint)(CaptureBudget.TotalMilliseconds * 2));
             LdrUnlockLoaderLock(0, cookie);
         }
 

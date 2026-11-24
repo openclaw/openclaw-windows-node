@@ -15,6 +15,7 @@
 // while managed code runs) and walks with StackWalk64. The target keeps running, so the walk reads
 // the stack through ReadProcessMemory, which fails instead of faulting on a stale address.
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace OpenClaw.Tray.UITests;
@@ -80,7 +81,7 @@ internal static class NativeThreadStackProbe
             // is served after that.
             try
             {
-                Marshal.PrelinkAll(typeof(NativeThreadStackProbe));
+                PrelinkDeclaredImports(typeof(NativeThreadStackProbe));
                 WarmStackWalk();
             }
             catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
@@ -135,6 +136,18 @@ internal static class NativeThreadStackProbe
     {
         try { return Walk(nativeThreadId); }
         catch (Exception ex) { return $"unavailable: {ex.GetType().Name}"; }
+    }
+
+    /// <summary>Binds every P/Invoke declared on <paramref name="type"/>, including non-public ones.</summary>
+    /// <remarks><see cref="Marshal.PrelinkAll"/> binds public methods only.</remarks>
+    internal static void PrelinkDeclaredImports(Type type)
+    {
+        const BindingFlags Declared = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+        foreach (var method in type.GetMethods(Declared))
+        {
+            if ((method.Attributes & MethodAttributes.PinvokeImpl) != 0)
+                Marshal.Prelink(method);
+        }
     }
 
     /// <summary>Walks one frame of the calling thread so dbghelp and both callbacks are initialized.</summary>
