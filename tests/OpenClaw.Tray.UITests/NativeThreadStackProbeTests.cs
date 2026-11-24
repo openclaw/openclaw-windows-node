@@ -8,6 +8,8 @@ public sealed class NativeThreadStackProbeTests
     private static readonly TimeSpan CaptureBudget = TimeSpan.FromSeconds(
         int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_STACK_PROBE_BUDGET_SECONDS"), out var seconds) && seconds > 0 ? seconds : 30);
 
+    private const long NoGcBudgetBytes = 64L * 1024 * 1024;
+
     // Module file name plus offset per frame, or the fixed JIT placeholder: no paths, values or text.
     private static readonly Regex ContentFreeStack = new(
         @"^[A-Za-z0-9._-]+\+0x[0-9A-F]+( <- ([A-Za-z0-9._-]+\+0x[0-9A-F]+|<jit-or-unmapped>))*$", RegexOptions.CultureInvariant);
@@ -37,29 +39,38 @@ public sealed class NativeThreadStackProbeTests
             return;
 
         using var target = new ParkedThread();
-        // A first capture proves the worker is warm before the loader lock is taken.
-        CaptureWhenParked(target.NativeId);
-
+        // Take the lock right after Start, before the worker's warm-up can finish: run alone in a
+        // fresh testhost, this covers a watched thread that stalls under the lock at once.
+        NativeThreadStackProbe.Start();
+        // The loader lock is process-wide: no GC may run while it is held, because a GC that needs
+        // a new thread would wait for the lock forever.
+        Assert.True(GC.TryStartNoGCRegion(NoGcBudgetBytes), "Could not reserve a no-GC region for the loader-lock hold.");
         string stack;
-        var elapsed = new System.Diagnostics.Stopwatch();
-        target.TakeLoaderLockAndPark();
-        elapsed.Start();
         try
         {
-            stack = NativeThreadStackProbe.Capture(target.NativeId);
+            target.TakeLoaderLockAndPark();
+            try
+            {
+                stack = CaptureWhenParked(target.NativeId, assertParked: false);
+            }
+            finally
+            {
+                target.Release();
+            }
         }
         finally
         {
-            target.Release();
+            if (System.Runtime.GCSettings.LatencyMode == System.Runtime.GCLatencyMode.NoGCRegion)
+                GC.EndNoGCRegion();
         }
 
         Assert.True(target.LoaderLockHeld, "The target must have held the loader lock during the capture.");
+        Assert.StartsWith("ntdll.dll+", stack, StringComparison.OrdinalIgnoreCase);
         Assert.Matches(ContentFreeStack, stack);
-        Assert.True(elapsed.Elapsed < CaptureBudget, $"Capture took {elapsed.Elapsed} under the loader lock.");
         Assert.True(target.Join(CaptureBudget), "The target must release the loader lock and exit.");
     }
 
-    private static string CaptureWhenParked(uint nativeId)
+    private static string CaptureWhenParked(uint nativeId, bool assertParked = true)
     {
         NativeThreadStackProbe.Start();
         // Bounded wait for the thread to park inside the kernel wait, observed through the probe itself.
@@ -67,7 +78,8 @@ public sealed class NativeThreadStackProbeTests
         string stack;
         do stack = NativeThreadStackProbe.Capture(nativeId);
         while (!stack.StartsWith("ntdll.dll+", StringComparison.OrdinalIgnoreCase) && DateTime.UtcNow < deadline);
-        Assert.StartsWith("ntdll.dll+", stack, StringComparison.OrdinalIgnoreCase);
+        if (assertParked)
+            Assert.StartsWith("ntdll.dll+", stack, StringComparison.OrdinalIgnoreCase);
         return stack;
     }
 
@@ -79,9 +91,12 @@ public sealed class NativeThreadStackProbeTests
         private readonly ManualResetEvent _release = new(false);
         private readonly Thread _thread;
         private uint _nativeId;
+        private volatile bool _loaderLockHeld;
 
         public ParkedThread()
         {
+            // Bind the native calls now: binding under the loader lock could need it.
+            Marshal.PrelinkAll(typeof(ParkedThread));
             _thread = new Thread(Run) { IsBackground = true };
             _thread.Start();
             Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref _nativeId) != 0, CaptureBudget));
@@ -89,7 +104,7 @@ public sealed class NativeThreadStackProbeTests
 
         public uint NativeId => Volatile.Read(ref _nativeId);
 
-        public bool LoaderLockHeld { get; private set; }
+        public bool LoaderLockHeld => _loaderLockHeld;
 
         public void TakeLoaderLockAndPark()
         {
@@ -122,18 +137,15 @@ public sealed class NativeThreadStackProbeTests
             _lockAndPark.WaitOne();
             if (_release.WaitOne(0))
                 return;
+            // Only already-bound native calls run under the lock: no JIT, stub generation or managed wait.
+            var parked = _parkedUnderLock.SafeWaitHandle.DangerousGetHandle();
+            var release = _release.SafeWaitHandle.DangerousGetHandle();
             if (LdrLockLoaderLock(0, IntPtr.Zero, out var cookie) != 0)
                 return;
-            try
-            {
-                LoaderLockHeld = true;
-                _parkedUnderLock.Set();
-                _release.WaitOne();
-            }
-            finally
-            {
-                LdrUnlockLoaderLock(0, cookie);
-            }
+            _loaderLockHeld = true;
+            SetEvent(parked);
+            WaitForSingleObject(release, uint.MaxValue);
+            LdrUnlockLoaderLock(0, cookie);
         }
 
         [DllImport("ntdll.dll")]
@@ -141,5 +153,11 @@ public sealed class NativeThreadStackProbeTests
 
         [DllImport("ntdll.dll")]
         private static extern int LdrUnlockLoaderLock(uint flags, IntPtr cookie);
+
+        [DllImport("kernel32.dll")]
+        private static extern bool SetEvent(IntPtr handle);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
     }
 }

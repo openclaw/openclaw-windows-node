@@ -73,9 +73,20 @@ internal static class NativeThreadStackProbe
         {
             if (s_worker is not null)
                 return;
-            // The worker warms every path (P/Invokes, dbghelp, JIT) on the caller's stack before serving,
-            // so a later capture only reuses loaded code. The caller does not wait for it; a capture
-            // requested meanwhile is served after the warm-up.
+            // Bind every P/Invoke and run one StackWalk64 on this thread now: binding and dbghelp's
+            // first walk take the loader lock, which the watched thread may hold as soon as it starts.
+            // This costs a few milliseconds. The worker warms the rest (module list, snapshot, JIT)
+            // without the loader lock and without delaying the caller; a capture requested meanwhile
+            // is served after that.
+            try
+            {
+                Marshal.PrelinkAll(typeof(NativeThreadStackProbe));
+                WarmStackWalk();
+            }
+            catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+            {
+                // slopwatch-ignore: SW003 A diagnostic must never fail the fixture; captures then report the error.
+            }
             var caller = GetCurrentThreadId();
             s_worker = new Thread(() =>
             {
@@ -124,6 +135,28 @@ internal static class NativeThreadStackProbe
     {
         try { return Walk(nativeThreadId); }
         catch (Exception ex) { return $"unavailable: {ex.GetType().Name}"; }
+    }
+
+    /// <summary>Walks one frame of the calling thread so dbghelp and both callbacks are initialized.</summary>
+    private static void WarmStackWalk()
+    {
+        var context = Marshal.AllocHGlobal(ContextSize + 16);
+        var frame = Marshal.AllocHGlobal(StackFrameSize);
+        try
+        {
+            var aligned = (IntPtr)(((long)context + 15) & ~15L);
+            RtlCaptureContext(aligned);
+            Marshal.Copy(new byte[StackFrameSize], 0, frame, StackFrameSize);
+            SetAddress(frame, AddrPcOffset, Marshal.ReadInt64(aligned, RipOffset));
+            SetAddress(frame, AddrFrameOffset, Marshal.ReadInt64(aligned, RbpOffset));
+            SetAddress(frame, AddrStackOffset, Marshal.ReadInt64(aligned, RspOffset));
+            StackWalk64(MachineAmd64, GetCurrentProcess(), GetCurrentThread(), frame, aligned, IntPtr.Zero, FunctionTable, ModuleBase, IntPtr.Zero);
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(frame);
+            Marshal.FreeHGlobal(context);
+        }
     }
 
     private static string Walk(uint nativeThreadId)
@@ -234,6 +267,12 @@ internal static class NativeThreadStackProbe
 
     [DllImport("kernel32.dll")]
     private static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetCurrentThread();
+
+    [DllImport("kernel32.dll")]
+    private static extern void RtlCaptureContext(IntPtr contextRecord);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenThread(uint access, bool inheritHandle, uint threadId);
