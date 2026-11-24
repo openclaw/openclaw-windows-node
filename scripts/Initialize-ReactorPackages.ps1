@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$DestinationDirectory = (Join-Path $PSScriptRoot '..\artifacts\reactor-packages')
+    [string]$DestinationDirectory = (Join-Path $PSScriptRoot '..\artifacts\reactor-nuget-packages')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -40,15 +40,18 @@ function Initialize-ReactorPackages {
     param([string]$Directory)
 
     [IO.Directory]::CreateDirectory($Directory) | Out-Null
-    $release = 'https://github.com/microsoft/microsoft-ui-reactor/releases/download/v0.1.0-preview.18'
+    # Microsoft Authenticode-signs the NuGet.org builds of these assemblies.
+    $feed = 'https://www.nuget.org/api/v2/package'
+    $version = '0.1.0-preview.18'
     foreach ($package in @(
-        @{ Name = 'Microsoft.UI.Reactor.0.1.0-preview.18.nupkg'; Sha256 = '4E7EE4646EFF4E6F69F2C827A481F190F9DEAA1C5022055BD7F5E7532094D588' },
-        @{ Name = 'Microsoft.UI.Reactor.Advanced.0.1.0-preview.18.nupkg'; Sha256 = 'F9E6CC4030768B1FAE8DBC35C1DDEFF8BA0E2992C83C5AA211D12518E8E3EF6D' }
+        @{ Id = 'Microsoft.UI.Reactor'; Sha256 = 'A983B1BD4C4C5ADBBAF8EB93C8012A0A48CC32D5160FC24EEE2B9678B5D61F28' },
+        @{ Id = 'Microsoft.UI.Reactor.Advanced'; Sha256 = '79879F02247D2AB436F6D4FA73E6C098393C9BA568F711E72E299D92B56B4008' }
     )) {
-        Save-VerifiedReactorPackage -Uri "$release/$($package.Name)" -Sha256 $package.Sha256 `
-            -Destination (Join-Path $Directory $package.Name)
+        $name = "$($package.Id).$version.nupkg"
+        Save-VerifiedReactorPackage -Uri "$feed/$($package.Id)/$version" -Sha256 $package.Sha256 `
+            -Destination (Join-Path $Directory $name)
     }
-    Write-Host 'Official Reactor preview.18 packages verified.'
+    Write-Host "Official Reactor $version NuGet packages verified."
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
