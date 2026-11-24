@@ -56,9 +56,10 @@ public sealed class NativeThreadStackProbeTests
             }
             finally
             {
-                // Confirm the unlock before leaving the no-GC region.
+                // Confirm the unlock before leaving the no-GC region. The target's own wait is bounded
+                // at twice the budget, so this join outlasts it even if the release signal were lost.
                 target.Release();
-                unlocked = target.Join(CaptureBudget);
+                unlocked = target.Join(CaptureBudget * 3);
             }
         }
         finally
