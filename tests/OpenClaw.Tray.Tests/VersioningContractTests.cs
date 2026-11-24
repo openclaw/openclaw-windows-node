@@ -80,7 +80,7 @@ public sealed class VersioningContractTests
                  })
         {
             var source = File.ReadAllText(Path.Combine(repoRoot, "scripts", script));
-            var calls = Regex.Matches(source, @"(?m)^.*dotnet tool run dotnet-gitversion[^\r\n]*$");
+            var calls = Regex.Matches(source, @"(?m)^.*dotnet tool run dotnet-gitversion[^\r\n]*\r?$");
             Assert.NotEmpty(calls);
             Assert.All(calls.Cast<Match>(), call => Assert.Contains("--telemetry-opt-out", call.Value));
         }
