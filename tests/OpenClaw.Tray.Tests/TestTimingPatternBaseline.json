@@ -115,7 +115,7 @@
   "one-shot-uia-lookup": {
     "tests/OpenClaw.Tray.UITests/AutomationsPinnedHostUiTests.cs": 14,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureAccessibilityBaselineTests.cs": 33,
-    "tests/OpenClaw.Tray.UITests/GatewayFixtureChatRunCorrelationTests.cs": 3,
+    "tests/OpenClaw.Tray.UITests/GatewayFixtureChatRunCorrelationTests.cs": 2,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureContextUsageUiTests.cs": 6,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureDashboardUiTests.cs": 20,
     "tests/OpenClaw.Tray.UITests/GatewayFixtureInteractiveUiTests.cs": 13,

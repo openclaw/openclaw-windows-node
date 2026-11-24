@@ -303,11 +303,9 @@ public sealed partial class GatewayFixtureUiTests
                 .GetProperty("toolResult").GetString());
             Assert.Equal("InProgress", entries.Single(entry => entry.GetProperty("Id").GetString() == newToolId)
                 .GetProperty("toolResult").GetString());
-            var textNodes = FindTimeline(run)!.FindAll(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
-                .Cast<AutomationElement>().ToArray();
-            Assert.Single(textNodes, element => element.Current.Name == "fixture-a.wav");
-            Assert.Single(textNodes, element => element.Current.Name == "fixture-b.wav");
+            var textNodes = FindTimelineTexts(run);
+            Assert.Single(textNodes, element => element.Cached.Name == "fixture-a.wav");
+            Assert.Single(textNodes, element => element.Cached.Name == "fixture-b.wav");
             await CaptureIfRequestedAsync(run, "background-media-tool-newer-streaming.png");
             await CompleteCorrelationRunAsync(run, "fixture-chat-2", "Fixture newer answer complete.");
             await CaptureIfRequestedAsync(run, "background-media-tool-newer-complete.png");
