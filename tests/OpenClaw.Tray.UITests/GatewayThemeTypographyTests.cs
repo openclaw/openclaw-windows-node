@@ -225,6 +225,51 @@ public sealed class GatewayThemeTypographyTests(UIThreadFixture ui)
         });
     }
 
+    // File content, tool details and notice names set the code font outside the Markdown restyle pass, and a theme
+    // switch does not re-render them, so before they kept the previous theme's font while they stayed mounted.
+    [Fact]
+    public async Task MountedWorkspaceFileCodeFollowsALiveThemeSwitch()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var resources = new ChatThemeProofScope("Dark");
+            var applicator = new AppThemeApplicator();
+            ReactorHostControl? host = null;
+            try
+            {
+                host = new ReactorHostControl();
+                host.Mount(_ => Component<ReactorChatWorkspaceFile, ReactorChatWorkspaceFileProps>(new(
+                    new ChatWorkspaceFileRequest("main", "notes.txt"),
+                    (_, _) => Task.FromResult(new ChatWorkspaceFileResult(ChatWorkspaceFileStatus.Loaded, "file body")))));
+                ui.Container.Children.Add(new Border { Child = host, Width = 480, Height = 320 });
+                TextBlock? content = null;
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => (content = TestSupport.FindDescendants<TextBlock>(host).FirstOrDefault(text => text.Text == "file body")) is not null,
+                    "File content rendered");
+                Assert.Equal(ChatVisuals.DefaultCodeFontFamily, content!.FontFamily.Source);
+
+                Assert.True(applicator.Apply(BuiltinGatewayThemes.All.Single(theme => theme.Id == "crt")));
+                ChatThemeChanges.Refresh();
+                var themed = ChatVisuals.CodeFontFamily;
+                Assert.NotEqual(ChatVisuals.DefaultCodeFontFamily, themed);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => content.FontFamily.Source == themed, "Mounted file content takes the CRT code font");
+
+                Assert.True(applicator.Apply(null));
+                ChatThemeChanges.Refresh();
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => content.FontFamily.Source == ChatVisuals.DefaultCodeFontFamily, "Mounted file content returns to Consolas");
+            }
+            finally
+            {
+                applicator.Apply(null);
+                host?.Dispose();
+                ui.Container.Children.Clear();
+            }
+        });
+    }
+
     // A plugin or imported theme may give prose and code the same font stack. Markdown first rendered under it must
     // still take the body font for prose, and the code font for code, once a later theme separates them again;
     // elements are found by content, not by font.

@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -16,6 +17,10 @@ public static partial class DashboardProtocol
 
     /// <summary>Upper bound on gallery pages fetched for one load (200 x 25 rows).</summary>
     public const int MaxGalleryPages = 25;
+
+    public const int MaxProgressMarkdownUtf8Bytes = 8192;
+    public const int MaxProgressSteps = 50;
+    public const int MaxProgressStepUtf8Bytes = 512;
 
     [GeneratedRegex("^[a-z0-9][a-z0-9._-]{0,63}$", RegexOptions.CultureInvariant)]
     private static partial Regex WidgetNamePattern();
@@ -66,6 +71,98 @@ public static partial class DashboardProtocol
         if (!string.IsNullOrEmpty(agentId))
             parameters["agentId"] = agentId;
         return parameters;
+    }
+
+    /// <summary>
+    /// Builds the read-only <c>progressCard.get</c> parameters. Keys that name their
+    /// agent are sent alone; bare keys and sentinels also carry their agent.
+    /// </summary>
+    public static Dictionary<string, object?> BuildProgressCardParams(ProgressCardTarget target)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(target.SessionKey);
+        var parameters = new Dictionary<string, object?> { ["sessionKey"] = target.SessionKey.Trim() };
+        var agentId = target.AgentId?.Trim();
+        if (!string.IsNullOrEmpty(agentId))
+            parameters["agentId"] = agentId;
+        return parameters;
+    }
+
+    /// <summary>
+    /// Parses and bounds a <c>progressCard.get</c> response. The card must belong to
+    /// <paramref name="expectedSessionKey"/> (the target's Gateway scope key).
+    /// </summary>
+    public static BoardProgressCard? ParseProgressCard(JsonElement payload, string expectedSessionKey)
+    {
+        if (payload.ValueKind != JsonValueKind.Object ||
+            !payload.TryGetProperty("card", out var card))
+            throw new InvalidOperationException("The Gateway returned an invalid progress card response.");
+        if (card.ValueKind == JsonValueKind.Null)
+            return null;
+        if (card.ValueKind != JsonValueKind.Object ||
+            ReadString(card, "sessionKey") is not { Length: > 0 } sessionKey ||
+            !ProgressCardSessionIdentity.SameSession(sessionKey, expectedSessionKey) ||
+            !TryReadInt(card, "revision", out var revision) || revision < 1 ||
+            !TryReadLong(card, "updatedAt", out var updatedAt) || updatedAt <= 0 || updatedAt > 253402300799999)
+            throw new InvalidOperationException("The Gateway returned an invalid or mismatched progress card.");
+
+        string? markdown = null;
+        if (card.TryGetProperty("markdown", out var markdownValue))
+        {
+            if (markdownValue.ValueKind != JsonValueKind.String)
+                throw new InvalidOperationException("The Gateway returned invalid progress card Markdown.");
+            markdown = markdownValue.GetString();
+            if (Encoding.UTF8.GetByteCount(markdown!) > MaxProgressMarkdownUtf8Bytes)
+                throw new InvalidOperationException("The Gateway returned oversized progress card Markdown.");
+        }
+
+        var steps = ImmutableArray<BoardProgressStep>.Empty;
+        if (card.TryGetProperty("steps", out var stepsValue))
+        {
+            if (stepsValue.ValueKind != JsonValueKind.Array || stepsValue.GetArrayLength() > MaxProgressSteps)
+                throw new InvalidOperationException("The Gateway returned invalid progress card steps.");
+            var builder = ImmutableArray.CreateBuilder<BoardProgressStep>(stepsValue.GetArrayLength());
+            var inProgress = 0;
+            foreach (var item in stepsValue.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object ||
+                    ReadString(item, "step") is not { Length: > 0 } text ||
+                    Encoding.UTF8.GetByteCount(text) > MaxProgressStepUtf8Bytes)
+                    throw new InvalidOperationException("The Gateway returned an invalid progress card step.");
+                var status = ReadString(item, "status") switch
+                {
+                    "pending" => BoardProgressStepStatus.Pending,
+                    "in_progress" => BoardProgressStepStatus.InProgress,
+                    "completed" => BoardProgressStepStatus.Completed,
+                    _ => throw new InvalidOperationException("The Gateway returned an invalid progress card step status."),
+                };
+                if (status == BoardProgressStepStatus.InProgress && ++inProgress > 1)
+                    throw new InvalidOperationException("The Gateway returned multiple in-progress steps.");
+                builder.Add(new BoardProgressStep(text, status));
+            }
+            steps = builder.ToImmutable();
+        }
+
+        if (string.IsNullOrWhiteSpace(markdown) && steps.IsEmpty)
+            throw new InvalidOperationException("The Gateway returned an empty progress card.");
+        return new BoardProgressCard(sessionKey, revision, updatedAt, markdown, steps);
+    }
+
+    /// <summary>Parses a <c>progressCard.changed</c> invalidation event.</summary>
+    public static BoardProgressChangedEvent? ParseProgressCardChanged(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object ||
+            ReadString(payload, "sessionKey") is not { Length: > 0 } sessionKey)
+            return null;
+        int? revision = null;
+        if (payload.TryGetProperty("revision", out var revisionValue) &&
+            revisionValue.ValueKind != JsonValueKind.Null)
+        {
+            if (revisionValue.ValueKind != JsonValueKind.Number ||
+                !revisionValue.TryGetInt32(out var parsed) || parsed < 1)
+                return null;
+            revision = parsed;
+        }
+        return new BoardProgressChangedEvent(sessionKey, revision);
     }
 
     /// <summary>
@@ -324,6 +421,20 @@ public static partial class DashboardProtocol
         if (value.TryGetInt64(out var integer))
             return integer;
         return value.TryGetDouble(out var number) && double.IsFinite(number) ? (long)number : null;
+    }
+
+    private static bool TryReadInt(JsonElement parent, string property, out int result)
+    {
+        result = default;
+        return parent.TryGetProperty(property, out var value) &&
+            value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out result);
+    }
+
+    private static bool TryReadLong(JsonElement parent, string property, out long result)
+    {
+        result = default;
+        return parent.TryGetProperty(property, out var value) &&
+            value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out result);
     }
 
     private static ImmutableArray<string> ReadStringArray(JsonElement parent, string property)

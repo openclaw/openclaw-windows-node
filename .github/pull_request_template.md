@@ -28,17 +28,14 @@ can help update the branch when needed.
 
 <!--
 Describe the concrete user, product, or operational problem.
-In 1-3 short, plain-language sentences, explain what someone is trying to do,
-what goes wrong or is missing, and why it matters. For a fix, include the trigger
-when known. For other changes, describe the need without inventing a bug.
+In 1–3 plain sentences, say who is affected, what happens today, and why it
+matters to them. For a bug, name the trigger if known. For a feature or internal
+work, describe the need in the actual workflow without inventing harm.
+Could a reader understand the problem without knowing your proposed fix?
 
-Illustrative wording, not a report of a current bug:
-Good: "When connecting Companion to a gateway, users cannot tell that pairing
-approval is still needed, so they do not know how to finish connecting."
-Bad: "Fixes missing approval-state handling in the connection manager."
-
-Describe the experienced problem, not just the code change. Save function names,
-missing checks, and the root-cause walkthrough for the explanation below.
+Good: "Background checks can use up a new user's model allowance before they've
+asked the assistant to monitor anything."
+Bad: "Turn off periodic checks on fresh installs."
 -->
 
 ## User Impact
@@ -69,90 +66,10 @@ changes when it clarifies the result.
 
 Start with the behavior checked and the result in plain language. Reviewers will
 inspect the code, tests, and CI; do not make them decode command lists to learn
-what was verified. Keep exact commands and counts in Validation below. Link long
-output or put it in optional <details>, keeping the useful evidence summary and
-meaningful gaps visible.
+what was verified. Keep meaningful gaps visible; link long output or put it in
+optional <details>.
 -->
 
-## Change Type
-
-- [ ] Bug fix
-- [ ] Feature
-- [ ] Refactor
-- [ ] Docs or instructions
-- [ ] Tests or validation
-- [ ] Security hardening
-- [ ] Chore or infrastructure
-
-## Scope
-
-- [ ] Tray or WinUI UX
-- [ ] Windows node capability
-- [ ] Local MCP or `winnode`
-- [ ] Gateway, connection, or pairing
-- [ ] Setup or onboarding
-- [ ] Permissions, privacy, or security
-- [ ] Tests, CI, or docs
-
+<!-- Declare proof pools here using docs/PROOF_POOLS.md:
 ## Required proof pools
-
-<!--
-Select every applicable pool ID from docs/PROOF_POOLS.md using:
-- `<pool-id>`: <reason>
-
-Use `none` with a reason only when no capacity-dependent custom Windows proof is
-required. Declaring a pool schedules proof; it does not claim the proof ran.
 -->
-
-## Validation
-
-<!--
-Summarize what was checked and the result before exact commands and pass/fail counts.
-Baseline after code changes:
-- `./build.ps1`
-- `dotnet test ./tests/OpenClaw.Shared.Tests/OpenClaw.Shared.Tests.csproj --no-restore`
-- `dotnet test ./tests/OpenClaw.Tray.Tests/OpenClaw.Tray.Tests.csproj --no-restore`
-
-Add focused tests when relevant. In fresh worktrees, confirm tests actually ran
-and report non-zero test counts.
-For inventory-bound proof, link the local execution summary described in
-docs/PROOF_POOLS.md. A valid summary is not complete pool, visual, or binary-provenance proof.
--->
-
-## Real Behavior Proof
-
-<!--
-Paste at least one current-head proof item that directly demonstrates the
-changed behavior. Use copied live output, screenshots or video, UI diagnostics,
-`winnode` output, raw MCP JSON-RPC, gateway invoke output, redacted runtime
-logs, or linked artifacts.
--->
-
-- Environment tested:
-- PR head or commit tested:
-- Exact steps or command run:
-- Evidence after fix:
-- Observed result:
-- Screenshot or artifact links verified? (`Yes`/`No`/`N/A`)
-- Not verified or blocked:
-
-## Security Impact
-
-- New permissions or capabilities? (`Yes`/`No`)
-- Secrets or tokens handling changed? (`Yes`/`No`)
-- New or changed network calls? (`Yes`/`No`)
-- Command or tool execution surface changed? (`Yes`/`No`)
-- Data access scope changed? (`Yes`/`No`)
-- If any answer is `Yes`, explain the risk and mitigation:
-
-## Compatibility and Migration
-
-- Backward compatible? (`Yes`/`No`)
-- Config or environment changes? (`Yes`/`No`)
-- Migration needed? (`Yes`/`No`)
-- If yes, list the exact upgrade steps:
-
-## Review Conversations
-
-- [ ] I replied to or resolved every bot review conversation addressed by this PR.
-- [ ] I left unresolved only conversations that still need maintainer judgment.

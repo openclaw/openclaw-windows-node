@@ -99,8 +99,10 @@ Reviews are advisory, not runtime proof or authority to publish.
 ## 5. Write the local body from the actual template
 
 Read the current [Windows PR template](../../../.github/pull_request_template.md).
-Copy it to a local session artifact; preserve headings, HTML comments, checklist
-items and ordering, including security, compatibility and review conversations.
+Copy it to a local session artifact; preserve heading order and the hidden proof-pool declaration.
+Describe material security or compatibility changes under User Impact. Reply to
+or resolve addressed bot review conversations; leave unresolved only those
+that need maintainer judgment.
 Follow its title convention. Check only supported claims, not aspirational work.
 
 The [proof package](../openclaw-proof-validation/SKILL.md#pr-proof-package)
@@ -109,8 +111,8 @@ current template:
 
 - Lead with the current behavior, strongest evidence and meaningful limits.
   Keep risks and blockers visible.
-- Put exact commands and actual outcomes/counts in Validation. Identify the
-  tested source in Real Behavior Proof, including uncommitted work.
+- Put exact commands, actual outcomes/counts and the tested source in Evidence,
+  including any uncommitted work.
 - For prose-only work, label source/link checks as static assessment and runtime
   proof as not applicable.
 - Declare every applicable pool, or use ``- `none`: <reason>`` when no custom

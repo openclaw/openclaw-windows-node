@@ -431,6 +431,50 @@ public sealed class WorkspaceNavigationTests
     }
 
     [Fact]
+    public void PromotedDraft_ReplacesItsIdentityInCurrentAndBackHistory()
+    {
+        var history = new WorkspaceNavigationHistory();
+        history.Navigate(new(WorkspacePageId.Home, "agent:main:existing"));
+        Assert.True(history.SelectChatSession("draft:local"));
+        Assert.True(history.SelectChatSession("agent:main:created", "draft:local"));
+
+        Assert.True(history.PromoteSession("draft:local", "agent:main:created"));
+
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:created"), history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:existing"), history.Current);
+    }
+
+    [Fact]
+    public void PromotedDraftAfterNavigatingAway_ReplacesRetainedHistoryWithoutChangingCurrent()
+    {
+        var history = new WorkspaceNavigationHistory();
+        Assert.True(history.SelectChatSession("draft:local"));
+        Assert.True(history.SelectChatSession("agent:main:newer"));
+
+        Assert.True(history.PromoteSession("draft:local", "agent:main:created"));
+
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:newer"), history.Current);
+        Assert.True(history.GoBack());
+        Assert.Equal(new WorkspaceDestination(WorkspacePageId.Home, "agent:main:created"), history.Current);
+    }
+
+    [Fact]
+    public void CurrentDraftPromotion_ReplacesAndRendersTheMaterializedDestination()
+    {
+        var workspace = File.ReadAllText(Source("Windows", "WorkspaceWindow.xaml.cs"));
+        var promotion = workspace[workspace.IndexOf("private void OnChatSessionPromoted", StringComparison.Ordinal)..
+            workspace.IndexOf("internal void NavigateNativeSetup", StringComparison.Ordinal)];
+        var currentDraft = promotion.IndexOf("if (_navigation.Current.SessionKey == draftKey)", StringComparison.Ordinal);
+        var promote = promotion.IndexOf("_navigation.PromoteSession(draftKey, sessionKey)", StringComparison.Ordinal);
+        var render = promotion.IndexOf("RenderDestination();", StringComparison.Ordinal);
+
+        Assert.True(currentDraft >= 0);
+        Assert.True(promote > currentDraft);
+        Assert.True(render > promote);
+    }
+
+    [Fact]
     public void BackToApp_ReturnsToTheAppDestinationSettingsWasOpenedFrom()
     {
         var history = new WorkspaceNavigationHistory();
@@ -944,10 +988,19 @@ public sealed class WorkspaceNavigationTests
         Assert.DoesNotContain("NavigationViewPaneDisplayMode.LeftMinimal", code);
         Assert.DoesNotContain("NavView.CompactPaneLength =", code);
         Assert.Contains("CollapsePaneButton : ReopenPaneButton).Focus(FocusState.Programmatic)", code);
+        var animation = code[code.IndexOf("private bool TryAnimatePane", StringComparison.Ordinal)..
+            code.IndexOf("private void SettlePane", StringComparison.Ordinal)];
+        var settle = code[code.IndexOf("private void SettlePane", StringComparison.Ordinal)..
+            code.IndexOf("private void PinPaneContent", StringComparison.Ordinal)];
         var toggle = code[code.IndexOf("private void OnTogglePane", StringComparison.Ordinal)..
             code.IndexOf("private void UpdatePanePresentation", StringComparison.Ordinal)];
         Assert.DoesNotContain("IsPaneVisible = false", toggle);
         Assert.DoesNotContain("LeftMinimal", toggle);
+        // The animated width honors Windows animation settings, and the reopen row returns to its
+        // XAML height: clearing the local value would leave it at zero and let content overlap.
+        Assert.Contains("ChatMotion.AnimationsEnabled", animation);
+        Assert.Contains("ReopenPaneSlot.Height = ReopenPaneSlotHeight;", settle);
+        Assert.DoesNotContain("ReopenPaneSlot.ClearValue", code);
     }
 
     [Fact]
@@ -994,11 +1047,15 @@ public sealed class WorkspaceNavigationTests
         Assert.Equal("1", (string?)title.Attribute("Grid.Column"));
         var homeIcon = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == "HomeIcon");
         Assert.Null(homeIcon.Parent!.Attribute("Margin"));
-        // Navigation stays in the pane toolbar; the title bar hosts only the chat side-panel controls.
+        // Navigation stays in the pane toolbar; the title bar shows session identity, not app branding.
         Assert.Equal(["ExpandSidePanelButton", "ToggleSidePanelButton"], title.Descendants()
             .Where(element => element.Name.LocalName == "Button")
             .Select(element => (string?)element.Attribute(x + "Name")));
-        Assert.DoesNotContain(title.Descendants(), element => element.Name.LocalName == "TextBlock");
+        var sessionTitle = Assert.Single(title.Descendants(), element => element.Name.LocalName == "TextBlock");
+        Assert.Equal("WorkspaceSessionTitle", (string?)sessionTitle.Attribute("AutomationProperties.AutomationId"));
+        Assert.Equal("False", (string?)sessionTitle.Parent!.Attribute("TitleBar.IsDragRegion"));
+        Assert.Null(sessionTitle.Attribute("Text"));
+        Assert.Null(sessionTitle.Attribute(x + "Uid"));
         foreach (var name in new[] { "BackButton", "ForwardButton" })
         {
             var button = document.Descendants().Single(element => (string?)element.Attribute(x + "Name") == name);
@@ -1312,7 +1369,7 @@ public sealed class WorkspaceNavigationTests
         // Title-row placement owns the pass-through refresh after every show/hide or panel geometry change,
         // and withdraws the row while a banner above chat would sit under a joined panel.
         var layoutPass = code[code.IndexOf("private void UpdateTitleRowLayout()", StringComparison.Ordinal)..];
-        layoutPass = layoutPass[..layoutPass.IndexOf(";", StringComparison.Ordinal)];
+        layoutPass = layoutPass[..layoutPass.IndexOf("\n    }", StringComparison.Ordinal)];
         Assert.Contains("!OperationInfo.IsOpen && !_chat.HasBannerAboveChat", layoutPass);
         var titleRow = File.ReadAllText(Source("Windows", "WorkspaceTitleRow.cs"));
         var rowUpdate = titleRow[titleRow.IndexOf("internal void Update(", StringComparison.Ordinal)..];
@@ -1516,7 +1573,9 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("if (!_navigation.Navigate(destination)", workspace);
         var chat = File.ReadAllText(Source("Pages", "ChatPage.xaml.cs"));
         var legacy = chat[chat.IndexOf("private void ShowWebViewSurface", StringComparison.Ordinal)..];
-        Assert.Contains("var pendingSessionKey = _pendingSessionKey ?? (App.Current as App)?.PendingChatSessionKey", legacy);
+        Assert.Contains("var pendingSessionKey = _pendingSessionKey", legacy);
+        Assert.Contains("_deferredWebViewSessionKey", legacy);
+        Assert.Contains("(App.Current as App)?.PendingChatSessionKey", legacy);
         Assert.DoesNotContain("_hub", chat);
         Assert.Contains("_pendingSessionKey = threadIdToMount", chat);
         Assert.Contains("_pendingVoice.Request(nativeSurface: !_webViewMode)", chat);

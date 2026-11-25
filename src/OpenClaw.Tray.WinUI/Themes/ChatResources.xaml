@@ -12,6 +12,8 @@
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource TextFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatPanelTabSelectedBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatPanelTabSelectedTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatHistoryTickBrush" Color="{ThemeResource TextFillColorSecondary}" Opacity="0.4" />
             <!-- 82% primary + 18% secondary alpha: (0.82*255 + 0.18*197)/255. -->
             <SolidColorBrush x:Key="ChatCommandOutputBrush" Color="{ThemeResource TextFillColorPrimary}" Opacity="0.9590588235294118" />
@@ -73,6 +75,8 @@
             </Style>
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="ChatPanelTabSelectedBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatPanelTabSelectedTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemAccentColorDark1}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
@@ -142,6 +146,8 @@
             </Style>
         </ResourceDictionary>
         <ResourceDictionary x:Key="HighContrast">
+            <SolidColorBrush x:Key="ChatPanelTabSelectedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+            <SolidColorBrush x:Key="ChatPanelTabSelectedTextBrush" Color="{ThemeResource SystemColorHighlightTextColor}" />
             <SolidColorBrush x:Key="ChatSandboxOnBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
@@ -210,6 +216,108 @@
             </Style>
         </ResourceDictionary>
     </ResourceDictionary.ThemeDictionaries>
+    <DataTemplate x:Key="ChatPanelTabHeaderTemplate">
+        <TextBlock Text="{Binding}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+    </DataTemplate>
+    <!-- Only the header shell is replaced. TabViewItem still owns selection, closing and keyboard input. -->
+    <Style x:Key="ChatPanelTabStyle" TargetType="controls:TabViewItem">
+        <Setter Property="Height" Value="40" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="Margin" Value="2,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="CornerRadius" Value="{ThemeResource OverlayCornerRadius}" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+        <Setter Property="HeaderTemplate" Value="{StaticResource ChatPanelTabHeaderTemplate}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:TabViewItem">
+                    <Grid x:Name="LayoutRoot" Background="Transparent" Padding="0,4">
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabContainer.Background" Value="{ThemeResource ChatToolActionHoverBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ChatToolActionHoverForegroundBrush}" />
+                                        <Setter Target="IconControl.Foreground" Value="{ThemeResource ChatToolActionHoverForegroundBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabContainer.Background" Value="{ThemeResource ChatToolActionHoverBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ChatToolActionHoverForegroundBrush}" />
+                                        <Setter Target="IconControl.Foreground" Value="{ThemeResource ChatToolActionHoverForegroundBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Selected">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabContainer.Background" Value="{ThemeResource ChatPanelTabSelectedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                        <Setter Target="IconControl.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                        <Setter Target="CloseButton.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="PointerOverSelected">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabContainer.Background" Value="{ThemeResource ChatPanelTabSelectedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                        <Setter Target="IconControl.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                        <Setter Target="CloseButton.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="PressedSelected">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabContainer.Background" Value="{ThemeResource ChatPanelTabSelectedBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                        <Setter Target="IconControl.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                        <Setter Target="CloseButton.Foreground" Value="{ThemeResource ChatPanelTabSelectedTextBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="DisabledStates">
+                                <VisualState x:Name="Enabled" />
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="TabContainer.Background" Value="{ThemeResource SubtleFillColorTransparentBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                        <Setter Target="IconControl.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                            <VisualStateGroup x:Name="CloseIconStates">
+                                <VisualState x:Name="CloseButtonVisible" />
+                                <VisualState x:Name="CloseButtonCollapsed">
+                                    <VisualState.Setters>
+                                        <Setter Target="CloseButton.Visibility" Value="Collapsed" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                        <Grid x:Name="TabContainer" Padding="8,3,4,3" ColumnSpacing="8"
+                              CornerRadius="{TemplateBinding CornerRadius}" Background="Transparent"
+                              Control.IsTemplateFocusTarget="True">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ContentControl x:Name="IconControl" Width="16" Height="16" IsTabStop="False"
+                                            Content="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=TabViewTemplateSettings.IconElement}"
+                                            Foreground="{ThemeResource ChatSecondaryTextBrush}"
+                                            AutomationProperties.AccessibilityView="Raw" />
+                            <ContentPresenter x:Name="ContentPresenter" Grid.Column="1" Content=""
+                                              ContentTemplate="{TemplateBinding HeaderTemplate}" VerticalAlignment="Center"
+                                              Foreground="{ThemeResource ChatSecondaryTextBrush}" FontSize="13" />
+                            <Button x:Name="CloseButton" Grid.Column="2" Content="&#xE711;" IsTabStop="False"
+                                    Width="24" Height="24" MinWidth="0" MinHeight="0" Padding="0"
+                                    FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="10"
+                                    IsTextScaleFactorEnabled="False" Style="{StaticResource SubtleButtonStyle}" />
+                        </Grid>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
     <Style x:Key="ChatQueueIconStyle" TargetType="Path">
         <Setter Property="Stroke" Value="{ThemeResource ChatSecondaryTextBrush}" />
     </Style>

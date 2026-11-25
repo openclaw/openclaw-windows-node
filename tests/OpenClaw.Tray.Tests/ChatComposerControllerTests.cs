@@ -82,6 +82,54 @@ public sealed class ChatComposerControllerTests
     }
 
     [Fact]
+    public void ComposerContentState_TracksTextAndAttachmentsAndNotifiesHost()
+    {
+        var changes = 0;
+        var actions = new ChatComposerHostActions(
+            null, null, null, null,
+            ComposerChanged: () => changes++);
+        var (vm, controller, _, _) = MakeController(actions);
+
+        Assert.False(controller.HasUnsentComposerContent);
+        vm.SetDraft("unsent text");
+        Assert.True(controller.HasUnsentComposerContent);
+        Assert.True(changes > 0);
+
+        vm.ClearDraft();
+        var attachment = new ChatAttachment { FileName = "notes.txt" };
+        vm.AddAttachments([attachment]);
+        Assert.True(controller.HasUnsentComposerContent);
+
+        vm.RemoveAttachment(attachment);
+        Assert.False(controller.HasUnsentComposerContent);
+    }
+
+    [Theory]
+    [InlineData("INVALID_REQUEST", true)]
+    [InlineData("UNAVAILABLE", false)]
+    public async Task RuntimePort_ClassifiesGatewayResponseErrors(
+        string gatewayCode,
+        bool expectedDefinitiveRejection)
+    {
+        var provider = new FakeChatDataProviderForComposerTests
+        {
+            SendException = GatewayRequestErrors.Create("Gateway response failure", gatewayCode, null)
+        };
+        var port = new ChatComposerRuntimePort(provider);
+
+        var outcome = await port.SendMessageAsync(
+            "agent:main:gateway-default",
+            "message",
+            Array.Empty<ChatAttachment>(),
+            CancellationToken.None,
+            "request-id");
+
+        Assert.Equal(
+            expectedDefinitiveRejection ? ChatSendOutcome.DefinitivelyRejected : ChatSendOutcome.Indeterminate,
+            outcome);
+    }
+
+    [Fact]
     public async Task SendAsync_DisconnectedIsBlocked()
     {
         var vm = new ChatComposerViewModel(new RecordingUiDispatcher(), initialSpeakerMuted: false);

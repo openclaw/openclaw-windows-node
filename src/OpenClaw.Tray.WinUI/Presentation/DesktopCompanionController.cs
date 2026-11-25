@@ -6,6 +6,7 @@ internal interface IDesktopCompanionView
 {
     event EventHandler? HideRequested;
     void Show();
+    void Hide();
     /// <summary>Applies a theme preference; <paramref name="refreshThemeResources"/> re-resolves recolored resources.</summary>
     void ApplyTheme(string theme, bool refreshThemeResources = false);
     void ApplyScale(int percent);
@@ -25,6 +26,7 @@ internal sealed class DesktopCompanionController : IDisposable
     private readonly DesktopCompanionState _state = new();
     private IDesktopCompanionView? _view;
     private bool _started, _disposed, _failed;
+    private bool _mainWindowVisible, _viewShown;
 
     public DesktopCompanionController(ISettingsStore settings, AppNotificationService notifications,
         IUiDispatcher dispatcher, Func<IDesktopCompanionView> createView, Action<Exception> reportFailure,
@@ -54,6 +56,13 @@ internal sealed class DesktopCompanionController : IDisposable
 
     private void OnSettingsChanged(object? sender, SettingsChangedEventArgs args) => Dispatch(ApplySettings);
 
+    public void SetMainWindowVisibility(bool visible) => Dispatch(() =>
+    {
+        if (_mainWindowVisible == visible) return;
+        _mainWindowVisible = visible;
+        if (_started) ApplySettings();
+    });
+
     private void ApplySettings()
     {
         var settings = _settings.Current;
@@ -64,19 +73,28 @@ internal sealed class DesktopCompanionController : IDisposable
             return;
         }
         if (_failed) return;
+        if (settings.DesktopCompanionOnlyWhenMinimized && _mainWindowVisible)
+        {
+            if (_viewShown)
+            {
+                _viewShown = false;
+                _view?.Hide();
+            }
+            _state.Reset(_notifications.Snapshot);
+            return;
+        }
         if (_view is null)
         {
-            _state.Reset(_notifications.Snapshot);
             _view = _createView();
             _view.HideRequested += OnHideRequested;
-            _view.ApplyTheme(_themePreference());
-            _view.ApplyScale(settings.DesktopCompanionScalePercent);
-            _view.Show();
         }
-        else
+        _view.ApplyTheme(_themePreference());
+        _view.ApplyScale(settings.DesktopCompanionScalePercent);
+        if (!_viewShown)
         {
-            _view.ApplyTheme(_themePreference());
-            _view.ApplyScale(settings.DesktopCompanionScalePercent);
+            _state.Reset(_notifications.Snapshot);
+            _view.Show();
+            _viewShown = true;
         }
 
         if (!settings.ShowNotifications)
@@ -92,7 +110,7 @@ internal sealed class DesktopCompanionController : IDisposable
             // Read the current service snapshot on the UI thread, not a potentially stale
             // queued event captured by a background producer.
             if (_state.Observe(_notifications.Snapshot,
-                _view is not null && _settings.Current.ShowNotifications))
+                _viewShown && _settings.Current.ShowNotifications))
                 _view?.Present(_state.Current);
         });
 
@@ -123,6 +141,7 @@ internal sealed class DesktopCompanionController : IDisposable
     {
         var view = _view;
         _view = null;
+        _viewShown = false;
         if (view is null) return;
         view.HideRequested -= OnHideRequested;
         view.Close();

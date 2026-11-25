@@ -98,6 +98,20 @@ public sealed class ReleaseCandidateE2EWorkflowTests
     }
 
     [Fact]
+    public void Workflow_BuildsWithoutExportingPerProjectVersionsToSharedGitHubEnvironment()
+    {
+        var builds = ExtractRunBlocks(ReadWorkflow())
+            .SelectMany(block => block.Split('\n'))
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("dotnet build ", StringComparison.Ordinal))
+            .ToArray();
+
+        Assert.Equal(2, builds.Length);
+        Assert.Contains("dotnet build tests/OpenClaw.E2ETests -c Debug -r win-x64 --no-restore /p:WriteVersionInfoToBuildLog=false", builds);
+        Assert.Contains("dotnet build src/OpenClaw.Tray.WinUI -c Debug -r win-x64 --no-restore /p:WriteVersionInfoToBuildLog=false", builds);
+    }
+
+    [Fact]
     public void Workflow_InitializesMainAppDependenciesFromDeclaredSource()
     {
         var workflow = ReadWorkflow().Replace("\r\n", "\n", StringComparison.Ordinal);
@@ -111,7 +125,7 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         Assert.Contains("if: inputs.windows_node_source == 'main'", step);
         Assert.Contains("working-directory: app-under-test", step);
         Assert.Contains("$ErrorActionPreference = 'Stop'", step);
-        const string initialize = "& ./scripts/Initialize-ReactorPackages.ps1 -DestinationDirectory (Join-Path (Get-Location) 'artifacts/reactor-packages')";
+        const string initialize = "& ./scripts/Initialize-ReactorPackages.ps1";
         const string restore = "dotnet restore src/OpenClaw.Tray.WinUI -r win-x64";
         var initializeIndex = step.IndexOf(initialize, StringComparison.Ordinal);
         var restoreIndex = step.IndexOf(restore, StringComparison.Ordinal);

@@ -85,6 +85,34 @@ function Get-PromotionRelease {
     throw 'Release discovery pagination exceeded its limit.'
 }
 
+# Scheduled selection is read-only. The existing promotion owner validates the
+# selected release's exact source, CI, ancestry, and approval before preparing it.
+function Get-ScheduledAlphaPromotionTag {
+    $alphas = @()
+    for ($page = 1; $page -le 10; $page++) {
+        $response = Invoke-PromotionApi -Path "releases?per_page=100&page=$page"
+        $releases = @($response)
+        $alphas += @($releases | Where-Object {
+            $_.draft -eq $false -and $_.prerelease -eq $true -and $_.published_at -and
+            $_.tag_name -cmatch '\Av(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)-alpha\.(?:0|[1-9]\d*)\z'
+        })
+        if ($releases.Count -lt 100) { break }
+        if ($page -eq 10) { throw 'Scheduled alpha discovery pagination exceeded its limit.' }
+    }
+    if ($alphas.Count -eq 0) { return $null }
+    $candidate = $alphas | Sort-Object -Property @{ Expression = { [DateTimeOffset]$_.published_at }; Descending = $true }, tag_name | Select-Object -First 1
+    $latest = Invoke-PromotionApi -Path 'releases/latest'
+    if ($latest.draft -ne $false -or $latest.prerelease -ne $false -or -not $latest.published_at -or
+        $latest.tag_name -cnotmatch '\Av(?<base>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:-[1-9]\d*)?\z') {
+        throw 'Latest must be a published canonical stable release.'
+    }
+    # Do not rebuild a line already shipped, including stable corrections.
+    $stableVersion = [version]$Matches.base
+    $candidateVersion = [version]($candidate.tag_name.Substring(1).Split('-')[0])
+    if ($candidateVersion -le $stableVersion) { return $null }
+    return $candidate.tag_name
+}
+
 function Assert-PromotionApproval {
     $environment = Invoke-PromotionApi -Path 'environments/stable-release'
     $review = @($environment.protection_rules | Where-Object type -CEQ 'required_reviewers')

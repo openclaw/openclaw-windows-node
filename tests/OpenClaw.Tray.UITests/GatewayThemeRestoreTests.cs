@@ -2,7 +2,7 @@
 // Windows colors back, even when a brush was last resolved under the other mode (the dark brush of an app that only
 // ever rendered light, or a brush code handed to an element in the other mode), and when the theme was applied under
 // High Contrast. A theme applied at startup, before anything rendered, leaves the brushes it does not set on each
-// mode's own Windows colors.
+// mode's own Windows colors. After a Windows accent change only accent brushes take the new accent.
 // Run with dotnet test tests\OpenClaw.Tray.UITests -r win-x64 --filter FullyQualifiedName~GatewayThemeRestoreTests.
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
@@ -12,6 +12,7 @@ using OpenClaw.Chat;
 using OpenClaw.Shared.Themes;
 using OpenClawTray.Chat;
 using OpenClawTray.Theming;
+using Windows.UI.ViewManagement;
 using static Microsoft.UI.Reactor.Factories;
 using FunctionalTheme = OpenClawTray.FunctionalUI.Core.Theme;
 
@@ -168,6 +169,79 @@ public sealed class GatewayThemeRestoreTests(UIThreadFixture ui)
             }
         });
     }
+
+    // A fixed framework brush can equal a Windows accent shade (a success fill on a matching accent). Clearing the theme
+    // after the user changes the Windows accent gives it its own color back; only the accent brushes take the new accent.
+    [Fact]
+    public async Task AfterAWindowsAccentChangeClearingAThemeMovesOnlyAccentBrushesToTheNewAccent()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(() =>
+        {
+            var previous = Application.Current.Resources;
+            var windowsAccent = AppThemeApplicator.WindowsAccent;
+            Application.Current.Resources = FreshProductionResources();
+            var applicator = new AppThemeApplicator();
+            try
+            {
+                var (appTheme, appMode) = AppMode();
+                var success = Rendered(appTheme, "SystemFillColorSuccessBrush");
+                UIColorType[] shades =
+                [
+                    UIColorType.Accent, UIColorType.AccentDark1, UIColorType.AccentDark2, UIColorType.AccentDark3,
+                    UIColorType.AccentLight1, UIColorType.AccentLight2, UIColorType.AccentLight3,
+                ];
+                var accent = shades.ToDictionary(type => type, type => windowsAccent(type));
+                // No accent brush of either mode reads AccentLight1.
+                accent[UIColorType.AccentLight1] = success;
+                AppThemeApplicator.WindowsAccent = type => accent[type];
+                var crt = BuiltinGatewayThemes.All.Single(theme => theme.Id == "crt");
+
+                Assert.True(applicator.Apply(crt));
+                Assert.Equal(Projected(crt, appMode, "SystemFillColorSuccessBrush"), Rendered(appTheme, "SystemFillColorSuccessBrush"));
+                Assert.Equal(Projected(crt, appMode, "AccentFillColorDefaultBrush"), Rendered(appTheme, "AccentFillColorDefaultBrush"));
+
+                for (var index = 0; index < shades.Length; index++)
+                    accent[shades[index]] = Windows.UI.Color.FromArgb(255, 0x12, 0x34, (byte)(0x50 + index));
+                Assert.True(applicator.Apply(null));
+
+                Assert.Equal(success, Rendered(appTheme, "SystemFillColorSuccessBrush"));
+                // The SystemAccentColor shade WinUI's theme dictionaries bind each accent brush to.
+                var follows = appTheme == ElementTheme.Light
+                    ? new Dictionary<string, UIColorType>
+                    {
+                        ["AccentFillColorDefaultBrush"] = UIColorType.AccentDark1,
+                        ["AccentFillColorSecondaryBrush"] = UIColorType.AccentDark1,
+                        ["AccentFillColorTertiaryBrush"] = UIColorType.AccentDark1,
+                        ["AccentTextFillColorPrimaryBrush"] = UIColorType.AccentDark2,
+                        ["AccentTextFillColorSecondaryBrush"] = UIColorType.AccentDark3,
+                        ["AccentTextFillColorTertiaryBrush"] = UIColorType.AccentDark1,
+                        ["SystemFillColorAttentionBrush"] = UIColorType.Accent,
+                    }
+                    : new Dictionary<string, UIColorType>
+                    {
+                        ["AccentFillColorDefaultBrush"] = UIColorType.AccentLight2,
+                        ["AccentFillColorSecondaryBrush"] = UIColorType.AccentLight2,
+                        ["AccentFillColorTertiaryBrush"] = UIColorType.AccentLight2,
+                        ["AccentTextFillColorPrimaryBrush"] = UIColorType.AccentLight3,
+                        ["AccentTextFillColorSecondaryBrush"] = UIColorType.AccentLight3,
+                        ["AccentTextFillColorTertiaryBrush"] = UIColorType.AccentLight2,
+                        ["SystemFillColorAttentionBrush"] = UIColorType.AccentLight2,
+                    };
+                Assert.Equal(follows.Keys.Order(StringComparer.Ordinal), ThemeResourceProjection.AccentBoundFrameworkKeys.Order(StringComparer.Ordinal));
+                foreach (var (key, shade) in follows)
+                    Assert.True(accent[shade] == Rendered(appTheme, key), $"{appTheme} {key} {Rendered(appTheme, key)} != {shade} {accent[shade]}");
+            }
+            finally
+            {
+                AppThemeApplicator.WindowsAccent = windowsAccent;
+                applicator.Apply(null);
+                Application.Current.Resources = previous;
+                ui.Container.Children.Clear();
+            }
+        });
+    }
+
     // A window whose App theme differs from Windows (a dark Hub on light Windows) must paint its own mode's palette:
     // every projected brush, and the Fluent aliases controls resolve them through, such as the NavigationView content
     // layer behind Settings and chat.

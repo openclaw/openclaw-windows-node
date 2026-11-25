@@ -107,11 +107,18 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
             foreach (var width in new[] { 1100d, 760d, 560d, 480d, 760d, 1100d })
             {
                 surface.Width = width;
+                // The first width does not resize, so this wait can return before any layout pass. The
+                // issues tile's Button presenter can then still lack its content, including the icon well.
                 await TestSupport.WaitForRenderedConditionAsync(() =>
                     Math.Abs(Find<FrameworkElement>(surface, "SystemsPageRoot").ActualWidth - width) <= .5 &&
                     Math.Abs(Find<FrameworkElement>(surface, "SystemsContentColumn").ActualWidth -
-                        PageResponsiveLayout.ContentWidth(width)) <= .5,
-                    "retained mounted Systems viewport resized");
+                        PageResponsiveLayout.ContentWidth(width)) <= .5 &&
+                    SummaryIconWellsRendered(surface),
+                    "retained mounted Systems viewport resized",
+                    () => $"root={TryFind<FrameworkElement>(surface, "SystemsPageRoot")?.ActualWidth}, " +
+                        $"column={TryFind<FrameworkElement>(surface, "SystemsContentColumn")?.ActualWidth}, " +
+                        string.Join(", ", new[] { "SystemsOnlineTile", "SystemsIssuesTile" }.Select(id =>
+                            $"{id}:IconWell={(TryFind<FrameworkElement>(surface, id) is { } tile && TryFind<Border>(tile, id + ":IconWell") is { } well ? $"{well.ActualWidth}x{well.ActualHeight} loaded={well.IsLoaded}" : "absent")}")));
                 Assert.Same(initialAddButton, Find<Button>(surface, "SystemsAddSystem"));
                 Assert.Same(initialActionHost, Find<FrameworkElement>(surface, "SystemsMastActions"));
                 Assert.Same(initialActionHost, VisualTreeHelper.GetParent(initialAddButton));
@@ -2480,6 +2487,12 @@ public sealed class SystemsPageProofTests(UIThreadFixture ui, ITestOutputHelper 
     private static string WebHandoffs(DependencyObject root) => string.Join(",", AutomationIds(root)
         .Where(id => id.Contains("OpenWeb", StringComparison.Ordinal) || id == "SystemsMastOverflow")
         .OrderBy(id => id, StringComparer.Ordinal));
+
+    // Both summary tiles show their icon well in the visual tree with layout.
+    private static bool SummaryIconWellsRendered(DependencyObject surface) =>
+        new[] { "SystemsOnlineTile", "SystemsIssuesTile" }.All(id =>
+            TryFind<FrameworkElement>(surface, id) is { } tile &&
+            TryFind<Border>(tile, id + ":IconWell") is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 });
 
     private static T? TryFind<T>(DependencyObject root, string id) where T : FrameworkElement =>
         TestSupport.FindDescendants<T>(root).FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == id);

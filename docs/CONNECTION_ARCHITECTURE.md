@@ -236,8 +236,16 @@ sessions, and the entire footer disappear, and content fills the vacated width.
 While the pane is hidden, the same footer control shows only Dashboard and the
 bell in the native `TitleBar` right header; it collapses again when the pane
 reopens or Settings is shown, so the actions never appear twice.
-The native 160ms slide goes directly to zero width; `PaneClosed` hides offscreen
-controls without a second layout step. Native motion preferences still apply.
+With Windows animations on, the pane's width eases over 220 ms (cubic in and
+out) once per drawn frame (`WorkspacePaneAnimator`), so the content beside it
+widens or narrows with the pane instead of snapping to its final width under
+the native 160ms slide. The pane's content keeps its full width and slides
+with the pane's trailing edge, and the reopen row grows or shrinks in step so
+the content moves down or up with the slide. A close hides the pane only once
+it reaches zero width; a toggle during the motion reverses from the current
+width. Dashboard and the bell fade into the title bar over 150 ms. With Windows
+animations off, the native slide goes directly to zero width and `PaneClosed`
+hides offscreen controls without a second layout step.
 Both toggle states share a stable overlay position outside the animated pane,
 so native focus restoration and intermediate layout cannot move the target.
 A floating-style subtle reopen button reserves a dedicated 56 DIP row at
