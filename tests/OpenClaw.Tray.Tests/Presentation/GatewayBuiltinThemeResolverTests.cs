@@ -238,7 +238,7 @@ public sealed class GatewayBuiltinThemeResolverTests : IDisposable
         var recording = ControlUiThemeRecording.Load(ControlUiThemeRecording.Stable);
         // A probe that never completes and ignores cancellation, as a WebView2 call that does not honor it would.
         var probe = new FakeProbe(recording) { Gate = new TaskCompletionSource() };
-        using var environment = new EnvironmentScope(GatewayBuiltinThemeResolver.TimeoutEnvironmentVariable, "1000");
+        using var environment = new EnvironmentScope(GatewayBuiltinThemeResolver.TimeoutEnvironmentVariable, "3000");
         using var resolver = new GatewayBuiltinThemeResolver(_dispatcher, _catalog, probe, Cache());
         var changes = 0;
         resolver.Changed += (_, _) => changes++;
@@ -261,6 +261,7 @@ public sealed class GatewayBuiltinThemeResolverTests : IDisposable
         await resolver.Pending.WaitAsync(TimeSpan.FromSeconds(10));
         Assert.Equal(2, probe.Calls);
         Assert.Equal(recording.BuildId, resolver.Current?.Key);
+        Assert.Equal(2, changes);
     }
 
     public void Dispose()

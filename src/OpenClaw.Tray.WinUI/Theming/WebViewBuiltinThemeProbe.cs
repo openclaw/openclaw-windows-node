@@ -62,10 +62,11 @@ internal sealed class WebViewBuiltinThemeProbe(IUiDispatcher dispatcher) : IBuil
         var ownsWindow = true;
         try
         {
-            // WaitAsync bounds each wait to the deadline even where WebView2 does not honor cancelling the call itself.
+            // The call itself is not cancelled by the token (its task would then report cancelled even if the runtime still
+            // creates a controller); WaitAsync bounds the wait, and an abandoned creation is closed when it completes.
             var creation = environment.CreateCoreWebView2ControllerAsync(
                 CoreWebView2ControllerWindowReference.CreateFromWindowHandle((ulong)window),
-                BoardWebViewEnvironment.CreateControllerOptions(environment, Profile)).AsTask(cancellationToken);
+                BoardWebViewEnvironment.CreateControllerOptions(environment, Profile)).AsTask();
             try
             {
                 controller = await creation.WaitAsync(cancellationToken);
@@ -97,9 +98,9 @@ internal sealed class WebViewBuiltinThemeProbe(IUiDispatcher dispatcher) : IBuil
             core.Navigate(DocumentUri);
             if (!await loaded.Task.WaitAsync(cancellationToken))
                 throw new InvalidOperationException("The theme probe document did not load.");
-            await core.ExecuteScriptAsync(ThemeProbe.Script).AsTask(cancellationToken).WaitAsync(cancellationToken);
-            var encoded = await core.ExecuteScriptAsync(ThemeProbe.ResolveExpression(themeIds))
-                .AsTask(cancellationToken).WaitAsync(cancellationToken);
+            await BoundedByDeadline(core.ExecuteScriptAsync(ThemeProbe.Script).AsTask(cancellationToken), cancellationToken);
+            var encoded = await BoundedByDeadline(
+                core.ExecuteScriptAsync(ThemeProbe.ResolveExpression(themeIds)).AsTask(cancellationToken), cancellationToken);
             // The script returns a JSON string; ExecuteScriptAsync encodes that value as JSON once more.
             return JsonSerializer.Deserialize<string>(encoded) ?? throw new InvalidOperationException("The theme probe returned nothing.");
         }
@@ -109,6 +110,18 @@ internal sealed class WebViewBuiltinThemeProbe(IUiDispatcher dispatcher) : IBuil
             if (ownsWindow)
                 DestroyWindow(window);
         }
+    }
+
+    // WaitAsync abandons the call at the deadline. A fault it raises later (the controller is closed under it) is observed
+    // here, so it is not reported as an unobserved task exception.
+    private static Task<T> BoundedByDeadline<T>(Task<T> operation, CancellationToken cancellationToken)
+    {
+        _ = operation.ContinueWith(
+            static abandoned => { _ = abandoned.Exception; },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        return operation.WaitAsync(cancellationToken);
     }
 
     private static async Task CloseWhenCreatedAsync(Task<CoreWebView2Controller> creation, IntPtr window)
