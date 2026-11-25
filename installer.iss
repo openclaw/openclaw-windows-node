@@ -462,8 +462,12 @@ begin
 end;
 
 const
-  { ITaskFolder.RegisterTaskDefinition creation flag: update an existing task. }
-  TaskSchedulerUpdate = 4;
+  { ITaskFolder.RegisterTaskDefinition creation flags (TASK_CREATION). }
+  TaskSchedulerUpdate = $4;
+  { Keep the task's security descriptor as it is: do not add a read ACE for its principal. }
+  TaskSchedulerDontAddPrincipalAce = $10;
+  { Saving the definition must not start the task through a registration trigger. }
+  TaskSchedulerIgnoreRegistrationTriggers = $20;
 
 procedure MigrateLegacyBackgroundLaunch;
 var
@@ -519,7 +523,8 @@ begin
     carries on. }
   try
     Action.Arguments := '--background';
-    Folder.RegisterTaskDefinition('{#MyStartupTaskName}', Definition, TaskSchedulerUpdate,
+    Folder.RegisterTaskDefinition('{#MyStartupTaskName}', Definition,
+      TaskSchedulerUpdate or TaskSchedulerDontAddPrincipalAce or TaskSchedulerIgnoreRegistrationTriggers,
       Unassigned, Unassigned, Definition.Principal.LogonType);
     Log('Migrated existing scheduled task to background launch.');
   except

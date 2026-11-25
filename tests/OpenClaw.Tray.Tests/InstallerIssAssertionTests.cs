@@ -99,10 +99,15 @@ public sealed class InstallerIssAssertionTests
 
         Assert.DoesNotContain("schtasks.exe", migration);
         Assert.DoesNotContain("Exec(", migration);
-        Assert.Contains("TaskSchedulerUpdate = 4;", iss);
+        Assert.Contains("TaskSchedulerUpdate = $4;", iss);
+        Assert.Contains("TaskSchedulerDontAddPrincipalAce = $10;", iss);
+        Assert.Contains("TaskSchedulerIgnoreRegistrationTriggers = $20;", iss);
+        // Updating the task must not start it through a registration trigger or add a
+        // principal ACE to its security descriptor.
         Assert.Contains(
-            "Folder.RegisterTaskDefinition('{#MyStartupTaskName}', Definition, TaskSchedulerUpdate,",
-            migration);
+            "Folder.RegisterTaskDefinition('{#MyStartupTaskName}', Definition,\r\n" +
+            "      TaskSchedulerUpdate or TaskSchedulerDontAddPrincipalAce or TaskSchedulerIgnoreRegistrationTriggers,",
+            migration.ReplaceLineEndings("\r\n"));
         Assert.Contains("Unassigned, Unassigned, Definition.Principal.LogonType);", migration);
         Assert.Matches(
             @"RegisterTaskDefinition\([\s\S]*?except\s+Log\('Could not migrate startup task\.",
