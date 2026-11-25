@@ -2008,17 +2008,19 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var rootIdentityDir = _gatewayRegistry.GetIdentityDirectory(record.Id);
         if (!Directory.Exists(rootIdentityDir))
             Directory.CreateDirectory(rootIdentityDir);
-        var identityDir = OpenClaw.Connection.LegacyStartupDeviceToken.SelectIdentityDirectory(
-            rootIdentityDir,
-            record.Url);
-        var copyLegacyIdentity = string.Equals(
-            Path.GetFullPath(identityDir),
-            Path.GetFullPath(rootIdentityDir),
-            StringComparison.OrdinalIgnoreCase);
+        string identityDir;
+        bool copyLegacyIdentity;
         OpenClaw.Connection.GatewayCredential? credential;
         OpenClaw.Connection.LegacyStartupCredentialChoice operatorChoice;
         try
         {
+            identityDir = OpenClaw.Connection.LegacyStartupDeviceToken.SelectIdentityDirectory(
+                rootIdentityDir,
+                record.Url);
+            copyLegacyIdentity = string.Equals(
+                Path.GetFullPath(identityDir),
+                Path.GetFullPath(rootIdentityDir),
+                StringComparison.OrdinalIgnoreCase);
             operatorChoice = ChooseStartupOperatorCredential(record, resolver, identityDir, copyLegacyIdentity);
             credential = ResolveStartupCredentialOrThrow(operatorChoice.Resolution, operatorChoice.IdentityDirectory);
         }
@@ -2196,7 +2198,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var choice = LegacyStartupDeviceToken.Prefer(
             resolution,
             record.Url,
-            _settings?.GetEffectiveGatewayUrl(),
+            _settings?.GetLegacyCredentialGatewayUrlOrNull(),
             identityDir,
             SettingsManager.SettingsDirectoryPath,
             dir => resolver.ResolveOperatorDetailed(record, dir));
@@ -2217,7 +2219,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         var choice = LegacyStartupDeviceToken.Prefer(
             resolution,
             record.Url,
-            _settings?.GetEffectiveGatewayUrl(),
+            _settings?.GetLegacyCredentialGatewayUrlOrNull(),
             identityDir,
             SettingsManager.SettingsDirectoryPath,
             dir => resolver.ResolveNodeDetailed(record, dir));

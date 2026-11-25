@@ -47,6 +47,18 @@ public sealed class GatewayValidationIdentity : IDisposable
                     _originalJson = File.ReadAllText(source);
                     DeviceIdentity.AtomicWriteKeyFileRaw(Path.Combine(DirectoryPath, FileName), _originalJson);
                 }
+
+                var bound = Path.Combine(sourceDirectory, LegacyStartupDeviceToken.BoundUrlFileName);
+                try
+                {
+                    File.Copy(
+                        bound,
+                        Path.Combine(DirectoryPath, LegacyStartupDeviceToken.BoundUrlFileName),
+                        overwrite: false);
+                }
+                catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+                {
+                }
             }
         }
         catch

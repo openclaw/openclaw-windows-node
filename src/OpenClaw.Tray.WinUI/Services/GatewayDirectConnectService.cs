@@ -113,9 +113,7 @@ internal sealed class GatewayDirectConnectService
         {
             if (request.NativeSetup)
             {
-                validationIdentity = preparedIdentity ?? new GatewayValidationIdentity(
-                    existing is not null && !replacesCredentialRealm
-                        ? _registry.GetIdentityDirectory(existing.Id) : null);
+                validationIdentity = preparedIdentity ?? CreateValidationIdentity(request);
                 var validation = await _connectionManager.ValidateConnectionAsync(
                     candidate, validationIdentity, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
@@ -132,12 +130,11 @@ internal sealed class GatewayDirectConnectService
             cancellationToken.ThrowIfCancellationRequested();
             if (validationIdentity is not null)
             {
+                var promotionDirectory = SelectedIdentityDirectory(recordId, candidate.Url);
                 if (candidateUsesNewIdentity)
-                {
-                    candidateIdentityCreation = validationIdentity.CopyTo(_registry.GetIdentityDirectory(recordId));
-                }
+                    candidateIdentityCreation = validationIdentity.CopyTo(promotionDirectory);
                 else
-                    nativeIdentityRollback = validationIdentity.ReplaceExisting(_registry.GetIdentityDirectory(recordId));
+                    nativeIdentityRollback = validationIdentity.ReplaceExisting(promotionDirectory);
             }
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -150,9 +147,7 @@ internal sealed class GatewayDirectConnectService
 
             if (!request.NativeSetup && !string.IsNullOrWhiteSpace(request.SharedToken))
             {
-                var identityDir = OpenClaw.Connection.LegacyStartupDeviceToken.SelectIdentityDirectory(
-                    _registry.GetIdentityDirectory(recordId),
-                    candidate.Url);
+                var identityDir = SelectedIdentityDirectory(recordId, candidate.Url);
                 var clearResult = DeviceIdentityStore.BeginTransactionalTokenClear(identityDir, _logger);
                 if (!clearResult.Success)
                 {
@@ -309,9 +304,15 @@ internal sealed class GatewayDirectConnectService
     public GatewayValidationIdentity CreateValidationIdentity(GatewayDirectConnectRequest request)
     {
         var existing = ResolveExistingRecord(request);
-        return new(existing is not null && IsSameCredentialRealm(existing, request, _registry)
-            ? _registry.GetIdentityDirectory(existing.Id) : null);
+        if (existing is null || !IsSameCredentialRealm(existing, request, _registry))
+            return new(null);
+
+        return new(SelectedIdentityDirectory(existing.Id, request.GatewayUrl));
     }
+
+    private string SelectedIdentityDirectory(string recordId, string gatewayUrl) =>
+        LegacyStartupDeviceToken.SelectIdentityDirectory(
+            _registry.GetIdentityDirectory(recordId), gatewayUrl);
 
     private GatewayRecord? ResolveExistingRecord(GatewayDirectConnectRequest request)
     {

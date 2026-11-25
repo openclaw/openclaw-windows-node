@@ -268,6 +268,71 @@ public class LegacyStartupDeviceTokenTests : IDisposable
         Assert.False(File.Exists(Path.Combine(other, LegacyStartupDeviceToken.IdentityFileName)));
     }
 
+    [Fact]
+    public void EndpointIdentity_TreatsHttpAndWebSocketAsTheSameEndpoint()
+    {
+        Assert.Equal(
+            LegacyStartupDeviceToken.EndpointIdentityKey("https://gateway.example/socket"),
+            LegacyStartupDeviceToken.EndpointIdentityKey("wss://gateway.example/socket"));
+        Assert.Equal(
+            LegacyStartupDeviceToken.EndpointIdentityKey("http://gateway.example/socket"),
+            LegacyStartupDeviceToken.EndpointIdentityKey("ws://gateway.example/socket"));
+        Assert.Equal(
+            LegacyStartupDeviceToken.EndpointIdentityKey("https://user:secret@gateway.example/socket"),
+            LegacyStartupDeviceToken.EndpointIdentityKey("wss://gateway.example/socket"));
+        Assert.NotEqual(
+            LegacyStartupDeviceToken.EndpointIdentityKey("https://gateway.example/Socket"),
+            LegacyStartupDeviceToken.EndpointIdentityKey("wss://gateway.example/socket"));
+
+        var root = DirectoryFor("scheme-root");
+        LegacyStartupDeviceToken.StampBoundUrl(root, "wss://b.example/socket");
+        var selected = LegacyStartupDeviceToken.SelectIdentityDirectory(root, "https://b.example/socket");
+        Assert.Equal(Path.GetFullPath(root), Path.GetFullPath(selected));
+    }
+
+    [Fact]
+    public void SelectIdentityDirectory_ThrowsWhenTheRealmDirectoryCannotBeCreated()
+    {
+        var root = DirectoryFor("realm-blocked");
+        LegacyStartupDeviceToken.StampBoundUrl(root, "wss://a.example");
+        File.WriteAllText(Path.Combine(root, "realms"), "not-a-directory");
+
+        var ex = Assert.Throws<DeviceIdentityLoadException>(() =>
+            LegacyStartupDeviceToken.SelectIdentityDirectory(root, "wss://b.example"));
+
+        Assert.Equal(Path.GetFullPath(root), Path.GetFullPath(ex.IdentityPath));
+    }
+
+    [Fact]
+    public void AllowsStoredDeviceToken_ThrowsWhenTheBindingCannotBeRead()
+    {
+        var root = DirectoryFor("bound-unreadable");
+        Directory.CreateDirectory(Path.Combine(root, LegacyStartupDeviceToken.BoundUrlFileName));
+
+        var ex = Assert.Throws<DeviceIdentityLoadException>(() =>
+            LegacyStartupDeviceToken.AllowsStoredDeviceToken(root, "wss://a.example"));
+
+        Assert.Equal(Path.GetFullPath(root), Path.GetFullPath(ex.IdentityPath));
+    }
+
+    [Fact]
+    public void TryCopyLegacyIdentity_LeavesAnIdentityAnotherWriterCreated()
+    {
+        WriteLegacyIdentity("paired-tok", null);
+        var destination = DirectoryFor("copy-dest");
+        var existing = Path.Combine(destination, LegacyStartupDeviceToken.IdentityFileName);
+        File.WriteAllText(existing, "other-writer");
+
+        var error = LegacyStartupDeviceToken.TryCopyLegacyIdentity(
+            destination,
+            _legacyDir,
+            "wss://gateway.example/socket");
+
+        Assert.Null(error);
+        Assert.Equal("other-writer", File.ReadAllText(existing));
+        Assert.False(File.Exists(Path.Combine(destination, LegacyStartupDeviceToken.BoundUrlFileName)));
+    }
+
     private void WriteLegacyIdentity(string? operatorToken, string? nodeToken)
     {
         var identity = new DeviceIdentity(_legacyDir);

@@ -78,8 +78,9 @@ internal static class LegacyStartupDeviceToken
             StringComparison.Ordinal);
 
     /// <summary>
-    /// Scheme and host are case-insensitive. The path, query, and fragment keep
-    /// their case because the gateway route does.
+    /// Scheme and host are case-insensitive. http and https use the same key as
+    /// ws and wss after <see cref="GatewayUrlHelper.TryNormalizeWebSocketUrl"/>.
+    /// The path, query, and fragment keep their case because the gateway route does.
     /// </summary>
     internal static string EndpointIdentityKey(string? url)
     {
@@ -87,6 +88,9 @@ internal static class LegacyStartupDeviceToken
             return string.Empty;
 
         var trimmed = url.Trim();
+        if (GatewayUrlHelper.TryNormalizeWebSocketUrl(trimmed, out var normalized))
+            trimmed = normalized;
+
         if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
             return trimmed;
 
@@ -142,14 +146,22 @@ internal static class LegacyStartupDeviceToken
     public static bool AllowsStoredDeviceToken(string identityDirectory, string recordUrl)
     {
         var path = Path.Combine(identityDirectory, BoundUrlFileName);
-        if (!File.Exists(path))
+        try
+        {
+            var bound = File.ReadAllText(path).Trim();
+            return string.Equals(
+                EndpointIdentityKey(bound),
+                EndpointIdentityKey(recordUrl),
+                StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
             return true;
-
-        var bound = File.ReadAllText(path).Trim();
-        return string.Equals(
-            EndpointIdentityKey(bound),
-            EndpointIdentityKey(recordUrl),
-            StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new DeviceIdentityLoadException(identityDirectory, ex);
+        }
     }
 
     public static void StampBoundUrl(string identityDirectory, string recordUrl)
@@ -168,17 +180,28 @@ internal static class LegacyStartupDeviceToken
     /// </summary>
     public static string SelectIdentityDirectory(string perGatewayIdentityDirectory, string recordUrl)
     {
-        if (string.IsNullOrWhiteSpace(recordUrl) ||
-            AllowsStoredDeviceToken(perGatewayIdentityDirectory, recordUrl))
+        try
         {
-            return perGatewayIdentityDirectory;
-        }
+            if (string.IsNullOrWhiteSpace(recordUrl) ||
+                AllowsStoredDeviceToken(perGatewayIdentityDirectory, recordUrl))
+            {
+                return perGatewayIdentityDirectory;
+            }
 
-        var realm = Path.Combine(perGatewayIdentityDirectory, "realms", RealmKey(recordUrl));
-        Directory.CreateDirectory(realm);
-        if (!File.Exists(Path.Combine(realm, BoundUrlFileName)))
-            StampBoundUrl(realm, recordUrl);
-        return realm;
+            var realm = Path.Combine(perGatewayIdentityDirectory, "realms", RealmKey(recordUrl));
+            Directory.CreateDirectory(realm);
+            if (!File.Exists(Path.Combine(realm, BoundUrlFileName)))
+                StampBoundUrl(realm, recordUrl);
+            return realm;
+        }
+        catch (DeviceIdentityLoadException)
+        {
+            throw;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new DeviceIdentityLoadException(perGatewayIdentityDirectory, ex);
+        }
     }
 
     private static string RealmKey(string recordUrl)
@@ -187,36 +210,49 @@ internal static class LegacyStartupDeviceToken
         return Convert.ToHexString(hash)[..32].ToLowerInvariant();
     }
 
-    private static string? TryCopyLegacyIdentity(
+    /// <summary>
+    /// Copies a legacy identity only by creating a new file. A destination that
+    /// already exists belongs to another writer and is left in place.
+    /// </summary>
+    internal static string? TryCopyLegacyIdentity(
         string perGatewayIdentityDirectory,
         string legacySettingsDirectory,
         string recordUrl)
     {
         var destination = Path.Combine(perGatewayIdentityDirectory, IdentityFileName);
+        var created = false;
         try
         {
-            if (File.Exists(destination))
-                return null;
-
-            if (!Directory.Exists(perGatewayIdentityDirectory))
-                Directory.CreateDirectory(perGatewayIdentityDirectory);
-
-            File.Copy(
-                Path.Combine(legacySettingsDirectory, IdentityFileName),
+            Directory.CreateDirectory(perGatewayIdentityDirectory);
+            var bytes = File.ReadAllBytes(Path.Combine(legacySettingsDirectory, IdentityFileName));
+            using (var stream = new FileStream(
                 destination,
-                overwrite: false);
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None))
+            {
+                created = true;
+                stream.Write(bytes, 0, bytes.Length);
+            }
+
             StampBoundUrl(perGatewayIdentityDirectory, recordUrl);
             return null;
         }
         catch (Exception ex)
         {
-            try
+            if (created)
             {
-                if (File.Exists(destination))
+                try
+                {
                     File.Delete(destination);
+                }
+                catch (Exception deleteEx) when (deleteEx is IOException or UnauthorizedAccessException)
+                {
+                }
             }
-            catch (IOException)
+            else if (ex is IOException or UnauthorizedAccessException && File.Exists(destination))
             {
+                return null;
             }
 
             return ex.Message;

@@ -1172,6 +1172,76 @@ public sealed class GatewayDirectConnectServiceTests : IDisposable
         Assert.Equal(0, _manager.DisconnectCount);
     }
 
+    [Fact]
+    public void CreateValidationIdentity_DoesNotCopyATokenBoundToAnotherUrl()
+    {
+        var previous = AddPreviousGateway();
+        var root = _registry.GetIdentityDirectory(previous.Id);
+        var identity = CreateIdentity(previous.Id);
+        identity.StoreDeviceTokenForRole("operator", "root-token");
+        LegacyStartupDeviceToken.StampBoundUrl(root, "wss://a.example");
+
+        using var validation = CreateService().CreateValidationIdentity(new GatewayDirectConnectRequest(
+            previous.Url,
+            SharedToken: null,
+            FriendlyName: null,
+            SshTunnel: null,
+            EditingGatewayId: previous.Id));
+
+        Assert.Null(DeviceIdentity.TryReadStoredDeviceToken(validation.DirectoryPath));
+        Assert.Equal("root-token", DeviceIdentity.TryReadStoredDeviceToken(root));
+        Assert.True(LegacyStartupDeviceToken.AllowsStoredDeviceToken(validation.DirectoryPath, previous.Url));
+        Assert.False(LegacyStartupDeviceToken.AllowsStoredDeviceToken(validation.DirectoryPath, "wss://a.example"));
+    }
+
+    [Fact]
+    public void CreateValidationIdentity_KeepsTheBoundUrlWithTheSelectedToken()
+    {
+        var previous = AddPreviousGateway();
+        var root = _registry.GetIdentityDirectory(previous.Id);
+        var identity = CreateIdentity(previous.Id);
+        identity.StoreDeviceTokenForRole("operator", "root-token");
+        LegacyStartupDeviceToken.StampBoundUrl(root, previous.Url);
+
+        using var validation = CreateService().CreateValidationIdentity(new GatewayDirectConnectRequest(
+            previous.Url,
+            SharedToken: null,
+            FriendlyName: null,
+            SshTunnel: null,
+            EditingGatewayId: previous.Id));
+
+        Assert.Equal("root-token", DeviceIdentity.TryReadStoredDeviceToken(validation.DirectoryPath));
+        Assert.Equal("root-token", DeviceIdentity.TryReadStoredDeviceToken(root));
+        Assert.True(LegacyStartupDeviceToken.AllowsStoredDeviceToken(validation.DirectoryPath, previous.Url));
+        Assert.False(LegacyStartupDeviceToken.AllowsStoredDeviceToken(validation.DirectoryPath, "wss://other.example"));
+    }
+
+    [Fact]
+    public async Task Connect_PromotesANativeIdentityIntoTheUrlSelectedRealm()
+    {
+        var previous = AddPreviousGateway();
+        var root = _registry.GetIdentityDirectory(previous.Id);
+        var identity = CreateIdentity(previous.Id);
+        identity.StoreDeviceTokenForRole("operator", "root-token");
+        LegacyStartupDeviceToken.StampBoundUrl(root, "wss://a.example");
+        _manager.NextSnapshot = Connected(previous.Id);
+        _manager.IssueValidationToken = true;
+
+        var result = await CreateService().ConnectAsync(new GatewayDirectConnectRequest(
+            previous.Url,
+            SharedToken: null,
+            FriendlyName: "Previous",
+            SshTunnel: null,
+            EditingGatewayId: previous.Id,
+            NativeSetup: true));
+
+        Assert.Equal(GatewayDirectConnectOutcome.Connected, result.Outcome);
+        Assert.Equal("root-token", DeviceIdentity.TryReadStoredDeviceToken(root));
+        var realm = LegacyStartupDeviceToken.SelectIdentityDirectory(root, previous.Url);
+        Assert.NotEqual(Path.GetFullPath(root), Path.GetFullPath(realm));
+        Assert.Equal("issued-token", DeviceIdentity.TryReadStoredDeviceToken(realm));
+    }
+
     private GatewayDirectConnectService CreateService() =>
         new(
             _manager,

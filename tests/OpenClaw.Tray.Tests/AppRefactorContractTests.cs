@@ -392,7 +392,7 @@ public sealed class AppRefactorContractTests
             "BeginManualGatewayLifecycleOperationAsync",
             "var previousActiveId = _registry.ActiveGatewayId",
             "await _connectionManager.DisconnectAsync()",
-            "LegacyStartupDeviceToken.SelectIdentityDirectory(",
+            "SelectedIdentityDirectory(",
             "BeginTransactionalTokenClear(identityDir, _logger)");
         AssertInOrder(
             serviceConnect,
@@ -513,10 +513,16 @@ public sealed class AppRefactorContractTests
             "_settings.GetLegacyCredentialGatewayUrlOrNull(),",
             source);
         Assert.Contains(
-            "_settings?.GetEffectiveGatewayUrl()",
+            "_settings?.GetLegacyCredentialGatewayUrlOrNull()",
+            ExtractMethod(source, "ChooseStartupOperatorCredential"));
+        Assert.DoesNotContain(
+            "GetEffectiveGatewayUrl()",
             ExtractMethod(source, "ChooseStartupOperatorCredential"));
         Assert.Contains(
-            "_settings?.GetEffectiveGatewayUrl()",
+            "_settings?.GetLegacyCredentialGatewayUrlOrNull()",
+            ExtractMethod(source, "ChooseStartupNodeCredential"));
+        Assert.DoesNotContain(
+            "GetEffectiveGatewayUrl()",
             ExtractMethod(source, "ChooseStartupNodeCredential"));
     }
 
