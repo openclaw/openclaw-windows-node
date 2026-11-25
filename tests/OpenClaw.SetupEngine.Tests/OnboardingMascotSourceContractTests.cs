@@ -4,7 +4,7 @@ namespace OpenClaw.SetupEngine.Tests;
 public sealed class OnboardingMascotSourceContractTests
 {
     [Fact]
-    public void Control_ExposesNativeMoodAndNeverStartsAConstructorTimer()
+    public void Control_UsesNativePlayerWithoutManagedFrameUpdates()
     {
         var source = Control();
         Assert.Contains("typeof(OnboardingMascotMood), typeof(OnboardingMascot)", source);
@@ -15,11 +15,17 @@ public sealed class OnboardingMascotSourceContractTests
         Assert.Contains("Tapped += OnTapped;", source);
         Assert.Contains("if (!CanAnimate || !IsInteractive)", source);
         Assert.Contains("AccessibilityView.Raw", source);
-        var constructor = source[source.IndexOf("public OnboardingMascot()", StringComparison.Ordinal)..
-            source.IndexOf("public void SetPointerGaze", StringComparison.Ordinal)];
-        Assert.DoesNotContain("new DispatcherTimer", constructor);
-        Assert.DoesNotContain(".Start()", constructor);
-        Assert.Contains("FramesPerSecond", source);
+        Assert.Contains("AnimatedVisualPlayer", source);
+        Assert.Contains("_player.PlayAsync", source);
+        Assert.Contains("_player.SetProgress", source);
+        Assert.DoesNotContain("DispatcherTimer", source);
+        Assert.DoesNotContain("CompositionTarget.Rendering", source);
+        Assert.DoesNotContain("OnboardingMascotDrawing", source);
+        var visual = File.ReadAllText(RepoPath("src", "OpenClaw.SetupEngine.UI", "Controls", "OnboardingMascotVisual.cs"));
+        Assert.DoesNotContain("DispatcherTimer", visual);
+        Assert.DoesNotContain("CompositionTarget.Rendering", visual);
+        Assert.DoesNotContain("Lottie", visual);
+        Assert.Contains("clock.Progress", visual);
     }
 
     [Fact]
@@ -37,10 +43,9 @@ public sealed class OnboardingMascotSourceContractTests
         Assert.DoesNotContain(".HighContrastChanged +=", source);
         Assert.Contains("_root.Changed -= OnRootChanged;", source);
         Assert.Contains("UnregisterPropertyChangedCallback(VisibilityProperty, token)", source);
-        Assert.Contains("_timer.Tick -= OnTick;", source);
-        Assert.Contains("_timer.Stop();", source);
-        Assert.Contains("_clock.Reset();", source);
-        Assert.Contains("_animator.Advance(elapsed, CanAnimate)", source);
+        Assert.Contains("_player.Stop();", source);
+        Assert.Contains("_player.Source = null;", source);
+        Assert.Contains("_playback.SetActive(false);", source);
         Assert.Contains("_heroGlow?.Dispose();", source);
     }
 
@@ -48,7 +53,7 @@ public sealed class OnboardingMascotSourceContractTests
     public void Glow_CapturesTheActualArtworkAndUsesPinnedThemeConstants()
     {
         var source = File.ReadAllText(RepoPath("src", "OpenClaw.SetupEngine.UI", "Controls", "OnboardingMascotGlow.cs"));
-        Assert.Contains("GetElementVisual(drawing.Artwork)", source);
+        Assert.Contains("GetElementVisual(artwork)", source);
         Assert.Contains("CreateVisualSurface()", source);
         Assert.Contains("_shadow.Mask = _mask", source);
         Assert.Contains("_shadow.BlurRadius = 12", source);
@@ -86,37 +91,6 @@ public sealed class OnboardingMascotSourceContractTests
             File.ReadAllText(RepoPath("src", "OpenClaw.SetupEngine.UI", "SetupCompanionPresentation.cs")));
         Assert.Contains("ReadinessError.IsOpen ? OnboardingMascotMood.Sad : OnboardingMascotMood.Happy",
             File.ReadAllText(Path.Combine(pages, "WelcomePage.xaml.cs")));
-    }
-
-    [Fact]
-    public void Drawing_PreservesCanonicalBodyGeometryAndNativeVectorParts()
-    {
-        var source = File.ReadAllText(RepoPath("src", "OpenClaw.SetupEngine.UI", "Controls", "OnboardingMascotDrawing.cs"));
-        Assert.Contains("Curve(30, 10, 15, 35, 15, 55)", source);
-        Assert.Contains("Curve(55, 100, 60, 102, 65, 100)", source);
-        Assert.Contains("Curve(105, 35, 90, 10, 60, 10)", source);
-        Assert.Contains("CenterX = 26, CenterY = 53", source);
-        Assert.Contains("CenterX = 94, CenterY = 53", source);
-        Assert.Contains("Quad(35, 5, 30, 8)", source);
-        Assert.Contains("Quad(85, 5, 90, 8)", source);
-        Assert.Contains("Rgb(200, 40, 48)", source);
-        Assert.Contains("Rgb(153, 27, 27)", source);
-        Assert.Contains("UIElementType.WindowText", source);
-        Assert.DoesNotContain("BitmapImage", source);
-        Assert.DoesNotContain("XamlReader", source);
-    }
-
-    [Fact]
-    public void Drawing_FrameChangesDoNotReparentGeometryAcrossParticles()
-    {
-        var source = File.ReadAllText(RepoPath("src", "OpenClaw.SetupEngine.UI", "Controls", "OnboardingMascotDrawing.cs"));
-        var render = source[source.IndexOf("public void Render(", StringComparison.Ordinal)..
-            source.IndexOf("private Eye AddEye(", StringComparison.Ordinal)];
-        Assert.DoesNotContain(".Data =", render);
-        Assert.DoesNotContain("new PathGeometry", render);
-        Assert.Contains("_hearts[i].Opacity", render);
-        Assert.Contains("_particles[i].Opacity", render);
-        Assert.Contains("_hearts[i] = heart", source);
     }
 
     internal static string RepoPath(params string[] segments)

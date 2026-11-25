@@ -1383,13 +1383,39 @@ recovery instead of showing success.
 
 ### Artwork and motion
 
-Onboarding uses the native vector `OnboardingMascot` control, adapted from
-OpenClaw's Mac character at upstream commit
-`9afae26e080602bf1e330bfd88fcbd39a2bf22c0`. Idle, curious, thinking, working,
-happy, sad and celebrating poses reflect the current task. Working includes the
-hard hat and hammer animation. Windows animation preferences select static
-poses, and hidden/unloaded controls stop ticking. Navigation also respects the
-Windows animation setting. Motion never adds a completion delay.
+Setup and the desktop lobster share `OnboardingMascot`. Its vector artwork is
+adapted from OpenClaw's Mac character at upstream commit
+`0fd603a6fece58d60c010e565df9e26c6601db8b`; the attribution remains in
+`Assets/Setup/Mascot-NOTICE.txt`. WinUI's `AnimatedVisualPlayer` supplies progress
+to handwritten Windows Composition expressions rather than updating XAML
+shapes on a UI-thread frame timer.
+Idle, curious, thinking, working, happy, sad, celebrating, sleepy and attentive
+moods retain their task meaning. Working keeps its hard hat and hammer action;
+tap reactions, idle sleep, drag wake-up and caller-selected headwear remain.
+
+[`OnboardingMascotMotion`](../src/OpenClaw.SetupEngine/OnboardingMascotMotion.cs)
+owns the compact mood/gesture formulas and static expressions.
+[`OnboardingMascotVisual`](../src/OpenClaw.SetupEngine.UI/Controls/OnboardingMascotVisual.cs)
+owns the canonical vector geometry, brushes, particle shapes and bindings.
+Body, eyes, mouth and headwear share the native player's progress clock.
+Clip changes rebind motion on the retained tree; theme changes update its
+gradient stops and brushes in place. Pointer gaze and headwear entrances use
+event-driven native animations, not another frame loop.
+Behavioral scheduling runs at clip completion rather than reproducing the
+former frame scheduler exactly. Hidden time does not count toward idle sleep or tap bursts.
+Disabling Windows animations stops playback immediately and selects the
+current mood's static expressions. High contrast binds the user's system colors and
+removes the silhouette glow. Unloading releases the player's source.
+
+There is no animation JSON, code generation or additional animation runtime.
+Win2D supplies the vector-path types; normal repository builds compile the
+handwritten source. The same geometry handles light, dark and high contrast.
+
+Use the SetupEngine mascot tests for clip/state contracts and the
+`OnboardingArtworkRenderingTests` native lane for player lifetime and composed
+pixels. `RenderTargetBitmap` excludes these Composition child visuals and is
+not mascot pixel proof. Navigation still respects the Windows animation
+setting, and motion never adds a setup-completion delay.
 
 Provider artwork is bundled under `Assets/Setup/ProviderIcons` with its upstream
 notices. Keep asset identity separate from the gateway-provided provider catalog.
@@ -1501,7 +1527,7 @@ clean directory and checks every setup asset, including nested SVGs and notices.
 | `src/OpenClaw.SetupEngine/GatewayAiSetupClient.cs` | Typed route-bound discovery, explicit selection, activation and reconciliation |
 | `src/OpenClaw.SetupEngine/GatewayAiSetupController.cs` | Bounded gateway-executed wizard progress polling |
 | `src/OpenClaw.SetupEngine/SetupGatewaySession.cs` | Shared temporary setup operator session with registry identity and endpoint provenance |
-| `src/OpenClaw.SetupEngine.UI/Controls/OnboardingMascot.cs` | Native vector control, animation preferences, theme updates and unload lifetime |
+| `src/OpenClaw.SetupEngine.UI/Controls/OnboardingMascot.cs` | Native player, animation preferences, theme updates and unload lifetime |
 | `src/OpenClaw.SetupEngine/GatewayWizardRestartRecoveryPolicy.cs` | Exact terminal-restart classification and bounded restart provenance/reconnect retry policy |
 | `src/OpenClaw.SetupEngine.UI/Pages/CompletePage.xaml(.cs)` | Success, failure, log/help, and startup preference summary |
 | `src/OpenClaw.Connection/GatewayRegistry.cs` | Persistent gateway records and migration target |

@@ -1,5 +1,6 @@
 using System.Numerics;
 using Microsoft.UI.Composition;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Hosting;
 using Windows.UI;
 
@@ -11,16 +12,16 @@ namespace OpenClaw.SetupEngine.UI.Controls;
 /// </summary>
 internal sealed class OnboardingMascotGlow : IDisposable
 {
-    private readonly OnboardingMascotDrawing _drawing;
+    private readonly UIElement _host;
     private readonly CompositionVisualSurface _surface;
     private readonly CompositionSurfaceBrush _mask;
     private readonly DropShadow _shadow;
     private readonly SpriteVisual _visual;
 
-    public OnboardingMascotGlow(OnboardingMascotDrawing drawing)
+    public OnboardingMascotGlow(UIElement artwork, UIElement host)
     {
-        _drawing = drawing;
-        var source = ElementCompositionPreview.GetElementVisual(drawing.Artwork);
+        _host = host;
+        var source = ElementCompositionPreview.GetElementVisual(artwork);
         var compositor = source.Compositor;
         _surface = compositor.CreateVisualSurface();
         _surface.SourceVisual = source;
@@ -28,13 +29,13 @@ internal sealed class OnboardingMascotGlow : IDisposable
         _mask = compositor.CreateSurfaceBrush(_surface);
         _shadow = compositor.CreateDropShadow();
         _shadow.Mask = _mask;
-        // 12 native units become 13 DIPs at the canonical 130-DIP hero size.
+        // 12 native units become about 13 DIPs in the 180-DIP mascot frame.
         _shadow.BlurRadius = 12;
         _shadow.Offset = Vector3.Zero;
         _visual = compositor.CreateSpriteVisual();
         _visual.Size = new Vector2(168);
         _visual.Shadow = _shadow;
-        ElementCompositionPreview.SetElementChildVisual(drawing.GlowHost, _visual);
+        ElementCompositionPreview.SetElementChildVisual(host, _visual);
     }
 
     public void SetPalette(bool light, bool highContrast)
@@ -46,7 +47,7 @@ internal sealed class OnboardingMascotGlow : IDisposable
 
     public void Dispose()
     {
-        ElementCompositionPreview.SetElementChildVisual(_drawing.GlowHost, null);
+        ElementCompositionPreview.SetElementChildVisual(_host, null);
         _visual.Shadow = null;
         _shadow.Mask = null;
         _mask.Surface = null;

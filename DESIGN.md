@@ -1484,6 +1484,15 @@ Full Settings retains its separate navigation layout.
 
 ### Desktop lobster quick chat
 
+The desktop and setup mascot share a native `AnimatedVisualPlayer` backed by
+handwritten Composition geometry and motion expressions. The player supplies
+progress; Windows evaluates the expressions without a managed frame timer,
+Lottie asset or generated renderer. Preserve the canonical coral artwork, optical size and motion
+gutter, pointer gaze, headwear, reduced-motion still poses and system-color
+high-contrast treatment. Native desktop entrance/exit remains a separate
+window-owned transition. See [artwork and motion](docs/ONBOARDING_WIZARD.md#artwork-and-motion)
+for the source and validation workflow.
+
 Left-click opens a speech bubble containing the shared Reactor timeline and
 composer, focusing the message field when it is ready so typing can start
 immediately. Clicking the message field transfers keyboard input from other

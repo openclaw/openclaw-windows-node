@@ -1,5 +1,7 @@
 // Adapted from OpenClaw's MIT-licensed Mac mascot. See Assets/Setup/Mascot-NOTICE.txt.
 using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
@@ -11,7 +13,7 @@ using Windows.UI.ViewManagement;
 namespace OpenClaw.SetupEngine.UI.Controls;
 
 /// <summary>
-/// Decorative native vector mascot. The containing page owns accessible status text.
+/// Decorative Composition mascot. The containing page owns accessible status text.
 /// Size with Width/Height; Mood selects the expression. No work runs before Loaded.
 /// </summary>
 public sealed class OnboardingMascot : UserControl
@@ -35,11 +37,13 @@ public sealed class OnboardingMascot : UserControl
         nameof(IsInteractive), typeof(bool), typeof(OnboardingMascot),
         new PropertyMetadata(true, OnInteractiveChanged));
 
-    private readonly OnboardingMascotAnimator _animator = new(allowsAutoSleep: true);
-    private readonly OnboardingMascotDrawing _drawing = new();
-    private readonly Stopwatch _clock = new();
+    private readonly OnboardingMascotPlayback _playback = new();
+    private readonly AnimatedVisualPlayer _player = new() { AutoPlay = false, Width = 168, Height = 168 };
+    private readonly Grid _glowHost = new() { Width = 168, Height = 168, IsHitTestVisible = false };
     private readonly List<(UIElement Element, long Token)> _visibilitySubscriptions = [];
-    private DispatcherTimer? _timer;
+    private OnboardingMascotVisual? _source;
+    private Vector2? _pointer;
+    private int _playbackVersion;
     private UISettings? _uiSettings;
     private AccessibilitySettings? _accessibilitySettings;
     private XamlRoot? _root;
@@ -81,7 +85,11 @@ public sealed class OnboardingMascot : UserControl
         Content = new Grid
         {
             Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            Children = { new Viewbox { Stretch = Stretch.Uniform, Child = _drawing.Surface } },
+            Children = { new Viewbox
+            {
+                Stretch = Stretch.Uniform,
+                Child = new Grid { Width = 168, Height = 168, Children = { _glowHost, _player } },
+            } },
         };
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -90,7 +98,8 @@ public sealed class OnboardingMascot : UserControl
         PointerMoved += OnPointerMoved;
         PointerExited += OnPointerExited;
         Tapped += OnTapped;
-        _drawing.Render(OnboardingMascotPose.Static(Mood));
+        _player.RegisterPropertyChangedCallback(AnimatedVisualPlayer.IsAnimatedVisualLoadedProperty,
+            (_, _) => UpdateAnimation());
     }
 
     /// <summary>
@@ -101,15 +110,18 @@ public sealed class OnboardingMascot : UserControl
     {
         if (x.HasValue != y.HasValue)
             throw new ArgumentException("Both gaze coordinates must be supplied or both must be null.");
-        if (CanAnimate)
-            _animator.SetPointer(x is { } px && y is { } py ? new(px, py) : null);
+        if (x is { } px && (!double.IsFinite(px) || !double.IsFinite(y!.Value)))
+            throw new ArgumentOutOfRangeException(nameof(x));
+        if (!CanAnimate) return;
+        if (x is not null && !_playback.PointerActivity()) return;
+        _pointer = x is { } value ? new Vector2((float)Math.Clamp(value, -1, 1), (float)Math.Clamp(y!.Value, -1, 1)) : null;
+        UpdateGaze();
     }
 
     /// <summary>Wakes an interactive mascot during a host-owned drag without counting a tap.</summary>
     public void WakeUp()
     {
-        if (CanAnimate && IsInteractive)
-            _animator.WakeUp();
+        if (_playback.WakeUp()) RestartPlayback();
     }
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs args)
@@ -128,28 +140,29 @@ public sealed class OnboardingMascot : UserControl
     {
         if (!CanAnimate || !IsInteractive)
             return;
-        _animator.HandleTap();
+        if (_playback.Tap()) RestartPlayback();
         args.Handled = true;
     }
 
     private static void OnAccessoryChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
         var mascot = (OnboardingMascot)sender;
-        mascot._animator.SetAccessory((OnboardingMascotAccessory)args.NewValue);
-        mascot.RenderFrame(TimeSpan.Zero);
+        mascot._playback.Accessory = (OnboardingMascotAccessory)args.NewValue;
+        mascot.UpdateHeadwear();
     }
 
     private static void OnInteractiveChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
         var mascot = (OnboardingMascot)sender;
-        mascot._animator.AllowsAutoSleep = (bool)args.NewValue;
+        mascot._playback.Interactive = (bool)args.NewValue;
+        mascot.RestartPlayback();
     }
 
     private static void OnMoodChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
         var mascot = (OnboardingMascot)sender;
-        mascot._animator.SetMood((OnboardingMascotMood)args.NewValue);
-        mascot.RenderFrame(TimeSpan.Zero);
+        mascot._playback.SetMood((OnboardingMascotMood)args.NewValue);
+        mascot.RestartPlayback();
     }
 
     private static void OnAnimationEnabledChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args) =>
@@ -176,9 +189,7 @@ public sealed class OnboardingMascot : UserControl
                 _visibilitySubscriptions.Add((element, token));
             }
         }
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1d / OnboardingMascotAnimator.FramesPerSecond) };
-        _timer.Tick += OnTick;
-        _heroGlow = new OnboardingMascotGlow(_drawing);
+        _heroGlow = new OnboardingMascotGlow(_player, _glowHost);
         UpdatePalette();
         UpdateAnimation();
     }
@@ -186,15 +197,13 @@ public sealed class OnboardingMascot : UserControl
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         _loaded = false;
+        _playbackVersion++;
+        _player.Stop();
+        _playback.SetActive(false);
+        _player.Source = null;
+        _source = null;
         _heroGlow?.Dispose();
         _heroGlow = null;
-        _clock.Reset();
-        if (_timer is not null)
-        {
-            _timer.Stop();
-            _timer.Tick -= OnTick;
-            _timer = null;
-        }
         if (_uiSettings is not null)
         {
             _uiSettings.AnimationsEnabledChanged -= OnAnimationsEnabledChanged;
@@ -208,54 +217,76 @@ public sealed class OnboardingMascot : UserControl
         _uiSettings = null;
         _accessibilitySettings = null;
         _root = null;
-        _animator.SetPointer(null);
+        _pointer = null;
     }
 
-    private bool CanAnimate => _loaded && IsAnimationEnabled && _uiSettings?.AnimationsEnabled == true &&
+    private bool CanAnimate => _loaded && _player.IsAnimatedVisualLoaded && IsAnimationEnabled && _uiSettings?.AnimationsEnabled == true &&
         _inViewport && _root?.IsHostVisible == true &&
         _visibilitySubscriptions.All(subscription => subscription.Element.Visibility == Visibility.Visible);
 
     private void UpdateAnimation()
     {
-        if (CanAnimate)
+        if (_playback.Active == CanAnimate) return;
+        _playback.SetActive(CanAnimate);
+        if (!CanAnimate) _pointer = null;
+        RestartPlayback();
+    }
+
+    private void RestartPlayback()
+    {
+        var version = ++_playbackVersion;
+        _player.Stop();
+        if (!_loaded || _source is null) return;
+        UpdateHeadwear();
+        UpdateGaze();
+        if (CanAnimate) _ = PlayClipsAsync(version);
+        else
         {
-            if (_timer is { IsEnabled: false })
+            _source.Configure(Mood, _playback.RestingClip, still: true, phase: 0);
+            _player.SetProgress(0);
+        }
+    }
+
+    private async Task PlayClipsAsync(int version)
+    {
+        try
+        {
+            while (version == _playbackVersion && CanAnimate)
             {
-                _clock.Restart();
-                _timer.Start();
+                var clip = _playback.Clip;
+                var mood = _playback.IsDozing ? OnboardingMascotMood.Sleepy : Mood;
+                _source!.Configure(mood, clip, still: false, phase: _playback.Elapsed);
+                UpdateHeadwear();
+                UpdateGaze();
+                await _player.PlayAsync(0, OnboardingMascotMotion.Duration(clip) / OnboardingMascotMotion.TimelineSeconds, looped: false);
+                // Stop completes the old PlayAsync too. It must not advance a newer mood or mount.
+                if (version != _playbackVersion || !CanAnimate) return;
+                _playback.Complete();
             }
         }
-        else
+        catch (OperationCanceledException) when (version != _playbackVersion || !_loaded)
         {
-            _timer?.Stop();
-            _clock.Reset();
+            // The player was stopped or detached by a newer host state.
         }
-        RenderFrame(TimeSpan.Zero);
+        catch (Exception exception) when (exception is COMException or InvalidOperationException or OperationCanceledException)
+        {
+            Trace.TraceError($"Mascot animation playback failed: {exception}");
+            if (version == _playbackVersion)
+            {
+                _player.Stop();
+                _playback.SetActive(false);
+            }
+        }
     }
 
-    private void OnTick(object? sender, object args)
-    {
-        if (!CanAnimate)
-        {
-            UpdateAnimation();
-            return;
-        }
-        var elapsed = _clock.Elapsed;
-        _clock.Restart();
-        RenderFrame(elapsed);
-    }
+    private void UpdateHeadwear() => _source?.SetHeadwear(_playback.HardHat, _playback.Accessory, CanAnimate);
 
-    private void RenderFrame(TimeSpan elapsed)
+    private void UpdateGaze()
     {
-        if (_loaded)
-            _drawing.Render(_animator.Advance(elapsed, CanAnimate));
-        else
-        {
-            var pose = OnboardingMascotPose.Static(Mood);
-            if (Accessory != OnboardingMascotAccessory.None && pose.HardHat == 0)
-                pose = pose with { Accessory = Accessory, AccessoryAmount = 1 };
-            _drawing.Render(pose);
-        }
+        var gaze = CanAnimate && !_playback.IsDozing ? _pointer : null;
+        if (_playback.Clip is OnboardingMascotClip.Dizzy or OnboardingMascotClip.Shake or
+            OnboardingMascotClip.Peek or OnboardingMascotClip.Startle) gaze = null;
+        _source?.SetGaze(gaze, CanAnimate);
     }
     private void OnAncestorVisibilityChanged(DependencyObject sender, DependencyProperty property) => UpdateAnimation();
     private void OnRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => UpdateAnimation();
@@ -269,17 +300,30 @@ public sealed class OnboardingMascot : UserControl
         UpdateAnimation();
     }
 
-    private void OnAnimationsEnabledChanged(UISettings sender, object args) =>
-        DispatcherQueue.TryEnqueue(() => { if (_loaded) UpdateAnimation(); });
+    private void OnAnimationsEnabledChanged(UISettings sender, object args) => Dispatch(UpdateAnimation);
 
-    private void OnColorsChanged(UISettings sender, object args) =>
-        DispatcherQueue.TryEnqueue(() => { if (_loaded) UpdatePalette(); });
+    private void OnColorsChanged(UISettings sender, object args) => Dispatch(UpdatePalette);
+
+    private void Dispatch(Action update)
+    {
+        if (!DispatcherQueue.TryEnqueue(() => { if (_loaded) update(); }))
+            Trace.TraceWarning("Mascot could not dispatch a Windows preference change.");
+    }
 
     private void UpdatePalette()
     {
+        if (!_loaded) return;
         var light = ActualTheme == ElementTheme.Light;
         var highContrast = _accessibilitySettings?.HighContrast == true;
-        _drawing.SetPalette(light, highContrast);
+        if (_source is null)
+        {
+            _source = new OnboardingMascotVisual(light, highContrast);
+            _source.Configure(Mood, _playback.RestingClip, still: true, phase: 0);
+            _source.SetHeadwear(_playback.HardHat, _playback.Accessory, animate: false);
+            _player.Source = _source;
+            RestartPlayback();
+        }
+        else _source.SetPalette(light, highContrast);
         _heroGlow?.SetPalette(light, highContrast);
     }
 }
