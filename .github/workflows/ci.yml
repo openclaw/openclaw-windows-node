@@ -211,6 +211,7 @@ jobs:
       run: ./scripts/test-gateway-packaged-release.ps1
 
     - name: Test Gateway theme table release resolution
+      timeout-minutes: 5
       shell: pwsh
       run: ./scripts/test-gateway-theme-upstream.ps1
 
@@ -219,7 +220,8 @@ jobs:
       run: ./scripts/test-gateway-theme-sync-publish.ps1
 
     - name: Check changed built-in theme catalog against its pinned Gateway source
-      if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+      if: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      timeout-minutes: 5
       shell: pwsh
       env:
         BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
