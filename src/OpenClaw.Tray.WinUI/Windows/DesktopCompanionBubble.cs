@@ -5,6 +5,7 @@
 // Companion appearance; the bubble only paints it.
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
+using Microsoft.UI.Reactor.Elements;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -48,6 +49,19 @@ internal sealed class DesktopCompanionBubble : Component<DesktopCompanionBubbleP
         var revision = presentation.Revision;
         var announced = UseRef(0L);
         var dismissLabel = LocalizationHelper.GetString("DesktopCompanion_Dismiss");
+        var actionBrush = surface.ActionForeground is { } foreground ? new SolidColorBrush(ToColor(foreground)) : null;
+        void ActionResources(ResourceBuilder resources)
+        {
+            if (actionBrush is null) return;
+            resources.Set("HyperlinkButtonForeground", actionBrush)
+                .Set("HyperlinkButtonForegroundPointerOver", actionBrush)
+                .Set("HyperlinkButtonForegroundPressed", actionBrush);
+        }
+        HyperlinkButtonElement ActionLink(string label, Action onClick)
+        {
+            var link = HyperlinkButton(label, onClick: onClick).Resources(ActionResources);
+            return actionBrush is null ? link : link.Foreground(actionBrush);
+        }
         var frame = Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
                 Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                     TextBlock(notification?.Title ?? "").SemiBold()
@@ -85,11 +99,9 @@ internal sealed class DesktopCompanionBubble : Component<DesktopCompanionBubbleP
                         scroll.VerticalScrollBarVisibility = Microsoft.UI.Xaml.Controls.ScrollBarVisibility.Auto;
                     }).Grid(row: 1).IsVisible(!chatOpen),
                 HStack(8,
-                    HyperlinkButton(LocalizationHelper.GetString("DesktopCompanion_QuickReply"),
-                            onClick: props.Reply)
+                    ActionLink(LocalizationHelper.GetString("DesktopCompanion_QuickReply"), props.Reply)
                         .Padding(0).AutomationId("DesktopCompanionReply").IsVisible(canReply),
-                    HyperlinkButton(LocalizationHelper.GetString("DesktopCompanion_Notifications"),
-                        onClick: props.OpenNotifications)
+                    ActionLink(LocalizationHelper.GetString("DesktopCompanion_Notifications"), props.OpenNotifications)
                     .Padding(0).HAlign(HorizontalAlignment.Left)
                     .AutomationId("DesktopCompanionNotifications"))
                     .Margin(8, 0, 0, 8).Grid(row: 2).IsVisible(!chatOpen),

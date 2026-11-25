@@ -99,12 +99,12 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _bubblePopup.Child = _bubbleHost;
         _bubblePopup.SystemBackdrop = _bubbleAcrylic;
         _presentation.Changed += OnPresentationChanged;
-        _bubbleHost.ActualThemeChanged += OnBubbleThemeChanged;
-        BackdropPolicy.Configured += OnAppearanceConfigured;
         ApplyBubbleSurface();
         Content = _host;
         DesktopCompanionNative.ConfigureOverlay(_hwnd);
         Closed += OnClosed;
+        _bubbleHost.ActualThemeChanged += OnBubbleThemeChanged;
+        BackdropPolicy.Configured += OnAppearanceConfigured;
     }
 
     void IDesktopCompanionView.Show()

@@ -19,7 +19,9 @@ namespace OpenClawTray.Theming;
 /// <param name="Fill">The theme fill, or null for the Fluent brush <paramref name="FillResource"/>.</param>
 /// <param name="FillResource">Fluent fill resource key used when <paramref name="Fill"/> is null.</param>
 /// <param name="Stroke">The theme border, or null for <see cref="PopoverSurfacePolicy.StrokeResource"/>.</param>
-internal sealed record PopoverSurface(bool Acrylic, ThemeColor? Fill, string FillResource, ThemeColor? Stroke);
+/// <param name="ActionForeground">A readable local override when the theme's action colors collide with the fill.</param>
+internal sealed record PopoverSurface(
+    bool Acrylic, ThemeColor? Fill, string FillResource, ThemeColor? Stroke, ThemeColor? ActionForeground = null);
 
 /// <summary>
 /// Chooses a popover's backdrop, fill and stroke from the Mica checkbox, the active Gateway theme and High Contrast,
@@ -55,7 +57,12 @@ internal static class PopoverSurfacePolicy
         // --popover-foreground. A popover that text can't be read on gives way to the card, which the legibility floor
         // checks with that text.
         var fill = TextIsReadableOn(palette, popover) ? popover : palette.Card.Over(canvas);
-        return new(false, fill, OpaqueFillResource, palette.Border);
+        // HyperlinkButton uses the projected accent in normal/hover and pressed states, not body text.
+        // A popover can be readable for prose while making its actions invisible.
+        var brushes = ThemeResourceProjection.Project(palette).Brushes;
+        var actionsReadable = new[] { "AccentTextFillColorPrimaryBrush", "AccentTextFillColorTertiaryBrush" }
+            .All(key => ThemeLegibility.Contrast(brushes[key].Over(fill), fill) >= ThemeLegibility.MinimumContrast);
+        return new(false, fill, OpaqueFillResource, palette.Border, actionsReadable ? null : palette.Text);
     }
 
     private static bool TextIsReadableOn(ResolvedThemePalette palette, ThemeColor surface) =>

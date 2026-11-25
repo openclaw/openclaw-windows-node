@@ -12,6 +12,20 @@ public sealed class DesktopCompanionTests
     };
 
     [Fact]
+    public void NativeWindow_DelegatesVisualProjectionToReactor()
+    {
+        var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Windows");
+        var window = File.ReadAllText(Path.Combine(root, "DesktopCompanionWindow.cs"));
+        Assert.Contains("Component<DesktopCompanionSurface, DesktopCompanionSurfaceProps>", window);
+        Assert.Contains("Component<DesktopCompanionBubble, DesktopCompanionBubbleProps>", window);
+        Assert.Contains("_host.Dispose()", window);
+        Assert.Contains("_bubbleHost.Dispose()", window);
+        Assert.DoesNotContain(".Text =", window);
+        Assert.DoesNotContain(".Mood =", window);
+        Assert.False(File.Exists(Path.Combine(root, "DesktopCompanionWindow.xaml")));
+    }
+
+    [Fact]
     public void MissingSetting_DefaultsOn_WhileExplicitOffIsPreserved()
     {
         Assert.True(new SettingsData().ShowDesktopCompanion);

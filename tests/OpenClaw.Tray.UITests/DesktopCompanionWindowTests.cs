@@ -608,6 +608,72 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             }
         });
 
+    [Fact]
+    public Task ThemedBubbleActions_KeepContrastAndRestoreNativeResources() =>
+        WithWindowAsync(async window =>
+        {
+            using var resources = new ChatThemeProofScope("Light");
+            var applicator = new AppThemeApplicator();
+            var highContrast = new AccessibilitySettings().HighContrast;
+            var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+            var imported = rose with
+            {
+                Dark = null,
+                Light = rose.Light! with
+                {
+                    Canvas = ThemeColor.White, Content = ThemeColor.White, Card = ThemeColor.White, Panel = ThemeColor.White,
+                    Text = ThemeColor.Black, Muted = ThemeColor.Black, Popover = ThemeColor.FromHex("#808080"),
+                    Primary = ThemeColor.FromHex("#808080"), PrimaryForeground = ThemeColor.Black,
+                    Accent = ThemeColor.FromHex("#808080"), AccentHover = ThemeColor.FromHex("#696969"),
+                },
+            };
+            Assert.True(ThemeLegibility.IsReadable(imported));
+            var root = (FrameworkElement)window.Content;
+            window.ApplyTheme("Light", refreshThemeResources: true);
+            window.Present(new() { Title = "Action contrast", Message = "The action remains readable." });
+            var action = Control<HyperlinkButton>(root, "DesktopCompanionNotifications");
+            await TestSupport.WaitForRenderedConditionAsync(() => action.ActualHeight > 0, "native action");
+            var nativeForeground = ColorOf(action.Foreground);
+            try
+            {
+                applicator.Apply(imported);
+                BackdropPolicy.Configure(true, imported);
+                window.ApplyTheme("Light", refreshThemeResources: true);
+                var frame = Assert.IsType<Border>(Control<StackPanel>(root, "DesktopCompanionBubble").Children[0]);
+                if (!highContrast)
+                {
+                    await WaitForFillAsync(frame, Rgb(0x80, 0x80, 0x80), "theme popover");
+                    await TestSupport.WaitForRenderedConditionAsync(
+                        () => ColorOf(action.Foreground) == Rgb(0, 0, 0), "readable local action foreground");
+                    var content = Assert.Single(TestSupport.FindDescendants<ContentPresenter>(action));
+                    foreach (var state in new[] { "PointerOver", "Pressed", "Normal" })
+                    {
+                        Assert.True(VisualStateManager.GoToState(action, state, false));
+                        await TestSupport.WaitForRenderedConditionAsync(
+                            () => ColorOf(content.Foreground) == Rgb(0, 0, 0), $"readable {state} action");
+                    }
+                }
+                else
+                {
+                    Assert.False(action.Resources.ContainsKey("HyperlinkButtonForeground"));
+                }
+
+                applicator.Apply(null);
+                BackdropPolicy.Configure(true, null);
+                window.ApplyTheme("Light", refreshThemeResources: true);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => !action.Resources.ContainsKey("HyperlinkButtonForeground") &&
+                        ColorOf(action.Foreground) == nativeForeground, "restored native action");
+                Assert.False(action.Resources.ContainsKey("HyperlinkButtonForegroundPointerOver"));
+                Assert.False(action.Resources.ContainsKey("HyperlinkButtonForegroundPressed"));
+            }
+            finally
+            {
+                applicator.Apply(null);
+                BackdropPolicy.Configure(true, null);
+            }
+        });
+
     private static global::Windows.UI.Color ColorOf(Brush brush) => Assert.IsType<SolidColorBrush>(brush).Color;
     private static global::Windows.UI.Color Rgb(byte r, byte g, byte b) => Argb(0xFF, r, g, b);
     private static global::Windows.UI.Color Argb(byte a, byte r, byte g, byte b) => global::Windows.UI.Color.FromArgb(a, r, g, b);

@@ -591,6 +591,36 @@ public sealed class GatewayThemeSettingsTests
         Assert.True(ThemeLegibility.Contrast(ThemeColor.FromHex("#cccccc"), surface.Fill!.Value) >= ThemeLegibility.MinimumContrast);
     }
 
+    [Theory]
+    [InlineData("#808080", "#696969", false, "#000000")]
+    [InlineData("#000000", "#808080", false, "#000000")]
+    [InlineData("#000000", "#000000", false, null)]
+    [InlineData("#808080", "#696969", true, null)]
+    public void LobsterActionsStayReadableWithoutChangingOtherThemeSurfaces(
+        string accent, string pressed, bool highContrast, string? expectedOverride)
+    {
+        var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+        var imported = rose with
+        {
+            Dark = null,
+            Light = rose.Light! with
+            {
+                Canvas = ThemeColor.White, Content = ThemeColor.White, Card = ThemeColor.White, Panel = ThemeColor.White,
+                Text = ThemeColor.Black, Muted = ThemeColor.Black, Popover = ThemeColor.FromHex("#808080"),
+                Primary = ThemeColor.FromHex("#808080"), PrimaryForeground = ThemeColor.Black,
+                Accent = ThemeColor.FromHex(accent), AccentHover = ThemeColor.FromHex(pressed),
+            },
+        };
+        Assert.True(ThemeLegibility.IsReadable(imported));
+
+        var surface = PopoverSurfacePolicy.Choose(true, imported, highContrast, true, ThemeColorMode.Light);
+
+        Assert.Equal(expectedOverride, surface.ActionForeground?.ToHex());
+        Assert.Equal(accent, ThemeResourceProjection.Project(imported.PaletteFor(ThemeColorMode.Light)).Brushes["AccentTextFillColorPrimaryBrush"].ToHex());
+        if (!highContrast)
+            Assert.Equal("#808080", surface.Fill?.ToHex());
+    }
+
     // The applicator moves only these app brushes onto the theme's accent ramp. Matching by color would also capture
     // fixed brushes that equal a Windows accent shade, such as the #0078D4 session tint.
     [Fact]

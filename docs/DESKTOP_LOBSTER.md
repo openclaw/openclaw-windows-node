@@ -122,6 +122,11 @@ theme or High Contrast; the bubble's own light/dark change re-applies it too:
 | Gateway theme (either Mica setting) | None | The dashboard toast's opaque `--popover` and `--border`; the `--card` when the theme's text can't be read on its popover |
 | High Contrast | Per the Mica checkbox | Fluent High Contrast resources |
 
+If a theme's action-link colors cannot be read on the bubble, only its
+**Quick reply** and **Notifications** links use the readable body color,
+including hover and pressed states. Other themed surfaces keep their accent.
+Windows default and High Contrast retain their native link resources.
+
 Outside High Contrast the window resolves the Fluent fill and stroke for the bubble's own
 light or dark mode and passes them as plain colors, like a theme's. A `{ThemeResource}`
 style on the popup frame kept the app mode's fill in the running Companion: a dark
