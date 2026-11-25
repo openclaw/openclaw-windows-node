@@ -214,6 +214,26 @@ public class GatewayThemeTests
         Assert.Null(AppearanceResolver.ResolveTheme(SettingsData.FromJson("""{ "AppTheme": "Light" }""")!.Appearance));
     }
 
+    [Theory]
+    [InlineData("Id", "\\uD800")]
+    [InlineData("Name", "\\uDC00")]
+    [InlineData("Source", "\\uD800")]
+    [InlineData("OriginGatewayId", "\\uDC00")]
+    public void MalformedAppearanceStringsPreserveOtherSettingsAndDefaultOnlyTheInvalidField(string field, string malformed)
+    {
+        var selection = field == "Id"
+            ? $$"""{ "Id": "{{malformed}}" }"""
+            : $$"""{ "Id": "tide", "{{field}}": "{{malformed}}" }""";
+        var settings = SettingsData.FromJson($$"""
+        { "AppTheme": "Dark", "NotifyEmail": false, "Appearance": { "Theme": {{selection}} } }
+        """);
+
+        Assert.NotNull(settings);
+        Assert.Equal("Dark", settings.AppTheme);
+        Assert.False(settings.NotifyEmail);
+        Assert.Equal(field == "Id" ? null : new ThemeSelection { Id = "tide" }, settings.Appearance?.Theme);
+    }
+
     [Fact]
     public void SelectedGatewayThemeSurvivesSettingsRoundTrip()
     {

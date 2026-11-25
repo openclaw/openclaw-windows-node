@@ -105,10 +105,20 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         };
     }
 
-    private static string? Text(JsonElement value, string name) =>
-        value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
-            ? property.GetString()
-            : null;
+    private static string? Text(JsonElement value, string name)
+    {
+        if (!value.TryGetProperty(name, out var property) || property.ValueKind != JsonValueKind.String)
+            return null;
+        try
+        {
+            return property.GetString();
+        }
+        catch (InvalidOperationException)
+        {
+            // JSON accepts unpaired surrogate escapes, but string decoding rejects them.
+            return null;
+        }
+    }
 
     private static void WriteOptional(Utf8JsonWriter writer, string name, string? value)
     {
