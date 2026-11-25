@@ -233,6 +233,37 @@ public sealed class GatewayThemeSettingsTests
     });
 
     [Fact]
+    public void InvalidationAtFinalCatalogNotificationStartsANewListAndKeepsItsSelection()
+    {
+        var (client, proxy) = Gateway();
+        var lists = 0;
+        proxy.Reply = (method, _) => method == "themes.get"
+            ? Json($$"""{ "theme": { "id": "acme/neon", "name": "Neon", "source": "plugin", "modes": ["dark"] }, "definition": {{NeonDefinition}} }""")
+            : ++lists == 1 ? Json(ListReply) : Json("""
+                { "themes": [], "theme": { "id": "tide", "name": "Tide", "source": "builtin", "modes": ["dark"] } }
+                """);
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+        int? listsDuringNotification = null;
+        void OnPublished(object? sender, EventArgs args)
+        {
+            // Neon only appears at the final publication, not at the earlier selection notification.
+            if (!catalog.Options.Any(option => option.Id == "acme/neon"))
+                return;
+            catalog.Changed -= OnPublished;
+            proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
+            listsDuringNotification = lists;
+        }
+        catalog.Changed += OnPublished;
+
+        catalog.SetConnection(client, "gw-1");
+
+        Assert.Equal(2, listsDuringNotification);
+        Assert.Equal(2, lists);
+        Assert.Equal("tide", catalog.GatewayCurrent?.Id);
+        Assert.DoesNotContain(catalog.Options, option => option.Id == "acme/neon");
+    }
+
+    [Fact]
     public Task DisconnectingStopsDefinitionReadsStillWaitingForASlot() => Task.Run(async () =>
     {
         var (client, proxy) = Gateway();

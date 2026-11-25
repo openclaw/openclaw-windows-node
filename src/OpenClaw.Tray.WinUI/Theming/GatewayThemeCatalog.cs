@@ -46,8 +46,6 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     private int _generation;
     private int _refreshSequence;
     private int _appliedSequence;
-    private bool _refreshing;
-    private int _refreshingGeneration;
     private bool _refreshPending;
     private TaskCompletionSource? _refreshCompletion;
     private IReadOnlyList<GatewayThemeOption> _gatewayOptions = [];
@@ -102,6 +100,8 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             _epoch = epoch;
             // Older reads, including ones from the previous epoch, can no longer apply.
             _generation++;
+            _refreshCompletion = null;
+            _refreshPending = false;
             if (!sameBinding)
             {
                 changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null;
@@ -143,15 +143,12 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         int generation;
         lock (_gate)
         {
-            if (_refreshing && _refreshingGeneration == _generation)
+            if (_refreshCompletion is { } active)
             {
                 _refreshPending = true;
-                return _refreshCompletion!.Task;
+                return active.Task;
             }
             generation = _generation;
-            _refreshing = true;
-            _refreshingGeneration = generation;
-            _refreshPending = false;
             completion = _refreshCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         _ = RunRefreshesAsync(generation, completion);
@@ -164,24 +161,36 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         {
             while (true)
             {
-                await RefreshOnceAsync(generation).ConfigureAwait(false);
+                var changed = await RefreshOnceAsync(generation).ConfigureAwait(false);
+                bool rerun;
                 lock (_gate)
                 {
-                    if (generation != _generation || !_refreshPending)
-                        break;
-                    _refreshPending = false;
+                    rerun = _refreshCompletion == completion && _refreshPending;
+                    if (rerun)
+                        _refreshPending = false;
+                    else if (_refreshCompletion == completion)
+                        _refreshCompletion = null;
                 }
+                // The last read has released its slot before notifying observers. An invalidation now starts
+                // a new read rather than joining a worker that has already decided to stop.
+                if (changed)
+                    RaiseChanged();
+                if (!rerun)
+                    break;
             }
+            completion.SetResult();
         }
-        finally
+        catch (Exception ex)
         {
             lock (_gate)
             {
-                // A newer connection may already run its own reads; only release this connection's slot.
-                if (_refreshingGeneration == generation)
-                    _refreshing = false;
+                if (_refreshCompletion == completion)
+                {
+                    _refreshCompletion = null;
+                    _refreshPending = false;
+                }
             }
-            completion.TrySetResult();
+            completion.SetException(ex);
         }
     }
 
@@ -191,7 +200,7 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             return generation == _generation;
     }
 
-    private async Task RefreshOnceAsync(int generation)
+    private async Task<bool> RefreshOnceAsync(int generation)
     {
         IOperatorGatewayClient? client;
         string? gatewayId;
@@ -199,13 +208,13 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         lock (_gate)
         {
             if (generation != _generation)
-                return;
+                return false;
             client = _client;
             gatewayId = _gatewayId;
             sequence = ++_refreshSequence;
         }
         if (client is not { IsConnectedToGateway: true } || !Supports(client))
-            return;
+            return false;
 
         GatewayThemeList list;
         IReadOnlyList<GatewayThemeOption> options;
@@ -218,21 +227,22 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             IReadOnlyList<GatewayThemeOption> known;
             lock (_gate)
                 known = _gatewayOptions;
-            if (!Publish(generation, sequence, null, CurrentOption(list, gatewayId, known)))
-                return;
+            if (!TryApply(generation, sequence, null, CurrentOption(list, gatewayId, known)))
+                return false;
+            RaiseChanged();
             options = await ReadDefinitionsAsync(client, list, gatewayId, generation).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Keep the last good catalog; a failed read must not drop themes the user can see.
             Services.Logger.Warn($"[Themes] Gateway theme catalog unavailable ({ex.GetType().Name}).");
-            return;
+            return false;
         }
-        Publish(generation, sequence, options, CurrentOption(list, gatewayId, options));
+        return TryApply(generation, sequence, options, CurrentOption(list, gatewayId, options));
     }
 
     // A newer connection or a newer read (for example after a push event) wins over this one.
-    private bool Publish(int generation, int sequence, IReadOnlyList<GatewayThemeOption>? options, GatewayThemeOption? current)
+    private bool TryApply(int generation, int sequence, IReadOnlyList<GatewayThemeOption>? options, GatewayThemeOption? current)
     {
         lock (_gate)
         {
@@ -243,7 +253,6 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
                 _gatewayOptions = options;
             _gatewayCurrent = current;
         }
-        RaiseChanged();
         return true;
     }
 
