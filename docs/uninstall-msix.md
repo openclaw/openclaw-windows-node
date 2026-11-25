@@ -13,10 +13,26 @@ at uninstall time.  The supported extension points
 (`windows.startupTask`, `windows.appExecutionAlias`, `com.extension`,
 `windows.protocol`, etc.) do not include an uninstall hook.
 
-Companion registers a user-scoped cleanup helper outside its MSIX payload when it
-creates a managed WSL Gateway or acquires a missing native Store Gateway. The helper
-removes the captured WSL registration and disk directory, or the native package it
-acquired, after Companion removal. WSL ownership requires its creation marker and
+When the effective PowerShell Group Policy permits it, Companion registers a
+user-scoped cleanup helper outside its MSIX payload when it creates a managed WSL
+Gateway or acquires a missing native Store Gateway. The helper removes the captured
+WSL registration and disk directory, or the native package it acquired, after
+Companion removal.
+
+If policy enforces `AllSigned` or `Restricted`, or policy
+inspection is unavailable, Companion skips helper registration and setup continues.
+The helper is not signed, so do not weaken the policy to enable it. If Task
+Scheduler cannot register the cleanup task, setup also continues with a warning.
+Reopening Companion can retry registration only if the Gateway ownership record
+(`owned.json`) still exists and the effective policy permits the script to run.
+
+When automatic cleanup is unavailable, remove the WSL Gateway from **Settings →
+Local Gateway** before uninstalling Companion.
+For a native Store Gateway, uninstall the Gateway package from **Windows
+Settings → Apps** only when no other installed Companion variant uses it. You can
+also follow the manual recovery steps below after uninstall. If a policy change
+blocks an existing helper, Companion remains usable and automatic cleanup may not run.
+WSL ownership requires its creation marker and
 matching registered disk path and registration identity. Replacements, unknown directories
 and unreadable inventories are preserved. Native ownership is recorded only after verified
 acquisition and bound to the Gateway's LocalState marker; other installed Companion variants
@@ -53,7 +69,7 @@ Older installations without verified ownership may still leave behind:
 
 ---
 
-## Remove a Gateway while keeping Companion, or clean up an older installation
+## Remove a Gateway before uninstalling Companion, or clean up an older installation
 
 1. Open the tray icon.
 2. Navigate to **Settings → Local Gateway**.
@@ -62,13 +78,18 @@ Older installations without verified ownership may still leave behind:
 4. Wait for the engine to complete - it stops keepalive processes, unregisters
    the WSL distro, nulls the device token, removes autostart, and cleans up app
    data.
-5. Uninstall the MSIX package via **Settings → Apps**.
+5. Uninstall the MSIX package via **Settings → Apps**. Removing the Gateway first
+   also works on machines where PowerShell policy blocks the automatic cleanup helper.
 
 ---
 
 ## Manual Recovery (After MSIX Removed Without In-Tray Cleanup)
 
 If the MSIX was already removed and the WSL distro / app data remains:
+
+If a native Store Gateway remains, remove its package from **Windows Settings →
+Apps → Installed apps** only if no other installed Companion variant uses that
+shared package. The commands below apply to the WSL Gateway.
 
 ```powershell
 # 1. Unregister the distro (removes .vhdx from wsl's internal store)

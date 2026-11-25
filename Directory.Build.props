@@ -1,6 +1,7 @@
 <Project>
 
   <PropertyGroup>
+    <GitVersion_CommandLineArguments>$(GitVersion_CommandLineArguments) --telemetry-opt-out</GitVersion_CommandLineArguments>
     <MicrosoftWindowsAppSDKVersion>2.6.5</MicrosoftWindowsAppSDKVersion>
     <MicrosoftWindowsSdkBuildToolsVersion>10.0.28000.2957</MicrosoftWindowsSdkBuildToolsVersion>
   </PropertyGroup>
