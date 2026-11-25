@@ -41,6 +41,18 @@ internal static class ThemeResourceProjection
         "ChatSandboxOnBrush", "ChatClawBrush", "ChatQuestionSelectedBrush", "ChatQuestionSelectedStrokeBrush", "ChatUserBrush",
     };
 
+    /// <summary>
+    /// Projected WinUI brushes whose color is a {ThemeResource SystemAccentColor*} shade in WinUI's generic.xaml, in both
+    /// the Light and Default dictionaries. Recoloring or replacing them drops that binding, so only these keep following
+    /// the Windows accent after the theme is cleared; fixed framework colors (such as the success fill) never do.
+    /// </summary>
+    internal static readonly IReadOnlySet<string> AccentBoundFrameworkKeys = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "AccentFillColorDefaultBrush", "AccentFillColorSecondaryBrush", "AccentFillColorTertiaryBrush",
+        "AccentTextFillColorPrimaryBrush", "AccentTextFillColorSecondaryBrush", "AccentTextFillColorTertiaryBrush",
+        "SystemFillColorAttentionBrush",
+    };
+
     public static ThemeProjection Project(ResolvedThemePalette p)
     {
         var brushes = new Dictionary<string, ThemeColor>(StringComparer.Ordinal)
