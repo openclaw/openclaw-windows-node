@@ -67,7 +67,7 @@ public sealed record BackgroundPreference(
             return false;
         BackgroundSourceKind sourceKind;
         string? assetId = null;
-        switch (kind.GetString())
+        switch (GatewayThemeProtocol.ReadString(kind))
         {
             case "none":
                 sourceKind = BackgroundSourceKind.None;
@@ -76,9 +76,9 @@ public sealed record BackgroundPreference(
                 sourceKind = BackgroundSourceKind.Theme;
                 break;
             case "custom" when source.TryGetProperty("assetId", out var asset) && asset.ValueKind == JsonValueKind.String &&
-                s_assetId.IsMatch(asset.GetString()!):
+                GatewayThemeProtocol.ReadString(asset) is { } id && s_assetId.IsMatch(id):
                 sourceKind = BackgroundSourceKind.Custom;
-                assetId = asset.GetString();
+                assetId = id;
                 break;
             default:
                 return false;
@@ -86,7 +86,7 @@ public sealed record BackgroundPreference(
         var presentation = BackgroundPresentation.Faded;
         if (value.TryGetProperty("presentation", out var style))
         {
-            switch (style.ValueKind == JsonValueKind.String ? style.GetString() : null)
+            switch (style.ValueKind == JsonValueKind.String ? GatewayThemeProtocol.ReadString(style) : null)
             {
                 case "faded":
                     break;

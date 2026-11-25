@@ -637,6 +637,8 @@ public sealed class GatewayThemeSettingsTests
         var vm = new SettingsPageViewModel(store, new FakeAppCommands());
         vm.Activate(null);
         vm.SelectedThemeKey = "tide";
+        vm.BackgroundStyleIndex = 2;
+        vm.BackgroundVisibility = 75;
 
         vm.FollowGatewayTheme = true;
         Assert.True(settings.Appearance.FollowGatewayTheme);
@@ -648,8 +650,14 @@ public sealed class GatewayThemeSettingsTests
         store.Update(null, edit => edit.Appearance = settings.Appearance with
         {
             FollowedTheme = new ThemeSelection { Id = "crt", Name = "CRT" },
+            FollowedBackground = BackgroundPreference.Default with { Source = BackgroundSourceKind.None, Visibility = 0.25 },
         });
         Assert.Equal("crt", vm.SelectedThemeKey);
+        Assert.Equal(0, vm.BackgroundStyleIndex);
+        Assert.Equal(25, vm.BackgroundVisibility);
+        Assert.False(vm.IsBackgroundEnabled);
+        vm.BackgroundStyleIndex = 1;
+        vm.BackgroundVisibility = 10;
         vm.SelectedThemeKey = "rose";
         vm.UseMica = false;
         Assert.Equal("crt", settings.Appearance.FollowedTheme?.Id);
@@ -659,6 +667,8 @@ public sealed class GatewayThemeSettingsTests
         vm.FollowGatewayTheme = false;
         Assert.True(vm.IsManualThemeEnabled);
         Assert.Equal("tide", vm.SelectedThemeKey);
+        Assert.Equal(2, vm.BackgroundStyleIndex);
+        Assert.Equal(75, vm.BackgroundVisibility);
         Assert.Equal("tide", AppearanceResolver.ResolveTheme(new SettingsManager(temp.Path).Appearance)?.Id);
     }
 

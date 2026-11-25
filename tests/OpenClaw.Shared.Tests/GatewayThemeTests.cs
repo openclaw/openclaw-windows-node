@@ -275,6 +275,8 @@ public class GatewayThemeTests
     [InlineData("""{ "source": { "kind": "theme" }, "presentation": "fullBleed", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
     [InlineData("""{ "source": { "kind": "custom", "assetId": "../x" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
     [InlineData("""{ "source": { "kind": "custom", "assetId": "a_1-b\n" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "\uD800" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "theme" }, "presentation": "\uDC00", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
     [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": "yes", "showInSessions": true, "visibility": 0.5 }""", false)]
     [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": true, "showInSessions": true, "visibility": 1.5 }""", false)]
     [InlineData("""{ "source": "theme", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
@@ -290,6 +292,29 @@ public class GatewayThemeTests
         using var written = JsonDocument.Parse(stream.ToArray());
         Assert.True(BackgroundPreference.TryParse(written.RootElement, out var reread));
         Assert.Equal(preference, reread);
+    }
+
+    [Fact]
+    public void MalformedPreferenceDoesNotDiscardItsValidSiblingOrLocalSettings()
+    {
+        const string invalidBackground = """{ "source": { "kind": "custom", "assetId": "\uD800" }, "showOnNewSession": true, "showInSessions": true, "visibility": 1 }""";
+        using var invalidArtwork = JsonDocument.Parse($$"""{ "status": "ok", "entries": { "ui.accent": "#3A9B9B", "ui.background": {{invalidBackground}} } }""");
+        Assert.True(GatewayAppearancePreferences.TryParse(invalidArtwork.RootElement, out var preferences));
+        Assert.Equal("#3a9b9b", preferences.Accent);
+        Assert.Null(preferences.Background);
+
+        using var invalidAccent = JsonDocument.Parse("""
+            { "status": "ok", "entries": { "ui.accent": "\uD800", "ui.background": {
+              "source": { "kind": "none" }, "showOnNewSession": false, "showInSessions": true, "visibility": 1 } } }
+            """);
+        Assert.True(GatewayAppearancePreferences.TryParse(invalidAccent.RootElement, out preferences));
+        Assert.Null(preferences.Accent);
+        Assert.Equal(BackgroundSourceKind.None, preferences.Background?.Source);
+
+        var settings = SettingsData.FromJson($$"""{ "AppTheme": "Dark", "Appearance": { "UseMica": false, "Background": {{invalidBackground}} } }""");
+        Assert.Equal("Dark", settings?.AppTheme);
+        Assert.False(settings!.Appearance!.UseMica);
+        Assert.Null(settings.Appearance.Background);
     }
 
     // The dashboard's strengths (session-background.tsx): faded scales visibility against the 50% default up to full,

@@ -90,6 +90,9 @@ internal static class ChatBackgroundArtwork
             .AccessibilityView(AccessibilityView.Raw)
             .Set(border =>
             {
+                // Draft edits and streaming replies re-render the chat, not the artwork.
+                if (border.Child is not null && s_artwork.TryGetValue(border, out var previous) && previous == artwork)
+                    return;
                 s_artwork.AddOrUpdate(border, artwork);
                 Paint(border);
             })
@@ -145,7 +148,8 @@ internal static class ChatBackgroundArtwork
             return;
         }
         // Fading the artwork into the canvas equals painting the canvas over it with the inverse of the mask.
-        var shell = artwork.Theme.PaletteFor(mode).Shell;
+        var palette = artwork.Theme.PaletteFor(mode);
+        var shell = palette.Shell.Over(palette.WindowCanvas);
         var fade = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
         foreach (var (offset, opacity) in s_fadeStops)
             fade.GradientStops.Add(new GradientStop

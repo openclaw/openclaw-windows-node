@@ -297,7 +297,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     public bool IsBackgroundVisibilityEnabled => !_followGatewayTheme && BackgroundStyleIndex != 0;
 
     private OpenClaw.Shared.Themes.BackgroundPreference Background =>
-        _appearance.Background ?? OpenClaw.Shared.Themes.BackgroundPreference.Default;
+        OpenClaw.Shared.Themes.AppearanceResolver.ActiveBackground(_appearance) ?? OpenClaw.Shared.Themes.BackgroundPreference.Default;
 
     private void RaiseBackgroundState()
     {
@@ -571,7 +571,6 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _selectedThemeKey,
                 OpenClaw.Shared.Themes.AppearanceResolver.Resolve(s.Appearance.Theme) is null ? "" : s.Appearance.Theme!.Id,
                 nameof(SelectedThemeKey));
-            RaiseBackgroundState();
             SetField(ref _showDiagnostics, s.ShowDiagnosticsEffective, nameof(ShowDiagnostics));
             SetField(ref _notifyHealth, s.NotifyHealth, nameof(NotifyHealth));
             SetField(ref _notifyUrgent, s.NotifyUrgent, nameof(NotifyUrgent));

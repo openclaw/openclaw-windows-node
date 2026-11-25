@@ -839,8 +839,12 @@ is reported as a built-in newer than the Companion's table, which the Companion
 doesn't follow. With `select manuscript` and **Follow Gateway theme** on, capture
 a dark chat's user bubble, enter `accent #3a9b9b`, and capture the same bubble
 with its teal wash. Enter `accent theme` to restore the theme's own accent;
-`accent none` represents an unset preference. This uses a synthetic profile,
-not a live dashboard. `GatewayThemeCatalogWireTests` proves the same catalog,
+`accent none` represents an unset preference. For artwork, enter
+`background full-bleed 1`, capture the same chat, then enter `background none`
+and capture it without artwork. `background faded 0.5` shows the fade on a new
+chat; `background clear` removes the saved dashboard preference. With Follow
+off, Settings shows the Companion's own style and strength again.
+This uses a synthetic profile, not a live dashboard. `GatewayThemeCatalogWireTests` proves the same catalog,
 definitions, event refreshes and following through the real authenticated
 client.
 

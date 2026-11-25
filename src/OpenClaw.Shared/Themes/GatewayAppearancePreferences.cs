@@ -43,7 +43,7 @@ public sealed record GatewayAppearancePreferences(string? Accent, BackgroundPref
         preferences = new GatewayAppearancePreferences((string?)null);
         if (result.ValueKind != JsonValueKind.Object ||
             !result.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String ||
-            status.GetString() != "ok" ||
+            GatewayThemeProtocol.ReadString(status) != "ok" ||
             !result.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Object)
             return false;
         var background = entries.TryGetProperty(BackgroundPreference.Key, out var raw) &&
@@ -61,7 +61,7 @@ public sealed record GatewayAppearancePreferences(string? Accent, BackgroundPref
     {
         if (!entries.TryGetProperty(AccentKey, out var value) || value.ValueKind != JsonValueKind.String)
             return null;
-        var text = value.GetString();
+        var text = GatewayThemeProtocol.ReadString(value);
         return text == ThemeAccent ? ThemeAccent : NormalizeHex(text);
     }
 }
