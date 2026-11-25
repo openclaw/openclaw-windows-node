@@ -209,10 +209,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         get => _selectedThemeKey;
         set
         {
-            // Replacing ThemeChoices makes the ComboBox write null before it reselects; keep the saved key.
-            if (_loading)
+            // The ComboBox writes null when ThemeChoices is replaced and can when the saved theme is not listed (a
+            // Gateway theme). Every choice has a key, so null is never a user choice and must not clear the theme.
+            if (_loading || value is null)
                 return;
-            var key = value ?? "";
+            var key = value;
             if (!SetField(ref _selectedThemeKey, key))
                 return;
             var selection = SelectionFor(key);

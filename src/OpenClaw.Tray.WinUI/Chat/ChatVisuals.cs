@@ -359,6 +359,19 @@ internal static class ChatVisuals
                 break;
         }
     }
+    /// <summary>
+    /// Keeps mounted code text that is outside the Markdown restyle pass on the current code font across theme
+    /// switches, which do not re-render it.
+    /// </summary>
+    internal static T FollowCodeFont<T>(this T element) where T : Element =>
+        (T)element
+            .OnMountAdd(control => ChatThemeChanges.Watch(control, () => ApplyCodeFont(control)))
+            .OnUnmountAdd(control =>
+            {
+                ChatThemeChanges.Unwatch(control);
+                ClearFontRole(control);
+            });
+
     internal const double CodeSize = 13;
     internal const double CodeLineHeight = 18;
     // Web .chat-thinking is 12px muted text; 18 follows the 12/18 footer ramp.

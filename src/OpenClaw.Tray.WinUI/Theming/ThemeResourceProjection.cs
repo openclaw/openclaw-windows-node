@@ -27,15 +27,27 @@ internal sealed record ThemeProjection(
 /// </summary>
 internal static class ThemeResourceProjection
 {
+    /// <summary>
+    /// App theme-dictionary brushes whose color or gradient stops are a {ThemeResource SystemAccentColor*} shade.
+    /// Only these follow the theme's accent ramp and the Windows accent after the theme is cleared; a fixed brush
+    /// that merely equals an accent shade keeps its own color. Must match the XAML (GatewayThemeSettingsTests).
+    /// </summary>
+    internal static readonly IReadOnlySet<string> AccentBoundAppKeys = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "SetupIndicatorAccentBrush", "UsageChartCacheReadBrush", "UsagePalette1Brush", "UsageChartBarBrush",
+        "UsagePalette1TintBrush", "NavigationViewSelectionIndicatorForeground", "VoiceAccentBrush",
+        "AutomationsHeroBrush", "AutomationsHeroStrokeBrush",
+        "SystemsPendingTintBrush", "SystemsLoadBrush", "SystemsLoadTintBrush",
+        "ChatSandboxOnBrush", "ChatClawBrush", "ChatQuestionSelectedBrush", "ChatQuestionSelectedStrokeBrush", "ChatUserBrush",
+    };
+
     public static ThemeProjection Project(ResolvedThemePalette p)
     {
         var brushes = new Dictionary<string, ThemeColor>(StringComparer.Ordinal)
         {
             // The window canvas shows through the transparent navigation pane, so it takes the dashboard's
-            // sidebar color; the content area is the dashboard shell, opaque like the Control UI's. A plugin or
-            // imported theme may declare transparent surfaces: its text was judged readable over black, so the
-            // canvas is composited over black and the desktop never shows through a themed window.
-            ["SolidBackgroundFillColorBaseBrush"] = p.Sidebar.Over(ThemeColor.Black),
+            // sidebar color. The legibility check composites translucent surfaces over this same opaque root.
+            ["SolidBackgroundFillColorBaseBrush"] = p.WindowCanvas,
             ["SolidBackgroundFillColorBaseAltBrush"] = p.Content,
             ["SolidBackgroundFillColorSecondaryBrush"] = p.Surface,
             ["SolidBackgroundFillColorTertiaryBrush"] = p.Content,

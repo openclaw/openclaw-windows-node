@@ -119,11 +119,12 @@ internal sealed class AppThemeApplicator
                 {
                     var target = ToColor(color);
                     var found = false;
+                    var accentBound = ThemeResourceProjection.AccentBoundAppKeys.Contains(key);
                     foreach (var (dictionary, ownKeys) in dictionaries)
                     {
                         // TryGetValue (and ContainsKey) also resolve merged and global resources, including High Contrast brushes.
                         if (ownKeys.Contains(key) && dictionary.TryGetValue(key, out var resource) && resource is SolidColorBrush brush &&
-                            Recolor(brush, target, ownTheme))
+                            Recolor(brush, target, ownTheme, accentBound))
                         {
                             found = true;
                             if (projection.Opacities.TryGetValue(key, out var opacity))
@@ -167,13 +168,14 @@ internal sealed class AppThemeApplicator
             // App visuals bound to a {ThemeResource SystemAccentColor*} shade (the Hub navigation indicator, usage,
             // systems and automations visuals, voice) hold the shade they resolved at load, so they would keep the
             // Windows accent. They take the matching shade of the theme's accent ramp; keys the projection names keep
-            // their projected color, and WinUI's own dictionaries are left to the projection.
+            // their projected color, and WinUI's own dictionaries are left to the projection. Fixed brushes are never
+            // matched by color, since one may equal an accent shade.
             var ramp = AccentRamp(projection);
             foreach (var dictionary in AppThemeDictionaries(resources, themeKey))
             {
                 foreach (var key in OwnKeys(dictionary))
                 {
-                    if (projection.Brushes.ContainsKey(key))
+                    if (projection.Brushes.ContainsKey(key) || !ThemeResourceProjection.AccentBoundAppKeys.Contains(key))
                         continue;
                     Guard($"{themeKey}/{key}", () =>
                     {
@@ -300,7 +302,9 @@ internal sealed class AppThemeApplicator
         }
     }
 
-    private bool Recolor(SolidColorBrush brush, Color color, ElementTheme? ownTheme)
+    // followsAccent: whether a brush that showed a Windows accent shade is bound to it. Framework brushes are judged by
+    // color; app brushes by AccentBoundAppKeys.
+    private bool Recolor(SolidColorBrush brush, Color color, ElementTheme? ownTheme, bool followsAccent = true)
     {
         if (ownTheme is { } theme && !_recolored.ContainsKey(brush))
             ResolveUnder(brush, theme);
@@ -320,7 +324,7 @@ internal sealed class AppThemeApplicator
             _readOnlyBrushes++;
             return false;
         }
-        if (_recolored.TryAdd(brush, original) && AccentTypeOf(original) is { } accent)
+        if (_recolored.TryAdd(brush, original) && followsAccent && AccentTypeOf(original) is { } accent)
             _accentBound.TryAdd(brush, accent);
         return true;
     }
