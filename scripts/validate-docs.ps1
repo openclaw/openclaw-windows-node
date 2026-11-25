@@ -31,6 +31,47 @@ function Add-ValidationError([string]$message) {
     $script:errors.Add($message)
 }
 
+# Parsing alone accepts a newline that splits a positional Where-Object -Match.
+# Validate the isolation example's predicate and synthetic names without changing Env:.
+$fixtureGuide = Join-Path $repoRootPath "docs\GATEWAY_FIXTURE_TESTING.md"
+$fixtureText = [System.IO.File]::ReadAllText($fixtureGuide)
+$selectorExample = [regex]::Match(
+    $fixtureText, '(?s)foreach \(\$entry in @\(Get-ChildItem Env:.*?(?=\r?\n\$env:OPENCLAW_STATE_DIR)').Value
+if ($fixtureText.Contains("CombinedGatewayTask_ProducesNativeCardAndRetainsDraft")) {
+    $selectorTokens = $null
+    $selectorErrors = $null
+    $selectorAst = [System.Management.Automation.Language.Parser]::ParseInput(
+        $selectorExample, [ref]$selectorTokens, [ref]$selectorErrors)
+    $filters = @($selectorAst.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and
+        $node.GetCommandName() -eq "Where-Object"
+    }, $true))
+    if (-not $selectorExample -or $selectorErrors.Count -gt 0 -or
+        $filters.Count -ne 1 -or $filters[0].CommandElements.Count -ne 2 -or
+        $filters[0].CommandElements[1] -isnot [System.Management.Automation.Language.ScriptBlockExpressionAst]) {
+        Add-ValidationError "GATEWAY_FIXTURE_TESTING.md: combined isolation selector needs one explicit predicate"
+    } else {
+        $selectorMatches = @($filters[0].FindAll({ param($node)
+            $node -is [System.Management.Automation.Language.BinaryExpressionAst] -and
+            $node.Operator -eq "Imatch"
+        }, $true))
+        if ($selectorMatches.Count -ne 1 -or
+            $selectorMatches[0].Left.Extent.Text -ne '$_.Name' -or
+            $selectorMatches[0].Right -isnot [System.Management.Automation.Language.StringConstantExpressionAst]) {
+            Add-ValidationError "GATEWAY_FIXTURE_TESTING.md: combined selector needs a literal Name match"
+        } else {
+            $names = @("OPENCLAW_STATE_DIR", "OPENCLAW_HOME", "OPENCLAW_CONFIG_PATH",
+                "OPENCLAW_PROFILE_PROBE", "OPENCLAW_TRAY_DATA_DIR", "OPENCLAW_TRAY_APPDATA_DIR",
+                "PATH", "TEMP", "UNRELATED_PROFILE")
+            $selectorPattern = $selectorMatches[0].Right.Value
+            $selected = @($names | Where-Object { $_ -match $selectorPattern })
+            if (($selected -join "|") -ne ($names[0..5] -join "|")) {
+                Add-ValidationError "GATEWAY_FIXTURE_TESTING.md: combined selector scope is incorrect"
+            }
+        }
+    }
+}
+
 function Get-RelativePath([string]$path) {
     $root = $repoRootPath.TrimEnd("\") + "\"
     $full = [System.IO.Path]::GetFullPath($path)

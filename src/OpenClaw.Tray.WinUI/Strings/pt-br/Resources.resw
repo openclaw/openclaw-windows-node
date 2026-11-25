@@ -10318,4 +10318,76 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Acompanhe o trabalho delegado desta conversa.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets e guias publicados por esta sessão.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Ainda não há painéis disponíveis para esta conversa.</value></data>
+  <data name="Chat_Tasks_Title" xml:space="preserve">
+    <value>Tarefas sugeridas</value>
+  </data>
+  <data name="Chat_Tasks_RefreshFailed" xml:space="preserve">
+    <value>Não foi possível atualizar as tarefas sugeridas.</value>
+  </data>
+  <data name="Chat_Tasks_Refresh" xml:space="preserve">
+    <value>Atualizar tarefas</value>
+  </data>
+  <data name="Chat_Tasks_Instructions" xml:space="preserve">
+    <value>Mostrar instruções</value>
+  </data>
+  <data name="Chat_Tasks_Copied" xml:space="preserve">
+    <value>Instruções copiadas</value>
+  </data>
+  <data name="Chat_Tasks_Copy" xml:space="preserve">
+    <value>Copiar instruções</value>
+  </data>
+  <data name="Chat_Tasks_CopyFailed" xml:space="preserve">
+    <value>Não foi possível copiar as instruções.</value>
+  </data>
+  <data name="Chat_Tasks_Started" xml:space="preserve">
+    <value>Tarefa iniciada. Encontre-a em Sessões.</value>
+  </data>
+  <data name="Chat_Tasks_Starting" xml:space="preserve">
+    <value>Iniciando tarefa...</value>
+  </data>
+  <data name="Chat_Tasks_Unconfirmed" xml:space="preserve">
+    <value>O início da tarefa não foi confirmado. Tentar novamente verifica a mesma tarefa, não uma nova. Após reconectar, verifique Sessões ou o chat na web.</value>
+  </data>
+  <data name="Chat_Tasks_Retry" xml:space="preserve">
+    <value>Tentar a mesma tarefa novamente</value>
+  </data>
+  <data name="Chat_Tasks_Local" xml:space="preserve">
+    <value>Iniciar em uma nova sessão</value>
+  </data>
+  <data name="Chat_Tasks_Options" xml:space="preserve">
+    <value>Opções de início</value>
+  </data>
+  <data name="Chat_Tasks_Session" xml:space="preserve">
+    <value>Iniciar nesta conversa</value>
+  </data>
+  <data name="Chat_Tasks_Repository" xml:space="preserve">
+    <value>Caminho do repositório no Gateway</value>
+  </data>
+  <data name="Chat_Tasks_Worktree" xml:space="preserve">
+    <value>Iniciar em nova árvore de trabalho</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
+    <value>ID do perfil de nuvem configurado</value>
+  </data>
+  <data name="Chat_Tasks_Cloud" xml:space="preserve">
+    <value>Iniciar na nuvem</value>
+  </data>
+  <data name="Chat_Tasks_Dismiss" xml:space="preserve">
+    <value>Dispensar tarefa</value>
+  </data>
+  <data name="Chat_Tasks_Compatibility" xml:space="preserve">
+    <value>Atualize o Gateway ou use o chat na web para iniciar esta tarefa.</value>
+  </data>
+  <data name="Chat_Tasks_RepositoryRequired" xml:space="preserve">
+    <value>Insira um caminho absoluto de um repositório com um commit no Gateway. A tarefa não foi iniciada.</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfileRequired" xml:space="preserve">
+    <value>Escolha um perfil de nuvem configurado. A tarefa não foi iniciada.</value>
+  </data>
+  <data name="Chat_Tasks_HideInstructions" xml:space="preserve"><value>Ocultar instruções</value></data>
+  <data name="Chat_Tasks_Hide" xml:space="preserve"><value>Ocultar localmente</value></data>
+  <data name="Chat_Tasks_HideHelp" xml:space="preserve"><value>Oculte este aviso localmente. O resultado da tarefa continua desconhecido.</value></data>
+  <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>É necessário acesso de administrador ao Gateway para iniciar tarefas sugeridas.</value></data>
+  <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>Não foi possível dispensar a tarefa. Tente novamente.</value></data>
+  <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>As tarefas sugeridas precisam de uma identidade de operador verificada pelo Gateway. Verifique seu acesso ao Gateway e tente novamente.</value></data>
 </root>

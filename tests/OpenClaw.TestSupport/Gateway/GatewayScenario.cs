@@ -73,7 +73,7 @@ public sealed partial class GatewayScenario
 
     public FixtureBoards? Boards => _boards;
 
-    public string Name => _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
+    public string Name => TaskSuggestions is not null ? "suggested-tasks" : _hubMethods is not null ? (_hubReadOnly ? SessionsHubReadOnlyName : SessionsHubName)
         : _systems is not null ? _systems.Name : _boards is not null ? DashboardsName : _inboxFeed is not null ? "inbox-feed" : _accessibilityBaseline ? "accessibility-baseline" : _contextUsage is not null ? ContextUsageFixture.Name : UsageAnalytics.RichProviders ? UsageAnalyticsFixture.Name : IsInteractive ? InteractiveName : _cronJobs is not null ? AutomationsName : _setup is not null ? "native-setup" : _allowChatSend ? "chat-send" : _allowSessionMutations ? "session-mutations" : _allowAgentCreation ? "agent-creation"
         : ContainsSession(VoiceSessionKey) ? "fractional-voice-history" : BrowseName;
     public int Version => _allowChatSend ? 2 : 1;
@@ -90,8 +90,9 @@ public sealed partial class GatewayScenario
         bool allowSessionMutations = false, bool allowChatSend = false, JsonObject[]? cronJobs = null,
         bool interactive = false, ContextUsageFixture? contextUsage = null, bool publishedModelCatalog = false,
         UsageAnalyticsFixture? usageAnalytics = null, bool accessibilityBaseline = false,
-        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false)
+        FixtureBoards? boards = null, SystemsFixture? systems = null, InboxFeedData? inboxFeed = null, string[]? hubMethods = null, bool hubReadOnly = false, FixtureTaskSuggestions? taskSuggestions = null)
     {
+        TaskSuggestions = taskSuggestions;
         _inboxFeed = inboxFeed;
         _accessibilityBaseline = accessibilityBaseline;
         _hubMethods = hubMethods;
@@ -131,6 +132,7 @@ public sealed partial class GatewayScenario
             .Concat(inboxFeed is not null && allowChatSend ? ["chat.send"] : [])
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
             .Concat(hubMethods ?? [])
+            .Concat(taskSuggestions is null ? [] : FixtureTaskSuggestions.Methods)
             .Concat(boards is null ? [] : FixtureBoards.Methods)
             .Concat(systems is null ? [] : SystemsFixture.Methods)
             .Distinct(StringComparer.Ordinal)
@@ -496,7 +498,9 @@ public sealed partial class GatewayScenario
                     : _contextUsage is not null ? new[] { "connect.challenge", "sessions.changed", "agent", "chat" }
                     : _systems is not null ? new[] { "connect.challenge", "sessions.changed", "agent" }.Concat(SystemsFixture.Events).ToArray()
                     : new[] { "connect.challenge", "sessions.changed", "agent" },
-                capabilities = _publishedModelCatalog
+                capabilities = TaskSuggestions is not null
+                    ? new[] { "session-scoped-model-catalog", "taskSuggestions.acceptModes" }
+                    : _publishedModelCatalog
                     ? new[] { "session-scoped-model-catalog", "published-model-catalog" }
                     : new[] { "session-scoped-model-catalog" },
             },
@@ -518,6 +522,7 @@ public sealed partial class GatewayScenario
                         : _hubMethods is not null ? (_hubReadOnly ? new[] { "operator.read" } : new[] { "operator.admin", "operator.write", "operator.read" })
                         : _contextUsage is not null || _accessibilityBaseline ? new[] { "operator.read", "operator.write" }
                         : _systems is not null ? new[] { "operator.admin", "operator.read", "operator.pairing" }
+                        : TaskSuggestions is not null ? new[] { "operator.admin", "operator.read", "operator.write" }
                         : _allowAgentCreation || _allowSessionMutations || (_cronJobs is not null && !CronReadOnly)
                             ? new[] { "operator.admin", "operator.read" }
                             : new[] { _setup is null ? "operator.read" : "operator.admin" }
@@ -550,6 +555,9 @@ public sealed partial class GatewayScenario
 
     internal object Respond(string method, JsonElement parameters, Func<string, bool>? containsModelSession = null)
     {
+        if (TaskSuggestions is not null && FixtureTaskSuggestions.Methods.Contains(method, StringComparer.Ordinal))
+            return TaskSuggestions.Respond(method, parameters, () => CreateConversation(
+                JsonSerializer.SerializeToElement(new { parentSessionKey = MainSessionKey })));
         if (RespondSessionsHub(method, parameters) is { } hubResponse)
             return hubResponse;
         if (_boards is not null && method == "board.get")

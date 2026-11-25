@@ -17,6 +17,22 @@ public class GatewayConnectionManagerTests : IDisposable
         int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var stepSeconds) && stepSeconds > 0
             ? TimeSpan.FromSeconds(stepSeconds) : TimeSpan.FromSeconds(15);
 
+    [Fact]
+    public async Task PublishedClientBindingRemainsTheOriginalRegistryTargetAfterLaterSwitch()
+    {
+        SetupGateway("binding-first", "wss://first.example");
+        _registry.AddOrUpdate(new GatewayRecord { Id = "binding-next", Url = "wss://next.example" });
+        _resolver.OperatorCredential = new GatewayCredential("token", false, "test");
+        var events = new List<OperatorClientChangedEventArgs>();
+        _manager.OperatorClientChanged += (_, args) => events.Add(args);
+        await _manager.ConnectAsync("binding-first");
+        var original = Assert.Single(events, args => args.NewClient is not null);
+        await _manager.SwitchGatewayAsync("binding-next");
+        Assert.Equal("binding-next", _manager.CurrentSnapshot.GatewayId);
+        Assert.Equal("binding-first", original.GatewayRecordId);
+        Assert.NotSame(original.NewClient, _manager.OperatorClient);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

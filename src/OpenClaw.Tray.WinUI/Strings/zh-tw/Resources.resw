@@ -10265,4 +10265,76 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>追蹤此對話中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此工作階段發布的小工具和索引標籤。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此對話尚無可用的面板。</value></data>
+  <data name="Chat_Tasks_Title" xml:space="preserve">
+    <value>建議的工作</value>
+  </data>
+  <data name="Chat_Tasks_RefreshFailed" xml:space="preserve">
+    <value>無法重新整理建議的工作。</value>
+  </data>
+  <data name="Chat_Tasks_Refresh" xml:space="preserve">
+    <value>重新整理工作</value>
+  </data>
+  <data name="Chat_Tasks_Instructions" xml:space="preserve">
+    <value>顯示指示</value>
+  </data>
+  <data name="Chat_Tasks_Copied" xml:space="preserve">
+    <value>已複製指示</value>
+  </data>
+  <data name="Chat_Tasks_Copy" xml:space="preserve">
+    <value>複製指示</value>
+  </data>
+  <data name="Chat_Tasks_CopyFailed" xml:space="preserve">
+    <value>無法複製指示。</value>
+  </data>
+  <data name="Chat_Tasks_Started" xml:space="preserve">
+    <value>工作已啟動。請在工作階段中查看。</value>
+  </data>
+  <data name="Chat_Tasks_Starting" xml:space="preserve">
+    <value>正在啟動工作...</value>
+  </data>
+  <data name="Chat_Tasks_Unconfirmed" xml:space="preserve">
+    <value>尚未確認工作是否啟動。重試將檢查同一個工作，不會建立新工作。重新連線後，請查看工作階段或網頁聊天。</value>
+  </data>
+  <data name="Chat_Tasks_Retry" xml:space="preserve">
+    <value>重試同一個工作</value>
+  </data>
+  <data name="Chat_Tasks_Local" xml:space="preserve">
+    <value>在新工作階段中啟動</value>
+  </data>
+  <data name="Chat_Tasks_Options" xml:space="preserve">
+    <value>啟動選項</value>
+  </data>
+  <data name="Chat_Tasks_Session" xml:space="preserve">
+    <value>在此對話中啟動</value>
+  </data>
+  <data name="Chat_Tasks_Repository" xml:space="preserve">
+    <value>閘道上的存放庫路徑</value>
+  </data>
+  <data name="Chat_Tasks_Worktree" xml:space="preserve">
+    <value>在新的工作樹中啟動</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
+    <value>已設定的雲端設定檔 ID</value>
+  </data>
+  <data name="Chat_Tasks_Cloud" xml:space="preserve">
+    <value>在雲端啟動</value>
+  </data>
+  <data name="Chat_Tasks_Dismiss" xml:space="preserve">
+    <value>忽略工作</value>
+  </data>
+  <data name="Chat_Tasks_Compatibility" xml:space="preserve">
+    <value>請更新閘道或使用網頁聊天啟動此工作。</value>
+  </data>
+  <data name="Chat_Tasks_RepositoryRequired" xml:space="preserve">
+    <value>輸入 Gateway 上含有提交的存放庫絕對路徑。工作尚未啟動。</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfileRequired" xml:space="preserve">
+    <value>請選擇已設定的雲端設定檔。工作尚未啟動。</value>
+  </data>
+  <data name="Chat_Tasks_HideInstructions" xml:space="preserve"><value>隱藏說明</value></data>
+  <data name="Chat_Tasks_Hide" xml:space="preserve"><value>在本機隱藏</value></data>
+  <data name="Chat_Tasks_HideHelp" xml:space="preserve"><value>僅在本機隱藏此通知。工作結果仍然未知。</value></data>
+  <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>需要 Gateway 系統管理員權限才能啟動建議的工作。</value></data>
+  <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>無法關閉此工作。請再試一次。</value></data>
+  <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>建議工作需要經過驗證的 Gateway 操作員身分。請檢查您的 Gateway 存取權限，然後再試一次。</value></data>
 </root>

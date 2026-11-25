@@ -10266,4 +10266,76 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Volg gedelegeerd werk vanuit dit gesprek.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets en tabbladen die deze sessie heeft gepubliceerd.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Er zijn nog geen panelen beschikbaar voor dit gesprek.</value></data>
+  <data name="Chat_Tasks_Title" xml:space="preserve">
+    <value>Voorgestelde taken</value>
+  </data>
+  <data name="Chat_Tasks_RefreshFailed" xml:space="preserve">
+    <value>Voorgestelde taken konden niet worden vernieuwd.</value>
+  </data>
+  <data name="Chat_Tasks_Refresh" xml:space="preserve">
+    <value>Taken vernieuwen</value>
+  </data>
+  <data name="Chat_Tasks_Instructions" xml:space="preserve">
+    <value>Instructies tonen</value>
+  </data>
+  <data name="Chat_Tasks_Copied" xml:space="preserve">
+    <value>Instructies gekopieerd</value>
+  </data>
+  <data name="Chat_Tasks_Copy" xml:space="preserve">
+    <value>Instructies kopiëren</value>
+  </data>
+  <data name="Chat_Tasks_CopyFailed" xml:space="preserve">
+    <value>Instructies konden niet worden gekopieerd.</value>
+  </data>
+  <data name="Chat_Tasks_Started" xml:space="preserve">
+    <value>Taak gestart. U vindt deze in Sessies.</value>
+  </data>
+  <data name="Chat_Tasks_Starting" xml:space="preserve">
+    <value>Taak starten...</value>
+  </data>
+  <data name="Chat_Tasks_Unconfirmed" xml:space="preserve">
+    <value>Het starten van de taak is niet bevestigd. Opnieuw proberen controleert dezelfde taak, niet een nieuwe. Controleer na opnieuw verbinden Sessies of de webchat.</value>
+  </data>
+  <data name="Chat_Tasks_Retry" xml:space="preserve">
+    <value>Dezelfde taak opnieuw proberen</value>
+  </data>
+  <data name="Chat_Tasks_Local" xml:space="preserve">
+    <value>Starten in een nieuwe sessie</value>
+  </data>
+  <data name="Chat_Tasks_Options" xml:space="preserve">
+    <value>Startopties</value>
+  </data>
+  <data name="Chat_Tasks_Session" xml:space="preserve">
+    <value>Starten in dit gesprek</value>
+  </data>
+  <data name="Chat_Tasks_Repository" xml:space="preserve">
+    <value>Pad naar opslagplaats op Gateway</value>
+  </data>
+  <data name="Chat_Tasks_Worktree" xml:space="preserve">
+    <value>Starten in nieuwe werkboom</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
+    <value>ID van ingesteld cloudprofiel</value>
+  </data>
+  <data name="Chat_Tasks_Cloud" xml:space="preserve">
+    <value>Starten in de cloud</value>
+  </data>
+  <data name="Chat_Tasks_Dismiss" xml:space="preserve">
+    <value>Taak negeren</value>
+  </data>
+  <data name="Chat_Tasks_Compatibility" xml:space="preserve">
+    <value>Werk de Gateway bij of gebruik de webchat om deze taak te starten.</value>
+  </data>
+  <data name="Chat_Tasks_RepositoryRequired" xml:space="preserve">
+    <value>Voer een absoluut pad in naar een repository met een commit op de Gateway. De taak is niet gestart.</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfileRequired" xml:space="preserve">
+    <value>Kies een ingesteld cloudprofiel. De taak is niet gestart.</value>
+  </data>
+  <data name="Chat_Tasks_HideInstructions" xml:space="preserve"><value>Instructies verbergen</value></data>
+  <data name="Chat_Tasks_Hide" xml:space="preserve"><value>Lokaal verbergen</value></data>
+  <data name="Chat_Tasks_HideHelp" xml:space="preserve"><value>Verberg deze melding lokaal. De uitkomst van de taak blijft onbekend.</value></data>
+  <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>Beheerderstoegang tot de Gateway is vereist om voorgestelde taken te starten.</value></data>
+  <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>De taak kon niet worden afgewezen. Probeer het opnieuw.</value></data>
+  <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>Voorgestelde taken vereisen een geverifieerde Gateway-operatoridentiteit. Controleer uw Gateway-toegang en probeer het opnieuw.</value></data>
 </root>

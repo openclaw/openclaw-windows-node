@@ -56,6 +56,156 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
     }
 
     [Theory]
+    [InlineData("repo", @"C:\valid-repository")]
+    [InlineData(".", @"\\server\share\repository")]
+    [InlineData("~/x", "/valid-repository")]
+    public async Task TaskSuggestions_RelativeCorrectionsNeverDispatchAndValidRemoteSyntaxIsPreserved(string invalid, string valid)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.EnableHandshake();
+        server.OnMethod("connect", _ => new { type = "hello-ok", protocol = 4,
+            auth = new { scopes = new[] { "operator.admin" } },
+            features = new { methods = new[] { "taskSuggestions.accept" }, capabilities = new[] { "taskSuggestions.acceptModes" } } });
+        server.OnMethod("taskSuggestions.accept", _ => new { taskId = "task_1", key = "new-session" });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+        await Assert.ThrowsAsync<ArgumentException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "worktree", Cwd: invalid), epoch));
+        Assert.False(server.HasFrame("taskSuggestions.accept"));
+        Assert.Equal("new-session", await client.AcceptTaskSuggestionAsync(new("task_1", "worktree", Cwd: valid), epoch));
+        using var frame = JsonDocument.Parse(server.FrameFor("taskSuggestions.accept"));
+        Assert.Equal(valid, frame.RootElement.GetProperty("params").GetProperty("cwd").GetString());
+    }
+
+    [Fact]
+    public async Task TaskSuggestions_NoGrantedReadScopeDoesNotProbeOrClaimReadSupport()
+    {
+        using var server = new LoopbackGatewayServer();
+        server.EnableHandshake();
+        server.OnMethod("connect", _ => new { type = "hello-ok", protocol = 4,
+            auth = new { scopes = Array.Empty<string>() },
+            features = new { methods = new[] { "taskSuggestions.list" } } });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        Assert.False(client.SupportsTaskSuggestions);
+        Assert.False((await client.ListTaskSuggestionsAsync(client.SessionMutationConnectionEpoch!.Value)).IsSupported);
+        Assert.False(server.HasFrame("taskSuggestions.list"));
+    }
+
+    [Theory]
+    [InlineData("operator.read", false)]
+    [InlineData("operator.write", true)]
+    [InlineData("operator.admin", true)]
+    public async Task TaskSuggestions_RequireGrantedAdminBeforeAnyAcceptPreflight(string scope, bool canDismiss)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.EnableHandshake();
+        server.OnMethod("connect", _ => new
+        {
+            type = "hello-ok", protocol = 4,
+            auth = new { scopes = new[] { scope } },
+            features = new { methods = new[] { "taskSuggestions.list", "taskSuggestions.accept", "taskSuggestions.dismiss", "environments.list" },
+                capabilities = new[] { "taskSuggestions.acceptModes" } }
+        });
+        server.OnMethod("taskSuggestions.accept", _ => new { taskId = "task_1", key = "new-session" });
+        server.OnMethod("taskSuggestions.dismiss", _ => new { taskId = "task_1", dismissed = true });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+        Assert.Equal(scope == "operator.admin", client.CanAcceptTaskSuggestions);
+        Assert.Equal(canDismiss, client.CanDismissTaskSuggestions);
+        if (scope != "operator.admin")
+        {
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "cloud", "profile"), epoch));
+            Assert.False(server.HasFrame("taskSuggestions.accept"));
+            Assert.False(server.HasFrame("environments.list"));
+        }
+        if (canDismiss) Assert.True(await client.DismissTaskSuggestionAsync("task_1", epoch));
+        else
+        {
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => client.DismissTaskSuggestionAsync("task_1", epoch));
+            Assert.False(server.HasFrame("taskSuggestions.dismiss"));
+        }
+    }
+
+    [Theory]
+    [InlineData("local")]
+    [InlineData("worktree")]
+    [InlineData("session")]
+    [InlineData("cloud")]
+    public async Task TaskSuggestions_UseSharedAcceptProtocolAndPreserveOptions(string mode)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.EnableHandshake();
+        server.OnMethod("connect", _ => new
+        {
+            type = "hello-ok", protocol = 4,
+            auth = new { scopes = new[] { "operator.admin" } },
+            features = new { methods = new[] { "taskSuggestions.list", "taskSuggestions.accept", "taskSuggestions.dismiss", "environments.list" },
+                capabilities = new[] { "taskSuggestions.acceptModes" } }
+        });
+        server.OnMethod("taskSuggestions.list", _ => new { suggestions = new[] { new
+        {
+            id = "task_1", title = "Repair tests", prompt = "Run regression tests.", tldr = "Restore coverage.",
+            cwd = "/repo", sessionKey = "agent:main:main", agentId = "main", createdAt = 17
+        } } });
+        server.OnMethod("environments.list", _ => new { profiles = new[] { new { id = "worker-profile" } } });
+        server.OnMethod("taskSuggestions.accept", _ => new { taskId = "task_1", key = "agent:main:dashboard:new" });
+        server.OnMethod("taskSuggestions.dismiss", _ => new { taskId = "task_1", dismissed = false });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+        Assert.Equal("task_1", Assert.Single((await client.ListTaskSuggestionsAsync(epoch)).Suggestions).Id);
+        var key = await client.AcceptTaskSuggestionAsync(new("task_1", mode,
+            mode == "cloud" ? "worker-profile" : null, mode == "worktree" ? "/corrected-repo" : null), epoch);
+        Assert.Equal("agent:main:dashboard:new", key);
+        using var frame = JsonDocument.Parse(server.FrameFor("taskSuggestions.accept"));
+        var parameters = frame.RootElement.GetProperty("params");
+        Assert.Equal("task_1", parameters.GetProperty("taskId").GetString());
+        Assert.Equal(mode, parameters.GetProperty("mode").GetString());
+        Assert.Equal(mode == "cloud", parameters.TryGetProperty("cloudProfileId", out _));
+        Assert.Equal(mode == "worktree", parameters.TryGetProperty("cwd", out _));
+        if (mode == "cloud") Assert.Equal("worker-profile", parameters.GetProperty("cloudProfileId").GetString());
+        if (mode == "worktree") Assert.Equal("/corrected-repo", parameters.GetProperty("cwd").GetString());
+        Assert.False(await client.DismissTaskSuggestionAsync("task_1", epoch));
+        Assert.False(server.HasFrame("chat.send"));
+        Assert.False(server.HasFrame("sessions.create"));
+        await Assert.ThrowsAsync<GatewayRequestNotSentException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "local"), epoch + 1));
+        Assert.False(server.HasFrame("taskSuggestions.accept") && server.AllFrames.Count(frame => frame.Contains("taskSuggestions.accept", StringComparison.Ordinal)) > 1);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TaskSuggestions_UnsupportedGatewayOrCloudProfileNeverDispatchesAcceptance(bool advertise)
+    {
+        using var server = new LoopbackGatewayServer();
+        server.EnableHandshake();
+        server.OnMethod("connect", _ => new
+        {
+            type = "hello-ok", protocol = 4,
+            auth = new { scopes = new[] { "operator.admin" } },
+            features = new { methods = advertise ? new[] { "taskSuggestions.list", "taskSuggestions.accept", "environments.list" } : Array.Empty<string>(),
+                capabilities = advertise ? new[] { "taskSuggestions.acceptModes" } : Array.Empty<string>() }
+        });
+        server.OnMethod("environments.list", _ => new { profiles = new[] { new { id = "valid-profile" } } });
+        using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
+        await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        var epoch = client.SessionMutationConnectionEpoch!.Value;
+        if (advertise)
+            await Assert.ThrowsAsync<GatewayTaskCloudProfileException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "cloud", "typo"), epoch));
+        else
+        {
+            Assert.False((await client.ListTaskSuggestionsAsync(epoch)).IsSupported);
+            await Assert.ThrowsAsync<NotSupportedException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "local"), epoch));
+            Assert.False(server.HasFrame("taskSuggestions.list"));
+        }
+        Assert.False(server.HasFrame("taskSuggestions.accept"));
+        Assert.False(server.HasFrame("chat.send"));
+        Assert.False(server.HasFrame("sessions.create"));
+    }
+
+    [Theory]
     [InlineData(null, false)]
     [InlineData("research", false)]
     [InlineData(null, true)]

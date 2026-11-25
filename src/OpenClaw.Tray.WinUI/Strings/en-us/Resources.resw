@@ -10336,4 +10336,76 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Follow delegated work from this conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets and tabs this session published.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>No panels are available for this conversation yet.</value></data>
+  <data name="Chat_Tasks_Title" xml:space="preserve">
+    <value>Suggested tasks</value>
+  </data>
+  <data name="Chat_Tasks_RefreshFailed" xml:space="preserve">
+    <value>Suggested tasks could not be refreshed.</value>
+  </data>
+  <data name="Chat_Tasks_Refresh" xml:space="preserve">
+    <value>Refresh tasks</value>
+  </data>
+  <data name="Chat_Tasks_Instructions" xml:space="preserve">
+    <value>Show instructions</value>
+  </data>
+  <data name="Chat_Tasks_Copied" xml:space="preserve">
+    <value>Instructions copied</value>
+  </data>
+  <data name="Chat_Tasks_Copy" xml:space="preserve">
+    <value>Copy instructions</value>
+  </data>
+  <data name="Chat_Tasks_CopyFailed" xml:space="preserve">
+    <value>Instructions could not be copied.</value>
+  </data>
+  <data name="Chat_Tasks_Started" xml:space="preserve">
+    <value>Task started. Find it in Sessions.</value>
+  </data>
+  <data name="Chat_Tasks_Starting" xml:space="preserve">
+    <value>Starting task...</value>
+  </data>
+  <data name="Chat_Tasks_Unconfirmed" xml:space="preserve">
+    <value>The task start was not confirmed. Retrying checks the same task, not a new task. After reconnecting, check Sessions or web chat.</value>
+  </data>
+  <data name="Chat_Tasks_Retry" xml:space="preserve">
+    <value>Retry same task</value>
+  </data>
+  <data name="Chat_Tasks_Local" xml:space="preserve">
+    <value>Start in a new session</value>
+  </data>
+  <data name="Chat_Tasks_Options" xml:space="preserve">
+    <value>Launch options</value>
+  </data>
+  <data name="Chat_Tasks_Session" xml:space="preserve">
+    <value>Start in this conversation</value>
+  </data>
+  <data name="Chat_Tasks_Repository" xml:space="preserve">
+    <value>Repository path on Gateway</value>
+  </data>
+  <data name="Chat_Tasks_Worktree" xml:space="preserve">
+    <value>Start in new worktree</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
+    <value>Configured cloud profile ID</value>
+  </data>
+  <data name="Chat_Tasks_Cloud" xml:space="preserve">
+    <value>Start in cloud</value>
+  </data>
+  <data name="Chat_Tasks_Dismiss" xml:space="preserve">
+    <value>Dismiss task</value>
+  </data>
+  <data name="Chat_Tasks_Compatibility" xml:space="preserve">
+    <value>Update the Gateway or use web chat to launch this task.</value>
+  </data>
+  <data name="Chat_Tasks_RepositoryRequired" xml:space="preserve">
+    <value>Enter an absolute repository path on the Gateway with a commit. The task has not started.</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfileRequired" xml:space="preserve">
+    <value>Choose a configured cloud profile. The task has not started.</value>
+  </data>
+  <data name="Chat_Tasks_HideInstructions" xml:space="preserve"><value>Hide instructions</value></data>
+  <data name="Chat_Tasks_Hide" xml:space="preserve"><value>Hide locally</value></data>
+  <data name="Chat_Tasks_HideHelp" xml:space="preserve"><value>Hide this notice locally. The task outcome remains unknown.</value></data>
+  <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>Administrator access to the Gateway is required to start suggested tasks.</value></data>
+  <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>The task could not be dismissed. Try again.</value></data>
+  <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>Suggested tasks need a verified Gateway operator identity. Check your Gateway access, then retry.</value></data>
 </root>

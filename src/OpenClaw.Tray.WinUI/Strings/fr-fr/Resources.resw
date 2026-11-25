@@ -10265,4 +10265,76 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Suivez le travail délégué depuis cette conversation.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets et onglets publiés par cette session.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Aucun panneau n'est encore disponible pour cette conversation.</value></data>
+  <data name="Chat_Tasks_Title" xml:space="preserve">
+    <value>Tâches suggérées</value>
+  </data>
+  <data name="Chat_Tasks_RefreshFailed" xml:space="preserve">
+    <value>Impossible d’actualiser les tâches suggérées.</value>
+  </data>
+  <data name="Chat_Tasks_Refresh" xml:space="preserve">
+    <value>Actualiser les tâches</value>
+  </data>
+  <data name="Chat_Tasks_Instructions" xml:space="preserve">
+    <value>Afficher les instructions</value>
+  </data>
+  <data name="Chat_Tasks_Copied" xml:space="preserve">
+    <value>Instructions copiées</value>
+  </data>
+  <data name="Chat_Tasks_Copy" xml:space="preserve">
+    <value>Copier les instructions</value>
+  </data>
+  <data name="Chat_Tasks_CopyFailed" xml:space="preserve">
+    <value>Impossible de copier les instructions.</value>
+  </data>
+  <data name="Chat_Tasks_Started" xml:space="preserve">
+    <value>Tâche démarrée. Retrouvez-la dans les sessions.</value>
+  </data>
+  <data name="Chat_Tasks_Starting" xml:space="preserve">
+    <value>Démarrage de la tâche...</value>
+  </data>
+  <data name="Chat_Tasks_Unconfirmed" xml:space="preserve">
+    <value>Le démarrage de la tâche n’a pas été confirmé. Réessayer vérifie la même tâche, sans en créer une nouvelle. Après reconnexion, consultez les sessions ou le chat web.</value>
+  </data>
+  <data name="Chat_Tasks_Retry" xml:space="preserve">
+    <value>Réessayer la même tâche</value>
+  </data>
+  <data name="Chat_Tasks_Local" xml:space="preserve">
+    <value>Démarrer dans une nouvelle session</value>
+  </data>
+  <data name="Chat_Tasks_Options" xml:space="preserve">
+    <value>Options de lancement</value>
+  </data>
+  <data name="Chat_Tasks_Session" xml:space="preserve">
+    <value>Démarrer dans cette conversation</value>
+  </data>
+  <data name="Chat_Tasks_Repository" xml:space="preserve">
+    <value>Chemin du dépôt sur la passerelle</value>
+  </data>
+  <data name="Chat_Tasks_Worktree" xml:space="preserve">
+    <value>Démarrer dans un nouvel arbre de travail</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
+    <value>Identifiant du profil cloud configuré</value>
+  </data>
+  <data name="Chat_Tasks_Cloud" xml:space="preserve">
+    <value>Démarrer dans le cloud</value>
+  </data>
+  <data name="Chat_Tasks_Dismiss" xml:space="preserve">
+    <value>Ignorer la tâche</value>
+  </data>
+  <data name="Chat_Tasks_Compatibility" xml:space="preserve">
+    <value>Mettez à jour la passerelle ou utilisez le chat web pour lancer cette tâche.</value>
+  </data>
+  <data name="Chat_Tasks_RepositoryRequired" xml:space="preserve">
+    <value>Saisissez un chemin absolu vers un dépôt avec un commit sur la passerelle. La tâche n’a pas démarré.</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfileRequired" xml:space="preserve">
+    <value>Choisissez un profil cloud configuré. La tâche n’a pas démarré.</value>
+  </data>
+  <data name="Chat_Tasks_HideInstructions" xml:space="preserve"><value>Masquer les instructions</value></data>
+  <data name="Chat_Tasks_Hide" xml:space="preserve"><value>Masquer localement</value></data>
+  <data name="Chat_Tasks_HideHelp" xml:space="preserve"><value>Masquez cet avis localement. Le résultat de la tâche reste inconnu.</value></data>
+  <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>Un accès administrateur à la passerelle est requis pour démarrer les tâches suggérées.</value></data>
+  <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>La tâche n’a pas pu être ignorée. Réessayez.</value></data>
+  <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>Les tâches suggérées nécessitent une identité d’opérateur vérifiée par la passerelle. Vérifiez votre accès à la passerelle, puis réessayez.</value></data>
 </root>

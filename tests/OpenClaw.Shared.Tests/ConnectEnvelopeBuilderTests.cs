@@ -365,6 +365,8 @@ public sealed class ConnectEnvelopeBuilderTests
 
             Assert.Equal(expectedId, client.GetProperty("id").GetString());
             Assert.Equal(expectedMode, client.GetProperty("mode").GetString());
+            var caps = parameters.GetProperty("caps").EnumerateArray().Select(cap => cap.GetString()).ToArray();
+            Assert.Equal(identity == OperatorClientIdentity.Interactive, caps.Contains("task-suggestions"));
             Assert.Equal(client.GetProperty("id").GetString(), call.ClientId);
             Assert.Equal(client.GetProperty("mode").GetString(), call.ClientMode);
             Assert.Equal("OpenClaw Windows Tray", client.GetProperty("displayName").GetString());

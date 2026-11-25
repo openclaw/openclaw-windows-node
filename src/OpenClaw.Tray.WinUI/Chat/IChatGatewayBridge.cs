@@ -159,7 +159,7 @@ public interface IChatGatewayBridge : IDisposable
 /// <summary>
 /// Production bridge wrapping a real <see cref="OpenClawGatewayClient"/>.
 /// </summary>
-public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionGateway
+public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionGateway, IChatTaskSuggestionGateway
 {
     private readonly OpenClawGatewayClient _client;
     private readonly EventHandler<ConnectionStatus> _statusChangedHandler;
@@ -224,7 +224,11 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
             ModelsListUpdated?.Invoke(s, e);
         };
         _modelCatalogInvalidatedHandler = (s, e) => ModelCatalogInvalidated?.Invoke(s, e);
-        _toolDetailsInvalidatedHandler = (_, _) => RefreshToolDetailsProfile(profileInvalidated: true);
+        _toolDetailsInvalidatedHandler = (_, _) =>
+        {
+            TaskOperatorIdentityInvalidated?.Invoke(this, EventArgs.Empty);
+            RefreshToolDetailsProfile(profileInvalidated: true);
+        };
 
         // Subscribe StatusChanged BEFORE reading the seed so any
         // ``StatusChanged → X`` edge that fires during construction is
@@ -296,6 +300,30 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
         add => _client.QuestionProtocolError += value;
         remove => _client.QuestionProtocolError -= value;
     }
+    public event EventHandler? TaskOperatorIdentityInvalidated;
+    public long? TaskConnectionEpoch => _client.SessionMutationConnectionEpoch;
+    public bool TaskSuggestionsSupported => _client.SupportsTaskSuggestions;
+    public bool TaskAcceptanceSupported => _client.CanAcceptTaskSuggestions && _client.SupportsTaskSuggestionModes;
+    public bool TaskAdministratorRequired => _client.TaskSuggestionAdministratorRequired;
+    public async Task<string?> ReadTaskOperatorIdentityAsync(long epoch)
+    {
+        var device = _client.AuthenticatedSigningDeviceId;
+        if (device is null || !_client.SupportsTaskSuggestions) return null;
+        var response = await _client.ReadTaskSuggestionOperatorProfileAsync(epoch,
+            WorkspaceIdentitySource.UserSelfTimeoutMs()).ConfigureAwait(false);
+        var profile = WorkspaceIdentitySource.ReadProfile(response).ProfileId;
+        if (_client.SessionMutationConnectionEpoch != epoch || _client.AuthenticatedSigningDeviceId != device) return null;
+        return System.Text.Json.JsonSerializer.Serialize(new[] { device, profile });
+    }
+    public bool TaskDismissalSupported => _client.CanDismissTaskSuggestions;
+    public event EventHandler? TaskSuggestionsInvalidated
+    {
+        add => _client.TaskSuggestionsInvalidated += value;
+        remove => _client.TaskSuggestionsInvalidated -= value;
+    }
+    public Task<GatewayTaskSuggestionList> ListTaskSuggestionsAsync(long epoch) => _client.ListTaskSuggestionsAsync(epoch);
+    public Task<string> AcceptTaskSuggestionAsync(GatewayTaskAcceptance request, long epoch) => _client.AcceptTaskSuggestionAsync(request, epoch);
+    public Task<bool> DismissTaskSuggestionAsync(string id, long epoch) => _client.DismissTaskSuggestionAsync(id, epoch);
     public Task<GatewayQuestionList> ListQuestionsAsync() => _client.ListQuestionsAsync();
     public Task<GatewayQuestionRequest> GetQuestionAsync(string id) => _client.GetQuestionAsync(id);
     public Task<string> ResolveQuestionAsync(string id, IReadOnlyDictionary<string, string[]>? answers) =>

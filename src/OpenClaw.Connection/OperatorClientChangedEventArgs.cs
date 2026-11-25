@@ -7,6 +7,8 @@ namespace OpenClaw.Connection;
 /// </summary>
 public sealed class OperatorClientChangedEventArgs : EventArgs
 {
+    /// <summary>Registry target captured with NewClient under the manager lifecycle gate; null for retirement.</summary>
+    public string? GatewayRecordId { get; init; }
     public IOperatorGatewayClient? OldClient { get; init; }
     public IOperatorGatewayClient? NewClient { get; init; }
 }
