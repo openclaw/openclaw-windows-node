@@ -4639,11 +4639,23 @@
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>開啟引導</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>無法使用自動清理</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>解除安裝 OpenClaw 前，請在「設定 &gt; 本機閘道」中移除 WSL 閘道。只有在沒有其他 Companion 版本使用 Store 閘道時，才在 Windows「設定 &gt; 應用程式」中將其移除。</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Store 閘道清理無法使用</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>解除安裝 OpenClaw 前，請在 Windows「設定 &gt; 應用程式」中移除 Store 閘道，但僅在沒有其他 Companion 版本使用時執行。</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>閘道清理</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>在 Windows 設定中解除安裝 OpenClaw 會自動移除受管理的閘道。使用下方的「移除本機閘道」可移除閘道並保留應用程式。</value>
+    <value>如果原則允許，在 Windows 設定中解除安裝 OpenClaw 會自動移除受管理的閘道。如果 PowerShell 原則封鎖清理，請在此移除 WSL 閘道；只有在沒有其他已安裝的 Companion 版本使用 Store 閘道時，才在解除安裝前透過 Windows 設定 &gt; 應用程式移除該閘道，否則閘道可能會保留。</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>移除 WSL 散發版 (OpenClawGateway)、其磁碟映像、自動啟動項目,並清除閘道認證。您的 MCP 權杖會保留。導覽流程將重設。</value>

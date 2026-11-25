@@ -1,16 +1,19 @@
-mode: ContinuousDelivery
-tag-prefix: 'v'
-assembly-versioning-scheme: MajorMinorPatch
+calculation:
+  mode: ContinuousDelivery
+  tag-prefix: 'v'
 
-branches:
-  main:
-    regex: ^(master|main)$
-    label: alpha
-    increment: Patch
-  release:
-    label: alpha
-    prevent-increment:
-      when-current-commit-tagged: true
+  branches:
+    main:
+      regex: ^(master|main)$
+      label: alpha
+      increment: Patch
+    release:
+      label: alpha
+      prevent-increment:
+        when-current-commit-tagged: true
 
-ignore:
-  sha: []
+  ignore:
+    sha: []
+
+output:
+  assembly-versioning-scheme: MajorMinorPatch
