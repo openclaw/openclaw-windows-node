@@ -4787,6 +4787,69 @@ public class OpenClawGatewayClientTests
         Assert.Equal("artifact_managed_media_dbedbff5-b83b-4da5-abaf-c479f4f40bb0", media.ArtifactId);
     }
 
+    private const string OnePixelPngBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    private static ChatMediaContentInfo ParseSingleAssistantMediaBlock(string blockJson)
+    {
+        var block = blockJson.Replace("__PNG__", OnePixelPngBase64, StringComparison.Ordinal);
+        var history = new GatewayClientTestHelper().ParseChatHistoryPayload(
+            $$"""{"messages":[{"role":"assistant","content":[{{block}}],"timestamp":1}]}""");
+        var media = Assert.Single(Assert.Single(history.Messages).ContentParts).Media;
+        Assert.NotNull(media);
+        return media;
+    }
+
+    [Theory]
+    [InlineData("""{"type":"input_image","image_url":"data:image/png;base64,__PNG__"}""")]
+    [InlineData("""{"type":"image_url","image_url":{"url":"data:image/png;base64,__PNG__"}}""")]
+    [InlineData("""{"type":"image","data":"__PNG__","mimeType":"image/png"}""")]
+    [InlineData("""{"type":"image","source":{"type":"base64","media_type":"image/png","data":"__PNG__"}}""")]
+    public void ParseChatHistoryPayload_InlineImageBlock_KeepsDataUrlOffUrl(string blockJson)
+    {
+        var media = ParseSingleAssistantMediaBlock(blockJson);
+
+        Assert.Equal(ChatMediaContentKind.Image, media.Kind);
+        Assert.Equal($"data:image/png;base64,{OnePixelPngBase64}", media.InlineDataUrl);
+        Assert.Equal("image/png", media.MimeType);
+        Assert.Null(media.Url);
+        Assert.Null(media.ArtifactId);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"input_image","image_url":"data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="}""")]
+    [InlineData("""{"type":"input_image","image_url":"data:image/png,not-base64"}""")]
+    public void ParseChatHistoryPayload_UnsupportedInlineImage_KeepsUnavailableImagePart(string blockJson)
+    {
+        var media = ParseSingleAssistantMediaBlock(blockJson);
+
+        Assert.Equal(ChatMediaContentKind.Image, media.Kind);
+        Assert.Null(media.InlineDataUrl);
+        Assert.Null(media.Url);
+        Assert.Null(media.ArtifactId);
+    }
+
+    [Theory]
+    [InlineData(
+        """{"type":"input_image","image_url":"/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full"}""",
+        "artifact_managed_image_dbedbff5-b83b-4da5-abaf-c479f4f40bb0")]
+    [InlineData(
+        """{"type":"image","data":"__PNG__","mimeType":"image/png","artifactId":"artifact_transcript_image_1"}""",
+        "artifact_transcript_image_1")]
+    [InlineData(
+        """{"type":"image","url":"/api/chat/media/outgoing/agent%3Amain%3Amain/dbedbff5-b83b-4da5-abaf-c479f4f40bb0/full","image_url":"data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="}""",
+        "artifact_managed_image_dbedbff5-b83b-4da5-abaf-c479f4f40bb0")]
+    public void ParseChatHistoryPayload_ImageBlockWithGatewayArtifact_PrefersArtifact(
+        string blockJson,
+        string expectedArtifactId)
+    {
+        var media = ParseSingleAssistantMediaBlock(blockJson);
+
+        Assert.Equal(ChatMediaContentKind.Image, media.Kind);
+        Assert.Equal(expectedArtifactId, media.ArtifactId);
+        Assert.Null(media.InlineDataUrl);
+    }
+
     [Fact]
     public void ParseChatHistoryPayload_LegacyMediaOnly_PreservesMessageAndRedactsPath()
     {
