@@ -233,6 +233,41 @@ public sealed class GatewayBuiltinThemeResolverTests : IDisposable
     }
 
     [Fact]
+    public async Task AnOlderCatalogSnapshotCannotReplaceThePalettesFromANewerProbeOnTheSameConnection()
+    {
+        var recording = ControlUiThemeRecording.Load(ControlUiThemeRecording.Newer);
+        var probe = new FakeProbe(recording);
+        using var resolver = new GatewayBuiltinThemeResolver(_dispatcher, _catalog, probe, Cache());
+        var tideReads = 0;
+        ControlUiTextReader read = (path, type, limit, ct) =>
+            path == "themes/tide.css" && ++tideReads == 1
+                ? Task.FromResult<string?>(null)
+                : recording.Read(path, type, limit, ct);
+
+        // Interleave the UI catalog notification after the post-probe worker takes its catalog snapshot,
+        // but before it uses that snapshot. The new id triggers a probe that can now read tide.css.
+        resolver.Changed += OnFirstPublish;
+        void OnFirstPublish(object? sender, EventArgs e)
+        {
+            resolver.Changed -= OnFirstPublish;
+            _catalog.GatewayBuiltins = [Descriptor("tide", "Earlier Tide")];
+            _catalog.AfterNextSnapshot = () =>
+            {
+                _catalog.GatewayBuiltins = [Descriptor("tide", "Gateway Tide"), Descriptor("aurora", "Aurora")];
+                _catalog.Raise();
+            };
+        }
+
+        resolver.SetConnection(Gateway(read, epoch: 1), "gw");
+        await resolver.Pending;
+
+        Assert.Equal(2, probe.Calls);
+        Assert.True(resolver.TryGet("tide", out var tide));
+        Assert.Equal("Gateway Tide", tide.Name);
+        Assert.Equal(Hex(recording.Dashboard["tide"].Light, "Canvas"), tide.Light!.Canvas.ToHex());
+    }
+
+    [Fact]
     public async Task AProbeThatIgnoresItsDeadline_StillEndsTheResolutionWithTheTable_AndTheNextConnectionRetries()
     {
         var recording = ControlUiThemeRecording.Load(ControlUiThemeRecording.Stable);
@@ -354,10 +389,23 @@ public sealed class GatewayBuiltinThemeResolverTests : IDisposable
 
     private sealed class FakeCatalog : IGatewayThemeCatalog
     {
+        private IReadOnlyList<GatewayThemeDescriptor>? _builtins;
+        public Action? AfterNextSnapshot { get; set; }
         public IReadOnlyList<GatewayThemeOption> Options => [];
         public GatewayThemeOption? GatewayCurrent => null;
         public GatewayAppearancePreferences? GatewayPreferences => null;
-        public IReadOnlyList<GatewayThemeDescriptor>? GatewayBuiltins { get; set; }
+        public IReadOnlyList<GatewayThemeDescriptor>? GatewayBuiltins
+        {
+            get
+            {
+                var snapshot = _builtins;
+                var after = AfterNextSnapshot;
+                AfterNextSnapshot = null;
+                after?.Invoke();
+                return snapshot;
+            }
+            set => _builtins = value;
+        }
         public event EventHandler? Changed;
         public Task RefreshAsync() => Task.CompletedTask;
         public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
