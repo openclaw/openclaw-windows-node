@@ -188,7 +188,8 @@ public record ChatTimelineItem(
     System.Collections.Immutable.ImmutableList<ChatToolReview>? ToolReviews = null,
     string? ToolParentCallId = null,
     ChatToolResultDiffFacts? ToolResultDiffFacts = null,
-    bool StartsTurn = false)
+    bool StartsTurn = false,
+    ChatToolActivityFacts? ToolActivityFacts = null)
 {
     public ChatToolHandoffReceipt? ConfirmedHandoff =>
         ToolResult == ChatToolCallStatus.Success && !string.IsNullOrWhiteSpace(ToolCallId) &&
@@ -250,7 +251,8 @@ public record ChatTimelineState(
     long? ProgressRetryAtMs = null,
     string? ReconcilableAssistantId = null,
     System.Collections.Immutable.ImmutableDictionary<(string RunId, string ItemId), int>? PreambleSequences = null,
-    long TurnGeneration = 0)
+    long TurnGeneration = 0,
+    System.Collections.Immutable.ImmutableList<ChatRunUsage>? ObservedRunUsage = null)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
@@ -277,7 +279,8 @@ public record ChatPendingToolPresentation(
     JsonObject? ToolArgs,
     System.Collections.Immutable.ImmutableHashSet<string> CorrelationIds,
     long Sequence = 0,
-    ChatToolInputDetails? InputDetails = null);
+    ChatToolInputDetails? InputDetails = null,
+    ChatToolActivityFacts? ActivityFacts = null);
 
 public record ChatPendingToolOutcome(
     string Text,
@@ -286,7 +289,8 @@ public record ChatPendingToolOutcome(
     ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
     ChatToolHandoffReceipt? HandoffReceipt = null,
     ChatToolResultReference? ResultReference = null,
-    ChatToolResultDiffFacts? DiffFacts = null);
+    ChatToolResultDiffFacts? DiffFacts = null,
+    ChatToolActivityFacts? ActivityFacts = null);
 
 public enum ChatQueuedMessageSendState
 {
@@ -310,7 +314,7 @@ public record ChatUserMessageEvent(string Text, string? Nonce = null) : ChatEven
 public record ChatThinkingEvent(string Text, string? RunId = null) : ChatEvent;
 // RetryAtMs is the Gateway-supplied retry deadline (epoch ms); it is never estimated locally.
 public record ChatProgressEvent(string Text, long? RetryAtMs = null) : ChatEvent;
-public record ChatRunUsageEvent(string RunId, long OutputTokens, int Sequence) : ChatEvent;
+public record ChatRunUsageEvent(string RunId, long? OutputTokens, int Sequence) : ChatEvent;
 public record ChatReasoningEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null,
     bool IsStreaming = false, bool AttachToAssistant = false, bool ActivatesTurn = true) : ChatEvent;
 public record ChatReasoningDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
@@ -345,7 +349,8 @@ public record ChatToolStartEvent(
     ChatToolFeedback? Feedback = null,
     // Recorded wrapping call (Gateway parentToolCallId), distinct from ChatToolPresentationEvent.ParentToolCallId.
     string? ParentCallId = null,
-    bool ActivatesTurn = true) : ChatEvent;
+    bool ActivatesTurn = true,
+    ChatToolActivityFacts? ActivityFacts = null) : ChatEvent;
 public record ChatToolPresentationEvent(
     string ParentToolCallId,
     string ToolName,
@@ -354,14 +359,16 @@ public record ChatToolPresentationEvent(
     string? ChildToolCallId = null,
     bool ActivatesTurn = true,
     string? RunId = null,
-    ChatToolInputDetails? InputDetails = null) : ChatEvent;
+    ChatToolInputDetails? InputDetails = null,
+    ChatToolActivityFacts? ActivityFacts = null) : ChatEvent;
 public record ChatToolOutputEvent(
     string Text,
     string? ToolCallId = null,
     string? RunId = null,
     ChatToolHandoffReceipt? HandoffReceipt = null,
     ChatToolResultReference? ResultReference = null,
-    ChatToolResultDiffFacts? DiffFacts = null) : ChatEvent;
+    ChatToolResultDiffFacts? DiffFacts = null,
+    ChatToolActivityFacts? ActivityFacts = null) : ChatEvent;
 public record ChatToolProgressEvent(
     string Text,
     string? ToolCallId,
@@ -373,7 +380,8 @@ public record ChatToolErrorEvent(
     string? ToolCallId = null,
     string? RunId = null,
     ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
-    ChatToolResultReference? ResultReference = null) : ChatEvent;
+    ChatToolResultReference? ResultReference = null,
+    ChatToolActivityFacts? ActivityFacts = null) : ChatEvent;
 public record ChatToolReplayResetEvent : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
 /// <summary>StartsTurn preserves a system user's turn boundary without admitting a live run.</summary>

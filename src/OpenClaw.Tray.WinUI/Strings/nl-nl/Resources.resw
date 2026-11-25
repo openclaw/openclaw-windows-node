@@ -7383,12 +7383,12 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>Het antwoord is niet bevestigd. Vernieuw om de status te controleren voordat u opnieuw probeert.</value></data>
   <data name="Chat_Questions_Invalid" xml:space="preserve"><value>Een vraag van de agent kon niet worden gelezen. Vernieuw of open de webchat om te antwoorden.</value></data>
   <data name="Chat_Run_Finished" xml:space="preserve"><value>Voltooid</value></data>
-  <data name="Chat_Run_Approval" xml:space="preserve"><value>Wachten op goedkeuring</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>Wachten op goedkeuring…</value></data>
   <data name="Chat_Run_Answer" xml:space="preserve"><value>Wachten op uw antwoord</value></data>
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>Context comprimeren</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Opnieuw proberen na contextcompressie</value></data>
-  <data name="Chat_Run_Retry" xml:space="preserve"><value>Modelaanvraag opnieuw proberen</value></data>
-  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Opnieuw proberen over {0} s</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>Opnieuw proberen…</value></data>
+  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Opnieuw proberen over {0}s</value></data>
   <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>Kan dit gesprek niet laden</value></data>
   <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>Probeer opnieuw om de berichten te laden.</value></data>
   <data name="Chat_History_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
@@ -7397,7 +7397,8 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Run_Working" xml:space="preserve"><value>Bezig</value></data>
   <data name="Chat_Run_Tool" xml:space="preserve"><value>{0} uitvoeren</value></data>
   <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>Vraag niet meer beschikbaar</value></data>
-  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} uitvoertokens</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0} uitvoertokens</value></data>
+  <data name="Chat_Run_OutputTokenOne" xml:space="preserve"><value>1 uitvoertoken</value></data>
   <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>Typ hier je eigen antwoord</value></data>
   <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter voegt een regel toe / Ctrl+Enter om door te gaan</value></data>
   <data name="Chat_Questions_Expand" xml:space="preserve"><value>Vraag uitvouwen</value></data>
@@ -10254,4 +10255,30 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Volg gedelegeerd werk vanuit dit gesprek.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets en tabbladen die deze sessie heeft gepubliceerd.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Er zijn nog geen panelen beschikbaar voor dit gesprek.</value></data>
+  <data name="Chat_Activity_RawDetails" xml:space="preserve"><value>Onbewerkte details</value></data>
+  <data name="Chat_Activity_BlockedCount" xml:space="preserve"><value>{0} geblokkeerd</value></data>
+  <data name="Chat_Activity_SkippedCount" xml:space="preserve"><value>{0} overgeslagen</value></data>
+  <data name="Chat_Activity_UnknownCount" xml:space="preserve"><value>{0} onbekend</value></data>
+  <data name="Chat_Activity_Blocked" xml:space="preserve"><value>Geblokkeerd</value></data>
+  <data name="Chat_Activity_Skipped" xml:space="preserve"><value>Overgeslagen</value></data>
+  <data name="Chat_Activity_Unknown" xml:space="preserve"><value>Uitkomst onbekend</value></data>
+  <data name="Chat_Run_Phrase_shelling" xml:space="preserve"><value>Pellen</value></data>
+  <data name="Chat_Run_Phrase_scuttling" xml:space="preserve"><value>Scharrelen</value></data>
+  <data name="Chat_Run_Phrase_clawing" xml:space="preserve"><value>Klauwen</value></data>
+  <data name="Chat_Run_Phrase_pinching" xml:space="preserve"><value>Knijpen</value></data>
+  <data name="Chat_Run_Phrase_molting" xml:space="preserve"><value>Vervellen</value></data>
+  <data name="Chat_Run_Phrase_bubbling" xml:space="preserve"><value>Borrelen</value></data>
+  <data name="Chat_Run_Phrase_tiding" xml:space="preserve"><value>Meedeinen</value></data>
+  <data name="Chat_Run_Phrase_reefing" xml:space="preserve"><value>Reven</value></data>
+  <data name="Chat_Run_Phrase_cracking" xml:space="preserve"><value>Kraken</value></data>
+  <data name="Chat_Run_Phrase_sifting" xml:space="preserve"><value>Zeven</value></data>
+  <data name="Chat_Run_Phrase_brining" xml:space="preserve"><value>Pekelen</value></data>
+  <data name="Chat_Run_Phrase_nautiling" xml:space="preserve"><value>Nautilus spelen</value></data>
+  <data name="Chat_Run_Phrase_krilling" xml:space="preserve"><value>Krillen</value></data>
+  <data name="Chat_Run_Phrase_barnacling" xml:space="preserve"><value>Zeepokken verzamelen</value></data>
+  <data name="Chat_Run_Phrase_lobstering" xml:space="preserve"><value>Kreeften vangen</value></data>
+  <data name="Chat_Run_Phrase_tidepooling" xml:space="preserve"><value>Getijdenpoelen verkennen</value></data>
+  <data name="Chat_Run_Phrase_pearling" xml:space="preserve"><value>Parels duiken</value></data>
+  <data name="Chat_Run_Phrase_snapping" xml:space="preserve"><value>Knippen</value></data>
+  <data name="Chat_Run_Phrase_surfacing" xml:space="preserve"><value>Bovenkomen</value></data>
 </root>

@@ -11,7 +11,7 @@ using static Microsoft.UI.Reactor.Factories;
 
 namespace OpenClawTray.Chat;
 
-internal sealed record ReactorRunProgressProps(ChatRunProgressPresentation Progress);
+internal sealed record ReactorRunProgressProps(ChatRunProgressPresentation Progress, string? SessionKey = null);
 
 internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
 {
@@ -36,22 +36,26 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             timer.Start();
             return () => { timer.Stop(); timer.Tick -= tick; };
         }), ticking);
-        var elapsed = ChatRunProgressProjection.Elapsed(progress.StartedAt,
+        var elapsed = progress.Label == "Waiting for approval" ? "" : ChatRunProgressProjection.Elapsed(progress.StartedAt,
             progress.Waiting ? now : progress.EndedAt ?? (progress.Active ? now : progress.StartedAt ?? now));
         var label = progress.Label == ChatRunProgressProjection.RetryLabel
             ? ChatRunProgressProjection.RetryLabelText(progress, now, ReactorQuestionPanel.L)
             : LocalizedLabel(progress.Label);
-        var text = elapsed.Length > 0 ? $"{label} ({elapsed})" : label;
+        var showStatus = ChatRunProgressProjection.ShowStatus(progress);
         var details = elapsed;
         if (progress.OutputTokens is { } tokens)
         {
-            text += ", " + string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens);
-            details = string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0:N0} output tokens"), tokens)
+            details = (tokens == 1 ? ReactorQuestionPanel.L("Chat_Run_OutputTokenOne", "1 output token")
+                : string.Format(ReactorQuestionPanel.L("Chat_Run_OutputTokens", "{0} output tokens"),
+                    ChatRunProgressProjection.CompactTokens(tokens)))
                 + (elapsed.Length > 0 ? " \u00b7 " + elapsed : "");
         }
-        // A phase change swaps lines: the old line rises out of the clipped row while the new
-        // line rises in from one line below, matching the reference recording frame by frame.
-        var line = details.Length > 0 ? $"{label} \u00b7 {details}" : label;
+        if (ChatRunProgressProjection.WorkingPhraseKey(progress, Props.SessionKey, now) is { } phrase)
+            details += " \u00b7 " + ReactorQuestionPanel.L("Chat_Run_Phrase_" + phrase, phrase) + "\u2026";
+        var line = showStatus && details.Length > 0 ? $"{label} \u00b7 {details}"
+            : showStatus ? label : details;
+        // Keep the ordinary label in the accessible name without duplicating the claw visually.
+        var text = details.Length > 0 ? $"{label} \u00b7 {details}" : label;
         var incomingRef = this.UseElementRef<Microsoft.UI.Xaml.Controls.Grid>();
         var outgoingRef = this.UseElementRef<Microsoft.UI.Xaml.Controls.TextBlock>();
         var shown = UseRef<(string Phase, string Line)?>(null);
@@ -59,7 +63,8 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         var swapPending = UseRef(false);
         var swapContinues = UseRef(false);
         var swapStartedAt = UseRef<long?>(null);
-        if (shown.Current is { } last && last.Phase != progress.Label && !reducedMotion)
+        var visiblePhase = showStatus ? progress.Label : "";
+        if (shown.Current is { } last && last.Phase != visiblePhase && !reducedMotion)
         {
             // A phase change during a swap keeps the leaving line and its text going, and moves the
             // arriving line on from where it is, so neither snaps back nor flashes the skipped label.
@@ -69,7 +74,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             swapContinues.Current = inFlight;
             swapPending.Current = true;
         }
-        shown.Current = (progress.Label, line);
+        shown.Current = (visiblePhase, line);
         UseEffect((Func<Action>)(() =>
         {
             if (swapPending.Current && incomingRef.Current is { } incoming && outgoingRef.Current is { } outgoing)
@@ -82,7 +87,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             }
             swapPending.Current = false;
             return static () => { };
-        }), progress.Label);
+        }), visiblePhase);
         return Grid([GridSize.Auto, GridSize.Star()], [GridSize.Auto],
             Grid([GridSize.Star()], [GridSize.Star()],
                 NativeWorkingClawElement.NativeWorkingClaw()
@@ -94,8 +99,9 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
                     // Star then Auto on a left-aligned grid: the status trims before the elapsed time.
                     Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                         ChatVisuals.ActivityText(label, progress.Active && !progress.Waiting)
+                            .IsVisible(showStatus)
                             .AutomationId("ChatRunProgressStatus").Grid(column: 0),
-                        TextBlock(details.Length > 0 ? " \u00b7 " + details : "").FontSize(12)
+                        TextBlock(details.Length > 0 ? (showStatus ? " \u00b7 " : "") + details : "").FontSize(12)
                             .Set(ChatVisuals.StyleSecondaryText)
                             .TextWrapping(TextWrapping.NoWrap)
                             .AutomationName(text)

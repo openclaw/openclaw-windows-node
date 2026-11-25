@@ -219,12 +219,24 @@ internal sealed class ChatHistoryState
     /// The same successful call seen live and in history keeps whichever copy carried result details,
     /// so a reload never turns exact line counts into argument-derived ones.
     /// </summary>
-    internal static ChatTimelineItem KeepToolResultFacts(ChatTimelineItem target, ChatTimelineItem source) =>
-        target is { Kind: ChatTimelineItemKind.ToolCall, ToolResult: ChatToolCallStatus.Success, ToolResultDiffFacts: null } &&
-        source is { Kind: ChatTimelineItemKind.ToolCall, ToolResult: ChatToolCallStatus.Success, ToolResultDiffFacts: { } facts } &&
-        target.ToolCallId is { Length: > 0 } callId && callId == source.ToolCallId
-            ? target with { ToolResultDiffFacts = facts }
-            : target;
+    internal static ChatTimelineItem KeepToolResultFacts(ChatTimelineItem target, ChatTimelineItem source)
+    {
+        if (target.Kind != ChatTimelineItemKind.ToolCall || source.Kind != ChatTimelineItemKind.ToolCall ||
+            target.ToolCallId is not { Length: > 0 } callId || callId != source.ToolCallId ||
+            target.ToolRunId is { } targetRun && source.ToolRunId is { } sourceRun && targetRun != sourceRun)
+            return target;
+        // Callers already matched the history row by its message/sequence/timestamp identity.
+        // Older history may omit a run, but activity still requires exact run correlation.
+        if (target.ToolRunId == source.ToolRunId)
+        {
+            var activity = ChatToolActivityFacts.Merge(source.ToolActivityFacts, target.ToolActivityFacts);
+            if (activity != target.ToolActivityFacts)
+                target = target with { ToolActivityFacts = activity };
+        }
+        return target.ToolResult == ChatToolCallStatus.Success && target.ToolResultDiffFacts is null &&
+            source is { ToolResult: ChatToolCallStatus.Success, ToolResultDiffFacts: { } facts }
+                ? target with { ToolResultDiffFacts = facts } : target;
+    }
 
     internal static (ChatTimelineState Timeline, Dictionary<string, ChatEntryMetadata> Metadata)
         PrependOlderPage(ChatHistoryRebuildPlan plan, ChatTimelineState prior,
@@ -251,7 +263,7 @@ internal sealed class ChatHistoryState
                     new ChatToolStartEvent(entry.Text, toolName, entry.ToolArgs, callId,
                         IdentityStrength: entry.ToolIdentityStrength, RunId: runId,
                         HandoffInput: entry.HandoffInput, InputDetails: entry.ToolInputDetails,
-                        ParentCallId: entry.ToolParentCallId));
+                        ParentCallId: entry.ToolParentCallId, ActivityFacts: entry.ToolActivityFacts));
                 entries.Add(KeepToolResultFacts(enriched.Entries.Single(), entry));
                 reunitedTools.Add(current.Id);
                 continue;
@@ -430,7 +442,7 @@ internal sealed class ChatHistoryState
                 if (persisted.ToolResult == ChatToolCallStatus.Interrupted &&
                     entry.ToolResult != ChatToolCallStatus.Interrupted)
                 {
-                    entries[toolIndex] = entry with { Id = persisted.Id };
+                    entries[toolIndex] = KeepToolResultFacts(entry with { Id = persisted.Id }, persisted);
                 }
                 else
                 {
@@ -578,6 +590,7 @@ internal sealed class ChatHistoryState
                         : entries.Any(entry => entry.Id == pending) ? pending : null
                     : null,
                 RunUsage = prior.RunUsage,
+                ObservedRunUsage = prior.ObservedRunUsage,
                 PreambleSequences = prior.PreambleSequences,
                 ReasoningStream = prior.TurnActive && prior.ReasoningStream is { } reasoning
                     ? reasoning with

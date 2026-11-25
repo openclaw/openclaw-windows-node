@@ -149,7 +149,11 @@ public sealed class StoreMigrationFinalizationCoordinatorTests
 
         var result = await fixture.FinalizeAsync(
             new(InnoInstallationStatus.OrphanedRegistration),
-            new InnoSourceRemovalVerifier(fixture.Binding, $"OpenClawMigrationTest-{Guid.NewGuid():N}"),
+            // This case owns absent source files and no source process. Inspecting the
+            // machine's unrelated apps makes its outcome depend on their accessibility;
+            // the process-state cases above separately keep unresolved images fail-closed.
+            new InnoSourceRemovalVerifier(fixture.Binding, $"OpenClawMigrationTest-{Guid.NewGuid():N}",
+                new ProcessInspector([])),
             autoStart);
 
         Assert.Equal(StoreMigrationFinalizationState.Finalized, result.State);

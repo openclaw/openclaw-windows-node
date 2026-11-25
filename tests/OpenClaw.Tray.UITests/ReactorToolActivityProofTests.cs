@@ -25,6 +25,7 @@ public sealed class ReactorToolActivityProofTests
 {
     private const string DocumentGlyph = "\uE8A5";
     private const string ListGlyph = "\uE8FD";
+    private const string TerminalGlyph = "\uE756";
     private const string ChevronRightGlyph = "\uE76C";
     private const string ChevronDownGlyph = "\uE70D";
 
@@ -60,6 +61,209 @@ public sealed class ReactorToolActivityProofTests
     private readonly UIThreadFixture _ui;
 
     public ReactorToolActivityProofTests(UIThreadFixture ui) => _ui = ui;
+
+    [NativeKeyboardTheory]
+    [InlineData("Light", 768)]
+    [InlineData("Light", 480)]
+    [InlineData("Dark", 768)]
+    [InlineData("Dark", 480)]
+    public async Task WebParity_CurrentRunAndSettledDisclosureShowMatchingTexts(string themeName, int width)
+    {
+        await _ui.ResetContainerAsync();
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope(themeName);
+            using var host = new ReactorHostControl { Width = width, RequestedTheme = theme.ElementTheme };
+            var first = Tool("command", "exec", "Command completed", ChatToolCallStatus.Success) with
+            {
+                ToolRunId = "run", ToolCallId = "command",
+                ToolInputDetails = new("""{"command":"dotnet test","title":"Run focused tests"}""", "dotnet test", "Run focused tests"),
+                ToolActivityFacts = new(CommandBearing: true, Title: "Run focused tests", Status: "completed", ItemId: "command-item"),
+            };
+            var current = Tool("read", "read", "File contents", ChatToolCallStatus.InProgress) with
+            {
+                ToolRunId = "run", ToolCallId = "read",
+                ToolArgs = new System.Text.Json.Nodes.JsonObject { ["path"] = "src/file.cs" },
+                ToolActivityFacts = new(Title: "Read", Meta: "file.cs", Status: "running", ItemId: "read-item"),
+            };
+            var entries = new[] { first, current };
+            var expansion = new ChatToolActivityExpansionState();
+            var progress = new ChatRunProgressPresentation(DateTimeOffset.UtcNow.AddSeconds(-388), null,
+                "Working", true, false, 5371, RunId: "run");
+            var timeline = BuildTimeline(entries, 1) with { SessionId = "session", RunProgress = progress, ToolExpansionState = expansion };
+            Element Surface(ChatTimelinePresentationContext context) => VStack(12,
+                ToolCallCardRenderer.BuildActivity(context,
+                    Assert.Single(ChatToolActivityPresentation.Project(context.Entries, context.SessionId, 1)), expansion),
+                context.RunProgress is { } activeProgress
+                    ? Component<ReactorRunProgress, ReactorRunProgressProps>(new(activeProgress, context.SessionId)) : Empty());
+            var element = Surface(timeline);
+            UIElement? root = null;
+            var disposed = false;
+            Action? reconcile = null;
+            Action requestRender = () => { if (!disposed) _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke()); };
+            reconcile = () =>
+            {
+                if (disposed) return;
+                var next = Surface(timeline);
+                root = host.Reconciler.Reconcile(element, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            var surface = new Border { Child = host, Width = width + 32, Padding = new Thickness(16),
+                RequestedTheme = theme.ElementTheme, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                Background = new SolidColorBrush(themeName == "Dark" ? global::Windows.UI.Color.FromArgb(255,32,32,32) : Microsoft.UI.Colors.White) };
+            _ui.Container.Children.Add(surface);
+            try
+            {
+                await WaitForRenderedConditionAsync(() => host.ActualWidth > 0 && FindLogical<Expander>(host).Any(), "parity surface mounts");
+                var disclosure = Assert.Single(FindLogical<Expander>(host));
+                Assert.False(disclosure.IsExpanded);
+                var header = Assert.IsAssignableFrom<DependencyObject>(disclosure.Header);
+                Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "file.cs\u2026");
+                await CapturePaintedAsync(surface, host, $"CommandParity-{themeName}-{width}-running-collapsed");
+                _ui.TestWindow.Activate();
+                var window = WinRT.Interop.WindowNative.GetWindowHandle(_ui.TestWindow);
+                await NativeKeyboardProof.ActivateAsync(window);
+                var toggle = FindDescendants<Microsoft.UI.Xaml.Controls.Primitives.ToggleButton>(disclosure)
+                    .First(button => button.IsEnabled && button.IsTabStop);
+                Assert.True(toggle.Focus(FocusState.Keyboard));
+                Assert.Same(toggle, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(toggle.XamlRoot));
+                NativeKeyboardProof.Press(window, global::Windows.System.VirtualKey.Space);
+                await WaitForRenderedConditionAsync(() => FindLogical<Expander>(host).Count() >= 3, "group expansion realizes independent child rows");
+                Assert.All(FindLogical<Expander>(host).Where(item => !ReferenceEquals(item, disclosure)), child => Assert.False(child.IsExpanded));
+                var readRow = FindLogical<Expander>(host).Single(item => AutomationProperties.GetAutomationId(item) == "ChatToolCall_read");
+                Assert.DoesNotContain(FindLogical<TextBlock>((DependencyObject)readRow.Header), text => text.Text == "src");
+                await CapturePaintedAsync(surface, host, $"CommandParity-{themeName}-{width}-running-expanded");
+                Assert.True(toggle.Focus(FocusState.Keyboard));
+                Assert.Same(toggle, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(toggle.XamlRoot));
+                NativeKeyboardProof.Press(window, global::Windows.System.VirtualKey.Space);
+                await WaitForRenderedConditionAsync(() => !disclosure.IsExpanded, "native Space collapses group");
+                timeline = timeline with
+                {
+                    Entries = [first, current with { ToolResult = ChatToolCallStatus.Success,
+                        ToolActivityFacts = current.ToolActivityFacts! with { Status = "completed" } }],
+                    RunProgress = null,
+                };
+                reconcile();
+                await WaitForRenderedConditionAsync(() => FindLogical<TextBlock>(host).Any(text => text.Text == "1 command · 1 read"), "settled group returns to counts");
+                Assert.False(Assert.Single(FindLogical<Expander>(host)).IsExpanded);
+                await CapturePaintedAsync(surface, host, $"CommandParity-{themeName}-{width}-settled-collapsed");
+                timeline = timeline with { RunProgress = progress with { OutputTokens = null, StartedAt = DateTimeOffset.UtcNow.AddSeconds(-31) } };
+                reconcile();
+                await WaitForRenderedConditionAsync(() => FindLogical<TextBlock>(host).Any(text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatRunProgressText" && text.Text.Contains("Pearling", StringComparison.Ordinal)),
+                    "web-seeded no-token working phrase appears");
+                await CapturePaintedAsync(surface, host, $"CommandParity-{themeName}-{width}-no-tokens");
+                timeline = timeline with { RunProgress = progress with { Label = "Waiting for approval", Waiting = true } };
+                reconcile();
+                await WaitForRenderedConditionAsync(() => FindLogical<TextBlock>(host).Any(text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatRunProgressText" && text.Text == " · 5.4k output tokens"),
+                    "approval footer omits elapsed time but keeps output tokens");
+                Assert.Contains(FindLogical<TextBlock>(host), text => AutomationProperties.GetAutomationId(text) == "ChatRunProgressStatus" &&
+                    text.Visibility == Visibility.Visible && text.Text == "Waiting for approval\u2026");
+                await CapturePaintedAsync(surface, host, $"CommandParity-{themeName}-{width}-approval");
+            }
+            finally
+            {
+                disposed = true;
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                _ui.Container.Children.Clear();
+                host.Content = null;
+                _ui.TestWindow.AppWindow.Hide();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task WebParity_GroupHeaderKeepsBlockedUnknownWhileExpandedRowsShowFailedSkipped()
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var running = Tool("run", "exec", "", ChatToolCallStatus.InProgress) with
+                { ToolInputDetails = new("{}", "dotnet test", "Run tests"),
+                    ToolActivityFacts = new(CommandBearing: true, Title: "Run tests", Status: "running", ItemId: "run-item") };
+            var tools = new[] { running, Tool("failed", "exec", "", ChatToolCallStatus.Error) with { ToolActivityFacts = new(Status: "failed", ItemId: "failed-item") },
+                Tool("blocked", "exec", "", ChatToolCallStatus.Success) with { ToolActivityFacts = new(Status: "blocked", ItemId: "blocked-item") },
+                Tool("skipped", "exec", "", ChatToolCallStatus.Success) with { ToolActivityFacts = new(Status: "skipped", ItemId: "skipped-item") },
+                Tool("unknown", "exec", "", ChatToolCallStatus.Success) with { ToolActivityFacts = new(ItemId: "unknown-item") } };
+            var summary = ChatToolActivityPresentation.Summarize(tools);
+            var row = new ChatToolActivityRow("outcome-proof", null, tools, summary);
+            var timeline = BuildTimeline(tools, 1);
+            var element = ToolCallCardRenderer.BuildActivityCore(timeline, row, false, _ => { });
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                var expander = Assert.Single(FindLogical<Expander>(root!));
+                var text = string.Join(" ", FindLogical<TextBlock>((DependencyObject)expander.Header).Select(block => block.Text));
+                foreach (var outcome in new[] { "1 blocked", "1 unknown" }) Assert.Contains(outcome, text);
+                foreach (var outcome in new[] { "1 failed", "1 skipped" }) Assert.DoesNotContain(outcome, text);
+                Assert.DoesNotContain(FindLogical<Expander>(root!), child =>
+                    AutomationProperties.GetAutomationId(child).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+                var next = ToolCallCardRenderer.BuildActivityCore(timeline, row, true, _ => { });
+                root = host.Reconciler.Reconcile(element, next, root!, static () => { });
+                element = next;
+                host.Content = root;
+                expander = FindLogical<Expander>(root!).First();
+                text = string.Join(" ", FindLogical<TextBlock>((DependencyObject)expander.Header).Select(block => block.Text));
+                foreach (var outcome in new[] { "1 blocked", "1 unknown" }) Assert.Contains(outcome, text);
+                foreach (var outcome in new[] { "1 failed", "1 skipped" }) Assert.DoesNotContain(outcome, text);
+                var failedRow = FindLogical<Expander>(root!).Single(child =>
+                    AutomationProperties.GetAutomationId(child) == "ChatToolCall_failed");
+                var skippedRow = FindLogical<Expander>(root!).Single(child =>
+                    AutomationProperties.GetAutomationId(child) == "ChatToolCall_skipped");
+                Assert.Contains(FindLogical<TextBlock>((DependencyObject)failedRow.Header), block => block.Text == "failed");
+                Assert.Contains(FindLogical<TextBlock>((DependencyObject)skippedRow.Header), block => block.Text == "Skipped");
+                var settled = row with { Summary = summary with { NewestRunningTool = null } };
+                next = ToolCallCardRenderer.BuildActivityCore(timeline, settled, true, _ => { });
+                root = host.Reconciler.Reconcile(element, next, root!, static () => { });
+                element = next;
+                host.Content = root;
+                expander = FindLogical<Expander>(root!).First();
+                text = string.Join(" ", FindLogical<TextBlock>((DependencyObject)expander.Header).Select(block => block.Text));
+                foreach (var outcome in new[] { "1 blocked", "1 unknown" }) Assert.Contains(outcome, text);
+                foreach (var outcome in new[] { "1 failed", "1 skipped" }) Assert.DoesNotContain(outcome, text);
+            }
+            finally { host.Reconciler.Reconcile(element, Empty(), root!, static () => { }); host.Content = null; }
+        });
+    }
+
+    [Theory]
+    [InlineData(ChatToolCallStatus.Success, "Done")]
+    [InlineData(ChatToolCallStatus.Error, "failed")]
+    public async Task FinalRegression_UnknownAggregateDoesNotMaskKnownIndividualRowResult(
+        ChatToolCallStatus result, string expected)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var call = Tool("known-result", "exec", "Recorded result", result) with
+            {
+                ToolCallId = "known-result", ToolRunId = "run",
+                ToolActivityFacts = new(Title: "Run test", ItemId: "status-less-canonical"),
+            };
+            Assert.Equal(1, ChatToolActivityPresentation.Summarize([call]).UnknownCount);
+            var timeline = BuildTimeline([call], 1) with { ToolExpansionState = new() };
+            var element = ToolCallCardRenderer.BuildStandalone(timeline, call);
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                var disclosure = Assert.Single(FindLogical<Expander>(root!));
+                Assert.Contains(expected, AutomationProperties.GetName(disclosure), StringComparison.Ordinal);
+                Assert.DoesNotContain("Outcome unknown", AutomationProperties.GetName(disclosure), StringComparison.Ordinal);
+                if (result == ChatToolCallStatus.Error)
+                    Assert.Contains(FindLogical<TextBlock>((DependencyObject)disclosure.Header), block => block.Text == "failed");
+                Assert.Equal(1, ChatToolActivityPresentation.Summarize([call]).UnknownCount);
+            }
+            finally { host.Reconciler.Reconcile(element, Empty(), root!, static () => { }); host.Content = null; }
+        });
+    }
 
     [Theory]
     [InlineData(false, 43, true, "exec", "+31 more lines", false)]
@@ -576,14 +780,69 @@ public sealed class ReactorToolActivityProofTests
                     block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressStatus");
                 var text = Assert.Single(FindLogical<TextBlock>(root!),
                     block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressText");
-                Assert.Contains(label, status.Text);
-                Assert.Contains("1m", text.Text);
+                Assert.Contains(label == ChatRunProgressProjection.RetryLabel ? "Retrying" : label, status.Text);
+                if (label == "Waiting for approval") Assert.Equal("", text.Text);
+                else Assert.Contains("1m", text.Text);
                 Assert.IsNotType<LinearGradientBrush>(text.Foreground);
             }
             finally
             {
                 host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
                 host.Content = null;
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("en-us", "Waiting for subagents", "Waiting for subagents")]
+    [InlineData("en-us", "Waiting for your answer", "Waiting for your answer")]
+    [InlineData("fr-fr", "Waiting for subagents", "En attente des sous-agents")]
+    [InlineData("fr-fr", "Waiting for your answer", "En attente de votre réponse")]
+    public async Task ReviewRegression_RunProgress_WaitingWithoutStartOrUsageKeepsLocalizedAccessiblePhase(
+        string language, string label, string expectedLabel)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var previousLanguage = LocalizationHelper.CurrentLanguage;
+            try
+            {
+                LocalizationHelper.SetLanguageOverride(language);
+                using var theme = new ChatThemeProofScope("Light");
+                using var host = new ReactorHostControl();
+                // A reopened waiting conversation need not have observed a turn start or usage.
+                var progress = new ChatRunProgressPresentation(
+                    StartedAt: null, EndedAt: null, Label: label, Active: false, Waiting: true,
+                    OutputTokens: null, RunId: "waiting-run");
+                var element = Component<ReactorRunProgress, ReactorRunProgressProps>(new(progress, "session"));
+                var root = host.Reconciler.Mount(element, static () => { });
+                host.Content = root;
+                try
+                {
+                    var row = Assert.Single(FindLogical<Grid>(root!),
+                        grid => AutomationProperties.GetAutomationId(grid) == "ChatRunProgress");
+                    var status = Assert.Single(FindLogical<TextBlock>(root!),
+                        block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressStatus");
+                    var details = Assert.Single(FindLogical<TextBlock>(root!),
+                        block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressText");
+                    Assert.Equal(expectedLabel, status.Text);
+                    Assert.Equal(Visibility.Collapsed, status.Visibility);
+                    Assert.Equal("", details.Text);
+                    Assert.Equal(expectedLabel, AutomationProperties.GetName(row));
+                    Assert.Equal(expectedLabel, AutomationProperties.GetName(details));
+                    Assert.Equal(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Off,
+                        AutomationProperties.GetLiveSetting(row));
+                    Assert.DoesNotContain(FindLogical<TextBlock>(root!), block =>
+                        block.Visibility == Visibility.Visible && !string.IsNullOrEmpty(block.Text));
+                }
+                finally
+                {
+                    host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                    host.Content = null;
+                }
+            }
+            finally
+            {
+                LocalizationHelper.SetLanguageOverride(previousLanguage);
             }
         });
     }
@@ -610,7 +869,9 @@ public sealed class ReactorToolActivityProofTests
                 var row = Assert.Single(FindLogical<Grid>(host),
                     grid => AutomationProperties.GetAutomationId(grid) == "ChatRunProgress");
                 Assert.Equal(1, row.Opacity);
-                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", text.Text);
+                Assert.Equal(Visibility.Collapsed, Assert.Single(FindLogical<TextBlock>(host),
+                    block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressStatus").Visibility);
+                Assert.StartsWith("12.3k output tokens \u00b7 ", text.Text);
                 Assert.Contains("1m", text.Text);
                 Assert.IsNotType<LinearGradientBrush>(text.Foreground);
                 var initialElapsedSeconds = ReadElapsedSeconds(text.Text);
@@ -629,7 +890,7 @@ public sealed class ReactorToolActivityProofTests
                 Assert.Same(text, updatedText);
                 Assert.Same(row, updatedRow);
                 Assert.Equal(1, updatedRow.Opacity);
-                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", updatedText.Text);
+                Assert.StartsWith("12.3k output tokens \u00b7 ", updatedText.Text);
                 Assert.True(ReadElapsedSeconds(updatedText.Text) > initialElapsedSeconds);
                 Assert.IsNotType<LinearGradientBrush>(updatedText.Foreground);
             }
@@ -840,6 +1101,114 @@ public sealed class ReactorToolActivityProofTests
             }
             Assert.All(labels, label =>
                 Assert.IsNotType<Microsoft.UI.Xaml.Media.LinearGradientBrush>(label.Foreground));
+        });
+    }
+
+    [Fact]
+    public async Task ShimmerLifetime_NativeParentRetainsCleanupAcrossManagedWrapperCollection()
+    {
+        StackPanel? panel = null;
+        ShimmerCollectionObservation? collection = null;
+        try
+        {
+            await _ui.RunOnUIAsync(() =>
+            {
+                using var theme = new ChatThemeProofScope("Light");
+                panel = new StackPanel();
+                collection = AddShimmerLabelWithoutRetainingWrapper(panel);
+            });
+            // Collect only after the native creation callback returned; interop temporaries in
+            // that callback must not become an accidental strong root for the original wrapper.
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            // COM-aware WeakReference can rehydrate a wrapper while its native object lives.
+            // This sentinel observes managed collection without reacquiring the native target.
+            Console.WriteLine($"Shimmer original wrapper collected: {collection!.WasCollected}");
+            await _ui.RunOnUIAsync(() =>
+            {
+                using var theme = new ChatThemeProofScope("Light");
+                var label = Assert.IsType<TextBlock>(Assert.Single(panel!.Children));
+                if (new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled &&
+                    !new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+                    Assert.IsType<LinearGradientBrush>(label.Foreground);
+                ChatVisuals.TextShimmer(label, false);
+                Assert.IsNotType<LinearGradientBrush>(label.Foreground);
+                Assert.Equal("Native retained label", label.Text);
+            });
+        }
+        finally
+        {
+            await _ui.RunOnUIAsync(() =>
+            {
+                // Reacquire only for cleanup, including a failed collection precondition.
+                if (panel is not null)
+                {
+                    foreach (var label in panel.Children.OfType<TextBlock>())
+                        ChatVisuals.TextShimmer(label, false);
+                    panel.Children.Clear();
+                }
+                GC.KeepAlive(collection);
+            });
+        }
+    }
+
+    private sealed class ShimmerCollectionObservation
+    {
+        private int _collected;
+        internal bool WasCollected => System.Threading.Volatile.Read(ref _collected) != 0;
+        internal void MarkCollected() => System.Threading.Interlocked.Exchange(ref _collected, 1);
+    }
+
+    private sealed class ShimmerCollectionSentinel(ShimmerCollectionObservation observation)
+    {
+        ~ShimmerCollectionSentinel() => observation.MarkCollected();
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<TextBlock, ShimmerCollectionSentinel>
+        ShimmerCollectionSentinels = new();
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static ShimmerCollectionObservation AddShimmerLabelWithoutRetainingWrapper(StackPanel panel)
+    {
+        var text = new TextBlock { Text = "Native retained label" };
+        var observation = new ShimmerCollectionObservation();
+        ShimmerCollectionSentinels.Add(text, new ShimmerCollectionSentinel(observation));
+        ChatVisuals.StyleSecondaryText(text);
+        ChatVisuals.TextShimmer(text, true);
+        panel.Children.Add(text);
+        return observation;
+    }
+
+    [Fact]
+    public async Task ShimmerLifetime_RowUnmountAfterCollectionRestoresEveryLabel()
+    {
+        await _ui.ResetContainerAsync();
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("gc-running", "read", "partial output", ChatToolCallStatus.InProgress);
+            var element = ToolCallCardRenderer.BuildStandalone(BuildTimeline([entry], 1), entry);
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            await DrainReactorQueueAsync();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            var labels = FindLogical<TextBlock>(root!).ToArray();
+            try
+            {
+                if (new global::Windows.UI.ViewManagement.UISettings().AnimationsEnabled &&
+                    !new global::Windows.UI.ViewManagement.AccessibilitySettings().HighContrast)
+                    Assert.Contains(labels, label => label.Foreground is LinearGradientBrush);
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+            Assert.All(labels, label => Assert.IsNotType<LinearGradientBrush>(label.Foreground));
         });
     }
 
@@ -1295,7 +1664,7 @@ public sealed class ReactorToolActivityProofTests
                 Assert.DoesNotContain(FindLogical<TextBlock>(root), text => text.Text == "Done");
                 var header = Assert.IsAssignableFrom<DependencyObject>(expander.Header);
                 Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "Read main.cs");
-                Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "src");
+                Assert.DoesNotContain(FindLogical<TextBlock>(header), text => text.Text == "src");
                 Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == DocumentGlyph);
                 Assert.Null(ToolTipService.GetToolTip(expander));
                 Assert.Contains(output, FindLogical<RichTextBlock>(root));
@@ -1364,9 +1733,9 @@ public sealed class ReactorToolActivityProofTests
                 var expander = Assert.Single(FindLogical<Expander>(root!));
                 var header = Assert.IsAssignableFrom<DependencyObject>(expander.Header);
                 var headerText = FindLogical<TextBlock>(header).Select(text => text.Text).ToArray();
-                Assert.Contains("Build identical reviewer input", headerText);
-                Assert.Contains("Running", headerText);
-                Assert.Contains(ListGlyph, headerText);
+                Assert.Contains("Build identical reviewer input\u2026", headerText);
+                Assert.DoesNotContain("Running", headerText);
+                Assert.Contains(TerminalGlyph, headerText);
 
                 // Web tool rows carry no hover tooltip.
                 Assert.Null(ToolTipService.GetToolTip(expander));
@@ -1375,6 +1744,142 @@ public sealed class ReactorToolActivityProofTests
             {
                 host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
                 host.Content = null;
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("title", false)]
+    [InlineData("meta", false)]
+    [InlineData("summary", false)]
+    [InlineData("title", true)]
+    [InlineData("meta", true)]
+    [InlineData("summary", true)]
+    public async Task ReviewRegression_ActiveActivityHeadline_CanonicalMultilineFieldsStayBoundedAndSingleLine(
+        string field, bool oversized)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var suppliedText = "Inspect\nall\trecords\ncarefully" + (oversized ? " " + new string('x', 320) : "");
+            var payload = new System.Text.Json.Nodes.JsonObject
+            {
+                ["kind"] = "tool", ["phase"] = "update", ["itemId"] = "canonical-item",
+                ["toolCallId"] = "current", ["name"] = "exec", ["title"] = "Review records",
+            };
+            payload[field] = suppliedText;
+            // A canonical summary supplies the headline only when status is absent.
+            if (field != "summary") payload["status"] = "running";
+            var facts = Assert.IsType<ChatToolActivityFacts>(ChatToolActivityFacts.Read(
+                System.Text.Json.JsonSerializer.SerializeToElement(payload), requireCanonical: true));
+            var first = Tool("first", "exec", "completed output", ChatToolCallStatus.Success) with
+            {
+                ToolRunId = "run", ToolCallId = "first",
+                ToolActivityFacts = new(Title: "Earlier activity", Status: "completed", ItemId: "first-item"),
+            };
+            var current = Tool("current", "exec", "partial output", ChatToolCallStatus.InProgress) with
+            {
+                ToolRunId = "run", ToolCallId = "current", ToolActivityFacts = facts,
+            };
+            var timeline = BuildTimeline([first, current], 1) with
+            {
+                RunProgress = new(null, null, "Working", true, false, RunId: "run"),
+            };
+            var activity = Assert.Single(ChatToolActivityPresentation.Project(
+                timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+            var element = ToolCallCardRenderer.BuildActivity(timeline, activity, new());
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                var disclosure = Assert.Single(FindLogical<Expander>(root!));
+                Assert.False(disclosure.IsExpanded);
+                var header = Assert.IsAssignableFrom<DependencyObject>(disclosure.Header);
+                var headline = Assert.Single(FindLogical<TextBlock>(header),
+                    block => block.Text.StartsWith("Inspect", StringComparison.Ordinal));
+                var expected = oversized
+                    ? "Inspect all records carefully " + new string('x', 210) + "\u2026[truncated]"
+                    : "Inspect all records carefully";
+                if (field != "summary") expected += "\u2026";
+                Assert.Equal(expected, headline.Text);
+                Assert.DoesNotContain('\n', headline.Text);
+                Assert.DoesNotContain('\t', headline.Text);
+                Assert.InRange(headline.Text.Length, 1, 253);
+                Assert.Equal(TextWrapping.NoWrap, headline.TextWrapping);
+                Assert.Equal(TextTrimming.CharacterEllipsis, headline.TextTrimming);
+                // Measure the real native label without applying the unpackaged Expander template.
+                headline.Measure(new global::Windows.Foundation.Size(160, double.PositiveInfinity));
+                // Half a DIP accommodates native float rounding, not a second header line.
+                Assert.InRange(headline.DesiredSize.Width, 1, 160.5);
+                Assert.InRange(headline.DesiredSize.Height, 1, 32.5);
+                Assert.Contains(expected, AutomationProperties.GetName(disclosure), StringComparison.Ordinal);
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ReviewRegression_ActiveActivityHeadline_VisibleSameCallItemSurvivesLaterHiddenSibling()
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            var previousLanguage = LocalizationHelper.CurrentLanguage;
+            try
+            {
+                LocalizationHelper.SetLanguageOverride("en-us");
+                using var theme = new ChatThemeProofScope("Light");
+                using var host = new ReactorHostControl();
+                var first = Tool("first", "exec", "completed output", ChatToolCallStatus.Success) with
+                {
+                    ToolRunId = "run", ToolCallId = "first",
+                    ToolActivityFacts = new(Title: "Earlier activity", Status: "completed", ItemId: "first-item"),
+                };
+                // Distinct producer items share one invocation. Aggregate counting selects hidden B,
+                // but the active headline must filter hidden items before selecting visible A.
+                var visible = new ChatToolActivityFacts(
+                    Title: "Review visible activity", Status: "running", ItemId: "visible-A");
+                var hidden = new ChatToolActivityFacts(HideFromChannelProgress: true,
+                    Title: "Hidden sibling activity", Status: "running", ItemId: "hidden-B");
+                var current = Tool("current", "exec", "partial output", ChatToolCallStatus.InProgress) with
+                {
+                    ToolRunId = "run", ToolCallId = "current",
+                    ToolActivityFacts = ChatToolActivityFacts.Merge(visible, hidden),
+                };
+                var timeline = BuildTimeline([first, current], 1) with
+                {
+                    RunProgress = new(null, null, "Working", true, false, RunId: "run"),
+                };
+                var activity = Assert.Single(ChatToolActivityPresentation.Project(
+                    timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+                var element = ToolCallCardRenderer.BuildActivity(timeline, activity, new());
+                var root = host.Reconciler.Mount(element, static () => { });
+                host.Content = root;
+                try
+                {
+                    var disclosure = Assert.Single(FindLogical<Expander>(root!));
+                    var header = Assert.IsAssignableFrom<DependencyObject>(disclosure.Header);
+                    Assert.Contains(FindLogical<TextBlock>(header), block => block.Text == "Review visible activity\u2026");
+                    Assert.DoesNotContain(FindLogical<TextBlock>(header), block =>
+                        block.Text.Contains("Hidden sibling activity", StringComparison.Ordinal) ||
+                        block.Text.Contains("Earlier activity", StringComparison.Ordinal));
+                    Assert.Equal("Activity: Review visible activity\u2026. 1 tool. Collapsed.",
+                        AutomationProperties.GetName(disclosure));
+                    Assert.False(disclosure.IsExpanded);
+                }
+                finally
+                {
+                    host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                    host.Content = null;
+                }
+            }
+            finally
+            {
+                LocalizationHelper.SetLanguageOverride(previousLanguage);
             }
         });
     }
@@ -1539,6 +2044,58 @@ public sealed class ReactorToolActivityProofTests
                 });
             }
         }
+    }
+
+    private static async Task CapturePaintedAsync(Border surface, ReactorHostControl host, string name)
+    {
+        var painted = false;
+        var pending = false;
+        Task? sample = null;
+        async Task SampleAsync()
+        {
+            pending = true;
+            try
+            {
+                surface.UpdateLayout();
+                var labels = FindLogical<TextBlock>(host).Where(text => text.IsLoaded && text.ActualWidth > 0 &&
+                    text.Visibility == Visibility.Visible && !string.IsNullOrWhiteSpace(text.Text) &&
+                    (text.Text.Contains("file.cs", StringComparison.Ordinal) || text.Text.Contains("output tokens", StringComparison.Ordinal) ||
+                        text.Text.Contains("Run focused tests", StringComparison.Ordinal) || text.Text.Contains("1 command", StringComparison.Ordinal) || text.Text.Contains("Pearling", StringComparison.Ordinal))).ToArray();
+                var required = name.EndsWith("running-expanded", StringComparison.Ordinal) ? 4
+                    : name.Contains("running", StringComparison.Ordinal) || name.EndsWith("no-tokens", StringComparison.Ordinal) ||
+                        name.EndsWith("approval", StringComparison.Ordinal) ? 2 : 1;
+                if (labels.Length < required) return;
+                var bitmap = new RenderTargetBitmap();
+                await bitmap.RenderAsync(surface);
+                var pixels = (await bitmap.GetPixelsAsync()).ToArray();
+                var background = ((SolidColorBrush)surface.Background).Color;
+                var scale = bitmap.PixelWidth / surface.ActualWidth;
+                painted = labels.All(label =>
+                {
+                    var point = label.TransformToVisual(surface).TransformPoint(default);
+                    var left = Math.Clamp((int)(point.X * scale), 0, bitmap.PixelWidth);
+                    var top = Math.Clamp((int)(point.Y * scale), 0, bitmap.PixelHeight);
+                    var right = Math.Clamp((int)((point.X + label.ActualWidth) * scale), 0, bitmap.PixelWidth);
+                    var bottom = Math.Clamp((int)((point.Y + label.ActualHeight) * scale), 0, bitmap.PixelHeight);
+                    var ink = 0;
+                    for (var y = top; y < bottom; y++) for (var x = left; x < right; x++)
+                    {
+                        var offset = (y * bitmap.PixelWidth + x) * 4;
+                        if (Math.Abs(pixels[offset] - background.B) + Math.Abs(pixels[offset + 1] - background.G) +
+                            Math.Abs(pixels[offset + 2] - background.R) > 90) ink++;
+                    }
+                    return ink >= 20;
+                });
+            }
+            finally { pending = false; }
+        }
+        await WaitForRenderedConditionAsync(() =>
+        {
+            if (sample is { IsFaulted: true } or { IsCanceled: true }) sample.GetAwaiter().GetResult();
+            if (!pending && !painted) sample = SampleAsync();
+            return painted;
+        }, "all parity labels paint after native transitions");
+        await VisualTestCapture.CaptureAsync(surface, name);
     }
 
     private static ChatTimelinePresentationContext BuildTimeline(

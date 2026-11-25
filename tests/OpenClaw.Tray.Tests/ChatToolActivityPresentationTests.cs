@@ -26,6 +26,172 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Fact]
+    public void Summary_WithCanonicalActivityDoesNotCountUnrepresentedLegacySiblings()
+    {
+        var canonical = Tool("canonical", "exec") with { ToolActivityFacts = new(Status: "completed", ItemId: "completed-item") };
+        Assert.Equal("1 command", Format(ChatToolActivityPresentation.Summarize([Tool("legacy", "read"), canonical])));
+    }
+
+    [Fact]
+    public void LiveCanonicalRecords_ReplaceSameItemAndFilterSuppressedSiblingBeforeCallDedup()
+    {
+        ChatToolActivityFacts Read(string json) => ChatToolActivityFacts.Read(System.Text.Json.JsonDocument.Parse(json).RootElement)!;
+        var first = Read("""{"itemId":"first","kind":"tool","phase":"start","title":"Run","commandBearing":true,"hideFromChannelProgress":true}""");
+        var end = Read("""{"itemId":"first","kind":"tool","phase":"end","title":"Finished","status":"completed"}""");
+        var replaced = ChatToolActivityFacts.Merge(first, end)!;
+        Assert.Null(replaced.HideFromChannelProgress);
+        Assert.Null(replaced.CommandBearing);
+        var suppressed = Read("""{"itemId":"second","kind":"tool","phase":"end","title":"Bookkeeping","suppressChannelProgress":true}""");
+        Assert.Equal("Finished", ChatToolActivityFacts.Merge(replaced, suppressed)!.Title);
+    }
+
+    [Fact]
+    public void Summary_PreservesCanonicalOutcomesAndDeduplicatesCombinedActivity()
+    {
+        var tools = new[]
+        {
+            Tool("complete", "exec") with { ToolActivityFacts = new(Status: "completed", ItemId: "completed-item") },
+            Tool("failed", "exec") with { ToolActivityFacts = new(Status: "failed", ItemId: "failed-item") },
+            Tool("blocked", "exec") with { ToolActivityFacts = new(Status: "blocked", ItemId: "blocked-item") },
+            Tool("skipped", "sessions_spawn") with { ToolActivityFacts = new(Status: "skipped", ItemId: "skipped-item") },
+            Tool("unknown", "exec") with { ToolActivityFacts = new(ItemId: "unknown-item") },
+        };
+        Assert.Equal("4 commands · 1 other operation · 1 failed · 1 blocked · 1 skipped · 1 unknown",
+            Format(ChatToolActivityPresentation.Summarize(tools)));
+        var duplicate = tools[0] with { ToolCallId = "same", ToolRunId = "first" };
+        Assert.Equal(1, ChatToolActivityPresentation.Summarize([duplicate,
+            duplicate with { Id = "later", ToolRunId = "second" }]).ToolCount);
+    }
+
+    [Fact]
+    public void LiveCanonicalActivity_UpdatesAndTerminalVisibilityReachTheExistingRow()
+    {
+        ChatEvent Map(string json) => ChatEventMapper.Map(new AgentEventInfo
+        {
+            Stream = "item", RunId = "run", Data = System.Text.Json.JsonDocument.Parse(json).RootElement.Clone(),
+        }).Event!;
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), Map("""
+            {"kind":"tool","phase":"start","itemId":"call","name":"custom.calendar","title":"Calendar","meta":"First","commandBearing":true}
+            """));
+        var update = Map("""
+            {"kind":"tool","phase":"update","itemId":"call","name":"custom.calendar","title":"Calendar","meta":"Second","commandBearing":true}
+            """);
+        Assert.NotNull(update);
+        state = ChatTimelineReducer.Apply(state, update);
+        Assert.Equal("Second", Assert.Single(state.Entries).ToolActivityFacts!.Meta);
+        state = ChatTimelineReducer.Apply(state, Map("""
+            {"kind":"tool","phase":"end","itemId":"call","name":"custom.calendar","title":"Calendar","status":"completed","hideFromChannelProgress":true}
+            """));
+        Assert.Equal(0, ChatToolActivityPresentation.Summarize(state.Entries).ToolCount);
+    }
+
+    [Fact]
+    public void ResultCanonicalActivity_UsesResultSidecarWithoutChangingInvocationIdentity()
+    {
+        var call = new ChatToolContentInfo { Kind = ChatToolContentKind.Call, CallId = "call", ToolName = "custom.calendar" };
+        var result = new ChatToolContentInfo { Kind = ChatToolContentKind.Result, CallId = "call", ToolName = "custom.calendar",
+            Text = "ok", ActivityFacts = new(CommandBearing: true, Status: "completed") };
+        var state = ChatTimelineState.Initial();
+        foreach (var evt in ChatEventMapper.MapContentTool(call, "run").Concat(ChatEventMapper.MapContentTool(result, "run")))
+            state = ChatTimelineReducer.Apply(state, evt);
+        Assert.Equal("1 command", Format(ChatToolActivityPresentation.Summarize(state.Entries)));
+    }
+
+    [Fact]
+    public void HistoryMerge_PreservesActivityHintsOnlyForTheExactRunAndCall()
+    {
+        var saved = Tool("saved", "exec") with { ToolCallId = "call", ToolRunId = "run" };
+        var live = saved with { Id = "live", ToolActivityFacts = new(CommandBearing: true) };
+        Assert.Equal(new ChatToolActivityFacts(CommandBearing: true), ChatHistoryState.KeepToolResultFacts(saved, live).ToolActivityFacts);
+        Assert.Null(ChatHistoryState.KeepToolResultFacts(saved, live with { ToolRunId = "other" }).ToolActivityFacts);
+    }
+
+    [Fact]
+    public void Summarize_CanonicalVisibilityListDoesNotInventALegacyWrapperRecord()
+    {
+        var wrapper = Tool("wrapper", "exec") with { ToolCallId = "parent", ToolRunId = "run" };
+        var child = Tool("child", "read") with
+        {
+            ToolCallId = "child", ToolParentCallId = "parent", ToolRunId = "run",
+            ToolActivityFacts = new(HideFromChannelProgress: true, ItemId: "hidden-child"),
+        };
+        Assert.Equal("Raw details", Format(ChatToolActivityPresentation.Summarize([wrapper, child])));
+    }
+
+    [Fact]
+    public void CanonicalActivityFlags_PartialUpdatesPreservePreviouslySuppliedHints()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatToolStartEvent("display", "custom.calendar",
+            ToolCallId: "call", RunId: "run", ActivityFacts: new(CommandBearing: true)));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("display", "custom.calendar",
+            ToolCallId: "call", RunId: "run", ActivityFacts: new(HideFromChannelProgress: false)));
+        Assert.Equal(new ChatToolActivityFacts(true, false), Assert.Single(state.Entries).ToolActivityFacts);
+    }
+
+    [Fact]
+    public void CanonicalActivityFlags_CommandPresentationBeforeStartRetainsHintsInItsOwnRun()
+    {
+        using var data = System.Text.Json.JsonDocument.Parse(
+            """{"kind":"command","phase":"start","itemId":"call","name":"custom.calendar","commandBearing":true}""");
+        var mapped = ChatEventMapper.Map(new AgentEventInfo
+        {
+            Stream = "item", RunId = "run", Data = data.RootElement.Clone(),
+        }).Event;
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), mapped!);
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("display", "custom.calendar",
+            ToolCallId: "call", RunId: "run"));
+        Assert.Equal(new ChatToolActivityFacts(CommandBearing: true), Assert.Single(state.Entries).ToolActivityFacts);
+    }
+
+    [Fact]
+    public void Summarize_UsesCanonicalCommandAndHiddenFactsInsteadOfLocalNameHeuristics()
+    {
+        var tools = new[]
+        {
+            Tool("custom", "custom.calendar") with { ToolActivityFacts = new(CommandBearing: true, ItemId: "custom-item") },
+            Tool("poll", "process") with { ToolActivityFacts = new(CommandBearing: false, ItemId: "poll-item") },
+            Tool("hidden", "exec", result: ChatToolCallStatus.InProgress) with
+                { ToolActivityFacts = new(HideFromChannelProgress: true) },
+            Tool("suppressed", "read") with { ToolActivityFacts = new(SuppressChannelProgress: true) },
+        };
+        var summary = ChatToolActivityPresentation.Summarize(tools);
+        Assert.Equal("1 command · 1 other operation · 2 unknown", Format(summary));
+        Assert.Equal(2, summary.ToolCount);
+        Assert.Null(summary.NewestRunningTool);
+        Assert.Equal(0, ChatToolActivityPresentation.Summarize([tools[2], tools[3]]).ToolCount);
+    }
+
+    [Fact]
+    public void CanonicalActivityFlags_SurviveContentMappingAndRepeatedStartWithoutReplacingOutcome()
+    {
+        var tool = new OpenClaw.Shared.ChatToolContentInfo
+        {
+            Kind = OpenClaw.Shared.ChatToolContentKind.Call,
+            ToolName = "custom.calendar", CallId = "call", ActivityFacts = new(CommandBearing: true),
+        };
+        var state = ChatTimelineState.Initial();
+        foreach (var evt in ChatEventMapper.MapContentTool(tool, "run"))
+            state = ChatTimelineReducer.Apply(state, evt);
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("ok", "call", "run"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("display", tool.ToolName,
+            ToolCallId: "call", RunId: "run", ActivityFacts: new(CommandBearing: true, HideFromChannelProgress: true)));
+        var entry = Assert.Single(state.Entries);
+        Assert.Equal(ChatToolCallStatus.Success, entry.ToolResult);
+        Assert.Equal(new OpenClaw.Shared.ChatToolActivityFacts(true, true), entry.ToolActivityFacts);
+    }
+
+    [Fact]
+    public void Summarize_CommandWithManyArgumentsUsesRetainedCommandInsteadOfLossyRowArgs()
+    {
+        var entry = Tool("command", "custom.calendar", Args(("command", "echo test"), ("path", "repo"),
+            ("query", "x"), ("url", "https://example.test"))) with
+        {
+            ToolInputDetails = new("{}", Command: "echo test"),
+        };
+        Assert.Equal("1 command", Format(ChatToolActivityPresentation.Summarize([entry])));
+    }
+
+    [Fact]
     public void WorkMotion_OnlyNewCompletedWorkEntersOnceWithinTheCurrentHistory()
     {
         var state = new ChatToolActivityMotionState();
@@ -657,13 +823,13 @@ public sealed class ChatToolActivityPresentationTests
     }
 
     [Fact]
-    public void Formatter_LocalizesUnnamedRunningToolFallback()
+    public void Formatter_WithoutPublicHeadlineKeepsActivityCountsWhileRunning()
     {
         var summary = ChatToolActivityPresentation.Summarize(
             [Tool("running", "", result: ChatToolCallStatus.InProgress)]);
         var templates = EnglishTemplates() with { ToolFallback = "Localized tool" };
 
-        Assert.Equal("Running Localized tool", ChatToolActivityFormatter.Format(summary, templates));
+        Assert.Equal("1 other operation", ChatToolActivityFormatter.Format(summary, templates));
     }
 
     [Fact]
@@ -960,15 +1126,16 @@ public sealed class ChatToolActivityPresentationTests
         Assert.Equal(expected, ChatToolRowPresentation.StripShellPreamble(command));
 
     [Fact]
-    public void ExpansionState_GroupInheritsTheChoiceMadeOnTheRowItGrewFrom()
+    public void ExpansionState_GroupDoesNotInheritTheChoiceMadeOnTheRowItGrewFrom()
     {
         var state = new ChatToolActivityExpansionState();
         state.SetExplicit("tool-row", true, 0);
 
-        Assert.True(state.IsExpanded("group", 0, "tool-row"));
-        state.SetExplicit("group", false, 0);
-        Assert.False(state.IsExpanded("group", 0, "tool-row"));
-        Assert.False(state.IsExpanded("other-group", 0, null));
+        Assert.False(state.IsExpanded("group", 0));
+        state.SetExplicit("group", true, 0);
+        Assert.True(state.IsExpanded("group", 0));
+        Assert.True(state.IsExpanded("tool-row", 0));
+        Assert.False(state.IsExpanded("other-group", 0));
     }
 
     [Fact]

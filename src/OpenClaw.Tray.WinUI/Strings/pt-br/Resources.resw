@@ -7435,12 +7435,12 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Questions_Unconfirmed" xml:space="preserve"><value>A resposta não foi confirmada. Atualize para verificar o status antes de tentar novamente.</value></data>
   <data name="Chat_Questions_Invalid" xml:space="preserve"><value>Não foi possível ler uma pergunta do agente. Atualize ou abra o chat da web para responder.</value></data>
   <data name="Chat_Run_Finished" xml:space="preserve"><value>Concluído</value></data>
-  <data name="Chat_Run_Approval" xml:space="preserve"><value>Aguardando aprovação</value></data>
+  <data name="Chat_Run_Approval" xml:space="preserve"><value>Aguardando aprovação…</value></data>
   <data name="Chat_Run_Answer" xml:space="preserve"><value>Aguardando sua resposta</value></data>
   <data name="Chat_Run_Compacting" xml:space="preserve"><value>Compactando contexto</value></data>
   <data name="Chat_Run_CompactionRetry" xml:space="preserve"><value>Tentando novamente após compactar o contexto</value></data>
-  <data name="Chat_Run_Retry" xml:space="preserve"><value>Repetindo a solicitação ao modelo</value></data>
-  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Tentando novamente em {0}s</value></data>
+  <data name="Chat_Run_Retry" xml:space="preserve"><value>Tentando novamente…</value></data>
+  <data name="Chat_Run_RetryIn" xml:space="preserve"><value>Nova tentativa em {0}s</value></data>
   <data name="Chat_History_UnavailableTitle" xml:space="preserve"><value>Não foi possível carregar esta conversa</value></data>
   <data name="Chat_History_UnavailableBody" xml:space="preserve"><value>Tente novamente para carregar as mensagens.</value></data>
   <data name="Chat_History_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
@@ -7449,7 +7449,8 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Run_Working" xml:space="preserve"><value>Trabalhando</value></data>
   <data name="Chat_Run_Tool" xml:space="preserve"><value>Executando {0}</value></data>
   <data name="Chat_Questions_NoLongerAvailable" xml:space="preserve"><value>Pergunta não está mais disponível</value></data>
-  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0:N0} tokens de saída</value></data>
+  <data name="Chat_Run_OutputTokens" xml:space="preserve"><value>{0} tokens de saída</value></data>
+  <data name="Chat_Run_OutputTokenOne" xml:space="preserve"><value>1 token de saída</value></data>
   <data name="Chat_Questions_OtherPlaceholder" xml:space="preserve"><value>Digite sua própria resposta aqui</value></data>
   <data name="Chat_Questions_KeyboardHint" xml:space="preserve"><value>Enter adiciona uma linha / Ctrl+Enter para continuar</value></data>
   <data name="Chat_Questions_Expand" xml:space="preserve"><value>Expandir pergunta</value></data>
@@ -10306,4 +10307,30 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>Acompanhe o trabalho delegado desta conversa.</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>Widgets e guias publicados por esta sessão.</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>Ainda não há painéis disponíveis para esta conversa.</value></data>
+  <data name="Chat_Activity_RawDetails" xml:space="preserve"><value>Detalhes brutos</value></data>
+  <data name="Chat_Activity_BlockedCount" xml:space="preserve"><value>Bloqueios: {0}</value></data>
+  <data name="Chat_Activity_SkippedCount" xml:space="preserve"><value>Operações ignoradas: {0}</value></data>
+  <data name="Chat_Activity_UnknownCount" xml:space="preserve"><value>Resultados desconhecidos: {0}</value></data>
+  <data name="Chat_Activity_Blocked" xml:space="preserve"><value>Bloqueado</value></data>
+  <data name="Chat_Activity_Skipped" xml:space="preserve"><value>Ignorado</value></data>
+  <data name="Chat_Activity_Unknown" xml:space="preserve"><value>Resultado desconhecido</value></data>
+  <data name="Chat_Run_Phrase_shelling" xml:space="preserve"><value>Descascando</value></data>
+  <data name="Chat_Run_Phrase_scuttling" xml:space="preserve"><value>Andando de lado</value></data>
+  <data name="Chat_Run_Phrase_clawing" xml:space="preserve"><value>Agarrando com as garras</value></data>
+  <data name="Chat_Run_Phrase_pinching" xml:space="preserve"><value>Beliscando</value></data>
+  <data name="Chat_Run_Phrase_molting" xml:space="preserve"><value>Trocando de carapaça</value></data>
+  <data name="Chat_Run_Phrase_bubbling" xml:space="preserve"><value>Borbulhando</value></data>
+  <data name="Chat_Run_Phrase_tiding" xml:space="preserve"><value>Seguindo a maré</value></data>
+  <data name="Chat_Run_Phrase_reefing" xml:space="preserve"><value>Explorando recifes</value></data>
+  <data name="Chat_Run_Phrase_cracking" xml:space="preserve"><value>Quebrando</value></data>
+  <data name="Chat_Run_Phrase_sifting" xml:space="preserve"><value>Peneirando</value></data>
+  <data name="Chat_Run_Phrase_brining" xml:space="preserve"><value>Salgando</value></data>
+  <data name="Chat_Run_Phrase_nautiling" xml:space="preserve"><value>Navegando como um náutilo</value></data>
+  <data name="Chat_Run_Phrase_krilling" xml:space="preserve"><value>Nadando como um krill</value></data>
+  <data name="Chat_Run_Phrase_barnacling" xml:space="preserve"><value>Fixando-se como uma craca</value></data>
+  <data name="Chat_Run_Phrase_lobstering" xml:space="preserve"><value>Explorando como uma lagosta</value></data>
+  <data name="Chat_Run_Phrase_tidepooling" xml:space="preserve"><value>Explorando poças de maré</value></data>
+  <data name="Chat_Run_Phrase_pearling" xml:space="preserve"><value>Formando pérolas</value></data>
+  <data name="Chat_Run_Phrase_snapping" xml:space="preserve"><value>Estalando</value></data>
+  <data name="Chat_Run_Phrase_surfacing" xml:space="preserve"><value>Emergindo</value></data>
 </root>

@@ -489,6 +489,17 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
             runWorking: props.Timeline.ShowThinkingIndicator || props.Timeline.RunProgress is not null,
             session: props.Timeline.Session,
             showToolCalls: props.Timeline.ShowToolCalls);
+        var activeRunId = props.Timeline.RunProgress?.RunId ?? props.Timeline.Session?.LastRunId;
+        var visibleCurrentCalls = ChatToolActivityHeadlineState.CurrentTools(chronologicalEntries, activeRunId)
+            .Select(tool => tool.Id).ToHashSet(StringComparer.Ordinal);
+        var activityOwner = projectedRows.LastOrDefault(row =>
+        {
+            if (row.IsCompletedWork) return false;
+            var tools = row.Entry is { Kind: ChatTimelineItemKind.ToolCall } single ? new[] { single } : row.Tools;
+            return tools.Any(tool => visibleCurrentCalls.Contains(tool.Id));
+        });
+        var activityKey = activityOwner?.Key;
+        props = props with { Timeline = props.Timeline with { ActiveToolActivityKey = activityKey } };
         var assistantRunPositions = ChatTimelineAssistantRuns.Describe(
             projectedRows,
             entry => entry.Presentation ?? props.Timeline.EntryMetadata?.GetValueOrDefault(entry.Id)?.Presentation,
@@ -742,7 +753,7 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
     private static Element BuildThinking(ReactorTimelineRow row)
     {
         if (row.Props.Timeline.RunProgress is { } progress)
-            return Component<ReactorRunProgress, ReactorRunProgressProps>(new(progress));
+            return Component<ReactorRunProgress, ReactorRunProgressProps>(new(progress, row.Props.Timeline.SessionId));
         var format = LocalizedOrDefault("Chat_Timeline_AssistantThinkingFormat", "{0} is thinking…");
         return ChatMotion.Host(Text(
                 string.Format(format, row.Props.Timeline.AssistantSenderLabel),

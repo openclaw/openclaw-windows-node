@@ -1008,7 +1008,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                                 ? toolBlock.HandoffInput : null,
                             InputDetails: NativeToolProjector.ProjectInputDetails(toolBlock.Args, toolBlock.ToolName),
                             ParentCallId: !string.IsNullOrWhiteSpace(toolBlock.CallId)
-                                ? toolBlock.ParentCallId : null),
+                                ? toolBlock.ParentCallId : null,
+                            ActivityFacts: toolBlock.ActivityFacts),
                         entryMetadata);
                     continue;
                 }
@@ -1073,14 +1074,14 @@ internal sealed class ChatHistoryLoader : IDisposable
                             output,
                             resolvedCallId,
                             RunId: resultRunId,
-                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId))
+                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId), ActivityFacts: toolBlock.ActivityFacts)
                         : new ChatToolOutputEvent(
                             output,
                             resolvedCallId,
                             RunId: resultRunId,
                             HandoffReceipt: hasVerifiedCallId ? toolBlock.HandoffReceipt : null,
                             ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId),
-                            DiffFacts: toolBlock.ResultDiffFacts),
+                            DiffFacts: toolBlock.ResultDiffFacts, ActivityFacts: toolBlock.ActivityFacts),
                     entryMetadata);
             }
         }

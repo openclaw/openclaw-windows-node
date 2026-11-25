@@ -54,4 +54,5 @@ public sealed record ChatTimelinePresentationContext(
     // The saved reasoning row the current thought is still writing, if any.
     string? ActiveReasoningId = null,
     // Provider-lifetime learned-skill Undo state; null hides Undo.
-    ChatSkillUndoTracker? SkillUndo = null);
+    ChatSkillUndoTracker? SkillUndo = null,
+    string? ActiveToolActivityKey = null);

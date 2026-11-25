@@ -1115,6 +1115,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         if (!payload.TryGetProperty("messages", out var msgs) || msgs.ValueKind != JsonValueKind.Array)
             return info;
 
+        var activityByMessage = new Dictionary<string, JsonElement>(StringComparer.Ordinal);
+        if (payload.TryGetProperty("activity", out var sidecar) && sidecar.ValueKind == JsonValueKind.Array)
+            foreach (var group in sidecar.EnumerateArray())
+                if (group.ValueKind == JsonValueKind.Object && ReadFirstString(group, "messageId") is { } messageId &&
+                    group.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array)
+                    activityByMessage[messageId] = items;
         var list = new List<ChatMessageInfo>(msgs.GetArrayLength());
         foreach (var source in msgs.EnumerateArray())
         {
@@ -1134,7 +1140,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
 
             // Content can include text and structured tool call/result blocks.
             string text = ExtractMessageText(m, role);
-            var toolContent = ExtractToolContent(m, role, text);
+            var activityMessageId = ReadFirstString(m, "messageId") ?? openClawMetadata.Id;
+            var toolContent = ExtractToolContent(m, role, text,
+                activityMessageId is not null && activityByMessage.TryGetValue(activityMessageId, out var activityItems)
+                    ? activityItems : null);
             var contentParts = AppendOpenClawHistoryMedia(
                 m,
                 ExtractOrderedMessageContent(m, role, toolContent));
@@ -1355,7 +1364,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private static IReadOnlyList<ChatToolContentInfo> ExtractToolContent(
         JsonElement message,
         string role,
-        string messageText)
+        string messageText,
+        JsonElement? activityItems = null)
     {
         var blocks = new List<ChatToolContentInfo>();
         var messageTruncation = ReadChatTruncation(message);
@@ -1412,6 +1422,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 {
                     Kind = kind.Value,
                     CallId = callId,
+                    ActivityFacts = ReadToolActivityFacts(message, callId, activityItems),
                     ParentCallId = kind == ChatToolContentKind.Call
                         ? ReadFirstString(item, "parentToolCallId")
                         : null,
@@ -1470,6 +1481,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 IsError = ReadBoolean(message, "isError", "is_error"),
                 HandoffReceipt = fallbackHandoff,
                 ResultDiffFacts = ChatToolResultDiffFacts.Read(message),
+                ActivityFacts = ReadToolActivityFacts(message, ReadFirstString(message, "callId", "tool_call_id", "toolCallId", "tool_use_id", "toolUseId"), activityItems),
             });
         }
 
@@ -1480,6 +1492,30 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 block.Args = null;
         }
         return blocks;
+    }
+
+    private static ChatToolActivityFacts? ReadToolActivityFacts(
+        JsonElement message, string? callId, JsonElement? activityItems = null)
+    {
+        if (string.IsNullOrWhiteSpace(callId))
+            return null;
+        var activity = activityItems ?? (message.TryGetProperty("activity", out var attached) ? attached : default);
+        if (activity.ValueKind != JsonValueKind.Array)
+            return null;
+        ChatToolActivityFacts? facts = null;
+        foreach (var item in activity.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object ||
+                ReadFirstString(item, "toolCallId", "itemId") != callId)
+                continue;
+            var candidate = ChatToolActivityFacts.Read(item, requireCanonical: true);
+            if (candidate is null) continue;
+            // Retain distinct item identities across history/live handoff, then select the
+            // last nonsuppressed record for this invocation. Hiding applies to that selection.
+            facts = ChatToolActivityFacts.Merge(facts, candidate);
+        }
+        // An authoritative list with no valid matching record must not invent legacy activity.
+        return facts ?? new ChatToolActivityFacts(HideFromChannelProgress: true, AuthoritativeAbsence: true);
     }
 
     private static (bool? Truncated, string? Reason) ReadChatTruncation(JsonElement message)

@@ -14,6 +14,66 @@ namespace OpenClaw.Shared.Tests;
 
 public class OpenClawGatewayClientTests
 {
+    [Fact]
+    public void ReviewRegression_UnpairedActivitySurvivesHistoryParsingAndRecordReplacement()
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload("""
+            {"messages":[{"role":"assistant","content":[{"type":"toolCall","id":"call","name":"read","arguments":{}}],
+             "activity":[{"itemId":"item","toolCallId":"call","kind":"tool","phase":"end","title":"Read file","unpairedCall":true}]}]}
+            """);
+        var facts = Assert.Single(Assert.Single(history.Messages).ToolContent).ActivityFacts!;
+        using var persisted = JsonDocument.Parse(JsonSerializer.Serialize(facts));
+        Assert.True(persisted.RootElement.GetProperty("UnpairedCall").GetBoolean());
+        using var replacement = JsonDocument.Parse("""{"itemId":"item","kind":"tool","phase":"end","title":"Read file","status":"completed"}""");
+        var merged = ChatToolActivityFacts.Merge(facts, ChatToolActivityFacts.Read(replacement.RootElement))!;
+        using var replaced = JsonDocument.Parse(JsonSerializer.Serialize(merged));
+        Assert.NotEqual(JsonValueKind.True, replaced.RootElement.GetProperty("UnpairedCall").ValueKind);
+    }
+
+    [Theory]
+    [InlineData("title")]
+    [InlineData("meta")]
+    [InlineData("summary")]
+    public void ReviewRegression_ActivityHeadlineTextIsSingleLineWithoutWeakeningRedaction(string field)
+    {
+        var json = "{\"itemId\":\"item\",\"kind\":\"tool\",\"phase\":\"start\",\"title\":\"Step\",\"" + field + "\":\"Inspect\\nfile\\tlist\"}";
+        using var doc = JsonDocument.Parse(json);
+        var facts = ChatToolActivityFacts.Read(doc.RootElement, requireCanonical: true)!;
+        var value = field switch { "title" => facts.Title, "meta" => facts.Meta, _ => facts.Summary };
+        Assert.Equal("Inspect file list", value);
+        using var secret = JsonDocument.Parse("""{"itemId":"item","kind":"tool","phase":"start","title":"OPENAI_API_KEY=sk-synthetic-private-value\\nInspect"}""");
+        Assert.DoesNotContain("sk-synthetic-private-value", ChatToolActivityFacts.Read(secret.RootElement)!.Title);
+    }
+
+    [Fact]
+    public void AuthoritativeAbsentActivity_ReplacesPreviouslyVisibleCanonicalFacts()
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload("""
+            {"messages":[{"role":"assistant","content":[{"type":"toolCall","id":"call","name":"exec","arguments":{}}],"activity":[]}]}
+            """);
+        var absent = Assert.Single(Assert.Single(history.Messages).ToolContent).ActivityFacts;
+        var live = ChatToolActivityFacts.Read(JsonDocument.Parse("""
+            {"itemId":"live","kind":"tool","phase":"end","title":"Inspect","status":"completed"}
+            """).RootElement);
+        Assert.True(ChatToolActivityFacts.Merge(live, absent)!.HideFromChannelProgress);
+    }
+
+    [Fact]
+    public void ActivityFacts_PersistSelectedAndRetainedCanonicalRecordsWithoutRecursivePayloads()
+    {
+        var first = ChatToolActivityFacts.Read(JsonDocument.Parse("""{"itemId":"first","kind":"tool","phase":"start","title":"Inspect"}""").RootElement)!;
+        var second = ChatToolActivityFacts.Read(JsonDocument.Parse("""{"itemId":"second","kind":"tool","phase":"end","title":"Internal","suppressChannelProgress":true}""").RootElement)!;
+        var selected = ChatToolActivityFacts.Merge(first, second)!;
+        var json = JsonSerializer.Serialize(selected);
+        var restored = JsonSerializer.Deserialize<ChatToolActivityFacts>(json)!;
+        Assert.Equal("Inspect", restored.Title);
+        Assert.Equal(2, restored.Records.Length);
+        Assert.All(restored.Records, record => Assert.True(record.Records.IsDefaultOrEmpty));
+        Assert.NotEmpty(JsonSerializer.Serialize(new ChatToolActivityFacts()));
+    }
+
     [Theory]
     [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"done"}""", "final")]
     [InlineData("""{"hasActiveRun":false,"lastRunId":"r","status":"timeout"}""", "error")]
@@ -33,6 +93,51 @@ public class OpenClawGatewayClientTests
         Assert.Equal(expected, history.TerminalRun?.State);
         Assert.Null(helper.ParseChatHistoryPayload(
             """{"messages":[],"sessionInfo":""" + sessionInfo + "}").TerminalRun);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_ToolActivityFactsUseCanonicalCallIdentityAndTypedFlags()
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload("""
+        {"messages":[{"role":"assistant","content":[
+          {"type":"toolCall","id":"command","name":"custom.calendar","arguments":{}},
+          {"type":"toolCall","id":"hidden","name":"exec","arguments":{}},
+          {"type":"toolCall","id":"legacy","name":"read","arguments":{}}],
+          "__openclaw":{"id":"message"},"activity":[
+            {"kind":"tool","phase":"end","title":"Step","itemId":"unrelated","commandBearing":true},
+            {"kind":"tool","phase":"end","title":"Step","itemId":"item-1","toolCallId":"command","commandBearing":true},
+            {"kind":"tool","phase":"end","title":"Step","itemId":"hidden","hideFromChannelProgress":true,"suppressChannelProgress":false},
+            {"kind":"tool","phase":"end","title":"Step","itemId":"legacy","commandBearing":"true"}]}]}
+        """);
+        var calls = Assert.Single(history.Messages).ToolContent;
+        Assert.Equal(true, calls[0].ActivityFacts!.CommandBearing);
+        Assert.Equal(true, calls[1].ActivityFacts!.HideFromChannelProgress);
+        Assert.Equal(false, calls[1].ActivityFacts!.SuppressChannelProgress);
+        Assert.Null(calls[2].ActivityFacts!.CommandBearing);
+    }
+
+    [Fact]
+    public void ParseChatHistoryPayload_ActivitySidecarUsesMessageIdentityAndFiltersSuppressionBeforeDeduplication()
+    {
+        var helper = new GatewayClientTestHelper();
+        var history = helper.ParseChatHistoryPayload("""
+        {"messages":[
+          {"role":"assistant","__openclaw":{"id":"first"},"content":[
+            {"type":"toolCall","id":"reused","name":"custom.calendar","arguments":{}}]},
+          {"role":"assistant","messageId":"second","__openclaw":{"id":"other"},"content":[
+            {"type":"toolCall","id":"reused","name":"exec","arguments":{}}]}],
+         "activity":[
+          {"messageId":"unrelated","items":[{"kind":"tool","phase":"end","title":"Step","itemId":"reused","hideFromChannelProgress":true}]},
+          {"messageId":"first","items":[
+            {"kind":"tool","phase":"end","title":"Step","itemId":"a","toolCallId":"reused","commandBearing":true},
+            {"kind":"tool","phase":"end","title":"Step","itemId":"b","toolCallId":"reused","suppressChannelProgress":true}]},
+          {"messageId":"second","items":[
+            {"kind":"tool","phase":"end","title":"Step","itemId":"reused","hideFromChannelProgress":false},
+            {"kind":"tool","phase":"end","title":"Step","itemId":"reused","hideFromChannelProgress":true}]}]}
+        """);
+        Assert.Equal(true, history.Messages[0].ToolContent[0].ActivityFacts!.CommandBearing);
+        Assert.Equal(true, history.Messages[1].ToolContent[0].ActivityFacts!.HideFromChannelProgress);
     }
 
     [Fact]

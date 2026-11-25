@@ -7,6 +7,93 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatStreamingParityTests
 {
+    [Fact]
+    public void RequestUsage_SumsOnlyConfirmedYieldChainWithAnObservedRequestBoundary()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatUserMessageEvent("Inspect tests"), Start);
+        var requestId = state.Entries[0].Id;
+        state = ChatTimelineReducer.Apply(state, new ChatThinkingEvent("", "first"), Start);
+        state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("first", 100, 1));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Yield", "sessions_yield", ToolCallId: "yield", RunId: "first",
+            HandoffInput: new("sessions_yield", false)));
+        state = ChatTimelineReducer.Apply(state, new ChatToolOutputEvent("yielded", "yield", "first", new("sessions_yield", null)));
+        state = ChatTimelineReducer.Apply(state, new ChatTurnEndEvent(), Start.AddSeconds(5));
+        state = ChatTimelineReducer.Apply(state, new ChatThinkingEvent("", "second"), Start.AddSeconds(10));
+        state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("second", 30, 1));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("Read", "read", ToolCallId: "read", RunId: "second"));
+        var metadata = new Dictionary<string, ChatEntryMetadata> { [requestId] = new(Start, null) };
+        Assert.Equal(130, ChatRunProgressProjection.Project(state, metadata: metadata)!.OutputTokens);
+        Assert.Equal(Start, ChatRunProgressProjection.Project(state, metadata: metadata)!.StartedAt);
+        Assert.Equal(30, ChatRunProgressProjection.Project(state)!.OutputTokens);
+        var systemBoundary = new ChatTimelineItem("system-boundary", ChatTimelineItemKind.Status,
+            "A new system request", StartsTurn: true);
+        var afterSystemBoundary = state with { Entries = state.Entries.Insert(state.Entries.Count - 1, systemBoundary) };
+        Assert.Equal(30, ChatRunProgressProjection.Project(afterSystemBoundary, metadata: metadata)!.OutputTokens);
+        var unavailableCurrent = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("second", null, 2));
+        Assert.Equal(100, ChatRunProgressProjection.Project(unavailableCurrent, metadata: metadata)!.OutputTokens);
+        var missingPrior = state with { ObservedRunUsage = state.ObservedRunUsage!.RemoveAll(item => item.RunId == "first") };
+        Assert.Null(ChatRunProgressProjection.Project(missingPrior, metadata: metadata)!.OutputTokens);
+        var foreign = new ChatTimelineItem("foreign", ChatTimelineItemKind.Assistant, "Independent progress",
+            Presentation: new(RunId: "unexplained"));
+        Assert.Equal(30, ChatRunProgressProjection.Project(state with { Entries = state.Entries.Add(foreign) }, metadata: metadata)!.OutputTokens);
+    }
+
+    [Fact]
+    public void WorkingPhrase_UsesWebDelayAndCyclesDeterministicallyOnlyWithoutTokens()
+    {
+        var progress = new ChatRunProgressPresentation(Start, null, "Working", true, false, RunId: "run");
+        Assert.Null(ChatRunProgressProjection.WorkingPhraseKey(progress, "session", Start.AddSeconds(29)));
+        Assert.Equal("pearling", ChatRunProgressProjection.WorkingPhraseKey(progress, "session", Start.AddSeconds(30)));
+        Assert.Equal("reefing", ChatRunProgressProjection.WorkingPhraseKey(progress, "session", Start.AddSeconds(75)));
+        Assert.Null(ChatRunProgressProjection.WorkingPhraseKey(progress with { OutputTokens = 0 }, "session", Start.AddSeconds(75)));
+    }
+
+    [Fact]
+    public void RequestUsage_RetentionIsBoundedAndDuplicateEventsDoNotCreateStateChanges()
+    {
+        var state = ChatTimelineState.Initial();
+        for (var index = 0; index < 70; index++)
+        {
+            var run = "run-" + index;
+            state = ChatTimelineReducer.Apply(state, new ChatThinkingEvent("", run));
+            state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent(run, index, 1));
+        }
+        Assert.Equal(64, state.ObservedRunUsage!.Count);
+        Assert.Same(state, ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("run-69", 69, 1)));
+        Assert.Same(state, ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("foreign", 999, 99)));
+    }
+
+    [Theory]
+    [InlineData("Working", false, false)]
+    [InlineData("Thinking", false, false)]
+    [InlineData("Responding", false, false)]
+    [InlineData("Running exec", false, false)]
+    [InlineData("Waiting for approval", true, true)]
+    [InlineData("Retrying the model request", false, true)]
+    [InlineData("Compacting context", false, false)]
+    [InlineData("Waiting for your answer", true, false)]
+    [InlineData("Waiting for subagents", true, false)]
+    public void RunProgress_ClawReplacesOrdinaryStatusButKeepsExceptionalStatus(string label, bool waiting, bool expected)
+    {
+        var progress = new ChatRunProgressPresentation(Start, null, label, true, waiting);
+        Assert.Equal(expected, ChatRunProgressProjection.ShowStatus(progress));
+    }
+
+    [Theory]
+    [InlineData(0, "0")]
+    [InlineData(1, "1")]
+    [InlineData(999, "999")]
+    [InlineData(1000, "1k")]
+    [InlineData(5371, "5.4k")]
+    [InlineData(12345, "12.3k")]
+    [InlineData(1000000, "1M")]
+    [InlineData(1150, "1.1k")]
+    [InlineData(5350, "5.3k")]
+    [InlineData(999950, "1M")]
+    [InlineData(1000000000, "1B")]
+    public void RunProgress_UsesWebCompactTokenCounts(long tokens, string expected) =>
+        Assert.Equal(expected, ChatRunProgressProjection.CompactTokens(tokens));
+
     [Theory]
     [InlineData("[[reply_to_current]]\nChecking.", "Checking.")]
     [InlineData("[[ audio_as_voice ]] **no_reply**", "")]
@@ -628,7 +715,7 @@ public sealed class ChatStreamingParityTests
 
         Assert.Equal(retryAt, progress.RetryAt?.ToUnixTimeMilliseconds());
         Assert.Equal("Retrying in 5s", ChatRunProgressProjection.RetryLabelText(progress, Start.AddSeconds(25), Localize));
-        Assert.Equal(ChatRunProgressProjection.RetryLabel,
+        Assert.Equal("Retrying\u2026",
             ChatRunProgressProjection.RetryLabelText(progress, Start.AddSeconds(31), Localize));
 
         state = ChatTimelineReducer.Apply(state, new ChatMessageDeltaEvent("back"), Start.AddSeconds(31));
@@ -812,4 +899,18 @@ public sealed class ChatStreamingParityTests
     private static AgentEventInfo Event(string stream, string data, int seq = 1) =>
         new() { SessionKey = "session", RunId = "r", Seq = seq, Stream = stream, Ts = 100000,
             Data = JsonDocument.Parse(data).RootElement.Clone() };
+    [Fact]
+    public void RunUsage_UnavailableClearsOnlyTheCurrentSequenceFencedCounter()
+    {
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatThinkingEvent("", "r"), Start);
+        state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("r", 120, 8));
+        var unavailable = ChatEventMapper.Map(Event("usage", """{"usageReport":{"state":"unavailable"}}""", 9)).Event;
+        Assert.NotNull(unavailable);
+        state = ChatTimelineReducer.Apply(state, unavailable);
+        Assert.Null(state.RunUsage!.OutputTokens);
+        state = ChatTimelineReducer.Apply(state, new ChatRunUsageEvent("r", 999, 8));
+        Assert.Null(state.RunUsage!.OutputTokens);
+    }
+
+
 }

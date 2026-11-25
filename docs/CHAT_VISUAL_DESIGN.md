@@ -462,14 +462,33 @@ Like the web `coalesceActivityRuns`, tool rows and groups that nothing visible
 separates read as one log even across runs, so a burst of heartbeat calls is one
 group; recorded nesting still never crosses a run. Two or more such calls render
 as one collapsed summary row that counts operations per category in web order,
-then failures (errors only; a stopped call reads Interrupted on its row), for example
-`3 commands · 2 reads · 1 other operation · 1 subagent · 1 failed`. Raw snake_case
+then supplied blocked and unknown counts, for example
+`3 commands · 2 reads · 1 other operation · 1 subagent · 1 blocked`.
+Failed and skipped badges belong to individual rows, not either group-header state;
+legacy stopped calls retain Interrupted on their row. Raw snake_case
 tool names read as titles (`heartbeat_respond` is "Heartbeat Respond"), like the
 web `defaultTitle`. A launch counts as a
 subagent only when it started one; failed launches and launches that opened
-their own session count as other operations. Routine bookkeeping (yields, plan
-progress, process polls and message reactions) is left out of the counts unless
-nothing else remains. A single call keeps its own step row titled like the web
+their own session count as other operations. When the Gateway supplies activity,
+counts use its command-bearing and hide/suppress facts, correlated by message and
+call identity. Complete canonical records replace their prior item, rather than
+carrying omitted start fields into a terminal snapshot. Live presentation retains
+at most 128 item records per invocation; distinct suppressed items cannot hide a
+visible sibling record. Suppression is filtered before call-ID deduplication,
+and hiding afterward. Canonical lists do not count unrepresented legacy calls.
+Sparse legacy hints do not assert a canonical list or suppress unrelated legacy
+siblings. Missing-status canonical records count as unknown except when the
+producer marks the call unpaired; sparse hints and authoritative absence do not
+replace a known row outcome with unknown. Aggregate unknown accounting is separate
+from individual cards, which retain their actual terminal result. Sparse blocked
+items keep their blocked label even when the reducer records their error-like end.
+Older groups without canonical activity retain the legacy routine-name fallback.
+Malformed sidecar records are excluded. A fully hidden summary reads **Raw details**.
+Both collapsed and expanded group headers omit failed/skipped counts. Those
+badges become visible on individual rows when the group opens. Blocked and unknown
+remain visible beside a selected headline too. These hints never change execution
+outcome or run admission.
+A single call keeps its own step row titled like the web
 `ToolRowContent`: `Read SKILL.md`, `Edited`/`Wrote`/`Created`/`Changed` for
 mutations (patches name one file or `N files`), `Searched` and `Fetched` with
 their target, a shell tool's own title or `$ command` with leading `cd`, `set`,
@@ -487,8 +506,9 @@ read, search and fetch rows add their dimmed directory or scope, capped at
 whose text was cut for display shows its input preview instead of a partial file
 summary. Other calls show their input preview. Fields outside the persisted
 display arguments come from the redacted tool input. A row's accessible name is
-its displayed title and state. A single row the user opened stays open when the
-next call turns it into a group. Failed and interrupted steps stay
+its displayed title and state. Card and group disclosures have independent
+expansion identities: a group starts collapsed even if its first card was open.
+Failed and interrupted steps stay
 inside their group, where the step row shows a muted inline `failed` instead of
 a trailing status. Calls with provider reviews or input still being prepared
 keep their standalone disclosure so the review and live diff stay visible.
@@ -509,9 +529,32 @@ A call the Gateway records as wrapping others (`parentToolCallId`, same run)
 lists its nested calls first when expanded, then its own input behind a
 collapsed **Tool input** disclosure, like the web `groupToolCalls` tree. Links
 are never inferred; ambiguous identities and cycles stay top-level. Group
-counts include nested calls instead of a completed wrapper, except when all its
-nested calls are routine, as in the web `resolveCompletedActivityWrappers`. Each layer keeps its own
-expansion key, so opening a group never opens its first row.
+counts use producer activity visibility when supplied. For legacy payloads,
+only a visible counted child can replace a completed wrapper. Group headers retain
+blocked and unknown counts in both disclosure states; failed and skipped badges
+stay on individual rows and become visible when the group opens. Each layer keeps
+its own expansion key, so opening a group never opens its first row.
+
+Activity headlines follow the normal-mode policy rechecked against Gateway
+2026.11.8 (UI commit `2d4ab292114df2ab9670c91c9b846f701c565bd7`, package
+2026.11.11080.0): use only the current run's visible calls, prefer an urgent final step or
+last running step, and retain the last completed step while that run stays active.
+Only the latest visible current-run activity owns a group headline, including
+when that latest activity is a standalone call. Headline visibility filters hidden
+and suppressed item records before call-ID deduplication, separately from aggregate
+counts. Canonical authority is decided within the current run, so an earlier run
+cannot disable the current run's legacy fallback. A visible wrapper owns its nested
+steps' headline. Canonical summary (only without status), a labeled subagent,
+metadata, then a title supply bounded, redacted, single-line text. A default tool
+title is suppressed only when canonical status is present. Generic legacy
+row text is a fallback only when no canonical activity was supplied. A running headline
+ends in an ellipsis without a separate Running badge and uses its tool glyph
+(or terminal for command-bearing activity). Fast step changes dwell for three
+seconds; failure, scope changes and same-call status updates apply immediately.
+`ChatToolActivityHeadlineState` owns selection and dwell; `ToolActivityCard` owns
+the disposable one-shot refresh timer. This is source-derived behavior, not
+proof of pixel-identical rendering or complete cross-client transcript parity.
+
 The last transcript row keeps a 70-pixel bottom inset above the composer: the
 64-pixel transcript fade plus 6 pixels, as in the web thread padding, so the
 settled tail is fully opaque. `ChatTranscriptFade` redirects only the bottom
@@ -714,8 +757,11 @@ reply row ends it, while a replayed reply snapshot with unchanged text does not.
 A saved thought stays streaming until the turn ends, but only the reducer's
 active reasoning row shimmers. "Responding" appears only while the
 active reply is the newest row, so an earlier reply preamble does not relabel
-running tools. The footer shows the status and elapsed time on one line; the
-status trims before the elapsed time. When the phase changes, the old line rises
+running tools. The ordinary phase remains accessible but is visually represented
+by the claw, followed by compact output tokens and elapsed time (for example,
+`5.4k output tokens · 6m 28s`). Exceptional visible statuses retain their label;
+approval waits omit elapsed time. The accessible phase remains available even
+before timing or token details arrive. When a visible phase changes, the old line rises
 one line height and fades out while the new line rises in from below, in 220 ms,
 on composition visuals clipped to the row, so layout, focus and the XAML tree do
 not move. The leaving line rests hidden between swaps. A phase change during a
@@ -956,8 +1002,21 @@ The 18-pixel working claw uses the upstream filled SVG paths, jaw pivot
 All twelve seeded one-shot surprise motions retain their upstream order,
 5% selection threshold and 4.8-second delay. `ChatWorkingClawMotion` is the pure
 motion table; `NativeWorkingClaw` owns native rendering and its unload cleanup.
-The row enters over 200 milliseconds and displays elapsed time plus known output
-tokens. Phase remains in its accessible name without a per-second live-region
+The row enters over 200 milliseconds and displays known compact output tokens
+before elapsed time, using lowercase `k` and uppercase `M`. The singular token
+label is localized separately. Formatting follows JavaScript binary64 rounding,
+including rounded thousand-to-million carry and billion suffixes. A sequenced
+unavailable usage report clears the current counter without letting an older
+report restore it. For a live-observed continuation, the timeline retains at most
+64 admitted per-run usage snapshots. The progress projection aggregates only
+identity-confirmed successful `sessions_yield` runs behind an observed request
+boundary with a positive timestamp; any unexplained run vetoes membership.
+Missing member usage stays unknown instead of guessing from session totals.
+History replacement preserves the existing timeline lifetime and usage fences.
+Historical totals cannot be reconstructed if their usage reports were never
+observed. Before tokens arrive, a known session/run pair uses the web's
+30-second working-phrase delay and 45-second deterministic cycle, with native
+resources in each supported locale. Phase remains in its accessible name without a per-second live-region
 announcement. Elapsed units, fallback-model status and incomplete-stream recovery
 copy use native localized resources. Shared recovery events carry a stable reason
 code so the native mapper does not translate arbitrary Gateway messages.

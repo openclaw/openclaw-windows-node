@@ -1568,8 +1568,12 @@ public sealed class ChatTimelinePresentationTests
         Assert.DoesNotContain(".BorderThickness(", detail);
         Assert.DoesNotContain(".Background(", detail);
         Assert.Contains(".AutomationName(label)", detail);
-        var cardStart = renderer.IndexOf("var outcome = entry.ToolResult switch", StringComparison.Ordinal);
-        var card = renderer[cardStart..renderer.IndexOf(".WithKey(\"details-card\")", cardStart, StringComparison.Ordinal)];
+        var cardStart = renderer.IndexOf("var outcome =", StringComparison.Ordinal);
+        Assert.True(cardStart >= 0, "The shared details outcome projection must be present.");
+        var cardEnd = renderer.IndexOf(".WithKey(\"details-card\")", cardStart, StringComparison.Ordinal);
+        Assert.True(cardEnd > cardStart, "The details card must follow its shared outcome projection.");
+        var card = renderer[cardStart..cardEnd];
+        Assert.Contains("OutcomeLabel(entry)", card);
         Assert.Contains("\"Chat_Tool_Completed\", \"Completed\"", card);
         Assert.Contains("\"Chat_Tool_FailedInline\", \"failed\"", card);
         Assert.Contains(".HAlign(HorizontalAlignment.Right)", card);
@@ -1604,7 +1608,7 @@ public sealed class ChatTimelinePresentationTests
         var renderer = File.ReadAllText(Path.Combine(chat, "ToolCallCardRenderer.cs"));
         Assert.Contains("BuildRowTitle(title, detail, entry.ToolResult is null or ChatToolCallStatus.InProgress,", renderer);
         Assert.Contains("ChatVisuals.ActivityText(title, running)", renderer);
-        Assert.Contains("ChatVisuals.ActivityText(headlineText, summary.IsRunning)", renderer);
+        Assert.Contains("ChatVisuals.ActivityText(headlineText, headlineRunning)", renderer);
         Assert.Contains(".OnUnmount(ChatVisuals.StopToolRowShimmers)", renderer);
         var progress = File.ReadAllText(Path.Combine(chat, "ReactorRunProgress.cs"));
         Assert.Contains("ChatVisuals.ActivityText(label, progress.Active && !progress.Waiting)", progress);

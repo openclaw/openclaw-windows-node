@@ -1953,6 +1953,7 @@ public sealed record ChatMessageReadResult(ChatMessageReadStatus Status, ChatMes
 
 public class ChatToolContentInfo
 {
+    public ChatToolActivityFacts? ActivityFacts { get; set; }
     public ChatToolContentKind Kind { get; set; }
     public string? CallId { get; set; }
     /// <summary>Recorded call ID of the wrapping tool call (Gateway <c>parentToolCallId</c>); never inferred.</summary>

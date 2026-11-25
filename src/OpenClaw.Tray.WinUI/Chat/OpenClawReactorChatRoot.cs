@@ -422,7 +422,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 effectiveThread is not null && questionSnapshot?.Prompts.Any(prompt =>
                     prompt.Request.Status == "pending" && ChatQuestionCoordinator.Matches(
                         prompt.Request, effectiveThread.Id, effectiveThread.AgentId)) == true,
-                awaitingSubagents: isGatewayConnected && effectiveThread?.WaitingForSubagents == true),
+                awaitingSubagents: isGatewayConnected && effectiveThread?.WaitingForSubagents == true, metadata: entryMetadata),
             fileDownloader,
             Session: effectiveThread,
             ShowReasoning: showChatThinking &&
