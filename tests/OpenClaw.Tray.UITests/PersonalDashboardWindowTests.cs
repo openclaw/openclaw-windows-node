@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.Web.WebView2.Core;
@@ -54,7 +55,11 @@ public sealed class PersonalDashboardWindowTests(UIThreadFixture ui)
             <!doctype html><meta charset="utf-8"><title>Native authentication fixture</title>
             <script>
             window.fixtureReplies = [];
-            window.OpenClawNativeGatewayAuth.onmessage = e => fixtureReplies.push(JSON.parse(e.data));
+            window.OpenClawNativeGatewayAuth.onmessage = e => {
+              const reply = JSON.parse(e.data);
+              fixtureReplies.push(reply);
+              window.chrome.webview.postMessage({ fixtureReplyId: reply.id });
+            };
             </script>
             """);
         var contract = DispatchProxy.Create<IGatewayConnectionManager, ManagerProxy>();
@@ -87,12 +92,21 @@ public sealed class PersonalDashboardWindowTests(UIThreadFixture ui)
 
     private static async Task WaitForReplyAsync(CoreWebView2 core, string id)
     {
-        var deadline = DateTime.UtcNow.AddSeconds(10);
-        while (await core.ExecuteScriptAsync($"fixtureReplies.some(x=>x.id==='{id}')") != "true")
+        var reply = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnReply(object? sender, CoreWebView2WebMessageReceivedEventArgs args)
         {
-            Assert.True(DateTime.UtcNow < deadline, "Native browser reply did not arrive.");
-            await Task.Delay(25);
+            using var message = JsonDocument.Parse(args.WebMessageAsJson);
+            if (message.RootElement.ValueKind == JsonValueKind.Object &&
+                message.RootElement.TryGetProperty("fixtureReplyId", out var replyId) && replyId.GetString() == id)
+                reply.TrySetResult();
         }
+        core.WebMessageReceived += OnReply;
+        try
+        {
+            if (await core.ExecuteScriptAsync($"fixtureReplies.some(x=>x.id==='{id}')") == "true") return;
+            await reply.Task.WaitAsync(TestSupport.RenderedConditionTimeout);
+        }
+        finally { core.WebMessageReceived -= OnReply; }
     }
 
     public class ManagerProxy : DispatchProxy

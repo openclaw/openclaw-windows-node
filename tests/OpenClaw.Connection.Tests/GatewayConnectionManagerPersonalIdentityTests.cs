@@ -87,7 +87,7 @@ public sealed class GatewayConnectionManagerPersonalIdentityTests
         Assert.Equal("users.self", self.GetProperty("method").GetString());
         Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
         await peer.SelfAsync(self);
-        Assert.Equal("person-42", (await renewed.Task.WaitAsync(TimeSpan.FromSeconds(5))).IdentityProfileId);
+        Assert.Equal("person-42", (await renewed.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout)).IdentityProfileId);
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class GatewayConnectionManagerPersonalIdentityTests
         await using var harness = new Harness();
         var first = await harness.HelloAsync();
         Assert.Equal("users.self", (await first.ReceiveAsync()).GetProperty("method").GetString());
-        await harness.Manager.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await harness.Manager.DisconnectAsync().WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
         Assert.Null(harness.Manager.CurrentPersonalOperatorLease);
         var second = await harness.HelloAsync();
         var self = await second.ReceiveAsync();
@@ -143,7 +143,7 @@ public sealed class GatewayConnectionManagerPersonalIdentityTests
         var oldLease = harness.Manager.CurrentPersonalOperatorLease;
         var signing = harness.Manager.CreatePersonalBrowserAuthResponseAsync("browser-nonce", DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
         Assert.Equal("users.self", (await first.ReceiveAsync()).GetProperty("method").GetString());
-        await harness.Manager.DisconnectAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await harness.Manager.DisconnectAsync().WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
         var replacement = await harness.HelloAsync();
         await replacement.SelfAsync(await replacement.ReceiveAsync(), "replacement-person");
         await harness.WaitAsync(RoleConnectionState.Connected);
@@ -203,7 +203,7 @@ public sealed class GatewayConnectionManagerPersonalIdentityTests
             try
             {
                 if (Manager.CurrentSnapshot.OperatorState == state) return;
-                await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await changed.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
             }
             finally { Manager.StateChanged -= OnState; }
         }

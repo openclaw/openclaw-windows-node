@@ -69,9 +69,9 @@ public sealed class PersonalTailscaleMediaTests
         client.SelfProfileChanged += (_, _) => invalidated.TrySetResult();
         var media = client.ResolveAssistantMediaAsync("main", Legacy());
         await SelfAsync(peer);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await entered.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
         await peer.ProfileChangedAsync();
-        await invalidated.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await invalidated.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
         release.TrySetResult();
         Assert.Equal(AssistantMediaResolutionStatus.Unavailable, (await media).Status);
         Assert.Single(handler.Requests);
@@ -90,7 +90,7 @@ public sealed class PersonalTailscaleMediaTests
         await client.ConnectAsync();
         await peer.ChallengeAsync();
         await peer.HelloAsync(await peer.ReceiveAsync());
-        await hello.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await hello.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
         var epoch = client.PersonalHandshakeConnectionEpoch!.Value;
         var self = client.ReadPersonalIdentityAsync(epoch);
         await SelfAsync(peer);

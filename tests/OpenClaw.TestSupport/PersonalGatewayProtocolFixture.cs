@@ -13,6 +13,9 @@ namespace OpenClaw.TestSupport;
 public sealed class PersonalGatewayProtocolFixture : IAsyncDisposable
 {
     public const string Route = "wss://protocol.example.ts.net";
+    public static TimeSpan StepTimeout { get; } =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_TEST_GATEWAY_STEP_TIMEOUT_SECONDS"), out var seconds)
+        && seconds > 0 ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(15);
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _lifetime = new();
     private readonly Task<WebSocket> _socket;
@@ -68,7 +71,7 @@ public sealed class PersonalGatewayProtocolFixture : IAsyncDisposable
     });
 
     public async Task<JsonElement> ReceiveAsync() =>
-        await _frames.Reader.ReadAsync(_lifetime.Token).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        await _frames.Reader.ReadAsync(_lifetime.Token).AsTask().WaitAsync(StepTimeout);
 
     private async Task PumpAsync(WebSocket socket)
     {
@@ -103,7 +106,7 @@ public sealed class PersonalGatewayProtocolFixture : IAsyncDisposable
 
     public async Task SendAsync(object value)
     {
-        var socket = await _socket.WaitAsync(TimeSpan.FromSeconds(5));
+        var socket = await _socket.WaitAsync(StepTimeout);
         await socket.SendAsync(new ArraySegment<byte>(JsonSerializer.SerializeToUtf8Bytes(value)), WebSocketMessageType.Text, true, _lifetime.Token);
     }
 

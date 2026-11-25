@@ -24,7 +24,7 @@ public sealed class PersonalTailscaleGatewayClientTests
         Assert.Equal("ui", parameters.GetProperty("client").GetProperty("mode").GetString());
         Assert.False(string.IsNullOrWhiteSpace(parameters.GetProperty("device").GetProperty("signature").GetString()));
         await peer.HelloAsync(connect);
-        await hello.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await hello.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
         Assert.False(client.IsConnectedToGateway);
         Assert.Null(client.SessionMutationConnectionEpoch);
         var epoch = Assert.IsType<long>(client.PersonalHandshakeConnectionEpoch);
@@ -65,8 +65,8 @@ public sealed class PersonalTailscaleGatewayClientTests
         await peer.ChallengeAsync();
         var connect = await peer.ReceiveAsync();
         await peer.HelloAsync(connect, method, scope);
-        await failed.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(GatewayErrorKind.PersonalIdentityUnverified, await failureKind.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await failed.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout);
+        Assert.Equal(GatewayErrorKind.PersonalIdentityUnverified, await failureKind.Task.WaitAsync(PersonalGatewayProtocolFixture.StepTimeout));
         Assert.Null(client.PersonalHandshakeConnectionEpoch);
         Assert.False(client.IsConnectedToGateway);
     }
