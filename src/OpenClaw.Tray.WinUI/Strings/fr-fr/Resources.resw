@@ -24,6 +24,8 @@
   <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Ouvrir les notifications</value></data>
   <data name="DesktopCompanion_Open" xml:space="preserve"><value>Ouvrir OpenClaw</value></data>
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Taille du homard</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>Afficher uniquement lorsque les autres fenêtres OpenClaw sont réduites</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>Masquer lorsque la configuration ou la fenêtre de chat/tableau de bord est visible.</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Redimensionnez le homard sans modifier le texte du chat ni des notifications.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Paramètres du homard de bureau</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Le homard de bureau n'a pas pu être affiché. Désactivez puis réactivez Homard de bureau dans les paramètres pour réessayer. Vos notifications restent disponibles dans OpenClaw.</value></data>
@@ -2830,16 +2832,85 @@ Utilisez l'une de ces options :
     <value>Terminé</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>HISTORIQUE COMPACTÉ</value>
+    <value>Contexte compacté</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} jetons · {2} économisés</value>
+    <value>{0} jetons économisés ({1} %)</value>
   </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>La transcription compactée est conservée en tant que point de contrôle. Ouvrez les points de contrôle de la session pour créer une branche ou restaurer cette vue compactée.</value>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>Système</value>
   </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>Ouvrir les points de contrôle</value>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>Automatisation</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>Système · récupération de l’automatisation</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>Échec de l’automatisation.</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>Système · Gateway redémarré</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>Système · contexte injecté</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>Système · tâche en arrière-plan</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>Modèle de secours : {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>Retour au modèle sélectionné : {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>Raison : {0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>Impossible de terminer cette réponse</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} n’a pas accepté les identifiants enregistrés</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} signale un problème de facturation</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} fois</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>Copier l’erreur</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>Détails de l’erreur</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>Créée</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>Mise à jour</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>Archivée</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>Restaurée</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>Appris</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>Annulation…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>Annulée</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>Impossible d’annuler la modification de la compétence. Réessayez.</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>Nouvelle session</value>
@@ -3244,6 +3315,12 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>La connexion a été interrompue avant que la passerelle accepte ce message.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Impossible de confirmer si le message a été envoyé. Vérifiez la conversation avant de réessayer.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>Cette conversation est occupée. Votre brouillon est toujours là ; réessayez lorsqu'elle sera disponible.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Échec de l'abandon</value>
   </data>
@@ -3254,7 +3331,7 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
     <value>L'assistant a répondu</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Connexion perdue: réponse interrompue.</value>
+    <value>Connexion perdue pendant l’attente de la réponse. Vérifiez la conversation avant de renvoyer le message.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Événement de chronologie de passerelle ignoré</value>
@@ -6328,7 +6405,6 @@ Ouvrir Canaux dans le tableau de bord web.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 message en attente</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copié</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Échec de la copie</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Texte du message</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Niveau d'effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Plus rapide</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Plus approfondi</value></data>
@@ -7295,6 +7371,19 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Cette session n'est plus vide, donc le choix d'emplacement en attente a été annulé. Vérifiez la session et envoyez à nouveau pour continuer à son emplacement actuel.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>Le Gateway n'a pas confirmé le modèle ou les options de raisonnement sélectionnés. Vérifiez-les et réessayez.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>Le Gateway n'a pas pu créer la nouvelle conversation. Vérifiez la connexion et réessayez.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>Le Gateway a peut-être créé cette conversation, mais sa réponse n'a pas été confirmée. Ce brouillon ne peut donc pas être envoyé. Ouvrez la conversation depuis la liste des sessions si elle y apparaît, ou démarrez une nouvelle conversation.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>Le choix de l'emplacement n'est pas disponible. Cette conversation utilisera l'emplacement par défaut du Gateway.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Envoyez un message pour créer cette conversation avant d'utiliser les commandes de cycle de vie.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Actualiser les questions</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Réponse envoyée</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Question annulée</value></data>
@@ -7779,6 +7868,9 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Impossible de charger la sortie complète.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>La sortie complète nécessite l’identité du résultat enregistré et un compte actuel vérifié.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Afficher la sortie complète</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>Sortie supplémentaire disponible</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} lignes supplémentaires</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} ligne supplémentaire</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Réessayer</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuler</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nouveaux messages. Aller aux plus récents</value></data>
@@ -9008,6 +9100,54 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   </data>
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>Les widgets {0} ne sont pas encore disponibles sur Windows.</value>
+  </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>Progression de la session</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>Vous n’avez plus accès à la progression de cette session.</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>Aucune progression pour le moment</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>Les détails apparaîtront ici lorsque la session les communiquera.</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>Impossible d’actualiser la progression.</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>Chargement de la progression</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>Affichage de la dernière progression reçue. La dernière actualisation a échoué.</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>Terminé</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>En cours</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>En attente</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>{0} : {1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>{0} étape(s) sur {1} terminée(s)</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>Progression indisponible</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>Cette connexion ne peut pas lire les données de progression depuis la passerelle.</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>Mis à jour le {0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>Heure de mise à jour indisponible</value>
   </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>Ce rapport contient des données non valides.</value>

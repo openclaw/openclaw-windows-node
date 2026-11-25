@@ -12,8 +12,41 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using static Microsoft.UI.Reactor.Factories;
+using Windows.Foundation;
 
 namespace OpenClawTray.Chat;
+
+internal sealed class ChatDisclosureCloseTimerSet
+{
+    private readonly Dictionary<string, IDisposable> _timers = new(StringComparer.Ordinal);
+
+    internal void Schedule(string key, TimeSpan delay, Action action)
+    {
+        Cancel(key);
+        IDisposable? timer = null;
+        timer = DispatcherQueue.GetForCurrentThread().Schedule(delay, () =>
+        {
+            if (timer is null || !_timers.TryGetValue(key, out var current) || !ReferenceEquals(current, timer))
+                return;
+            _timers.Remove(key);
+            action();
+        });
+        _timers[key] = timer;
+    }
+
+    internal void Cancel(string key)
+    {
+        if (_timers.Remove(key, out var timer))
+            timer.Dispose();
+    }
+
+    internal void CancelAll()
+    {
+        foreach (var timer in _timers.Values)
+            timer.Dispose();
+        _timers.Clear();
+    }
+}
 
 /// <summary>
 /// Mounts the native Reactor chat tree into the existing XAML chat target.
@@ -33,14 +66,35 @@ public static class ReactorChatHostExtensions
         var timer = dispatcher.CreateTimer();
         timer.Interval = delay;
         timer.IsRepeating = false;
-        timer.Tick += (_, _) => action();
-        timer.Start();
-        return new TimerLease(timer);
+        return new TimerLease(timer, action);
     }
 
-    private sealed class TimerLease(DispatcherQueueTimer timer) : IDisposable
+    private sealed class TimerLease : IDisposable
     {
-        public void Dispose() => timer.Stop();
+        private readonly DispatcherQueueTimer _timer;
+        private readonly TypedEventHandler<DispatcherQueueTimer, object> _tick;
+        private bool _disposed;
+
+        internal TimerLease(DispatcherQueueTimer timer, Action action)
+        {
+            _timer = timer;
+            _tick = (_, _) =>
+            {
+                Dispose();
+                action();
+            };
+            timer.Tick += _tick;
+            timer.Start();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+            _disposed = true;
+            _timer.Stop();
+            _timer.Tick -= _tick;
+        }
     }
 
     /// <summary>Builds the reset-confirmation dialog closure and creates one
@@ -62,7 +116,10 @@ public static class ReactorChatHostExtensions
         Action? onSessionNavigationStarting = null,
         Action<string, string?>? onSessionSelected = null,
         Action<string>? onSpeechTargetChanged = null,
-        Func<IDisposable>? beginModal = null)
+        Func<IDisposable>? beginModal = null,
+        Action<string>? onSessionCreated = null,
+        Action<string, string>? onSessionPromoted = null,
+        Action? onComposerChanged = null)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(composerFactory);
@@ -104,7 +161,10 @@ public static class ReactorChatHostExtensions
             onSessionNavigationStarting,
             onSessionSelected,
             SandboxSettingsNavigation: onSandboxSettingsClick,
-            SpeechTargetChanged: onSpeechTargetChanged);
+            SpeechTargetChanged: onSpeechTargetChanged,
+            SessionCreated: onSessionCreated,
+            SessionPromoted: onSessionPromoted,
+            ComposerChanged: onComposerChanged);
         return composerFactory.Create(provider, hostActions, initialMuted);
     }
 
@@ -117,7 +177,6 @@ public static class ReactorChatHostExtensions
         string? initialThreadId = null,
         Func<string, Task>? onReadAloud = null,
         Action? onStopSpeaking = null,
-        Action<string>? onOpenCheckpoints = null,
         bool initialThreadIsExplicitSelection = true,
         IChatAgentRosterSource? agentRosterSource = null,
         string userDisplayName = "",
@@ -149,7 +208,6 @@ public static class ReactorChatHostExtensions
                 initialThreadId,
                 onReadAloud,
                 onStopSpeaking,
-                onOpenCheckpoints,
                 InitialThreadIsExplicitSelection: initialThreadIsExplicitSelection,
                 AgentRosterSource: agentRosterSource,
                 UserDisplayName: userDisplayName,
@@ -203,10 +261,15 @@ public sealed class MountedReactorChat(
     }
 
     internal string? CurrentThreadId => session.ViewModel.Inputs?.CurrentThread.Id;
+    internal bool HasUnsentComposerContent => session.Controller.HasUnsentComposerContent;
 
     internal ChatConversationPanelState ConversationPanels => props.Panels;
 
     internal bool TrySelectSession(string sessionKey) => session.Controller.TrySelectSession(sessionKey);
+
+    internal void RegisterDraft(ChatDraft draft) => session.Controller.RegisterDraft(draft);
+
+    internal void MarkCreatedSession(string sessionKey) => session.Placement?.MarkCreatedSession(sessionKey);
 
     internal void InvalidatePendingSessionNavigation() => session.Controller.InvalidatePendingSessionNavigation();
 

@@ -21,6 +21,72 @@ namespace OpenClaw.Tray.UITests;
 public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
 {
     [Fact]
+    public Task AutomaticHide_ClosesBubbleButRetainsMountedMascotAndDesktopAnchor() =>
+        WithWindowAsync(async window =>
+        {
+            var host = Assert.IsType<ReactorHostControl>(window.Content);
+            var mascot = Mascot(host);
+            var view = (IDesktopCompanionView)window;
+            var hideRequests = 0;
+            window.HideRequested += (_, _) => hideRequests++;
+            window.Present(new() { Title = "Visible", Message = "Hide with the lobster." });
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot).Any(popup => popup.IsOpen),
+                "lobster notification popup");
+            var anchor = new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
+                window.AppWindow.Position.Y + window.AppWindow.Size.Height);
+            view.Hide();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => !window.AppWindow.IsVisible &&
+                    !VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot).Any(popup => popup.IsOpen),
+                "lobster and popup hidden");
+            view.Show();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && Assert.IsType<TranslateTransform>(host.RenderTransform).Y == 0,
+                "same lobster restored through the bottom frame");
+            Assert.Same(host, window.Content);
+            Assert.Same(mascot, Mascot(host));
+            Assert.Equal(anchor, new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
+                window.AppWindow.Position.Y + window.AppWindow.Size.Height));
+            Assert.Equal(0, hideRequests);
+            Assert.DoesNotContain(VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot), popup => popup.IsOpen);
+        });
+
+    [Fact]
+    [Trait("Category", "AnimationPreferenceEnabled")]
+    public Task AnimatedRestore_ReversesAProgressedExitWithoutALateHide() =>
+        WithWindowAsync(async window =>
+        {
+            Assert.True(new Windows.UI.ViewManagement.UISettings().AnimationsEnabled,
+                "This regression requires native animations enabled.");
+            var host = Assert.IsType<ReactorHostControl>(window.Content);
+            var mascot = Mascot(host);
+            var translation = Assert.IsType<TranslateTransform>(host.RenderTransform);
+            var view = (IDesktopCompanionView)window;
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => translation.Y == 0, "initial entrance completes");
+            view.Hide();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && translation.Y > 0 && translation.Y < mascot.ActualHeight,
+                "exit has progressed before reversing it",
+                () => $"Y={translation.Y}, MascotHeight={mascot.ActualHeight}, Visible={window.AppWindow.IsVisible}");
+            Assert.True(window.AppWindow.IsVisible);
+            Assert.True(translation.Y > 0 && translation.Y < mascot.ActualHeight,
+                "Restore must interrupt an exit, not show an already hidden window.");
+            view.Show();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && translation.Y == 0,
+                "reversed entrance completes");
+            var observation = System.Diagnostics.Stopwatch.StartNew();
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+            {
+                Assert.True(window.AppWindow.IsVisible);
+                Assert.Equal(0, translation.Y);
+                return observation.Elapsed >= TestSupport.NegativeObservationTimeout;
+            }, "superseded exit cannot hide the restored lobster");
+        });
+
+    [Fact]
     public Task QuickChat_AndNotificationsUseTheSameCompactBubbleInset() =>
         WithWindowAsync(async window =>
         {

@@ -32,6 +32,8 @@ public record class SettingsData
     public bool ShowNotifications { get; set; } = true;
     /// <summary>Desktop mascot, enabled by default. Notification text is visible outside the app when enabled.</summary>
     public bool ShowDesktopCompanion { get; set; } = true;
+    /// <summary>Show the lobster only while all owned workspace and setup windows are minimized or closed.</summary>
+    public bool DesktopCompanionOnlyWhenMinimized { get; set; } = true;
     public int DesktopCompanionScalePercent { get; set; } = DesktopCompanionScale.DefaultPercent;
     public string? NotificationSound { get; set; }
     public bool NotifyHealth { get; set; } = true;
@@ -196,7 +198,7 @@ public record class SettingsData
     /// </summary>
     public bool ShowCompletedSessions { get; set; } = false;
     public string AppTheme { get; set; } = "System";
-    /// <summary>Gateway theme and backdrop choice; null keeps the Windows default look with Mica.</summary>
+    /// <summary>Companion appearance choices; null keeps the Windows default look with Mica.</summary>
     public Themes.AppearanceSettings? Appearance { get; set; }
     public bool? ShowDiagnostics { get; set; }
     /// <summary>

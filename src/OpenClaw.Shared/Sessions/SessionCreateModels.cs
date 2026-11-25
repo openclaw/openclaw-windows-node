@@ -22,6 +22,9 @@ public sealed class SessionCreateResult
 
     /// <summary>False when the connected gateway does not implement <c>sessions.create</c>.</summary>
     public bool IsSupported { get; init; } = true;
+
+    /// <summary>True when the request may have committed but no terminal response was observed.</summary>
+    public bool OutcomeUncertain { get; init; }
 }
 
 /// <summary>Terminal result of <c>sessions.reset</c>.</summary>

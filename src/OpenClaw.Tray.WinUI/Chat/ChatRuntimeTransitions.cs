@@ -123,6 +123,7 @@ internal sealed record ChatOpenedLifecycleTransition(
 
 internal sealed record ChatSendCommit(
     bool IsCurrent,
+    bool IsResetCurrent,
     ChatDataSnapshot? AcceptedSnapshot,
     ChatDataSnapshot? RequeuedSnapshot,
     string? StaleRunIdToAbort,

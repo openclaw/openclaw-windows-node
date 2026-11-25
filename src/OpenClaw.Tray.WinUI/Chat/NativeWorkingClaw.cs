@@ -23,6 +23,7 @@ internal sealed class NativeWorkingClaw : Control
     private readonly CompositeTransform _flex = new() { CenterX = 9, CenterY = 9 };
     private readonly ScaleTransform _flip = new() { CenterX = 9, CenterY = 9 };
     private readonly ScaleTransform _sparkScale = new() { CenterX = 5.5, CenterY = 5.5 };
+    private Matrix3DProjection? _projection;
     private readonly TextBlock _spark = new()
     {
         Text = "\u2726", FontSize = 11, Width = 11, Height = 14, Opacity = 0,
@@ -132,13 +133,12 @@ internal sealed class NativeWorkingClaw : Control
             var matrix = Matrix4x4.CreateTranslation(-9, -9, 0)
                 * Matrix4x4.CreateRotationY((float)(sample.Body.RotationY * Math.PI / 180))
                 * perspective * Matrix4x4.CreateTranslation(9, 9, 0);
-            _body.Projection = new Matrix3DProjection
-            {
-                ProjectionMatrix = new Matrix3D(matrix.M11, matrix.M12, matrix.M13, matrix.M14,
-                    matrix.M21, matrix.M22, matrix.M23, matrix.M24,
-                    matrix.M31, matrix.M32, matrix.M33, matrix.M34,
-                    matrix.M41, matrix.M42, matrix.M43, matrix.M44),
-            };
+            var projection = _projection ??= new Matrix3DProjection();
+            projection.ProjectionMatrix = new Matrix3D(matrix.M11, matrix.M12, matrix.M13, matrix.M14,
+                matrix.M21, matrix.M22, matrix.M23, matrix.M24,
+                matrix.M31, matrix.M32, matrix.M33, matrix.M34,
+                matrix.M41, matrix.M42, matrix.M43, matrix.M44);
+            _body.Projection = projection;
         }
     }
 }
