@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
+using OpenClaw.Shared.IO;
 
 namespace OpenClaw.SetupEngine;
 
@@ -16,7 +17,7 @@ public static class GatewayPackageCleanup
 
     public static Task<bool> InitializeAsync(ICommandRunner commands, string dataDir, string localDataDir,
         CancellationToken ct = default, Func<string, bool>? preserve = null) =>
-        InitializeAsync((register, keep) => RunAsync(commands, register, null, null, false, ct, preserve: keep),
+        InitializeAsync((register, keep) => RunAsync(commands, register, null, null, false, ct, preserve: keep, dataDir: dataDir),
             dataDir, localDataDir, ct, preserve);
 
     internal static async Task<bool> InitializeAsync(Func<bool, bool, Task<string?>> runCleanup,
@@ -43,11 +44,12 @@ public static class GatewayPackageCleanup
     }
 
     public static Task RegisterAsync(ICommandRunner commands, string? distroName = null,
-        string? installPath = null, bool ownNativePackage = false, CancellationToken ct = default) =>
-        RunAsync(commands, true, distroName, installPath, ownNativePackage, ct, createdDistro: distroName is not null);
+        string? installPath = null, bool ownNativePackage = false, CancellationToken ct = default, string? dataDir = null) =>
+        RunAsync(commands, true, distroName, installPath, ownNativePackage, ct, createdDistro: distroName is not null, dataDir: dataDir);
 
     private static async Task<string?> RunAsync(ICommandRunner commands, bool register, string? distroName,
-        string? installPath, bool ownNativePackage, CancellationToken ct, bool preserve = false, bool createdDistro = false)
+        string? installPath, bool ownNativePackage, CancellationToken ct, bool preserve = false, bool createdDistro = false,
+        string? dataDir = null)
     {
         if (!OperatingSystem.IsWindows() ||
             Environment.GetEnvironmentVariable("OPENCLAW_TRAY_DATA_DIR") is { Length: > 0 }) return null;
@@ -63,6 +65,12 @@ public static class GatewayPackageCleanup
         var hostPath = await DeployAsync(directory, ct);
         var arguments = new List<string> { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
             "-File", scriptPath, "-Family", family.ToString(), "-CleanupHostPath", hostPath };
+        if (register && dataDir is not null && Directory.Exists(dataDir))
+        {
+            // Resolve inside the packaged process. The scheduled worker runs outside MSIX
+            // and must not infer the profile from which directories survive uninstall.
+            arguments.AddRange(["-PhysicalProfile", WindowsExistingPathResolver.Resolve(dataDir)]);
+        }
         if (register) arguments.Add("-Register");
         if (preserve) arguments.Add("-Preserve");
         if (createdDistro) arguments.Add("-CreatedDistro");
