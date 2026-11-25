@@ -89,6 +89,51 @@ try {
 
     Set-Content -LiteralPath $table -Value '// no reference'
     Assert-Throws { Resolve-GatewayThemeUpstream -TablePath $table -CacheDirectory $cache } 'No UpstreamRef'
+
+    # A new upstream theme can carry its own circular geometry. Exercise the real Edge generator,
+    # not a mock of its computed colors, radii or catalog. All source reads are local fixtures.
+    function gh {
+        $global:LASTEXITCODE = 0
+        switch (($args[-1] -split '\?')[0]) {
+            'repos/openclaw/openclaw/contents/packages/gateway-protocol/src/theme.ts' {
+                @'
+const BUILTIN_THEMES = [
+  { id: "claw", name: "Claw", description: "Default" },
+  { id: "fixture", name: "Fixture",
+    mascot: "none",
+    description: "Custom corners" }
+];
+'@
+            }
+            'repos/openclaw/openclaw/contents/packages/gateway-protocol/src/theme-ids.ts' {
+                'const BUILTIN_THEME_IDS = ["claw", "fixture"];'
+            }
+            'repos/openclaw/openclaw/contents/ui/src/styles/base.css' {
+                $tokens = 'bg bg-content bg-accent card popover bg-hover text text-strong muted border border-strong accent accent-hover accent-foreground primary primary-foreground ring destructive danger ok warn info chat-composer-surface inline-code-bg bg-elevated panel accent-subtle'.Split()
+                ':root {' + (($tokens | ForEach-Object { "--${_}:#123456;" }) -join '') +
+                    '--radius-sm:6;--radius-md:10;--openclaw-corner-radius-scale:1;--font-body:Inter;--font-chat:Inter;--mono:monospace;} ' +
+                    '@supports (corner-shape: superellipse(1.5)) { :root { --openclaw-corner-radius-scale:1.25; } }'
+            }
+            'repos/openclaw/openclaw/contents/ui/public/themes/fixture.css' {
+                '[data-theme="fixture"],[data-theme="fixture-light"] { --radius-sm:2; --radius-md:4; --openclaw-corner-radius-scale:.25; }'
+            }
+            default { throw "Unexpected fixture request: $($args[-1])" }
+        }
+    }
+    $generator = Join-Path $PSScriptRoot 'Update-GatewayThemeTable.ps1'
+    $options = @{ UpstreamRef = 'd' * 40; OutputPath = $table }
+    & $generator @options
+    $generated = Get-Content -Raw -LiteralPath $table
+    Assert-True ([regex]::Matches($generated, 'RadiusSm: 6,\s+RadiusMd: 10,\s+CornerScale: 1,').Count -eq 2) 'Both default modes use circular geometry, not the Edge squircle scale.'
+    Assert-True ([regex]::Matches($generated, 'RadiusSm: 2,\s+RadiusMd: 4,\s+CornerScale: 0.25,').Count -eq 2) 'Both modes of a new theme retain its custom corners.'
+    & $generator @options -VerifyCatalog
+    foreach ($damaged in @(
+        $generated.Replace('        new("fixture", "Fixture",', '        new("other", "Other",'),
+        $generated.Replace('Mascot: "none", BrandIcon: "mark", WorkingIndicator: "dots"', 'Mascot: "claw", BrandIcon: "claw", WorkingIndicator: "claw"')
+    )) {
+        Set-Content -LiteralPath $table -Value $damaged
+        Assert-Throws { & $generator @options -VerifyCatalog } 'inventory or branding differs'
+    }
 }
 finally {
     Remove-Item -LiteralPath $table -ErrorAction SilentlyContinue

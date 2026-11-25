@@ -43,7 +43,7 @@ public sealed record GatewayAppearancePreferences(string? Accent, BackgroundPref
         preferences = new GatewayAppearancePreferences((string?)null);
         if (result.ValueKind != JsonValueKind.Object ||
             !result.TryGetProperty("status", out var status) || status.ValueKind != JsonValueKind.String ||
-            status.GetString() != "ok" ||
+            GatewayThemeProtocol.ReadString(status) != "ok" ||
             !result.TryGetProperty("entries", out var entries) || entries.ValueKind != JsonValueKind.Object)
             return false;
         var background = entries.TryGetProperty(BackgroundPreference.Key, out var raw) &&
@@ -61,7 +61,7 @@ public sealed record GatewayAppearancePreferences(string? Accent, BackgroundPref
     {
         if (!entries.TryGetProperty(AccentKey, out var value) || value.ValueKind != JsonValueKind.String)
             return null;
-        var text = value.GetString();
+        var text = GatewayThemeProtocol.ReadString(value);
         return text == ThemeAccent ? ThemeAccent : NormalizeHex(text);
     }
 }
@@ -82,10 +82,12 @@ public static class ThemeAccent
     private static ResolvedThemePalette Apply(ResolvedThemePalette palette, ThemeColor accent)
     {
         var color = accent with { A = 255 };
-        var ink = Ink(color);
+        // Match the dashboard's WCAG black/white ink threshold.
+        var ink = color.RelativeLuminance > 0.179 ? ThemeColor.Black : ThemeColor.White;
         return palette with
         {
             Accent = color,
+            HasPersonalAccent = true,
             Ring = color,
             Primary = color,
             AccentForeground = ink,
@@ -93,17 +95,5 @@ public static class ThemeAccent
             AccentHover = color.Mix(ThemeColor.White, 0.82),
             AccentSubtle = color.WithAlpha(0.16),
         };
-    }
-
-    // Black and white reach equal WCAG contrast at relative luminance 0.179 (ui/src/app/accent-contrast.ts).
-    private static ThemeColor Ink(ThemeColor color)
-    {
-        static double Linear(byte channel)
-        {
-            var value = channel / 255.0;
-            return value <= 0.04045 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
-        }
-        var luminance = 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
-        return luminance > 0.179 ? ThemeColor.FromHex("#000000") : ThemeColor.White;
     }
 }

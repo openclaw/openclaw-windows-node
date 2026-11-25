@@ -12,17 +12,33 @@ public sealed class DesktopCompanionTests
     };
 
     [Fact]
+    public void NativeWindow_DelegatesVisualProjectionToReactor()
+    {
+        var root = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Windows");
+        var window = File.ReadAllText(Path.Combine(root, "DesktopCompanionWindow.cs"));
+        Assert.Contains("Component<DesktopCompanionSurface, DesktopCompanionSurfaceProps>", window);
+        Assert.Contains("Component<DesktopCompanionBubble, DesktopCompanionBubbleProps>", window);
+        Assert.Contains("_host.Dispose()", window);
+        Assert.Contains("_bubbleHost.Dispose()", window);
+        Assert.DoesNotContain(".Text =", window);
+        Assert.DoesNotContain(".Mood =", window);
+        Assert.False(File.Exists(Path.Combine(root, "DesktopCompanionWindow.xaml")));
+    }
+
+    [Fact]
     public void MissingSetting_DefaultsOn_WhileExplicitOffIsPreserved()
     {
         Assert.True(new SettingsData().ShowDesktopCompanion);
         var legacy = SettingsData.FromJson("""{"ShowNotifications":true}""");
         Assert.NotNull(legacy);
         Assert.True(legacy.ShowDesktopCompanion);
+        Assert.True(legacy.DesktopCompanionOnlyWhenMinimized);
         Assert.Equal(100, legacy.DesktopCompanionScalePercent);
-        var optedOut = SettingsData.FromJson("""{"ShowDesktopCompanion":false}""");
+        var optedOut = SettingsData.FromJson("""{"ShowDesktopCompanion":false,"DesktopCompanionOnlyWhenMinimized":false}""");
         Assert.NotNull(optedOut);
         Assert.False(optedOut.ShowDesktopCompanion);
         Assert.False(SettingsData.FromJson(optedOut.ToJson())!.ShowDesktopCompanion);
+        Assert.False(SettingsData.FromJson(optedOut.ToJson())!.DesktopCompanionOnlyWhenMinimized);
     }
 
     [Theory]
@@ -83,6 +99,29 @@ public sealed class DesktopCompanionTests
         var saved = SettingsData.FromJson(File.ReadAllText(Path.Combine(temp.Path, "settings.json")));
         Assert.NotNull(saved);
         Assert.Equal(expected, saved.DesktopCompanionScalePercent);
+    }
+
+    [Fact]
+    public void MinimizedPreference_PersistsAndReloadsWithoutChangingEnablementOrEchoingExternalWrites()
+    {
+        using var temp = new TempDir();
+        using var dispatcher = new RecordingUiDispatcher();
+        using var store = new SettingsStore(new SettingsManager(temp.Path), dispatcher);
+        var commands = new FakeAppCommands();
+        using var vm = new SettingsPageViewModel(store, commands);
+        vm.Activate(null);
+        Assert.True(vm.DesktopCompanionOnlyWhenMinimized);
+        vm.DesktopCompanionOnlyWhenMinimized = false;
+        var reloaded = new SettingsManager(temp.Path);
+        reloaded.Load();
+        Assert.False(reloaded.DesktopCompanionOnlyWhenMinimized);
+        Assert.False(store.Current.DesktopCompanionOnlyWhenMinimized);
+        Assert.True(reloaded.ShowDesktopCompanion);
+        Assert.True(reloaded.ShowNotifications);
+        Assert.Equal(1, commands.NotifySettingsSavedCount);
+        store.Update(null, edit => edit.DesktopCompanionOnlyWhenMinimized = true);
+        Assert.True(vm.DesktopCompanionOnlyWhenMinimized);
+        Assert.Equal(1, commands.NotifySettingsSavedCount);
     }
 
     [Fact]
@@ -241,6 +280,65 @@ public sealed class DesktopCompanionTests
     }
 
     [Fact]
+    public void Controller_MinimizedPreferenceHidesAndRestoresSameViewWithoutReplayingNotifications()
+    {
+        using var harness = new Harness();
+        harness.Store.Update(null, edit => edit.DesktopCompanionOnlyWhenMinimized = false);
+        harness.Controller.SetMainWindowVisibility(true);
+        harness.Controller.Start();
+        var view = Assert.Single(harness.Views);
+        harness.Notifications.Show(Notification("shown"));
+        harness.Store.Update(null, edit => edit.DesktopCompanionOnlyWhenMinimized = true);
+        Assert.Equal(1, view.HideCount);
+        Assert.False(view.Closed);
+        Assert.True(harness.Store.Current.ShowDesktopCompanion);
+        harness.Notifications.Show(Notification("hidden"));
+        Assert.Single(view.Presented);
+        harness.Store.Update(null, edit => edit.DesktopCompanionScalePercent = 150);
+        harness.Controller.SetMainWindowVisibility(false);
+        Assert.Same(view, Assert.Single(harness.Views));
+        Assert.Equal(2, view.ShowCount);
+        Assert.Equal(150, view.ScalePercent);
+        Assert.Single(view.Presented);
+        harness.Notifications.Show(Notification("fresh"));
+        Assert.Equal("fresh", view.Presented.Last()!.Id);
+        Assert.Equal(3, harness.Notifications.Snapshot.ActiveNotifications.Count);
+        harness.Controller.SetMainWindowVisibility(true);
+        Assert.Equal(2, view.HideCount);
+        harness.Store.Update(null, edit => edit.DesktopCompanionOnlyWhenMinimized = false);
+        Assert.Equal(3, view.ShowCount);
+        harness.Controller.SetMainWindowVisibility(false);
+        Assert.Equal(3, view.ShowCount);
+        harness.Store.Update(null, edit => edit.ShowDesktopCompanion = false);
+        Assert.True(view.Closed);
+        harness.Controller.SetMainWindowVisibility(true);
+        harness.Controller.SetMainWindowVisibility(false);
+        Assert.Single(harness.Views);
+        Assert.Empty(harness.Failures);
+    }
+
+    [Fact]
+    public void Controller_MinimizedPreferenceAtStartupWaitsForNoVisibleMainWindows()
+    {
+        using var harness = new Harness();
+        harness.Store.Update(null, edit => edit.DesktopCompanionOnlyWhenMinimized = true);
+        harness.Controller.SetMainWindowVisibility(true);
+        harness.Controller.Start();
+        Assert.Empty(harness.Views);
+        harness.Notifications.Show(Notification("startup"));
+        harness.Controller.SetMainWindowVisibility(false);
+        var view = Assert.Single(harness.Views);
+        Assert.Equal(1, view.ShowCount);
+        Assert.Empty(view.Presented);
+        harness.Controller.SetMainWindowVisibility(true);
+        harness.Controller.Dispose();
+        harness.Controller.SetMainWindowVisibility(false);
+        Assert.True(view.Closed);
+        Assert.Equal(1, view.ShowCount);
+        Assert.True(harness.Store.Current.DesktopCompanionOnlyWhenMinimized);
+    }
+
+    [Fact]
     public void Controller_DelayedSnapshotsCannotResurrectRemovedNotifications()
     {
         using var harness = new Harness();
@@ -278,10 +376,12 @@ public sealed class DesktopCompanionTests
         public List<AppNotification?> Presented { get; } = [];
         public bool Closed { get; private set; }
         public int ShowCount { get; private set; }
+        public int HideCount { get; private set; }
         public string? Theme { get; private set; }
         public bool RefreshedResources { get; private set; }
         public int ScalePercent { get; private set; }
         public void Show() => ShowCount++;
+        public void Hide() => HideCount++;
         public void ApplyTheme(string theme, bool refreshThemeResources = false)
         {
             Theme = theme;

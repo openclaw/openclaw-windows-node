@@ -18,6 +18,8 @@ namespace OpenClaw.Tray.UITests;
 public sealed class GatewayThemeBackgroundTests(UIThreadFixture ui)
 {
     private ReactorHostControl? _host;
+    private Action<int>? _setRender;
+    private int _rendered;
 
     // The chat runs in the App theme, which may be the opposite of Windows' mode (the app's own), so the artwork pair
     // and the fade follow the element's theme, known only once it is loaded.
@@ -31,34 +33,66 @@ public sealed class GatewayThemeBackgroundTests(UIThreadFixture ui)
             var containerTheme = ui.Container.RequestedTheme;
             var manuscript = BuiltinGatewayThemes.All.Single(theme => theme.Id == "manuscript");
             var fullBleed = BackgroundPreference.Default with { Presentation = BackgroundPresentation.FullBleed, Visibility = 1 };
-            // With Windows transparency effects off the Control UI draws no artwork either.
-            var effects = new global::Windows.UI.ViewManagement.UISettings().AdvancedEffectsEnabled;
+            var transparency = ChatBackgroundArtwork.TransparencyEffectsEnabled;
             var (chatTheme, chatMode, variant) = Application.Current.RequestedTheme == ApplicationTheme.Dark
                 ? (ElementTheme.Light, ThemeColorMode.Light, "light")
                 : (ElementTheme.Dark, ThemeColorMode.Dark, "dark");
             try
             {
                 ChatThemeChanges.IsHighContrast = static () => false;
+                ChatBackgroundArtwork.TransparencyEffectsEnabled = static () => true;
                 ui.Container.RequestedTheme = chatTheme;
                 ChatBackgroundArtwork.Set(manuscript, fullBleed);
                 var conversation = await MountAsync(ThemeBackgroundSurface.Conversation);
-                if (!effects)
-                {
-                    Assert.Null(conversation);
-                    return;
-                }
                 Assert.Equal(chatTheme, conversation!.ActualTheme);
                 var image = Assert.IsType<Border>(conversation.Child);
                 var brush = Assert.IsType<ImageBrush>(image.Background);
                 Assert.Equal(0.7, brush.Opacity, 3);
                 Assert.EndsWith($"/manuscript-{variant}.png", Assert.IsType<BitmapImage>(brush.ImageSource).UriSource.AbsoluteUri);
+                _setRender!(1);
+                await TestSupport.WaitForRenderedConditionAsync(() => _rendered == 1, "Unrelated chat render completed");
+                Assert.Same(image, Assert.Single(TestSupport.FindDescendants<Border>(_host!), IsArtwork).Child);
 
-                ChatBackgroundArtwork.Set(manuscript, BackgroundPreference.Default);
+                // Switch to the app's own mode, then reload in that same mode. Only the switch needs a new image.
+                var frame = Assert.IsType<Border>(Assert.Single(ui.Container.Children));
+                frame.RequestedTheme = chatTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+                var switchedVariant = variant == "dark" ? "light" : "dark";
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => conversation.Child is Border { Background: ImageBrush { ImageSource: BitmapImage bitmap } } &&
+                        bitmap.UriSource.AbsolutePath.EndsWith($"/manuscript-{switchedVariant}.png", StringComparison.Ordinal),
+                    "Artwork switched to the new element theme");
+                var switchedImage = conversation.Child;
+                var unloaded = false;
+                var reloaded = false;
+                void OnUnloaded(object sender, RoutedEventArgs args) => unloaded = true;
+                void OnReloaded(object sender, RoutedEventArgs args) => reloaded = true;
+                conversation.Unloaded += OnUnloaded;
+                try
+                {
+                    ui.Container.Children.Remove(frame);
+                    await TestSupport.WaitForRenderedConditionAsync(() => unloaded, "Artwork Unloaded notification delivered");
+                    conversation.Loaded += OnReloaded;
+                    ui.Container.Children.Add(frame);
+                    await TestSupport.WaitForRenderedConditionAsync(() => reloaded, "Artwork Loaded notification delivered");
+                    Assert.Same(switchedImage, conversation.Child);
+                }
+                finally
+                {
+                    conversation.Unloaded -= OnUnloaded;
+                    conversation.Loaded -= OnReloaded;
+                }
+
+                // With a fully transparent content tint the fade must end at the visible window canvas, not its raw RGB.
+                var glassPalette = manuscript.PaletteFor(chatMode) with { Content = ThemeColor.FromHex("#abcdef00") };
+                var glass = manuscript with { Id = "user/glass", Source = GatewayThemeSource.User,
+                    Light = chatMode == ThemeColorMode.Light ? glassPalette : null,
+                    Dark = chatMode == ThemeColorMode.Dark ? glassPalette : null };
+                ChatBackgroundArtwork.Set(glass, BackgroundPreference.Default);
                 var newSession = await MountAsync(ThemeBackgroundSurface.NewSession);
                 var faded = Assert.IsType<Grid>(newSession!.Child);
                 Assert.Equal(2, faded.Children.Count);
                 var fade = Assert.IsType<LinearGradientBrush>(Assert.IsType<Border>(faded.Children[1]).Background);
-                var shell = manuscript.PaletteFor(chatMode).Shell;
+                var shell = glassPalette.WindowCanvas;
                 Assert.All(fade.GradientStops, stop => Assert.Equal((shell.R, shell.G, shell.B), (stop.Color.R, stop.Color.G, stop.Color.B)));
 
                 ChatBackgroundArtwork.Set(null, fullBleed);
@@ -71,6 +105,7 @@ public sealed class GatewayThemeBackgroundTests(UIThreadFixture ui)
             finally
             {
                 ChatThemeChanges.IsHighContrast = highContrast;
+                ChatBackgroundArtwork.TransparencyEffectsEnabled = transparency;
                 ChatBackgroundArtwork.Set(null, null);
                 _host?.Dispose();
                 ui.Container.Children.Clear();
@@ -136,7 +171,11 @@ public sealed class GatewayThemeBackgroundTests(UIThreadFixture ui)
         ui.Container.Children.Clear();
         _host?.Dispose();
         var host = _host = new ReactorHostControl();
-        host.Mount(_ => ChatBackgroundArtwork.Render(surface));
+        host.Mount(context =>
+        {
+            (_rendered, _setRender) = context.UseState(0);
+            return ChatBackgroundArtwork.Render(surface);
+        });
         ui.Container.Children.Add(new Border { Child = host, Width = 480, Height = 320 });
         if (ChatBackgroundArtwork.OpacityFor(surface) <= 0)
         {

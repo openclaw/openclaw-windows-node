@@ -21,8 +21,10 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
     {
         var progress = Props.Progress;
         var entrance = UseRef<Storyboard?>(null);
-        var reducedMotion = UseReducedMotion();
-        var (now, setNow) = UseState(DateTimeOffset.UtcNow);
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
+        var (_, setNow) = UseState(DateTimeOffset.UtcNow);
+        var now = DateTimeOffset.UtcNow;
+        var ticking = ChatRunProgressProjection.NeedsClock(progress, now);
         // The indicator follows the applied theme's branding, including live theme switches.
         var (indicator, setIndicator) = UseState(Theming.ThemeBrandingState.Current.WorkingIndicator);
         UseEffect((Func<Action>)(() =>
@@ -34,7 +36,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
         }), Array.Empty<object>());
         UseEffect((Func<Action>)(() =>
         {
-            if (!progress.IsInProgress)
+            if (!ticking)
                 return static () => { };
             var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
             timer.Interval = TimeSpan.FromSeconds(1);
@@ -42,7 +44,7 @@ internal sealed class ReactorRunProgress : Component<ReactorRunProgressProps>
             timer.Tick += tick;
             timer.Start();
             return () => { timer.Stop(); timer.Tick -= tick; };
-        }), progress.IsInProgress, progress.StartedAt);
+        }), ticking);
         var elapsed = ChatRunProgressProjection.Elapsed(progress.StartedAt,
             progress.Waiting ? now : progress.EndedAt ?? (progress.Active ? now : progress.StartedAt ?? now));
         var label = progress.Label == ChatRunProgressProjection.RetryLabel

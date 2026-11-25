@@ -211,12 +211,29 @@ jobs:
       run: ./scripts/test-gateway-packaged-release.ps1
 
     - name: Test Gateway theme table release resolution
+      timeout-minutes: 5
       shell: pwsh
       run: ./scripts/test-gateway-theme-upstream.ps1
 
     - name: Test Gateway theme table sync publishing
       shell: pwsh
       run: ./scripts/test-gateway-theme-sync-publish.ps1
+
+    - name: Check changed built-in theme catalog against its pinned Gateway source
+      if: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      timeout-minutes: 5
+      shell: pwsh
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        $table = 'src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs'
+        git diff --quiet "$env:BASE_SHA...HEAD" -- $table scripts/Update-GatewayThemeTable.ps1
+        if ($LASTEXITCODE -eq 0) { exit 0 }
+        if ($LASTEXITCODE -ne 1) { throw 'Unable to determine whether the theme catalog changed.' }
+        Import-Module ./scripts/GatewayThemeUpstream.psm1
+        ./scripts/Update-GatewayThemeTable.ps1 -UpstreamRef (Get-ThemeTableUpstreamRef $table) -VerifyCatalog
+        exit 0
 
     - name: Validate CI change classifier
       shell: pwsh
@@ -312,6 +329,10 @@ jobs:
     - name: Validate release branch GitVersion behavior
       shell: pwsh
       run: ./scripts/test-release-branch-versioning.ps1
+
+    - name: Validate candidate build GitVersion environment isolation
+      shell: pwsh
+      run: ./scripts/test-candidate-gitversion-environment.ps1
 
   proof-pool-contracts:
     name: Proof-pool contracts
@@ -652,13 +673,15 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    # Reactor can have different package bytes under the same version.
+    # Include its bootstrap in both cache keys so fallback cannot restore the old source.
     - name: Cache NuGet packages
       continue-on-error: true
       uses: actions/cache@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore tray test projects
       run: |
@@ -759,8 +782,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Verify native testhost exit diagnostics
       shell: pwsh
@@ -1016,8 +1039,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore UI test projects
       run: |
@@ -1135,8 +1158,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore UI test projects
       run: |
@@ -1356,8 +1379,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore UI test projects
       run: |
@@ -1483,8 +1506,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Initialize Reactor packages
       if: ${{ steps.select.outputs.has_tests == 'true' }}
@@ -1589,8 +1612,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore E2E project graph
       run: |
@@ -1669,8 +1692,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore E2E project graph
       run: |
@@ -1749,8 +1772,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore E2E project graph
       run: |
@@ -1918,8 +1941,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore WinUI Tray App
       run: |
@@ -2015,8 +2038,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Restore WinUI Tray App
       run: |
@@ -2122,8 +2145,8 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ~/.nuget/packages
-        key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
-        restore-keys: nuget-${{ runner.os }}-
+        key: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+        restore-keys: nuget-${{ runner.os }}-${{ hashFiles('scripts/Initialize-ReactorPackages.ps1') }}-
 
     - name: Validate shared MSIX version allocation
       shell: pwsh

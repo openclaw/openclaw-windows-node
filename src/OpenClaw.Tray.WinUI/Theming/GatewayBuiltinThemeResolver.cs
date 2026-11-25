@@ -169,8 +169,9 @@ internal sealed class GatewayBuiltinThemeResolver : IGatewayBuiltinThemes, IDisp
             }
             else
             {
+                // The wait is bounded here too: a probe that never completes must not hold this connection's resolution open.
                 var json = await _probe.ResolveAsync(ServedThemeStylesheetReader.BuildProbeDocument(sheets), ids, budget.Token)
-                    .ConfigureAwait(false);
+                    .WaitAsync(budget.Token).ConfigureAwait(false);
                 var probe = ThemeProbe.Parse(json);
                 // A theme whose own stylesheet did not load would read the core styles' values, which can pass as styled
                 // where core rules name it incidentally (for example its background artwork), so it falls back instead.

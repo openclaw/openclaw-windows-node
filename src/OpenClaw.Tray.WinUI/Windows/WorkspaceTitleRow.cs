@@ -3,7 +3,7 @@
 // to the panel, and keeps the panel's tabs clickable under the title bar. WorkspaceWindow owns
 // one instance and calls Update from a coalesced low-priority pass:
 //   _titleRow = new WorkspaceTitleRow(AppWindow, WorkspaceTitleBar, TitleBarRightActions,
-//       TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
+//       SessionTitleHost, TitleBarPassthroughCanvas, SidePanelTabsPassthrough, QueueTitleRowLayout);
 //   _titleRow.Update(panel, offer: chatShown && !bannerAboveChat, startInset);
 //   _titleRow.Dispose(); // on window close
 using Microsoft.UI.Windowing;
@@ -20,25 +20,27 @@ internal sealed class WorkspaceTitleRow : IDisposable
 {
     // Space kept between the side panel's tabs and the title-bar actions.
     private const double ActionGap = 8;
+    private const double SessionTitleInset = 16;
     // The TabView template part that hosts the tab items.
     private const string TabListPartName = "TabListView";
     private readonly AppWindow _window;
     private readonly TitleBar _titleBar;
     private readonly FrameworkElement _actions;
+    private readonly FrameworkElement _sessionTitle;
     private readonly Canvas _passthroughCanvas;
     private readonly FrameworkElement _tabsPassthrough;
     private readonly Action _invalidate;
     private FrameworkElement? _tabStrip;
     private FrameworkElement? _tabList;
-    private Rect? _tabBounds;
     private XamlRoot? _root;
 
     internal WorkspaceTitleRow(AppWindow window, TitleBar titleBar, FrameworkElement actions,
-        Canvas passthroughCanvas, FrameworkElement tabsPassthrough, Action invalidate)
+        FrameworkElement sessionTitle, Canvas passthroughCanvas, FrameworkElement tabsPassthrough, Action invalidate)
     {
         _window = window;
         _titleBar = titleBar;
         _actions = actions;
+        _sessionTitle = sessionTitle;
         _passthroughCanvas = passthroughCanvas;
         _tabsPassthrough = tabsPassthrough;
         _invalidate = invalidate;
@@ -57,7 +59,15 @@ internal sealed class WorkspaceTitleRow : IDisposable
         var scale = root.RasterizationScale;
         var captionWidth = _window.TitleBar.RightInset / scale;
         var captionHeight = _window.TitleBar.Height / scale;
-        if (captionHeight > 0) _actions.Height = captionHeight;
+        if (captionHeight > 0)
+        {
+            _actions.Height = captionHeight;
+            _sessionTitle.Height = captionHeight;
+        }
+        _sessionTitle.Margin = new Thickness(startInset + SessionTitleInset, 0, ActionGap, 0);
+        var panelStartInset = _sessionTitle.Visibility == Visibility.Visible
+            ? _sessionTitle.Margin.Left + _sessionTitle.ActualWidth + _sessionTitle.Margin.Right
+            : startInset;
         // The template reserves a minimum drag column plus caption padding sized from the physical
         // RightInset as if it were DIPs, which exceeds the real buttons above 100% scale. Extend the
         // bar past the window edge by the excess so the actions are laid out beside minimize; TitleBar
@@ -72,7 +82,7 @@ internal sealed class WorkspaceTitleRow : IDisposable
         }
         // The joined header covers the whole bar height so no strip of panel body falls in the drag region.
         panel?.SetTitleRow(offer ? _titleBar.ActualHeight : 0,
-            _actions.ActualWidth + captionWidth + ActionGap, startInset, captionHeight);
+            _actions.ActualWidth + captionWidth + ActionGap, panelStartInset, captionHeight);
         Track(offer && panel is { JoinsTitleRow: true } ? panel.TabStrip as FrameworkElement : null);
         PlaceTabsPassthrough();
         _titleBar.RecomputeDragRegions();
@@ -92,16 +102,47 @@ internal sealed class WorkspaceTitleRow : IDisposable
     private void Track(FrameworkElement? tabStrip)
     {
         if (ReferenceEquals(tabStrip, _tabStrip)) return;
-        if (_tabStrip is not null) _tabStrip.LayoutUpdated -= OnTabStripLayoutUpdated;
+        if (_tabStrip is not null) _tabStrip.LayoutUpdated -= FindTabListAfterLayout;
+        TrackTabList(null);
         _tabStrip = tabStrip;
-        _tabList = null;
-        if (tabStrip is not null) tabStrip.LayoutUpdated += OnTabStripLayoutUpdated;
+        if (tabStrip is null) return;
+        if (FindPart(tabStrip) is { } tabs) TrackTabList(tabs);
+        else tabStrip.LayoutUpdated += FindTabListAfterLayout;
+    }
+
+    private void FindTabListAfterLayout(object? sender, object args)
+    {
+        if (_tabStrip is not { IsLoaded: true } strip || FindPart(strip) is not { } tabs) return;
+        strip.LayoutUpdated -= FindTabListAfterLayout;
+        TrackTabList(tabs);
+        _invalidate();
+    }
+
+    private void TrackTabList(FrameworkElement? tabs)
+    {
+        if (_tabList is not null)
+        {
+            _tabList.SizeChanged -= OnTabListSizeChanged;
+            _tabList.EffectiveViewportChanged -= OnTabListViewportChanged;
+            _tabList.Unloaded -= OnTabListUnloaded;
+        }
+        _tabList = tabs;
+        if (tabs is null) return;
+        tabs.SizeChanged += OnTabListSizeChanged;
+        tabs.EffectiveViewportChanged += OnTabListViewportChanged;
+        tabs.Unloaded += OnTabListUnloaded;
+    }
+
+    private void OnTabListUnloaded(object sender, RoutedEventArgs args)
+    {
+        TrackTabList(null);
+        if (_tabStrip is not null) _tabStrip.LayoutUpdated += FindTabListAfterLayout;
+        _invalidate();
     }
 
     private void PlaceTabsPassthrough()
     {
-        _tabBounds = TabBounds();
-        if (_tabBounds is not { } bounds)
+        if (TabBounds() is not { } bounds)
         {
             _tabsPassthrough.Visibility = Visibility.Collapsed;
             return;
@@ -116,9 +157,7 @@ internal sealed class WorkspaceTitleRow : IDisposable
     /// <summary>Bounds of the tab items in pass-through canvas coordinates, once the template part is ready.</summary>
     private Rect? TabBounds()
     {
-        if (_tabStrip is not { IsLoaded: true } strip) return null;
-        if (_tabList is not { IsLoaded: true }) _tabList = FindPart(strip);
-        if (_tabList is not { ActualWidth: > 0, ActualHeight: > 0 } tabs) return null;
+        if (_tabList is not { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 } tabs) return null;
         try
         {
             var origin = tabs.TransformToVisual(_passthroughCanvas).TransformPoint(default);
@@ -127,18 +166,9 @@ internal sealed class WorkspaceTitleRow : IDisposable
         catch (ArgumentException) { return null; }
     }
 
-    // Tabs move without resizing when the panel or sidebar slides, and the template part can load a
-    // pass after the strip; re-place whenever the bounds appear, change or disappear.
-    private void OnTabStripLayoutUpdated(object? sender, object e)
-    {
-        var bounds = TabBounds();
-        if (bounds is null && _tabBounds is null) return;
-        if (bounds is { } next && _tabBounds is { } previous &&
-            Math.Abs(next.X - previous.X) < 0.5 && Math.Abs(next.Y - previous.Y) < 0.5 &&
-            Math.Abs(next.Width - previous.Width) < 0.5 && Math.Abs(next.Height - previous.Height) < 0.5)
-            return;
-        _invalidate();
-    }
+    // The panel or sidebar can slide the tabs without resizing them.
+    private void OnTabListViewportChanged(FrameworkElement sender, EffectiveViewportChangedEventArgs args) => _invalidate();
+    private void OnTabListSizeChanged(object sender, SizeChangedEventArgs args) => _invalidate();
 
     private static FrameworkElement? FindPart(DependencyObject parent)
     {

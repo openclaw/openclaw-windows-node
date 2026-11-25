@@ -53,6 +53,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _useLegacyWebChat;
     private bool _showNotifications;
     private bool _showDesktopCompanion;
+    private bool _desktopCompanionOnlyWhenMinimized;
     private int _desktopCompanionScalePercent = DesktopCompanionScale.DefaultPercent;
     private string _notificationSound = DefaultNotificationSound;
     private string _appTheme = DefaultAppTheme;
@@ -164,6 +165,12 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     public IReadOnlyList<int> DesktopCompanionScaleOptions { get; } = [50, 75, 100, 125, 150, 175, 200];
 
+    public bool DesktopCompanionOnlyWhenMinimized
+    {
+        get => _desktopCompanionOnlyWhenMinimized;
+        set { if (SetField(ref _desktopCompanionOnlyWhenMinimized, value) && !_loading) Persist(e => e.DesktopCompanionOnlyWhenMinimized = value); }
+    }
+
     public int DesktopCompanionScalePercent
     {
         get => _desktopCompanionScalePercent;
@@ -211,11 +218,12 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             : _selectedThemeKey;
         set
         {
-            // Replacing ThemeChoices makes the ComboBox write null before it reselects; keep the saved key.
-            // The picker is disabled while following, so a write then can only come from that reselection.
-            if (_loading || _followGatewayTheme)
+            // The ComboBox writes null when ThemeChoices is replaced and can when the saved theme is not listed (a
+            // Gateway theme). Every choice has a key, so null is never a user choice and must not clear the theme.
+            // The picker is disabled while following the Gateway, so a write then can only come from that reselection.
+            if (_loading || _followGatewayTheme || value is null)
                 return;
-            var key = value ?? "";
+            var key = value;
             if (!SetField(ref _selectedThemeKey, key))
                 return;
             var selection = SelectionFor(key);
@@ -251,10 +259,10 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     public bool IsManualThemeEnabled => !_followGatewayTheme;
 
-    /// <summary>Background artwork style: 0 none, 1 faded, 2 full bleed. While following, the dashboard's choice applies.</summary>
+    /// <summary>Background artwork style: -1 dashboard default, 0 none, 1 faded, 2 full bleed.</summary>
     public int BackgroundStyleIndex
     {
-        get => Background.Source != OpenClaw.Shared.Themes.BackgroundSourceKind.Theme ? 0
+        get => IsDashboardBackgroundUnset ? -1 : Background.Source != OpenClaw.Shared.Themes.BackgroundSourceKind.Theme ? 0
             : Background.Presentation == OpenClaw.Shared.Themes.BackgroundPresentation.FullBleed ? 2 : 1;
         set
         {
@@ -276,7 +284,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     /// <summary>Background artwork strength, 0 to 100.</summary>
     public double BackgroundVisibility
     {
-        get => Math.Round(Background.Visibility * 100);
+        get => IsDashboardBackgroundUnset ? 100 : Math.Round(Background.Visibility * 100);
         set
         {
             var visibility = Math.Clamp(value, 0, 100) / 100;
@@ -291,8 +299,10 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     public bool IsBackgroundVisibilityEnabled => !_followGatewayTheme && BackgroundStyleIndex != 0;
 
+    private bool IsDashboardBackgroundUnset => _appearance.FollowGatewayTheme && _appearance.FollowedBackground is null;
+
     private OpenClaw.Shared.Themes.BackgroundPreference Background =>
-        _appearance.Background ?? OpenClaw.Shared.Themes.BackgroundPreference.Default;
+        OpenClaw.Shared.Themes.AppearanceResolver.ActiveBackground(_appearance) ?? OpenClaw.Shared.Themes.BackgroundPreference.Default;
 
     private void RaiseBackgroundState()
     {
@@ -570,6 +580,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _useLegacyWebChat, s.UseLegacyWebChat, nameof(UseLegacyWebChat));
             SetField(ref _showNotifications, s.ShowNotifications, nameof(ShowNotifications));
             SetField(ref _showDesktopCompanion, s.ShowDesktopCompanion, nameof(ShowDesktopCompanion));
+            SetField(ref _desktopCompanionOnlyWhenMinimized, s.DesktopCompanionOnlyWhenMinimized, nameof(DesktopCompanionOnlyWhenMinimized));
             SetField(ref _desktopCompanionScalePercent, s.DesktopCompanionScalePercent, nameof(DesktopCompanionScalePercent));
             // Normalize combo values to a known tag so a legacy or odd stored value selects the
             // default item instead of rendering a blank combo (matching the old tag lookup).
@@ -581,7 +592,6 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             // A saved theme that can no longer be applied (for example one now below the contrast floor) shows the
             // Windows default it falls back to.
             SetField(ref _selectedThemeKey, AppliedManualThemeKey(), nameof(SelectedThemeKey));
-            RaiseBackgroundState();
             SetField(ref _showDiagnostics, s.ShowDiagnosticsEffective, nameof(ShowDiagnostics));
             SetField(ref _notifyHealth, s.NotifyHealth, nameof(NotifyHealth));
             SetField(ref _notifyUrgent, s.NotifyUrgent, nameof(NotifyUrgent));

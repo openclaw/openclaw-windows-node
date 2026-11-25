@@ -23,6 +23,7 @@ internal interface IWindowManager
     Window? ActiveHubWindow { get; }
     bool IsHubOpen { get; }
     bool IsChatVisible { get; }
+    bool HasVisibleMainWindow { get; }
     XamlRoot? DialogXamlRoot { get; }
     XamlRoot? RuntimeAnchorXamlRoot { get; }
     XamlRoot? SetupXamlRoot { get; }

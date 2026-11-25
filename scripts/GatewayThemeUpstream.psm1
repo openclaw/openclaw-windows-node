@@ -44,7 +44,7 @@ function Resolve-GatewayThemeUpstream {
     # Stable releases only: drafts, prereleases, unexpected tags and unverifiable assets fail here.
     $release = Resolve-PackagedGatewayRelease -Architecture x64
     $gateway = Get-PackagedGatewayBuild $release $CacheDirectory
-    # The theme generator reads upstream sources at this commit, so it must be a public openclaw/openclaw commit.
+    # Check the package-declared commit resolves through the API used for upstream source reads.
     if ((Invoke-UpstreamApi "commits/$($gateway.gatewayCommit)").sha -cne $gateway.gatewayCommit) {
         throw "Packaged Gateway commit $($gateway.gatewayCommit) is not an openclaw/openclaw commit."
     }
@@ -58,4 +58,4 @@ function Resolve-GatewayThemeUpstream {
     }
 }
 
-Export-ModuleMember -Function Resolve-GatewayThemeUpstream
+Export-ModuleMember -Function Resolve-GatewayThemeUpstream, Get-ThemeTableUpstreamRef

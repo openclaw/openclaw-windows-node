@@ -353,8 +353,8 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
 
                 oldOperationCts = _operationCts;
                 _operationCts = null;
-                oldOperationCts?.Cancel();
             }
+            CancelAndDisposeOperation(oldOperationCts);
 
             CancelTelemetryAttempt("superseded", null);
 
@@ -452,12 +452,17 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
         }
         finally
         {
+            var ownsOperationCts = false;
             lock (_operationLock)
             {
                 if (ReferenceEquals(_operationCts, operationCts))
+                {
                     _operationCts = null;
+                    ownsOperationCts = true;
+                }
             }
-            operationCts!.Dispose();
+            if (ownsOperationCts)
+                operationCts!.Dispose();
         }
     }
 
@@ -1066,11 +1071,28 @@ internal sealed class NodeConnectionCoordinator : INodePairReconnectPort
 
     private void CancelOperation()
     {
+        CancellationTokenSource? operationCts;
         lock (_operationLock)
         {
-            var operationCts = _operationCts;
+            operationCts = _operationCts;
             _operationCts = null;
-            operationCts?.Cancel();
+        }
+        CancelAndDisposeOperation(operationCts);
+    }
+
+    private static void CancelAndDisposeOperation(CancellationTokenSource? operationCts)
+    {
+        if (operationCts is null)
+            return;
+
+        // The attempt may still inspect its captured token after cancellation; do not use its WaitHandle.
+        try
+        {
+            operationCts.Cancel();
+        }
+        finally
+        {
+            operationCts.Dispose();
         }
     }
 

@@ -1,7 +1,9 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using System;
+using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -36,6 +38,14 @@ internal sealed partial class ChatComposerController : IDisposable
     private readonly IChatComposerRuntimePort _port;
     private readonly ChatComposerHostActions _hostActions;
     private readonly ChatPlacementController? _placement;
+    private readonly Dictionary<string, ChatDraft> _drafts = new(StringComparer.Ordinal);
+    internal event Action? DraftChanged;
+
+    internal void RegisterDraft(ChatDraft draft) => _drafts.TryAdd(draft.Key, draft);
+    internal ChatDraft? FindDraft(string? key) =>
+        key is not null ? _drafts.GetValueOrDefault(key) : null;
+    internal bool HasUnsentComposerContent =>
+        !string.IsNullOrEmpty(_vm.Draft) || _vm.PendingAttachments.Count > 0;
     private readonly object _operationGate = new();
 
     /// <summary>Canceled and disposed exactly once, in <see cref="Dispose"/>. Never
@@ -119,6 +129,13 @@ internal sealed partial class ChatComposerController : IDisposable
         _hostActions = hostActions ?? throw new ArgumentNullException(nameof(hostActions));
         _placement = placement;
         _lifetimeToken = _lifetimeCts.Token;
+        _vm.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (!_disposed)
+            _hostActions.ComposerChanged?.Invoke();
     }
     /// <summary>Binds the root's session-selection handoff exactly once. Safe to call
     /// on every render: it is a no-op once bound, since the underlying closure is
@@ -133,6 +150,7 @@ internal sealed partial class ChatComposerController : IDisposable
 
     /// <summary>Exposed for disposal characterization tests.</summary>
     internal bool IsDisposed => _disposed;
+    internal bool IsSendInProgress => Volatile.Read(ref _sendGate) != 0;
 
     internal void InvalidatePendingSessionNavigation() => _selectionRevision++;
 
@@ -234,6 +252,43 @@ internal sealed partial class ChatComposerController : IDisposable
         }
     }
 
+    public async Task<bool> SendSuggestionAsync(string threadId, string? displayName, string suggestion)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(suggestion) ||
+            _vm.Inputs is not { ConnectionState: "connected" } inputs ||
+            !string.Equals(inputs.CurrentThread.Id, threadId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (Interlocked.CompareExchange(ref _sendGate, 1, 0) != 0)
+            return false;
+
+        var generationAtStart = _generation;
+        var sendOperation = ++_sendOperation;
+        _vm.SetSending(true);
+        try
+        {
+            return await SendCoreAsync(
+                threadId, displayName, suggestion, Array.Empty<ChatAttachment>()).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Trace.WriteLine($"[chat] suggestion send failed: {ex}");
+            return false;
+        }
+        finally
+        {
+            if (!_disposed && generationAtStart == _generation && sendOperation == _sendOperation)
+                _vm.SetSending(false);
+            Interlocked.Exchange(ref _sendGate, 0);
+        }
+    }
+
     /// <summary>Pure send/lifecycle workflow with no composer draft/attachment state.
     /// Used by the composer send workflow above and directly by the root's welcome-
     /// screen quick-start suggestion, exactly as the pre-D2 root's private
@@ -260,9 +315,19 @@ internal sealed partial class ChatComposerController : IDisposable
         var generationAtStart = _generation;
         bool StillLive() => !_disposed && generationAtStart == _generation;
 
+        var draft = FindDraft(threadId);
+        if (draft is not null)
+            _placement?.ReportDraftSendStatus(draft.Key, null);
         if (_port.SupportsNativeLifecycle
             && ChatLifecycleCommandParser.TryParse(message, attachments.Count > 0, out var command))
         {
+            if (draft is not null)
+            {
+                _placement?.ReportDraftSendStatus(
+                    threadId,
+                    LocalizationHelper.GetString("Chat_Draft_LifecycleCommandUnavailable"));
+                return false;
+            }
             if (ChatLifecycleCommandExecutionPolicy.ShouldQueue(command))
             {
                 var queued = await _port.EnqueueCompactCommandAsync(threadId).ConfigureAwait(true);
@@ -287,19 +352,163 @@ internal sealed partial class ChatComposerController : IDisposable
                 return false;
             if (result.Succeeded && result.NewSessionKey is { } sessionKey &&
                 selectionRevision == _selectionRevision)
+            {
+                _placement?.MarkCreatedSession(sessionKey);
+                _hostActions.SessionCreated?.Invoke(sessionKey);
                 TrySelectSession(sessionKey);
+            }
             return result.Succeeded;
         }
 
-        if (_placement is not null)
+        using var placementSend = _placement?.BeginSend(threadId);
+        if (_placement is not null && placementSend is null)
+            return false;
+        var localThreadId = threadId;
+        var requiresPreparation = _placement?.RequiresPreparation == true;
+        var requiresSendLease = requiresPreparation || draft is not null;
+        var gatewaySessionAlreadyMaterialized = draft?.GatewaySessionKey is not null;
+        if (draft?.CreationOutcomeUncertain == true)
         {
-            var requiresPreparation = _placement.RequiresPreparation;
-            if (!await _placement.PrepareAsync(threadId, _lifetimeToken).ConfigureAwait(true)
-                || !StillLive() || (requiresPreparation && !_placement.IsCurrent(threadId)))
+            _placement?.ReportDraftCreationResult(threadId, ChatPlacementError.DraftCreationUncertain);
+            return false;
+        }
+        var useGatewayDefaultLocation = !gatewaySessionAlreadyMaterialized &&
+            draft is { UsesGatewayDefaultAgent: false } &&
+            _placement?.TryUseGatewayDefaultLocation(localThreadId) == true;
+        if (gatewaySessionAlreadyMaterialized)
+            threadId = draft!.TargetKey;
+        if (draft is not null && (draft.UsesGatewayDefaultAgent || useGatewayDefaultLocation))
+        {
+            if (draft.GatewaySessionKey is null)
+            {
+                SessionCreateResult result;
+                try
+                {
+                    result = await draft.CreateGatewaySessionOnceAsync(
+                        () => draft.UsesGatewayDefaultAgent
+                            ? _port.CreateDefaultDraftSessionAsync(CancellationToken.None)
+                            : _port.CreateDraftSessionAsync(
+                                draft.AgentId ?? throw new InvalidOperationException(
+                                    "A Gateway-default location requires an explicit agent."),
+                                CancellationToken.None)).ConfigureAwait(true);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.WriteLine($"[chat] Gateway-default draft creation failed: {ex}");
+                    _placement?.ReportDraftCreationResult(threadId, draft.CreationOutcomeUncertain
+                        ? ChatPlacementError.DraftCreationUncertain : ChatPlacementError.DraftCreationFailed);
+                    return false;
+                }
+                if (result.OutcomeUncertain)
+                {
+                    _placement?.ReportDraftCreationResult(threadId, ChatPlacementError.DraftCreationUncertain);
+                    return false;
+                }
+                if (!result.IsSupported || !result.Ok || string.IsNullOrWhiteSpace(result.Key))
+                {
+                    _placement?.ReportDraftCreationResult(threadId, ChatPlacementError.DraftCreationFailed);
+                    return false;
+                }
+                if (!StillLive() || placementSend?.IsCurrent == false)
+                    return false;
+                RecordDraftMaterialized(draft);
+            }
+            threadId = draft.TargetKey;
+        }
+        if (gatewaySessionAlreadyMaterialized)
+        {
+            RecordDraftMaterialized(draft!);
+        }
+        if (_placement is not null && !gatewaySessionAlreadyMaterialized)
+        {
+            var prepared = await _placement.PrepareAsync(threadId, _lifetimeToken).ConfigureAwait(true);
+            if (draft?.GatewaySessionKey is not null)
+                RecordDraftMaterialized(draft);
+            if (!prepared || !StillLive() || (requiresSendLease && placementSend?.IsCurrent != true)
+                || (requiresPreparation && !_placement.IsCurrent(localThreadId)))
                 return false;
         }
-        var accepted = await _port.SendMessageAsync(threadId, message, attachments, _lifetimeToken).ConfigureAwait(true);
+        if (draft is not null)
+        {
+            if (_placement is null)
+                throw new InvalidOperationException("A new chat requires Gateway location preparation.");
+            try
+            {
+                var optionsRevision = draft.Revision;
+                await draft.ApplyOptionsAsync(_port, _lifetimeToken,
+                    () => StillLive() && placementSend?.IsCurrent == true).ConfigureAwait(true);
+                if (draft.Revision != optionsRevision)
+                    throw new InvalidOperationException("Draft options changed during preparation. Send again to apply the current choices.");
+                _placement.ReportDraftOptionsResult(draft.Key, null);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _placement.ReportDraftOptionsResult(draft.Key, ex);
+                return false;
+            }
+            if (!StillLive() || placementSend?.IsCurrent != true)
+                return false;
+        }
+        var sendSelectionRevision = _selectionRevision;
+        var sendSessionId = draft is null ? null : _port.GetSessionId(threadId);
+        var idempotencyKey = draft?.GetSendIdempotencyKey(
+            message,
+            attachments,
+            sendSessionId);
+        var sendOutcome = await _port.SendMessageAsync(
+            threadId,
+            message,
+            attachments,
+            _lifetimeToken,
+            idempotencyKey,
+            sendSessionId).ConfigureAwait(true);
+        var accepted = sendOutcome == ChatSendOutcome.Accepted;
+        if (sendOutcome == ChatSendOutcome.DefinitivelyRejected &&
+            draft is not null &&
+            idempotencyKey is not null)
+            draft.ForgetSendIdempotencyKey(idempotencyKey);
+        if (sendOutcome == ChatSendOutcome.Indeterminate &&
+            draft is not null &&
+            idempotencyKey is not null)
+            draft.MarkSendOutcomeUncertain(idempotencyKey);
+        if (!accepted && draft is { } failedDraft)
+        {
+            var errorMessage = sendOutcome switch
+            {
+                ChatSendOutcome.Deferred => LocalizationHelper.GetString("Chat_Error_SendDeferred"),
+                ChatSendOutcome.Indeterminate => LocalizationHelper.GetString("Chat_Error_SendOutcomeUnknown"),
+                _ => LocalizationHelper.GetString("Chat_Notification_SendFailed")
+            };
+            _placement?.ReportDraftSendStatus(failedDraft.Key, errorMessage);
+        }
+        if (draft?.GatewaySessionKey is { Length: > 0 } materializedSessionKey)
+        {
+            if (accepted)
+            {
+                draft.MarkCompleted();
+                _drafts.Remove(draft.Key);
+                NotifyDraftPromoted(draft);
+            }
+            if (accepted && StillLive() && sendSelectionRevision == _selectionRevision)
+                TrySelectSession(materializedSessionKey);
+        }
         return StillLive() && accepted;
+    }
+
+    private void RecordDraftMaterialized(ChatDraft draft)
+    {
+        if (draft.GatewaySessionKey is not { Length: > 0 } sessionKey)
+            return;
+        _placement?.MarkCreatedSession(sessionKey);
+    }
+
+    private void NotifyDraftPromoted(ChatDraft draft)
+    {
+        if (draft.GatewaySessionKey is not { Length: > 0 } sessionKey)
+            return;
+        _placement?.MarkCreatedSession(sessionKey);
+        _hostActions.SessionCreated?.Invoke(sessionKey);
+        _hostActions.SessionPromoted?.Invoke(draft.Key, sessionKey);
     }
 
     public void Stop()
@@ -327,7 +536,12 @@ internal sealed partial class ChatComposerController : IDisposable
         if (!TryGetSessionOptionThread(out var threadId))
             return;
 
-        FireAndForget(_ => _port.SetModelAsync(threadId, model, _lifetimeToken));
+        if (FindDraft(threadId) is { } draft)
+        {
+            draft.SetModel(model);
+            DraftChanged?.Invoke();
+        }
+        else FireAndForget(_ => _port.SetModelAsync(threadId, model, _lifetimeToken));
     }
 
     public void ClearModel()
@@ -335,7 +549,12 @@ internal sealed partial class ChatComposerController : IDisposable
         if (!TryGetSessionOptionThread(out var threadId))
             return;
 
-        FireAndForget(_ => _port.ClearModelAsync(threadId, _lifetimeToken));
+        if (FindDraft(threadId) is { } draft)
+        {
+            draft.SetModel(null);
+            DraftChanged?.Invoke();
+        }
+        else FireAndForget(_ => _port.ClearModelAsync(threadId, _lifetimeToken));
     }
 
     public void SetThinkingLevel(string level)
@@ -348,7 +567,12 @@ internal sealed partial class ChatComposerController : IDisposable
             return;
         }
 
-        FireAndForget(_ => _port.SetThinkingLevelAsync(threadId, level, _lifetimeToken));
+        if (FindDraft(threadId) is { } draft)
+        {
+            draft.SetThinkingLevel(level);
+            DraftChanged?.Invoke();
+        }
+        else FireAndForget(_ => _port.SetThinkingLevelAsync(threadId, level, _lifetimeToken));
     }
 
     public void ClearThinkingLevel()
@@ -356,7 +580,12 @@ internal sealed partial class ChatComposerController : IDisposable
         if (!TryGetSessionOptionThread(out var threadId))
             return;
 
-        FireAndForget(_ => _port.ClearThinkingLevelAsync(threadId, _lifetimeToken));
+        if (FindDraft(threadId) is { } draft)
+        {
+            draft.SetThinkingLevel(null);
+            DraftChanged?.Invoke();
+        }
+        else FireAndForget(_ => _port.ClearThinkingLevelAsync(threadId, _lifetimeToken));
     }
 
     private bool TryGetSessionOptionThread(out string threadId)
@@ -364,9 +593,9 @@ internal sealed partial class ChatComposerController : IDisposable
         threadId = string.Empty;
         if (_disposed || _vm.Inputs is not { } inputs)
             return false;
-        if (!inputs.CanChangeSessionOptions)
+        if (!inputs.CanChangeSessionOptions || IsSendInProgress)
         {
-            System.Diagnostics.Trace.WriteLine("[chat] Session option change ignored while disconnected or message options are disabled.");
+            System.Diagnostics.Trace.WriteLine("[chat] Session option change ignored while disconnected, sending, or message options are disabled.");
             return false;
         }
         threadId = inputs.CurrentThread.Id;
@@ -761,6 +990,7 @@ internal sealed partial class ChatComposerController : IDisposable
         // still returns only after every cancellation request has been issued.
         _lifetimeCts.Cancel();
         _lifetimeCts.Dispose();
+        _vm.PropertyChanged -= OnViewModelPropertyChanged;
         TryCancel(voiceCancellation);
         TryCancel(pasteCancellation);
     }

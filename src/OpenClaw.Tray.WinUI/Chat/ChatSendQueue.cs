@@ -16,7 +16,11 @@ internal sealed record ChatQueuedSendRequest(
     ChatLifecycleCommandKind? LifecycleCommand = null,
     string? TimelineText = null,
     IReadOnlyList<ChatAttachmentPresentation>? AttachmentPresentations = null,
-    string AttachmentCorrelationSignature = "")
+    string AttachmentCorrelationSignature = "",
+    string? GatewayIdempotencyKey = null,
+    bool AdmissionOutcomeUncertain = false,
+    string? AdmissionUncertainSessionId = null,
+    long? AdmissionUncertainTurnGeneration = null)
 {
     // The final timeline entry text never carries the cosmetic attachment
     // chip lines that DisplayText uses for the queued-message preview list
@@ -33,7 +37,8 @@ internal sealed record ChatQueuedSendDispatch(
     long ResetVersion,
     long StartedLifecycleSequence,
     long StartedRunStartSequence,
-    bool StartedDirectly);
+    bool StartedDirectly,
+    long StartedTurnGeneration = 0);
 
 internal enum AssistantQueueFrameDisposition
 {
@@ -76,6 +81,10 @@ internal static class ChatSendQueuePolicy
     internal static bool IsDeferredAdmissionStatus(string? status) =>
         string.Equals(status, "in_flight", StringComparison.OrdinalIgnoreCase);
 
+    internal static bool IsDeferredAdmission(ChatSendResult result) =>
+        IsDeferredAdmissionStatus(result.Status) &&
+        !(result.Cached && !string.IsNullOrWhiteSpace(result.RunId));
+
     internal static bool IsCanceledAdmissionStatus(string? status) =>
         string.Equals(status, "aborted", StringComparison.OrdinalIgnoreCase)
         || string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase)
@@ -84,19 +93,68 @@ internal static class ChatSendQueuePolicy
     internal static ChatAdmissionOutcome ClassifyAdmission(
         ChatSendResult result)
     {
-        if (IsDeferredAdmissionStatus(result.Status))
+        if (IsDeferredAdmission(result))
             return ChatAdmissionOutcome.Deferred;
+        if (IsCanceledAdmissionStatus(result.Status))
+            return ChatAdmissionOutcome.Canceled;
         if (result.IsTerminalFailure)
         {
-            return IsCanceledAdmissionStatus(result.Status)
-                ? ChatAdmissionOutcome.Canceled
-                : ChatAdmissionOutcome.Rejected;
+            return string.IsNullOrWhiteSpace(result.RunId)
+                ? ChatAdmissionOutcome.Rejected
+                : ChatAdmissionOutcome.Accepted;
+        }
+        if (!string.IsNullOrWhiteSpace(result.RunId))
+            return ChatAdmissionOutcome.Accepted;
+        if (result.Cached &&
+            !string.Equals(result.Status, "ok", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(result.Status, "started", StringComparison.OrdinalIgnoreCase))
+        {
+            return ChatAdmissionOutcome.Other;
         }
         if (string.IsNullOrWhiteSpace(result.Status) ||
-            string.Equals(result.Status, "started", StringComparison.OrdinalIgnoreCase))
+            string.Equals(result.Status, "started", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(result.Status, "ok", StringComparison.OrdinalIgnoreCase))
         {
             return ChatAdmissionOutcome.Accepted;
         }
+        return ChatAdmissionOutcome.Other;
+    }
+
+    internal static ChatAdmissionOutcome ClassifyDraftAdmission(
+        ChatSendResult result)
+    {
+        if (IsDeferredAdmissionStatus(result.Status))
+        {
+            return result.Cached && !string.IsNullOrWhiteSpace(result.RunId)
+                ? ChatAdmissionOutcome.Accepted
+                : ChatAdmissionOutcome.Other;
+        }
+
+        if (IsCanceledAdmissionStatus(result.Status))
+            return ChatAdmissionOutcome.Canceled;
+
+        if (result.IsTerminalFailure)
+        {
+            if (!string.IsNullOrWhiteSpace(result.RunId))
+                return ChatAdmissionOutcome.Accepted;
+            return ChatAdmissionOutcome.Rejected;
+        }
+
+        if (string.Equals(result.Status, "started", StringComparison.OrdinalIgnoreCase))
+            return ChatAdmissionOutcome.Accepted;
+        if (string.IsNullOrWhiteSpace(result.Status) &&
+            !string.IsNullOrWhiteSpace(result.RunId))
+        {
+            return ChatAdmissionOutcome.Accepted;
+        }
+        if (result.Cached &&
+            (string.Equals(result.Status, "ok", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(result.Status, "in_flight", StringComparison.OrdinalIgnoreCase)) &&
+            !string.IsNullOrWhiteSpace(result.RunId))
+        {
+            return ChatAdmissionOutcome.Accepted;
+        }
+
         return ChatAdmissionOutcome.Other;
     }
 

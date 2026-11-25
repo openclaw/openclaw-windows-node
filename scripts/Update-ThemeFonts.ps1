@@ -9,7 +9,8 @@ src/OpenClaw.Tray.WinUI/Assets/Fonts with bracket-free names, verifies each file
 and prints each family's copyright line for THIRD_PARTY_NOTICES.md. It needs an authenticated gh.
 Italic files are not bundled: a XAML FontFamily source loads one file, so italics are synthesized.
 Fraunces is instanced at SOFT=0 and WONK=0 with fontTools, matching the Fraunces the Gateway serves (the
-same opsz and wght axes, without the SOFT and WONK axes the google/fonts build defaults to WONK=1).
+same opsz and wght axes, without the SOFT and WONK axes the google/fonts build defaults to WONK=1). Its
+named instances move to WONK=0 with it, so Windows can still select Regular rather than the default Black.
 That step needs Python with fontTools.
 
 .EXAMPLE
@@ -60,7 +61,20 @@ foreach ($entry in $families.GetEnumerator()) {
     $destination = Join-Path $resolvedOutput "$($entry.Key).ttf"
     Save-UpstreamFile "ofl/$($entry.Value)" $destination
     if ($entry.Key -eq 'Fraunces') {
-        python -m fontTools.varLib.instancer $destination SOFT=0 WONK=0 -q -o $destination
+        # Every named instance in the google/fonts build sits at WONK=1, so pinning WONK=0 alone drops them all and
+        # leaves only the default Black. Move them to WONK=0 first so Regular through Black stay selectable by weight.
+        @'
+import sys
+from fontTools.ttLib import TTFont
+from fontTools.varLib import instancer
+font = TTFont(sys.argv[1])
+for instance in font["fvar"].instances:
+    instance.coordinates.update(SOFT=0, WONK=0)
+instancer.instantiateVariableFont(font, {"SOFT": 0, "WONK": 0}, inplace=True)
+if not any(instance.coordinates.get("wght") == 400 for instance in font["fvar"].instances):
+    sys.exit("Fraunces has no Regular instance after instancing.")
+font.save(sys.argv[1])
+'@ | python - $destination
         if ($LASTEXITCODE -ne 0) { throw 'Instancing Fraunces failed; install fontTools (pip install fonttools).' }
     }
     $directory = ($entry.Value -split '/')[0]

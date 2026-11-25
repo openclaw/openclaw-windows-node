@@ -21,6 +21,29 @@ public sealed class ChatStreamingParityTests
         Assert.Equal(expected, mapped.Text);
     }
 
+    [Fact]
+    public void HistoryMergePreservesLiveTurnGeneration()
+    {
+        var prior = ChatTimelineReducer.AddLocalUser(
+            ChatTimelineState.Initial() with { TurnGeneration = 4 },
+            "Live prompt",
+            "live-prompt");
+        var plan = new ChatHistoryRebuildPlan(
+            null,
+            ChatTimelineState.Initial(),
+            new Dictionary<string, ChatEntryMetadata>(),
+            0);
+
+        var (merged, _) = ChatHistoryState.MergeWithLiveEntries(
+            plan,
+            prior,
+            new Dictionary<string, ChatEntryMetadata>(),
+            Start,
+            authoritative: true);
+
+        Assert.Equal(5, merged.TurnGeneration);
+    }
+
     [Theory]
     [InlineData("r", 1)]
     [InlineData("other", 2)]
@@ -574,6 +597,22 @@ public sealed class ChatStreamingParityTests
         state = ChatTimelineReducer.Apply(state, evt, Start.AddSeconds(1));
         Assert.True(state.TurnActive);
         Assert.Equal(expected, ChatRunProgressProjection.Project(state)!.Label);
+    }
+
+    [Fact]
+    public void RunClock_OnlyTicksForChangingElapsedTimeOrRetryCountdown()
+    {
+        var active = new ChatRunProgressPresentation(null, null, "Working", Active: true, Waiting: false);
+        Assert.False(ChatRunProgressProjection.NeedsClock(active, Start));
+        Assert.True(ChatRunProgressProjection.NeedsClock(active with { StartedAt = Start }, Start));
+
+        var yielded = active with { Active = false, Waiting = true, StartedAt = Start, EndedAt = Start.AddSeconds(1) };
+        Assert.True(ChatRunProgressProjection.NeedsClock(yielded, Start.AddSeconds(2)));
+        Assert.False(ChatRunProgressProjection.NeedsClock(yielded with { Waiting = false }, Start.AddSeconds(2)));
+
+        var retrying = active with { Label = ChatRunProgressProjection.RetryLabel, RetryAt = Start.AddSeconds(1) };
+        Assert.True(ChatRunProgressProjection.NeedsClock(retrying, Start));
+        Assert.False(ChatRunProgressProjection.NeedsClock(retrying, Start.AddSeconds(1)));
     }
 
     [Fact]

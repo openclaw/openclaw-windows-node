@@ -25,6 +25,9 @@ internal static class TestHostDpiInitializer
     [System.Runtime.CompilerServices.ModuleInitializer]
     internal static void Initialize()
     {
+        // Chat motion is render-only; layout proofs must never sample a row mid-rise or mid-glide.
+        // Motion proofs opt back in with ChatMotionScope.
+        OpenClawTray.Chat.ChatMotion.AnimationsOverride = false;
         try { OnboardingNativeProof.LockProcessDpi(); }
         catch
         {
@@ -77,6 +80,7 @@ public sealed class UIThreadFixture : IDisposable
     private readonly ManualResetEventSlim _ready = new(false);
     private Exception? _startupError;
     private volatile string _startupPhase = "not started";
+    private uint _uiNativeThreadId;
     internal NativeUiExceptionDiagnostics Diagnostics { get; } = NativeUiExceptionDiagnostics.FromEnvironment();
 
     /// <summary>
@@ -118,6 +122,7 @@ public sealed class UIThreadFixture : IDisposable
             Name = "UIThreadFixture",
         };
         _uiThread.SetApartmentState(ApartmentState.STA);
+        NativeThreadStackProbe.Start();
         _uiThread.Start();
 
         // Wait for Application.Start + Window setup to signal ready. CI can be
@@ -131,8 +136,11 @@ public sealed class UIThreadFixture : IDisposable
         if (!_ready.Wait(TimeSpan.FromSeconds(timeoutSeconds)))
         {
             var threadState = _uiThread.IsAlive ? _uiThread.ThreadState.ToString() : "stopped";
+            // Name the native call that blocks startup; CI collects no dumps.
+            var nativeStack = NativeThreadStackProbe.Capture(Volatile.Read(ref _uiNativeThreadId));
+            Console.WriteLine($"UIThreadFixture startup timeout native stack: {nativeStack}");
             throw new InvalidOperationException(
-                $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', threadState='{threadState}'");
+                $"UIThreadFixture failed to initialize within {timeoutSeconds}s; phase='{_startupPhase}', threadState='{threadState}', nativeStack='{nativeStack}'");
         }
 
         if (_startupError != null)
@@ -240,6 +248,7 @@ public sealed class UIThreadFixture : IDisposable
     private void UIThreadProc()
     {
         Diagnostics.SetPhase(NativeUiPhase.UiStarting);
+        Volatile.Write(ref _uiNativeThreadId, NativeThreadStackProbe.GetCurrentThreadId());
         try
         {
             OnboardingNativeProof.InitializeProductProcessDpi();
