@@ -28,7 +28,12 @@ internal sealed class WebViewBuiltinThemeProbe(IUiDispatcher dispatcher) : IBuil
         // The deadline completes this task itself, so a WebView2 call that ignores cancellation, or a UI thread that never
         // runs the work, cannot hold the caller open. The UI-thread work still closes what it created.
         var registration = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
-        _ = completion.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+        _ = completion.Task.ContinueWith(task =>
+        {
+            // A fault that wins the race against the deadline may have no waiter left to observe it.
+            _ = task.Exception;
+            registration.Dispose();
+        }, TaskScheduler.Default);
         async Task RunAsync()
         {
             try
