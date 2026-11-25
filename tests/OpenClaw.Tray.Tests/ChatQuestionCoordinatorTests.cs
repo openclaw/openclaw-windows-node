@@ -571,6 +571,116 @@ public sealed class ChatQuestionCoordinatorTests
     }
 
     [Fact]
+    public async Task LocallyExpiredSubmission_ReconnectRecoversGatewayAcceptedAnswer()
+    {
+        var clock = new ManualTimeProvider();
+        var reply = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gateway = new Gateway
+        {
+            Resolve = (_, _) => reply.Task,
+            List = () => Task.FromResult(new GatewayQuestionList(true, [])),
+            Get = id => Task.FromResult(Request(id) with { ExpiresAtMs = 2000, Status = "answered" }),
+        };
+        using var owner = new ChatQuestionCoordinator(gateway, clock);
+        owner.Start();
+        gateway.Request(Request() with { ExpiresAtMs = 2000 });
+
+        var submission = owner.SubmitAsync("session-a", "main", "request-1",
+            new Dictionary<string, string[]> { ["choice"] = ["win"] });
+        gateway.Status(false);
+        clock.Advance(TimeSpan.FromSeconds(3));
+        Assert.Equal("expired", Assert.Single(owner.Snapshot().Prompts).Request.Status);
+
+        gateway.Status(true);
+        await owner.RefreshAsync();
+
+        var recovered = Assert.Single(owner.Snapshot().Prompts);
+        Assert.Equal("answered", recovered.Request.Status);
+        Assert.False(recovered.NeedsRefresh);
+        Assert.Equal(1, gateway.Reads);
+        Assert.Equal(1, gateway.Resolutions);
+
+        reply.SetResult("answered");
+        await submission;
+        Assert.Equal("answered", Assert.Single(owner.Snapshot().Prompts).Request.Status);
+    }
+
+    [Fact]
+    public async Task LocallyExpiredPrompts_ExceedingTerminalLimitRemainRecoverable()
+    {
+        var clock = new ManualTimeProvider();
+        var ids = Enumerable.Range(1, 4).Select(index => $"request-{index}").ToArray();
+        var gateway = new Gateway
+        {
+            List = () => Task.FromResult(new GatewayQuestionList(true, [])),
+            Get = id => Task.FromResult(Request(id) with
+            {
+                ExpiresAtMs = 2000,
+                Status = "answered",
+                CreatedAtMs = 1000 + Array.IndexOf(ids, id),
+            }),
+        };
+        using var owner = new ChatQuestionCoordinator(gateway, clock);
+        owner.Start();
+        for (var index = 0; index < ids.Length; index++)
+            gateway.Request(Request(ids[index]) with { ExpiresAtMs = 2000, CreatedAtMs = 1000 + index });
+
+        gateway.Status(false);
+        clock.Advance(TimeSpan.FromSeconds(3));
+        var expired = owner.Snapshot().Prompts;
+        Assert.Equal(ids.Length, expired.Count);
+        Assert.All(expired, prompt =>
+        {
+            Assert.Equal("expired", prompt.Request.Status);
+            Assert.True(prompt.NeedsRefresh);
+        });
+
+        gateway.Status(true);
+        await owner.RefreshAsync();
+
+        var prompts = owner.Snapshot().Prompts;
+        Assert.Equal(3, prompts.Count);
+        Assert.Equal(ids.Skip(1), prompts.Select(prompt => prompt.Request.Id));
+        Assert.All(prompts, prompt => Assert.Equal("answered", prompt.Request.Status));
+        Assert.Equal(ids.Length, gateway.Reads);
+    }
+
+    [Fact]
+    public async Task GatewayResolution_AfterLocalExpiryClearsRecoveryStateAndTerminalRetentionIsBounded()
+    {
+        var clock = new ManualTimeProvider();
+        var gateway = new Gateway();
+        using var owner = new ChatQuestionCoordinator(gateway, clock);
+        owner.Start();
+        gateway.Request(Request("request-1") with { ExpiresAtMs = 2000, CreatedAtMs = 1000 });
+        clock.Advance(TimeSpan.FromSeconds(3));
+
+        var expired = Assert.Single(owner.Snapshot().Prompts);
+        Assert.True(expired.LocallyExpired);
+        Assert.True(expired.NeedsRefresh);
+
+        gateway.ResolveEvent("request-1", "answered");
+        gateway.Status(false);
+        var resolved = Assert.Single(owner.Snapshot().Prompts);
+        Assert.Equal("answered", resolved.Request.Status);
+        Assert.False(resolved.LocallyExpired);
+        Assert.False(resolved.NeedsRefresh);
+        gateway.Status(true);
+        await owner.RefreshAsync();
+
+        for (var index = 2; index <= 5; index++)
+            gateway.Request(Request($"request-{index}") with
+            {
+                Status = "answered",
+                CreatedAtMs = index * 1000,
+            });
+
+        var prompts = owner.Snapshot().Prompts;
+        Assert.Equal(["request-3", "request-4", "request-5"],
+            prompts.Select(prompt => prompt.Request.Id));
+    }
+
+    [Fact]
     public async Task Disposal_FencesInFlightRefreshAndUnsubscribes()
     {
         var response = new TaskCompletionSource<GatewayQuestionList>(TaskCreationOptions.RunContinuationsAsynchronously);

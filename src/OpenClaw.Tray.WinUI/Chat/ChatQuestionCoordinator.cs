@@ -5,7 +5,7 @@ namespace OpenClawTray.Chat;
 
 internal sealed record ChatQuestionPrompt(
     GatewayQuestionRequest Request, bool Submitting = false, string? Error = null,
-    bool NeedsRefresh = false, long Revision = 0, bool AwaitingResolution = false);
+    bool NeedsRefresh = false, long Revision = 0, bool AwaitingResolution = false, bool LocallyExpired = false);
 internal sealed record ChatQuestionSnapshot(IReadOnlyList<ChatQuestionPrompt> Prompts, bool Connected, string? Error);
 
 /// <summary>
@@ -111,7 +111,8 @@ internal sealed class ChatQuestionCoordinator : IDisposable
                         Store(request, recovered: true);
                 var listed = result.Questions.Select(request => request.Id).ToHashSet(StringComparer.Ordinal);
                 missing = _prompts.Values
-                    .Where(prompt => (prompt.Request.Status == "pending" || prompt.NeedsRefresh) && prompt.Revision <= revision
+                    .Where(prompt => (prompt.Request.Status == "pending" || prompt.NeedsRefresh || prompt.LocallyExpired)
+                        && prompt.Revision <= revision
                         && !listed.Contains(prompt.Request.Id))
                     .Select(prompt => prompt.Request.Id).ToArray();
             }
@@ -358,14 +359,16 @@ internal sealed class ChatQuestionCoordinator : IDisposable
         // ALREADY_TERMINAL also covers in-flight or unknown Gateway commits.
         // A pending read cannot make that answer safe to submit again.
         var awaitingResolution = request.Status == "pending" && previous?.AwaitingResolution == true;
-        if (request.ExpiresAtMs <= _clock.GetUtcNow().ToUnixTimeMilliseconds() && request.Status == "pending")
+        var locallyExpired = request.Status == "pending"
+            && request.ExpiresAtMs <= _clock.GetUtcNow().ToUnixTimeMilliseconds();
+        if (locallyExpired)
             request = request with { Status = "expired" };
         var pending = request.Status == "pending";
         _prompts[request.Id] = new(request,
             Submitting: pending && previous?.Submitting == true,
             Error: pending && (!recovered || awaitingResolution) ? previous?.Error : null,
-            NeedsRefresh: awaitingResolution || (pending && !recovered && previous?.NeedsRefresh == true),
-            Revision: ++_revision, AwaitingResolution: awaitingResolution);
+            NeedsRefresh: locallyExpired || awaitingResolution || (pending && !recovered && previous?.NeedsRefresh == true),
+            Revision: ++_revision, AwaitingResolution: awaitingResolution, LocallyExpired: locallyExpired);
         Trim();
     }
 
@@ -377,7 +380,8 @@ internal sealed class ChatQuestionCoordinator : IDisposable
             _prompts[id] = prompt with
             {
                 Request = prompt.Request with { Status = status }, Submitting = false,
-                NeedsRefresh = false, AwaitingResolution = false, Error = null, Revision = _revision,
+                NeedsRefresh = false, AwaitingResolution = false, LocallyExpired = false,
+                Error = null, Revision = _revision,
             };
         Trim();
     }
@@ -386,7 +390,8 @@ internal sealed class ChatQuestionCoordinator : IDisposable
     {
         while (_resolved.Count > 256)
             _resolved.Remove(_resolved.MinBy(pair => pair.Value.Revision).Key);
-        foreach (var prompt in _prompts.Values.Where(prompt => prompt.Request.Status != "pending")
+        foreach (var prompt in _prompts.Values.Where(prompt => prompt.Request.Status != "pending"
+                     && !prompt.NeedsRefresh && !prompt.LocallyExpired && !prompt.AwaitingResolution)
                      .OrderByDescending(prompt => prompt.Request.CreatedAtMs).Skip(3).ToArray())
             _prompts.Remove(prompt.Request.Id);
     }
@@ -405,7 +410,8 @@ internal sealed class ChatQuestionCoordinator : IDisposable
             foreach (var pair in _prompts.ToArray())
                 _prompts[pair.Key] = pair.Value with
                 {
-                    Submitting = false, NeedsRefresh = pair.Value.Request.Status == "pending",
+                    Submitting = false,
+                    NeedsRefresh = pair.Value.Request.Status == "pending" || pair.Value.LocallyExpired,
                     Revision = ++_revision,
                 };
         }
@@ -442,7 +448,7 @@ internal sealed class ChatQuestionCoordinator : IDisposable
                 _prompts[pair.Key] = pair.Value with
                 {
                     Request = pair.Value.Request with { Status = "expired" },
-                    Submitting = false, Revision = ++_revision,
+                    Submitting = false, NeedsRefresh = true, LocallyExpired = true, Revision = ++_revision,
                 };
                 changed = true;
             }
