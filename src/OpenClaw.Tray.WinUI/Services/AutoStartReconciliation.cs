@@ -89,6 +89,34 @@ internal static class AutoStartReconciliation
         => current == captured && reconciled != captured;
 
     /// <summary>
+    /// Reports an enabled installer Run value so the Settings toggle can turn it off.
+    /// Scheduled-task presence is not proof of enablement. An enabled preference is never lowered here:
+    /// the read has no way to tell a missing registration from one it failed to see.
+    /// </summary>
+    internal static async Task<bool> ReconcileUnpackagedAsync(bool configured, Func<Task<bool>> isRegistered)
+        => configured || await isRegistered();
+
+    /// <summary>
+    /// Only adopt this executable's installer command. Windows keeps Startup Apps disablement
+    /// separately from the Run value. Missing approval means no override; unknown formats or
+    /// states must not promote a disabled preference. Never write Windows' approval metadata.
+    /// </summary>
+    internal static bool IsEnabledInstallerRun(object? command, string? executable, object? startupApproval)
+    {
+        if (string.IsNullOrWhiteSpace(executable) || command is not string value ||
+            !string.Equals(value, $"\"{executable}\" --background", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        const int approvalRecordLength = 12;
+        const byte enabledState = 2;
+        const byte enabledAlternateState = 6;
+        return startupApproval is null ||
+            startupApproval is byte[] approval && approval.Length == approvalRecordLength &&
+            (approval[0] == enabledState || approval[0] == enabledAlternateState) &&
+            approval[1] == 0 && approval[2] == 0 && approval[3] == 0;
+    }
+
+    /// <summary>
     /// Reconciles the persisted preference against the real Windows startup state and
     /// returns the value the app should now report and store.
     /// </summary>
