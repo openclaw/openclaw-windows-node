@@ -635,12 +635,20 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             await TestSupport.WaitForRenderedConditionAsync(() => action.ActualHeight > 0, "native action");
             var nativeForeground = ColorOf(action.Foreground);
             var content = Assert.Single(TestSupport.FindDescendants<ContentPresenter>(action));
-            var nativeStates = new[]
+            var commonStates = Assert.Single(VisualStateManager.GetVisualStateGroups(content),
+                group => group.Name == "CommonStates");
+            var nativeStates = new Dictionary<string, global::Windows.UI.Color>();
+            foreach (var state in new[] { "PointerOver", "Pressed", "Normal" })
             {
-                (State: "PointerOver", Color: ColorOf(Assert.IsAssignableFrom<Brush>(action.Resources["HyperlinkButtonForegroundPointerOver"]))),
-                (State: "Pressed", Color: ColorOf(Assert.IsAssignableFrom<Brush>(action.Resources["HyperlinkButtonForegroundPressed"]))),
-                (State: "Normal", Color: nativeForeground),
-            };
+                Assert.True(VisualStateManager.GoToState(action, state, false));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => commonStates.CurrentState?.Name == state &&
+                        (commonStates.CurrentState.Storyboard is not { } storyboard ||
+                            storyboard.GetCurrentState() == Microsoft.UI.Xaml.Media.Animation.ClockState.Filling),
+                    $"native {state} foreground animation completed");
+                // Dictionary lookup can use the application's mode instead of this Light popup's mode.
+                nativeStates[state] = ColorOf(content.Foreground);
+            }
             try
             {
                 applicator.Apply(imported);
