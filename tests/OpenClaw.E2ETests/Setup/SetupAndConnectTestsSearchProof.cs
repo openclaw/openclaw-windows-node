@@ -104,6 +104,7 @@ public sealed class SetupAndConnectTestsSearchProof(E2ESetupFixture fixture)
                                   || [...document.querySelectorAll("input,textarea,[role=textbox]")].some(visible),
                                 rootSettled: location.pathname !== "/",
                                 skills: headings.includes("Skills"),
+                                viewport: `${innerWidth}x${innerHeight}`,
                                 path: location.pathname, title: document.title };
                             })()
                             """, browserTimeout.Token);
