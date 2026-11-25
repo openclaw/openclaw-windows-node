@@ -188,10 +188,10 @@ public sealed class GatewayThemeSettingsTests
     });
 
     [Fact]
-    public Task PushedCatalogChangeIsReadAndWinsOverAnOlderReadThatFinishesLater() => Task.Run(async () =>
+    public Task PushedChangesDuringAReadAreMergedIntoOneLaterReadThatWins() => Task.Run(async () =>
     {
         // No synchronization context here, so the catalog's ConfigureAwait(false) continuations run inline
-        // when each reply completes and both reads have finished before the assertions.
+        // when each reply completes.
         var (client, proxy) = Gateway();
         var lists = new Queue<TaskCompletionSource<JsonElement>>();
         proxy.ReplyAsync = (method, parameters) =>
@@ -209,22 +209,88 @@ public sealed class GatewayThemeSettingsTests
         var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
 
         catalog.SetConnection(client, "gw-1");
-        proxy.ThemeCatalogInvalidated!.Invoke(client, "plugins.changed");
-        Assert.Equal(2, lists.Count);
-        var initial = lists.Dequeue();
-        var pushed = lists.Dequeue();
-        pushed.SetResult(Json("""
+        // users.prefs.changed is sent for every preference key, so bursts are normal.
+        for (var i = 0; i < 5; i++)
+            proxy.ThemeCatalogInvalidated!.Invoke(client, i % 2 == 0 ? "users.prefs.changed" : "plugins.changed");
+        var settingsOpened = catalog.RefreshAsync();
+        Assert.Single(lists);
+
+        lists.Dequeue().SetResult(Json(ListReply));
+        Assert.Single(lists);
+        Assert.False(settingsOpened.IsCompleted);
+        lists.Dequeue().SetResult(Json("""
             { "themes": [
               { "id": "acme/neon", "name": "Neon", "source": "plugin", "pluginId": "acme", "modes": ["dark"] },
               { "id": "acme/aurora", "name": "Aurora", "source": "plugin", "pluginId": "acme", "modes": ["dark"] } ] }
             """));
-        initial.SetResult(Json(ListReply));
-        await Task.WhenAll(initial.Task, pushed.Task);
+        await settingsOpened;
 
+        Assert.Empty(lists);
+        Assert.Equal(2, proxy.Calls.Count(call => call.StartsWith("themes.list:", StringComparison.Ordinal)));
         Assert.Contains(catalog.Options, option => option.Id == "acme/aurora");
         catalog.SetConnection(null, null);
         Assert.Null(proxy.ThemeCatalogInvalidated);
     });
+
+    [Fact]
+    public Task DisconnectingStopsDefinitionReadsStillWaitingForASlot() => Task.Run(async () =>
+    {
+        var (client, proxy) = Gateway();
+        var gets = new List<TaskCompletionSource<JsonElement>>();
+        var themes = string.Join(",", Enumerable.Range(0, 7).Select(i =>
+            $$"""{ "id": "acme/t{{i}}", "name": "T{{i}}", "source": "plugin", "pluginId": "acme", "modes": ["dark"] }"""));
+        proxy.ReplyAsync = (method, _) =>
+        {
+            if (method == "themes.list")
+                return Task.FromResult(Json($$"""{ "themes": [{{themes}}] }"""));
+            var pending = new TaskCompletionSource<JsonElement>();
+            lock (gets)
+                gets.Add(pending);
+            return pending.Task;
+        };
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+
+        catalog.SetConnection(client, "gw-1");
+        var reading = catalog.RefreshAsync();
+        TaskCompletionSource<JsonElement>[] started;
+        lock (gets)
+            started = [.. gets];
+        Assert.Equal(4, started.Length);
+
+        catalog.SetConnection(null, null);
+        foreach (var get in started)
+            get.SetException(new InvalidOperationException("disconnected"));
+        await reading;
+
+        lock (gets)
+            Assert.Equal(4, gets.Count);
+        Assert.Empty(catalog.Options.Where(option => option.Id.StartsWith("acme/", StringComparison.Ordinal)));
+    });
+
+    [Fact]
+    public void AHostileThemeReplyRejectsOnlyThatTheme()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Reply = (method, parameters) =>
+        {
+            if (method == "themes.list")
+                return Json("""
+                    { "themes": [
+                      { "id": "acme/neon", "name": "Neon", "source": "plugin", "pluginId": "acme", "modes": ["dark"] },
+                      { "id": "acme/bad", "name": "Bad", "source": "plugin", "pluginId": "acme", "modes": ["dark"] } ] }
+                    """);
+            // An escaped unpaired surrogate makes JsonElement.GetString throw.
+            return JsonSerializer.Serialize(parameters).Contains("acme/bad")
+                ? Json($$"""{ "theme": { "id": "acme/bad", "name": "\ud800", "source": "plugin", "modes": ["\ud800"] }, "definition": {{NeonDefinition}} }""")
+                : Json($$"""{ "theme": { "id": "acme/neon", "name": "Neon", "source": "plugin", "modes": ["dark"] }, "definition": {{NeonDefinition}} }""");
+        };
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+
+        catalog.SetConnection(client, "gw-1");
+
+        Assert.Contains(catalog.Options, option => option.Id == "acme/neon");
+        Assert.DoesNotContain(catalog.Options, option => option.Id == "acme/bad");
+    }
 
     [Fact]
     public void SameClientReconnectingRereadsTheCatalogItMissedWhileOffline()

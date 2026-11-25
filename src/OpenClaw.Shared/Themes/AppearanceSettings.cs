@@ -4,8 +4,8 @@ using System.Text.Json.Serialization;
 namespace OpenClaw.Shared.Themes;
 
 /// <summary>
-/// Persisted Companion appearance. A missing object (legacy settings) means the Windows Fluent look
-/// with Mica. The selection is global today; a per-Gateway map can be added beside <see cref="Theme"/>
+/// Persisted Companion appearance. A missing object (legacy settings) means the Windows Fluent look with Mica.
+/// The selection is global today; a per-Gateway map can be added beside <see cref="Theme"/>
 /// later without migrating it. Reading is field-by-field tolerant: SettingsData.FromJson discards the
 /// whole settings file on any JsonException, so a malformed appearance value falls back to its default.
 /// </summary>
@@ -15,7 +15,7 @@ public sealed record AppearanceSettings
     /// <summary>The selected Gateway theme, or null for the Windows default look.</summary>
     public ThemeSelection? Theme { get; init; }
 
-    /// <summary>Use the Mica backdrop on themed windows instead of an opaque theme canvas.</summary>
+    /// <summary>Show the Mica backdrop under the Windows default look; off paints the opaque Fluent canvas.</summary>
     public bool UseMica { get; init; } = true;
 
     /// <summary>Show the connected Gateway's selected dashboard theme instead of <see cref="Theme"/>.</summary>

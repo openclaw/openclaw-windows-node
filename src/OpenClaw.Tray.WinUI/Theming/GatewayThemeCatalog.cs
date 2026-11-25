@@ -46,6 +46,10 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     private int _generation;
     private int _refreshSequence;
     private int _appliedSequence;
+    private bool _refreshing;
+    private int _refreshingGeneration;
+    private bool _refreshPending;
+    private TaskCompletionSource? _refreshCompletion;
     private IReadOnlyList<GatewayThemeOption> _gatewayOptions = [];
     private GatewayThemeOption? _gatewayCurrent;
 
@@ -129,17 +133,75 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         _ = RefreshAsync();
     }
 
-    public async Task RefreshAsync()
+    /// <summary>
+    /// Reads the catalog. One read runs at a time for a connection: requests that arrive meanwhile (push events,
+    /// Settings opening) are merged into a single further read, and the returned task completes after it.
+    /// </summary>
+    public Task RefreshAsync()
+    {
+        TaskCompletionSource completion;
+        int generation;
+        lock (_gate)
+        {
+            if (_refreshing && _refreshingGeneration == _generation)
+            {
+                _refreshPending = true;
+                return _refreshCompletion!.Task;
+            }
+            generation = _generation;
+            _refreshing = true;
+            _refreshingGeneration = generation;
+            _refreshPending = false;
+            completion = _refreshCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        _ = RunRefreshesAsync(generation, completion);
+        return completion.Task;
+    }
+
+    private async Task RunRefreshesAsync(int generation, TaskCompletionSource completion)
+    {
+        try
+        {
+            while (true)
+            {
+                await RefreshOnceAsync(generation).ConfigureAwait(false);
+                lock (_gate)
+                {
+                    if (generation != _generation || !_refreshPending)
+                        break;
+                    _refreshPending = false;
+                }
+            }
+        }
+        finally
+        {
+            lock (_gate)
+            {
+                // A newer connection may already run its own reads; only release this connection's slot.
+                if (_refreshingGeneration == generation)
+                    _refreshing = false;
+            }
+            completion.TrySetResult();
+        }
+    }
+
+    private bool IsCurrent(int generation)
+    {
+        lock (_gate)
+            return generation == _generation;
+    }
+
+    private async Task RefreshOnceAsync(int generation)
     {
         IOperatorGatewayClient? client;
         string? gatewayId;
-        int generation;
         int sequence;
         lock (_gate)
         {
+            if (generation != _generation)
+                return;
             client = _client;
             gatewayId = _gatewayId;
-            generation = _generation;
             sequence = ++_refreshSequence;
         }
         if (client is not { IsConnectedToGateway: true } || !Supports(client))
@@ -158,7 +220,7 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
                 known = _gatewayOptions;
             if (!Publish(generation, sequence, null, CurrentOption(list, gatewayId, known)))
                 return;
-            options = await ReadDefinitionsAsync(client, list, gatewayId).ConfigureAwait(false);
+            options = await ReadDefinitionsAsync(client, list, gatewayId, generation).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -191,8 +253,8 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
 
     // Concurrent, so one slow theme bounds a refresh at about a single timeout instead of adding one per theme; a few
     // at a time, so a Gateway with many imported themes does not get a burst of requests on one connection.
-    private static async Task<IReadOnlyList<GatewayThemeOption>> ReadDefinitionsAsync(
-        IOperatorGatewayClient client, GatewayThemeList list, string? gatewayId)
+    private async Task<IReadOnlyList<GatewayThemeOption>> ReadDefinitionsAsync(
+        IOperatorGatewayClient client, GatewayThemeList list, string? gatewayId, int generation)
     {
         var timeout = TimeoutMs();
         using var slots = new SemaphoreSlim(MaxConcurrentDefinitionReads);
@@ -201,6 +263,9 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             await slots.WaitAsync().ConfigureAwait(false);
             try
             {
+                // A read queued before the connection changed would only be discarded; don't send it.
+                if (!IsCurrent(generation))
+                    return null;
                 return await ReadDefinitionAsync(client, descriptor, gatewayId, timeout).ConfigureAwait(false);
             }
             finally
@@ -228,12 +293,21 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             Services.Logger.Warn($"[Themes] Skipped a Gateway theme whose definition could not be read ({ex.GetType().Name}).");
             return null;
         }
-        if (!GatewayThemeProtocol.TryParseGet(result, out var read, out var definition) ||
-            read.Id != descriptor.Id || definition is null)
+        try
+        {
+            if (!GatewayThemeProtocol.TryParseGet(result, out var read, out var definition) ||
+                read.Id != descriptor.Id || definition is null)
+                return null;
+            // A theme whose text would be unreadable is not offered (it would not be applied either).
+            if (ThemeLegibility.IsReadable(ThemePaletteExpander.Resolve(descriptor, definition)))
+                return new GatewayThemeOption(descriptor, definition, gatewayId);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A malformed reply rejects only this theme.
+            Services.Logger.Warn($"[Themes] Skipped a Gateway theme whose definition could not be parsed ({ex.GetType().Name}).");
             return null;
-        // A theme whose text would be unreadable is not offered (it would not be applied either).
-        if (ThemeLegibility.IsReadable(ThemePaletteExpander.Resolve(descriptor, definition)))
-            return new GatewayThemeOption(descriptor, definition, gatewayId);
+        }
         Services.Logger.Warn("[Themes] Skipped a Gateway theme whose text contrast is below 3:1.");
         return null;
     }
