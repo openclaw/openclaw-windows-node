@@ -10107,4 +10107,76 @@
   <data name="Chat_Panel_LauncherSubagents" xml:space="preserve"><value>跟踪此对话中委派的工作。</value></data>
   <data name="Chat_Panel_LauncherDashboard" xml:space="preserve"><value>此会话发布的小组件和选项卡。</value></data>
   <data name="Chat_Panel_LauncherEmpty" xml:space="preserve"><value>此对话暂无可用的面板。</value></data>
+  <data name="Chat_Tasks_Title" xml:space="preserve">
+    <value>建议的任务</value>
+  </data>
+  <data name="Chat_Tasks_RefreshFailed" xml:space="preserve">
+    <value>无法刷新建议的任务。</value>
+  </data>
+  <data name="Chat_Tasks_Refresh" xml:space="preserve">
+    <value>刷新任务</value>
+  </data>
+  <data name="Chat_Tasks_Instructions" xml:space="preserve">
+    <value>显示说明</value>
+  </data>
+  <data name="Chat_Tasks_Copied" xml:space="preserve">
+    <value>已复制说明</value>
+  </data>
+  <data name="Chat_Tasks_Copy" xml:space="preserve">
+    <value>复制说明</value>
+  </data>
+  <data name="Chat_Tasks_CopyFailed" xml:space="preserve">
+    <value>无法复制说明。</value>
+  </data>
+  <data name="Chat_Tasks_Started" xml:space="preserve">
+    <value>任务已启动。请在会话中查看。</value>
+  </data>
+  <data name="Chat_Tasks_Starting" xml:space="preserve">
+    <value>正在启动任务...</value>
+  </data>
+  <data name="Chat_Tasks_Unconfirmed" xml:space="preserve">
+    <value>尚未确认任务是否启动。重试将检查同一个任务，不会创建新任务。重新连接后，请查看会话或网页聊天。</value>
+  </data>
+  <data name="Chat_Tasks_Retry" xml:space="preserve">
+    <value>重试同一个任务</value>
+  </data>
+  <data name="Chat_Tasks_Local" xml:space="preserve">
+    <value>在新会话中启动</value>
+  </data>
+  <data name="Chat_Tasks_Options" xml:space="preserve">
+    <value>启动选项</value>
+  </data>
+  <data name="Chat_Tasks_Session" xml:space="preserve">
+    <value>在此对话中启动</value>
+  </data>
+  <data name="Chat_Tasks_Repository" xml:space="preserve">
+    <value>网关上的仓库路径</value>
+  </data>
+  <data name="Chat_Tasks_Worktree" xml:space="preserve">
+    <value>在新工作树中启动</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
+    <value>已配置的云配置文件 ID</value>
+  </data>
+  <data name="Chat_Tasks_Cloud" xml:space="preserve">
+    <value>在云端启动</value>
+  </data>
+  <data name="Chat_Tasks_Dismiss" xml:space="preserve">
+    <value>忽略任务</value>
+  </data>
+  <data name="Chat_Tasks_Compatibility" xml:space="preserve">
+    <value>请更新网关或使用网页聊天启动此任务。</value>
+  </data>
+  <data name="Chat_Tasks_RepositoryRequired" xml:space="preserve">
+    <value>输入 Gateway 上含有提交的仓库绝对路径。任务尚未启动。</value>
+  </data>
+  <data name="Chat_Tasks_CloudProfileRequired" xml:space="preserve">
+    <value>请选择已配置的云配置文件。任务尚未启动。</value>
+  </data>
+  <data name="Chat_Tasks_HideInstructions" xml:space="preserve"><value>隐藏说明</value></data>
+  <data name="Chat_Tasks_Hide" xml:space="preserve"><value>在本地隐藏</value></data>
+  <data name="Chat_Tasks_HideHelp" xml:space="preserve"><value>仅在本地隐藏此通知。任务结果仍然未知。</value></data>
+  <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>需要 Gateway 管理员权限才能启动建议的任务。</value></data>
+  <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>无法忽略此任务。请重试。</value></data>
+  <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>建议任务需要经过验证的 Gateway 操作员身份。请检查您的 Gateway 访问权限，然后重试。</value></data>
 </root>

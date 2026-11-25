@@ -732,7 +732,8 @@ public sealed class GatewayConnectionManager :
             OperatorClientChanged?.Invoke(this, new OperatorClientChangedEventArgs
             {
                 OldClient = null,
-                NewClient = lifecycle.DataClient
+                NewClient = lifecycle.DataClient,
+                GatewayRecordId = record.Id
             });
 
             // Subscribe to client events with generation and gateway guards.

@@ -17,13 +17,15 @@ public static class GatewayRequestErrors
 
     private static readonly HashSet<string> AllowedDetailCodes = new(StringComparer.Ordinal)
     {
-        "AUTHENTICATED_PROFILE_UNAVAILABLE", "MISSING_SCOPE",
+        "AUTHENTICATED_PROFILE_UNAVAILABLE", "MISSING_SCOPE", TaskWorktreeSourceRequired,
         Cron.CronProtocol.JobChangedCode, Cron.CronProtocol.JobNotFoundCode,
         SessionFileNotFound, SessionFileExpired, SessionFileTooLarge,
     };
 
     /// <summary><c>sessions.files.get</c> error kinds (Gateway <c>error.details.type</c>).</summary>
     public const string SessionFileNotFound = "session_file_not_found";
+    /// <summary>Task acceptance restored to pending before any session/worktree side effect.</summary>
+    public const string TaskWorktreeSourceRequired = "TASK_WORKTREE_SOURCE_REQUIRED";
     public const string SessionFileExpired = "artifact_file_expired";
     public const string SessionFileTooLarge = "session_file_too_large";
 

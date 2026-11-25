@@ -3933,6 +3933,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "session.tool":
                 HandleAgentEvent(root, rawMessageLength);
                 break;
+            case "task.suggestion":
+                TaskSuggestionsInvalidated?.Invoke(this, EventArgs.Empty);
+                break;
             case "question.requested":
             case "question.resolved":
                 HandleQuestionEvent(root, eventType);

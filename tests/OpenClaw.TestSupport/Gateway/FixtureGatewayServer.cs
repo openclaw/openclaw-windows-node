@@ -646,6 +646,10 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         lock (_sync) _readResponses[method] = response;
     }
 
+    /// <summary>Inject a producer FORBIDDEN reply without exposing test-internal exception types.</summary>
+    public void ForbidProfileRead() => OverrideProfileRead(_ =>
+        throw new FixtureRequestException("FORBIDDEN", "Synthetic profile access failure."));
+
     public void OverrideProfileRead(Func<JsonElement, object> response)
     {
         lock (_sync) _readResponses["users.self"] = response;

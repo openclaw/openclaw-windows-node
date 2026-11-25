@@ -207,6 +207,65 @@ use the card fill above that content layer.
 
 ## Controls and states
 
+Suggested tasks appear above the retained composer in a bounded, reading-width
+native card dock. Titles, summaries, Gateway paths and expandable instructions
+remain plain text. The instruction toggle exposes checked state and Show/Hide
+instructions names. Copy works without a connection. Start in a new session is primary;
+launch options expose the source conversation, a new worktree using the Gateway
+producer’s default repository resolution, and a configured cloud profile ID.
+No cwd override is sent for an initial worktree launch. Only the producer’s
+structured TASK_WORKTREE_SOURCE_REQUIRED reply reveals an editable repository
+correction, so a displayed path is not automatically reinterpreted on another OS. A successful launch
+refreshes Sessions but does not select the new session or replace the draft.
+Unconfirmed starts retain their exact task ID and options for explicit retries
+on the original connection only. After reconnect, check Sessions or web chat;
+neither pending-list presence nor absence can establish an acceptance outcome
+or unlock changed options. Hide locally removes only the uncertainty notice,
+without an RPC or an outcome claim, including after reconnect. At most 100 IDs
+are suppressed in memory; reaching that bound disables
+further local hiding rather than evicting and recreating an earlier hidden ID.
+Unrelated new IDs remain visible. The chat lifecycle coordinator carries bounded
+uncertain receipts and hides across provider replacement for the same registry
+Gateway and connection-verified signing device plus users.self profile. A transient
+null reconnect does not erase custody. Different targets or verified operators
+receive none of the previous private task data. A verified signing device and
+users.self profile are explicit native suggested-task prerequisites. If either
+is unavailable, imported receipts and fresh launches remain gated; a localized
+compatibility/retry notice appears only in the first presented chat for that
+provider, not every unrelated empty conversation. Refresh tasks revalidates the
+identity and restores same-owner custody only after verification. The identity
+read’s deadline bounds send-lock queueing and correlated-reply waiting, removes
+expired pending requests and never resets the shared connection. Successful
+identity validation is cached for the current authenticated epoch and owner
+generation; connection/profile invalidation requires a fresh read and rejects
+late older reads. Imported attempts cannot be
+retried on a replacement client, even when its numerical epoch matches. A task
+that fails local absolute-path validation sends no accept and keeps its options
+editable: Windows drive-rooted, UNC share and POSIX-rooted syntax is recognized
+without inspecting the local filesystem or guessing the remote OS. This syntax
+check rejects clearly relative input, not wrong-platform absolute syntax: a
+leading slash is not authoritative Linux evidence because Windows can interpret
+it as root-relative. No supported authoritative server-platform handshake fact
+is currently consumed. Generic INVALID_REQUEST still cannot prove no side
+effects, so a wrong-platform rejection can remain uncertain; Hide locally and
+Sessions/web recovery remain available. A later structured repository rejection
+cannot erase an earlier uncertain dispatch. Dismissal errors stay on their card
+independently of a successful list refresh; refresh errors create no dock in an
+unrelated conversation with no known cards. Starting tasks requires granted operator.admin;
+dismissal separately requires operator.write (or admin). Native system focus
+visuals stay within revealed action bounds at the dock viewport edge. Older Gateways
+without the advertised task methods receive no speculative task RPCs; without
+the accept-modes capability, cards remain readable/copyable/dismissible but
+launch requires an update or web chat.
+
+This is native consumer support, not a promise of native-origin generation.
+The installed Gateway 2026.11.8 producer still restricts automatic suggestion
+generation to its Control UI, browser Copilot and TUI operator-UI identities,
+excluding Windows gateway-client/ui. The Windows capability remains forward
+compatible; it does not spoof another client identity or change that producer
+policy. A synthetic fixture proves card consumption and launch contracts, not
+live provider execution or automatic suggestion generation.
+
 Tool disclosures use compact native Expander headers with a single-line,
 ellipsized command, path, query or supplied description. Non-success states
 remain visible; accessible names retain the tool and status. Accessible help

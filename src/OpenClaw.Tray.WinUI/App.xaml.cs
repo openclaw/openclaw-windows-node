@@ -2419,7 +2419,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
             var concreteClient = client as OpenClawGatewayClient;
             if (concreteClient == null)
                 Logger.Warn("[ConnMgr] NewClient is not OpenClawGatewayClient — chat coordinator disabled");
-            _chatCoordinator?.SetOperatorClient(concreteClient);
+            _chatCoordinator?.SetOperatorClient(concreteClient, e.GatewayRecordId);
         }
         else
         {

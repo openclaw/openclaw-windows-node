@@ -20,6 +20,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
     private readonly object _gate = new();
     private readonly object _manualSpeechGate = new();
     private OpenClawChatDataProvider? _provider;
+    private readonly ChatTaskSuggestionCustody _taskCustody = new();
     private TextToSpeechService? _fallbackTextToSpeech;
     private string? _lastManualSpeechText;
     private DateTimeOffset _lastManualSpeechAt;
@@ -140,7 +141,7 @@ public sealed class OpenClawChatCoordinator : IDisposable
         }
     }
 
-    public void SetOperatorClient(OpenClawGatewayClient? client)
+    public void SetOperatorClient(OpenClawGatewayClient? client, string? gatewayRecordId = null)
     {
         OpenClawChatDataProvider? oldProvider;
         _gatewaySpeech.SetClient(client);
@@ -160,7 +161,10 @@ public sealed class OpenClawChatCoordinator : IDisposable
             return;
         }
 
-        var newProvider = new OpenClawChatDataProvider(new GatewayClientChatBridge(client), _post);
+        _taskCustody.SelectGateway(gatewayRecordId);
+        var newProvider = new OpenClawChatDataProvider(new GatewayClientChatBridge(client), _post,
+            ChatMetadataStore.DefaultToolMetaCacheFilePath, taskCustody: gatewayRecordId is null ? null : _taskCustody,
+            taskGatewayId: gatewayRecordId);
         lock (_gate)
         {
             if (_disposed)
@@ -375,5 +379,6 @@ public sealed class OpenClawChatCoordinator : IDisposable
         catch (Exception ex) { _logger.Debug($"OpenClawChatCoordinator: StopSpeaking during disposal failed: {ex.Message}"); }
         provider?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         fallbackTextToSpeech?.Dispose();
+        _taskCustody.Clear();
     }
 }

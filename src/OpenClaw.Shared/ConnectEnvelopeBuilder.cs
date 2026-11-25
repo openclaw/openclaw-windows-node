@@ -400,7 +400,9 @@ internal static class ConnectEnvelopeBuilder
             WindowsClientMetadata.DeviceFamily,
             OperatorDisplayName,
             options.Role == "operator"
-                ? options.SupportsExecApprovals ? OperatorCaps : [ModelSelectionPolicyCapability]
+                ? options.ClientIdentity == OperatorClientIdentity.Interactive
+                    ? [.. (options.SupportsExecApprovals ? OperatorCaps : [ModelSelectionPolicyCapability]), "task-suggestions"]
+                    : options.SupportsExecApprovals ? OperatorCaps : [ModelSelectionPolicyCapability]
                 : [],
             [],
             new Dictionary<string, bool>(),

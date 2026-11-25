@@ -68,6 +68,85 @@ controls. It verifies their saved values after page reactivation without
 enabling node capabilities. This is disposable-profile persistence proof, not
 an installed-profile upgrade or Store migration.
 
+## Combined compiled-Gateway task-card proof
+
+`CombinedGatewayTask_ProducesNativeCardAndRetainsDraft` is a separate opt-in
+native case. Unlike the deterministic application fixture, it sends through a
+real compiled Gateway, real signed Windows client, task tool and task registry.
+The model endpoint is synthetic. This does not prove a real provider, installed
+Gateway, signed package, Store update or native Gateway session isolation.
+
+Prepare a trusted, task-owned upstream Gateway checkout with frozen dependencies
+and `pnpm build`, including the native Windows task-suggestion origin fix. Build
+this repository and its UI-test project first. Use the architecture-matching
+outputs and existing Windows App SDK runtime; do not install or register packages
+just to run this proof. An unpatched Gateway fails the card/tool assertions.
+
+On an authorized, exclusive interactive desktop, start the checked-in fixture in
+one PowerShell 7 terminal. The source path is explicit; there is no installed
+Gateway fallback, download or live-profile adoption. Use a fresh task output
+outside the checkout and your normal application data:
+
+```powershell
+$gateway = 'D:\\task\\openclaw'
+$run = 'D:\\task-proof\\combined-' + [guid]::NewGuid().ToString('N')
+$nonce = [guid]::NewGuid().ToString('N')
+.\\scripts\\run-combined-task-gateway.ps1 `
+  -GatewaySourceDirectory $gateway -OutputDirectory $run -Nonce $nonce
+```
+
+Wait for `CombinedGatewayReady` and `gateway-receipt.json`. Keep that terminal
+alive. In the native test terminal, use the same `$run`, select disposable tray
+state, clear inherited `OPENCLAW_STATE_DIR`, `OPENCLAW_HOME`,
+`OPENCLAW_CONFIG_PATH` and profile selectors, then set them to separate task-owned
+paths. Verify the approval-path resolver before any test child, as in the
+[proof isolation contract](#isolation-contract). Never copy live credentials.
+
+```powershell
+foreach ($entry in @(Get-ChildItem Env: | Where-Object {
+  $_.Name -match '^OPENCLAW_(STATE_DIR|HOME|CONFIG_PATH|.*PROFILE.*|.*DATA_DIR|.*APPDATA.*)$'
+})) {
+  Remove-Item ('Env:' + $entry.Name)
+}
+$env:OPENCLAW_STATE_DIR = Join-Path $run 'native-state'
+$env:OPENCLAW_HOME = Join-Path $run 'native-home'
+$env:OPENCLAW_CONFIG_PATH = Join-Path $run 'native-state\\openclaw.json'
+$env:OPENCLAW_TRAY_DATA_DIR = Join-Path $run 'native-profile'
+$env:OPENCLAW_TRAY_APPDATA_DIR = Join-Path $run 'native-appdata'
+$env:OPENCLAW_TRAY_LOCALAPPDATA_DIR = Join-Path $run 'native-localappdata'
+$env:TEMP = $env:TMP = Join-Path $run 'native-temp'
+New-Item -ItemType Directory -Force $env:OPENCLAW_STATE_DIR,
+  $env:OPENCLAW_HOME, $env:OPENCLAW_TRAY_DATA_DIR, $env:TEMP | Out-Null
+$env:OPENCLAW_SKIP_CHANNELS = $env:OPENCLAW_SKIP_CRON = '1'
+$env:OPENCLAW_SKIP_UPDATE_CHECK = '1'
+$env:OPENCLAW_REPO_ROOT = (Get-Location).Path
+$env:OPENCLAW_RUN_COMBINED_TASK_PROOF = '1'
+$env:OPENCLAW_RUN_KEYBOARD_PROOF = '1'
+$env:OPENCLAW_COMBINED_GATEWAY_RECEIPT = Join-Path $run 'gateway-receipt.json'
+$env:OPENCLAW_TASK_PROOF_ARTIFACTS = Join-Path $run 'screenshots'
+dotnet test .\\tests\\OpenClaw.Tray.UITests\\OpenClaw.Tray.UITests.csproj `
+  --no-build --no-restore -c Debug -r win-arm64 -p:Platform=ARM64 `
+  -p:DevBuild=false -p:RequireSignedCleanupHost=false `
+  --filter 'FullyQualifiedName~CombinedGatewayTask_ProducesNativeCardAndRetainsDraft' `
+  --logger 'trx;LogFileName=combined-native.trx' --results-directory $run
+```
+
+Use `win-x64` and `Platform=x64` only with matching x64 binaries. Existing native
+proof locking and input-desktop/owned-foreground checks remain required; this
+fixture does not reserve the desktop. Expect exactly one passing case, literal
+instruction copy, dismissed card and unchanged unsent draft. The request trace
+must contain one tool-less metadata completion and two task-tool requests, with
+both `suggest_task` and `dismiss_task` and zero errors. `pairing-receipt.json`
+records normal approval of the single synthetic native operator through the
+isolated Gateway's RPC owner, not a pairing-policy bypass.
+
+Stop the fixture with one stdin line/EOF or Ctrl+C. Its configurable startup and
+lifetime bounds are `OPENCLAW_COMBINED_GATEWAY_STARTUP_MS` (90000) and
+`OPENCLAW_COMBINED_GATEWAY_LIFETIME_MS` (360000). Require terminal
+`gateway-cleanup.json` and no owned process/listener before removing task data.
+Keep the receipt and generated config private: both contain a disposable token.
+Share only sanitized request traces, result counts and owned-window captures.
+
 ## Build and explore
 
 ### Retained live rows and history

@@ -612,6 +612,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     new(questionCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight,
                         collapsed => setCollapsedQuestionId(collapsed ? pendingQuestion?.Request.Id : null), questionCollapsed))
                 : Empty();
+        var taskSuggestions = props.Provider is OpenClawChatDataProvider { TaskSuggestions: { } taskCoordinator }
+            && effectiveThread is not null
+                ? Component<ReactorTaskSuggestionPanel, ReactorTaskSuggestionPanelProps>(
+                    new(taskCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight))
+                : Empty();
         var showWelcome = !props.Compact && mode == ReactorChatTimelineMode.Empty;
         // Keep the composer at the same tree position across the first send. Moving
         // the control into a different parent would lose focus, caret and flyouts.
@@ -647,7 +652,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 : props.Compact
                     ? Border(timelineElement).Grid(row: 0)
                     : timelineElement.Grid(row: 0),
-            Border(questions).WithKey("chat-question-area").Grid(row: 1),
+            Border(VStack(0, taskSuggestions, questions)).WithKey("chat-question-area").Grid(row: 1),
             ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight)
                 .WithKey("chat-pending-messages").Grid(row: 2),
             Component<ReactorChatProviderReview, ReactorChatProviderReviewProps>(

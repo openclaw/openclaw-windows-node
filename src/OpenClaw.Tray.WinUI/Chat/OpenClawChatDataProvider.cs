@@ -118,6 +118,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     private readonly ChatConversationState _state;
     private readonly ChatHistoryLoader _historyLoader;
     internal ChatQuestionCoordinator? Questions { get; }
+    internal ChatTaskSuggestionCoordinator? TaskSuggestions { get; }
     private readonly Action<Action>? _post;
     private readonly Func<Func<Task>, Task> _deferredAbortScheduler;
     private readonly Func<Func<Task>, Task> _queueDrainScheduler;
@@ -197,9 +198,11 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
         Action? historyFailureReservedForTesting = null,
         Func<Func<Task>, Task>? deferredAbortScheduler = null,
         TimeProvider? throughputTimeProvider = null,
-        Func<Func<Task>, Task>? queueDrainScheduler = null)
+        Func<Func<Task>, Task>? queueDrainScheduler = null,
+        ChatTaskSuggestionCustody? taskCustody = null, string? taskGatewayId = null)
     {
         _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
+        TaskSuggestions = bridge is IChatTaskSuggestionGateway taskGateway ? new ChatTaskSuggestionCoordinator(taskGateway, custody: taskCustody, gatewayId: taskGatewayId) : null;
         Questions = bridge is IChatQuestionGateway questionGateway
             ? new ChatQuestionCoordinator(questionGateway) : null;
         _post = post;
@@ -253,6 +256,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     {
         cancellationToken.ThrowIfCancellationRequested();
         Questions?.Start();
+        TaskSuggestions?.Start();
         var sessions = _bridge.GetSessionList() ?? Array.Empty<SessionInfo>();
         return Task.FromResult(_state.Load(sessions, ProjectionContext()));
     }
@@ -1211,6 +1215,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
             _historyLoader.Completed -= OnHistoryLoadCompleted;
             _historyLoader.Dispose();
             Questions?.Dispose();
+            TaskSuggestions?.Dispose();
             _metadataStore.Dispose();
             _persistence.Dispose();
             _bridge.StatusChanged -= OnStatusChanged;
