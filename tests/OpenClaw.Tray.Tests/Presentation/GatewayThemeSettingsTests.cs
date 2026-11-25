@@ -161,6 +161,7 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal("builtin", settings.Appearance.Theme?.Source);
         Assert.False(settings.Appearance.UseMica);
         Assert.Equal("tide", AppearanceResolver.ResolveTheme(new SettingsManager(temp.Path).Appearance)?.Id);
+        Assert.False(new SettingsManager(temp.Path).Appearance.UseMica);
 
         vm.SelectedThemeKey = "";
         Assert.Null(settings.Appearance.Theme);
