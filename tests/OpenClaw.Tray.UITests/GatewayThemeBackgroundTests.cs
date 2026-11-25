@@ -53,6 +53,31 @@ public sealed class GatewayThemeBackgroundTests(UIThreadFixture ui)
                 await TestSupport.WaitForRenderedConditionAsync(() => _rendered == 1, "Unrelated chat render completed");
                 Assert.Same(image, Assert.Single(TestSupport.FindDescendants<Border>(_host!), IsArtwork).Child);
 
+                // Switch to the app's own mode, then reload in that same mode. Only the switch needs a new image.
+                var frame = Assert.IsType<Border>(Assert.Single(ui.Container.Children));
+                frame.RequestedTheme = chatTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+                var switchedVariant = variant == "dark" ? "light" : "dark";
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => conversation.Child is Border { Background: ImageBrush { ImageSource: BitmapImage bitmap } } &&
+                        bitmap.UriSource.AbsolutePath.EndsWith($"/manuscript-{switchedVariant}.png", StringComparison.Ordinal),
+                    "Artwork switched to the new element theme");
+                var switchedImage = conversation.Child;
+                ui.Container.Children.Remove(frame);
+                await TestSupport.WaitForRenderedConditionAsync(() => !conversation.IsLoaded, "Artwork detached");
+                var reloaded = false;
+                void OnReloaded(object sender, RoutedEventArgs args) => reloaded = true;
+                conversation.Loaded += OnReloaded;
+                try
+                {
+                    ui.Container.Children.Add(frame);
+                    await TestSupport.WaitForRenderedConditionAsync(() => reloaded, "Artwork Loaded notification delivered");
+                    Assert.Same(switchedImage, conversation.Child);
+                }
+                finally
+                {
+                    conversation.Loaded -= OnReloaded;
+                }
+
                 // With a fully transparent content tint the fade must end at the visible window canvas, not its raw RGB.
                 var glassPalette = manuscript.PaletteFor(chatMode) with { Content = ThemeColor.FromHex("#abcdef00") };
                 var glass = manuscript with { Id = "user/glass", Source = GatewayThemeSource.User,
