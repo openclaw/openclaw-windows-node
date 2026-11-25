@@ -13,6 +13,7 @@ using Windows.UI.ViewManagement;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared.Themes;
+using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.Theming;
@@ -634,21 +635,38 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             var action = Control<HyperlinkButton>(root, "DesktopCompanionNotifications");
             await TestSupport.WaitForRenderedConditionAsync(() => action.ActualHeight > 0, "native action");
             var nativeForeground = ColorOf(action.Foreground);
-            var content = Assert.Single(TestSupport.FindDescendants<ContentPresenter>(action));
-            var commonStates = Assert.Single(VisualStateManager.GetVisualStateGroups(content),
-                group => group.Name == "CommonStates");
+            var label = LocalizationHelper.GetString("DesktopCompanion_Notifications");
+
+            async Task<global::Windows.UI.Color> ReadInkAsync(string state, global::Windows.UI.Color? expected = null)
+            {
+                Assert.Same(action, Control<HyperlinkButton>(root, "DesktopCompanionNotifications"));
+                Assert.True(VisualStateManager.GoToState(action, state, false));
+                VisualState? current = null;
+                global::Windows.UI.Color? ink = null, presenterInk = null;
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                {
+                    // A theme refresh may replace template visuals. Measure the currently rendered label,
+                    // not a presenter from before the switch or the link's normal-state Foreground.
+                    var presenter = TestSupport.FindDescendants<ContentPresenter>(action)
+                        .FirstOrDefault(p => p.Name == "ContentPresenter" && p.IsLoaded);
+                    current = presenter is null ? null : VisualStateManager.GetVisualStateGroups(presenter)
+                        .FirstOrDefault(group => group.Name == "CommonStates")?.CurrentState;
+                    presenterInk = (presenter?.Foreground as SolidColorBrush)?.Color;
+                    var text = presenter is null ? null : TestSupport.FindDescendants<TextBlock>(presenter)
+                        .FirstOrDefault(t => t.IsLoaded && t.ActualWidth > 0 && t.Text == label);
+                    ink = (text?.Foreground as SolidColorBrush)?.Color;
+                    return current?.Name == state && (current.Storyboard is not { } storyboard ||
+                        storyboard.GetCurrentState() == Microsoft.UI.Xaml.Media.Animation.ClockState.Filling) &&
+                        ink.HasValue && (expected is null || ink == expected);
+                }, $"rendered {state} action ink", () =>
+                    $"Requested={state}; actual={current?.Name}; clock={current?.Storyboard?.GetCurrentState()}; " +
+                    $"expected={expected?.ToString() ?? "native ink"}; text={ink}; presenter={presenterInk}; " +
+                    $"button={(action.Foreground as SolidColorBrush)?.Color}; theme={action.ActualTheme}; focus={action.FocusState}");
+                return ink!.Value;
+            }
             var nativeStates = new Dictionary<string, global::Windows.UI.Color>();
             foreach (var state in new[] { "PointerOver", "Pressed", "Normal" })
-            {
-                Assert.True(VisualStateManager.GoToState(action, state, false));
-                await TestSupport.WaitForRenderedConditionAsync(
-                    () => commonStates.CurrentState?.Name == state &&
-                        (commonStates.CurrentState.Storyboard is not { } storyboard ||
-                            storyboard.GetCurrentState() == Microsoft.UI.Xaml.Media.Animation.ClockState.Filling),
-                    $"native {state} foreground animation completed");
-                // Dictionary lookup can use the application's mode instead of this Light popup's mode.
-                nativeStates[state] = ColorOf(content.Foreground);
-            }
+                nativeStates[state] = await ReadInkAsync(state);
             try
             {
                 applicator.Apply(imported);
@@ -656,21 +674,11 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 window.ApplyTheme("Light", refreshThemeResources: true);
                 var frame = Assert.IsType<Border>(Control<StackPanel>(root, "DesktopCompanionBubble").Children[0]);
                 if (!highContrast)
-                {
                     await WaitForFillAsync(frame, Rgb(0x80, 0x80, 0x80), "theme popover");
-                    await TestSupport.WaitForRenderedConditionAsync(
-                        () => ColorOf(action.Foreground) == Rgb(0, 0, 0), "readable local action foreground");
-                    foreach (var state in new[] { "PointerOver", "Pressed", "Normal" })
-                    {
-                        Assert.True(VisualStateManager.GoToState(action, state, false));
-                        await TestSupport.WaitForRenderedConditionAsync(
-                            () => ColorOf(content.Foreground) == Rgb(0, 0, 0), $"readable {state} action");
-                    }
-                }
                 else
-                {
                     Assert.DoesNotContain("HyperlinkButtonForeground", action.Resources.Keys.OfType<string>());
-                }
+                foreach (var (state, nativeInk) in nativeStates)
+                    await ReadInkAsync(state, highContrast ? nativeInk : Rgb(0, 0, 0));
 
                 applicator.Apply(null);
                 BackdropPolicy.Configure(true, null);
@@ -681,11 +689,7 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 Assert.DoesNotContain("HyperlinkButtonForegroundPointerOver", action.Resources.Keys.OfType<string>());
                 Assert.DoesNotContain("HyperlinkButtonForegroundPressed", action.Resources.Keys.OfType<string>());
                 foreach (var (state, expected) in nativeStates)
-                {
-                    Assert.True(VisualStateManager.GoToState(action, state, false));
-                    await TestSupport.WaitForRenderedConditionAsync(
-                        () => ColorOf(content.Foreground) == expected, $"restored native {state} action");
-                }
+                    await ReadInkAsync(state, expected);
             }
             finally
             {

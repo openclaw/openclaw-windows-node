@@ -5,7 +5,6 @@
 // Companion appearance; the bubble only paints it.
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
-using Microsoft.UI.Reactor.Elements;
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -50,17 +49,13 @@ internal sealed class DesktopCompanionBubble : Component<DesktopCompanionBubbleP
         var announced = UseRef(0L);
         var dismissLabel = LocalizationHelper.GetString("DesktopCompanion_Dismiss");
         var actionBrush = surface.ActionForeground is { } foreground ? new SolidColorBrush(ToColor(foreground)) : null;
-        void ActionResources(ResourceBuilder resources)
-        {
-            if (actionBrush is null) return;
-            resources.Set("HyperlinkButtonForeground", actionBrush)
-                .Set("HyperlinkButtonForegroundPointerOver", actionBrush)
-                .Set("HyperlinkButtonForegroundPressed", actionBrush);
-        }
         HyperlinkButtonElement ActionLink(string label, Action onClick)
         {
-            var link = HyperlinkButton(label, onClick: onClick).Resources(ActionResources);
-            return actionBrush is null ? link : link.Foreground(actionBrush);
+            if (actionBrush is null) return HyperlinkButton(label, onClick: onClick);
+            // Hover and press animate the template's presenter. Put collision ink on the text
+            // itself so it cannot inherit that animation; keep the same native link and focus.
+            return HyperlinkButton(TextBlock(label).Foreground(actionBrush).AccessibilityView(AccessibilityView.Raw),
+                onClick: onClick).AutomationName(label);
         }
         var frame = Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto, GridSize.Auto],
                 Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
