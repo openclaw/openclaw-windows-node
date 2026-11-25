@@ -82,21 +82,20 @@ public sealed class GatewayPackageCleanupTests
         Assert.False(File.Exists(Path.Combine(fixture.Cleanup, "cleanup-task-removal.pending")));
     }
 
-    [Fact]
-    public async Task PreserveReceipt_AppendsGatewayRemovalAndDisownsOwner()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreserveReceipt_AppendsGatewayRemovalAndDisownsOwner(bool windowsPowerShell)
     {
         using var fixture = new CleanupFixture();
-        File.WriteAllText(fixture.OwnedPath, JsonSerializer.Serialize(new
-        {
-            DistroName = "OpenClawGateway",
-            InstallPath = Path.Combine("C:\\", "OpenClawGateway"),
-            NativeFamily = (string?)null
-        }));
+        var fingerprint = Convert.ToHexString(SHA256.HashData(await fixture.WriteOwnedRecordAsync(windowsPowerShell)));
         File.WriteAllText(fixture.ReceiptPath, "[]");
 
         await GatewayPackageCleanup.AppendPreservedRemovalAsync(fixture.Cleanup, CancellationToken.None);
 
-        Assert.True(File.Exists(Path.Combine(fixture.Cleanup, "gateway-preservation.pending")));
+        using var pending = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(fixture.Cleanup, "gateway-preservation.pending")));
+        Assert.Equal(fingerprint, pending.RootElement.GetProperty("OwnedRecordSha256").GetString());
         using var receipt = JsonDocument.Parse(File.ReadAllText(fixture.ReceiptPath));
         Assert.Equal(1, receipt.RootElement.GetArrayLength());
         Assert.Equal("OpenClawGateway", receipt.RootElement[0].GetProperty("DistroName").GetString());
@@ -143,12 +142,13 @@ public sealed class GatewayPackageCleanupTests
         Assert.False(File.Exists(fixture.ReceiptPath));
     }
 
-    [Fact]
-    public async Task PendingPreservation_CompletesForTheOriginalOwner()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingPreservation_CompletesForTheOriginalOwner(bool windowsPowerShell)
     {
         using var fixture = new CleanupFixture();
-        File.WriteAllText(fixture.OwnedPath, """{"DistroName":"OpenClawGateway"}""");
-        var fingerprint = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(fixture.OwnedPath)));
+        var fingerprint = Convert.ToHexString(SHA256.HashData(await fixture.WriteOwnedRecordAsync(windowsPowerShell)));
         File.WriteAllText(Path.Combine(fixture.Cleanup, "gateway-preservation.pending"),
             JsonSerializer.Serialize(new { OwnedRecordSha256 = fingerprint }));
 
@@ -548,6 +548,30 @@ public sealed class GatewayPackageCleanupTests
             Data = Directory.CreateDirectory(_temp.Combine("roaming")).FullName;
             Local = Directory.CreateDirectory(_temp.Combine("local")).FullName;
             Cleanup = Directory.CreateDirectory(_temp.Combine("cleanup")).FullName;
+        }
+
+        public async Task<byte[]> WriteOwnedRecordAsync(bool windowsPowerShell)
+        {
+            const string json = """{"DistroName":"OpenClawGateway","InstallPath":"C:\\OpenClawGateway","NativeFamily":null}""";
+            if (!windowsPowerShell)
+            {
+                File.WriteAllText(OwnedPath, json);
+                return File.ReadAllBytes(OwnedPath);
+            }
+
+            using var logger = new SetupLogger(filePath: null);
+            var result = await new CommandRunner(logger).RunAsync(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                    "WindowsPowerShell", "v1.0", "powershell.exe"),
+                ["-NoProfile", "-NonInteractive", "-Command", $$"""
+                    $record = '{{json}}' | ConvertFrom-Json
+                    $record | ConvertTo-Json | Set-Content 'owned.json' -Encoding UTF8
+                    """], WorkerTimeout, workingDirectory: Cleanup);
+            Assert.False(result.TimedOut);
+            Assert.True(result.ExitCode == 0, result.Stderr);
+            var bytes = File.ReadAllBytes(OwnedPath);
+            Assert.True(bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]));
+            return bytes;
         }
 
         public Task<bool> InitializeAsync(Func<string, bool>? preserve = null) =>

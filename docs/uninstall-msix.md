@@ -17,10 +17,17 @@ When the effective PowerShell Group Policy permits it, Companion registers a
 user-scoped cleanup helper outside its MSIX payload when it creates a managed WSL
 Gateway or acquires a missing native Store Gateway. The helper removes the captured
 WSL registration and disk directory, or the native package it acquired, after
-Companion removal. If policy enforces `AllSigned` or `Restricted`, or policy
+Companion removal.
+
+If policy enforces `AllSigned` or `Restricted`, or policy
 inspection is unavailable, Companion skips helper registration and setup continues.
-The helper is not signed, so do not weaken the policy to enable it. Before
-uninstalling Companion, remove the WSL Gateway from **Settings → Local Gateway**.
+The helper is not signed, so do not weaken the policy to enable it. If Task
+Scheduler cannot register the cleanup task, setup also continues with a warning.
+Reopening Companion can retry registration only if the Gateway ownership record
+(`owned.json`) still exists and the effective policy permits the script to run.
+
+When automatic cleanup is unavailable, remove the WSL Gateway from **Settings →
+Local Gateway** before uninstalling Companion.
 For a native Store Gateway, uninstall the Gateway package from **Windows
 Settings → Apps** only when no other installed Companion variant uses it. You can
 also follow the manual recovery steps below after uninstall. If a policy change

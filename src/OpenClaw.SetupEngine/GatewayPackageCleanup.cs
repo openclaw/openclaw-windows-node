@@ -460,11 +460,15 @@ public static class GatewayPackageCleanup
         await DisarmCleanupTaskAsync(commands, directory, ct, warning);
     }
 
-    private static Removal DeserializeOwnedRemoval(byte[] ownedRecord)
+    private static Removal DeserializeOwnedRemoval(ReadOnlySpan<byte> json)
     {
+        // Windows PowerShell 5.1 writes a BOM. Ignore it only for parsing, not for the ownership hash.
+        if (json.StartsWith(Encoding.UTF8.Preamble))
+            json = json[Encoding.UTF8.Preamble.Length..];
+
         try
         {
-            return JsonSerializer.Deserialize<Removal>(ownedRecord)
+            return JsonSerializer.Deserialize<Removal>(json)
                 ?? throw new InvalidDataException("The Gateway ownership record is invalid.");
         }
         catch (JsonException error)
