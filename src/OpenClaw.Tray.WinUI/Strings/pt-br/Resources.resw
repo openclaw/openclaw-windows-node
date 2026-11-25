@@ -4622,11 +4622,23 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>Abrir configuração inicial</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Limpeza automática indisponível</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Antes de desinstalar o OpenClaw, remova o Gateway WSL em Configurações &gt; Gateway local. Remova um Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante do Companion o utilizar.</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Limpeza do Gateway da Store indisponível</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Antes de desinstalar o OpenClaw, remova o Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante do Companion o utilizar.</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Limpeza do Gateway</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Desinstalar o OpenClaw nas Configurações do Windows remove automaticamente os Gateways gerenciados. Use Remover Gateway Local abaixo para remover um Gateway e manter o aplicativo.</value>
+    <value>Quando a política permitir, desinstalar o OpenClaw nas Configurações do Windows removerá automaticamente os Gateways gerenciados. Se a política do PowerShell bloquear a limpeza, remova o Gateway WSL aqui ou o Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante instalada do Companion o utilizar, antes de desinstalar; caso contrário, um Gateway poderá permanecer.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Remove a distro WSL (OpenClawGateway), sua imagem de disco, a entrada de inicialização automática, e apaga as credenciais do Gateway. Seu token MCP é preservado. A integração será reiniciada.</value>

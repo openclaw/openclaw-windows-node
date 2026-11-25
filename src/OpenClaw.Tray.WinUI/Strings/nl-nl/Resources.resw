@@ -4646,11 +4646,23 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>Onboarding openen</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Automatische opschoning niet beschikbaar</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Verwijder vóór het verwijderen van OpenClaw de WSL-gateway via Instellingen &gt; Lokale gateway. Verwijder een Store-gateway via Windows-instellingen &gt; Apps alleen als geen andere Companion-variant deze gebruikt.</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Opschonen van Store-gateway niet beschikbaar</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Verwijder vóór het verwijderen van OpenClaw de Store-gateway via Windows-instellingen &gt; Apps, maar alleen als geen andere Companion-variant deze gebruikt.</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Gateway opruimen</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Als u OpenClaw via Windows-instellingen verwijdert, worden beheerde gateways automatisch verwijderd. Gebruik hieronder Lokale gateway verwijderen om een gateway te verwijderen en de app te behouden.</value>
+    <value>Als het beleid dit toestaat, worden beheerde gateways automatisch verwijderd wanneer u OpenClaw via Windows-instellingen verwijdert. Als het PowerShell-beleid opschoning blokkeert, verwijdert u de WSL-gateway hier of de Store-gateway via Windows-instellingen &gt; Apps alleen als geen andere geïnstalleerde Companion-variant deze gebruikt, voordat u OpenClaw verwijdert; anders kan een gateway achterblijven.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Verwijdert de WSL-distributie (OpenClawGateway), de schijfafbeelding, het item voor automatisch starten en wist de gateway-referenties. Uw MCP-token blijft behouden. Onboarding wordt gereset.</value>
