@@ -20,27 +20,49 @@ public sealed partial class GatewayFixtureUiTests
             await run.Gateway.CloseConnectionsAsync();
             await run.Gateway.WaitForRequestAsync("agents.list", occurrence: occurrence);
 
+            AutomationElement? addButton = null;
+            AutomationElement? homeButton = null;
+            AutomationElement? mainSession = null;
+            AutomationElement? assistantSelector = null;
             await WaitUiAsync(run, () =>
                 FindById(run, $"WorkspaceSession:{GatewayScenario.OtherSessionKey}") is not null &&
-                FindById(run, "WorkspaceSessionsAdd") is { } add && add.Current.IsEnabled,
+                (addButton = FindById(run, "WorkspaceSessionsAdd")) is { } add && add.Current.IsEnabled &&
+                (homeButton = FindById(run, "WorkspaceNavHome")) is not null &&
+                (mainSession = FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}")) is null &&
+                (assistantSelector = FindById(run, "WorkspaceAssistantSelector")) is { } selector &&
+                !selector.Current.IsEnabled,
                 "legacy sessions and default conversation creation after unsupported agents.list");
             // Home owns the Gateway main conversation, so it is never duplicated as a session row.
-            Assert.NotNull(FindById(run, "WorkspaceNavHome"));
-            Assert.Null(FindById(run, $"WorkspaceSession:{GatewayScenario.MainSessionKey}"));
-            Assert.False(FindById(run, "WorkspaceAssistantSelector")!.Current.IsEnabled);
+            Assert.NotNull(homeButton);
+            Assert.Null(mainSession);
+            Assert.False(assistantSelector!.Current.IsEnabled);
             CaptureContinuity(run, "continuity-unsupported-roster.png");
 
-            Invoke(FindById(run, "WorkspaceSessionsAdd")!);
-            await run.Gateway.WaitForRequestAsync("sessions.create");
-            await WaitUiAsync(run, () => SessionSelected(run, "Fixture: new conversation 1"),
-                "new Gateway-default conversation without an agent roster");
-            var snapshot = await run.InvokeAsync("app.chat.snapshot", new
-            {
-                threadId = "agent:main:fixture-created-1"
-            });
-            Assert.Contains(snapshot.GetProperty("threads").EnumerateArray(),
-                thread => thread.GetProperty("Id").GetString() == "agent:main:fixture-created-1");
-            CaptureContinuity(run, "continuity-unsupported-created.png");
+            Invoke(addButton!);
+            AutomationElement? composer = null;
+            await WaitUiAsync(run, () => (composer = FindById(run, "ChatComposerInput")) is { Current.IsOffscreen: false } &&
+                !SessionSelected(run, GatewayScenario.OtherSessionTitle),
+                "local new-chat draft without an agent roster");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            CaptureContinuity(run, "continuity-unsupported-draft.png");
+
+            const string firstMessage = "Create a default Gateway conversation only when I send";
+            ((ValuePattern)composer!.GetCurrentPattern(ValuePattern.Pattern))
+                .SetValue(firstMessage);
+            var createOccurrence = run.Gateway.Requests.Count(request => request.Method == "sessions.create") + 1;
+            var sendOccurrence = run.Gateway.Requests.Count(request => request.Method == "chat.send") + 1;
+            AutomationElement? primaryAction = null;
+            await WaitUiAsync(run, () => (primaryAction = FindById(run, "ChatComposerPrimaryAction")) is
+                { Current.IsEnabled: true, Current.Name: "Send" }, "first-send action for default Gateway draft");
+            Invoke(primaryAction!);
+            await run.Gateway.WaitForRequestAsync("sessions.create", occurrence: createOccurrence);
+            await run.Gateway.WaitForRequestAsync("chat.send", occurrence: sendOccurrence);
+            var create = run.Gateway.Requests.Where(request => request.Method == "sessions.create")
+                .ElementAt(createOccurrence - 1);
+            var send = run.Gateway.Requests.Where(request => request.Method == "chat.send")
+                .ElementAt(sendOccurrence - 1);
+            Assert.Null(create.AgentId);
+            Assert.Equal("agent:main:fixture-created-1", send.SessionKey);
         }, allowSessionMutations: true);
     }
 

@@ -65,6 +65,32 @@ public sealed class GatewayThemeAccentTests(UIThreadFixture ui)
         }
     });
 
+    // A fixed brush (such as the #0078D4 session tint) that happens to equal a Windows accent shade is not an accent
+    // visual: a theme leaves it alone and clearing the theme does not bind it to the Windows accent.
+    [Fact]
+    public Task FixedBrushThatEqualsTheWindowsAccentKeepsItsColor() => ui.RunOnUIAsync(() =>
+    {
+        using var resources = new ChatThemeProofScope("Dark");
+        var accent = new UISettings().GetColorValue(UIColorType.Accent);
+        var dark = Assert.IsType<ResourceDictionary>(Application.Current.Resources.ThemeDictionaries["Default"]);
+        const string key = "GatewayThemeAccentTestsFixedBrush";
+        var fixedBrush = new SolidColorBrush(accent);
+        dark[key] = fixedBrush;
+        var applicator = new AppThemeApplicator();
+        try
+        {
+            Assert.True(applicator.Apply(BuiltinGatewayThemes.All.Single(entry => entry.Id == "crt")));
+            Assert.Equal(accent, fixedBrush.Color);
+            Assert.True(applicator.Apply(null));
+            Assert.Equal(accent, fixedBrush.Color);
+        }
+        finally
+        {
+            applicator.Apply(null);
+            dark.Remove(key);
+        }
+    });
+
     private static object Themed(string key) =>
         Find(Application.Current.Resources, key) ?? throw new KeyNotFoundException(key);
 

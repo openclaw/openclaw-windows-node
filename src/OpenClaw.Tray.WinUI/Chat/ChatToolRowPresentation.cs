@@ -55,6 +55,7 @@ internal sealed record ChatToolRowView(
 
 internal static class ChatToolRowPresentation
 {
+    private const int OutputPreviewLines = 12;
     private const int MaxTitleChars = 120;
     private const int MaxCommandChars = 200;
     private const int MaxParsedOutputChars = 64 * 1024;
@@ -83,6 +84,15 @@ internal static class ChatToolRowPresentation
     private static readonly Regex s_gitHeader = new(@"^diff --git a/(.+) b/(.+)$", RegexOptions.CultureInvariant);
     private static readonly Regex s_hunkHeader = new(
         @"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", RegexOptions.CultureInvariant);
+
+    public static (string Text, int HiddenLines) PreviewOutput(string output)
+    {
+        var lines = output.Split('\n');
+        var count = lines.Length - (output.EndsWith('\n') ? 1 : 0);
+        return count > OutputPreviewLines
+            ? (string.Join('\n', lines.Take(OutputPreviewLines)).TrimEnd('\r'), count - OutputPreviewLines)
+            : (output, 0);
+    }
 
     public static ChatToolRowView Resolve(ChatTimelineItem entry, IReadOnlyList<ChatThread>? children = null)
     {

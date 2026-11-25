@@ -18,8 +18,8 @@ internal partial record NativeWorkingBrandElement;
 /// The pulsing working indicators for themes that ask for dots or the brand icon (upstream
 /// <c>workingIndicator: "dots"</c> or <c>"brand"</c>): the parts pulse in turn on the dashboard's 1.2 s cycle while
 /// a run is active and rest when it ends or Windows animations are off. The pulse is a storyboard, so it runs off
-/// the UI thread. Under High Contrast the parts stay fully opaque (dimming would break the system contrast) and
-/// bounce instead.
+/// the UI thread. With animations off the parts stay fully opaque. Under High Contrast they also stay fully
+/// opaque (dimming would break the system contrast) and bounce instead.
 /// <example><code>
 /// NativeWorkingDotsElement.NativeWorkingDots().Set(dots => dots.Update(progress.Active))
 /// NativeWorkingBrandElement.NativeWorkingBrand().Set(brand => brand.Update(progress.Active))
@@ -38,7 +38,6 @@ internal abstract class NativeWorkingPulse : Control
         HorizontalAlignment = HorizontalAlignment.Center,
         IsHitTestVisible = false,
     };
-    private readonly global::Windows.UI.ViewManagement.UISettings _settings = new();
     private Storyboard? _pulse;
     private bool _active;
     private bool _highContrast;
@@ -87,14 +86,15 @@ internal abstract class NativeWorkingPulse : Control
     private void Sync()
     {
         var highContrast = ChatThemeChanges.IsHighContrast();
+        var animationsEnabled = ChatMotion.AnimationsEnabled;
         if (highContrast != _highContrast)
         {
             Stop();
             _highContrast = highContrast;
         }
         foreach (var part in _parts)
-            part.Opacity = highContrast ? 1 : RestingOpacity;
-        if (!_active || !_settings.AnimationsEnabled)
+            part.Opacity = highContrast || !animationsEnabled ? 1 : RestingOpacity;
+        if (!_active || !animationsEnabled)
         {
             Stop();
             return;

@@ -184,11 +184,10 @@ public sealed partial class GatewayFixtureUiTests
             HitToggle("WorkspaceTogglePane");
             Capture(run, $"automations-pinned-{theme}-reopened.png", "WorkspaceTogglePane", "AutomationExpander:morning-brief");
 
-            // Session creation is rejected by the fixture through the normal Workspace operation owner.
-            Invoke(FindById(run, "WorkspaceSessionsAdd")!);
+            await TriggerReadOnlySessionErrorAsync(run);
             await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback")?.Current.IsOffscreen == false,
                 "explicit operation error");
-            Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
+            Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Cached.Name);
             Invoke(HitToggle("WorkspaceTogglePane"));
             await WaitUiAsync(run, () => FindById(run, "WorkspaceReopenPane")?.Current.IsOffscreen == false,
                 "collapsed Chat with banner");

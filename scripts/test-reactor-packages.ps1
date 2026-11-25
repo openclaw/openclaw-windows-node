@@ -42,7 +42,7 @@ try {
     [xml]$config = Get-Content (Join-Path $PSScriptRoot '..\NuGet.Config') -Raw
     $source = @($config.configuration.packageSources.add | Where-Object key -eq 'reactor-release')
     $mapping = @($config.configuration.packageSourceMapping.packageSource | Where-Object key -eq 'reactor-release')
-    if ($source.Count -ne 1 -or $source[0].value -ne 'artifacts/reactor-packages' -or
+    if ($source.Count -ne 1 -or $source[0].value -ne 'artifacts/reactor-nuget-packages' -or
         @($mapping.package.pattern).Count -ne 2 -or
         'Microsoft.UI.Reactor' -notin @($mapping.package.pattern) -or
         'Microsoft.UI.Reactor.Advanced' -notin @($mapping.package.pattern)) {

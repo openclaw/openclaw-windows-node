@@ -31,6 +31,17 @@ namespace OpenClawTray.Chat;
 /// </remarks>
 internal static class ChatTranscriptFade
 {
+    // A linear ramp starts at full slope, so its top edge reads as a line across text. The mask
+    // follows smoothstep instead (flat at both ends), sampled finely enough to look continuous.
+    private const int FadeStopCount = 12;
+
+    /// <summary>Mask alpha at <paramref name="offset"/> (0 at the band's top, 1 at its bottom).</summary>
+    internal static byte FadeAlpha(float offset)
+    {
+        var t = Math.Clamp(offset, 0, 1);
+        return (byte)Math.Round(255 * (1 - t * t * (3 - 2 * t)));
+    }
+
     private sealed class State
     {
         public Border? Clipper { get; set; }
@@ -67,8 +78,7 @@ internal static class ChatTranscriptFade
         private readonly CompositionVisualSurface _surface = ElementCompositionPreview.GetElementVisual(content).Compositor.CreateVisualSurface();
         private CompositionSurfaceBrush? _source;
         private CompositionLinearGradientBrush? _gradient;
-        private CompositionColorGradientStop? _opaque;
-        private CompositionColorGradientStop? _transparent;
+        private readonly List<CompositionColorGradientStop> _stops = [];
         private CompositionMaskBrush? _mask;
         public UIElement Content { get; } = content;
         public SpriteVisual Sprite { get; } = ElementCompositionPreview.GetElementVisual(content).Compositor.CreateSpriteVisual();
@@ -85,10 +95,14 @@ internal static class ChatTranscriptFade
             _gradient = compositor.CreateLinearGradientBrush();
             _gradient.StartPoint = Vector2.Zero;
             _gradient.EndPoint = Vector2.UnitY;
-            _opaque = compositor.CreateColorGradientStop(0, Colors.White);
-            _transparent = compositor.CreateColorGradientStop(1, Colors.Transparent);
-            _gradient.ColorStops.Add(_opaque);
-            _gradient.ColorStops.Add(_transparent);
+            for (var index = 0; index <= FadeStopCount; index++)
+            {
+                var offset = (float)index / FadeStopCount;
+                var stop = compositor.CreateColorGradientStop(offset,
+                    global::Windows.UI.Color.FromArgb(FadeAlpha(offset), 255, 255, 255));
+                _stops.Add(stop);
+                _gradient.ColorStops.Add(stop);
+            }
             _mask = compositor.CreateMaskBrush();
             _mask.Source = _source;
             _mask.Mask = _gradient;
@@ -119,8 +133,9 @@ internal static class ChatTranscriptFade
             _mask?.Dispose();
             _source?.Dispose();
             _gradient?.Dispose();
-            _opaque?.Dispose();
-            _transparent?.Dispose();
+            foreach (var stop in _stops)
+                stop.Dispose();
+            _stops.Clear();
             _surface.Dispose();
             _clip.Dispose();
         }

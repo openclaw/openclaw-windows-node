@@ -27,4 +27,7 @@ internal sealed record ChatComposerHostActions(
     Action? SessionNavigationStarting = null,
     Action<string, string?>? SessionSelected = null,
     Action? SandboxSettingsNavigation = null,
-    Action<string>? SpeechTargetChanged = null);
+    Action<string>? SpeechTargetChanged = null,
+    Action<string>? SessionCreated = null,
+    Action<string, string>? SessionPromoted = null,
+    Action? ComposerChanged = null);

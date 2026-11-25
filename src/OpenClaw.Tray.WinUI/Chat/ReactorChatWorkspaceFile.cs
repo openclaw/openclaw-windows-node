@@ -95,7 +95,8 @@ internal sealed class ReactorChatWorkspaceFile : Component<ReactorChatWorkspaceF
                 .FontSize(12)
                 .IsTextSelectionEnabled(true)
                 .TextWrapping(TextWrapping.NoWrap)
-                .Margin(16, 0, 16, 16))
+                .Margin(16, 0, 16, 16)
+                .FollowCodeFont())
             .Set(scroll =>
             {
                 scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;

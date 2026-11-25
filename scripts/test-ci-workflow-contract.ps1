@@ -660,8 +660,8 @@ if ($coreJobIndex -lt 0) {
 $nonCoreWorkflow = $workflow.Remove($coreJobIndex, $coreJob.Length)
 foreach ($token in @(
         "path: ~/.nuget/packages",
-        'key: nuget-${{ runner.os }}-${{ hashFiles(''**/*.csproj'', ''**/Directory.Packages.props'') }}',
-        'restore-keys: nuget-${{ runner.os }}-'
+        'key: nuget-${{ runner.os }}-${{ hashFiles(''scripts/Initialize-ReactorPackages.ps1'') }}-${{ hashFiles(''**/*.csproj'', ''**/Directory.Packages.props'') }}',
+        'restore-keys: nuget-${{ runner.os }}-${{ hashFiles(''scripts/Initialize-ReactorPackages.ps1'') }}-'
     )) {
     $count = ([regex]::Matches($nonCoreWorkflow, [regex]::Escape($token))).Count
     if ($count -ne 12) {

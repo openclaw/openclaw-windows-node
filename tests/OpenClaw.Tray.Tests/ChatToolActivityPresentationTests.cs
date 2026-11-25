@@ -7,6 +7,24 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class ChatToolActivityPresentationTests
 {
+    [Theory]
+    [InlineData(0, "\n", false, 0)]
+    [InlineData(12, "\n", true, 0)]
+    [InlineData(13, "\n", false, 1)]
+    [InlineData(14, "\r\n", true, 2)]
+    public void OutputPreview_CountsOnlyOmittedLinesAndPreservesShortOutput(
+        int count, string newline, bool trailingNewline, int hidden)
+    {
+        var output = string.Join(newline, Enumerable.Range(1, count).Select(index => $"line {index}"));
+        if (trailingNewline)
+            output += newline;
+        var preview = ChatToolRowPresentation.PreviewOutput(output);
+
+        Assert.Equal(hidden, preview.HiddenLines);
+        Assert.Equal(hidden == 0 ? output :
+            string.Join(newline, Enumerable.Range(1, 12).Select(index => $"line {index}")), preview.Text);
+    }
+
     [Fact]
     public void WorkMotion_OnlyNewCompletedWorkEntersOnceWithinTheCurrentHistory()
     {
@@ -28,6 +46,72 @@ public sealed class ChatToolActivityPresentationTests
         Assert.Empty(state.Update(["history"], "s", 1, 1));
         Assert.Empty(state.Update([], "s", 1, 1, historyReady: false));
         Assert.Empty(state.Update(["history", "backfilled"], "s", 1, 1));
+    }
+
+    [Fact]
+    public void MessageMotion_FirstSendFromAnEmptyConversationEntersButLoadedHistoryDoesNot()
+    {
+        var firstSend = new ChatToolActivityMotionState();
+        Assert.Equal(["prompt"], firstSend.Update(["prompt"], "s", 1, 1, admitInitial: true));
+        Assert.Equal(["reply"], firstSend.Update(["prompt", "reply"], "s", 1, 1, admitInitial: true));
+        Assert.Empty(firstSend.Update(["prompt", "reply"], "s", 1, 1));
+
+        var loadedHistory = new ChatToolActivityMotionState();
+        Assert.Empty(loadedHistory.Update(["older", "prompt"], "s", 1, 1));
+        // The flag only matters for the first ready update; a replaced history stays quiet.
+        Assert.Empty(loadedHistory.Update(["compacted", "summary"], "s", 1, 2, admitInitial: true));
+    }
+
+    [Fact]
+    public void MessageMotion_OnlyRowsAppendedAtTheTailEnter()
+    {
+        var state = new ChatToolActivityMotionState();
+        Assert.Empty(state.Update(["prompt", "reply"], "s", 1, 1));
+        // An older page lands above the rows already shown.
+        Assert.Empty(state.Update(["older", "prompt", "reply"], "s", 1, 1));
+        // A history refresh that keeps the shown rows still admits the reply it recovered.
+        Assert.Equal(["recovered"], state.Update(["older", "prompt", "reply", "recovered"], "s", 1, 2));
+        Assert.Equal(["tool", "next"], state.Update(["older", "prompt", "reply", "recovered", "tool", "next"], "s", 1, 2));
+    }
+
+    [Fact]
+    public void MessageMotion_PrependedUserRowsAreNotMistakenForNewPromptsInAssistantOnlyHistory()
+    {
+        var state = new ChatToolActivityMotionState();
+        Assert.Empty(state.Update(["assistant", "tool"], "s", 1, 1, eligibleKeys: []));
+
+        Assert.Empty(state.Update(
+            ["older-prompt", "assistant", "tool"],
+            "s",
+            1,
+            1,
+            eligibleKeys: ["older-prompt"]));
+    }
+
+    [Fact]
+    public void ToolDetailsClose_HoldsAndReleasesEachDisclosureIndependently()
+    {
+        var state = new ChatToolDetailsCloseState();
+        var outputClose = state.SetClosing("output", closing: true);
+        state.SetClosing("input", closing: false);
+
+        Assert.Contains("output", state.Snapshot());
+        Assert.True(state.CompleteClose("output", outputClose));
+        Assert.Empty(state.Snapshot());
+    }
+
+    [Fact]
+    public void ToolDetailsClose_ReopeningInvalidatesOnlyThatDisclosureClose()
+    {
+        var state = new ChatToolDetailsCloseState();
+        var staleClose = state.SetClosing("output", closing: true);
+        state.SetClosing("output", closing: false);
+        var currentClose = state.SetClosing("output", closing: true);
+
+        Assert.False(state.CompleteClose("output", staleClose));
+        Assert.Contains("output", state.Snapshot());
+        Assert.True(state.CompleteClose("output", currentClose));
+        Assert.Empty(state.Snapshot());
     }
 
     [Theory]
@@ -465,10 +549,30 @@ public sealed class ChatToolActivityPresentationTests
     [InlineData("web_fetch", ChatToolActivityCategory.Fetch)]
     [InlineData("WebFetch", ChatToolActivityCategory.Fetch)]
     [InlineData("custom.calendar", ChatToolActivityCategory.Generic)]
+    [InlineData("vendor.read_file", ChatToolActivityCategory.Read)]
+    [InlineData("vendor_read_file", ChatToolActivityCategory.Read)]
+    [InlineData("vendorread_file", ChatToolActivityCategory.Generic)]
+    [InlineData("vendor.fetch", ChatToolActivityCategory.Fetch)]
+    [InlineData("vendorfetch", ChatToolActivityCategory.Generic)]
     public void Classify_CoversWebAndWindowsAliases(
         string name,
         ChatToolActivityCategory expected) =>
         Assert.Equal(expected, ChatToolActivityPresentation.Classify(name));
+
+    [Fact]
+    public void Classify_NormalizedNamesDoNotAllocatePerAlias()
+    {
+        const string name = "custom.calendar";
+        for (var index = 0; index < 256; index++)
+            ChatToolActivityPresentation.Classify(name);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var index = 0; index < 128; index++)
+            ChatToolActivityPresentation.Classify(name);
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.Equal(0, allocated);
+    }
 
     [Fact]
     public void Classify_TextEditorUsesCommand()

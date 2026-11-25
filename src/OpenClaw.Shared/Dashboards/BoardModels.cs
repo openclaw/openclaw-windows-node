@@ -45,6 +45,26 @@ public sealed record BoardWidgetDeclared(
 
 public sealed record BoardTab(string TabId, string Title, int Position, string ChatDock);
 
+public enum BoardProgressStepStatus
+{
+    Pending,
+    InProgress,
+    Completed,
+}
+
+public sealed record BoardProgressStep(string Step, BoardProgressStepStatus Status);
+
+/// <summary>Read-only progress card returned by <c>progressCard.get</c>.</summary>
+public sealed record BoardProgressCard(
+    string SessionKey,
+    int Revision,
+    long UpdatedAt,
+    string? Markdown,
+    ImmutableArray<BoardProgressStep> Steps);
+
+/// <summary>Progress card invalidation; a null revision still requires an authoritative reread.</summary>
+public sealed record BoardProgressChangedEvent(string SessionKey, int? Revision);
+
 /// <summary>
 /// One widget from a board snapshot. Ticket and sandbox fields are minted by
 /// <c>board.get</c> only for widgets whose content may load (grant state

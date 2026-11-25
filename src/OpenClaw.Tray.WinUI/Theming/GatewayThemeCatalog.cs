@@ -54,11 +54,18 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     private int _generation;
     private int _refreshSequence;
     private int _appliedSequence;
-    private int _appliedPreferencesSequence;
+    private RefreshSlot _catalogRefresh = new();
+    private RefreshSlot _preferencesRefresh = new();
     private IReadOnlyList<GatewayThemeOption> _gatewayOptions = [];
     private GatewayThemeOption? _gatewayCurrent;
     private GatewayAppearancePreferences? _gatewayPreferences;
     private IReadOnlyList<GatewayThemeDescriptor>? _gatewayBuiltins;
+
+    private sealed class RefreshSlot
+    {
+        public bool Pending;
+        public TaskCompletionSource? Completion;
+    }
 
     public event EventHandler? Changed;
 
@@ -127,6 +134,8 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             _epoch = epoch;
             // Older reads, including ones from the previous epoch, can no longer apply.
             _generation++;
+            _catalogRefresh = new();
+            _preferencesRefresh = new();
             if (!sameBinding)
             {
                 changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null || _gatewayPreferences is not null ||
@@ -161,25 +170,102 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         _ = RefreshAsync();
     }
 
-    public async Task RefreshAsync()
+    /// <summary>
+    /// Refreshes the catalog and preferences independently. Each merges requests that arrive during a read into
+    /// one further read; a slow preference reply never delays a new selection, or vice versa.
+    /// </summary>
+    public Task RefreshAsync()
+    {
+        int generation;
+        RefreshSlot catalog, preferences;
+        lock (_gate)
+        {
+            generation = _generation;
+            catalog = _catalogRefresh;
+            preferences = _preferencesRefresh;
+        }
+        return Task.WhenAll(
+            QueueRefresh(generation, preferences, RefreshPreferencesAsync),
+            QueueRefresh(generation, catalog, RefreshOnceAsync));
+    }
+
+    private Task QueueRefresh(int generation, RefreshSlot slot, Func<int, Task<bool>> read)
+    {
+        TaskCompletionSource completion;
+        lock (_gate)
+        {
+            if (generation != _generation)
+                return Task.CompletedTask;
+            if (slot.Completion is { } active)
+            {
+                slot.Pending = true;
+                return active.Task;
+            }
+            completion = slot.Completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
+        _ = RunRefreshesAsync(generation, slot, completion, read);
+        return completion.Task;
+    }
+
+    private async Task RunRefreshesAsync(int generation, RefreshSlot slot, TaskCompletionSource completion, Func<int, Task<bool>> read)
+    {
+        try
+        {
+            while (true)
+            {
+                var changed = await read(generation).ConfigureAwait(false);
+                bool rerun;
+                lock (_gate)
+                {
+                    rerun = generation == _generation && slot.Pending;
+                    slot.Pending = false;
+                    if (!rerun)
+                        slot.Completion = null;
+                }
+                // The last read has released its slot before notifying observers. An invalidation now starts
+                // a new read rather than joining a worker that has already decided to stop.
+                if (changed)
+                    RaiseChanged();
+                if (!rerun)
+                    break;
+            }
+            completion.SetResult();
+        }
+        catch (Exception ex)
+        {
+            lock (_gate)
+            {
+                if (slot.Completion == completion)
+                {
+                    slot.Completion = null;
+                    slot.Pending = false;
+                }
+            }
+            completion.SetException(ex);
+        }
+    }
+
+    private bool IsCurrent(int generation)
+    {
+        lock (_gate)
+            return generation == _generation;
+    }
+
+    private async Task<bool> RefreshOnceAsync(int generation)
     {
         IOperatorGatewayClient? client;
         string? gatewayId;
-        int generation;
         int sequence;
         lock (_gate)
         {
+            if (generation != _generation)
+                return false;
             client = _client;
             gatewayId = _gatewayId;
-            generation = _generation;
             sequence = ++_refreshSequence;
         }
         if (client is not { IsConnectedToGateway: true } || !Supports(client))
-            return;
-
-        // The accent publishes on its own: a stalled users.prefs.get must not hold back the selected theme, and a
-        // slow or failed theme list must not hold back the accent.
-        _ = PublishPreferencesAsync(generation, sequence, ReadPreferencesAsync(client));
+            return false;
 
         GatewayThemeList list;
         IReadOnlyList<GatewayThemeOption> options;
@@ -192,24 +278,25 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             IReadOnlyList<GatewayThemeOption> known;
             lock (_gate)
                 known = _gatewayOptions;
-            if (!Publish(generation, sequence, null, CurrentOption(list, gatewayId, known), BuiltinDescriptors(list)))
-                return;
-            options = await ReadDefinitionsAsync(client, list, gatewayId).ConfigureAwait(false);
+            if (!TryApply(generation, sequence, null, CurrentOption(list, gatewayId, known), BuiltinDescriptors(list)))
+                return false;
+            RaiseChanged();
+            options = await ReadDefinitionsAsync(client, list, gatewayId, generation).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // Keep the last good catalog; a failed read must not drop themes the user can see.
             Services.Logger.Warn($"[Themes] Gateway theme catalog unavailable ({ex.GetType().Name}).");
-            return;
+            return false;
         }
-        Publish(generation, sequence, options, CurrentOption(list, gatewayId, options), BuiltinDescriptors(list));
+        return TryApply(generation, sequence, options, CurrentOption(list, gatewayId, options), BuiltinDescriptors(list));
     }
 
     private static IReadOnlyList<GatewayThemeDescriptor> BuiltinDescriptors(GatewayThemeList list) =>
         [.. list.Themes.Where(descriptor => descriptor.Source == GatewayThemeSource.Builtin)];
 
     // A newer connection or a newer read (for example after a push event) wins over this one.
-    private bool Publish(int generation, int sequence, IReadOnlyList<GatewayThemeOption>? options, GatewayThemeOption? current,
+    private bool TryApply(int generation, int sequence, IReadOnlyList<GatewayThemeOption>? options, GatewayThemeOption? current,
         IReadOnlyList<GatewayThemeDescriptor> builtins)
     {
         lock (_gate)
@@ -222,23 +309,25 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             _gatewayCurrent = current;
             _gatewayBuiltins = builtins;
         }
-        RaiseChanged();
         return true;
     }
 
-    private async Task PublishPreferencesAsync(int generation, int sequence, Task<GatewayAppearancePreferences?> read)
+    private async Task<bool> RefreshPreferencesAsync(int generation)
     {
-        var preferences = await read.ConfigureAwait(false);
+        IOperatorGatewayClient? client;
+        lock (_gate)
+            client = generation == _generation ? _client : null;
+        if (client is not { IsConnectedToGateway: true } || !Supports(client))
+            return false;
+
+        var preferences = await ReadPreferencesAsync(client).ConfigureAwait(false);
         lock (_gate)
         {
-            if (generation != _generation || sequence < _appliedPreferencesSequence)
-                return;
-            _appliedPreferencesSequence = sequence;
-            if (Equals(preferences, _gatewayPreferences))
-                return;
+            if (generation != _generation || Equals(preferences, _gatewayPreferences))
+                return false;
             _gatewayPreferences = preferences;
+            return true;
         }
-        RaiseChanged();
     }
 
     // Unknown (null) when the Gateway predates the method, the connection has no durable profile, or the read fails:
@@ -268,8 +357,8 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
 
     // Concurrent, so one slow theme bounds a refresh at about a single timeout instead of adding one per theme; a few
     // at a time, so a Gateway with many imported themes does not get a burst of requests on one connection.
-    private static async Task<IReadOnlyList<GatewayThemeOption>> ReadDefinitionsAsync(
-        IOperatorGatewayClient client, GatewayThemeList list, string? gatewayId)
+    private async Task<IReadOnlyList<GatewayThemeOption>> ReadDefinitionsAsync(
+        IOperatorGatewayClient client, GatewayThemeList list, string? gatewayId, int generation)
     {
         var timeout = TimeoutMs();
         using var slots = new SemaphoreSlim(MaxConcurrentDefinitionReads);
@@ -278,6 +367,9 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             await slots.WaitAsync().ConfigureAwait(false);
             try
             {
+                // A read queued before the connection changed would only be discarded; don't send it.
+                if (!IsCurrent(generation))
+                    return null;
                 return await ReadDefinitionAsync(client, descriptor, gatewayId, timeout).ConfigureAwait(false);
             }
             finally
@@ -305,12 +397,21 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             Services.Logger.Warn($"[Themes] Skipped a Gateway theme whose definition could not be read ({ex.GetType().Name}).");
             return null;
         }
-        if (!GatewayThemeProtocol.TryParseGet(result, out var read, out var definition) ||
-            read.Id != descriptor.Id || definition is null)
+        try
+        {
+            if (!GatewayThemeProtocol.TryParseGet(result, out var read, out var definition) ||
+                read.Id != descriptor.Id || definition is null)
+                return null;
+            // A theme whose text would be unreadable is not offered (it would not be applied either).
+            if (ThemeLegibility.IsReadable(ThemePaletteExpander.Resolve(descriptor, definition)))
+                return new GatewayThemeOption(descriptor, definition, gatewayId);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A malformed reply rejects only this theme.
+            Services.Logger.Warn($"[Themes] Skipped a Gateway theme whose definition could not be parsed ({ex.GetType().Name}).");
             return null;
-        // A theme whose text would be unreadable is not offered (it would not be applied either).
-        if (ThemeLegibility.IsReadable(ThemePaletteExpander.Resolve(descriptor, definition)))
-            return new GatewayThemeOption(descriptor, definition, gatewayId);
+        }
         Services.Logger.Warn("[Themes] Skipped a Gateway theme whose text contrast is below 3:1.");
         return null;
     }

@@ -5,6 +5,8 @@ public enum BoardWidgetBodyKind
 {
     /// <summary>Ticketed web content in the isolated sandbox host.</summary>
     Frame,
+    /// <summary>Native read-only <c>session:progress</c> renderer.</summary>
+    Progress,
     /// <summary>MCP app view: not hosted on Windows; shown as a placeholder.</summary>
     McpApp,
     /// <summary>Capabilities requested; the user must allow or reject.</summary>
@@ -56,6 +58,7 @@ public static class BoardWidgetBodyPolicy
         {
             ReportKind => BoardWidgetBodyKind.Report,
             WebsiteKind => BoardWidgetBodyKind.Website,
+            ProgressKind => BoardWidgetBodyKind.Progress,
             _ => BoardWidgetBodyKind.UnsupportedCorePlugin,
         };
     }
