@@ -13,19 +13,15 @@
         </ResourceDictionary>
     </UserControl.Resources>
     <Grid>
+        <AnimatedVisualPlayer x:Name="AdvancePlayer" AutoPlay="False" Width="1" Height="1"
+                              IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw" />
         <Canvas x:Name="Connectors" IsHitTestVisible="False" AutomationProperties.AccessibilityView="Raw">
             <Rectangle x:Name="Track0" Width="1" Canvas.Left="15.5" Fill="{ThemeResource SetupStepConnectorBrush}" />
             <Rectangle x:Name="Track1" Width="1" Canvas.Left="15.5" Fill="{ThemeResource SetupStepConnectorBrush}" />
             <Rectangle x:Name="Track2" Width="1" Canvas.Left="15.5" Fill="{ThemeResource SetupStepConnectorBrush}" />
-            <Rectangle x:Name="Pour0" Width="1" Canvas.Left="15.5" Opacity="0" Fill="{ThemeResource SetupAccentBrush}">
-                <Rectangle.RenderTransform><ScaleTransform x:Name="Pour0Scale" ScaleY="0" /></Rectangle.RenderTransform>
-            </Rectangle>
-            <Rectangle x:Name="Pour1" Width="1" Canvas.Left="15.5" Opacity="0" Fill="{ThemeResource SetupAccentBrush}">
-                <Rectangle.RenderTransform><ScaleTransform x:Name="Pour1Scale" ScaleY="0" /></Rectangle.RenderTransform>
-            </Rectangle>
-            <Rectangle x:Name="Pour2" Width="1" Canvas.Left="15.5" Opacity="0" Fill="{ThemeResource SetupAccentBrush}">
-                <Rectangle.RenderTransform><ScaleTransform x:Name="Pour2Scale" ScaleY="0" /></Rectangle.RenderTransform>
-            </Rectangle>
+            <Rectangle x:Name="Pour0" Width="1" Canvas.Left="15.5" Opacity="0" Fill="{ThemeResource SetupAccentBrush}" />
+            <Rectangle x:Name="Pour1" Width="1" Canvas.Left="15.5" Opacity="0" Fill="{ThemeResource SetupAccentBrush}" />
+            <Rectangle x:Name="Pour2" Width="1" Canvas.Left="15.5" Opacity="0" Fill="{ThemeResource SetupAccentBrush}" />
         </Canvas>
         <StackPanel x:Name="Rows" Spacing="14">
             <local:SetupStepRow x:Name="Step0" />

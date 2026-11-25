@@ -23,6 +23,145 @@ public sealed class OnboardingArtworkRenderingTests(UIThreadFixture ui, ITestOut
     [Theory]
     [InlineData(ElementTheme.Light)]
     [InlineData(ElementTheme.Dark)]
+    public async Task SetupCompanion_PlayerTransitionsSettleLatestTextAndForwardStep(ElementTheme theme)
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var companion = new SetupCompanion { Width = 472, Height = 700, RequestedTheme = theme };
+            companion.Mascot.IsAnimationEnabled = false;
+            OnboardingStage[] route = [OnboardingStage.Capabilities, OnboardingStage.Install, OnboardingStage.AiSetup, OnboardingStage.Ready];
+            companion.Present("Choose your tools.", OnboardingMascotMood.Curious);
+            companion.UpdateSteps(route, OnboardingStage.Capabilities);
+            ui.Container.Children.Add(companion);
+            try
+            {
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => companion.IsLoaded && TestSupport.FindDescendants<AnimatedVisualPlayer>(companion).All(p => p.IsLoaded),
+                    "setup companion players mounted");
+                var players = TestSupport.FindDescendants<AnimatedVisualPlayer>(companion)
+                    .Where(p => p != Player(companion.Mascot)).ToArray();
+                var loaded = new HashSet<AnimatedVisualPlayer>();
+                foreach (var player in players)
+                    player.RegisterPropertyChangedCallback(AnimatedVisualPlayer.IsAnimatedVisualLoadedProperty, (_, _) =>
+                    {
+                        if (player.IsAnimatedVisualLoaded) loaded.Add(player);
+                    });
+                var advances = 0;
+                companion.Steps.Advanced += (_, _) => advances++;
+                companion.SetLine("Superseded text.");
+                companion.SetLine("Setting up your tools.");
+                companion.UpdateSteps(route, OnboardingStage.Install);
+                var animations = new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+                output.WriteLine($"Setup Windows animations enabled: {animations}");
+                if (animations)
+                {
+                    Assert.Contains(players, p => p.Source is SetupVisualTransition && p.IsPlaying);
+                    Assert.All(players, p => Assert.Null(p.Diagnostics));
+                }
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => players.All(p => p.Source is null), "setup transition completion");
+                Assert.Equal("Setting up your tools.", ((TextBlock)companion.FindName("BubbleText")).Text);
+                Assert.Equal(animations ? 1 : 0, advances);
+                var rows = TestSupport.FindDescendants<SetupStepRow>(companion).ToArray();
+                if (animations)
+                {
+                    Assert.Contains((AnimatedVisualPlayer)companion.FindName("BubblePlayer"), loaded);
+                    Assert.Contains((AnimatedVisualPlayer)companion.FindName("HopPlayer"), loaded);
+                    Assert.Contains((AnimatedVisualPlayer)companion.Steps.FindName("AdvancePlayer"), loaded);
+                    Assert.Contains((AnimatedVisualPlayer)rows[1].FindName("PopPlayer"), loaded);
+                }
+                Assert.Equal(OnboardingDesignStepState.Done, rows[0].State);
+                Assert.Equal(OnboardingDesignStepState.Current, rows[1].State);
+                Assert.Contains(rows[1].LabelText, Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(rows[1]));
+                Assert.Equal(1, SetupVisualTransition.GetVisual((TextBlock)companion.FindName("BubbleText")).Opacity);
+                var host = SetupVisualTransition.GetVisual((Grid)companion.FindName("MascotHost"));
+                Assert.Equal(CompositionGetValueStatus.Succeeded, host.Properties.TryGetVector3("Translation", out var translation));
+                Assert.Equal(System.Numerics.Vector3.Zero, translation);
+                foreach (var row in rows)
+                    Assert.Equal(System.Numerics.Vector3.One, SetupVisualTransition.GetVisual((Grid)row.FindName("NodeHost")).Scale);
+                foreach (var pour in TestSupport.FindDescendants<Rectangle>(companion.Steps).Where(p => p.Name.StartsWith("Pour", StringComparison.Ordinal)))
+                    Assert.Equal(0, pour.Opacity);
+            }
+            finally { ui.Container.Children.Clear(); }
+        });
+    }
+
+    [Fact]
+    public async Task SetupCompanion_BackNavigationAndRemountCannotCompleteObsoleteTransitions()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var companion = new SetupCompanion { Width = 472, Height = 700 };
+            companion.Mascot.IsAnimationEnabled = false;
+            OnboardingStage[] route = [OnboardingStage.Capabilities, OnboardingStage.Install, OnboardingStage.AiSetup, OnboardingStage.Ready];
+            companion.Present("Original line.", OnboardingMascotMood.Idle);
+            companion.UpdateSteps(route, OnboardingStage.Capabilities);
+            ui.Container.Children.Add(companion);
+            try
+            {
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => companion.IsLoaded && companion.Steps.IsLoaded, "setup lifecycle mount");
+                var advances = 0;
+                companion.Steps.Advanced += (_, _) => advances++;
+                companion.UpdateSteps(route, OnboardingStage.Install);
+                companion.UpdateSteps(route, OnboardingStage.Capabilities);
+                companion.SetLine("Latest line survives remount.");
+                ui.Container.Children.Remove(companion);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => !companion.IsLoaded && TestSupport.FindDescendants<AnimatedVisualPlayer>(companion).All(p => p.Source is null),
+                    "setup companion and descendant player unload");
+                Assert.All(TestSupport.FindDescendants<AnimatedVisualPlayer>(companion), p => Assert.Null(p.Source));
+                ui.Container.Children.Add(companion);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => companion.IsLoaded && companion.Steps.IsLoaded, "setup companion remount");
+                Assert.Equal(0, advances);
+                Assert.Equal("Latest line survives remount.", ((TextBlock)companion.FindName("BubbleText")).Text);
+                var rows = TestSupport.FindDescendants<SetupStepRow>(companion).ToArray();
+                Assert.Equal(OnboardingDesignStepState.Current, rows[0].State);
+                Assert.Equal(OnboardingDesignStepState.Upcoming, rows[1].State);
+                Assert.All(TestSupport.FindDescendants<AnimatedVisualPlayer>(companion)
+                    .Where(p => p != Player(companion.Mascot)), p => Assert.Null(p.Source));
+            }
+            finally { ui.Container.Children.Clear(); }
+        });
+    }
+
+    [Fact]
+    public async Task SetupStepRow_InstantStateCancelsPopAndReleasesMeasuredDetailHeight()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            var row = new SetupStepRow { Width = 240, LabelText = "Choose tools", DetailText = "A wrapping detail line for this setup stage." };
+            ui.Container.Children.Add(row);
+            try
+            {
+                await TestSupport.WaitForRenderedConditionAsync(() => row.IsLoaded, "setup step row mount");
+                row.Apply(OnboardingDesignStepState.Current, animate: true, highContrast: false);
+                row.Apply(OnboardingDesignStepState.Done, animate: false, highContrast: true);
+                var detail = (Grid)row.FindName("DetailHost");
+                Assert.Equal(0, detail.MaxHeight);
+                Assert.Equal(0, detail.Opacity);
+                Assert.Null(((AnimatedVisualPlayer)row.FindName("PopPlayer")).Source);
+                Assert.Equal(System.Numerics.Vector3.One, SetupVisualTransition.GetVisual((Grid)row.FindName("NodeHost")).Scale);
+                Assert.Equal(1, ((TextBlock)row.FindName("Label")).Opacity);
+                row.SetHovered(true, animate: false, highContrast: true);
+                Assert.True(double.IsPositiveInfinity(detail.MaxHeight));
+                Assert.Equal(1, detail.Opacity);
+                row.DetailText = "A different detail that must remain free to reflow at the new width.";
+                row.Width = 150;
+                ui.Container.UpdateLayout();
+                Assert.True(double.IsPositiveInfinity(detail.MaxHeight));
+            }
+            finally { ui.Container.Children.Clear(); }
+        });
+    }
+
+    [Theory]
+    [InlineData(ElementTheme.Light)]
+    [InlineData(ElementTheme.Dark)]
     public async Task EveryMascotMood_LoadsNativeAnimationSourceWithoutPlayback(ElementTheme theme)
     {
         await ui.ResetContainerAsync();

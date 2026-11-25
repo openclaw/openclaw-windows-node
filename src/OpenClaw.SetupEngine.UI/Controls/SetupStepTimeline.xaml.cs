@@ -1,9 +1,10 @@
+using System.Diagnostics;
+using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.UI.Xaml.Shapes;
 using OpenClaw.SetupEngine;
 using Windows.UI.ViewManagement;
@@ -34,10 +35,7 @@ public sealed partial class SetupStepTimeline : UserControl
     private readonly SetupStepRow[] _rows;
     private readonly Rectangle[] _tracks;
     private readonly Rectangle[] _pours;
-    private readonly ScaleTransform[] _pourScales;
     private IReadOnlyList<OnboardingDesignStepState>? _states;
-    private Storyboard? _advance;
-    private Storyboard? _fade;
     private UISettings? _uiSettings;
     private AccessibilitySettings? _accessibility;
     private SetupStepRow? _hovered;
@@ -48,7 +46,6 @@ public sealed partial class SetupStepTimeline : UserControl
         _rows = [Step0, Step1, Step2, Step3];
         _tracks = [Track0, Track1, Track2];
         _pours = [Pour0, Pour1, Pour2];
-        _pourScales = [Pour0Scale, Pour1Scale, Pour2Scale];
         for (var index = 0; index < _rows.Length; index++)
         {
             var row = _rows[index];
@@ -85,13 +82,11 @@ public sealed partial class SetupStepTimeline : UserControl
         var nextIndex = IndexOfCurrent(next);
         AutomationProperties.SetName(this, SetupLocalization.Format(
             "Onboarding_Flow_Position", nextIndex + 1, OnboardingStepPlan.StepCount));
-        _advance?.Stop();
-        _advance = null;
+        HidePours();
         var previousIndex = previous is null ? -1 : IndexOfCurrent(previous);
         if (previous is null || nextIndex <= previousIndex || !CanAnimate)
         {
             ApplyStates(next, animate: false);
-            HidePours();
             return;
         }
         PourThenApply(previousIndex, nextIndex, next);
@@ -99,36 +94,28 @@ public sealed partial class SetupStepTimeline : UserControl
 
     private void PourThenApply(int from, int to, IReadOnlyList<OnboardingDesignStepState> target)
     {
-        HidePours();
-        var storyboard = new Storyboard();
-        for (var segment = Math.Max(0, from); segment < to && segment < _pours.Length; segment++)
+        var pours = _pours.Skip(Math.Max(0, from)).Take(to - Math.Max(0, from)).ToArray();
+        foreach (var pour in pours)
         {
-            _pours[segment].Opacity = 1;
-            _pourScales[segment].ScaleY = 0;
-            var pour = new DoubleAnimation
-            {
-                From = 0, To = 1, Duration = PourDuration,
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut },
-            };
-            Storyboard.SetTarget(pour, _pourScales[segment]);
-            Storyboard.SetTargetProperty(pour, nameof(ScaleTransform.ScaleY));
-            storyboard.Children.Add(pour);
+            pour.Opacity = 1;
+            SetupVisualTransition.GetVisual(pour).Opacity = 1;
         }
-        storyboard.Completed += (_, _) =>
+        SetupVisualTransition.Play(AdvancePlayer, PourDuration, motion =>
         {
-            if (!ReferenceEquals(_advance, storyboard))
-                return;
-            _advance = null;
-            // Keep the filled connectors while releasing the held animation values.
-            foreach (var scale in _pourScales)
-                scale.ScaleY = 1;
-            storyboard.Stop();
+            using var ease = CompositionEasingFunction.CreatePowerEasingFunction(
+                motion.RootVisual.Compositor, CompositionEasingFunctionMode.InOut, 2);
+            foreach (var pour in pours)
+                motion.Animate(SetupVisualTransition.GetVisual(pour), "Scale.Y", (0, 0, null), (1, 1, ease));
+        }, () =>
+        {
             ApplyStates(target, animate: true);
-            FadePours();
+            SetupVisualTransition.Play(AdvancePlayer, PourFadeDuration, motion =>
+            {
+                foreach (var pour in pours)
+                    motion.Animate(SetupVisualTransition.GetVisual(pour), "Opacity", (0, 1, null), (1, 0, null));
+            }, HidePours);
             Advanced?.Invoke(this, EventArgs.Empty);
-        };
-        _advance = storyboard;
-        storyboard.Begin();
+        });
     }
 
     private void ApplyStates(IReadOnlyList<OnboardingDesignStepState> states, bool animate)
@@ -143,33 +130,16 @@ public sealed partial class SetupStepTimeline : UserControl
         PositionConnectors();
     }
 
-    private void FadePours()
-    {
-        var storyboard = new Storyboard();
-        foreach (var pour in _pours.Where(pour => pour.Opacity > 0))
-        {
-            var fade = new DoubleAnimation { To = 0, Duration = PourFadeDuration };
-            Storyboard.SetTarget(fade, pour);
-            Storyboard.SetTargetProperty(fade, nameof(Opacity));
-            storyboard.Children.Add(fade);
-        }
-        storyboard.Completed += (_, _) =>
-        {
-            // HidePours stops this storyboard so its held opacity cannot hide a later pour.
-            if (ReferenceEquals(_fade, storyboard))
-                HidePours();
-        };
-        _fade = storyboard;
-        storyboard.Begin();
-    }
-
-    // Stops any fade first: a held fade value would otherwise hide later local opacity changes.
     private void HidePours()
     {
-        _fade?.Stop();
-        _fade = null;
+        SetupVisualTransition.Stop(AdvancePlayer);
         foreach (var pour in _pours)
+        {
             pour.Opacity = 0;
+            var visual = SetupVisualTransition.GetVisual(pour);
+            visual.Opacity = 0;
+            visual.Scale = Vector3.One;
+        }
     }
 
     private void PositionConnectors()
@@ -214,6 +184,7 @@ public sealed partial class SetupStepTimeline : UserControl
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _uiSettings ??= new UISettings();
+        _uiSettings.AnimationsEnabledChanged += OnAnimationsEnabledChanged;
         _accessibility ??= new AccessibilitySettings();
         if (_states is not null)
             ApplyStates(_states, animate: false);
@@ -221,11 +192,28 @@ public sealed partial class SetupStepTimeline : UserControl
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        _advance?.Stop();
-        _advance = null;
         HidePours();
+        if (_uiSettings is not null)
+            _uiSettings.AnimationsEnabledChanged -= OnAnimationsEnabledChanged;
         _uiSettings = null;
         _accessibility = null;
+        if (_hovered is { } hovered)
+        {
+            _hovered = null;
+            hovered.SetHovered(false, animate: false, highContrast: false);
+            HoveredDetailChanged?.Invoke(this, null);
+        }
+    }
+
+    private void OnAnimationsEnabledChanged(UISettings sender, object args)
+    {
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            if (CanAnimate) return;
+            HidePours();
+            if (_states is not null) ApplyStates(_states, animate: false);
+        }))
+            Trace.TraceWarning("Setup timeline could not dispatch a Windows animation preference change.");
     }
 
     private static int IndexOfCurrent(IReadOnlyList<OnboardingDesignStepState> states)

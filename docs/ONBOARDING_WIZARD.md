@@ -1411,6 +1411,20 @@ There is no animation JSON, code generation or additional animation runtime.
 Win2D supplies the vector-path types; normal repository builds compile the
 handwritten source. The same geometry handles light, dark and high contrast.
 
+The surrounding setup animations also use the native player contract.
+`SetupVisualTransition` binds Windows keyframes and easing functions to a finite
+`AnimatedVisualPlayer` timeline for bubble fades, the milestone hop, connector
+pours/fades and step-node pops. It animates the existing XAML Composition
+visuals, so text, theme brushes and accessibility remain native rather than
+being copied into an animation asset. Replacement and unload cancel obsolete
+completions and release bindings; turning Windows animations off settles the
+latest text and step immediately.
+
+Measured step-detail height expansion remains a XAML Storyboard: the player
+does not drive layout properties. Page navigation likewise retains WinUI's
+navigation transitions. Neither needs a managed frame loop or a custom layout
+animation engine.
+
 Use the SetupEngine mascot tests for clip/state contracts and the
 `OnboardingArtworkRenderingTests` native lane for player lifetime and composed
 pixels. `RenderTargetBitmap` excludes these Composition child visuals and is

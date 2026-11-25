@@ -1,7 +1,10 @@
+using System.Diagnostics;
+using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Animation;
 using OpenClaw.SetupEngine;
 using Windows.UI.ViewManagement;
 
@@ -30,7 +33,7 @@ public sealed partial class SetupCompanion : UserControl
 {
     private static readonly TimeSpan BubbleFadeHalf = TimeSpan.FromMilliseconds(75);
     private static readonly TimeSpan BounceDuration = TimeSpan.FromMilliseconds(360);
-    private const double BounceHeight = 6;
+    private const float BounceHeight = 6;
     // Design proportions within the 472-DIP pane at the 1120-DIP reference width.
     private const double ReferencePaneWidth = 472;
     private const double ReferenceTimelineInset = 134;
@@ -38,12 +41,13 @@ public sealed partial class SetupCompanion : UserControl
 
     private string _pageLine = string.Empty;
     private string? _hoverLine;
-    private Storyboard? _bubbleFade;
+    private string _shownLine = string.Empty;
     private UISettings? _uiSettings;
 
     public SetupCompanion()
     {
         InitializeComponent();
+        ElementCompositionPreview.SetIsTranslationEnabled(MascotHost, true);
         Timeline.HoveredDetailChanged += (_, detail) =>
         {
             _hoverLine = detail;
@@ -52,12 +56,18 @@ public sealed partial class SetupCompanion : UserControl
         Timeline.Advanced += (_, _) => Bounce();
         SizeChanged += (_, args) => Timeline.Margin = new Thickness(
             Math.Round(args.NewSize.Width * ReferenceTimelineInset / ReferencePaneWidth), 0, TimelineEndMargin, 0);
-        Loaded += (_, _) => _uiSettings ??= new UISettings();
+        Loaded += (_, _) =>
+        {
+            _uiSettings = new UISettings();
+            _uiSettings.AnimationsEnabledChanged += OnAnimationsEnabledChanged;
+            SettleMotion();
+        };
         Unloaded += (_, _) =>
         {
-            _bubbleFade?.Stop();
-            _bubbleFade = null;
+            if (_uiSettings is not null)
+                _uiSettings.AnimationsEnabledChanged -= OnAnimationsEnabledChanged;
             _uiSettings = null;
+            SettleMotion();
         };
     }
 
@@ -109,67 +119,59 @@ public sealed partial class SetupCompanion : UserControl
 
     private void ShowLine(string text)
     {
-        if (BubbleText.Text == text && _bubbleFade is null)
+        if (_shownLine == text)
             return;
-        _bubbleFade?.Stop();
-        _bubbleFade = null;
+        _shownLine = text;
+        SetupVisualTransition.Stop(BubblePlayer);
         Bubble.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
-        if (!CanAnimate || string.IsNullOrEmpty(BubbleText.Text))
+        if (!CanAnimate || string.IsNullOrEmpty(BubbleText.Text) || string.IsNullOrEmpty(text))
         {
-            BubbleText.Text = text;
-            BubbleText.Opacity = 1;
+            SettleBubble();
             return;
         }
-        var fadeOut = Fade(0);
-        fadeOut.Completed += (_, _) =>
+        var visual = SetupVisualTransition.GetVisual(BubbleText);
+        SetupVisualTransition.Play(BubblePlayer, BubbleFadeHalf,
+            motion => motion.Animate(visual, "Opacity", (0, 1, null), (1, 0, null)), () =>
         {
-            if (!ReferenceEquals(_bubbleFade, fadeOut))
-                return;
             BubbleText.Text = text;
-            var fadeIn = Fade(1);
-            fadeIn.Completed += (_, _) =>
-            {
-                if (ReferenceEquals(_bubbleFade, fadeIn))
-                    _bubbleFade = null;
-            };
-            _bubbleFade = fadeIn;
-            fadeIn.Begin();
-        };
-        _bubbleFade = fadeOut;
-        fadeOut.Begin();
+            SetupVisualTransition.Play(BubblePlayer, BubbleFadeHalf,
+                motion => motion.Animate(visual, "Opacity", (0, 0, null), (1, 1, null)));
+        });
     }
 
-    private Storyboard Fade(double to)
+    private void SettleBubble()
     {
-        var animation = new DoubleAnimation { To = to, Duration = BubbleFadeHalf };
-        Storyboard.SetTarget(animation, BubbleText);
-        Storyboard.SetTargetProperty(animation, nameof(Opacity));
-        return new Storyboard { Children = { animation } };
+        SetupVisualTransition.Stop(BubblePlayer);
+        BubbleText.Text = _shownLine;
+        SetupVisualTransition.GetVisual(BubbleText).Opacity = 1;
+    }
+
+    private void SettleMotion()
+    {
+        SettleBubble();
+        SetupVisualTransition.Stop(HopPlayer);
+        SetupVisualTransition.GetVisual(MascotHost).Properties.InsertVector3("Translation", Vector3.Zero);
+    }
+
+    private void OnAnimationsEnabledChanged(UISettings sender, object args)
+    {
+        if (!DispatcherQueue.TryEnqueue(() => { if (!CanAnimate) SettleMotion(); }))
+            Trace.TraceWarning("Setup companion could not dispatch a Windows animation preference change.");
     }
 
     private void Bounce()
     {
         if (!CanAnimate)
             return;
-        var animation = new DoubleAnimationUsingKeyFrames
+        var visual = SetupVisualTransition.GetVisual(MascotHost);
+        SetupVisualTransition.Play(HopPlayer, BounceDuration, motion =>
         {
-            KeyFrames =
-            {
-                new DiscreteDoubleKeyFrame { KeyTime = TimeSpan.Zero, Value = 0 },
-                new EasingDoubleKeyFrame
-                {
-                    KeyTime = BounceDuration / 3, Value = -BounceHeight,
-                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
-                },
-                new EasingDoubleKeyFrame
-                {
-                    KeyTime = BounceDuration, Value = 0,
-                    EasingFunction = new BounceEase { EasingMode = EasingMode.EaseOut, Bounces = 1, Bounciness = 3 },
-                },
-            },
-        };
-        Storyboard.SetTarget(animation, MascotBounce);
-        Storyboard.SetTargetProperty(animation, nameof(TranslateTransform.Y));
-        new Storyboard { Children = { animation } }.Begin();
+            using var rise = CompositionEasingFunction.CreatePowerEasingFunction(
+                visual.Compositor, CompositionEasingFunctionMode.Out, 2);
+            using var land = CompositionEasingFunction.CreateBounceEasingFunction(
+                visual.Compositor, CompositionEasingFunctionMode.Out, 1, 3);
+            motion.Animate(visual.Properties, "Translation.Y",
+                (0, 0, null), (1f / 3, -BounceHeight, rise), (1, 0, land));
+        });
     }
 }
