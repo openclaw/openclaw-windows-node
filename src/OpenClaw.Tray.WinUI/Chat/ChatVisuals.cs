@@ -214,12 +214,14 @@ internal static class ChatVisuals
     /// <summary>The active Gateway theme's corner scale (CRT's near-square 0.25), or 1. Chat surfaces read it on render.</summary>
     internal static double CornerScale { get; private set; } = 1;
 
-    // Mounted surfaces drawn with ThemedCorner and how to compute their radius. Memoized views (a Markdown message
-    // whose props did not change) do not re-render on a theme switch, so a new scale reshapes them here instead.
-    // Weak, because disposing a Reactor host does not unmount its tree; unmount removes an entry so a pooled element
-    // reused without ThemedCorner is left alone.
-    private static readonly ConditionalWeakTable<FrameworkElement, Func<CornerRadius>> s_cornerRadii = new();
-    private static readonly List<WeakReference<FrameworkElement>> s_cornerElements = [];
+    // The native element retains its registration and managed wrapper while mounted. A weak table keyed only by
+    // the wrapper loses the registration when WinUI recreates that wrapper. The global list stays weak because
+    // disposing a Reactor host can drop its tree without unmounting it.
+    private sealed record CornerRegistration(FrameworkElement Element, Func<CornerRadius> Radius);
+    private static DependencyProperty? s_cornerRegistrationProperty;
+    private static DependencyProperty CornerRegistrationProperty => s_cornerRegistrationProperty ??=
+        DependencyProperty.RegisterAttached("ChatCornerRegistration", typeof(object), typeof(ChatVisuals), new PropertyMetadata(null));
+    private static readonly List<WeakReference<CornerRegistration>> s_cornerElements = [];
 
     /// <summary>
     /// Sets the corner scale (values outside (0, 4] fall back to 1) and reshapes every mounted
@@ -231,25 +233,32 @@ internal static class ChatVisuals
         if (next == CornerScale)
             return;
         CornerScale = next;
-        List<(FrameworkElement Element, Func<CornerRadius> Radius)> mounted = [];
+        List<CornerRegistration> mounted = [];
         lock (s_cornerElements)
         {
             s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
             foreach (var reference in s_cornerElements)
             {
-                if (reference.TryGetTarget(out var element) && s_cornerRadii.TryGetValue(element, out var radius))
-                    mounted.Add((element, radius));
+                if (reference.TryGetTarget(out var registration))
+                    mounted.Add(registration);
             }
         }
-        foreach (var (element, radius) in mounted)
+        foreach (var registration in mounted)
         {
-            if (element.DispatcherQueue is not { } queue)
+            if (registration.Element.DispatcherQueue is not { } queue)
                 continue;
             if (queue.HasThreadAccess)
-                SetCornerRadius(element, radius());
+                RefreshCorner(registration);
             else
-                queue.TryEnqueue(() => SetCornerRadius(element, radius()));
+                queue.TryEnqueue(() => RefreshCorner(registration));
         }
+    }
+
+    private static void RefreshCorner(CornerRegistration registration)
+    {
+        var element = registration.Element;
+        if (ReferenceEquals(element.GetValue(CornerRegistrationProperty), registration))
+            SetCornerRadius(element, registration.Radius());
     }
 
     /// <summary>A chat surface's corner radius under the active theme's corner scale.</summary>
@@ -268,26 +277,21 @@ internal static class ChatVisuals
         element.CornerRadius(radius())
             .OnMountAdd(control =>
             {
-                if (control is not FrameworkElement mounted)
-                    return;
+                var registration = new CornerRegistration(control, radius);
+                control.SetValue(CornerRegistrationProperty, registration);
                 lock (s_cornerElements)
                 {
-                    if (!s_cornerRadii.TryGetValue(mounted, out _))
-                    {
-                        s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
-                        s_cornerElements.Add(new(mounted));
-                    }
-                    s_cornerRadii.AddOrUpdate(mounted, radius);
+                    s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
+                    s_cornerElements.Add(new(registration));
                 }
             })
             .OnUnmountAdd(control =>
             {
-                if (control is not FrameworkElement mounted)
-                    return;
+                var registration = control.GetValue(CornerRegistrationProperty) as CornerRegistration;
+                control.ClearValue(CornerRegistrationProperty);
                 lock (s_cornerElements)
                 {
-                    s_cornerRadii.Remove(mounted);
-                    s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, mounted));
+                    s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, registration));
                 }
             });
 
