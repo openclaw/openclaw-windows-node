@@ -25,11 +25,19 @@ internal sealed class WebViewBuiltinThemeProbe(IUiDispatcher dispatcher) : IBuil
     public Task<string> ResolveAsync(string document, IReadOnlyList<string> themeIds, CancellationToken cancellationToken)
     {
         var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        // The deadline completes this task itself, so a WebView2 call that ignores cancellation, or a UI thread that never
+        // runs the work, cannot hold the caller open. The UI-thread work still closes what it created.
+        var registration = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
+        _ = completion.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
         async Task RunAsync()
         {
             try
             {
                 completion.TrySetResult(await ResolveOnUiThreadAsync(document, themeIds, cancellationToken));
+            }
+            catch (OperationCanceledException)
+            {
+                completion.TrySetCanceled(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -51,11 +59,24 @@ internal sealed class WebViewBuiltinThemeProbe(IUiDispatcher dispatcher) : IBuil
         if (window == IntPtr.Zero)
             throw new InvalidOperationException("Could not create the probe window.");
         CoreWebView2Controller? controller = null;
+        var ownsWindow = true;
         try
         {
-            controller = await environment.CreateCoreWebView2ControllerAsync(
+            // WaitAsync bounds each wait to the deadline even where WebView2 does not honor cancelling the call itself.
+            var creation = environment.CreateCoreWebView2ControllerAsync(
                 CoreWebView2ControllerWindowReference.CreateFromWindowHandle((ulong)window),
                 BoardWebViewEnvironment.CreateControllerOptions(environment, Profile)).AsTask(cancellationToken);
+            try
+            {
+                controller = await creation.WaitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // The runtime may still hand over a controller after the deadline: it is closed, with the window, then.
+                ownsWindow = false;
+                _ = CloseWhenCreatedAsync(creation, window);
+                throw;
+            }
             controller.IsVisible = false;
             var core = controller.CoreWebView2;
             BoardWebViewEnvironment.ApplyLockedDownSettings(core.Settings);
@@ -76,14 +97,32 @@ internal sealed class WebViewBuiltinThemeProbe(IUiDispatcher dispatcher) : IBuil
             core.Navigate(DocumentUri);
             if (!await loaded.Task.WaitAsync(cancellationToken))
                 throw new InvalidOperationException("The theme probe document did not load.");
-            await core.ExecuteScriptAsync(ThemeProbe.Script).AsTask(cancellationToken);
-            var encoded = await core.ExecuteScriptAsync(ThemeProbe.ResolveExpression(themeIds)).AsTask(cancellationToken);
+            await core.ExecuteScriptAsync(ThemeProbe.Script).AsTask(cancellationToken).WaitAsync(cancellationToken);
+            var encoded = await core.ExecuteScriptAsync(ThemeProbe.ResolveExpression(themeIds))
+                .AsTask(cancellationToken).WaitAsync(cancellationToken);
             // The script returns a JSON string; ExecuteScriptAsync encodes that value as JSON once more.
             return JsonSerializer.Deserialize<string>(encoded) ?? throw new InvalidOperationException("The theme probe returned nothing.");
         }
         finally
         {
             controller?.Close();
+            if (ownsWindow)
+                DestroyWindow(window);
+        }
+    }
+
+    private static async Task CloseWhenCreatedAsync(Task<CoreWebView2Controller> creation, IntPtr window)
+    {
+        try
+        {
+            (await creation).Close();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Services.Logger.Info($"[Themes] The abandoned theme probe created no controller ({ex.GetType().Name}).");
+        }
+        finally
+        {
             DestroyWindow(window);
         }
     }

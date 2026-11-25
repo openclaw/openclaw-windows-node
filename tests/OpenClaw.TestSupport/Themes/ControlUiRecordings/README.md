@@ -3,6 +3,8 @@
 Each zip records what one real packaged OpenClaw Gateway served and how its own dashboard painted every built-in theme.
 Tests use them to resolve built-in palettes offline exactly as the Companion does against that Gateway
 (`ServedThemeStylesheetReader` + `ThemeProbe.js`) and compare the result with the dashboard's own rendering.
+They are frozen captures: they prove the layout and tokens of these three builds, not any other build, and not a live
+connection (HTTP mount, redirects, content types and the real WebView2 probe are proved against a running Gateway).
 
 | Recording | Gateway | Why |
 |---|---|---|

@@ -613,7 +613,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         _ephemeralOperatorCredential = ephemeralOperatorCredential;
         _useBoundedBootstrapScopes = useBoundedBootstrapScopes;
         _assistantMediaHttpClient = assistantMediaHandler is null
-            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            ? new HttpClient(new HttpClientHandler { AllowAutoRedirect = false, UseCookies = false })
             : new HttpClient(assistantMediaHandler, disposeHandler: true);
         SetAssistantMediaAuthToken(assistantMediaAuthToken);
         _currentGatewayUrl = gatewayUrl;

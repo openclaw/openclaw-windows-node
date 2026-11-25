@@ -232,6 +232,37 @@ public sealed class GatewayBuiltinThemeResolverTests : IDisposable
         Assert.Equal(2, probe.Calls);
     }
 
+    [Fact]
+    public async Task AProbeThatIgnoresItsDeadline_StillEndsTheResolutionWithTheTable_AndTheNextConnectionRetries()
+    {
+        var recording = ControlUiThemeRecording.Load(ControlUiThemeRecording.Stable);
+        // A probe that never completes and ignores cancellation, as a WebView2 call that does not honor it would.
+        var probe = new FakeProbe(recording) { Gate = new TaskCompletionSource() };
+        using var environment = new EnvironmentScope(GatewayBuiltinThemeResolver.TimeoutEnvironmentVariable, "1000");
+        using var resolver = new GatewayBuiltinThemeResolver(_dispatcher, _catalog, probe, Cache());
+        var changes = 0;
+        resolver.Changed += (_, _) => changes++;
+
+        resolver.SetConnection(Gateway(recording.Read, epoch: 1), "gw");
+        await resolver.Pending.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, probe.Calls);
+        Assert.True(probe.LastToken.IsCancellationRequested);
+        Assert.Null(resolver.Current);
+        Assert.Equal(1, changes);
+        Assert.True(resolver.TryGet("tide", out var tide));
+        Assert.True(BuiltinGatewayThemes.TryGet("tide", out var table));
+        Assert.Same(table, tide);
+
+        // The abandoned probe finishing late publishes nothing; the next connection resolves from scratch.
+        environment.Set(GatewayBuiltinThemeResolver.TimeoutEnvironmentVariable, null);
+        probe.Gate.SetResult();
+        resolver.SetConnection(Gateway(recording.Read, epoch: 2), "gw");
+        await resolver.Pending.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, probe.Calls);
+        Assert.Equal(recording.BuildId, resolver.Current?.Key);
+    }
+
     public void Dispose()
     {
         _dispatcher.Dispose();
