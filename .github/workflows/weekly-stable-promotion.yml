@@ -1,0 +1,42 @@
+name: Weekly stable promotion
+
+on:
+  # Tuesday 18:00 UTC (10 AM Pacific standard time, 11 AM daylight time).
+  schedule:
+    - cron: '0 18 * * 2'
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: weekly-stable-promotion
+  cancel-in-progress: false
+
+jobs:
+  request:
+    if: github.repository == 'openclaw/openclaw-windows-node' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Select latest published alpha and request protected promotion
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          . ./scripts/AlphaPromotion.ps1
+          $alphaTag = Get-ScheduledAlphaPromotionTag
+          if (-not $alphaTag) {
+            'No published alpha advances the current stable release. Nothing to promote.' >> $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          # Keep all eligibility, rebuild, signing and approval decisions in the
+          # existing promotion workflow, including its concurrency lock.
+          & gh workflow run promote-alpha-release.yml --repo openclaw/openclaw-windows-node --ref main `
+            -f "alpha_tag=$alphaTag" -f prepare=true
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Promotion dispatch was not confirmed. Inspect Actions before retrying.'
+          }
+          "Requested stable preparation for $alphaTag. Publication still requires stable-release approval." >> $env:GITHUB_STEP_SUMMARY

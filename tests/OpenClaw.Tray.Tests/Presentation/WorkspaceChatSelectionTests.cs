@@ -115,8 +115,12 @@ public sealed class WorkspaceChatSelectionTests
         // Retire when the native Workspace event adapter can be exercised in Tray.Tests.
         var source = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(),
             "src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml.cs"));
-        var handler = source[source.IndexOf("private void OnChatSessionSelected(", StringComparison.Ordinal)..
-            source.IndexOf("internal void NavigateNativeSetup(", StringComparison.Ordinal)];
+        var handlerStart = source.IndexOf("private void OnChatSessionSelected(", StringComparison.Ordinal);
+        var handlerEnd = source.IndexOf("private void OnChatSessionPromoted(", handlerStart,
+            StringComparison.Ordinal);
+        Assert.True(handlerStart >= 0);
+        Assert.True(handlerEnd > handlerStart);
+        var handler = source[handlerStart..handlerEnd];
         Assert.Contains("_navigation.SelectChatSession(sessionKey, previousSessionKey)", handler);
         Assert.Contains("SessionDisplayResolver.Resolve(session).AgentId", handler);
         Assert.Contains("RefreshSidebar()", handler);

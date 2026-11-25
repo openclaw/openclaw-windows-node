@@ -151,21 +151,23 @@ installed-app or live-provider behavior.
 a different compatibility path. After a fixture-owned reconnect, the actual
 client receives `unknown method: agents.list` while `sessions.list` still works.
 Workspace must show the legacy sessions and enable new-conversation creation
-with the Gateway's default target. The assistant selector remains unavailable,
-because no authoritative agent roster was delivered. A pending or failed listing
-is not treated as an explicitly unsupported method.
+with the Gateway's default target. New Chat remains local until the first message;
+that send uses `sessions.create` without an `agentId`, then sends to the confirmed
+Gateway-returned key. The assistant selector and location pickers remain unavailable,
+because no authoritative agent roster or placement catalog was delivered. A pending
+or failed listing is not treated as an explicitly unsupported method.
 
 The disconnected assistant menu still exposes its existing connection guidance.
 This does not authorize session creation or treat a pending connected roster as
 available.
 
-`VerifiedSetupBindingClearsBeforeNewConversationResponse` starts with a real
+`VerifiedSetupBindingClearsWhenOpeningLocalNewChat` starts with a real
 production handoff receipt and a synthetic model-verification response. It
-holds the fixture's session-creation response and checks that the prior bound
-setup warning is already cleared, then releases creation and observes the
-ordinary selected conversation. Existing warning recovery coverage checks the
-navigation path; the shutdown guard has a mounted WindowManager case. These
-are behavioral handoff checks, not source-text ordering assertions.
+checks that the prior bound setup warning is already cleared before the local
+draft opens and asserts that no session-creation request is sent until the first
+message. Existing warning recovery coverage checks the navigation path; the
+shutdown guard has a mounted WindowManager case. These are behavioral handoff
+checks, not source-text ordering assertions.
 
 Channels management lives in the Gateway Dashboard, and the native Channels
 page no longer exists. Four cases in `GatewayFixtureDashboardUiTests` keep its
@@ -342,32 +344,6 @@ Add `-KeyboardProof` separately to select the existing keyboard-only fixture lan
 as well. That option enables only its own child and still rejects failed,
 skipped, and zero-test runs. The ordinary UI filter continues to exclude those
 keyboard-only cases; `-NativeInputProof` does not select them.
-
-`MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent`
-uses synthetic history in the shipped app to select and copy across paragraphs,
-lists, code, a table and a native collapsed details block. It checks exact
-normalized clipboard text, excludes adjacent messages and collapsed body text,
-switches to a second conversation and back to verify that copying from the
-focused message cannot leak another conversation's text, and exercises edge
-scrolling in the production chat ItemsView. Returning to the same message may
-retain its own selection. The disclosure is scrolled into view before its
-expanded body is checked. This case uses native pointer, keyboard and clipboard
-input, so run it only on an authorized, exclusive interactive desktop:
-
-```powershell
-$env:OPENCLAW_RUN_GATEWAY_FIXTURE_UI = '1'
-$env:OPENCLAW_GATEWAY_FIXTURE_APP = (Resolve-Path $app).Path
-$env:OPENCLAW_GATEWAY_FIXTURE_ARTIFACTS = Join-Path $env:TEMP 'openclaw-markdown-selection'
-$env:OPENCLAW_GATEWAY_FIXTURE_SCREENSHOTS = '1'
-dotnet test .\tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj `
-  -p:Platform=ARM64 -r win-arm64 `
-  --filter 'FullyQualifiedName~MarkdownSelection_CopiesAcrossBlocksAndExcludesCollapsedAndNeighboringContent' `
-  --logger 'console;verbosity=normal'
-```
-
-The test captures only its owned app window. The fixture Gateway and profile are
-synthetic and disposable; this is not live Gateway, provider, or installed-app
-proof.
 
 ### Saved Gateway ownership and released profiles
 
@@ -860,9 +836,22 @@ publish `plugins.changed`; the picker refreshes without reconnecting. Enter
 dashboard theme change would) and publish `users.prefs.changed`; with **Follow
 Gateway theme** on, the Companion switches to it. An id the catalog doesn't list
 is reported as a built-in newer than the Companion's table, which the Companion
-doesn't follow. `GatewayThemeCatalogWireTests` proves the same catalog,
+doesn't follow. With `select manuscript` and **Follow Gateway theme** on, capture
+a dark chat's user bubble, enter `accent #3a9b9b`, and capture the same bubble
+with its teal wash. Enter `accent theme` to restore the theme's own accent;
+`accent none` represents an unset preference. This uses a synthetic profile,
+not a live dashboard. `GatewayThemeCatalogWireTests` proves the same catalog,
 definitions, event refreshes and following through the real authenticated
 client.
+
+The connected catalog reads `ui.accent` on refresh when the Gateway advertises
+`users.prefs.get` and grants a read-capable operator scope. Follow controls
+whether the Companion saves and applies that value, not whether the catalog
+reads it. An unknown preference keeps the last followed accent; an explicit
+`theme` or successful empty result clears it. The HTTP dashboard seam color is
+not read. For a low-contrast personal color, buttons keep the selected fill
+while native accent text and focus outlines can use the theme's more legible
+body text color.
 
 ## Targeted context-usage proof
 
@@ -1128,11 +1117,12 @@ count-pill `Border` needs resource-backed background precedence. The mounted
 assert the actual Light/Dark dialog theme; the count-pill regression below
 checks the native brush. These are dependency regression requirements, not
 evidence that the newly merged package combination has passed native proof.
-`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
+`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-nuget-packages`.
 Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
 build or run commands; `build.ps1` and building through `run-app-local.ps1`
-already do this. The initializer verifies the official preview.18 release
-digests without changing global NuGet configuration or clearing its cache.
+already do this. The initializer verifies the preview.18 NuGet.org package
+digests. See [Reactor compatibility proof](WINDOWS_NODE_TESTING.md#reactor-compatibility-proof)
+for restore instructions if an earlier build cached the unsigned packages.
 A successful build alone is not dark-dialog proof.
 The count-pill contrast regression also checks the actual native brush after
 pooled reuse. A pooled Border must release a local null background when its

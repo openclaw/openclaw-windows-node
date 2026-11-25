@@ -241,6 +241,16 @@ public partial class OpenClawGatewayClient
             _logger.Warn($"sessions.create timed out: {ex.Message}");
             return CreateSessionCreationTimeoutResult();
         }
+        catch (GatewayConnectionLostException ex)
+        {
+            _logger.Warn($"sessions.create connection was lost before confirmation: {ex.Message}");
+            return CreateSessionCreationConnectionLostResult();
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.Warn($"sessions.create was interrupted before confirmation: {ex.Message}");
+            return CreateSessionCreationConnectionLostResult();
+        }
         catch (InvalidOperationException ex) when (IsUnknownMethodError(ex.Message))
         {
             _logger.Warn("sessions.create unsupported on gateway");
@@ -265,7 +275,15 @@ public partial class OpenClawGatewayClient
     internal static SessionCreateResult CreateSessionCreationTimeoutResult() => new()
     {
         Ok = false,
+        OutcomeUncertain = true,
         Error = "The gateway did not respond before session creation timed out. Check the session list to see whether a new session was created before trying again."
+    };
+
+    internal static SessionCreateResult CreateSessionCreationConnectionLostResult() => new()
+    {
+        Ok = false,
+        OutcomeUncertain = true,
+        Error = "The Gateway did not confirm session creation before the request was interrupted. Check the session list before trying again."
     };
 
     internal static Dictionary<string, object?> BuildSessionCreateParameters(
@@ -326,6 +344,7 @@ public partial class OpenClawGatewayClient
             return new SessionCreateResult
             {
                 Ok = false,
+                OutcomeUncertain = true,
                 Error = "sessions.create returned no session key"
             };
         }

@@ -105,6 +105,8 @@ public sealed record ResolvedThemePalette
     public required ThemeColor BorderStrong { get; init; }
     /// <summary>Accent used for text, links and indicators (<c>--accent</c>).</summary>
     public required ThemeColor Accent { get; init; }
+    /// <summary>True when the accent is a person's arbitrary color rather than the theme's authored choice.</summary>
+    public bool HasPersonalAccent { get; init; }
     public required ThemeColor AccentHover { get; init; }
     public required ThemeColor AccentForeground { get; init; }
     /// <summary>Filled primary buttons (<c>--primary</c>).</summary>
@@ -143,6 +145,9 @@ public sealed record ResolvedThemePalette
     public ThemeColor Sidebar => Mode == ThemeColorMode.Dark
         ? Canvas.Mix(Elevated, 0.96)
         : Panel.Mix(ThemeColor.White, 0.98);
+
+    /// <summary>The opaque window background behind navigation, dialogs and translucent page surfaces.</summary>
+    public ThemeColor WindowCanvas => Sidebar.Over(ThemeColor.Black);
 
     /// <summary>The main shell behind pages and chat (<c>.shell</c>: <c>var(--bg-content, var(--bg))</c>).</summary>
     public ThemeColor Shell => Content;
@@ -210,7 +215,7 @@ public static class ThemeLegibility
 
     private static bool IsReadable(ResolvedThemePalette palette)
     {
-        var canvas = palette.Canvas.Over(ThemeColor.Black);
+        var canvas = palette.WindowCanvas;
         var shell = palette.Shell.Over(canvas);
         var card = palette.Card.Over(canvas);
         var shellCard = palette.Card.Over(shell);

@@ -912,6 +912,9 @@ public sealed class WorkspaceWindowProofTests
             Assert.False(item.Current.IsOffscreen);
             ((SelectionItemPattern)item.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
             await WaitUntilAsync(() => SelectionState(root, id) == true);
+            var title = key == "agent:main:main" ? "OpenClaw Windows Tray" : "OpenClaw Windows Tray (2)";
+            await WaitUntilAsync(() => FindOrNull(root, "WorkspaceSessionTitle") is { Current.IsOffscreen: false } heading
+                && heading.Current.Name == title);
             await WaitUntilAsync(() => root.FindAll(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
                 .Cast<AutomationElement>().Any(text => text.Current.Name.Contains($"Session: {key}.", StringComparison.Ordinal)));
@@ -922,6 +925,7 @@ public sealed class WorkspaceWindowProofTests
         const string draft = "Keep the selected session draft while opening Settings";
         ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(draft);
         await app.NavigateAsync("settings", "SettingsPage", "SettingsPageMarker");
+        Assert.False(IsVisible(root, "WorkspaceSessionTitle"));
         Assert.Equal(workspace, app.HubWindowHandle);
         Invoke(Find(root, "SettingsBack"));
         await WaitUntilAsync(() => IsVisible(root, "ChatComposerInput"));

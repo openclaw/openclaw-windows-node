@@ -1,5 +1,5 @@
-// Shared lazy-read contract and lifetime for inline or panel tool details.
-// Call LoadAsync only after a reader action; Close cancels and retires that view's result.
+// Saved-result read contract and lifetime for side-panel tool details.
+// Opening the panel or retrying calls LoadAsync; Close retires that view's result.
 using OpenClaw.Shared;
 using OpenClawTray.Services;
 
