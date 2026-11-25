@@ -87,10 +87,11 @@ public static class GatewayThemeProtocol
 
     public static GatewayThemeList ParseList(JsonElement result)
     {
+        if (!HasReadablePropertyNames(result))
+            return new GatewayThemeList([], null, null);
         var themes = ImmutableArray.CreateBuilder<GatewayThemeDescriptor>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        if (result.ValueKind == JsonValueKind.Object &&
-            result.TryGetProperty("themes", out var list) && list.ValueKind == JsonValueKind.Array)
+        if (result.TryGetProperty("themes", out var list) && list.ValueKind == JsonValueKind.Array)
         {
             foreach (var entry in list.EnumerateArray())
             {
@@ -117,7 +118,7 @@ public static class GatewayThemeProtocol
     {
         descriptor = null!;
         definition = null;
-        if (result.ValueKind != JsonValueKind.Object ||
+        if (!HasReadablePropertyNames(result) ||
             !result.TryGetProperty("theme", out var theme) ||
             !TryParseDescriptor(theme, out descriptor))
             return false;
@@ -132,7 +133,7 @@ public static class GatewayThemeProtocol
     public static bool TryParseDescriptor(JsonElement entry, out GatewayThemeDescriptor descriptor)
     {
         descriptor = null!;
-        if (entry.ValueKind != JsonValueKind.Object ||
+        if (!HasReadablePropertyNames(entry) ||
             !TryString(entry, "id", MaxIdLength, out var id) || !IsThemeId(id) ||
             !TryString(entry, "name", MaxNameLength, out var name) ||
             !TryString(entry, "source", 16, out var sourceText))
@@ -152,7 +153,7 @@ public static class GatewayThemeProtocol
         {
             foreach (var mode in modeList.EnumerateArray())
             {
-                var parsed = mode.ValueKind == JsonValueKind.String ? mode.GetString() : null;
+                var parsed = mode.ValueKind == JsonValueKind.String ? ReadString(mode) : null;
                 if (parsed == "light" && !modes.Contains(ThemeColorMode.Light))
                     modes.Add(ThemeColorMode.Light);
                 else if (parsed == "dark" && !modes.Contains(ThemeColorMode.Dark))
@@ -169,21 +170,53 @@ public static class GatewayThemeProtocol
         return true;
     }
 
-    public static bool TryParseDefinition(JsonElement raw, out GatewayThemeDefinition definition, out string error)
+    // TryGetProperty may decode other keys during lookup. Reject this object even if a lookup would
+    // skip a malformed key because of its position or length. Nested descriptors are checked separately.
+    private static bool HasReadablePropertyNames(JsonElement value)
     {
-        definition = null!;
+        if (value.ValueKind != JsonValueKind.Object)
+            return false;
+        try
+        {
+            foreach (var property in value.EnumerateObject())
+                _ = property.Name;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    internal static bool CanStoreDefinition(JsonElement raw, out string error)
+    {
         error = "";
         if (raw.ValueKind != JsonValueKind.Object)
         {
             error = "theme must be an object";
             return false;
         }
-        if (raw.GetRawText().Length > MaxDefinitionBytes * 2 ||
-            JsonSerializer.SerializeToUtf8Bytes(raw).Length > MaxDefinitionBytes)
+        try
         {
-            error = $"theme definition exceeds {MaxDefinitionBytes} bytes";
+            if (raw.GetRawText().Length <= MaxDefinitionBytes * 2 &&
+                JsonSerializer.SerializeToUtf8Bytes(raw).Length <= MaxDefinitionBytes)
+                return true;
+        }
+        catch (JsonException)
+        {
+            // A JsonElement can hold an unpaired surrogate escape but cannot write it to settings.
+            error = "theme definition contains an invalid JSON string";
             return false;
         }
+        error = $"theme definition exceeds {MaxDefinitionBytes} bytes";
+        return false;
+    }
+
+    public static bool TryParseDefinition(JsonElement raw, out GatewayThemeDefinition definition, out string error)
+    {
+        definition = null!;
+        if (!CanStoreDefinition(raw, out error))
+            return false;
         if (!TryString(raw, "name", MaxNameLength, out var name))
         {
             error = "theme.name is required";
@@ -269,7 +302,7 @@ public static class GatewayThemeProtocol
             font = null;
             if (!palette.TryGetProperty(key, out var value) || value.ValueKind == JsonValueKind.Null)
                 return true;
-            var text = value.ValueKind == JsonValueKind.String ? value.GetString()?.Trim() : null;
+            var text = value.ValueKind == JsonValueKind.String ? ReadString(value)?.Trim() : null;
             if (string.IsNullOrEmpty(text) || text.Length > MaxTokenLength || !s_fontFamilyList.IsMatch(text))
                 return false;
             font = text;
@@ -282,10 +315,24 @@ public static class GatewayThemeProtocol
         value = "";
         if (!owner.TryGetProperty(property, out var element) || element.ValueKind != JsonValueKind.String)
             return false;
-        var text = element.GetString()?.Trim();
+        var text = ReadString(element)?.Trim();
         if (string.IsNullOrEmpty(text) || text.Length > maxLength || text.Any(char.IsControl))
             return false;
         value = text;
         return true;
+    }
+
+    // GetString throws on an escaped unpaired surrogate. Gateway replies are untrusted, so such a value is invalid
+    // rather than a failure of the whole reply.
+    internal static string? ReadString(JsonElement element)
+    {
+        try
+        {
+            return element.GetString();
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 }

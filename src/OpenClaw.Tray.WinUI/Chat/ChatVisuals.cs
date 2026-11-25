@@ -214,12 +214,14 @@ internal static class ChatVisuals
     /// <summary>The active Gateway theme's corner scale (CRT's near-square 0.25), or 1. Chat surfaces read it on render.</summary>
     internal static double CornerScale { get; private set; } = 1;
 
-    // Mounted surfaces drawn with ThemedCorner and how to compute their radius. Memoized views (a Markdown message
-    // whose props did not change) do not re-render on a theme switch, so a new scale reshapes them here instead.
-    // Weak, because disposing a Reactor host does not unmount its tree; unmount removes an entry so a pooled element
-    // reused without ThemedCorner is left alone.
-    private static readonly ConditionalWeakTable<FrameworkElement, Func<CornerRadius>> s_cornerRadii = new();
-    private static readonly List<WeakReference<FrameworkElement>> s_cornerElements = [];
+    // The native element retains its registration and managed wrapper while mounted. A weak table keyed only by
+    // the wrapper loses the registration when WinUI recreates that wrapper. The global list stays weak because
+    // disposing a Reactor host can drop its tree without unmounting it.
+    private sealed record CornerRegistration(FrameworkElement Element, Func<CornerRadius> Radius);
+    private static DependencyProperty? s_cornerRegistrationProperty;
+    private static DependencyProperty CornerRegistrationProperty => s_cornerRegistrationProperty ??=
+        DependencyProperty.RegisterAttached("ChatCornerRegistration", typeof(object), typeof(ChatVisuals), new PropertyMetadata(null));
+    private static readonly List<WeakReference<CornerRegistration>> s_cornerElements = [];
 
     /// <summary>
     /// Sets the corner scale (values outside (0, 4] fall back to 1) and reshapes every mounted
@@ -231,25 +233,32 @@ internal static class ChatVisuals
         if (next == CornerScale)
             return;
         CornerScale = next;
-        List<(FrameworkElement Element, Func<CornerRadius> Radius)> mounted = [];
+        List<CornerRegistration> mounted = [];
         lock (s_cornerElements)
         {
             s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
             foreach (var reference in s_cornerElements)
             {
-                if (reference.TryGetTarget(out var element) && s_cornerRadii.TryGetValue(element, out var radius))
-                    mounted.Add((element, radius));
+                if (reference.TryGetTarget(out var registration))
+                    mounted.Add(registration);
             }
         }
-        foreach (var (element, radius) in mounted)
+        foreach (var registration in mounted)
         {
-            if (element.DispatcherQueue is not { } queue)
+            if (registration.Element.DispatcherQueue is not { } queue)
                 continue;
             if (queue.HasThreadAccess)
-                SetCornerRadius(element, radius());
+                RefreshCorner(registration);
             else
-                queue.TryEnqueue(() => SetCornerRadius(element, radius()));
+                queue.TryEnqueue(() => RefreshCorner(registration));
         }
+    }
+
+    private static void RefreshCorner(CornerRegistration registration)
+    {
+        var element = registration.Element;
+        if (ReferenceEquals(element.GetValue(CornerRegistrationProperty), registration))
+            SetCornerRadius(element, registration.Radius());
     }
 
     /// <summary>A chat surface's corner radius under the active theme's corner scale.</summary>
@@ -268,26 +277,21 @@ internal static class ChatVisuals
         element.CornerRadius(radius())
             .OnMountAdd(control =>
             {
-                if (control is not FrameworkElement mounted)
-                    return;
+                var registration = new CornerRegistration(control, radius);
+                control.SetValue(CornerRegistrationProperty, registration);
                 lock (s_cornerElements)
                 {
-                    if (!s_cornerRadii.TryGetValue(mounted, out _))
-                    {
-                        s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
-                        s_cornerElements.Add(new(mounted));
-                    }
-                    s_cornerRadii.AddOrUpdate(mounted, radius);
+                    s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out _));
+                    s_cornerElements.Add(new(registration));
                 }
             })
             .OnUnmountAdd(control =>
             {
-                if (control is not FrameworkElement mounted)
-                    return;
+                var registration = control.GetValue(CornerRegistrationProperty) as CornerRegistration;
+                control.ClearValue(CornerRegistrationProperty);
                 lock (s_cornerElements)
                 {
-                    s_cornerRadii.Remove(mounted);
-                    s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, mounted));
+                    s_cornerElements.RemoveAll(reference => !reference.TryGetTarget(out var target) || ReferenceEquals(target, registration));
                 }
             });
 
@@ -461,6 +465,19 @@ internal static class ChatVisuals
                 break;
         }
     }
+    /// <summary>
+    /// Keeps mounted code text that is outside the Markdown restyle pass on the current code font across theme
+    /// switches, which do not re-render it.
+    /// </summary>
+    internal static T FollowCodeFont<T>(this T element) where T : Element =>
+        (T)element
+            .OnMountAdd(control => ChatThemeChanges.Watch(control, () => ApplyCodeFont(control)))
+            .OnUnmountAdd(control =>
+            {
+                ChatThemeChanges.Unwatch(control);
+                ClearFontRole(control);
+            });
+
     internal const double CodeSize = 13;
     internal const double CodeLineHeight = 18;
     // Web .chat-thinking is 12px muted text; 18 follows the 12/18 footer ramp.
@@ -499,19 +516,32 @@ internal static class ChatVisuals
     internal const double DetailVerticalInset = 8;
     internal const double ActionIconSize = 14;
     internal const double ToolRowMinHeight = 32;
+
+    /// <summary>
+    /// The stock Expander's minimum width (its style binds FlyoutThemeMinWidth). Disclosure details
+    /// rendered below a header-only Expander keep it, so a conversation squeezed during a layout
+    /// change never measures them narrower than they were inside the Expander, which can make
+    /// wrapped text and the transcript's height chase each other into a layout cycle.
+    /// </summary>
+    internal static double DisclosureDetailsMinWidth =>
+        Application.Current?.Resources.TryGetValue("FlyoutThemeMinWidth", out var value) == true &&
+            value is double width ? width : 96;
     // A tool row's 16px leading icon column plus its 8px gap; disclosure content aligns with the title.
     internal const double ToolRowTitleInset = 24;
     // Web tool and activity summaries are 13px (.chat-tool-msg-summary); details keep 12.
     internal const double ToolRowFontSize = 13;
     // Quieter activity titles (tool, thinking and run status) and their dimmed details.
     internal const double ActivityTextFontSize = 12;
+    // Panels above the composer (queue, provider review) fade in over this when they appear.
+    internal const int PanelRevealMilliseconds = 140;
     // A tool row's dimmed directory or search scope never takes more than this; it trims with "…".
     internal const double ToolRowDetailMaxWidth = 240;
     internal const double ActivityDetailsMaxHeight = 160;
     internal const double TranscriptTopInset = 8;
     // The transcript's bottom edge fades into the composer over this height. Like the web
     // thread padding, the last row's inset adds the fade so a settled tail stays fully opaque.
-    internal const double TranscriptFadeHeight = 32;
+    // The fade eases in and out (ChatTranscriptFade), so its top edge never reads as a line.
+    internal const double TranscriptFadeHeight = 64;
     internal const double TranscriptBottomInset = TranscriptFadeHeight + 6;
     internal const double JumpLatestSize = 32;
     internal const double QueueAvatarSize = 20;
@@ -607,6 +637,14 @@ internal static class ChatVisuals
     /// </summary>
     internal static void FlushToolRowExpander(Microsoft.UI.Xaml.Controls.Expander expander)
     {
+        ApplyToolRowFlush(expander);
+        // A reused control that was header-only shows its content area again.
+        if (s_headerOnlyExpanders.Remove(expander))
+            RestoreContentArea(expander);
+    }
+
+    private static void ApplyToolRowFlush(Expander expander)
+    {
         expander.Resources["ExpanderHeaderBorderThickness"] = new Thickness(0);
         expander.Resources["ExpanderChevronMargin"] = new Thickness(0);
         expander.Loaded -= OnToolRowLoaded;
@@ -617,6 +655,73 @@ internal static class ChatVisuals
 
     private static void OnToolRowLoaded(object sender, RoutedEventArgs args) =>
         ApplyToolRowInsets((Expander)sender);
+
+    /// <summary>
+    /// Like <see cref="FlushToolRowExpander"/>, for an Expander that carries only the header and
+    /// renders its details outside: its empty content area takes no height, so expanding or
+    /// collapsing never adds or removes a gap before the details reveal or after they close.
+    /// Runs on every render, so it changes the template only when its state differs.
+    /// </summary>
+    internal static void FlushHeaderOnlyExpander(Microsoft.UI.Xaml.Controls.Expander expander)
+    {
+        ApplyToolRowFlush(expander);
+        if (!s_headerOnlyExpanders.TryGetValue(expander, out _))
+        {
+            s_headerOnlyExpanders.Add(expander, HeaderOnlyMarker);
+            expander.Loaded += OnHeaderOnlyLoaded;
+        }
+        if (expander.IsLoaded)
+            CollapseContentArea(expander);
+    }
+
+    /// <summary>
+    /// Returns a header-only Expander's content area to the stock template on unmount, so a
+    /// reused control shows its content again.
+    /// </summary>
+    internal static void RestoreHeaderOnlyExpander(FrameworkElement control)
+    {
+        if (control is Expander expander && s_headerOnlyExpanders.Remove(expander))
+            RestoreContentArea(expander);
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Expander, object>
+        s_headerOnlyExpanders = new();
+    private static readonly object HeaderOnlyMarker = new();
+
+    private static void OnHeaderOnlyLoaded(object sender, RoutedEventArgs args) =>
+        CollapseContentArea((Expander)sender);
+
+    private static void CollapseContentArea(Expander expander) =>
+        SetContentAreaMaxHeight(expander, 0);
+
+    private static void RestoreContentArea(Expander expander)
+    {
+        expander.Loaded -= OnHeaderOnlyLoaded;
+        SetContentAreaMaxHeight(expander, null);
+    }
+
+    private static void SetContentAreaMaxHeight(Expander expander, double? maxHeight)
+    {
+        if (VisualTreeHelper.GetChildrenCount(expander) == 0 ||
+            VisualTreeHelper.GetChild(expander, 0) is not FrameworkElement root)
+            return;
+        foreach (var part in ExpanderContentParts)
+        {
+            if (root.FindName(part) is not FrameworkElement element)
+                continue;
+            if (maxHeight is { } value)
+            {
+                if (element.MaxHeight != value)
+                    element.MaxHeight = value;
+            }
+            else if (element.ReadLocalValue(FrameworkElement.MaxHeightProperty) != DependencyProperty.UnsetValue)
+            {
+                element.ClearValue(FrameworkElement.MaxHeightProperty);
+            }
+        }
+    }
+
+    private static readonly string[] ExpanderContentParts = ["ExpanderContentClip", "ExpanderContent"];
 
     private static void ApplyToolRowInsets(Expander expander)
     {

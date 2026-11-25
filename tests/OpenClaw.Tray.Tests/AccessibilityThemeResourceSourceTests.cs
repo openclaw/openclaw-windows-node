@@ -111,6 +111,7 @@ public sealed class AccessibilityThemeResourceSourceTests
         var hub = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml.cs");
         var hubXaml = ReadSource("src", "OpenClaw.Tray.WinUI", "Controls", "SettingsShellView.xaml");
         var timeline = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatTimeline.cs");
+        var notices = ReadSource("src", "OpenClaw.Tray.WinUI", "Chat", "ReactorChatNotices.cs");
         var resources = ReadSource("src", "OpenClaw.Tray.WinUI", "App.xaml");
 
         Assert.DoesNotContain("AccessibilitySettings", connection);
@@ -120,10 +121,11 @@ public sealed class AccessibilityThemeResourceSourceTests
         Assert.DoesNotContain("HighContrastChanged", hub);
         Assert.DoesNotContain("AccessibilitySettings", timeline);
         Assert.DoesNotContain("TryDetectHighContrast", timeline);
+        Assert.DoesNotContain("AccessibilitySettings", notices);
 
         Assert.Contains("ConnectionCapabilityPillActiveBorderStyle", connection);
         Assert.Contains("Theme.Ref(\"CardBackgroundFillColorDefaultBrush\")", timeline);
-        Assert.Contains("Theme.Ref(\"ControlStrokeColorDefaultBrush\")", timeline);
+        Assert.Contains("Theme.Ref(\"ControlStrokeColorDefaultBrush\")", notices);
         Assert.Contains("ConnectionCapabilityPillSuccessBrush", connectionXaml);
         Assert.Contains("Source=\"{StaticResource Connection_Icon}\"", hubXaml);
         Assert.Contains("MicaBackdrop", ReadSource("src", "OpenClaw.Tray.WinUI", "Windows", "WorkspaceWindow.xaml"));

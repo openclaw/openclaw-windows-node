@@ -109,10 +109,16 @@ public sealed class ThemesFixture
     {
         if (method == "users.prefs.get")
         {
+            JsonElement keys = default;
+            if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("keys", out keys) &&
+                keys.ValueKind != JsonValueKind.Array)
+                throw new FixtureRequestException("INVALID_PARAMS", "Preference keys must be an array.");
+            bool Requested(string key) => keys.ValueKind == JsonValueKind.Undefined ||
+                keys.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.String && item.ValueEquals(key));
             var entries = new Dictionary<string, object>(StringComparer.Ordinal);
-            if (Volatile.Read(ref _accent) is { } accent)
+            if (Requested("ui.accent") && Volatile.Read(ref _accent) is { } accent)
                 entries["ui.accent"] = accent;
-            if (Volatile.Read(ref _background) is { } background)
+            if (Requested("ui.background") && Volatile.Read(ref _background) is { } background)
                 entries["ui.background"] = JsonSerializer.Deserialize<JsonElement>(background);
             return new { status = "ok", entries };
         }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Numerics;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
@@ -7,6 +8,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using OpenClaw.Shared.Dashboards;
+using OpenClawTray.Chat;
 using OpenClawTray.Helpers;
 using static Microsoft.UI.Reactor.Factories;
 
@@ -39,7 +41,9 @@ internal sealed record BoardWidgetCellProps(
     IBoardGatewayClient? ConnectionOwner = null,
     int ConnectionRevision = 0,
     bool DocumentCurrent = true,
-    Func<bool>? IsOwnerCurrent = null);
+    Func<bool>? IsOwnerCurrent = null,
+    BoardProgressViewState? Progress = null,
+    Action<string>? OnRetryProgress = null);
 
 internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
 {
@@ -56,6 +60,8 @@ internal sealed class ReactorBoardWidgetCell : Component<BoardWidgetCellProps>
         {
             BoardWidgetBodyKind.Frame => Frame(props, hostState, setHostState, retryToken, setRetryToken),
             BoardWidgetBodyKind.Report => ReactorBoardWidgets.Report(widget).Margin(16, 4, 16, 16),
+            BoardWidgetBodyKind.Progress => ReactorBoardWidgets.Progress(
+                widget, props.Progress, () => props.OnRetryProgress?.Invoke(widget.Name)),
             BoardWidgetBodyKind.Website => ReactorBoardWidgets.Website(widget),
             BoardWidgetBodyKind.NeedsApproval => ReactorBoardWidgets.NeedsApproval(widget, web),
             BoardWidgetBodyKind.Rejected => ReactorBoardWidgets.Notice(
@@ -370,6 +376,118 @@ internal static class ReactorBoardWidgets
                 index == 0 ? widget.Label : null).WithKey("block" + index)).ToArray())
             .AutomationName(widget.Label)
             .AutomationId("BoardReport_" + widget.Name);
+    }
+
+    /// <summary>Native, read-only rendering of an authenticated session progress card.</summary>
+    public static Element Progress(BoardWidget widget, BoardProgressViewState? state, Action retry)
+    {
+        var stateKind = state?.Status ?? BoardProgressLoadStatus.Loading;
+        if (stateKind == BoardProgressLoadStatus.Loading)
+            return DashboardsStates.Status(
+                "BoardProgressLoading_" + widget.Name, DashboardsGlyphs.Dashboard,
+                LocalizationHelper.GetString("Dashboards_Progress_Loading"),
+                null);
+        if (stateKind == BoardProgressLoadStatus.Unavailable)
+            return Notice(
+                "BoardProgressUnavailable_" + widget.Name,
+                DashboardsArt.GlyphBadge(DashboardsGlyphs.Shield, "TextFillColorSecondaryBrush", "SubtleFillColorSecondaryBrush", 40),
+                LocalizationHelper.GetString("Dashboards_Progress_Unavailable"),
+                LocalizationHelper.GetString("Dashboards_Progress_UnavailableDetail"));
+        if (stateKind == BoardProgressLoadStatus.Denied)
+            return Notice(
+                "BoardProgressDenied_" + widget.Name,
+                DashboardsArt.GlyphBadge(DashboardsGlyphs.Shield, "TextFillColorSecondaryBrush", "SubtleFillColorSecondaryBrush", 40),
+                LocalizationHelper.GetString("Dashboards_Progress_Unavailable"),
+                LocalizationHelper.GetString("Dashboards_Progress_DeniedDetail"),
+                RetryButton(widget, retry));
+        if (stateKind == BoardProgressLoadStatus.Error)
+            return Error(LocalizationHelper.GetString("Dashboards_Progress_Error"), null, retry);
+        if (stateKind == BoardProgressLoadStatus.Empty || state?.Card is not { } card)
+            return Notice(
+                "BoardProgressEmpty_" + widget.Name,
+                DashboardsArt.HueBadge(DashboardsGlyphsExtra.ForKind(widget), DashboardHues.Blue, 40),
+                LocalizationHelper.GetString("Dashboards_Progress_Empty"),
+                LocalizationHelper.GetString("Dashboards_Progress_EmptyDetail"));
+
+        var completed = card.Steps.Count(step => step.Status == BoardProgressStepStatus.Completed);
+        var children = new List<Element>();
+        if (state.Stale)
+            children.Add(StaleProgressNotice(widget, retry));
+        children.Add(TextBlock(LocalizationHelper.Format("Dashboards_Progress_StepCountFormat", completed, card.Steps.Length))
+            .FontSize(12).SemiBold().Foreground(Theme.Ref("TextFillColorSecondaryBrush")));
+        try
+        {
+            var updated = DateTimeOffset.FromUnixTimeMilliseconds(card.UpdatedAt).ToLocalTime().ToString("g", CultureInfo.CurrentCulture);
+            children.Add(TextBlock(LocalizationHelper.Format("Dashboards_Progress_UpdatedFormat", updated))
+                .FontSize(11).Foreground(Theme.Ref("TextFillColorSecondaryBrush")));
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            children.Add(TextBlock(LocalizationHelper.GetString("Dashboards_Progress_UpdatedUnknown"))
+                .FontSize(11).Foreground(Theme.Ref("TextFillColorSecondaryBrush")));
+        }
+
+        if (!string.IsNullOrWhiteSpace(card.Markdown))
+            children.Add(ReactorChatTimeline.BuildSafeMarkdown(card.Markdown, compactSecondaryReading: true));
+        if (!card.Steps.IsEmpty)
+        {
+            children.Add(VStack(8, card.Steps.Select((step, index) =>
+                    ProgressStep(widget.Name, step, index).WithKey("step" + index)).ToArray())
+                .AutomationId("BoardProgressSteps_" + widget.Name));
+        }
+        return DashboardsStates.VerticalScroll(VStack(12, children.ToArray()).Margin(16))
+            .AutomationName(LocalizationHelper.GetString("Dashboards_Progress_AccessibleName"))
+            .AutomationId("BoardProgress_" + widget.Name);
+    }
+
+    private static Element RetryButton(BoardWidget widget, Action retry) =>
+        Button(LocalizationHelper.GetString("Dashboards_Retry"), retry)
+            .AutomationName(LocalizationHelper.GetString("Dashboards_Retry"))
+            .AutomationId("BoardProgressRetry_" + widget.Name);
+
+    /// <summary>Keeps the last card visible after a transient refresh failure, with a visible retry.</summary>
+    private static Element StaleProgressNotice(BoardWidget widget, Action retry) =>
+        Border(Grid(
+                [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                [GridSize.Auto],
+                DashboardsStates.Glyph("\uE7BA", 14, "SystemFillColorCautionBrush").VAlign(VerticalAlignment.Center).Grid(column: 0),
+                TextBlock(LocalizationHelper.GetString("Dashboards_Progress_Stale")).FontSize(12)
+                    .TextWrapping(TextWrapping.WrapWholeWords).VAlign(VerticalAlignment.Center)
+                    .Margin(8, 0, 8, 0).Grid(column: 1),
+                RetryButton(widget, retry).VAlign(VerticalAlignment.Center).Grid(column: 2)))
+            .Padding(10, 6, 6, 6)
+            .CornerRadius(6)
+            .Background(Theme.Ref("SystemFillColorCautionBackgroundBrush"))
+            .LiveRegion(Microsoft.UI.Xaml.Automation.Peers.AutomationLiveSetting.Polite)
+            .AutomationId("BoardProgressStale_" + widget.Name);
+
+    /// <summary>One step: glyph, wrapping text, and status columns, announced as one item.</summary>
+    private static Element ProgressStep(string widgetName, BoardProgressStep step, int index)
+    {
+        var (glyph, color, status) = step.Status switch
+        {
+            BoardProgressStepStatus.Completed => ("\uE73E", "SystemFillColorSuccessBrush", "Dashboards_Progress_StatusCompleted"),
+            BoardProgressStepStatus.InProgress => ("\uE768", "AccentTextFillColorPrimaryBrush", "Dashboards_Progress_StatusInProgress"),
+            _ => ("\uE8A5", "TextFillColorSecondaryBrush", "Dashboards_Progress_StatusPending"),
+        };
+        var statusText = LocalizationHelper.GetString(status);
+        return Grid(
+                [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+                [GridSize.Auto],
+                DashboardsStates.Glyph(glyph, 14, color).VAlign(VerticalAlignment.Top).Margin(0, 2, 0, 0).Grid(column: 0),
+                TextBlock(step.Step).FontSize(13).TextWrapping(TextWrapping.WrapWholeWords)
+                    .Foreground(Theme.Ref("TextFillColorPrimaryBrush"))
+                    .AccessibilityView(AccessibilityView.Raw)
+                    .Margin(8, 0, 8, 0).Grid(column: 1),
+                TextBlock(statusText).FontSize(11)
+                    .Foreground(Theme.Ref("TextFillColorSecondaryBrush")).VAlign(VerticalAlignment.Top)
+                    .AccessibilityView(AccessibilityView.Raw)
+                    .Margin(0, 2, 0, 0).Grid(column: 2))
+            // Panels have no automation peer; a semantic group carries the step's spoken name.
+            .Semantics(role: "group")
+            .AccessibilityView(AccessibilityView.Content)
+            .AutomationName(LocalizationHelper.Format("Dashboards_Progress_StepAccessibleFormat", statusText, step.Step))
+            .AutomationId($"BoardProgressStep_{widgetName}_{index}");
     }
 
     private static Element Block(BoardReportBlock block, string id, string? cardTitle = null) => block switch

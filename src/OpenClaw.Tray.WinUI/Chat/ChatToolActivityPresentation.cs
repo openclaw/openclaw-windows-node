@@ -105,6 +105,7 @@ public static class ChatToolActivityPresentation
         foreach (var entry in entries)
         {
             if (turns.Count == 0 || entry.Kind == ChatTimelineItemKind.User ||
+                entry.Kind == ChatTimelineItemKind.Status && ChatNoticePresentation.StartsTurn(Facts(entry)) ||
                 Facts(entry)?.TurnBoundary == true || Independent(entry) ||
                 Facts(entry)?.SenderSession is not null || Facts(entry)?.SenderAgentId is not null)
                 turns.Add([]);
@@ -521,7 +522,8 @@ public static class ChatToolActivityPresentation
     private static string NormalizeToolName(string? toolName)
     {
         var name = (toolName ?? string.Empty).Trim().ToLowerInvariant();
-        foreach (var prefix in new[] { "functions.", "tools.", "mcp." })
+        ReadOnlySpan<string> prefixes = ["functions.", "tools.", "mcp."];
+        foreach (var prefix in prefixes)
         {
             if (name.StartsWith(prefix, StringComparison.Ordinal))
                 name = name[prefix.Length..];
@@ -529,11 +531,16 @@ public static class ChatToolActivityPresentation
         return name.Replace('-', '_').Replace(' ', '_');
     }
 
-    private static bool Matches(string name, params string[] aliases) =>
-        aliases.Any(alias =>
-            string.Equals(name, alias, StringComparison.Ordinal)
-            || name.EndsWith($".{alias}", StringComparison.Ordinal)
-            || name.EndsWith($"_{alias}", StringComparison.Ordinal));
+    private static bool Matches(string name, params ReadOnlySpan<string> aliases)
+    {
+        foreach (var alias in aliases)
+        {
+            if (name.EndsWith(alias, StringComparison.Ordinal)
+                && (name.Length == alias.Length || name[name.Length - alias.Length - 1] is '.' or '_'))
+                return true;
+        }
+        return false;
+    }
 
     private static string? ReadString(JsonObject? args, string propertyName) =>
         args?.TryGetPropertyValue(propertyName, out var node) == true
@@ -676,26 +683,102 @@ public sealed class ChatToolActivityMotionState
     private (string? Session, long Generation, long HistoryRevision)? _scope;
     private HashSet<string> _keys = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Returns the keys, in display order, that arrived at the conversation's tail since the
+    /// previous update. Rows above the newest already shown row (an older page) never enter.
+    /// A history refresh of the same thread keeps entrances for rows it appends after rows that
+    /// stayed, such as a recovered final reply; a refresh that keeps none replaced the history.
+    /// </summary>
+    /// <param name="admitInitial">
+    /// The first ready update follows an authoritatively empty conversation (for example the
+    /// welcome screen's first send), so its rows are new rather than loaded history.
+    /// </param>
     public IReadOnlySet<string> Update(
-        IEnumerable<string> completedWorkKeys,
+        IEnumerable<string> orderedKeys,
         string? sessionId,
         long generation,
         long historyRevision,
-        bool historyReady = true)
+        bool historyReady = true,
+        bool admitInitial = false,
+        IEnumerable<string>? eligibleKeys = null)
     {
+        var entering = new HashSet<string>(StringComparer.Ordinal);
         if (!historyReady)
         {
             _scope = null;
             _keys.Clear();
-            return new HashSet<string>(StringComparer.Ordinal);
+            return entering;
         }
         var scope = (sessionId, generation, historyRevision);
-        var keys = completedWorkKeys.ToHashSet(StringComparer.Ordinal);
-        var entering = _scope == scope
-            ? keys.Where(key => !_keys.Contains(key)).ToHashSet(StringComparer.Ordinal)
-            : new HashSet<string>(StringComparer.Ordinal);
+        var ordered = orderedKeys.Distinct(StringComparer.Ordinal).ToList();
+        var eligible = eligibleKeys?.ToHashSet(StringComparer.Ordinal);
+        var lastKnown = ordered.FindLastIndex(_keys.Contains);
+        var sameThread = _scope is { } previous &&
+            previous.Session == sessionId && previous.Generation == generation;
+        if (_scope == scope || sameThread && lastKnown >= 0 || _scope is null && admitInitial)
+        {
+            for (var index = lastKnown + 1; index < ordered.Count; index++)
+            {
+                if (eligible is null || eligible.Contains(ordered[index]))
+                    entering.Add(ordered[index]);
+            }
+        }
         _scope = scope;
-        _keys = keys;
+        _keys = ordered.ToHashSet(StringComparer.Ordinal);
         return entering;
+    }
+}
+
+/// <summary>Tracks independently timed close holds for each tool-detail disclosure.</summary>
+internal sealed class ChatToolDetailsCloseState
+{
+    private readonly object _gate = new();
+    private readonly Dictionary<string, int> _versions = new(StringComparer.Ordinal);
+    private HashSet<string> _closingKeys = new(StringComparer.Ordinal);
+    private int _revision;
+
+    internal int Revision
+    {
+        get
+        {
+            lock (_gate)
+                return _revision;
+        }
+    }
+
+    internal int SetClosing(string key, bool closing)
+    {
+        lock (_gate)
+        {
+            var version = ++_revision;
+            _versions[key] = version;
+            var next = new HashSet<string>(_closingKeys, StringComparer.Ordinal);
+            if (closing)
+                next.Add(key);
+            else
+                next.Remove(key);
+            _closingKeys = next;
+            return version;
+        }
+    }
+
+    internal IReadOnlySet<string> Snapshot()
+    {
+        lock (_gate)
+            return new HashSet<string>(_closingKeys, StringComparer.Ordinal);
+    }
+
+    internal bool CompleteClose(string key, int version)
+    {
+        lock (_gate)
+        {
+            if (!_versions.TryGetValue(key, out var current) || current != version || !_closingKeys.Contains(key))
+                return false;
+            var next = new HashSet<string>(_closingKeys, StringComparer.Ordinal);
+            next.Remove(key);
+            _closingKeys = next;
+            _revision++;
+            return true;
+        }
     }
 }

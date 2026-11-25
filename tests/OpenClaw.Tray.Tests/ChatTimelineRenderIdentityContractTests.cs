@@ -88,8 +88,10 @@ public sealed class ChatTimelineRenderIdentityContractTests
         Assert.Contains("MessageOptionsDisabled: hasPendingQueuedSend", root);
         Assert.Contains("message.SendState is ChatQueuedMessageSendState.Queued or ChatQueuedMessageSendState.Sending", root);
         Assert.Contains(".IsEnabled(enabled)", composer);
-        Assert.Equal(3, Regex.Matches(composer, @"inputs\.CanChangeSessionOptions").Count);
-        Assert.Contains("var canChangeThinking = inputs.CanChangeSessionOptions", composer);
+        Assert.Contains("var canChangeSessionOptions = inputs.CanChangeSessionOptions", composer);
+        Assert.Contains("&& !controller.IsSendInProgress;", composer);
+        Assert.Contains("var canChangeThinking = canChangeSessionOptions", composer);
+        Assert.Equal(3, Regex.Matches(composer, @"canChangeSessionOptions\s+&&\s+modelCatalogStatus").Count);
         Assert.Contains("var thinkingLevels = vm.ThinkingProfile?.Levels?.ToArray() ?? [];", composer);
     }
 

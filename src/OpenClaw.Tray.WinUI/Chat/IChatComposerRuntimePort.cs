@@ -1,10 +1,21 @@
 using OpenClaw.Chat;
 using OpenClaw.Shared;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
 namespace OpenClawTray.Chat;
+
+internal enum ChatSendOutcome
+{
+    Accepted,
+    DefinitivelyRejected,
+    Indeterminate,
+    Deferred
+}
+
+internal sealed class ChatSendRejectedException(string message) : InvalidOperationException(message);
 
 /// <summary>
 /// Narrow adapter over the current <see cref="IChatDataProvider"/> and the native
@@ -18,16 +29,21 @@ internal interface IChatComposerRuntimePort
     bool SupportsNativeLifecycle { get; }
     bool SupportsSessionScopedModelCatalog { get; }
     long ModelCatalogRevision { get; }
+    string? GetSessionId(string threadId);
 
-    Task<bool> SendMessageAsync(
+    Task<ChatSendOutcome> SendMessageAsync(
         string threadId,
         string message,
         IReadOnlyList<ChatAttachment> attachments,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string? idempotencyKey = null,
+        string? expectedSessionId = null);
 
     Task<bool> EnqueueCompactCommandAsync(string threadId);
 
     Task<ChatLifecycleCommandResult> ExecuteLifecycleCommandAsync(string threadId, ChatLifecycleCommandKind command);
+
+    void ReportLocalError(string threadId, string message);
 
     Task StopResponseAsync(string threadId, CancellationToken cancellationToken);
 
@@ -44,6 +60,12 @@ internal interface IChatComposerRuntimePort
     Task SetThinkingLevelAsync(string threadId, string thinkingLevel, CancellationToken cancellationToken);
 
     Task ClearThinkingLevelAsync(string threadId, CancellationToken cancellationToken);
+
+    Task PatchDraftOptionsConfirmedAsync(string threadId, SessionPatch patch, CancellationToken cancellationToken);
+
+    Task<SessionCreateResult> CreateDefaultDraftSessionAsync(CancellationToken cancellationToken);
+
+    Task<SessionCreateResult> CreateDraftSessionAsync(string agentId, CancellationToken cancellationToken);
 
     Task EnsureCommandCatalogAsync(CancellationToken cancellationToken);
 }

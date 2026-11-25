@@ -52,4 +52,6 @@ public sealed record ChatTimelinePresentationContext(
     Action<string>? OnOpenSession = null,
     Action<ChatAssistantMediaPresentation>? OnOpenAssistantFile = null,
     // The saved reasoning row the current thought is still writing, if any.
-    string? ActiveReasoningId = null);
+    string? ActiveReasoningId = null,
+    // Provider-lifetime learned-skill Undo state; null hides Undo.
+    ChatSkillUndoTracker? SkillUndo = null);

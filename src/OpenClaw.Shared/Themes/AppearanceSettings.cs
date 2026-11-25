@@ -4,8 +4,8 @@ using System.Text.Json.Serialization;
 namespace OpenClaw.Shared.Themes;
 
 /// <summary>
-/// Persisted Companion appearance. A missing object (legacy settings) means the Windows Fluent look
-/// with Mica. The selection is global today; a per-Gateway map can be added beside <see cref="Theme"/>
+/// Persisted Companion appearance. A missing object (legacy settings) means the Windows Fluent look with Mica.
+/// The selection is global today; a per-Gateway map can be added beside <see cref="Theme"/>
 /// later without migrating it. Reading is field-by-field tolerant: SettingsData.FromJson discards the
 /// whole settings file on any JsonException, so a malformed appearance value falls back to its default.
 /// </summary>
@@ -15,7 +15,7 @@ public sealed record AppearanceSettings
     /// <summary>The selected Gateway theme, or null for the Windows default look.</summary>
     public ThemeSelection? Theme { get; init; }
 
-    /// <summary>Use the Mica backdrop on themed windows instead of an opaque theme canvas.</summary>
+    /// <summary>Show the Mica backdrop under the Windows default look; off paints the opaque Fluent canvas.</summary>
     public bool UseMica { get; init; } = true;
 
     /// <summary>Show the connected Gateway's selected dashboard theme instead of <see cref="Theme"/>.</summary>
@@ -96,10 +96,7 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         var followed = root.TryGetProperty(nameof(AppearanceSettings.FollowedTheme), out var followedValue)
             ? ReadSelection(followedValue)
             : null;
-        var accent = root.TryGetProperty(nameof(AppearanceSettings.FollowedAccent), out var accentValue) &&
-            accentValue.ValueKind == JsonValueKind.String
-                ? GatewayAppearancePreferences.NormalizeHex(accentValue.GetString())
-                : null;
+        var accent = GatewayAppearancePreferences.NormalizeHex(Text(root, nameof(AppearanceSettings.FollowedAccent)));
         return new AppearanceSettings
         {
             Theme = theme, UseMica = useMica, FollowGatewayTheme = follow, FollowedTheme = followed, FollowedAccent = accent,
@@ -160,16 +157,26 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
             Source = Text(value, nameof(ThemeSelection.Source)) ?? "builtin",
             OriginGatewayId = Text(value, nameof(ThemeSelection.OriginGatewayId)),
             Definition = value.TryGetProperty(nameof(ThemeSelection.Definition), out var definition) &&
-                definition.ValueKind == JsonValueKind.Object
+                GatewayThemeProtocol.CanStoreDefinition(definition, out _)
                     ? definition.Clone()
                     : null,
         };
     }
 
-    private static string? Text(JsonElement value, string name) =>
-        value.TryGetProperty(name, out var property) && property.ValueKind == JsonValueKind.String
-            ? property.GetString()
-            : null;
+    private static string? Text(JsonElement value, string name)
+    {
+        if (!value.TryGetProperty(name, out var property) || property.ValueKind != JsonValueKind.String)
+            return null;
+        try
+        {
+            return property.GetString();
+        }
+        catch (InvalidOperationException)
+        {
+            // JSON accepts unpaired surrogate escapes, but string decoding rejects them.
+            return null;
+        }
+    }
 
     private static void WriteOptional(Utf8JsonWriter writer, string name, string? value)
     {

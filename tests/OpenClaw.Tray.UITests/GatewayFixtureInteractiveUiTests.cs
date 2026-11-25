@@ -12,16 +12,22 @@ public sealed partial class GatewayFixtureUiTests
         {
             await run.InvokeAsync("app.navigate", new { page = "chat" });
             await WaitUiAsync(run, () => IsVisibleInTimeline(run, GatewayScenario.MainSentinel), "visible initial answer");
-            var window = FindHub(run);
             var baselineInk = new Dictionary<string, int>(StringComparer.Ordinal);
             async Task AssertStableInkAsync(string stage, string message)
             {
                 await WaitUiAsync(run, () => IsVisibleInTimeline(run, message), $"{stage} message visible");
                 for (var frame = 0; frame < 12; frame++)
                 {
-                    var target = FindText(run, message)!;
                     var file = $"{stage}-ink-{frame:00}.png";
-                    OwnedWindowCapture.Save(run, window, file, target);
+                    await WaitUiAsync(run, () =>
+                    {
+                        if (!IsVisibleInTimeline(run, message)) return false;
+                        var window = AppWindows(run).FirstOrDefault(IsHubWindow);
+                        var target = FindText(run, message);
+                        if (window is null || target is null) return false;
+                        OwnedWindowCapture.Save(run, window, file, target);
+                        return true;
+                    }, $"{stage} frame {frame} capture");
                     var path = Path.Combine(run.ArtifactsDirectory, file);
                     using var metadata = System.Text.Json.JsonDocument.Parse(
                         File.ReadAllText(Path.ChangeExtension(path, ".json")));

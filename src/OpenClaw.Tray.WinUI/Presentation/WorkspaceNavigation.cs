@@ -222,6 +222,60 @@ internal sealed class WorkspaceNavigationHistory
         return wasCurrent;
     }
 
+    /// <summary>Replaces a local draft identity with its materialized Gateway session in history.</summary>
+    public bool PromoteSession(string draftKey, string sessionKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(draftKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(sessionKey);
+        if (draftKey == sessionKey)
+            return false;
+
+        var replacement = new WorkspaceDestination(WorkspacePageId.Home, sessionKey);
+        var changed = false;
+        if (Current.SessionKey == draftKey)
+        {
+            Current = replacement;
+            changed = true;
+        }
+        if (ChatDestination.SessionKey == draftKey)
+        {
+            ChatDestination = replacement;
+            changed = true;
+        }
+        if (_appDestination.SessionKey == draftKey)
+        {
+            _appDestination = replacement;
+            changed = true;
+        }
+        changed |= ReplaceIn(_back, draftKey, replacement);
+        changed |= ReplaceIn(_forward, draftKey, replacement);
+        if (changed)
+            CollapseAdjacentDuplicates();
+        return changed;
+    }
+
+    private static bool ReplaceIn(
+        Stack<WorkspaceDestination> history,
+        string key,
+        WorkspaceDestination replacement)
+    {
+        var retained = history.Reverse().ToArray();
+        var changed = false;
+        for (var index = 0; index < retained.Length; index++)
+        {
+            if (retained[index].SessionKey != key)
+                continue;
+            retained[index] = replacement;
+            changed = true;
+        }
+        if (!changed)
+            return false;
+        history.Clear();
+        foreach (var destination in retained)
+            history.Push(destination);
+        return true;
+    }
+
     private static void RemoveFrom(Stack<WorkspaceDestination> history, string key) =>
         RemoveFrom(history, destination => destination.SessionKey == key);
 
