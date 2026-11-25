@@ -87,10 +87,11 @@ public static class GatewayThemeProtocol
 
     public static GatewayThemeList ParseList(JsonElement result)
     {
+        if (!HasReadablePropertyNames(result))
+            return new GatewayThemeList([], null, null);
         var themes = ImmutableArray.CreateBuilder<GatewayThemeDescriptor>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
-        if (result.ValueKind == JsonValueKind.Object &&
-            result.TryGetProperty("themes", out var list) && list.ValueKind == JsonValueKind.Array)
+        if (result.TryGetProperty("themes", out var list) && list.ValueKind == JsonValueKind.Array)
         {
             foreach (var entry in list.EnumerateArray())
             {
@@ -117,7 +118,7 @@ public static class GatewayThemeProtocol
     {
         descriptor = null!;
         definition = null;
-        if (result.ValueKind != JsonValueKind.Object ||
+        if (!HasReadablePropertyNames(result) ||
             !result.TryGetProperty("theme", out var theme) ||
             !TryParseDescriptor(theme, out descriptor))
             return false;
@@ -132,7 +133,7 @@ public static class GatewayThemeProtocol
     public static bool TryParseDescriptor(JsonElement entry, out GatewayThemeDescriptor descriptor)
     {
         descriptor = null!;
-        if (entry.ValueKind != JsonValueKind.Object ||
+        if (!HasReadablePropertyNames(entry) ||
             !TryString(entry, "id", MaxIdLength, out var id) || !IsThemeId(id) ||
             !TryString(entry, "name", MaxNameLength, out var name) ||
             !TryString(entry, "source", 16, out var sourceText))
@@ -167,6 +168,24 @@ public static class GatewayThemeProtocol
         descriptor = new GatewayThemeDescriptor(
             id, name, description, source.Value, modes.ToImmutable(), pluginId.Length == 0 ? null : pluginId);
         return true;
+    }
+
+    // TryGetProperty may decode other keys during lookup. Reject this object even if a lookup would
+    // skip a malformed key because of its position or length. Nested descriptors are checked separately.
+    private static bool HasReadablePropertyNames(JsonElement value)
+    {
+        if (value.ValueKind != JsonValueKind.Object)
+            return false;
+        try
+        {
+            foreach (var property in value.EnumerateObject())
+                _ = property.Name;
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
     }
 
     internal static bool CanStoreDefinition(JsonElement raw, out string error)
