@@ -19,6 +19,7 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
     public bool SupportsNativeLifecycle { get; set; } = true;
     public bool SupportsSessionScopedModelCatalog { get; set; }
     public long ModelCatalogRevision { get; set; }
+    public string? SessionId { get; set; }
     public List<string> RequestedSessionModelKeys { get; } = new();
     public Func<string, CancellationToken, Task<ModelsListInfo?>>? SessionModelsBehavior { get; set; }
 
@@ -26,6 +27,8 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
     public (string ThreadId, string Message, IReadOnlyList<ChatAttachment> Attachments)? LastSendMessageCall { get; private set; }
     public CancellationToken? LastSendMessageToken { get; private set; }
     public TaskCompletionSource<bool> SendMessageGate { get; set; } = Completed(true);
+    public ChatSendOutcome SendFailureOutcome { get; set; } = ChatSendOutcome.Indeterminate;
+    public string? LastExpectedSessionId { get; private set; }
 
     public int EnqueueCompactCallCount { get; private set; }
     public string? LastCompactThreadId { get; private set; }
@@ -61,20 +64,39 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
 
     public int ClearThinkingLevelCallCount { get; private set; }
     public string? LastClearThinkingLevelThreadId { get; private set; }
+    public int PatchDraftOptionsCallCount { get; private set; }
+    public (string ThreadId, SessionPatch Patch)? LastDraftOptionsCall { get; private set; }
+    public TaskCompletionSource PatchDraftOptionsGate { get; set; } = CompletedVoid();
+    public int CreateDefaultDraftSessionCallCount { get; private set; }
+    public TaskCompletionSource<SessionCreateResult> CreateDefaultDraftSessionGate { get; set; } =
+        CompletedResult(new SessionCreateResult { Ok = true, Key = "agent:main:gateway-default" });
+    public int CreateDraftSessionCallCount { get; private set; }
+    public string? LastDraftSessionAgentId { get; private set; }
+    public TaskCompletionSource<SessionCreateResult> CreateDraftSessionGate { get; set; } =
+        CompletedResult(new SessionCreateResult { Ok = true, Key = "agent:main:gateway-default" });
+    public List<(string ThreadId, string Message)> LocalErrors { get; } = new();
 
     public int EnsureCommandCatalogCallCount { get; private set; }
     public CancellationToken? LastEnsureCommandCatalogToken { get; private set; }
+    public string? LastSendIdempotencyKey { get; private set; }
 
-    public Task<bool> SendMessageAsync(
+    public string? GetSessionId(string threadId) => SessionId;
+
+    public async Task<ChatSendOutcome> SendMessageAsync(
         string threadId,
         string message,
         IReadOnlyList<ChatAttachment> attachments,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? idempotencyKey = null,
+        string? expectedSessionId = null)
     {
         SendMessageCallCount++;
         LastSendMessageCall = (threadId, message, attachments);
+        LastSendIdempotencyKey = idempotencyKey;
         LastSendMessageToken = cancellationToken;
-        return SendMessageGate.Task;
+        LastExpectedSessionId = expectedSessionId;
+        var accepted = await SendMessageGate.Task.ConfigureAwait(false);
+        return accepted ? ChatSendOutcome.Accepted : SendFailureOutcome;
     }
 
     public Task<bool> EnqueueCompactCommandAsync(string threadId)
@@ -90,6 +112,9 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         LastLifecycleCall = (threadId, command);
         return ExecuteLifecycleGate.Task;
     }
+
+    public void ReportLocalError(string threadId, string message) =>
+        LocalErrors.Add((threadId, message));
 
     public Task StopResponseAsync(string threadId, CancellationToken cancellationToken)
     {
@@ -148,6 +173,44 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         return Task.CompletedTask;
     }
 
+    public Task PatchDraftOptionsConfirmedAsync(
+        string threadId, SessionPatch patch, CancellationToken cancellationToken)
+    {
+        PatchDraftOptionsCallCount++;
+        LastDraftOptionsCall = (threadId, patch);
+        if (patch.Model.IsSpecified)
+        {
+            SetModelCallCount++;
+            LastSetModelCall = (threadId, patch.Model.Value ?? "");
+            SetModelCallOrder.Add(LastSetModelCall.Value.Model);
+        }
+        if (patch.ThinkingLevel.IsSpecified)
+        {
+            if (patch.ThinkingLevel.Value is null)
+                ClearThinkingLevelCallCount++;
+            else
+            {
+                SetThinkingLevelCallCount++;
+                LastSetThinkingLevelCall = (threadId, patch.ThinkingLevel.Value);
+            }
+        }
+        return PatchDraftOptionsGate.Task;
+    }
+
+    public Task<SessionCreateResult> CreateDefaultDraftSessionAsync(CancellationToken cancellationToken)
+    {
+        CreateDefaultDraftSessionCallCount++;
+        return CreateDefaultDraftSessionGate.Task;
+    }
+
+    public Task<SessionCreateResult> CreateDraftSessionAsync(
+        string agentId, CancellationToken cancellationToken)
+    {
+        CreateDraftSessionCallCount++;
+        LastDraftSessionAgentId = agentId;
+        return CreateDraftSessionGate.Task;
+    }
+
     public Task EnsureCommandCatalogAsync(CancellationToken cancellationToken)
     {
         EnsureCommandCatalogCallCount++;
@@ -162,9 +225,9 @@ internal sealed class FakeChatComposerRuntimePort : IChatComposerRuntimePort
         return tcs;
     }
 
-    private static TaskCompletionSource<ChatLifecycleCommandResult> CompletedResult(ChatLifecycleCommandResult result)
+    private static TaskCompletionSource<T> CompletedResult<T>(T result)
     {
-        var tcs = new TaskCompletionSource<ChatLifecycleCommandResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
         tcs.SetResult(result);
         return tcs;
     }

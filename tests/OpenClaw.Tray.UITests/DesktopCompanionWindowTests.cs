@@ -13,6 +13,7 @@ using Windows.UI.ViewManagement;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared.Themes;
+using OpenClawTray.Helpers;
 using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.Theming;
@@ -24,6 +25,72 @@ namespace OpenClaw.Tray.UITests;
 [Collection(UICollection.Name)]
 public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
 {
+    [Fact]
+    public Task AutomaticHide_ClosesBubbleButRetainsMountedMascotAndDesktopAnchor() =>
+        WithWindowAsync(async window =>
+        {
+            var host = Assert.IsType<ReactorHostControl>(window.Content);
+            var mascot = Mascot(host);
+            var view = (IDesktopCompanionView)window;
+            var hideRequests = 0;
+            window.HideRequested += (_, _) => hideRequests++;
+            window.Present(new() { Title = "Visible", Message = "Hide with the lobster." });
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot).Any(popup => popup.IsOpen),
+                "lobster notification popup");
+            var anchor = new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
+                window.AppWindow.Position.Y + window.AppWindow.Size.Height);
+            view.Hide();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => !window.AppWindow.IsVisible &&
+                    !VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot).Any(popup => popup.IsOpen),
+                "lobster and popup hidden");
+            view.Show();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && Assert.IsType<TranslateTransform>(host.RenderTransform).Y == 0,
+                "same lobster restored through the bottom frame");
+            Assert.Same(host, window.Content);
+            Assert.Same(mascot, Mascot(host));
+            Assert.Equal(anchor, new PointInt32(window.AppWindow.Position.X + window.AppWindow.Size.Width,
+                window.AppWindow.Position.Y + window.AppWindow.Size.Height));
+            Assert.Equal(0, hideRequests);
+            Assert.DoesNotContain(VisualTreeHelper.GetOpenPopupsForXamlRoot(host.XamlRoot), popup => popup.IsOpen);
+        });
+
+    [Fact]
+    [Trait("Category", "AnimationPreferenceEnabled")]
+    public Task AnimatedRestore_ReversesAProgressedExitWithoutALateHide() =>
+        WithWindowAsync(async window =>
+        {
+            Assert.True(new Windows.UI.ViewManagement.UISettings().AnimationsEnabled,
+                "This regression requires native animations enabled.");
+            var host = Assert.IsType<ReactorHostControl>(window.Content);
+            var mascot = Mascot(host);
+            var translation = Assert.IsType<TranslateTransform>(host.RenderTransform);
+            var view = (IDesktopCompanionView)window;
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => translation.Y == 0, "initial entrance completes");
+            view.Hide();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && translation.Y > 0 && translation.Y < mascot.ActualHeight,
+                "exit has progressed before reversing it",
+                () => $"Y={translation.Y}, MascotHeight={mascot.ActualHeight}, Visible={window.AppWindow.IsVisible}");
+            Assert.True(window.AppWindow.IsVisible);
+            Assert.True(translation.Y > 0 && translation.Y < mascot.ActualHeight,
+                "Restore must interrupt an exit, not show an already hidden window.");
+            view.Show();
+            await TestSupport.WaitForRenderedConditionAsync(
+                () => window.AppWindow.IsVisible && translation.Y == 0,
+                "reversed entrance completes");
+            var observation = System.Diagnostics.Stopwatch.StartNew();
+            await TestSupport.WaitForRenderedConditionAsync(() =>
+            {
+                Assert.True(window.AppWindow.IsVisible);
+                Assert.Equal(0, translation.Y);
+                return observation.Elapsed >= TestSupport.NegativeObservationTimeout;
+            }, "superseded exit cannot hide the restored lobster");
+        });
+
     [Fact]
     public Task QuickChat_AndNotificationsUseTheSameCompactBubbleInset() =>
         WithWindowAsync(async window =>
@@ -539,6 +606,111 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             {
                 BackdropPolicy.Configure(useMica: true, null);
                 Application.Current.UnhandledException -= OnUnhandled;
+            }
+        });
+
+    [Fact]
+    public Task ThemedBubbleActions_KeepContrastAndRestoreNativeResources() =>
+        WithWindowAsync(async window =>
+        {
+            using var resources = new ChatThemeProofScope("Light");
+            var applicator = new AppThemeApplicator();
+            var highContrast = new AccessibilitySettings().HighContrast;
+            var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+            var imported = rose with
+            {
+                Dark = null,
+                Light = rose.Light! with
+                {
+                    Canvas = ThemeColor.White, Content = ThemeColor.White, Card = ThemeColor.White, Panel = ThemeColor.White,
+                    Text = ThemeColor.Black, Muted = ThemeColor.Black, Popover = ThemeColor.FromHex("#808080"),
+                    Primary = ThemeColor.FromHex("#808080"), PrimaryForeground = ThemeColor.Black,
+                    Accent = ThemeColor.FromHex("#808080"), AccentHover = ThemeColor.FromHex("#696969"),
+                },
+            };
+            Assert.True(ThemeLegibility.IsReadable(imported));
+            var root = (FrameworkElement)window.Content;
+            window.ApplyTheme("Light", refreshThemeResources: true);
+            window.Present(new() { Title = "Action contrast", Message = "The action remains readable." });
+            var action = Control<HyperlinkButton>(root, "DesktopCompanionNotifications");
+            await TestSupport.WaitForRenderedConditionAsync(() => action.ActualHeight > 0, "native action");
+            var nativeForeground = ColorOf(action.Foreground);
+            var label = LocalizationHelper.GetString("DesktopCompanion_Notifications");
+
+            async Task WaitForContentAsync(bool native)
+            {
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => native ? Equals(action.Content, label) : action.Content is TextBlock text && text.IsLoaded && text.Text == label,
+                    native ? "native link content" : "contrast-safe link content",
+                    () => $"Content={action.Content?.GetType().Name}; theme={action.ActualTheme}");
+                var peer = FrameworkElementAutomationPeer.CreatePeerForElement(action);
+                Assert.Equal(label, peer.GetName());
+                Assert.IsAssignableFrom<IInvokeProvider>(peer.GetPattern(PatternInterface.Invoke));
+            }
+
+            async Task<global::Windows.UI.Color> ReadInkAsync(string state, global::Windows.UI.Color? expected = null)
+            {
+                Assert.Same(action, Control<HyperlinkButton>(root, "DesktopCompanionNotifications"));
+                Assert.True(VisualStateManager.GoToState(action, state, false));
+                VisualState? current = null;
+                global::Windows.UI.Color? ink = null, presenterInk = null;
+                await TestSupport.WaitForRenderedConditionAsync(() =>
+                {
+                    // A theme refresh may replace template visuals. Measure the currently rendered label,
+                    // not a presenter from before the switch or the link's normal-state Foreground.
+                    var presenter = TestSupport.FindDescendants<ContentPresenter>(action)
+                        .FirstOrDefault(p => p.Name == "ContentPresenter" && p.IsLoaded);
+                    current = presenter is null ? null : VisualStateManager.GetVisualStateGroups(presenter)
+                        .FirstOrDefault(group => group.Name == "CommonStates")?.CurrentState;
+                    presenterInk = (presenter?.Foreground as SolidColorBrush)?.Color;
+                    var text = presenter is null ? null : TestSupport.FindDescendants<TextBlock>(presenter)
+                        .FirstOrDefault(t => t.IsLoaded && t.ActualWidth > 0 && t.Text == label);
+                    ink = (text?.Foreground as SolidColorBrush)?.Color;
+                    return current?.Name == state && (current.Storyboard is not { } storyboard ||
+                        storyboard.GetCurrentState() == Microsoft.UI.Xaml.Media.Animation.ClockState.Filling) &&
+                        ink.HasValue && (action.Content is not string || ink == presenterInk) &&
+                        (expected is null || ink == expected);
+                }, $"rendered {state} action ink", () =>
+                    $"Requested={state}; actual={current?.Name}; clock={current?.Storyboard?.GetCurrentState()}; " +
+                    $"expected={expected?.ToString() ?? "native ink"}; text={ink}; presenter={presenterInk}; " +
+                    $"button={(action.Foreground as SolidColorBrush)?.Color}; content={action.Content?.GetType().Name}; " +
+                    $"theme={action.ActualTheme}; focus={action.FocusState}");
+                return ink!.Value;
+            }
+            var nativeStates = new Dictionary<string, global::Windows.UI.Color>();
+            await WaitForContentAsync(native: true);
+            foreach (var state in new[] { "PointerOver", "Pressed", "Normal" })
+                nativeStates[state] = await ReadInkAsync(state);
+            try
+            {
+                applicator.Apply(imported);
+                BackdropPolicy.Configure(true, imported);
+                window.ApplyTheme("Light", refreshThemeResources: true);
+                var frame = Assert.IsType<Border>(Control<StackPanel>(root, "DesktopCompanionBubble").Children[0]);
+                if (!highContrast)
+                    await WaitForFillAsync(frame, Rgb(0x80, 0x80, 0x80), "theme popover");
+                else
+                    Assert.DoesNotContain("HyperlinkButtonForeground", action.Resources.Keys.OfType<string>());
+                await WaitForContentAsync(native: highContrast);
+                foreach (var (state, nativeInk) in nativeStates)
+                    await ReadInkAsync(state, highContrast ? nativeInk : Rgb(0, 0, 0));
+
+                applicator.Apply(null);
+                BackdropPolicy.Configure(true, null);
+                window.ApplyTheme("Light", refreshThemeResources: true);
+                await WaitForContentAsync(native: true);
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => !action.Resources.Keys.OfType<string>().Contains("HyperlinkButtonForeground") &&
+                        ColorOf(action.Foreground) == nativeForeground, "restored native action");
+                Assert.DoesNotContain("HyperlinkButtonForegroundPointerOver", action.Resources.Keys.OfType<string>());
+                Assert.DoesNotContain("HyperlinkButtonForegroundPressed", action.Resources.Keys.OfType<string>());
+                foreach (var (state, expected) in nativeStates)
+                    await ReadInkAsync(state, expected);
+            }
+            finally
+            {
+                applicator.Apply(null);
+                BackdropPolicy.Configure(true, null);
             }
         });
 

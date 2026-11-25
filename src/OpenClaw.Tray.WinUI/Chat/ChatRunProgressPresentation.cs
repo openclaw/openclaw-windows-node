@@ -18,6 +18,10 @@ internal static class ChatRunProgressProjection
     internal const string RetryLabel = "Retrying the model request";
     internal const int StatusSwapMilliseconds = 220;
 
+    internal static bool NeedsClock(ChatRunProgressPresentation progress, DateTimeOffset now) =>
+        progress.IsInProgress && (progress.RetryAt > now ||
+            progress.StartedAt.HasValue && (progress.Waiting || !progress.EndedAt.HasValue));
+
     /// <summary>
     /// True while a status swap started at <paramref name="startedAtMs"/> is still moving, so a newer
     /// phase continues it instead of restarting. No swap has started before the first phase change.

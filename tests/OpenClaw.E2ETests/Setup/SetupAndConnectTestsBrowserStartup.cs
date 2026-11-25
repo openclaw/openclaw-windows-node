@@ -92,6 +92,8 @@ public sealed class SetupAndConnectTestsBrowserStartup
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             Assert.Equal("about:blank", (await browser.EvaluateAsync("document.URL", timeout.Token)).GetString());
             Assert.Equal(42, (await browser.EvaluateAsync("6 * 7", timeout.Token)).GetInt32());
+            Assert.Equal($"{GatewaySearchBrowserProof.ViewportWidth}x{GatewaySearchBrowserProof.ViewportHeight}",
+                (await browser.EvaluateAsync("`${innerWidth}x${innerHeight}`", timeout.Token)).GetString());
             Assert.False(browser.Authenticated);
             Assert.Null(browser.PairingRequestId);
             var screenshot = Path.Combine(directory, "blank.png");

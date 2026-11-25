@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Xml.Linq;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Themes;
 using OpenClawTray.Presentation;
@@ -25,26 +26,27 @@ public sealed class GatewayThemeSettingsTests
             }
         }
     }
-    // A transparent plugin or imported theme passes the legibility check over black; its window canvas is that opaque
-    // color, so the desktop never shows through a themed window.
-    [Fact]
-    public void ATransparentThemeStillProjectsAnOpaqueWindowCanvas()
+    [Theory]
+    [InlineData("dark", "#000000", true)]
+    [InlineData("light", "#050505", false)]
+    public void TransparentThemesAreJudgedOnTheirProjectedWindowCanvas(string mode, string expectedRoot, bool readable)
     {
-        using var json = System.Text.Json.JsonDocument.Parse("""
-            { "name": "Glass", "dark": {
-              "background": "#00000000", "foreground": "#ffffff", "card": "#00000000", "card-foreground": "#ffffff",
+        // #5a5a5a clears 3:1 on black but not on the light sidebar's 2% white tint over black.
+        using var json = System.Text.Json.JsonDocument.Parse($$"""
+            { "name": "Glass", "{{mode}}": {
+              "background": "#00000000", "foreground": "#5a5a5a", "card": "#00000000", "card-foreground": "#ffffff",
               "popover": "#00000000", "popover-foreground": "#ffffff", "primary": "#5ab6d8", "primary-foreground": "#000000",
               "secondary": "#00000000", "secondary-foreground": "#ffffff", "muted": "#00000000", "muted-foreground": "#cccccc",
               "accent": "#5ab6d8", "accent-foreground": "#000000", "destructive": "#f87171", "destructive-foreground": "#000000",
               "border": "#ffffff33", "input": "#ffffff33", "ring": "#5ab6d8" } }
             """);
         Assert.True(GatewayThemeProtocol.TryParseDefinition(json.RootElement, out var definition, out var error), error);
+        var colorMode = mode == "light" ? ThemeColorMode.Light : ThemeColorMode.Dark;
         var glass = ThemePaletteExpander.Resolve(
-            new GatewayThemeDescriptor("user/glass", "Glass", "", GatewayThemeSource.User, [ThemeColorMode.Dark], null), definition);
-        Assert.True(ThemeLegibility.IsReadable(glass));
-
-        var canvas = ThemeResourceProjection.Project(glass.Dark!).Brushes["SolidBackgroundFillColorBaseBrush"];
-        Assert.Equal(ThemeColor.Black, canvas);
+            new GatewayThemeDescriptor("user/glass", "Glass", "", GatewayThemeSource.User, [colorMode], null), definition);
+        var canvas = ThemeResourceProjection.Project(glass.PaletteFor(colorMode)).Brushes["SolidBackgroundFillColorBaseBrush"];
+        Assert.Equal(ThemeColor.FromHex(expectedRoot), canvas);
+        Assert.Equal(readable, ThemeLegibility.IsReadable(glass));
     }
 
     private const string NeonDefinition = """
@@ -186,34 +188,43 @@ public sealed class GatewayThemeSettingsTests
     });
 
     [Fact]
-    public Task SelectionIsPublishedBeforeSlowProfilePreferencesArrive() => Task.Run(() =>
+    public Task SlowPreferencesCoalesceWithoutDelayingNewThemeSelections() => Task.Run(async () =>
     {
         var (client, proxy) = Gateway();
         proxy.Methods = ["themes.list", "themes.get", "users.prefs.get"];
-        var preferences = new TaskCompletionSource<JsonElement>();
+        var first = new TaskCompletionSource<JsonElement>();
+        var latest = new TaskCompletionSource<JsonElement>();
+        var reads = 0;
+        var selected = "manuscript";
         proxy.ReplyAsync = (method, _) => method == "themes.list"
-            ? Task.FromResult(Json("""
-                { "themes": [ { "id": "manuscript", "name": "Manuscript", "description": "", "source": "builtin", "modes": ["light", "dark"] } ],
-                  "theme": { "id": "manuscript", "name": "Manuscript", "description": "", "source": "builtin", "modes": ["light", "dark"] } }
+            ? Task.FromResult(Json($$"""
+                { "themes": [], "theme": { "id": "{{selected}}", "name": "{{selected}}", "source": "builtin", "modes": ["dark"] } }
                 """))
-            : preferences.Task;
+            : ++reads == 1 ? first.Task : latest.Task;
         var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
 
         catalog.SetConnection(client, "gw-1");
 
-        // Following switches to the Gateway's theme while the profile read stalls; its accent arrives afterwards.
         Assert.Equal("manuscript", catalog.GatewayCurrent?.Id);
+        selected = "tide";
+        proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
+        var refresh = catalog.RefreshAsync();
+        Assert.Equal("tide", catalog.GatewayCurrent?.Id);
+        Assert.Equal(1, reads);
         Assert.Null(catalog.GatewayPreferences);
-        preferences.SetResult(Json("""{ "status": "ok", "entries": { "ui.accent": "#3A9B9B" } }"""));
+        first.SetResult(Json("""{ "status": "ok", "entries": {} }"""));
+        Assert.Equal(2, reads);
+        Assert.False(refresh.IsCompleted);
+        latest.SetResult(Json("""{ "status": "ok", "entries": { "ui.accent": "#3A9B9B" } }"""));
+        await refresh;
         Assert.Equal("#3a9b9b", catalog.GatewayPreferences?.Accent);
-        Assert.Equal("manuscript", catalog.GatewayCurrent?.Id);
     });
 
     [Fact]
-    public Task PushedCatalogChangeIsReadAndWinsOverAnOlderReadThatFinishesLater() => Task.Run(async () =>
+    public Task PushedChangesDuringAReadAreMergedIntoOneLaterReadThatWins() => Task.Run(async () =>
     {
         // No synchronization context here, so the catalog's ConfigureAwait(false) continuations run inline
-        // when each reply completes and both reads have finished before the assertions.
+        // when each reply completes.
         var (client, proxy) = Gateway();
         var lists = new Queue<TaskCompletionSource<JsonElement>>();
         proxy.ReplyAsync = (method, parameters) =>
@@ -231,22 +242,140 @@ public sealed class GatewayThemeSettingsTests
         var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
 
         catalog.SetConnection(client, "gw-1");
-        proxy.ThemeCatalogInvalidated!.Invoke(client, "plugins.changed");
-        Assert.Equal(2, lists.Count);
-        var initial = lists.Dequeue();
-        var pushed = lists.Dequeue();
-        pushed.SetResult(Json("""
+        // users.prefs.changed is sent for every preference key, so bursts are normal.
+        for (var i = 0; i < 5; i++)
+            proxy.ThemeCatalogInvalidated!.Invoke(client, i % 2 == 0 ? "users.prefs.changed" : "plugins.changed");
+        var settingsOpened = catalog.RefreshAsync();
+        Assert.Single(lists);
+
+        lists.Dequeue().SetResult(Json(ListReply));
+        Assert.Single(lists);
+        Assert.False(settingsOpened.IsCompleted);
+        lists.Dequeue().SetResult(Json("""
             { "themes": [
               { "id": "acme/neon", "name": "Neon", "source": "plugin", "pluginId": "acme", "modes": ["dark"] },
               { "id": "acme/aurora", "name": "Aurora", "source": "plugin", "pluginId": "acme", "modes": ["dark"] } ] }
             """));
-        initial.SetResult(Json(ListReply));
-        await Task.WhenAll(initial.Task, pushed.Task);
+        await settingsOpened;
 
+        Assert.Empty(lists);
+        Assert.Equal(2, proxy.Calls.Count(call => call.StartsWith("themes.list:", StringComparison.Ordinal)));
         Assert.Contains(catalog.Options, option => option.Id == "acme/aurora");
         catalog.SetConnection(null, null);
         Assert.Null(proxy.ThemeCatalogInvalidated);
     });
+
+    [Fact]
+    public Task ReconnectedPreferencesWinWhileCatalogIsStalled() => Task.Run(() =>
+    {
+        var (client, proxy) = Gateway();
+        proxy.Methods = ["themes.list", "users.prefs.get"];
+        var list = new TaskCompletionSource<JsonElement>();
+        var stale = new TaskCompletionSource<JsonElement>();
+        proxy.ReplyAsync = (method, _) => method == "themes.list" ? list.Task : stale.Task;
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+        catalog.SetConnection(client, "gw-1");
+
+        proxy.Epoch++;
+        proxy.ReplyAsync = (method, _) => method == "themes.list" ? list.Task :
+            Task.FromResult(Json("""{ "status": "ok", "entries": { "ui.accent": "#3a9b9b" } }"""));
+        catalog.SetConnection(client, "gw-1");
+        Assert.Equal("#3a9b9b", catalog.GatewayPreferences?.Accent);
+        stale.SetResult(Json("""{ "status": "ok", "entries": {} }"""));
+        Assert.Equal("#3a9b9b", catalog.GatewayPreferences?.Accent);
+        list.SetResult(Json("""{ "themes": [] }"""));
+    });
+
+    [Fact]
+    public void InvalidationAtFinalCatalogNotificationStartsANewListAndKeepsItsSelection()
+    {
+        var (client, proxy) = Gateway();
+        var lists = 0;
+        proxy.Reply = (method, _) => method == "themes.get"
+            ? Json($$"""{ "theme": { "id": "acme/neon", "name": "Neon", "source": "plugin", "modes": ["dark"] }, "definition": {{NeonDefinition}} }""")
+            : ++lists == 1 ? Json(ListReply) : Json("""
+                { "themes": [], "theme": { "id": "tide", "name": "Tide", "source": "builtin", "modes": ["dark"] } }
+                """);
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+        int? listsDuringNotification = null;
+        void OnPublished(object? sender, EventArgs args)
+        {
+            // Neon only appears at the final publication, not at the earlier selection notification.
+            if (!catalog.Options.Any(option => option.Id == "acme/neon"))
+                return;
+            catalog.Changed -= OnPublished;
+            proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
+            listsDuringNotification = lists;
+        }
+        catalog.Changed += OnPublished;
+
+        catalog.SetConnection(client, "gw-1");
+
+        Assert.Equal(2, listsDuringNotification);
+        Assert.Equal(2, lists);
+        Assert.Equal("tide", catalog.GatewayCurrent?.Id);
+        Assert.DoesNotContain(catalog.Options, option => option.Id == "acme/neon");
+    }
+
+    [Fact]
+    public Task DisconnectingStopsDefinitionReadsStillWaitingForASlot() => Task.Run(async () =>
+    {
+        var (client, proxy) = Gateway();
+        var gets = new List<TaskCompletionSource<JsonElement>>();
+        var themes = string.Join(",", Enumerable.Range(0, 7).Select(i =>
+            $$"""{ "id": "acme/t{{i}}", "name": "T{{i}}", "source": "plugin", "pluginId": "acme", "modes": ["dark"] }"""));
+        proxy.ReplyAsync = (method, _) =>
+        {
+            if (method == "themes.list")
+                return Task.FromResult(Json($$"""{ "themes": [{{themes}}] }"""));
+            var pending = new TaskCompletionSource<JsonElement>();
+            lock (gets)
+                gets.Add(pending);
+            return pending.Task;
+        };
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+
+        catalog.SetConnection(client, "gw-1");
+        var reading = catalog.RefreshAsync();
+        TaskCompletionSource<JsonElement>[] started;
+        lock (gets)
+            started = [.. gets];
+        Assert.Equal(4, started.Length);
+
+        catalog.SetConnection(null, null);
+        foreach (var get in started)
+            get.SetException(new InvalidOperationException("disconnected"));
+        await reading;
+
+        lock (gets)
+            Assert.Equal(4, gets.Count);
+        Assert.DoesNotContain(catalog.Options, option => option.Id.StartsWith("acme/", StringComparison.Ordinal));
+    });
+
+    [Fact]
+    public void AHostileThemeReplyRejectsOnlyThatTheme()
+    {
+        var (client, proxy) = Gateway();
+        proxy.Reply = (method, parameters) =>
+        {
+            if (method == "themes.list")
+                return Json("""
+                    { "themes": [
+                      { "id": "acme/neon", "name": "Neon", "source": "plugin", "pluginId": "acme", "modes": ["dark"] },
+                      { "id": "acme/bad", "name": "Bad", "source": "plugin", "pluginId": "acme", "modes": ["dark"] } ] }
+                    """);
+            // An escaped unpaired surrogate makes JsonElement.GetString throw.
+            return JsonSerializer.Serialize(parameters).Contains("acme/bad")
+                ? Json($$"""{ "theme": { "id": "acme/bad", "name": "\ud800", "source": "plugin", "modes": ["\ud800"] }, "definition": {{NeonDefinition}} }""")
+                : Json($$"""{ "theme": { "id": "acme/neon", "name": "Neon", "source": "plugin", "modes": ["dark"] }, "definition": {{NeonDefinition}} }""");
+        };
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+
+        catalog.SetConnection(client, "gw-1");
+
+        Assert.Contains(catalog.Options, option => option.Id == "acme/neon");
+        Assert.DoesNotContain(catalog.Options, option => option.Id == "acme/bad");
+    }
 
     [Fact]
     public void SameClientReconnectingRereadsTheCatalogItMissedWhileOffline()
@@ -295,8 +424,10 @@ public sealed class GatewayThemeSettingsTests
     // The dashboard accent and background follow live through users.prefs.changed, survive a read that can't see the
     // person's profile, and give way to the theme's own accent and the dashboard's default artwork when the person
     // clears them. Nothing is written back.
-    [Fact]
-    public Task FollowingTracksTheDashboardAccentAndBackgroundLiveAndKeepsThemWhenPreferencesAreUnknown() => Task.Run(() =>
+    [Theory]
+    [InlineData("""{ "ui.accent": "theme" }""")]
+    [InlineData("{}")]
+    public Task FollowingTracksTheDashboardAccentAndBackgroundLiveAndKeepsThemWhenPreferencesAreUnknown(string resetEntries) => Task.Run(() =>
     {
         var (client, proxy) = Gateway();
         proxy.Methods = ["themes.list", "themes.get", "users.prefs.get"];
@@ -340,7 +471,7 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal("#3a9b9b", appearance.FollowedAccent);
         Assert.Equal(background, appearance.FollowedBackground);
 
-        preferences = """{ "status": "ok", "entries": { "ui.accent": "theme" } }""";
+        preferences = $$"""{ "status": "ok", "entries": {{resetEntries}} }""";
         proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
         Assert.Null(appearance.FollowedAccent);
         Assert.Equal(1, ThemeBackgrounds.Opacity(AppearanceResolver.ActiveBackground(appearance), ThemeBackgroundSurface.Conversation));
@@ -349,6 +480,22 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(appliedOnConnect + 1, applied);
         Assert.All(proxy.Calls, call => Assert.Matches("^(themes\\.list|users\\.prefs\\.get):", call));
     });
+
+    [Theory]
+    [InlineData(ThemeColorMode.Dark, "#211e18")]
+    [InlineData(ThemeColorMode.Light, "#ffd700")]
+    public void LowContrastPersonalAccentsStayOnFillsButNotOnLabelsOrFocus(ThemeColorMode mode, string hex)
+    {
+        Assert.True(BuiltinGatewayThemes.TryGet("manuscript", out var theme));
+        var accent = ThemeColor.FromHex(hex);
+        var palette = ThemeAccent.Apply(theme, accent).PaletteFor(mode);
+        var brushes = ThemeResourceProjection.Project(palette).Brushes;
+
+        Assert.Equal(accent, brushes["AccentFillColorDefaultBrush"]);
+        var canvas = brushes["SolidBackgroundFillColorBaseBrush"];
+        Assert.True(ThemeLegibility.Contrast(brushes["AccentTextFillColorPrimaryBrush"].Over(canvas), canvas) >= 4.5);
+        Assert.True(ThemeLegibility.Contrast(brushes["FocusStrokeColorOuterBrush"].Over(canvas), canvas) >= 3);
+    }
 
     private sealed class StaticCatalog : IGatewayThemeCatalog
     {
@@ -444,6 +591,55 @@ public sealed class GatewayThemeSettingsTests
         Assert.True(ThemeLegibility.Contrast(ThemeColor.FromHex("#cccccc"), surface.Fill!.Value) >= ThemeLegibility.MinimumContrast);
     }
 
+    [Theory]
+    [InlineData("#808080", "#696969", false, "#000000")]
+    [InlineData("#000000", "#808080", false, "#000000")]
+    [InlineData("#000000", "#000000", false, null)]
+    [InlineData("#808080", "#696969", true, null)]
+    public void LobsterActionsStayReadableWithoutChangingOtherThemeSurfaces(
+        string accent, string pressed, bool highContrast, string? expectedOverride)
+    {
+        var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
+        var imported = rose with
+        {
+            Dark = null,
+            Light = rose.Light! with
+            {
+                Canvas = ThemeColor.White, Content = ThemeColor.White, Card = ThemeColor.White, Panel = ThemeColor.White,
+                Text = ThemeColor.Black, Muted = ThemeColor.Black, Popover = ThemeColor.FromHex("#808080"),
+                Primary = ThemeColor.FromHex("#808080"), PrimaryForeground = ThemeColor.Black,
+                Accent = ThemeColor.FromHex(accent), AccentHover = ThemeColor.FromHex(pressed),
+            },
+        };
+        Assert.True(ThemeLegibility.IsReadable(imported));
+
+        var surface = PopoverSurfacePolicy.Choose(true, imported, highContrast, true, ThemeColorMode.Light);
+
+        Assert.Equal(expectedOverride, surface.ActionForeground?.ToHex());
+        Assert.Equal(accent, ThemeResourceProjection.Project(imported.PaletteFor(ThemeColorMode.Light)).Brushes["AccentTextFillColorPrimaryBrush"].ToHex());
+        if (!highContrast)
+            Assert.Equal("#808080", surface.Fill?.ToHex());
+    }
+
+    // The applicator moves only these app brushes onto the theme's accent ramp. Matching by color would also capture
+    // fixed brushes that equal a Windows accent shade, such as the #0078D4 session tint.
+    [Fact]
+    public void AccentBoundAppKeysAreExactlyTheXamlBrushesBoundToAnAccentShade()
+    {
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var tray = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var files = Directory.GetFiles(Path.Combine(tray, "Themes"), "*.xaml").Append(Path.Combine(tray, "App.xaml"));
+        var bound = files
+            .SelectMany(file => XDocument.Load(file).Descendants().Where(e => e.Name.LocalName == "ResourceDictionary.ThemeDictionaries"))
+            .SelectMany(dictionaries => dictionaries.Elements().Where(d => (string?)d.Attribute(x + "Key") is "Default" or "Light"))
+            .SelectMany(dictionary => dictionary.Elements())
+            .Where(resource => resource.DescendantsAndSelf().Attributes().Any(a => a.Value.Contains("SystemAccentColor", StringComparison.Ordinal)))
+            .Select(resource => (string)resource.Attribute(x + "Key")!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(bound.Order(StringComparer.Ordinal), ThemeResourceProjection.AccentBoundAppKeys.Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public void FontMapperKeepsBundledFacesAndEndsInInstalledWindowsFonts()
     {
@@ -476,6 +672,40 @@ public sealed class GatewayThemeSettingsTests
         }
     }
 
+    // Windows selects a variable font's weights from its named instances. Without them only the default instance
+    // remains, which is Black for Fraunces, so each bundled family must name a Regular weight.
+    [Fact]
+    public void EveryBundledTypefaceNamesARegularWeight()
+    {
+        var fonts = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Assets", "Fonts");
+        foreach (var file in ThemeFontMapper.BundledFamilies.Values.Distinct())
+        {
+            var weights = NamedWeights(File.ReadAllBytes(Path.Combine(fonts, file + ".ttf")));
+            Assert.True(weights.Contains(400), $"{file}.ttf names weights [{string.Join(", ", weights)}], not 400.");
+        }
+    }
+
+    // Reads the wght coordinate of each OpenType fvar named instance.
+    private static List<double> NamedWeights(byte[] font)
+    {
+        static int U16(byte[] data, int offset) => System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset));
+        static int I32(byte[] data, int offset) => System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(offset));
+        var weights = new List<double>();
+        for (var table = 0; table < U16(font, 4); table++)
+        {
+            var record = 12 + 16 * table;
+            if (System.Text.Encoding.ASCII.GetString(font, record, 4) != "fvar") continue;
+            var fvar = I32(font, record + 8);
+            int axes = fvar + U16(font, fvar + 4), axisCount = U16(font, fvar + 8), axisSize = U16(font, fvar + 10);
+            int instanceCount = U16(font, fvar + 12), instanceSize = U16(font, fvar + 14);
+            var wght = Enumerable.Range(0, axisCount)
+                .Single(axis => System.Text.Encoding.ASCII.GetString(font, axes + axis * axisSize, 4) == "wght");
+            for (var instance = 0; instance < instanceCount; instance++)
+                weights.Add(I32(font, axes + axisCount * axisSize + instance * instanceSize + 4 + 4 * wght) / 65536.0);
+        }
+        return weights;
+    }
+
     [Fact]
     public void PickerPersistsCompanionThemeAndMicaWithoutTouchingTheOtherChoice()
     {
@@ -493,6 +723,7 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal("builtin", settings.Appearance.Theme?.Source);
         Assert.False(settings.Appearance.UseMica);
         Assert.Equal("tide", AppearanceResolver.ResolveTheme(new SettingsManager(temp.Path).Appearance)?.Id);
+        Assert.False(new SettingsManager(temp.Path).Appearance.UseMica);
 
         vm.SelectedThemeKey = "";
         Assert.Null(settings.Appearance.Theme);
@@ -508,10 +739,14 @@ public sealed class GatewayThemeSettingsTests
         var vm = new SettingsPageViewModel(store, new FakeAppCommands());
         vm.Activate(null);
         vm.SelectedThemeKey = "tide";
+        vm.BackgroundStyleIndex = 2;
+        vm.BackgroundVisibility = 75;
 
         vm.FollowGatewayTheme = true;
         Assert.True(settings.Appearance.FollowGatewayTheme);
         Assert.False(vm.IsManualThemeEnabled);
+        Assert.Equal(-1, vm.BackgroundStyleIndex);
+        Assert.Equal(100, vm.BackgroundVisibility);
         // Nothing followed yet, so the manual choice is what the Companion shows.
         Assert.Equal("tide", vm.SelectedThemeKey);
 
@@ -519,8 +754,14 @@ public sealed class GatewayThemeSettingsTests
         store.Update(null, edit => edit.Appearance = settings.Appearance with
         {
             FollowedTheme = new ThemeSelection { Id = "crt", Name = "CRT" },
+            FollowedBackground = BackgroundPreference.Default with { Source = BackgroundSourceKind.None, Visibility = 0.25 },
         });
         Assert.Equal("crt", vm.SelectedThemeKey);
+        Assert.Equal(0, vm.BackgroundStyleIndex);
+        Assert.Equal(25, vm.BackgroundVisibility);
+        Assert.False(vm.IsBackgroundEnabled);
+        vm.BackgroundStyleIndex = 1;
+        vm.BackgroundVisibility = 10;
         vm.SelectedThemeKey = "rose";
         vm.UseMica = false;
         Assert.Equal("crt", settings.Appearance.FollowedTheme?.Id);
@@ -530,6 +771,8 @@ public sealed class GatewayThemeSettingsTests
         vm.FollowGatewayTheme = false;
         Assert.True(vm.IsManualThemeEnabled);
         Assert.Equal("tide", vm.SelectedThemeKey);
+        Assert.Equal(2, vm.BackgroundStyleIndex);
+        Assert.Equal(75, vm.BackgroundVisibility);
         Assert.Equal("tide", AppearanceResolver.ResolveTheme(new SettingsManager(temp.Path).Appearance)?.Id);
     }
 
@@ -634,5 +877,30 @@ public sealed class GatewayThemeSettingsTests
         var theme = AppearanceResolver.ResolveTheme(new SettingsManager(temp.Path).Appearance);
         Assert.Equal(ThemeColorMode.Dark, theme?.PinnedMode);
         Assert.Equal("Space Grotesk", theme!.Dark!.BodyFont.Primary);
+    }
+
+    [Fact]
+    public void UnlistedSavedThemeSurvivesThePickerWritingNull()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        using var json = System.Text.Json.JsonDocument.Parse("""
+            { "name": "Glass", "dark": {
+              "background": "#101010", "foreground": "#ffffff", "card": "#181818", "card-foreground": "#ffffff",
+              "popover": "#181818", "popover-foreground": "#ffffff", "primary": "#5ab6d8", "primary-foreground": "#000000",
+              "secondary": "#202020", "secondary-foreground": "#ffffff", "muted": "#202020", "muted-foreground": "#cccccc",
+              "accent": "#5ab6d8", "accent-foreground": "#000000", "destructive": "#f87171", "destructive-foreground": "#000000",
+              "border": "#ffffff33", "input": "#ffffff33", "ring": "#5ab6d8" } }
+            """);
+        var saved = new ThemeSelection { Id = "user/glass", Name = "Glass", Source = "user", Definition = json.RootElement.Clone() };
+        settings.Appearance = new AppearanceSettings { Theme = saved };
+        var vm = new SettingsPageViewModel(new SettingsStore(settings, new RecordingUiDispatcher()), new FakeAppCommands());
+        vm.Activate(null);
+        Assert.Equal("user/glass", vm.SelectedThemeKey);
+
+        vm.SelectedThemeKey = null!;
+
+        Assert.Equal("user/glass", vm.SelectedThemeKey);
+        Assert.Equal(saved, settings.Appearance.Theme);
     }
 }

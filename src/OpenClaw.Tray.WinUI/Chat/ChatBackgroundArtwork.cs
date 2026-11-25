@@ -83,18 +83,13 @@ internal static class ChatBackgroundArtwork
         var family = ThemeBackgrounds.ArtworkFamily(s_theme)!;
         var theme = s_theme!;
         var fades = ThemeBackgrounds.Fades(s_preference, surface);
-        var artwork = new Artwork(family, theme, opacity, fades);
         // No declared child: Paint owns Border.Child, and a declared one would be mounted (as null) after Set runs.
         return Border(null)
             .IsHitTestVisible(false)
             .AccessibilityView(AccessibilityView.Raw)
-            .Set(border =>
-            {
-                s_artwork.AddOrUpdate(border, artwork);
-                Paint(border);
-            })
+            .Set(border => Paint(border, new Artwork(family, theme, opacity, fades, ModeFor(border))))
             // Pooled borders are reused elsewhere, so the theme watch lives exactly as long as the mount. Before load,
-            // ActualTheme reports the app theme rather than this subtree's, so Loaded paints again once it is known.
+            // ActualTheme can report the app theme, so Loaded checks the inherited mode again.
             .OnMount(control =>
             {
                 if (control is not Border border)
@@ -114,21 +109,29 @@ internal static class ChatBackgroundArtwork
             .AutomationId("ChatBackgroundArtwork");
     }
 
-    private static void OnLoaded(object sender, RoutedEventArgs args) => Paint((FrameworkElement)sender);
+    private static void OnLoaded(object sender, RoutedEventArgs args) => RefreshMode((Border)sender);
 
-    private static void OnActualThemeChanged(FrameworkElement sender, object args) => Paint(sender);
+    private static void OnActualThemeChanged(FrameworkElement sender, object args) => RefreshMode((Border)sender);
 
-    private sealed record Artwork(string Family, ResolvedTheme Theme, double Opacity, bool Fades);
+    private static void RefreshMode(Border border)
+    {
+        if (s_artwork.TryGetValue(border, out var artwork))
+            Paint(border, artwork with { Mode = ModeFor(border) });
+    }
+
+    private static ThemeColorMode ModeFor(Border border) => border.ActualTheme == ElementTheme.Dark ||
+        (border.ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark)
+            ? ThemeColorMode.Dark : ThemeColorMode.Light;
+
+    private sealed record Artwork(string Family, ResolvedTheme Theme, double Opacity, bool Fades, ThemeColorMode Mode);
 
     // The artwork pair and the fade follow the element's own light or dark theme.
-    private static void Paint(FrameworkElement element)
+    private static void Paint(Border border, Artwork artwork)
     {
-        if (element is not Border border || !s_artwork.TryGetValue(border, out var artwork))
+        if (border.Child is not null && s_artwork.TryGetValue(border, out var previous) && previous == artwork)
             return;
-        var dark = border.ActualTheme == ElementTheme.Dark ||
-            (border.ActualTheme == ElementTheme.Default && Application.Current.RequestedTheme == ApplicationTheme.Dark);
-        var mode = dark ? ThemeColorMode.Dark : ThemeColorMode.Light;
-        var source = new Uri($"ms-appx:///Assets/ThemeBackgrounds/{artwork.Family}-{(dark ? "dark" : "light")}.png");
+        s_artwork.AddOrUpdate(border, artwork);
+        var source = new Uri($"ms-appx:///Assets/ThemeBackgrounds/{artwork.Family}-{(artwork.Mode == ThemeColorMode.Dark ? "dark" : "light")}.png");
         var image = new Border
         {
             Background = new ImageBrush
@@ -145,7 +148,8 @@ internal static class ChatBackgroundArtwork
             return;
         }
         // Fading the artwork into the canvas equals painting the canvas over it with the inverse of the mask.
-        var shell = artwork.Theme.PaletteFor(mode).Shell;
+        var palette = artwork.Theme.PaletteFor(artwork.Mode);
+        var shell = palette.Shell.Over(palette.WindowCanvas);
         var fade = new LinearGradientBrush { StartPoint = new(0, 0), EndPoint = new(0, 1) };
         foreach (var (offset, opacity) in s_fadeStops)
             fade.GradientStops.Add(new GradientStop

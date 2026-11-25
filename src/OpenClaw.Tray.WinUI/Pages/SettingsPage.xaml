@@ -177,6 +177,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Name="BackgroundStyleComboBox" MinWidth="160" VerticalAlignment="Center"
+                                  x:Uid="SettingsPage_BackgroundStyle" PlaceholderText="Dashboard default"
                                   SelectedIndex="{Binding BackgroundStyleIndex, Mode=TwoWay}"
                                   IsEnabled="{Binding IsBackgroundEnabled}"
                                   AutomationProperties.AutomationId="SettingsPageBackgroundStyle"
@@ -389,6 +390,16 @@
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
                             </toolkit:SettingsCard.Content>
+                        </toolkit:SettingsCard>
+                        <toolkit:SettingsCard x:Name="DesktopCompanionMinimizedCard" x:Uid="DesktopCompanion_OnlyWhenMinimized"
+                                              Header="Only show when other OpenClaw windows are minimized"
+                                              Description="Hide while Setup or the chat/dashboard window is visible."
+                                              Padding="16,16,44,16"
+                                              IsEnabled="{Binding ShowDesktopCompanion}">
+                            <ToggleSwitch MinWidth="0" OnContent="" OffContent=""
+                                          IsOn="{Binding DesktopCompanionOnlyWhenMinimized, Mode=TwoWay}"
+                                          AutomationProperties.AutomationId="SettingsPageDesktopCompanionOnlyWhenMinimized"
+                                          AutomationProperties.Name="{Binding Header, ElementName=DesktopCompanionMinimizedCard}"/>
                         </toolkit:SettingsCard>
                     </toolkit:SettingsExpander.Items>
                 </toolkit:SettingsExpander>

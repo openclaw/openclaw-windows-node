@@ -60,6 +60,20 @@ public sealed record BackgroundPreference(
     /// </summary>
     public static bool TryParse(JsonElement value, out BackgroundPreference preference)
     {
+        try
+        {
+            return TryParseCore(value, out preference);
+        }
+        catch (InvalidOperationException ex) when (ex is not ObjectDisposedException)
+        {
+            // Even TryGetProperty decodes escaped property names and can reject an unpaired surrogate.
+            preference = Default;
+            return false;
+        }
+    }
+
+    private static bool TryParseCore(JsonElement value, out BackgroundPreference preference)
+    {
         preference = Default;
         if (value.ValueKind != JsonValueKind.Object ||
             !value.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object ||
@@ -76,9 +90,9 @@ public sealed record BackgroundPreference(
                 sourceKind = BackgroundSourceKind.Theme;
                 break;
             case "custom" when source.TryGetProperty("assetId", out var asset) && asset.ValueKind == JsonValueKind.String &&
-                s_assetId.IsMatch(asset.GetString()!):
+                asset.GetString() is { } id && s_assetId.IsMatch(id):
                 sourceKind = BackgroundSourceKind.Custom;
-                assetId = asset.GetString();
+                assetId = id;
                 break;
             default:
                 return false;

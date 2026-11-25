@@ -469,6 +469,30 @@ public class ChatTimelineReducerTests
     }
 
     [Fact]
+    public void TurnStartingStatus_RetiresPreviousStreamingAndToolStateWithoutAdmittingRun()
+    {
+        var notice = new ChatStatusEvent("Run routine again", ChatTone.Dim, StartsTurn: true);
+        Assert.False(ChatTimelineReducer.Apply(ChatTimelineState.Initial(), notice).TurnActive);
+
+        var state = ChatTimelineReducer.Apply(ChatTimelineState.Initial(), new ChatMessageDeltaEvent("Previous reply"));
+        state = ChatTimelineReducer.Apply(state, new ChatReasoningDeltaEvent("Previous reasoning"));
+        state = ChatTimelineReducer.Apply(state, new ChatToolStartEvent("read", "read", ToolCallId: "old-call"));
+        state = ChatTimelineReducer.Apply(state, notice);
+
+        Assert.DoesNotContain(state.Entries, entry => entry.IsStreaming);
+        Assert.Equal(ChatToolCallStatus.Interrupted,
+            Assert.Single(state.Entries, entry => entry.Kind == ChatTimelineItemKind.ToolCall).ToolResult);
+        Assert.Empty(state.ActiveToolCalls);
+        Assert.Null(state.ActiveAssistantId);
+        Assert.Null(state.ReconcilableAssistantId);
+        Assert.Null(state.ActiveReasoningId);
+
+        state = ChatTimelineReducer.Apply(state, new ChatMessageEvent("Next reply", ReconcilePrevious: true));
+        Assert.Equal(["Previous reply", "Next reply"],
+            state.Entries.Where(entry => entry.Kind == ChatTimelineItemKind.Assistant).Select(entry => entry.Text));
+    }
+
+    [Fact]
     public void AddLocalUser_AsTurnBoundary_PreventsCrossTurnOverwrite()
     {
         // Same regression as above but exercises the PRODUCTION typed-message

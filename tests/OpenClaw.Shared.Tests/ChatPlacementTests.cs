@@ -210,6 +210,84 @@ public sealed class ChatPlacementTests
         Assert.Contains("not confirmed", error.InnerException!.Message);
     }
 
+    [Fact]
+    public async Task NotSentAfterProjectWasAdded_ReportsUncertainPreparation()
+    {
+        var calls = new List<(string, JsonElement)>();
+        var client = Client(calls, (method, _) => method == "sessions.create"
+            ? throw new GatewayRequestNotSentException("The request was not written.")
+            : null);
+
+        var error = await Assert.ThrowsAsync<ChatPlacementOutcomeUncertainException>(() =>
+            client.PrepareAsync(Key, "main", Selection(remote: true,
+                workspace: new("repository:test", "Repository", GitUrl: "https://example.com/repo.git")),
+                42, default));
+
+        Assert.IsType<GatewayRequestNotSentException>(error.InnerException);
+        Assert.Equal(
+            ["agents.list", "environments.list", "sessions.describe", "projects.add", "sessions.create"],
+            calls.Select(call => call.Item1));
+    }
+
+    [Fact]
+    public async Task NotSentBeforeFirstMutation_RemainsDefinitelyNotSent()
+    {
+        var calls = new List<(string, JsonElement)>();
+        var client = Client(calls, (method, _) => method == "sessions.create"
+            ? throw new GatewayRequestNotSentException("The request was not written.")
+            : null);
+
+        var error = await Assert.ThrowsAsync<GatewayRequestNotSentException>(() =>
+            client.PrepareAsync(Key, "main", Selection(), 42, default));
+
+        Assert.Equal("The request was not written.", error.Message);
+        Assert.Equal(
+            ["agents.list", "environments.list", "sessions.describe", "sessions.create"],
+            calls.Select(call => call.Item1));
+    }
+
+    [Fact]
+    public async Task CancellationBeforeFirstMutation_ReportsNoMutation()
+    {
+        var calls = new List<(string, JsonElement)>();
+        using var cancellation = new CancellationTokenSource();
+        var client = Client(calls);
+
+        var error = await Assert.ThrowsAsync<ChatPlacementNotMutatedException>(() =>
+            client.PrepareAsync(Key, "main", Selection(), 42, cancellation.Token, token =>
+            {
+                cancellation.Cancel();
+                return Task.FromCanceled(token);
+            }));
+
+        Assert.IsAssignableFrom<OperationCanceledException>(error.InnerException);
+        Assert.DoesNotContain(calls, call => call.Item1 is "projects.add" or "sessions.create" or "sessions.dispatch");
+    }
+
+    [Fact]
+    public async Task CancellationDuringReadOnlyPreflight_ReportsNoMutation()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var calls = new List<(string, JsonElement)>();
+        var client = new GatewayChatPlacementClient(() => 42, (method, parameters, _, _) =>
+        {
+            calls.Add((method, JsonSerializer.SerializeToElement(parameters)));
+            if (method == "agents.list")
+                cancellation.Cancel();
+            return Task.FromResult(method switch
+            {
+                "agents.list" => Agents,
+                _ => throw new InvalidOperationException("Canceled preflight should stop before another request.")
+            });
+        });
+
+        var error = await Assert.ThrowsAsync<ChatPlacementNotMutatedException>(() =>
+            client.PrepareAsync(Key, "main", Selection(), 42, cancellation.Token));
+
+        Assert.IsAssignableFrom<OperationCanceledException>(error.InnerException);
+        Assert.Equal(["agents.list"], calls.Select(call => call.Item1));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -281,7 +359,7 @@ public sealed class ChatPlacementTests
         cancellation.Cancel();
         Assert.False(preparing.IsCompleted);
         completion.SetResult();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => preparing);
+        await Assert.ThrowsAsync<ChatPlacementOutcomeUncertainException>(() => preparing);
         Assert.Contains(calls, call => call.Item1 == "projects.add");
         Assert.DoesNotContain(calls, call => call.Item1 is "sessions.create" or "sessions.dispatch");
     }
@@ -303,7 +381,6 @@ public sealed class ChatPlacementTests
     [InlineData("sessions.dispatch", false)]
     [InlineData("projects.add", true)]
     [InlineData("sessions.create", true)]
-    [InlineData("sessions.dispatch", true)]
     public async Task AdmittedMutation_TimeoutOrLateEpochChangeReportsUncertainOutcome(string failingMethod, bool reconnect)
     {
         var calls = new List<(string, JsonElement)>();
@@ -323,6 +400,23 @@ public sealed class ChatPlacementTests
         Assert.Equal(failingMethod, calls[^1].Item1);
         Assert.NotNull(error.InnerException);
         Assert.Equal(reconnect ? typeof(InvalidOperationException) : typeof(TimeoutException), error.InnerException.GetType());
+    }
+
+    [Fact]
+    public async Task ConfirmedDispatchAcknowledgment_RemainsConfirmedAcrossEpochChange()
+    {
+        var calls = new List<(string, JsonElement)>();
+        long epoch = 42;
+        var client = Client(calls, (method, _) =>
+        {
+            if (method == "sessions.dispatch")
+                epoch++;
+            return null;
+        }, () => epoch);
+
+        await client.PrepareAsync(Key, "main", Selection(remote: true), 42, default);
+
+        Assert.Equal("sessions.dispatch", calls[^1].Item1);
     }
 
     [Theory]
@@ -372,7 +466,10 @@ public sealed class ChatPlacementTests
             if (cancel)
             {
                 cancellation.Cancel();
-                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => preparing);
+                if (pausedMethod == "projects.add")
+                    await Assert.ThrowsAsync<ChatPlacementNotMutatedException>(() => preparing);
+                else
+                    await Assert.ThrowsAsync<ChatPlacementOutcomeUncertainException>(() => preparing);
                 Assert.DoesNotContain(calls, call => call.Item1 == pausedMethod);
             }
             else

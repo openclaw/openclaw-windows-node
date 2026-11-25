@@ -17,6 +17,10 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
     // Hang guard for the job's first, cold Edge launch through its first page command.
     // Hosted cold starts measured 1.8-16.1 s across 75 passing runs, and one exceeded 31 s.
     internal static readonly TimeSpan DefaultStartupTimeout = TimeSpan.FromSeconds(60);
+    // The route proof asserts the desktop Dashboard. Headless Edge's default viewport (about 756x488)
+    // matches the Control UI phone layout, which visually hides the page heading (openclaw/openclaw#190409).
+    internal const int ViewportWidth = 1280;
+    internal const int ViewportHeight = 900;
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(100);
     private const int SharingViolation = unchecked((int)0x80070020);
@@ -57,7 +61,7 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             ?? throw new InvalidOperationException("The owned browser process did not start."));
         var elapsed = Stopwatch.StartNew();
         var stage = "endpoint publication";
-        var stageTimings = new List<string>(4);
+        var stageTimings = new List<string>(5);
         void Completed(string name) => stageTimings.Add($"{name}:{elapsed.ElapsedMilliseconds}");
         var startupTimeout = ResolveStartupTimeout(Environment.GetEnvironmentVariable(StartupTimeoutEnvironmentVariable));
         try
@@ -80,6 +84,12 @@ internal sealed class GatewaySearchBrowserProof : IAsyncDisposable
             stage = "page Network.enable";
             await browser.CallAsync("Network.enable", new { }, timeout.Token);
             Completed("network");
+            stage = "page viewport";
+            await browser.CallAsync("Emulation.setDeviceMetricsOverride", new
+            {
+                width = ViewportWidth, height = ViewportHeight, deviceScaleFactor = 1, mobile = false
+            }, timeout.Token);
+            Completed("viewport");
             Console.WriteLine($"[Search proof] Edge page CDP ready in {elapsed.ElapsedMilliseconds}ms " +
                 $"(stageMs={string.Join(',', stageTimings)}; " +
                 $"stderrCharacters={Interlocked.Read(ref browser._errorCharacters)}).");
