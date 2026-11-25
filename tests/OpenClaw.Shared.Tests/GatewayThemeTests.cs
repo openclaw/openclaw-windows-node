@@ -479,6 +479,35 @@ public class GatewayThemeTests
         Assert.Equal(icon == ThemeBranding.ClawIcon, branding.ShowsClaw);
     }
 
+    [Theory]
+    [InlineData("""{ "mascot": "\uD800", "brandIcon": "ink-logo", "workingIndicator": "brand" }""", true, "ink-logo", ThemeWorkingIndicator.Brand)]
+    [InlineData("""{ "mascot": "none", "brandIcon": "\uDC00", "workingIndicator": "brand" }""", false, "mark", ThemeWorkingIndicator.Brand)]
+    [InlineData("""{ "mascot": "none", "brandIcon": "ink-logo", "workingIndicator": "\uD800" }""", false, "ink-logo", ThemeWorkingIndicator.Dots)]
+    public void MalformedBrandingDefaultsOnlyItsFieldAndKeepsTheCatalogAndSelection(
+        string branding, bool mascot, string icon, ThemeWorkingIndicator indicator)
+    {
+        var descriptor = $$"""
+            { "id": "acme/ink", "name": "Ink", "source": "plugin", "modes": ["dark"],
+              {{branding[1..^1]}} }
+            """;
+        using var json = JsonDocument.Parse($$"""
+            { "themes": [
+                {{descriptor}},
+                { "id": "claw", "name": "Claw", "source": "builtin", "modes": ["dark"] }
+              ], "theme": {{descriptor}} }
+            """);
+
+        var list = GatewayThemeProtocol.ParseList(json.RootElement);
+
+        Assert.Equal(new[] { "acme/ink", "claw" }, list.Themes.Select(theme => theme.Id));
+        Assert.Equal(new ThemeBranding(mascot, icon, indicator), list.Themes[0].Branding);
+        Assert.Equal("acme/ink", list.Current?.Id);
+        Assert.Equal(new ThemeBranding(mascot, icon, indicator), list.Current?.Branding);
+        Assert.True(GatewayThemeProtocol.TryParseGet(json.RootElement, out var selected, out _));
+        Assert.Equal("acme/ink", selected.Id);
+        Assert.Equal(new ThemeBranding(mascot, icon, indicator), selected.Branding);
+    }
+
     [Fact]
     public void BrandingReachesBuiltinPluginAndSnapshottedThemes()
     {

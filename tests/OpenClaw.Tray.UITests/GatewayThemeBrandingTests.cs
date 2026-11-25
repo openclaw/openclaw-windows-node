@@ -1,7 +1,7 @@
 // Proves the chat working indicator and brand marks follow the applied theme's branding: the claw under the Windows
 // default, dots for themes without the mascot (Phosphor, CRT), the brand icon, or no glyph with the status words
 // visible, switching live without remounting. The dots and brand pulse only while a run is active and stay fully
-// opaque under High Contrast.
+// opaque under High Contrast or with animation effects off.
 // With OPENCLAW_UI_PROOF_DIR set, it also saves a rendering of each state for visual proof.
 // Run with dotnet test tests\OpenClaw.Tray.UITests -r win-x64 --filter FullyQualifiedName~GatewayThemeBrandingTests.
 using Microsoft.UI.Reactor.Hosting;
@@ -29,6 +29,7 @@ public sealed class GatewayThemeBrandingTests(UIThreadFixture ui, ITestOutputHel
         await ui.RunOnUIAsync(async () =>
         {
             using var resources = new ChatThemeProofScope("Dark");
+            using var motion = new ChatMotionScope(enabled: AnimationsEnabled);
             var highContrast = ChatThemeChanges.IsHighContrast;
             var applicator = new AppThemeApplicator();
             using var host = new ReactorHostControl();
@@ -66,13 +67,13 @@ public sealed class GatewayThemeBrandingTests(UIThreadFixture ui, ITestOutputHel
                     "dots opaque and still moving under High Contrast");
                 ChatThemeChanges.IsHighContrast = static () => false;
                 ChatThemeChanges.Refresh();
-                // Leaving High Contrast restores the resting dim; the local value is what a running pulse animates from.
+                // Leaving High Contrast restores the pulse's resting dim unless animation effects are off.
                 // WinUI may hand back the stored opacity at single precision, so compare with a tolerance.
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => dots.IsPulsing == AnimationsEnabled &&
                         dots.Parts.All(part => part.ReadLocalValue(UIElement.OpacityProperty) is double opacity &&
-                            Math.Abs(opacity - 0.45) < 0.001),
-                    "dots dim again after High Contrast",
+                            Math.Abs(opacity - (AnimationsEnabled ? 0.45 : 1)) < 0.001),
+                    "dots restore their animation-dependent opacity after High Contrast",
                     () => $"pulsing={dots.IsPulsing}, animations={AnimationsEnabled}, local opacity=" +
                         string.Join(", ", dots.Parts.Select(part => part.ReadLocalValue(UIElement.OpacityProperty))));
 
@@ -104,6 +105,42 @@ public sealed class GatewayThemeBrandingTests(UIThreadFixture ui, ITestOutputHel
             {
                 ChatThemeChanges.IsHighContrast = highContrast;
                 applicator.Apply(null);
+                ui.Container.Children.Clear();
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WorkingGlyphStaysOpaqueWithAnimationEffectsOff(bool useBrand)
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var resources = new ChatThemeProofScope("Dark");
+            using var motion = new ChatMotionScope(enabled: false);
+            var highContrast = ChatThemeChanges.IsHighContrast;
+            NativeWorkingPulse glyph = useBrand ? new NativeWorkingBrand() : new NativeWorkingDots();
+            try
+            {
+                ChatThemeChanges.IsHighContrast = static () => false;
+                glyph.Width = glyph.Height = 24;
+                glyph.Update(true);
+                ui.Container.Children.Add(glyph);
+                await TestSupport.WaitForRenderedConditionAsync(() => glyph.IsLoaded, "working glyph loaded");
+
+                Assert.False(glyph.IsPulsing);
+                Assert.All(glyph.Parts, part => Assert.Equal(1, part.Opacity));
+                glyph.Update(false);
+                Assert.False(glyph.IsPulsing);
+                Assert.All(glyph.Parts, part => Assert.Equal(1, part.Opacity));
+                await OnboardingArtworkRenderingTests.SaveProofAsync(
+                    glyph, useBrand ? "branding-reduced-motion-brand" : "branding-reduced-motion-dots", output);
+            }
+            finally
+            {
+                ChatThemeChanges.IsHighContrast = highContrast;
                 ui.Container.Children.Clear();
             }
         });

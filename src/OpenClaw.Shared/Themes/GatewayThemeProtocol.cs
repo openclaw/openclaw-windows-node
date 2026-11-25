@@ -187,7 +187,7 @@ public static class GatewayThemeProtocol
     public static bool IsArtworkId(string? id) => id is { Length: > 0 } && s_artworkId.IsMatch(id);
 
     private static string? OptionalText(JsonElement entry, string name) =>
-        entry.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+        entry.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? ReadString(value) : null;
 
     // TryGetProperty may decode other keys during lookup. Reject this object even if a lookup would
     // skip a malformed key because of its position or length. Nested descriptors are checked separately.
