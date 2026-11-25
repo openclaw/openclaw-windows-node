@@ -111,7 +111,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var title = props.State.OpenTitle ?? LocalizationHelper.GetString("Dashboards_BoardLabel");
         var reducedMotion = UseReducedMotion();
         var highContrast = UseHighContrast();
-        var refresh = () => { _ = model.Current?.LoadAsync(); };
+        var refresh = () => { _ = model.Current?.RefreshAsync(); };
         var actions = new List<Element>();
         if (props.State.OpenChat is { } openChat)
         {
@@ -429,7 +429,9 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                     props.ConnectionRevision,
                     documentCurrent,
                     () => props.State.Connected && ReferenceEquals(props.State.Client, props.Client) &&
-                        props.State.ConnectionRevision == props.ConnectionRevision))
+                        props.State.ConnectionRevision == props.ConnectionRevision,
+                    snapshot.ProgressCards.TryGetValue(widget.Name, out var progress) ? progress : null,
+                    name => model.Current?.RetryProgress(name)))
                 .MinHeight(allocatedHeight)
                 .VAlign(VerticalAlignment.Stretch)
                 .PositionInSet(index + 1, rects.Length)

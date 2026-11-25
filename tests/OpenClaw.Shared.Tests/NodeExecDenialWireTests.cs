@@ -143,14 +143,20 @@ public sealed class NodeExecDenialWireTests(ITestOutputHelper output)
             RevalidationCurrent = false,
             RevalidationFailed = !policyDenied
         };
-        var runner = new OpenClaw.Shared.Mxc.MxcCommandRunner(
-            () => settings, () => Path.Combine(temp.Path, "settings"),
+        // The fixture approves a 1 s command. Its deadline must not expire on runner load
+        // before the executor's pre-launch revalidation produces the outcome under test.
+        using var executor = new OpenClaw.Shared.Mxc.NodeSandboxExecutor(
+            new OpenClaw.Shared.Mxc.NodeSandboxPolicyStore(() => settings), () => Path.Combine(temp.Path, "settings"),
             availabilityProvider: () => unsupportedWindows
                 ? new(false, false, false, [], isWindowsUnsupported: true)
                 : new(true, false, true, [], isolationTier: "base-container", supportsProtectedPathDenies: true),
             spawn: _ => throw new InvalidOperationException("must not spawn"),
             probe: _ => Mxc.MxcAvailabilityTests.BaseProbe(),
-            scratchRoot: Path.Combine(temp.Path, "runs"));
+            scratchRoot: Path.Combine(temp.Path, "runs"))
+        {
+            DeadlineTimeProvider = new ManualTimeProvider(),
+        };
+        var runner = new OpenClaw.Shared.Mxc.MxcCommandRunner(executor);
 
         var response = await InvokeOverSocketAsync(
             gatewayEvent, handler, runner, SystemCommand());

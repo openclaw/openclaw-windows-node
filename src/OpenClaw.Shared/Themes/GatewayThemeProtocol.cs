@@ -169,21 +169,35 @@ public static class GatewayThemeProtocol
         return true;
     }
 
-    public static bool TryParseDefinition(JsonElement raw, out GatewayThemeDefinition definition, out string error)
+    internal static bool CanStoreDefinition(JsonElement raw, out string error)
     {
-        definition = null!;
         error = "";
         if (raw.ValueKind != JsonValueKind.Object)
         {
             error = "theme must be an object";
             return false;
         }
-        if (raw.GetRawText().Length > MaxDefinitionBytes * 2 ||
-            JsonSerializer.SerializeToUtf8Bytes(raw).Length > MaxDefinitionBytes)
+        try
         {
-            error = $"theme definition exceeds {MaxDefinitionBytes} bytes";
+            if (raw.GetRawText().Length <= MaxDefinitionBytes * 2 &&
+                JsonSerializer.SerializeToUtf8Bytes(raw).Length <= MaxDefinitionBytes)
+                return true;
+        }
+        catch (JsonException)
+        {
+            // A JsonElement can hold an unpaired surrogate escape but cannot write it to settings.
+            error = "theme definition contains an invalid JSON string";
             return false;
         }
+        error = $"theme definition exceeds {MaxDefinitionBytes} bytes";
+        return false;
+    }
+
+    public static bool TryParseDefinition(JsonElement raw, out GatewayThemeDefinition definition, out string error)
+    {
+        definition = null!;
+        if (!CanStoreDefinition(raw, out error))
+            return false;
         if (!TryString(raw, "name", MaxNameLength, out var name))
         {
             error = "theme.name is required";

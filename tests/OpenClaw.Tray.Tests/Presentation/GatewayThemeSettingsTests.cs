@@ -1,3 +1,4 @@
+using System.Xml.Linq;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Themes;
 using OpenClawTray.Presentation;
@@ -23,26 +24,27 @@ public sealed class GatewayThemeSettingsTests
             }
         }
     }
-    // A transparent plugin or imported theme passes the legibility check over black; its window canvas is that opaque
-    // color, so the desktop never shows through a themed window.
-    [Fact]
-    public void ATransparentThemeStillProjectsAnOpaqueWindowCanvas()
+    [Theory]
+    [InlineData("dark", "#000000", true)]
+    [InlineData("light", "#050505", false)]
+    public void TransparentThemesAreJudgedOnTheirProjectedWindowCanvas(string mode, string expectedRoot, bool readable)
     {
-        using var json = System.Text.Json.JsonDocument.Parse("""
-            { "name": "Glass", "dark": {
-              "background": "#00000000", "foreground": "#ffffff", "card": "#00000000", "card-foreground": "#ffffff",
+        // #5a5a5a clears 3:1 on black but not on the light sidebar's 2% white tint over black.
+        using var json = System.Text.Json.JsonDocument.Parse($$"""
+            { "name": "Glass", "{{mode}}": {
+              "background": "#00000000", "foreground": "#5a5a5a", "card": "#00000000", "card-foreground": "#ffffff",
               "popover": "#00000000", "popover-foreground": "#ffffff", "primary": "#5ab6d8", "primary-foreground": "#000000",
               "secondary": "#00000000", "secondary-foreground": "#ffffff", "muted": "#00000000", "muted-foreground": "#cccccc",
               "accent": "#5ab6d8", "accent-foreground": "#000000", "destructive": "#f87171", "destructive-foreground": "#000000",
               "border": "#ffffff33", "input": "#ffffff33", "ring": "#5ab6d8" } }
             """);
         Assert.True(GatewayThemeProtocol.TryParseDefinition(json.RootElement, out var definition, out var error), error);
+        var colorMode = mode == "light" ? ThemeColorMode.Light : ThemeColorMode.Dark;
         var glass = ThemePaletteExpander.Resolve(
-            new GatewayThemeDescriptor("user/glass", "Glass", "", GatewayThemeSource.User, [ThemeColorMode.Dark], null), definition);
-        Assert.True(ThemeLegibility.IsReadable(glass));
-
-        var canvas = ThemeResourceProjection.Project(glass.Dark!).Brushes["SolidBackgroundFillColorBaseBrush"];
-        Assert.Equal(ThemeColor.Black, canvas);
+            new GatewayThemeDescriptor("user/glass", "Glass", "", GatewayThemeSource.User, [colorMode], null), definition);
+        var canvas = ThemeResourceProjection.Project(glass.PaletteFor(colorMode)).Brushes["SolidBackgroundFillColorBaseBrush"];
+        Assert.Equal(ThemeColor.FromHex(expectedRoot), canvas);
+        Assert.Equal(readable, ThemeLegibility.IsReadable(glass));
     }
 
     // Mica belongs to Windows default; a Gateway theme is opaque like the dashboard, except under High Contrast.
@@ -56,6 +58,25 @@ public sealed class GatewayThemeSettingsTests
     public void MicaShowsOnlyForWindowsDefaultWithTheSettingOn(
         bool useMica, bool themeActive, bool highContrast, string expected) =>
         Assert.Equal(expected, ThemeBackdropPolicy.Choose(useMica, themeActive, highContrast).ToString());
+
+    // The applicator moves only these app brushes onto the theme's accent ramp. Matching by color would also capture
+    // fixed brushes that equal a Windows accent shade, such as the #0078D4 session tint.
+    [Fact]
+    public void AccentBoundAppKeysAreExactlyTheXamlBrushesBoundToAnAccentShade()
+    {
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var tray = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI");
+        var files = Directory.GetFiles(Path.Combine(tray, "Themes"), "*.xaml").Append(Path.Combine(tray, "App.xaml"));
+        var bound = files
+            .SelectMany(file => XDocument.Load(file).Descendants().Where(e => e.Name.LocalName == "ResourceDictionary.ThemeDictionaries"))
+            .SelectMany(dictionaries => dictionaries.Elements().Where(d => (string?)d.Attribute(x + "Key") is "Default" or "Light"))
+            .SelectMany(dictionary => dictionary.Elements())
+            .Where(resource => resource.DescendantsAndSelf().Attributes().Any(a => a.Value.Contains("SystemAccentColor", StringComparison.Ordinal)))
+            .Select(resource => (string)resource.Attribute(x + "Key")!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        Assert.Equal(bound.Order(StringComparer.Ordinal), ThemeResourceProjection.AccentBoundAppKeys.Order(StringComparer.Ordinal));
+    }
 
     [Fact]
     public void FontMapperKeepsBundledFacesAndEndsInInstalledWindowsFonts()
@@ -87,6 +108,40 @@ public sealed class GatewayThemeSettingsTests
             Assert.True(ThemeFontMapper.BundledFamilies.TryGetValue(family, out var file), $"{family} is not bundled.");
             Assert.True(File.Exists(Path.Combine(fonts, file + ".ttf")), $"{file}.ttf is missing.");
         }
+    }
+
+    // Windows selects a variable font's weights from its named instances. Without them only the default instance
+    // remains, which is Black for Fraunces, so each bundled family must name a Regular weight.
+    [Fact]
+    public void EveryBundledTypefaceNamesARegularWeight()
+    {
+        var fonts = Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "src", "OpenClaw.Tray.WinUI", "Assets", "Fonts");
+        foreach (var file in ThemeFontMapper.BundledFamilies.Values.Distinct())
+        {
+            var weights = NamedWeights(File.ReadAllBytes(Path.Combine(fonts, file + ".ttf")));
+            Assert.True(weights.Contains(400), $"{file}.ttf names weights [{string.Join(", ", weights)}], not 400.");
+        }
+    }
+
+    // Reads the wght coordinate of each OpenType fvar named instance.
+    private static List<double> NamedWeights(byte[] font)
+    {
+        static int U16(byte[] data, int offset) => System.Buffers.Binary.BinaryPrimitives.ReadUInt16BigEndian(data.AsSpan(offset));
+        static int I32(byte[] data, int offset) => System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(data.AsSpan(offset));
+        var weights = new List<double>();
+        for (var table = 0; table < U16(font, 4); table++)
+        {
+            var record = 12 + 16 * table;
+            if (System.Text.Encoding.ASCII.GetString(font, record, 4) != "fvar") continue;
+            var fvar = I32(font, record + 8);
+            int axes = fvar + U16(font, fvar + 4), axisCount = U16(font, fvar + 8), axisSize = U16(font, fvar + 10);
+            int instanceCount = U16(font, fvar + 12), instanceSize = U16(font, fvar + 14);
+            var wght = Enumerable.Range(0, axisCount)
+                .Single(axis => System.Text.Encoding.ASCII.GetString(font, axes + axis * axisSize, 4) == "wght");
+            for (var instance = 0; instance < instanceCount; instance++)
+                weights.Add(I32(font, axes + axisCount * axisSize + instance * instanceSize + 4 + 4 * wght) / 65536.0);
+        }
+        return weights;
     }
 
     [Fact]
@@ -133,5 +188,30 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal("tide", settings.Appearance.Theme?.Id);
         vm.SelectedThemeKey = "";
         Assert.Null(settings.Appearance.Theme);
+    }
+
+    [Fact]
+    public void UnlistedSavedThemeSurvivesThePickerWritingNull()
+    {
+        using var temp = new TempDir();
+        var settings = new SettingsManager(temp.Path);
+        using var json = System.Text.Json.JsonDocument.Parse("""
+            { "name": "Glass", "dark": {
+              "background": "#101010", "foreground": "#ffffff", "card": "#181818", "card-foreground": "#ffffff",
+              "popover": "#181818", "popover-foreground": "#ffffff", "primary": "#5ab6d8", "primary-foreground": "#000000",
+              "secondary": "#202020", "secondary-foreground": "#ffffff", "muted": "#202020", "muted-foreground": "#cccccc",
+              "accent": "#5ab6d8", "accent-foreground": "#000000", "destructive": "#f87171", "destructive-foreground": "#000000",
+              "border": "#ffffff33", "input": "#ffffff33", "ring": "#5ab6d8" } }
+            """);
+        var saved = new ThemeSelection { Id = "user/glass", Name = "Glass", Source = "user", Definition = json.RootElement.Clone() };
+        settings.Appearance = new AppearanceSettings { Theme = saved };
+        var vm = new SettingsPageViewModel(new SettingsStore(settings, new RecordingUiDispatcher()), new FakeAppCommands());
+        vm.Activate(null);
+        Assert.Equal("user/glass", vm.SelectedThemeKey);
+
+        vm.SelectedThemeKey = null!;
+
+        Assert.Equal("user/glass", vm.SelectedThemeKey);
+        Assert.Equal(saved, settings.Appearance.Theme);
     }
 }

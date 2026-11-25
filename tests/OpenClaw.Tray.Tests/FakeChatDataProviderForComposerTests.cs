@@ -14,6 +14,7 @@ namespace OpenClaw.Tray.Tests;
 internal sealed class FakeChatDataProviderForComposerTests : IChatDataProvider
 {
     public string DisplayName => "fake";
+    internal Exception? SendException { get; set; }
 
 #pragma warning disable CS0067 // Never raised: this fake only needs a valid provider reference.
     public event EventHandler<ChatDataChangedEventArgs>? Changed;
@@ -24,7 +25,9 @@ internal sealed class FakeChatDataProviderForComposerTests : IChatDataProvider
         throw new NotSupportedException("Not used by session/factory tests.");
 
     public Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default) =>
-        Task.CompletedTask;
+        SendException is { } exception
+            ? Task.FromException(exception)
+            : Task.CompletedTask;
 
     public Task StopResponseAsync(string threadId, CancellationToken cancellationToken = default) => Task.CompletedTask;
 

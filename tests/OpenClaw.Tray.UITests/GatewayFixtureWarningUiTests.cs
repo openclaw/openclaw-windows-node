@@ -138,7 +138,7 @@ public sealed partial class GatewayFixtureUiTests
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
-    public async Task VerifiedSetupBindingClearsBeforeNewConversationResponse()
+    public async Task VerifiedSetupBindingClearsWhenOpeningLocalNewChat()
     {
         var scenario = GatewayScenario.CreateNativeSetup((method, _) => method switch
         {
@@ -158,23 +158,12 @@ public sealed partial class GatewayFixtureUiTests
                 FindById(run, "WorkspaceSessionsAdd") is { } add && add.Current.IsEnabled,
                 "bound setup authority warning before ordinary new conversation");
 
-            run.Gateway.HoldSessionMutations();
-            try
-            {
-                Invoke(FindById(run, "WorkspaceSessionsAdd")!);
-                await run.Gateway.WaitForRequestAsync("sessions.create");
-                await WaitUiAsync(run, () => FindById(run, "ChatNativeSetupError") is null,
-                    "obsolete verified setup binding cleared while creation response is held");
-                Assert.DoesNotContain(run.Gateway.Requests,
-                    request => request.Method == "sessions.create" && request.Outcome == "ok");
-                CaptureContinuity(run, "native-handoff-cleared-before-create-response.png");
-            }
-            finally
-            {
-                run.Gateway.ReleaseSessionMutations();
-            }
-            await WaitUiAsync(run, () => SessionSelected(run, "Fixture: new conversation 1"),
-                "ordinary created conversation after verified binding invalidation");
+            Invoke(FindById(run, "WorkspaceSessionsAdd")!);
+            await WaitUiAsync(run, () => FindById(run, "ChatNativeSetupError") is null &&
+                FindById(run, "ChatEnvironmentPicker") is { Current.IsOffscreen: false },
+                "obsolete verified setup binding cleared by the local new-chat draft");
+            Assert.DoesNotContain(run.Gateway.Requests, request => request.Method == "sessions.create");
+            CaptureContinuity(run, "native-handoff-cleared-by-local-draft.png");
             Assert.Null(FindById(run, "ChatNativeSetupError"));
             Assert.Single(AppWindows(run));
         }, scenario: scenario, prepareSetupHandoff: IssueSyntheticHandoff);

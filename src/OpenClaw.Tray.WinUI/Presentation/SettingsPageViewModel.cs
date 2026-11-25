@@ -50,6 +50,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _useLegacyWebChat;
     private bool _showNotifications;
     private bool _showDesktopCompanion;
+    private bool _desktopCompanionOnlyWhenMinimized;
     private int _desktopCompanionScalePercent = DesktopCompanionScale.DefaultPercent;
     private string _notificationSound = DefaultNotificationSound;
     private string _appTheme = DefaultAppTheme;
@@ -158,6 +159,12 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     public IReadOnlyList<int> DesktopCompanionScaleOptions { get; } = [50, 75, 100, 125, 150, 175, 200];
 
+    public bool DesktopCompanionOnlyWhenMinimized
+    {
+        get => _desktopCompanionOnlyWhenMinimized;
+        set { if (SetField(ref _desktopCompanionOnlyWhenMinimized, value) && !_loading) Persist(e => e.DesktopCompanionOnlyWhenMinimized = value); }
+    }
+
     public int DesktopCompanionScalePercent
     {
         get => _desktopCompanionScalePercent;
@@ -203,10 +210,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         get => _selectedThemeKey;
         set
         {
-            // Replacing ThemeChoices makes the ComboBox write null before it reselects; keep the saved key.
-            if (_loading)
+            // The ComboBox writes null when ThemeChoices is replaced and can when the saved theme is not listed (a
+            // Gateway theme). Every choice has a key, so null is never a user choice and must not clear the theme.
+            if (_loading || value is null)
                 return;
-            var key = value ?? "";
+            var key = value;
             if (!SetField(ref _selectedThemeKey, key))
                 return;
             var selection = SelectionFor(key);
@@ -449,6 +457,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _useLegacyWebChat, s.UseLegacyWebChat, nameof(UseLegacyWebChat));
             SetField(ref _showNotifications, s.ShowNotifications, nameof(ShowNotifications));
             SetField(ref _showDesktopCompanion, s.ShowDesktopCompanion, nameof(ShowDesktopCompanion));
+            SetField(ref _desktopCompanionOnlyWhenMinimized, s.DesktopCompanionOnlyWhenMinimized, nameof(DesktopCompanionOnlyWhenMinimized));
             SetField(ref _desktopCompanionScalePercent, s.DesktopCompanionScalePercent, nameof(DesktopCompanionScalePercent));
             // Normalize combo values to a known tag so a legacy or odd stored value selects the
             // default item instead of rendering a blank combo (matching the old tag lookup).

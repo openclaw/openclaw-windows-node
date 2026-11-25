@@ -204,16 +204,17 @@ public sealed partial class GatewayFixtureUiTests
         Assert.All(journal, json => Assert.DoesNotContain("SECRET", json));
     }
 
-    private static bool HasVisibleLongHistory(GatewayFixtureRun run)
+    // Re-acquires the timeline for each observation; visibility is part of the match, so "no visible
+    // long history" needs a complete observation of the timeline's text nodes.
+    private static bool HasVisibleLongHistory(GatewayFixtureRun run) => ObserveComplete(() =>
     {
-        var timeline = FindTimeline(run);
+        var (timeline, timelineComplete) = ObserveTimeline(run);
         if (timeline is null)
-            return false;
-        var texts = timeline.FindAll(TreeScope.Descendants,
-            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text));
-        return texts.Cast<AutomationElement>().Any(element =>
+            return (false, timelineComplete);
+        var (texts, textsComplete) = ReadSnapshot(timeline, TreeScope.Descendants, TextCondition);
+        var visible = texts.Any(element =>
         {
-            var text = element.Current.Name;
+            var text = element.Cached.Name;
             return (text.StartsWith("Fixture long message ", StringComparison.Ordinal)
                 || text.Contains(GatewayScenario.LongEarlySentinel, StringComparison.Ordinal)
                 || text.Contains(GatewayScenario.LongMiddleSentinel, StringComparison.Ordinal)
@@ -221,5 +222,6 @@ public sealed partial class GatewayFixtureUiTests
                 || text.Contains(GatewayScenario.LongHistoryFinalMarker, StringComparison.Ordinal))
                 && IsVisibleInTimeline(timeline, element);
         });
-    }
+        return (visible, textsComplete);
+    }, visible => visible);
 }

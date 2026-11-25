@@ -80,12 +80,12 @@ Sanitization, parser flags, allowed web links, inert images and custom block pre
 remain application-owned.
 
 `build.ps1`, Store packaging and CI initialize the hash-verified official
-GitHub release packages in the ignored `artifacts\reactor-packages` feed.
+Microsoft-signed packages from NuGet.org in the ignored `artifacts\reactor-nuget-packages` feed.
 Before a direct `dotnet restore` or first test build, run
 `.\scripts\Initialize-ReactorPackages.ps1`. `NuGet.Config` maps only the two
 Reactor package IDs to that feed; it does not change machine NuGet settings.
-Package digests, not the release DLLs' development-style ProductVersion, identify
-the published assets. `.\scripts\test-reactor-packages.ps1` checks acquisition,
+If an older build cached unsigned copies of the same version, set
+`NUGET_PACKAGES` to a fresh directory before restoring. `.\scripts\test-reactor-packages.ps1` checks acquisition,
 cache integrity, failure cleanup and source mapping without network access.
 
 Run `ReactorMarkdownListProofTests` in `OpenClaw.Tray.UITests` on the host's

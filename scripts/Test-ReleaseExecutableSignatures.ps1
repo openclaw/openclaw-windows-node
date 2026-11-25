@@ -6,6 +6,7 @@
     Classifies every .exe and .dll in a release payload. OpenClaw-owned binaries
     must be signed when -RequireSignedOpenClaw is passed. Third-party binaries,
     including the official MXC helpers, must not be signed by the OpenClaw release signer.
+    Signed release payloads also require Microsoft-signed Reactor assemblies.
     Unknown executables and unknown OpenClaw-named binaries fail closed.
 
 .PARAMETER PayloadPath
@@ -137,6 +138,18 @@ foreach ($binary in $binaries) {
     $requiredBinary = $_
     if (-not ($binaries | Where-Object RelativePath -eq $requiredBinary)) {
         $errors.Add("Missing OpenClaw binary: $_.")
+    }
+}
+if ($RequireSignedOpenClaw) {
+    $microsoftSignerSubject = "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+    foreach ($name in @("Reactor.dll", "Reactor.Advanced.dll", "Reactor.Wrappers.Abstractions.dll")) {
+        $assembly = $binaries | Where-Object RelativePath -eq $name
+        if (-not $assembly) {
+            $errors.Add("Missing Reactor assembly: $name.")
+        }
+        elseif ($assembly.SignatureStatus -ne "Valid" -or $assembly.SignerSubject -ne $microsoftSignerSubject) {
+            $errors.Add("Reactor assembly must have a valid Microsoft Authenticode signature: $name [$($assembly.SignatureStatus)] [$($assembly.SignerSubject)]")
+        }
     }
 }
 if ($binaries | Where-Object RelativePath -eq "SetupEngine\OpenClaw.SetupEngine.UI.exe") {
