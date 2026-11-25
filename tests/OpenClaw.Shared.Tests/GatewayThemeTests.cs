@@ -75,20 +75,33 @@ public class GatewayThemeTests
             { "id": "claw", "name": "Duplicate", "source": "builtin", "modes": ["dark"] },
             { "id": "../escape", "name": "Bad id", "source": "builtin", "modes": ["dark"] },
             { "id": "acme/nomodes", "name": "No modes", "source": "plugin", "modes": [] },
-            { "id": "acme/unknown", "name": "Unknown source", "source": "remote", "modes": ["dark"] }
+            { "id": "acme/unknown", "name": "Unknown source", "source": "remote", "modes": ["dark"] },
+            { "id": "acme/badname", "name": "\ud800", "source": "plugin", "modes": ["dark"] },
+            { "id": "acme/badmode", "name": "Bad mode", "source": "plugin", "modes": ["\udfff"] },
+            { "id": "acme/after", "name": "After", "source": "plugin", "modes": ["dark"] }
           ]
         }
         """);
 
         var list = GatewayThemeProtocol.ParseList(json.RootElement);
 
-        Assert.Equal(new[] { "claw", "acme/neon", "user/mine" }, list.Themes.Select(theme => theme.Id));
+        Assert.Equal(new[] { "claw", "acme/neon", "user/mine", "acme/after" }, list.Themes.Select(theme => theme.Id));
         Assert.Equal(GatewayThemeSource.Plugin, list.Themes[1].Source);
         Assert.Equal("acme", list.Themes[1].PluginId);
         Assert.Equal(new[] { ThemeColorMode.Dark }, list.Themes[1].Modes);
         Assert.Equal("claw", list.Current?.Id);
         Assert.Equal(GatewayThemeSource.Builtin, list.Current!.Source);
         Assert.Null(list.CurrentDefinition);
+    }
+
+    [Fact]
+    public void GetRejectsAThemeWithAnUnpairedSurrogateInsteadOfThrowing()
+    {
+        using var json = JsonDocument.Parse("""
+            { "theme": { "id": "acme/x", "name": "X\udc00", "source": "plugin", "modes": ["dark"] } }
+            """);
+
+        Assert.False(GatewayThemeProtocol.TryParseGet(json.RootElement, out _, out _));
     }
 
     [Fact]
@@ -216,6 +229,42 @@ public class GatewayThemeTests
         Assert.Equal(useMica, settings.Appearance!.UseMica);
         Assert.Null(AppearanceResolver.ResolveTheme(settings.Appearance));
         Assert.Null(AppearanceResolver.ResolveTheme(SettingsData.FromJson("""{ "AppTheme": "Light" }""")!.Appearance));
+    }
+
+    [Theory]
+    [InlineData("Id", "\\uD800")]
+    [InlineData("Name", "\\uDC00")]
+    [InlineData("Source", "\\uD800")]
+    [InlineData("OriginGatewayId", "\\uDC00")]
+    public void MalformedAppearanceStringsPreserveOtherSettingsAndDefaultOnlyTheInvalidField(string field, string malformed)
+    {
+        var selection = field == "Id"
+            ? $$"""{ "Id": "{{malformed}}" }"""
+            : $$"""{ "Id": "tide", "{{field}}": "{{malformed}}" }""";
+        var settings = SettingsData.FromJson($$"""
+        { "AppTheme": "Dark", "NotifyEmail": false, "Appearance": { "Theme": {{selection}} } }
+        """);
+
+        Assert.NotNull(settings);
+        Assert.Equal("Dark", settings.AppTheme);
+        Assert.False(settings.NotifyEmail);
+        Assert.Equal(field == "Id" ? null : new ThemeSelection { Id = "tide" }, settings.Appearance?.Theme);
+    }
+
+    [Fact]
+    public void MalformedSavedDefinitionCanStillResolveAndSaveOtherSettings()
+    {
+        var settings = SettingsData.FromJson("""
+            { "AppTheme": "Dark", "NotifyEmail": false,
+              "Appearance": { "Theme": { "Id": "user/ink", "Source": "user", "Definition": { "name": "\uD800" } } } }
+            """);
+
+        Assert.NotNull(settings);
+        Assert.Null(AppearanceResolver.ResolveTheme(settings.Appearance));
+        var reloaded = SettingsData.FromJson(settings.ToJson());
+        Assert.NotNull(reloaded);
+        Assert.Equal("Dark", reloaded.AppTheme);
+        Assert.False(reloaded.NotifyEmail);
     }
 
     [Fact]

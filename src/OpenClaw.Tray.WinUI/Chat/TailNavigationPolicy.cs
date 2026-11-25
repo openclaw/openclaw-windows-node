@@ -445,9 +445,11 @@ internal sealed class InitialTailVerification
 
 internal sealed class TailReflowCorrection
 {
+    private const int MaxLandingRetries = 2;
     private bool _available;
     private object? _contentRevision;
     private bool _growthAvailable;
+    private int _landingRetries;
 
     public void Arm() => _available = true;
 
@@ -458,6 +460,20 @@ internal sealed class TailReflowCorrection
 
         _contentRevision = revision;
         _growthAvailable = true;
+        _landingRetries = 0;
+    }
+
+    // A correction targets an absolute offset that is applied after later layout. When
+    // streaming growth or virtual-row estimates move the tail meanwhile, it lands short.
+    // Retry from the new geometry, bounded per content revision so estimate churn cannot loop.
+    public bool ArmAfterLanding(bool following, bool atBottom)
+    {
+        if (!following || atBottom || _landingRetries >= MaxLandingRetries)
+            return false;
+
+        _landingRetries++;
+        Arm();
+        return true;
     }
 
     public void ArmForExtentGrowth(bool following, bool atBottom, bool initialPending, bool readerOwnsAnchor)
@@ -486,5 +502,6 @@ internal sealed class TailReflowCorrection
     {
         _available = false;
         _growthAvailable = false;
+        _landingRetries = 0;
     }
 }

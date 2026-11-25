@@ -7,6 +7,13 @@ namespace OpenClaw.Tray.Tests;
 
 public sealed class SettingsSandboxPublicationTests : IDisposable
 {
+    private const string ConcurrencyTimeoutVariable = "OPENCLAW_TRAY_TEST_CONCURRENCY_TIMEOUT_SECONDS";
+    private static readonly TimeSpan ConcurrencyTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable(ConcurrencyTimeoutVariable), out var seconds) && seconds > 0
+            ? TimeSpan.FromSeconds(seconds)
+            : TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan CallbackTimeout = TimeSpan.FromTicks(ConcurrencyTimeout.Ticks * 2);
+
     private readonly string _root = Path.Combine(
         Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory(),
         ".mxc-test-runs", Guid.NewGuid().ToString("N"));
@@ -101,12 +108,13 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
         settings.Saved += (_, _) =>
         {
             notified.SetResult();
-            Assert.True(releaseNotification.Wait(TimeSpan.FromSeconds(10)));
+            Assert.True(releaseNotification.Wait(CallbackTimeout));
         };
-        var saving = Task.Run(() => settings.UpdateAndSave(() => settings.SystemRunAllowOutbound = true));
+        var saving = RunOnDedicatedThread(() =>
+            settings.UpdateAndSave(() => settings.SystemRunAllowOutbound = true));
         try
         {
-            await notified.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await notified.Task.WaitAsync(ConcurrencyTimeout);
             var current = settings.SandboxPolicies.Capture();
             Assert.True(current.Revision > old.Revision);
             Assert.Equal(MxcRequestBuilder.Fingerprint(SettingsData.FromJson(
@@ -126,24 +134,28 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
     {
         var settings = new SettingsManager(_root);
         var notification = 0;
+        var callbackTimedOut = 0;
         var firstNotified = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var releaseFirst = new ManualResetEventSlim();
         settings.Saved += (_, _) =>
         {
             if (Interlocked.Increment(ref notification) != 1) return;
             firstNotified.SetResult();
-            Assert.True(releaseFirst.Wait(TimeSpan.FromSeconds(10)));
+            if (!releaseFirst.Wait(CallbackTimeout))
+                Interlocked.Exchange(ref callbackTimedOut, 1);
         };
-        var first = Task.Run(settings.SaveOrThrow);
+        var first = RunOnDedicatedThread(settings.SaveOrThrow);
         try
         {
-            await firstNotified.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            var second = Task.Run(() => settings.UpdateAndSave(() => settings.SystemRunAllowOutbound = true));
-            await second.WaitAsync(TimeSpan.FromSeconds(5));
+            await firstNotified.Task.WaitAsync(ConcurrencyTimeout);
+            var second = RunOnDedicatedThread(() =>
+                settings.UpdateAndSave(() => settings.SystemRunAllowOutbound = true));
+            await second.WaitAsync(ConcurrencyTimeout);
             Assert.Equal(2, notification);
             Assert.True(SettingsData.FromJson(File.ReadAllText(Path.Combine(_root, "settings.json")))!.SystemRunAllowOutbound);
         }
         finally { releaseFirst.Set(); await first; }
+        Assert.Equal(0, Volatile.Read(ref callbackTimedOut));
     }
 
     [Fact]
@@ -159,7 +171,7 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
             entered.SetResult();
             return completion.Task;
         }, default);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await entered.Task.WaitAsync(ConcurrencyTimeout);
         settings.UpdateAndSave(() => settings.SandboxClipboard = SandboxClipboardMode.Both);
         Assert.False(run.IsCompleted);
         Assert.True(settings.SandboxPolicies.Capture().Revision > admitted.Revision);
@@ -182,16 +194,20 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
             events.Add(args);
             if (!ReferenceEquals(args.Origin, firstOrigin)) return;
             entered.SetResult();
-            Assert.True(release.Wait(TimeSpan.FromSeconds(10)));
+            Assert.True(release.Wait(CallbackTimeout));
         };
-        var first = Task.Run(() => store.Update(firstOrigin, editor => editor.NotificationSound = "first"));
+        var first = RunOnDedicatedThread(() =>
+            store.Update(firstOrigin, editor => editor.NotificationSound = "first"));
         Task? second = null;
         try
         {
-            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            second = Task.Run(() => store.Update(secondOrigin, editor => editor.NotifyHealth = false));
-            await second.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.False(first.IsCompleted);
+            await entered.Task.WaitAsync(ConcurrencyTimeout);
+            second = RunOnDedicatedThread(() =>
+            {
+                store.Update(secondOrigin, editor => editor.NotifyHealth = false);
+                Assert.False(first.IsCompleted);
+            });
+            await second.WaitAsync(ConcurrencyTimeout);
             Assert.Contains(events, e => ReferenceEquals(e.Origin, firstOrigin));
             Assert.Contains(events, e => ReferenceEquals(e.Origin, secondOrigin));
         }
@@ -218,32 +234,34 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
         settings.Saved += (_, _) =>
         {
             committed.SetResult();
-            if (!releaseNotification.Wait(TimeSpan.FromSeconds(10)))
+            if (!releaseNotification.Wait(CallbackTimeout))
                 throw new TimeoutException("The committed notification was not released.");
         };
         using var store = new SettingsStore(settings, new ImmediateDispatcher());
         var origin = store.CreateOrigin();
         var events = new System.Collections.Concurrent.ConcurrentQueue<SettingsChangedEventArgs>();
         store.Changed += (_, args) => events.Enqueue(args);
-        var first = Task.Run(() => store.Update(origin, editor => editor.NotificationSound = "committed"));
+        var first = RunOnDedicatedThread(() =>
+            store.Update(origin, editor => editor.NotificationSound = "committed"));
         Task<Exception>? rejected = null;
         try
         {
-            await committed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await committed.Task.WaitAsync(ConcurrencyTimeout);
             using var locked = new FileStream(Path.Combine(_root, "settings.json"),
                 FileMode.Open, FileAccess.Read, FileShare.Read);
-            rejected = Task.Run(() => Record.Exception(() => store.Update(store.CreateOrigin(), editor =>
-            {
-                editor.NotificationSound = "rejected";
-                editing.SetResult();
-                if (!releaseEdit.Wait(TimeSpan.FromSeconds(10)))
-                    throw new TimeoutException("The rejected edit was not released.");
-            })));
+            rejected = RunOnDedicatedThread(() => Record.Exception(() =>
+                store.Update(store.CreateOrigin(), editor =>
+                {
+                    editor.NotificationSound = "rejected";
+                    editing.SetResult();
+                    if (!releaseEdit.Wait(CallbackTimeout))
+                        throw new TimeoutException("The rejected edit was not released.");
+                })));
             try
             {
-                await editing.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await editing.Task.WaitAsync(ConcurrencyTimeout);
                 releaseNotification.Set();
-                await first.WaitAsync(TimeSpan.FromSeconds(5));
+                await first.WaitAsync(ConcurrencyTimeout);
             }
             finally
             {
@@ -277,7 +295,7 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
         {
             if (Interlocked.Increment(ref notified) != 1) return;
             firstCommitted.SetResult();
-            if (!releaseFirst.Wait(TimeSpan.FromSeconds(10)))
+            if (!releaseFirst.Wait(CallbackTimeout))
                 throw new TimeoutException("The first notification was not released.");
         };
         using var store = new SettingsStore(settings, new ImmediateDispatcher());
@@ -285,19 +303,20 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
         var secondOrigin = store.CreateOrigin();
         var events = new System.Collections.Concurrent.ConcurrentQueue<SettingsChangedEventArgs>();
         store.Changed += (_, args) => events.Enqueue(args);
-        var first = Task.Run(() => store.Update(firstOrigin, editor =>
+        var first = RunOnDedicatedThread(() => store.Update(firstOrigin, editor =>
         {
             editor.NotificationSound = "first";
             editor.SetPagePinned("gateway", "connection", true);
         }));
         try
         {
-            await firstCommitted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            await Task.Run(() => store.Update(secondOrigin, editor =>
-            {
-                editor.NotificationSound = "second";
-                editor.SetPagePinned("gateway", "connection", false);
-            })).WaitAsync(TimeSpan.FromSeconds(5));
+            await firstCommitted.Task.WaitAsync(ConcurrencyTimeout);
+            await RunOnDedicatedThread(() =>
+                store.Update(secondOrigin, editor =>
+                {
+                    editor.NotificationSound = "second";
+                    editor.SetPagePinned("gateway", "connection", false);
+                })).WaitAsync(ConcurrencyTimeout);
         }
         finally { releaseFirst.Set(); await first; }
 
@@ -319,4 +338,10 @@ public sealed class SettingsSandboxPublicationTests : IDisposable
         public bool HasThreadAccess => true;
         public bool TryEnqueue(Action action) { action(); return true; }
     }
+
+    private static Task RunOnDedicatedThread(Action action) =>
+        Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+    private static Task<T> RunOnDedicatedThread<T>(Func<T> action) =>
+        Task.Factory.StartNew(action, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 }

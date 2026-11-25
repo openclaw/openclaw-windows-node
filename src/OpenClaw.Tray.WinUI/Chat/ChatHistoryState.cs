@@ -568,6 +568,7 @@ internal sealed class ChatHistoryState
                 Entries = entries.ToImmutable(),
                 NextId = nextId,
                 TurnActive = prior.TurnActive,
+                TurnGeneration = prior.TurnGeneration,
                 TurnStartedAt = prior.TurnStartedAt,
                 TurnEndedAt = prior.TurnEndedAt,
                 ProgressText = prior.ProgressText,

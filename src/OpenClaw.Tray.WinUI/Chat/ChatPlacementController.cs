@@ -13,7 +13,11 @@ internal enum ChatPlacementError
     NotReady,
     HistoryPending,
     Interrupted,
-    NoLongerEmpty
+    NoLongerEmpty,
+    DraftOptionsFailed,
+    DraftCreationFailed,
+    DraftCreationUncertain,
+    GatewayDefaultOnly
 }
 
 internal sealed record ChatPlacementState(
@@ -25,7 +29,9 @@ internal sealed record ChatPlacementState(
     bool Browsing = false,
     bool BrowsingLoading = false,
     ChatWorkspaceDirectory? Directory = null,
-    bool SelectionIsKnown = false);
+    bool SelectionIsKnown = false,
+    bool GatewayDefaultOnly = false,
+    string? DraftStatusMessage = null);
 
 /// <summary>Host-local first-turn location intent. Opening or choosing a row never mutates the Gateway.</summary>
 internal sealed class ChatPlacementController(
@@ -36,6 +42,7 @@ internal sealed class ChatPlacementController(
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
     private CancellationTokenSource _scopeCancellation = new();
     private ChatPlacementState _state = new();
+    private ChatDraft? _draft;
     private string? _threadId;
     private string _agentId = "main";
     private long? _epoch;
@@ -49,23 +56,98 @@ internal sealed class ChatPlacementController(
     private TaskCompletionSource? _materializationHistory;
     // Accepted Gateway mutations outlive navigation. Keep their intent and drain state with the session.
     private readonly Dictionary<(string ThreadId, string AgentId), LocationIntent> _intents = new();
+    private bool _draftNeedsSelection;
+    private string? _activeSendThreadId;
+    private long _activeSendId;
+    private long _sendOperationId;
+    private readonly HashSet<string> _knownCreatedSessionKeys = new(StringComparer.Ordinal);
     private LocationIntent? _intent;
     private bool _disposed;
 
-    private sealed class LocationIntent(ChatPlacementSelection selection)
+    private sealed class LocationIntent(ChatPlacementSelection selection, ChatDraft? draft)
     {
         internal ChatPlacementSelection Selection = selection;
         internal bool Dirty = true;
         internal bool Preparing;
         internal bool OutcomeUncertain;
         internal ChatPlacementError? Error;
+        internal ChatDraft? Draft = draft;
     }
 
     internal event Action? Changed;
     internal long Revision { get; private set; }
     internal ChatPlacementState State { get { lock (_gate) return _state; } }
-    internal bool CanEdit { get { lock (_gate) return !_disposed && _canEdit && !_state.Preparing; } }
-    internal bool RequiresPreparation { get { lock (_gate) return _intent?.Dirty == true; } }
+    internal bool CanEdit
+    {
+        get { lock (_gate) return !_disposed && _canEdit && !_state.Preparing &&
+            _activeSendThreadId != _threadId && _draft?.GatewaySessionKey is null; }
+    }
+    internal bool RequiresPreparation
+    {
+        get { lock (_gate) return _intent?.Dirty == true || _draftNeedsSelection; }
+    }
+
+    internal sealed class SendLease(
+        ChatPlacementController owner, long id, string threadId, int generation, long epoch, bool requiresPreparation)
+        : IDisposable
+    {
+        private int _disposed;
+        internal bool IsCurrent => Volatile.Read(ref _disposed) == 0 &&
+            owner.IsCurrentSend(id, threadId, generation, epoch, requiresPreparation);
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                owner.EndSend(id);
+        }
+    }
+
+    internal SendLease? BeginSend(string threadId)
+    {
+        SendLease? lease;
+        lock (_gate)
+        {
+            if (_disposed || _threadId != threadId || _epoch is not { } epoch ||
+                _activeSendThreadId is not null)
+                return null;
+            var id = ++_sendOperationId;
+            _activeSendId = id;
+            _activeSendThreadId = threadId;
+            lease = new(this, id, threadId, _generation, epoch,
+                _draft?.GatewaySessionKey is null && (_intent?.Dirty == true || _draftNeedsSelection));
+        }
+        Notify();
+        return lease;
+    }
+
+    private bool IsCurrentSend(long id, string threadId, int generation, long epoch, bool requiresPreparation)
+    {
+        lock (_gate)
+            return !_disposed && _activeSendId == id && _activeSendThreadId == threadId &&
+                _generation == generation && _threadId == threadId && _epoch == epoch &&
+                gateway.ConnectionEpoch == epoch &&
+                (!requiresPreparation || _targetEmpty && _historyReady);
+    }
+
+    private void EndSend(long id)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _activeSendId != id) return;
+            _activeSendThreadId = null;
+        }
+        Notify();
+    }
+
+    internal void MarkCreatedSession(string sessionKey)
+    {
+        if (string.IsNullOrWhiteSpace(sessionKey)) return;
+        lock (_gate) _knownCreatedSessionKeys.Add(sessionKey);
+    }
+
+    internal bool IsKnownCreatedSession(string sessionKey)
+    {
+        lock (_gate) return _knownCreatedSessionKeys.Contains(sessionKey);
+    }
 
     internal void ApplyInputs(ChatComposerInputs inputs)
     {
@@ -74,6 +156,10 @@ internal sealed class ChatPlacementController(
         lock (_gate)
         {
             if (_disposed) return;
+            var previousDraftKey = _draft?.Key;
+            _draft = inputs.PlacementDraft;
+            if (previousDraftKey != _draft?.Key && _state.DraftStatusMessage is not null)
+                _state = _state with { DraftStatusMessage = null };
             var agentId = inputs.CurrentThread.AgentId ?? "main";
             var epoch = inputs.ConnectionState == "connected" ? gateway.ConnectionEpoch : null;
             if (_threadId != inputs.CurrentThread.Id || _agentId != agentId || _epoch != epoch)
@@ -84,11 +170,20 @@ internal sealed class ChatPlacementController(
                 _agentId = agentId;
                 _epoch = epoch;
                 _intent = _intents.GetValueOrDefault((_threadId, _agentId));
-                _state = new(Selection: _intent?.Selection, Preparing: _intent?.Preparing == true,
-                    Error: _intent?.Error, SelectionIsKnown: _intent?.Dirty == true);
+                _state = new(
+                    Selection: _intent?.Selection,
+                    Preparing: _intent?.Preparing == true,
+                    Error: _intent?.Error,
+                    GatewayDefaultOnly: _intent?.Error == ChatPlacementError.GatewayDefaultOnly,
+                    SelectionIsKnown: _intent?.Selection is not null);
                 _materializationHistory = null;
                 previous = _scopeCancellation;
                 _scopeCancellation = new();
+            }
+            if (_intent is not null)
+            {
+                _intent.Draft = _draft ?? _intent.Draft;
+                RestoreIntentFromDraftLocked(_intent);
             }
             _historyReady = inputs.PlacementHistoryReady;
             var targetEmpty = inputs.PlacementTargetIsEmpty;
@@ -117,6 +212,27 @@ internal sealed class ChatPlacementController(
                 _scopeCancellation = new();
             }
             _targetEmpty = targetEmpty;
+            if (_intent is null && targetEmpty && _draft?.PlacementIntent is { } savedIntent)
+            {
+                _intent = new(savedIntent.Selection, _draft)
+                {
+                    Dirty = savedIntent.RequiresPreparation,
+                    Preparing = savedIntent.Preparing,
+                    OutcomeUncertain = savedIntent.OutcomeUncertain,
+                    Error = savedIntent.Error
+                };
+                _intents[(_threadId!, _agentId)] = _intent;
+                _state = _state with
+                {
+                    Selection = savedIntent.Selection,
+                    Preparing = savedIntent.Preparing,
+                    Error = savedIntent.Error,
+                    SelectionIsKnown = true
+                };
+            }
+            _draftNeedsSelection = inputs.PlacementRequiresCreation && _intent is null && targetEmpty;
+            if (_historyReady && _draftNeedsSelection && _state.Selection is { } defaults)
+                SetSelection(defaults, changed: true);
             _canChangeSessionOptions = inputs.CanChangeSessionOptions;
             if (!_canEdit && _state.Error is ChatPlacementError.DiscoveryFailed or ChatPlacementError.BrowseFailed)
                 _state = _state with { Error = _intent?.Error };
@@ -139,7 +255,12 @@ internal sealed class ChatPlacementController(
             generation = _generation;
             agent = _agentId;
             token = _scopeCancellation.Token;
-            _state = _state with { Loading = true, Error = _intent?.Error };
+            _state = _state with
+            {
+                Loading = true,
+                Error = _intent?.Error,
+                GatewayDefaultOnly = false
+            };
         }
         Notify();
         try
@@ -147,6 +268,8 @@ internal sealed class ChatPlacementController(
             var catalog = await gateway.LoadAsync(agent, token).ConfigureAwait(false);
             Update(generation, state =>
             {
+                if (state.GatewayDefaultOnly)
+                    return state with { Loading = false };
                 var local = catalog.Environments.FirstOrDefault(environment => environment.IsLocal);
                 var selected = state.Selection;
                 if (selected is null && local is not null)
@@ -161,10 +284,18 @@ internal sealed class ChatPlacementController(
                 }
                 if (_intent is not null && selected is not null)
                     _intent.Selection = selected;
+                if (_intent?.Error == ChatPlacementError.GatewayDefaultOnly)
+                {
+                    _intent.Error = null;
+                    PersistIntent(_intent);
+                }
+                if (_draftNeedsSelection && _historyReady && _targetEmpty && selected is not null)
+                    SetSelection(selected, changed: true);
                 return state with
                 {
                     Catalog = catalog, Selection = selected, Loading = false, Error = _intent?.Error,
-                    SelectionIsKnown = state.SelectionIsKnown || _targetNew
+                    SelectionIsKnown = state.SelectionIsKnown || _targetNew || _intent?.Dirty == true,
+                    GatewayDefaultOnly = false
                 };
             });
         }
@@ -220,15 +351,56 @@ internal sealed class ChatPlacementController(
 
     private void SetSelection(ChatPlacementSelection selection, bool changed)
     {
+        _draftNeedsSelection = false;
         if (changed || !_state.SelectionIsKnown)
         {
-            _intent ??= new(selection);
+            _intent ??= new(selection, _draft);
+            _intent.Draft = _draft ?? _intent.Draft;
             _intent.Selection = selection;
             _intent.Dirty = true;
             _intent.Error = _intent.OutcomeUncertain ? ChatPlacementError.Interrupted : null;
             _intents[(_threadId!, _agentId)] = _intent;
+            PersistIntent(_intent);
         }
-        _state = _state with { Selection = selection, Error = _intent?.Error, SelectionIsKnown = true };
+        _state = _state with
+        {
+            Selection = selection,
+            Error = _intent?.Error,
+            SelectionIsKnown = true,
+            GatewayDefaultOnly = false
+        };
+    }
+
+    internal bool TryUseGatewayDefaultLocation(string threadId)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _threadId != threadId || !_targetEmpty || !_historyReady ||
+                _draft is not { UsesGatewayDefaultAgent: false } ||
+                _intent?.OutcomeUncertain == true)
+            {
+                return false;
+            }
+
+            var selection = _state.Selection ?? _intent?.Selection;
+            var noLocationChosen = selection is null && _intent is null && _draftNeedsSelection;
+            if (!_state.GatewayDefaultOnly && !noLocationChosen)
+                return false;
+
+            _state = _state with
+            {
+                GatewayDefaultOnly = true,
+                Error = ChatPlacementError.GatewayDefaultOnly
+            };
+            if (_intent is not null)
+            {
+                _intent.Dirty = false;
+                _intent.Error = ChatPlacementError.GatewayDefaultOnly;
+                PersistIntent(_intent);
+            }
+        }
+        Notify();
+        return true;
     }
 
     internal async Task BrowseAsync(string? path = null)
@@ -283,11 +455,48 @@ internal sealed class ChatPlacementController(
         ChatPlacementSelection selection;
         CancellationTokenSource operation;
         LocationIntent intent;
+        ChatDraft? draft;
         lock (_gate)
         {
+            if (_draft?.CreationOutcomeUncertain == true)
+            {
+                _state = _state with { Error = ChatPlacementError.DraftCreationUncertain };
+                Notify();
+                return false;
+            }
+            if (_draft is { GatewaySessionKey: { } gatewaySessionKey } &&
+                gatewaySessionKey == threadId &&
+                _threadId == _draft.Key &&
+                _epoch is { } defaultEpoch &&
+                gateway.ConnectionEpoch == defaultEpoch)
+            {
+                return true;
+            }
+            if (_intent is not null)
+                RestoreIntentFromDraftLocked(_intent);
+            if ((_targetNew || _materializationHistory is not null) && !_historyReady)
+            {
+                _state = _state with { Error = ChatPlacementError.HistoryPending };
+                Notify();
+                return false;
+            }
+            if (_intent is not { Dirty: true } && !_draftNeedsSelection)
+                return true;
             if (_intent?.Preparing == true)
             {
                 _state = _state with { Error = ChatPlacementError.PreparationPending };
+                Notify();
+                return false;
+            }
+            if (_intent is { OutcomeUncertain: true })
+            {
+                _state = _state with { Error = ChatPlacementError.Interrupted };
+                Notify();
+                return false;
+            }
+            if (_draftNeedsSelection)
+            {
+                _state = _state with { Error = _state.Error ?? ChatPlacementError.NotReady };
                 Notify();
                 return false;
             }
@@ -316,56 +525,97 @@ internal sealed class ChatPlacementController(
             agent = _agentId;
             epoch = currentEpoch;
             selection = selected;
+            draft = _draft;
             intent = currentIntent;
             intent.Selection = selection;
             intent.Preparing = true;
             intent.Error = null;
+            PersistIntent(intent);
             operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _scopeCancellation.Token);
             _state = _state with { Preparing = true, Error = null };
         }
         Notify();
+        var preparationConfirmed = false;
         try
         {
             await gateway.PrepareAsync(threadId, agent, selection, epoch, operation.Token,
                 token => WaitForCurrentHistoryAsync(generation, epoch, token)).ConfigureAwait(false);
-            await WaitForCurrentHistoryAsync(generation, epoch, operation.Token).ConfigureAwait(false);
-            operation.Token.ThrowIfCancellationRequested();
+            draft?.RememberGatewaySessionKey(threadId);
+            lock (_gate) _knownCreatedSessionKeys.Add(threadId);
+            preparationConfirmed = true;
+            lock (_gate)
+            {
+                ConfirmIntent(intent);
+            }
+            try
+            {
+                await WaitForCurrentHistoryAsync(generation, epoch, operation.Token).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                lock (_gate)
+                {
+                    if (ReferenceEquals(_intent, intent) && generation == _generation)
+                        _state = _state with { Error = ChatPlacementError.HistoryPending };
+                }
+                return false;
+            }
             lock (_gate)
             {
                 if (_disposed || generation != _generation || gateway.ConnectionEpoch != epoch)
-                {
-                    InterruptIntent(intent);
                     return false;
-                }
                 if (!_historyReady || !_targetEmpty)
                 {
-                    InterruptIntent(intent);
+                    _state = _state with
+                    {
+                        Error = !_targetEmpty ? ChatPlacementError.NoLongerEmpty : ChatPlacementError.HistoryPending
+                    };
                     return false;
                 }
-                intent.Dirty = false;
-                intent.OutcomeUncertain = false;
                 _state = _state with { SelectionIsKnown = true };
             }
             return true;
         }
+        catch (ChatPlacementNotMutatedException)
+        {
+            lock (_gate)
+                InterruptIntent(intent, outcomeUncertain: false);
+            return false;
+        }
+        catch (OperationCanceledException) when (preparationConfirmed)
+        {
+            lock (_gate)
+            {
+                if (!_disposed && generation == _generation && ReferenceEquals(_intent, intent))
+                    _state = _state with
+                    {
+                        Error = !_targetEmpty ? ChatPlacementError.NoLongerEmpty :
+                            !_historyReady ? ChatPlacementError.HistoryPending : null
+                    };
+            }
+            return false;
+        }
         catch (OperationCanceledException)
         {
             lock (_gate)
-                InterruptIntent(intent);
+                InterruptIntent(intent, outcomeUncertain: true);
             return false;
         }
         catch (ChatPlacementOutcomeUncertainException ex)
         {
             System.Diagnostics.Trace.WriteLine($"[chat] Location preparation outcome is uncertain: {ex}");
             lock (_gate)
-                InterruptIntent(intent);
+                InterruptIntent(intent, outcomeUncertain: true);
             return false;
         }
         catch (Exception ex)
         {
             System.Diagnostics.Trace.WriteLine($"[chat] Location preparation failed: {ex}");
             lock (_gate)
+            {
                 intent.Error = intent.OutcomeUncertain ? ChatPlacementError.Interrupted : ChatPlacementError.PreparationFailed;
+                PersistIntent(intent);
+            }
             return false;
         }
         finally
@@ -376,9 +626,11 @@ internal sealed class ChatPlacementController(
                 intent.Preparing = false;
                 if (ReferenceEquals(_intent, intent))
                 {
-                    _materializationHistory = null;
-                    _state = _state with { Preparing = false, Error = intent.Error };
+                    if (_historyReady)
+                        _materializationHistory = null;
+                    _state = _state with { Preparing = false, Error = _state.Error ?? intent.Error };
                 }
+                PersistIntent(intent);
             }
             Notify();
         }
@@ -401,14 +653,7 @@ internal sealed class ChatPlacementController(
                     throw new OperationCanceledException(cancellationToken);
                 pending = _materializationHistory.Task;
             }
-            try
-            {
-                await pending.WaitAsync(MaterializationHistoryTimeout(), _timeProvider, cancellationToken).ConfigureAwait(false);
-            }
-            catch (TimeoutException ex)
-            {
-                throw new ChatPlacementOutcomeUncertainException(ex);
-            }
+            await pending.WaitAsync(MaterializationHistoryTimeout(), _timeProvider, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -425,13 +670,54 @@ internal sealed class ChatPlacementController(
         return TimeSpan.FromMilliseconds(DefaultMaterializationHistoryTimeoutMs);
     }
 
-    private void InterruptIntent(LocationIntent intent)
+    private void InterruptIntent(LocationIntent intent, bool outcomeUncertain)
     {
-        intent.OutcomeUncertain = true;
+        intent.OutcomeUncertain = outcomeUncertain;
         intent.Error = ChatPlacementError.Interrupted;
-        if (ReferenceEquals(_intent, intent) && _epoch.HasValue && _historyReady && !_targetEmpty)
+        if (ReferenceEquals(_intent, intent) && _historyReady && !_targetEmpty)
             intent.Dirty = false;
+        else if (outcomeUncertain)
+            intent.Dirty = true;
+        PersistIntent(intent);
     }
+
+    private void ConfirmIntent(LocationIntent intent)
+    {
+        intent.Dirty = false;
+        intent.OutcomeUncertain = false;
+        intent.Error = null;
+        PersistIntent(intent);
+    }
+
+    private void RestoreIntentFromDraftLocked(LocationIntent intent)
+    {
+        if (intent.Draft?.PlacementIntent is not { } savedIntent)
+            return;
+
+        intent.Selection = savedIntent.Selection;
+        intent.Dirty = savedIntent.RequiresPreparation;
+        intent.OutcomeUncertain = savedIntent.OutcomeUncertain;
+        intent.Preparing = savedIntent.Preparing;
+        intent.Error = savedIntent.Error;
+        if (ReferenceEquals(_intent, intent))
+        {
+            _state = _state with
+            {
+                Selection = savedIntent.Selection,
+                Preparing = savedIntent.Preparing,
+                Error = savedIntent.Error,
+                SelectionIsKnown = true
+            };
+        }
+    }
+
+    private static void PersistIntent(LocationIntent intent) =>
+        intent.Draft?.RememberPlacementIntent(new(
+            intent.Selection,
+            intent.Dirty,
+            intent.OutcomeUncertain,
+            intent.Preparing,
+            intent.Error));
 
     internal void NavigateTo(string threadId)
     {
@@ -443,6 +729,7 @@ internal sealed class ChatPlacementController(
             _threadId = threadId;
             _epoch = null;
             _canEdit = _canChangeSessionOptions = _targetEmpty = _historyReady = _targetNew = false;
+            _draftNeedsSelection = false;
             _materializationHistory = null;
             _intent = null;
             _state = new();
@@ -461,10 +748,55 @@ internal sealed class ChatPlacementController(
             if (!_intent.OutcomeUncertain)
                 _intent.Error = ChatPlacementError.NoLongerEmpty;
         }
+
         _state = _state with
         {
             Error = _intent?.Error
         };
+        Notify();
+    }
+
+    internal void ReportDraftOptionsResult(string threadId, Exception? error)
+    {
+        if (error is not null)
+            System.Diagnostics.Trace.WriteLine($"[chat] Draft options could not be applied: {error}");
+        lock (_gate)
+        {
+            if (_disposed || _threadId != threadId) return;
+            _state = _state with
+            {
+                Error = error is not null
+                    ? ChatPlacementError.DraftOptionsFailed
+                    : _state.GatewayDefaultOnly ? ChatPlacementError.GatewayDefaultOnly : _intent?.Error
+            };
+        }
+        Notify();
+    }
+
+    internal void ReportDraftCreationResult(string threadId, ChatPlacementError? error)
+    {
+        lock (_gate)
+        {
+            if (_disposed || _threadId != threadId) return;
+            _state = _state with
+            {
+                Error = error ?? (_state.GatewayDefaultOnly
+                    ? ChatPlacementError.GatewayDefaultOnly
+                    : _intent?.Error)
+            };
+        }
+        Notify();
+    }
+
+    internal void ReportDraftSendStatus(string draftKey, string? message)
+    {
+        if (message is not null && string.IsNullOrWhiteSpace(message))
+            throw new ArgumentException("Draft status message is required.", nameof(message));
+        lock (_gate)
+        {
+            if (_disposed || _threadId != draftKey || _draft?.Key != draftKey) return;
+            _state = _state with { DraftStatusMessage = message };
+        }
         Notify();
     }
 
@@ -487,9 +819,27 @@ internal sealed class ChatPlacementController(
     private void Fail(int generation, Exception error, Func<ChatPlacementState, ChatPlacementState> update)
     {
         System.Diagnostics.Trace.WriteLine($"[chat] Location request failed: {error}");
-        Update(generation, state => update(state) with
+        Update(generation, state =>
         {
-            Error = _intent?.Error ?? (_canEdit ? ChatPlacementError.DiscoveryFailed : null)
+            var updated = update(state);
+            if (state.GatewayDefaultOnly)
+                return updated with { GatewayDefaultOnly = true, Error = ChatPlacementError.GatewayDefaultOnly };
+
+            if (_draft is { UsesGatewayDefaultAgent: false } &&
+                _draftNeedsSelection &&
+                _intent is null)
+            {
+                return updated with
+                {
+                    GatewayDefaultOnly = true,
+                    Error = ChatPlacementError.GatewayDefaultOnly
+                };
+            }
+
+            return updated with
+            {
+                Error = _intent?.Error ?? (_canEdit ? ChatPlacementError.DiscoveryFailed : null)
+            };
         });
     }
 
@@ -512,7 +862,8 @@ internal sealed class ChatPlacementController(
         }
         void Publish()
         {
-            if (!_disposed) Changed?.Invoke();
+            if (_disposed) return;
+            Changed?.Invoke();
         }
         if (dispatcher.HasThreadAccess) Publish();
         else if (!dispatcher.TryEnqueue(Publish))

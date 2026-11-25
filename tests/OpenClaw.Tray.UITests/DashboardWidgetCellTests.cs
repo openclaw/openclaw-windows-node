@@ -14,6 +14,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Dashboards;
@@ -677,6 +678,128 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             }, ready: host => FindDescendants<FrameworkElement>(host).Any(element =>
                 AutomationProperties.GetAutomationId(element) == "BoardWidget_website"), width: 984,
             capture: "mixed-report-website");
+    }
+
+    [Fact]
+    public async Task ProgressWidget_ReadsItsSessionCardAndRefreshesOnInvalidation()
+    {
+        const string sessionKey = "agent:main:main";
+        var progressWidget = Plugin("run-progress", "session:progress", """{"sessionKey":"agent:main:main"}""");
+        var board = new BoardSnapshot(sessionKey, 1, [new BoardTab("main", "Overview", 0, "right")], [progressWidget]);
+        var client = new SnapshotBoardClient(board)
+        {
+            Kinds = [new PluginWidgetKind("session", "session:progress", "Session progress")],
+            ProgressCard = new BoardProgressCard(sessionKey, 1, 1_700_000_000_000,
+                "Initial progress detail.", [new BoardProgressStep("Build the first view", BoardProgressStepStatus.InProgress)]),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+
+        await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
+                new BoardViewProps(state, client, new BoardSessionTarget(sessionKey, "main"), 1, 984)), host =>
+            {
+                Assert.Equal(1, client.ProgressLoads);
+                Assert.Contains(new ProgressCardTarget(sessionKey, null, sessionKey), client.ProgressTargets);
+                var step = Assert.Single(FindDescendants<FrameworkElement>(host),
+                    element => AutomationProperties.GetAutomationId(element) == "BoardProgressStep_run-progress_0");
+                Assert.Equal(LocalizationHelper.Format("Dashboards_Progress_StepAccessibleFormat",
+                    LocalizationHelper.GetString("Dashboards_Progress_StatusInProgress"), "Build the first view"), AutomationProperties.GetName(step));
+                Assert.Contains(FindDescendants<RichTextBlock>(host),
+                    block => CollectMarkdownText(block).Contains("Initial progress detail.", StringComparison.Ordinal));
+                var initialTexts = FindDescendants<TextBlock>(host).Select(text => text.Text).ToArray();
+                Assert.Contains("Build the first view", initialTexts);
+                Assert.Contains(LocalizationHelper.GetString("Dashboards_Progress_StatusInProgress"), initialTexts);
+
+                client.ProgressCard = new BoardProgressCard(sessionKey, 2, 1_700_000_100_000,
+                    "Refreshed progress detail.", [new BoardProgressStep("Build the first view", BoardProgressStepStatus.Completed)]);
+                client.NotifyProgressChanged(new BoardProgressChangedEvent(sessionKey, 2));
+            }, ready: host => FindDescendants<FrameworkElement>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "BoardWidget_run-progress"),
+            width: 984, afterMounted: async host =>
+            {
+                await WaitForMountedStateAsync(host, current => client.ProgressLoads == 2 &&
+                    FindDescendants<RichTextBlock>(current).Any(block =>
+                        CollectMarkdownText(block).Contains("Refreshed progress detail.", StringComparison.Ordinal)) &&
+                    FindDescendants<TextBlock>(current).Any(text =>
+                        text.Text == LocalizationHelper.GetString("Dashboards_Progress_StatusCompleted")) &&
+                    FindDescendants<TextBlock>(current).Any(text =>
+                        text.Text == LocalizationHelper.Format("Dashboards_Progress_StepCountFormat", 1, 1)));
+            });
+    }
+
+    [Fact]
+    public async Task ProgressWidget_NarrowEmbeddedCardKeepsOverflowAndFinalStepReachable()
+    {
+        const string sessionKey = "agent:main:progress-overflow";
+        const string longStep = "Verify that a long progress step wraps cleanly within the native card, with its readable text and accessible status preserved when the board is shown beside chat.";
+        var widget = Plugin("progress", "session:progress", """{"sessionKey":"agent:main:progress-overflow"}""");
+        var client = new SnapshotBoardClient(new BoardSnapshot(sessionKey, 1, [new BoardTab("main", "Overview", 0, "right")], [widget]))
+        {
+            Kinds = [new PluginWidgetKind("session", "session:progress", "Session progress")],
+            ProgressCard = new BoardProgressCard(sessionKey, 1, 1_700_000_000_000,
+                "**Reset recovery verified.** The old card cleared; fresh progress now shows all steps completed.",
+                [
+                    new BoardProgressStep("Connect to the real Gateway", BoardProgressStepStatus.Completed),
+                    new BoardProgressStep(longStep, BoardProgressStepStatus.Completed),
+                    new BoardProgressStep("Complete the live widget check", BoardProgressStepStatus.Completed),
+                ]),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
+                new BoardViewProps(state, client, new BoardSessionTarget(sessionKey, "main"), 1, 440, Embedded: true)),
+            _ => { }, width: 440, theme: "Dark", afterMounted: host => ui.RunOnUIAsync(async () =>
+            {
+                (double Extent, double Viewport, double LongStepHeight, Windows.Foundation.Rect LastStep)? previous = null;
+                await WaitForRenderedConditionAsync(() =>
+                {
+                    var reader = FindDescendants<ScrollViewer>(host).FirstOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "BoardProgress_progress");
+                    var last = FindDescendants<FrameworkElement>(host).FirstOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "BoardProgressStep_progress_2");
+                    var longText = FindDescendants<TextBlock>(host).FirstOrDefault(element => element.Text == longStep);
+                    if (reader is not { IsLoaded: true, ActualHeight: > 0 } ||
+                        last is not { IsLoaded: true, ActualHeight: > 0 } ||
+                        longText is not { IsLoaded: true, ActualHeight: > 0 })
+                        return false;
+                    var current = (reader.ExtentHeight, reader.ViewportHeight, longText.ActualHeight, Bounds(last, reader));
+                    var settled = previous == current;
+                    previous = current;
+                    return settled;
+                }, "embedded progress card layout settles");
+
+                var scroll = ById<ScrollViewer>(host, "BoardProgress_progress");
+                var finalStep = ById<FrameworkElement>(host, "BoardProgressStep_progress_2");
+                var longText = Assert.Single(FindDescendants<TextBlock>(scroll), text => text.Text == longStep);
+                var longStepGroup = ById<FrameworkElement>(host, "BoardProgressStep_progress_1");
+                Assert.Equal(LocalizationHelper.Format("Dashboards_Progress_StepAccessibleFormat",
+                    LocalizationHelper.GetString("Dashboards_Progress_StatusCompleted"), longStep),
+                    AutomationProperties.GetName(longStepGroup));
+                Assert.True(longText.ActualHeight > longText.FontSize * 2, "The long step must wrap in a narrow card.");
+                Assert.True(scroll.ScrollableHeight > 0,
+                    $"Overflow must remain reachable; extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, height={scroll.ActualHeight}.");
+                Assert.True(Bounds(finalStep, scroll).Bottom > scroll.ActualHeight, "The final step must start below the viewport.");
+                Assert.True(scroll.ChangeView(null, scroll.ScrollableHeight, null, disableAnimation: true));
+                Windows.Foundation.Rect? previousFinalBounds = null;
+                await WaitForRenderedConditionAsync(() =>
+                {
+                    var currentBounds = Bounds(finalStep, scroll);
+                    var settled = Math.Abs(scroll.VerticalOffset - scroll.ScrollableHeight) <= 0.5 &&
+                        previousFinalBounds == currentBounds;
+                    previousFinalBounds = currentBounds;
+                    return settled;
+                },
+                    "the last progress step scrolls into view");
+                var finalBounds = Bounds(finalStep, scroll);
+                Assert.InRange(finalBounds.Top, 0, scroll.ActualHeight);
+                Assert.InRange(finalBounds.Bottom, 0, scroll.ActualHeight + 0.5);
+            }));
     }
 
     private async Task WaitForMountedStateAsync(ReactorHostControl host, Func<ReactorHostControl, bool> ready,
@@ -1921,6 +2044,11 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         };
     }
 
+    private static string CollectMarkdownText(RichTextBlock block) => string.Concat(
+        block.Blocks.OfType<Paragraph>()
+            .SelectMany(paragraph => paragraph.Inlines.OfType<Run>())
+            .Select(run => run.Text));
+
     private static string? ToolTipText(Microsoft.UI.Xaml.DependencyObject element) => ToolTipService.GetToolTip(element) switch
     {
         string text => text,
@@ -2140,15 +2268,20 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         public IReadOnlyList<string> ReadScopes { get; init; } = ["operator.read"];
         public ImmutableArray<PluginWidgetKind> Kinds { get; init; } = [];
         public int BoardLoads { get; private set; }
+        public int ProgressLoads { get; private set; }
+        public List<ProgressCardTarget> ProgressTargets { get; } = [];
+        public BoardProgressCard? ProgressCard { get; set; }
         public Uri? Origin { get; init; }
         public Task<BoardSnapshot>? BoardResponse { get; init; }
         public bool IsConnectedToGateway => true;
+        public BoardSessionDefaults? SessionDefaults => new("main", "main", "agent:main:main");
         public IReadOnlyList<string> GrantedOperatorScopes => ReadScopes;
         public ImmutableArray<PluginWidgetKind> PluginWidgetKinds => Kinds;
         public Uri? GatewayHttpOrigin => Origin ?? new("http://127.0.0.1:18789/");
-        public IReadOnlyList<string> AdvertisedServerMethods => ["board.get"];
+        public IReadOnlyList<string> AdvertisedServerMethods => ["board.get", "progressCard.get"];
         public event EventHandler<BoardChangedEvent>? BoardChanged { add { } remove { } }
         public event EventHandler<BoardCommandEvent>? BoardCommandReceived { add { } remove { } }
+        public event EventHandler<BoardProgressChangedEvent>? ProgressCardChanged;
         public event EventHandler<SessionInfo[]>? SessionsUpdated { add { } remove { } }
         public Task<DashboardSessionPage?> ListDashboardSessionsAsync(string? agentId, int offset = 0, int timeoutMs = 15000) =>
             Failure is not null ? Task.FromException<DashboardSessionPage?>(Failure) :
@@ -2159,5 +2292,13 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             BoardLoads++;
             return BoardResponse ?? Task.FromResult(board);
         }
+        public Task<BoardProgressCard?> GetProgressCardAsync(ProgressCardTarget target, int timeoutMs = 15000)
+        {
+            ProgressLoads++;
+            ProgressTargets.Add(target);
+            return Task.FromResult(ProgressCard);
+        }
+        public void NotifyProgressChanged(BoardProgressChangedEvent progressChanged) =>
+            ProgressCardChanged?.Invoke(this, progressChanged);
     }
 }

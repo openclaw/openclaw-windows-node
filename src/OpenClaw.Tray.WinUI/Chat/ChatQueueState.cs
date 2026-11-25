@@ -82,6 +82,25 @@ internal sealed class ChatQueueState
                 string.Equals(request.Id, messageId, StringComparison.Ordinal))
             : null;
 
+    internal ChatQueuedSendRequest? FindUncertainDirectRequest(
+        string threadId,
+        string? gatewayIdempotencyKey) =>
+        string.IsNullOrWhiteSpace(gatewayIdempotencyKey)
+            ? null
+            : _requests.TryGetValue(threadId, out var requests)
+                ? requests.FirstOrDefault(request =>
+                    request.AdmissionOutcomeUncertain &&
+                    string.Equals(
+                        request.GatewayIdempotencyKey,
+                        gatewayIdempotencyKey,
+                        StringComparison.Ordinal))
+                : null;
+
+    internal ChatQueuedSendRequest[] FindUncertainDirectRequests(string threadId) =>
+        _requests.TryGetValue(threadId, out var requests)
+            ? requests.Where(request => request.AdmissionOutcomeUncertain).ToArray()
+            : [];
+
     internal void RemoveRequest(string threadId, string messageId)
     {
         if (!_requests.TryGetValue(threadId, out var requests))
@@ -116,6 +135,18 @@ internal sealed class ChatQueueState
         long resetLifecycleSequence,
         long lifecycleStartSequence)
     {
+        if (_messages.TryGetValue(request.ThreadId, out var messages))
+        {
+            var index = messages.FindIndex(message => message.Id == request.Id);
+            if (index >= 0)
+            {
+                messages[index] = messages[index] with
+                {
+                    SendState = ChatQueuedMessageSendState.Sending,
+                    ErrorText = null,
+                };
+            }
+        }
         EnqueueLocalEcho(
             request.ThreadId,
             request.EffectiveTimelineText,
@@ -350,6 +381,22 @@ internal sealed class ChatQueueState
         }
     }
 
+    internal void MarkDefinitelyNotSent(
+        ChatQueuedSendRequest request,
+        string error)
+    {
+        if (!_messages.TryGetValue(request.ThreadId, out var messages) ||
+            messages.All(message => message.Id != request.Id))
+        {
+            AddMessage(request.ThreadId, new(
+                request.Id,
+                request.DisplayText,
+                DateTimeOffset.UtcNow,
+                request.LocalNonce));
+        }
+        MarkFailed(request.ThreadId, request.Id, error);
+    }
+
     internal ChatQueueRetryResult RequeueDeferredAdmission(
         string threadId,
         string messageId,
@@ -424,6 +471,9 @@ internal sealed class ChatQueueState
 
     internal bool IsLocallyInitiated(string threadId) =>
         _locallyInitiatedThreads.Contains(threadId);
+
+    internal void MarkLocallyInitiated(string threadId) =>
+        _locallyInitiatedThreads.Add(threadId);
 
     internal void ClearLocallyInitiatedIfIdle(
         string threadId,
@@ -550,21 +600,17 @@ internal sealed class ChatQueueState
         StoreLocalEchoQueue(threadId, retained);
     }
 
+    internal void RestorePendingLocalEcho(ChatQueuedSendRequest request) =>
+        EnqueueLocalEcho(
+            request.ThreadId,
+            request.EffectiveTimelineText,
+            request.AttachmentCorrelationSignature,
+            request.Id);
+
     internal void ClearForReconnect()
     {
-        const string droppedBeforeAcceptKey =
-            "Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage";
-        var droppedBeforeAccept =
-            LocalizationHelper.GetString(droppedBeforeAcceptKey);
-        if (string.IsNullOrWhiteSpace(droppedBeforeAccept) ||
-            string.Equals(
-                droppedBeforeAccept,
-                droppedBeforeAcceptKey,
-                StringComparison.Ordinal))
-        {
-            droppedBeforeAccept =
-                "The connection dropped before the gateway accepted this message.";
-        }
+        var droppedBeforeAccept = ConnectionDroppedBeforeAcceptError;
+        var sendOutcomeUnknown = SendOutcomeUnknownError;
         var keptIdsByThread =
             new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         foreach (var (threadId, messages) in _messages.ToArray())
@@ -578,12 +624,25 @@ internal sealed class ChatQueueState
                 }
                 else if (message.SendState == ChatQueuedMessageSendState.Queued)
                 {
+                    var deferredAdmissionObserved =
+                        FindRequest(threadId, message.Id) is
+                        { DeferredAdmissionRetryCount: > 0 };
                     kept.Add(message with
                     {
                         SendState = ChatQueuedMessageSendState.Failed,
                         ErrorText = string.IsNullOrEmpty(message.ErrorText)
-                            ? droppedBeforeAccept
+                            ? deferredAdmissionObserved
+                                ? sendOutcomeUnknown
+                                : droppedBeforeAccept
                             : message.ErrorText,
+                    });
+                }
+                else if (message.SendState == ChatQueuedMessageSendState.Sending)
+                {
+                    kept.Add(message with
+                    {
+                        SendState = ChatQueuedMessageSendState.Failed,
+                        ErrorText = sendOutcomeUnknown,
                     });
                 }
             }
@@ -604,18 +663,25 @@ internal sealed class ChatQueueState
         {
             if (!keptIdsByThread.TryGetValue(threadId, out var keptIds))
             {
-                _requests.Remove(threadId);
+                requests.RemoveAll(request => !request.AdmissionOutcomeUncertain);
+                if (requests.Count == 0)
+                    _requests.Remove(threadId);
                 continue;
             }
 
-            requests.RemoveAll(request => !keptIds.Contains(request.Id));
+            requests.RemoveAll(request =>
+                !request.AdmissionOutcomeUncertain &&
+                !keptIds.Contains(request.Id));
             for (var index = 0; index < requests.Count; index++)
             {
-                requests[index] = requests[index] with
+                if (!requests[index].AdmissionOutcomeUncertain)
                 {
-                    DeferredAdmissionRetryCount = 0,
-                    DeferredAdmissionRetryAfter = null,
-                };
+                    requests[index] = requests[index] with
+                    {
+                        DeferredAdmissionRetryCount = 0,
+                        DeferredAdmissionRetryAfter = null,
+                    };
+                }
             }
             if (requests.Count == 0)
                 _requests.Remove(threadId);
@@ -626,6 +692,24 @@ internal sealed class ChatQueueState
         _drainScheduledThreads.Clear();
         _assistantFallbackPromotedThreads.Clear();
         _messageIdsByRunId.Clear();
+    }
+
+    internal static string ConnectionDroppedBeforeAcceptError =>
+        GetLocalizedError(
+            "Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage",
+            "The connection dropped before the gateway accepted this message.");
+
+    internal static string SendOutcomeUnknownError =>
+        GetLocalizedError(
+            "Chat_Error_SendOutcomeUnknown",
+            "The connection dropped after the send started. The message may have been sent. Check the conversation before trying again.");
+
+    private static string GetLocalizedError(string key, string fallback)
+    {
+        var value = LocalizationHelper.GetString(key);
+        return string.IsNullOrWhiteSpace(value) || string.Equals(value, key, StringComparison.Ordinal)
+            ? fallback
+            : value;
     }
 
     internal void ClearForDispose()

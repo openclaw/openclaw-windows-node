@@ -637,6 +637,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 });
             },
             EffectiveThemePreference);
+        _desktopCompanion.SetMainWindowVisibility(_windowManager?.HasVisibleMainWindow == true);
         _desktopCompanion.Start();
     }
 
@@ -852,6 +853,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
                     AutoStartManager.ApplySetupPreferenceAsync, ct),
                 GetSettingsStore: () => SettingsStore,
+                MainWindowVisibilityChanged: visible => _desktopCompanion?.SetMainWindowVisibility(visible),
                 OpenSetupDashboard: async (completion, path, ct) =>
                 {
                     var launcher = CreateDashboardLauncher(() =>

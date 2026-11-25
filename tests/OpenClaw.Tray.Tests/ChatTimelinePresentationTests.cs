@@ -537,6 +537,29 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
+    public void TailReflowCorrection_StaleLandingRetriesAreBoundedPerContentRevision()
+    {
+        var correction = new TailReflowCorrection();
+        correction.ContentChanged(new object());
+
+        Assert.False(correction.ArmAfterLanding(following: false, atBottom: false));
+        Assert.False(correction.ArmAfterLanding(following: true, atBottom: true));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        for (var retry = 0; retry < 2; retry++)
+        {
+            Assert.True(correction.ArmAfterLanding(following: true, atBottom: false));
+            Assert.True(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+        }
+
+        Assert.False(correction.ArmAfterLanding(following: true, atBottom: false));
+        Assert.False(correction.TryConsume(following: true, nearBottom: false, initialPending: false));
+
+        correction.ContentChanged(new object());
+        Assert.True(correction.ArmAfterLanding(following: true, atBottom: false));
+    }
+
+    [Fact]
     public void TailReflowCorrection_DoesNotStartWhileInitialPositioningIsPending()
     {
         var correction = new TailReflowCorrection();
@@ -1529,8 +1552,11 @@ public sealed class ChatTimelinePresentationTests
             renderer,
             ".Background(Theme.Ref(\"SubtleFillColorTransparentBrush\"))\n                .BorderBrush(Theme.Ref(\"SubtleFillColorTransparentBrush\"))"));
         Assert.Contains("WithKey(\"nested-guide\")", renderer);
-        // Rows start on the prose edge: every tool Expander drops the built-in header inset.
-        Assert.Equal(3, CountOccurrences(renderer, "ChatVisuals.FlushToolRowExpander"));
+        // Rows start on the prose edge: every tool Expander drops the built-in header inset, and a
+        // header-only Expander (details rendered below it) also drops its empty content area.
+        Assert.Equal(2, CountOccurrences(renderer, "ChatVisuals.FlushToolRowExpander"));
+        Assert.Equal(3, CountOccurrences(renderer, "ChatVisuals.FlushHeaderOnlyExpander"));
+        Assert.Equal(2, CountOccurrences(visuals, "ApplyToolRowFlush(expander);"));
         Assert.Contains("header.Padding = new Thickness(0);", visuals);
         Assert.Contains("expander.Resources[\"ExpanderChevronMargin\"] = new Thickness(0);", visuals);
         Assert.Contains("Border(Empty()).Width(1).Margin(7, 0, 16, 0)", renderer);
@@ -2098,7 +2124,9 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatToolActivity_", renderer);
         Assert.Contains("ChatToolCall_", renderer);
         Assert.Contains("internal sealed class ToolActivityCard : Component<ToolActivityCardProps>", renderer);
-        Assert.Contains("Element details = !isExpanded", renderer);
+        // Details exist only while expanded, or briefly while a closing group shrinks them away.
+        Assert.Contains("var showDetails = isExpanded || closing;", renderer);
+        Assert.Contains("Element details = !showDetails", renderer);
         Assert.Contains("? VStack(", renderer);
         Assert.Contains(".FontSize(12)", renderer);
         Assert.Contains(".BorderThickness(0)", renderer);
@@ -2108,7 +2136,7 @@ public sealed class ChatTimelinePresentationTests
     }
 
     [Fact]
-    public void ReactorTimeline_RendersStructuredCompactionCard()
+    public void ReactorTimeline_RendersLocalizedCompactionWithoutCheckpointAction()
     {
         var timeline = File.ReadAllText(Path.Combine(
             TestRepositoryPaths.GetRepositoryRoot(),
@@ -2120,10 +2148,10 @@ public sealed class ChatTimelinePresentationTests
         Assert.Contains("ChatTimelineItemKind.Status => BuildStatus(row, entry)", timeline);
         Assert.Contains("ChatCompactionPresenter.TryCreateForEntry(", timeline);
         Assert.Contains("Chat_Compaction_Title", timeline);
-        Assert.Contains("Chat_Compaction_FallbackDetail", timeline);
-        Assert.Contains("Chat_Compaction_OpenCheckpoints", timeline);
-        Assert.Contains("row.Props.OnOpenCheckpoints!(sessionKey!)", timeline);
-        Assert.Contains(".BorderThickness(1)", timeline);
+        Assert.Contains("Chat_Compaction_MetricsFormat", timeline);
+        Assert.DoesNotContain("Chat_Compaction_FallbackDetail", timeline);
+        Assert.DoesNotContain("Chat_Compaction_OpenCheckpoints", timeline);
+        Assert.DoesNotContain("OnOpenCheckpoints", timeline);
         Assert.DoesNotContain("ReactorChatComposer.IsHighContrast", timeline);
         Assert.Contains(".AutomationName(presentation.AutomationName)", timeline);
     }
