@@ -76,14 +76,37 @@ public sealed class InstallerIssAssertionTests
         var end = iss.IndexOf("procedure EnsureLocalGatewayCleanupChoice;", start, StringComparison.Ordinal);
         var migration = iss[start..end];
         Assert.Contains("CompareText(RemoveQuotes(RunCommand), ExecutablePath) = 0", migration);
-        Assert.Contains("Task.Definition.Actions.Count <> 1", migration);
+        Assert.Contains("Definition.Actions.Count <> 1", migration);
         Assert.Contains("CompareText(RemoveQuotes(ActionPath), ExecutablePath) <> 0", migration);
         Assert.Contains("(Trim(ActionArguments) <> '')", migration);
-        Assert.Contains("'/Change /TN '", migration);
-        Assert.Contains("--background", migration);
+        Assert.Contains("Action.Arguments := '--background';", migration);
         Assert.DoesNotContain("/Create", migration);
         Assert.DoesNotContain("/ENABLE", migration);
+        Assert.DoesNotContain(".Enabled", migration);
         Assert.Contains("CurStep = ssPostInstall", migration);
+    }
+
+    [Fact]
+    public void Installer_UpdatesTheLegacyStartupTaskWithoutAnInteractiveCommand()
+    {
+        // schtasks /Change asks for the run-as password on its hidden console and setup
+        // waited for it forever (#2320). The update must go through Task Scheduler's API
+        // with the task's own principal, and a refused update must not stop setup.
+        var iss = File.ReadAllText(Path.Combine(TestRepositoryPaths.GetRepositoryRoot(), "installer.iss"));
+        var start = iss.IndexOf("procedure MigrateLegacyBackgroundLaunch;", StringComparison.Ordinal);
+        var end = iss.IndexOf("procedure CurStepChanged(", start, StringComparison.Ordinal);
+        var migration = iss[start..end];
+
+        Assert.DoesNotContain("schtasks.exe", migration);
+        Assert.DoesNotContain("Exec(", migration);
+        Assert.Contains("TaskSchedulerUpdate = 4;", iss);
+        Assert.Contains(
+            "Folder.RegisterTaskDefinition('{#MyStartupTaskName}', Definition, TaskSchedulerUpdate,",
+            migration);
+        Assert.Contains("Unassigned, Unassigned, Definition.Principal.LogonType);", migration);
+        Assert.Matches(
+            @"RegisterTaskDefinition\([\s\S]*?except\s+Log\('Could not migrate startup task\.",
+            migration);
     }
 
     [Fact]

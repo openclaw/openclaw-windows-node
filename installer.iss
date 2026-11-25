@@ -461,6 +461,10 @@ begin
       mbInformation, MB_OK);
 end;
 
+const
+  { ITaskFolder.RegisterTaskDefinition creation flag: update an existing task. }
+  TaskSchedulerUpdate = 4;
+
 procedure MigrateLegacyBackgroundLaunch;
 var
   ExecutablePath: string;
@@ -468,9 +472,9 @@ var
   ActionPath: string;
   ActionArguments: string;
   Scheduler: Variant;
-  Task: Variant;
+  Folder: Variant;
+  Definition: Variant;
   Action: Variant;
-  ResultCode: Integer;
 begin
   ExecutablePath := ExpandConstant('{app}\{#MyAppExeName}');
   { Only migrate the exact old argument-free registration for this installation. }
@@ -490,10 +494,12 @@ begin
   try
     Scheduler := CreateOleObject('Schedule.Service');
     Scheduler.Connect;
-    Task := Scheduler.GetFolder('\').GetTask('{#MyStartupTaskName}');
-    if Task.Definition.Actions.Count <> 1 then
+    Folder := Scheduler.GetFolder('\');
+    { Each Definition read returns a copy, so keep the one that is changed and saved. }
+    Definition := Folder.GetTask('{#MyStartupTaskName}').Definition;
+    if Definition.Actions.Count <> 1 then
       Exit;
-    Action := Task.Definition.Actions.Item(1);
+    Action := Definition.Actions.Item(1);
     { Only executable actions expose Path and Arguments. Other action types
       fail the guarded lookup below without changing the task. }
     ActionPath := Action.Path;
@@ -501,17 +507,24 @@ begin
     if (CompareText(RemoveQuotes(ActionPath), ExecutablePath) <> 0) or
         (Trim(ActionArguments) <> '') then
       Exit;
-
-    { /Change preserves the existing task's triggers, principal, and enabled state. }
-    if Exec(ExpandConstant('{sys}\schtasks.exe'),
-        '/Change /TN ' + AddQuotes('{#MyStartupTaskName}') +
-        ' /TR ' + AddQuotes('\"' + ExecutablePath + '\" --background'),
-        '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
-      Log('Migrated existing scheduled task to background launch.')
-    else
-      Log('Could not migrate startup task. Re-enable Start with Windows in Settings.');
   except
     Log('No migratable startup task: ' + GetExceptionMessage);
+    Exit;
+  end;
+
+  { Save the changed definition through the Task Scheduler API, not schtasks /Change.
+    schtasks asks for the run-as password on a hidden console, so setup waited forever.
+    Keeping the task's own principal and logon type preserves its triggers, account and
+    enabled state. If Task Scheduler refuses the update, the error is logged and setup
+    carries on. }
+  try
+    Action.Arguments := '--background';
+    Folder.RegisterTaskDefinition('{#MyStartupTaskName}', Definition, TaskSchedulerUpdate,
+      Unassigned, Unassigned, Definition.Principal.LogonType);
+    Log('Migrated existing scheduled task to background launch.');
+  except
+    Log('Could not migrate startup task. Re-enable Start with Windows in Settings. ' +
+      GetExceptionMessage);
   end;
 end;
 
