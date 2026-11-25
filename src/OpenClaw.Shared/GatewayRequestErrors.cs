@@ -11,7 +11,7 @@ public static class GatewayRequestErrors
 {
     private static readonly HashSet<string> AllowedCodes = new(StringComparer.Ordinal)
     {
-        "INVALID_REQUEST", "UNAVAILABLE", "FORBIDDEN", "UNAUTHORIZED", "NOT_LINKED", "NOT_PAIRED", "AGENT_TIMEOUT",
+        "INVALID_REQUEST", "METHOD_NOT_FOUND", "UNAVAILABLE", "FORBIDDEN", "UNAUTHORIZED", "NOT_LINKED", "NOT_PAIRED", "AGENT_TIMEOUT",
         Cron.CronProtocol.JobChangedCode, Cron.CronProtocol.JobNotFoundCode,
     };
 
@@ -20,7 +20,11 @@ public static class GatewayRequestErrors
         "AUTHENTICATED_PROFILE_UNAVAILABLE", "MISSING_SCOPE", TaskWorktreeSourceRequired,
         Cron.CronProtocol.JobChangedCode, Cron.CronProtocol.JobNotFoundCode,
         SessionFileNotFound, SessionFileExpired, SessionFileTooLarge,
+        SessionParticipationRequired,
     };
+
+    /// <summary>The caller is no longer allowed to read the session (Gateway <c>error.details.code</c>).</summary>
+    public const string SessionParticipationRequired = "SESSION_PARTICIPATION_REQUIRED";
 
     /// <summary><c>sessions.files.get</c> error kinds (Gateway <c>error.details.type</c>).</summary>
     public const string SessionFileNotFound = "session_file_not_found";

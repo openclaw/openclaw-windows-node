@@ -359,6 +359,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
         GatewayHostAccessLocalization.GetString = LocalizationHelper.GetString;
         SessionTitleFormatter.ConfigureLocalization(LocalizationHelper.GetString);
         GatewayHostAccessLocalization.Format = (key, args) => LocalizationHelper.Format(key, args);
+        OpenClaw.Connection.NativeGateway.NativeGatewayLocalization.GetString = LocalizationHelper.GetString;
 
         InitializeComponent();
         
@@ -591,6 +592,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     DedupeKey = "desktop-companion-failed",
                 });
             });
+        _desktopCompanion.SetMainWindowVisibility(_windowManager?.HasVisibleMainWindow == true);
         _desktopCompanion.Start();
     }
 
@@ -728,7 +730,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 if (!await OpenClaw.SetupEngine.GatewayPackageCleanup.InitializeAsync(
                     new OpenClaw.SetupEngine.CommandRunner(cleanupLogger),
                     AppIdentity.ResolveRoamingDataDirectory(), AppIdentity.ResolveSetupLocalDataDirectory(),
-                    preserve: error => NativeRestartAdmission.PromptPreserveGateways(error, AppIdentity.DisplayName)))
+                    preserve: error => NativeRestartAdmission.PromptPreserveGateways(error, AppIdentity.DisplayName),
+                    warning: message => Logger.Warn(message)))
                 {
                     Exit();
                     return;
@@ -806,6 +809,7 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                     () => _settings?.AutoStart ?? throw new InvalidOperationException("Settings are unavailable."),
                     AutoStartManager.ApplySetupPreferenceAsync, ct),
                 GetSettingsStore: () => SettingsStore,
+                MainWindowVisibilityChanged: visible => _desktopCompanion?.SetMainWindowVisibility(visible),
                 OpenSetupDashboard: async (completion, path, ct) =>
                 {
                     var launcher = CreateDashboardLauncher(() =>

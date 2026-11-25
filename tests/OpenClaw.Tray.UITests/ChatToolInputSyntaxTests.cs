@@ -184,7 +184,8 @@ public sealed class ChatToolInputSyntaxTests(UIThreadFixture ui)
             using var theme = new ChatThemeProofScope("Light");
             using var host = new ReactorHostControl { Width = 680 };
             var surface = new Border { Child = host, Width = 712, Padding = new Thickness(16) };
-            var text = string.Join("\n", Enumerable.Range(1, 100).Select(index => $"Literal line {index}"));
+            var text = string.Join("\n", Enumerable.Range(1, 12)
+                .Select(index => $"Literal line {index}: {new string('x', 160)}"));
             var entry = new ChatTimelineItem("continuity", ChatTimelineItemKind.ToolCall, toolName,
                 ToolName: toolName, ToolCallId: "call", ToolResult: ChatToolCallStatus.Success,
                 ToolOutput: text, ToolInputDetails: new("", text));

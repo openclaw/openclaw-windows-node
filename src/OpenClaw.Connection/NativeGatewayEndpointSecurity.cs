@@ -48,6 +48,11 @@ internal static class NativeGatewayEndpointSecurity
         {
             return Deny(ex.Provenance, ex.Provenance.Detail ?? ex.Message, ownedStartEnded: ex.DuringOwnedStart);
         }
+        catch (NativeGatewayEndpointUnverifiedException ex)
+        {
+            // The runtime keeps any start it requested here, so a retry only re-verifies the endpoint.
+            return new(false, GatewayErrorKind.Network, ex.Message, Retryable: ex.Transient);
+        }
         catch (NativeGatewayContractException ex)
         {
             return new(false, GatewayErrorKind.Network, ex.Message,

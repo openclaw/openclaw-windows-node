@@ -993,7 +993,21 @@ public abstract class WebSocketClientBase : IDisposable
     /// Sends only when the captured socket generation still owns the transport immediately before
     /// the write. Used for credential-bearing handshake frames.
     /// </summary>
+    protected enum GenerationBoundSendOutcome
+    {
+        NotSent,
+        Sent,
+        Unconfirmed
+    }
+
     protected virtual async Task<bool> SendRawAsync(
+        string message,
+        long expectedConnectionGeneration,
+        CancellationToken cancellationToken) =>
+        await SendRawWithOutcomeAsync(message, expectedConnectionGeneration, cancellationToken)
+            .ConfigureAwait(false) == GenerationBoundSendOutcome.Sent;
+
+    protected virtual async Task<GenerationBoundSendOutcome> SendRawWithOutcomeAsync(
         string message,
         long expectedConnectionGeneration,
         CancellationToken cancellationToken)
@@ -1008,11 +1022,11 @@ public abstract class WebSocketClientBase : IDisposable
         }
         catch (OperationCanceledException)
         {
-            return false;
+            return GenerationBoundSendOutcome.NotSent;
         }
         catch (ObjectDisposedException)
         {
-            return false;
+            return GenerationBoundSendOutcome.NotSent;
         }
 
         try
@@ -1021,36 +1035,46 @@ public abstract class WebSocketClientBase : IDisposable
             if (ws?.State != WebSocketState.Open ||
                 !IsCurrentConnection(ws, expectedConnectionGeneration))
             {
-                return false;
+                return GenerationBoundSendOutcome.NotSent;
             }
 
             var byteCount = Encoding.UTF8.GetByteCount(message);
             var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+            var sendStarted = false;
             try
             {
                 var written = Encoding.UTF8.GetBytes(message, buffer);
                 linkedCancellation.Token.ThrowIfCancellationRequested();
                 // A caller may leave the queue, but aborting a partial frame closes the shared socket.
+                sendStarted = true;
                 await ws.SendAsync(
                         buffer.AsMemory(0, written),
                         WebSocketMessageType.Text,
                         true,
                         transportCancellation)
                     .ConfigureAwait(false);
-                return IsCurrentConnection(ws, expectedConnectionGeneration);
+                return IsCurrentConnection(ws, expectedConnectionGeneration)
+                    ? GenerationBoundSendOutcome.Sent
+                    : GenerationBoundSendOutcome.Unconfirmed;
             }
             catch (OperationCanceledException)
             {
-                return false;
+                return sendStarted
+                    ? GenerationBoundSendOutcome.Unconfirmed
+                    : GenerationBoundSendOutcome.NotSent;
             }
             catch (ObjectDisposedException)
             {
-                return false;
+                return sendStarted
+                    ? GenerationBoundSendOutcome.Unconfirmed
+                    : GenerationBoundSendOutcome.NotSent;
             }
             catch (WebSocketException ex) when (ex.WebSocketErrorCode == WebSocketError.InvalidState)
             {
                 _logger.Warn($"WebSocket send failed (state changed): {ex.Message}");
-                return false;
+                return sendStarted
+                    ? GenerationBoundSendOutcome.Unconfirmed
+                    : GenerationBoundSendOutcome.NotSent;
             }
             finally
             {

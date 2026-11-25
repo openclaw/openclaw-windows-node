@@ -24,6 +24,8 @@
   <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Abrir notificações</value></data>
   <data name="DesktopCompanion_Open" xml:space="preserve"><value>Abrir OpenClaw</value></data>
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Tamanho da lagosta</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>Mostrar apenas quando as outras janelas do OpenClaw estiverem minimizadas</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>Ocultar enquanto a configuração ou a janela de chat/painel estiver visível.</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Redimensione a lagosta sem alterar o texto do chat ou das notificações.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Configurações da lagosta na área de trabalho</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Não foi possível exibir a lagosta. Desative e reative Lagosta na área de trabalho em Configurações para tentar novamente. Suas notificações continuam disponíveis no OpenClaw.</value></data>
@@ -2849,16 +2851,85 @@ Use uma destas opções:
     <value>Concluído</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>HISTÓRICO COMPACTADO</value>
+    <value>Contexto compactado</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} tokens · {2} economizados</value>
+    <value>{0} tokens economizados ({1}%)</value>
   </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>A transcrição compactada é preservada como um checkpoint. Abra os checkpoints da sessão para ramificar ou restaurar a partir dessa visão compactada.</value>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>Sistema</value>
   </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>Abrir checkpoints</value>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>Automação</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>Sistema · recuperação da automação</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>Falha na automação.</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>Sistema · Gateway reiniciado</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>Sistema · contexto injetado</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>Sistema · tarefa em segundo plano</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>Modelo alternativo: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>Retorno ao modelo selecionado: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>Motivo: {0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>Não foi possível concluir esta resposta</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} não aceitou as credenciais salvas</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} relata um problema de cobrança</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} vezes</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>Copiar erro</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>Detalhes do erro</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>Criada</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>Atualizada</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>Arquivada</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>Restaurada</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>Aprendido</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>Desfazer</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>Desfazendo…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>Desfeito</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>Não foi possível desfazer a alteração da habilidade. Tente novamente.</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>Nova sessão</value>
@@ -3263,6 +3334,12 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>A conexão caiu antes que o Gateway aceitasse esta mensagem.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Não foi possível confirmar se a mensagem foi enviada. Verifique a conversa antes de tentar novamente.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>Esta conversa está ocupada. Seu rascunho continua aqui; tente novamente quando ela estiver disponível.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Falha ao abortar</value>
   </data>
@@ -3273,7 +3350,7 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
     <value>O Assistant respondeu</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Conexão perdida: resposta interrompida.</value>
+    <value>Conexão perdida enquanto aguardava a resposta. Verifique a conversa antes de enviar a mensagem novamente.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Evento de linha do tempo do Gateway descartado</value>
@@ -4530,11 +4607,23 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>Abrir configuração inicial</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Limpeza automática indisponível</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Antes de desinstalar o OpenClaw, remova o Gateway WSL em Configurações &gt; Gateway local. Remova um Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante do Companion o utilizar.</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Limpeza do Gateway da Store indisponível</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Antes de desinstalar o OpenClaw, remova o Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante do Companion o utilizar.</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Limpeza do Gateway</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Desinstalar o OpenClaw nas Configurações do Windows remove automaticamente os Gateways gerenciados. Use Remover Gateway Local abaixo para remover um Gateway e manter o aplicativo.</value>
+    <value>Quando a política permitir, desinstalar o OpenClaw nas Configurações do Windows removerá automaticamente os Gateways gerenciados. Se a política do PowerShell bloquear a limpeza, remova o Gateway WSL aqui ou o Gateway da Store em Configurações do Windows &gt; Aplicativos somente se nenhuma outra variante instalada do Companion o utilizar, antes de desinstalar; caso contrário, um Gateway poderá permanecer.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Remove a distro WSL (OpenClawGateway), sua imagem de disco, a entrada de inicialização automática, e apaga as credenciais do Gateway. Seu token MCP é preservado. A integração será reiniciada.</value>
@@ -5787,6 +5876,12 @@ Abrir Canais no painel web.</value>
   <data name="GatewayHostAccess_NoWslOrSshDisabled" xml:space="preserve">
     <value>This gateway was not created with WSL and does not have an SSH tunnel.</value>
   </data>
+  <data name="NativeGateway_UnattestedListeners" xml:space="preserve">
+    <value>O Gateway está em execução em mais de uma porta, mas não atestou quais listeners pertencem à sua sessão isolada. Por isso, o Companion não enviou as credenciais. Recursos do Gateway, como aplicativos MCP ou o proxy local de um plugin, abrem portas adicionais. Atualize o MSIX do Gateway e tente novamente. A atestação de listeners também requer o Windows 11 26100.4770 ou posterior.</value>
+  </data>
+  <data name="NativeGateway_EndpointProbeUnanswered_Format" xml:space="preserve">
+    <value>O Gateway está em execução, mas o listener na porta {0} não respondeu a tempo à verificação do protocolo do Gateway feita pelo Companion. Por isso, o Companion não enviou as credenciais. Tente novamente em instantes.</value>
+  </data>
   <data name="GatewayHostAccess_OpenSshTerminalLabel" xml:space="preserve">
     <value>Open SSH terminal</value>
   </data>
@@ -6354,7 +6449,6 @@ Abrir Canais no painel web.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 mensagem na fila</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copiado</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Falha ao copiar</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Texto da mensagem</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Esforço</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Mais rápido</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Mais detalhado</value></data>
@@ -7321,6 +7415,19 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Esta sessão não está mais vazia, então a seleção de local pendente foi cancelada. Verifique a sessão e envie novamente para continuar no local atual.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>O Gateway não confirmou o modelo ou as opções de raciocínio selecionadas. Verifique-as e tente novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>O Gateway não conseguiu criar o novo chat. Verifique a conexão e tente novamente.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>O Gateway pode ter criado este chat, mas a resposta não foi confirmada. Por isso, este rascunho não pode ser enviado. Abra o chat na lista de sessões, se ele aparecer, ou inicie um novo chat.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>A seleção de local não está disponível. Este chat usará o local padrão do Gateway.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Envie uma mensagem para criar este chat antes de usar comandos de ciclo de vida.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Atualizar perguntas</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Pergunta respondida</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Pergunta cancelada</value></data>
@@ -7805,6 +7912,9 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>Não foi possível carregar a saída completa.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>A saída completa requer a identidade do resultado salvo e uma conta atual verificada.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Mostrar saída completa</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>Mais saída disponível</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} linhas adicionais</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} linha adicional</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Tentar novamente</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Cancelar</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Novas mensagens. Ir para as mais recentes</value></data>
@@ -9034,6 +9144,54 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   </data>
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>Os widgets {0} ainda não estão disponíveis no Windows.</value>
+  </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>Progresso da sessão</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>Você não tem mais acesso ao progresso desta sessão.</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>Nenhum progresso ainda</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>Os detalhes aparecerão aqui quando a sessão os informar.</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>Não foi possível atualizar o progresso.</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>Carregando progresso</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>Mostrando o último progresso recebido. A atualização mais recente falhou.</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>Concluído</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>Em andamento</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>Pendente</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>Etapa {0}: {1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>{0} de {1} etapas concluídas</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>Progresso indisponível</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>Esta conexão não pode ler os dados de progresso do Gateway.</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>Atualizado em {0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>Horário de atualização indisponível</value>
   </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>Este relatório tem dados inválidos.</value>

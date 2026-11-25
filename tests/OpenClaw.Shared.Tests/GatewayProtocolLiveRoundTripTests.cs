@@ -170,7 +170,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         Assert.False(await client.DismissTaskSuggestionAsync("task_1", epoch));
         Assert.False(server.HasFrame("chat.send"));
         Assert.False(server.HasFrame("sessions.create"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "local"), epoch + 1));
+        await Assert.ThrowsAsync<GatewayRequestNotSentException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "local"), epoch + 1));
         Assert.False(server.HasFrame("taskSuggestions.accept") && server.AllFrames.Count(frame => frame.Contains("taskSuggestions.accept", StringComparison.Ordinal)) > 1);
     }
 
@@ -322,7 +322,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
             Assert.Null(status);
             Assert.False(server.HasFrame("update.status"));
 
-            var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            var exception = await Assert.ThrowsAsync<GatewayRequestNotSentException>(
                 () => client.SendWizardRequestAsync("update.status", new { }, timeoutMs: 1_000));
             Assert.Contains("Gateway handshake has not completed", exception.Message);
             Assert.False(server.HasFrame("update.status"));
@@ -389,7 +389,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         _output.WriteLine($"[trace] {method}: hello-ok accepted on same socket; IsSupported=true; exactly one request/response completed");
 
         await client.DisconnectAsync();
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => read());
+        var exception = await Assert.ThrowsAsync<GatewayRequestNotSentException>(() => read());
         Assert.Equal("Gateway connection is not open", exception.Message);
         _output.WriteLine($"[trace] {method}: disconnected read still throws; only handshake-pending reads return unavailable");
     }

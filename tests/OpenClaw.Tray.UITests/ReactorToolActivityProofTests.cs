@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.UI.Reactor;
 using Microsoft.UI.Reactor.Core;
 using Microsoft.UI.Reactor.Animation;
@@ -24,10 +25,498 @@ public sealed class ReactorToolActivityProofTests
 {
     private const string DocumentGlyph = "\uE8A5";
     private const string ListGlyph = "\uE8FD";
+    private const string ChevronRightGlyph = "\uE76C";
+    private const string ChevronDownGlyph = "\uE70D";
+
+    private static int ReadElapsedSeconds(string text)
+    {
+        var separator = text.LastIndexOf('\u00b7');
+        Assert.True(separator >= 0 && separator < text.Length - 1, $"Elapsed time is missing from '{text}'.");
+        var totalSeconds = 0;
+        foreach (var part in text[(separator + 1)..].Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var value = int.Parse(part.AsSpan(0, part.Length - 1), CultureInfo.InvariantCulture);
+            totalSeconds += part[^1] switch
+            {
+                'h' => value * 3600,
+                'm' => value * 60,
+                's' => value,
+                _ => throw new InvalidOperationException($"Unexpected elapsed-time unit in '{part}'."),
+            };
+        }
+        return totalSeconds;
+    }
+
+    private static int WorkDividerCount(DependencyObject root) =>
+        FindLogical<Border>(root).Count(border => border.Height == 1);
+
+    // One header line, outside the rounded card whose corners would otherwise clip its ends.
+    private static void AssertWorkDividerOutsideCard(DependencyObject root)
+    {
+        var divider = Assert.Single(FindLogical<Border>(root), border => border.Height == 1);
+        Assert.Contains(divider, Assert.IsType<StackPanel>(root).Children);
+    }
 
     private readonly UIThreadFixture _ui;
 
     public ReactorToolActivityProofTests(UIThreadFixture ui) => _ui = ui;
+
+    [Theory]
+    [InlineData(false, 43, true, "exec", "+31 more lines", false)]
+    [InlineData(false, 13, true, "read_file", "+1 more line", false)]
+    [InlineData(true, 14, true, "exec", "More output available", false)]
+    [InlineData(false, 12, true, "exec", null, false)]
+    [InlineData(false, 43, false, "exec", null, false)]
+    [InlineData(true, 14, false, "exec", "Full output requires the saved result identity and a verified current account.", false)]
+    [InlineData(false, 43, true, "exec", null, true)]
+    public async Task ToolPreview_ShowsPassiveLineCountInsideCardAndKeepsTopPanelAction(
+        bool truncated, int lines, bool canOpen, string tool, string? label, bool whitespace)
+    {
+        await _ui.RunOnUIAsync(() =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("preview", tool,
+                whitespace ? new string('\n', lines) :
+                    string.Join("\n", Enumerable.Range(1, lines).Select(index => index == 1 ? "Notes" : $"line {index}")),
+                ChatToolCallStatus.Success) with
+            {
+                ToolResultReference = new("result", truncated, SessionId: "saved", CallId: "call"),
+            };
+            ChatToolDetailRequest? opened = null;
+            var reads = 0;
+            var profile = new ChatToolDetailsProfileState(1, true);
+            var context = BuildTimeline([entry], 1) with
+            {
+                OnOpenToolDetails = canOpen ? request => opened = request : null,
+                ToolDetailsProfileState = profile,
+                ReadToolDetailsProfileState = () => profile,
+                ToolOutputConnectionEpoch = 1,
+                LoadToolOutputAsync = (_, _) =>
+                {
+                    reads++;
+                    return Task.FromResult(new ChatToolOutputResult(ChatToolOutputStatus.Loaded, "full"));
+                },
+            };
+            var element = ToolCallCardRenderer.BuildStandalone(context, entry);
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            try
+            {
+                Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
+                var outputs = FindLogical<RichTextBlock>(root!).ToArray();
+                if (whitespace)
+                {
+                    Assert.Empty(outputs);
+                    Assert.DoesNotContain(FindLogical<TextBlock>(root!), text =>
+                        AutomationProperties.GetAutomationId(text) == "ChatToolMoreLines_preview");
+                    return;
+                }
+                var output = Assert.Single(outputs);
+                Assert.Contains("line 12", CollectText(output));
+                if (canOpen)
+                    Assert.DoesNotContain("line 13", CollectText(output));
+                else
+                    Assert.Contains($"line {lines}", CollectText(output));
+                var card = Assert.Single(FindLogical<Border>(root!), border =>
+                    AutomationProperties.GetAutomationId(border) == "ChatToolDetailsCard_preview");
+                var markers = FindLogical<TextBlock>(card).Where(text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatToolMoreLines_preview").ToArray();
+                if (label is null)
+                    Assert.Empty(markers);
+                else
+                {
+                    var more = Assert.Single(markers);
+                    Assert.Equal(label, more.Text);
+                    var sections = Assert.Single(FindLogical<StackPanel>(card),
+                        stack => stack.Children.Contains(more));
+                    var index = sections.Children.IndexOf(more);
+                    Assert.True(index > 0);
+                    Assert.Same(output, Assert.Single(FindLogical<RichTextBlock>(sections.Children[index - 1])));
+                    Assert.DoesNotContain(FindLogical<Button>(root!), button =>
+                        AutomationProperties.GetName(button) == label);
+                }
+                Assert.Null(opened);
+                var actions = FindLogical<Button>(root!).Where(button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatToolDetails_preview").ToArray();
+                if (canOpen)
+                {
+                    var action = Assert.Single(actions);
+                    var invoke = Assert.IsAssignableFrom<Microsoft.UI.Xaml.Automation.Provider.IInvokeProvider>(
+                        new Microsoft.UI.Xaml.Automation.Peers.ButtonAutomationPeer(action)
+                            .GetPattern(Microsoft.UI.Xaml.Automation.Peers.PatternInterface.Invoke));
+                    invoke.Invoke();
+                    Assert.Equal(ChatToolDetailRequest.Capture(
+                        context.SessionId!, context.TimelineGeneration, context.HistoryRevision, entry), opened);
+                }
+                else
+                    Assert.DoesNotContain(actions, action => action.Visibility == Visibility.Visible);
+                Assert.Equal(0, reads);
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolPanel_HiddenReaderDefersRevalidationAndCancelsPendingRead()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("active-reader", "exec", "preview", ChatToolCallStatus.Success) with
+            {
+                ToolResultReference = new("result", true, SessionId: "saved", CallId: "call"),
+            };
+            var profile = new ChatToolDetailsProfileState(1, true);
+            var reads = 0;
+            CancellationToken firstRead = default;
+            var delayed = new TaskCompletionSource<ChatToolOutputResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task<ChatToolOutputResult> Load(ChatToolOutputRequest request, CancellationToken token)
+            {
+                reads++;
+                if (reads != 1)
+                    return Task.FromResult(new ChatToolOutputResult(ChatToolOutputStatus.Loaded, "full output"));
+                firstRead = token;
+                return delayed.Task;
+            }
+            Element Render(bool active) => ToolCallCardRenderer.BuildPanelDetails(BuildTimeline([entry], 1) with
+            {
+                ToolDetailsProfileState = profile,
+                ReadToolDetailsProfileState = () => profile,
+                ToolOutputConnectionEpoch = 1,
+                LoadToolOutputAsync = Load,
+            }, entry, active);
+            var element = Render(false);
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            void Update(bool active)
+            {
+                var next = Render(active);
+                root = host.Reconciler.Reconcile(element, next, root!, static () => { });
+                element = next;
+                host.Content = root;
+            }
+            try
+            {
+                Assert.Equal(0, reads);
+                Update(true);
+                await WaitForRenderedConditionAsync(() => reads == 1, "visible Details starts the saved-result read");
+                Update(false);
+                Assert.True(firstRead.IsCancellationRequested);
+                profile = new(2, true);
+                Update(false);
+                delayed.SetResult(new(ChatToolOutputStatus.Loaded, "retired output"));
+                await _ui.YieldToRenderAsync();
+                Assert.Equal(1, reads);
+                Assert.DoesNotContain(FindLogical<RichTextBlock>(root!), text => CollectText(text).Contains("retired output"));
+                Update(true);
+                await WaitForRenderedConditionAsync(() => reads == 2, "reopened Details reads under the new profile revision");
+            }
+            finally
+            {
+                host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task DisclosureCloseTimer_RunsOnUiThreadAndCanBeCancelled()
+    {
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var timers = new ChatDisclosureCloseTimerSet();
+            var cancelledCallbackRan = false;
+            var callbackRan = false;
+            var callbackRanOnUiThread = false;
+            var delay = TimeSpan.FromMilliseconds(ChatMotion.DisclosureCloseHoldMilliseconds);
+
+            try
+            {
+                timers.Schedule("cancelled", delay, () => cancelledCallbackRan = true);
+                timers.Cancel("cancelled");
+                timers.Schedule("active", delay, () =>
+                {
+                    callbackRanOnUiThread = _ui.Dispatcher.HasThreadAccess;
+                    callbackRan = true;
+                });
+                await WaitForRenderedConditionAsync(() => callbackRan, "the disclosure close timer fires");
+
+                Assert.True(callbackRanOnUiThread);
+                Assert.False(cancelledCallbackRan);
+            }
+            finally
+            {
+                timers.CancelAll();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolActivityIdentityChange_ClearsPendingDisclosureClose()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: false);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var timeline = BuildTimeline(
+                [
+                    Tool("tool-1", "read_file", "first output", ChatToolCallStatus.Success),
+                    Tool("tool-2", "read_file", "second output", ChatToolCallStatus.Success),
+                ],
+                generation: 1) with { SessionId = "agent:first" };
+            var activity = Assert.Single(ChatToolActivityPresentation.Project(
+                timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+            var expansion = new ChatToolActivityExpansionState();
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => Component<ToolActivityCard, ToolActivityCardProps>(
+                new(timeline, activity, expansion, entry => TextBlock(entry.Text)))
+                .WithKey("reused-activity");
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            try
+            {
+                Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
+                await DrainReactorQueueAsync();
+
+                var activityDisclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
+                Assert.Contains(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+
+                activityDisclosure.IsExpanded = false;
+                reconcile();
+                Assert.Contains(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+
+                timeline = timeline with { SessionId = "agent:second", TimelineGeneration = 2 };
+                activity = Assert.Single(ChatToolActivityPresentation.Project(
+                    timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+                reconcile();
+
+                Assert.DoesNotContain(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolResultCardIdentityChange_ResetsDisclosureStateWhenEntryIsReused()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: false);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("reused-tool", "read_file", "first output", ChatToolCallStatus.Success);
+            var timeline = BuildTimeline([entry], generation: 1) with
+            {
+                SessionId = "agent:first",
+                ToolExpansionState = new ChatToolActivityExpansionState(),
+            };
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => ToolCallCardRenderer.BuildStandalone(timeline, entry);
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            bool OutputDetailsVisible()
+            {
+                var detailsHost = FindLogical<ChatMotionHost>(root!).FirstOrDefault(motionHost =>
+                    FindLogical<RichTextBlock>(motionHost).Any(text => CollectText(text) == "first output"));
+                return detailsHost?.Visibility == Visibility.Visible;
+            }
+            try
+            {
+                var disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reused_tool");
+                disclosure.IsExpanded = true;
+                await WaitForRenderedConditionAsync(OutputDetailsVisible, "standalone tool details open");
+
+                disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reused_tool");
+                disclosure.IsExpanded = false;
+                reconcile();
+                Assert.True(OutputDetailsVisible());
+
+                timeline = timeline with { SessionId = "agent:second", TimelineGeneration = 2 };
+                reconcile();
+                timeline = timeline with { SessionId = "agent:first", TimelineGeneration = 1 };
+                reconcile();
+
+                Assert.False(OutputDetailsVisible());
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolResultCardClose_HidesImmediatelyWhenReducedMotionIsOverriddenOn()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var entry = Tool("reduced-motion-tool", "read_file", "tool output", ChatToolCallStatus.Success);
+            var timeline = BuildTimeline([entry], generation: 1) with
+            {
+                ToolExpansionState = new ChatToolActivityExpansionState(),
+            };
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => ToolCallCardRenderer.BuildStandalone(timeline, entry);
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            bool OutputDetailsVisible() =>
+                FindLogical<ChatMotionHost>(root!).FirstOrDefault(motionHost =>
+                    FindLogical<RichTextBlock>(motionHost).Any(text => CollectText(text) == "tool output"))
+                    ?.Visibility == Visibility.Visible;
+            try
+            {
+                var disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reduced_motion_tool");
+                disclosure.IsExpanded = true;
+                await WaitForRenderedConditionAsync(OutputDetailsVisible, "tool details open");
+
+                disclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolCall_reduced_motion_tool");
+                disclosure.IsExpanded = false;
+                reconcile();
+
+                Assert.False(OutputDetailsVisible());
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
+
+    [Fact]
+    public async Task ToolActivityDisclosure_OpensAndClosesWithoutMotionWhenReducedMotionIsOverriddenOn()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true, reducedMotion: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var theme = new ChatThemeProofScope("Light");
+            using var host = new ReactorHostControl();
+            var timeline = BuildTimeline(
+                [
+                    Tool("tool-1", "read_file", "first output", ChatToolCallStatus.Success),
+                    Tool("tool-2", "edit_file", "second output", ChatToolCallStatus.Success),
+                ],
+                generation: 1) with { SessionId = "agent:activity" };
+            var activity = Assert.Single(ChatToolActivityPresentation.Project(
+                timeline.Entries, timeline.SessionId, timeline.TimelineGeneration), row => row.IsActivityGroup);
+            var expansion = new ChatToolActivityExpansionState();
+            var disposing = false;
+            UIElement? root = null;
+            Element? element = null;
+            Action? reconcile = null;
+            Element CreateElement() => Component<ToolActivityCard, ToolActivityCardProps>(
+                new(timeline, activity, expansion, entry => TextBlock(entry.Text)))
+                .WithKey("reduced-motion-activity");
+            Action requestRender = () => _ui.Dispatcher.TryEnqueue(() => reconcile?.Invoke());
+            reconcile = () =>
+            {
+                if (disposing)
+                    return;
+                var next = CreateElement();
+                root = host.Reconciler.Reconcile(element!, next, root!, requestRender);
+                element = next;
+                host.Content = root;
+            };
+            element = CreateElement();
+            root = host.Reconciler.Mount(element, requestRender);
+            host.Content = root;
+            try
+            {
+                Assert.Single(FindLogical<Expander>(root!)).IsExpanded = true;
+                reconcile();
+                await WaitForRenderedConditionAsync(() => FindLogical<Expander>(root!).Any(expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal)),
+                    "nested tool rows appear");
+                Assert.DoesNotContain(FindLogical<ChatMotionHost>(root!), motionHost => motionHost.Height == 0);
+
+                var activityDisclosure = Assert.Single(FindLogical<Expander>(root!),
+                    expander => AutomationProperties.GetAutomationId(expander) == "ChatToolActivity_tool_1");
+                activityDisclosure.IsExpanded = false;
+                reconcile();
+
+                Assert.DoesNotContain(FindLogical<Expander>(root!), expander =>
+                    AutomationProperties.GetAutomationId(expander).StartsWith("ChatToolCall_", StringComparison.Ordinal));
+            }
+            finally
+            {
+                disposing = true;
+                host.Reconciler.Reconcile(element!, Empty(), root!, static () => { });
+                host.Content = null;
+            }
+        });
+    }
 
     [Fact]
     public async Task ToolRow_RecyclingBetweenActivityAndStandaloneDoesNotReuseIncompatibleProps()
@@ -107,8 +596,9 @@ public sealed class ReactorToolActivityProofTests
         {
             using var theme = new ChatThemeProofScope("Light");
             using var host = new ReactorHostControl();
+            var startedAt = DateTimeOffset.UtcNow.AddSeconds(-65);
             host.Mount(_ => Component<ReactorRunProgress, ReactorRunProgressProps>(new(new(
-                DateTimeOffset.UtcNow.AddSeconds(-65), null, "Working", true, false, OutputTokens: 12345))));
+                startedAt, null, "Working", true, false, OutputTokens: 12345))));
             _ui.Container.Children.Add(host);
             try
             {
@@ -123,11 +613,25 @@ public sealed class ReactorToolActivityProofTests
                 Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", text.Text);
                 Assert.Contains("1m", text.Text);
                 Assert.IsNotType<LinearGradientBrush>(text.Foreground);
-                var initial = text.Text;
-                await WaitForRenderedConditionAsync(() => text.Text != initial, "the running clock ticks");
-                Assert.Equal(1, row.Opacity);
-                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", text.Text);
-                Assert.IsNotType<LinearGradientBrush>(text.Foreground);
+                var initialElapsedSeconds = ReadElapsedSeconds(text.Text);
+                await WaitForRenderedConditionAsync(
+                    () => FindLogical<TextBlock>(host).Any(block =>
+                        AutomationProperties.GetAutomationId(block) == "ChatRunProgressText" &&
+                        ReadElapsedSeconds(block.Text) > initialElapsedSeconds),
+                    "the running clock advances",
+                    () => string.Join(" | ", FindLogical<TextBlock>(host)
+                        .Where(block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressText")
+                        .Select(block => block.Text)));
+                var updatedText = Assert.Single(FindLogical<TextBlock>(host),
+                    block => AutomationProperties.GetAutomationId(block) == "ChatRunProgressText");
+                var updatedRow = Assert.Single(FindLogical<Grid>(host),
+                    grid => AutomationProperties.GetAutomationId(grid) == "ChatRunProgress");
+                Assert.Same(text, updatedText);
+                Assert.Same(row, updatedRow);
+                Assert.Equal(1, updatedRow.Opacity);
+                Assert.StartsWith(" \u00b7 12,345 output tokens \u00b7 ", updatedText.Text);
+                Assert.True(ReadElapsedSeconds(updatedText.Text) > initialElapsedSeconds);
+                Assert.IsNotType<LinearGradientBrush>(updatedText.Foreground);
             }
             finally
             {
@@ -364,6 +868,161 @@ public sealed class ReactorToolActivityProofTests
     }
 
     [Fact]
+    public async Task ChatMotion_UnmountRestoresNeutralStateBeforeAControlCanBeReused()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            using var host = new ReactorHostControl();
+            var element = ChatMotion.Host(TextBlock("motion"))
+                .EnterOnMount(8, 180, fade: true)
+                .DeferredRevealTransitions(180)
+                .Set(border => border.Scale = new System.Numerics.Vector3(.9f, .9f, 1));
+            var root = host.Reconciler.Mount(element, static () => { });
+            host.Content = root;
+            await DrainReactorQueueAsync();
+            // Motion lives on a dedicated host type that Reactor's layout-control pool never recycles.
+            var border = Assert.IsType<ChatMotionHost>(root);
+            ChatMotion.RotateDisclosure(border, "\uE76C");
+            ChatMotion.RotateDisclosure(border, "\uE70D");
+
+            host.Reconciler.Reconcile(element, Empty(), root!, static () => { });
+            host.Content = null;
+
+            // Pooled controls must not carry a rise, fade, turn, scale or implicit transition to another row.
+            Assert.Equal(1, border.Opacity);
+            Assert.Equal(System.Numerics.Vector3.Zero, border.Translation);
+            Assert.Equal(System.Numerics.Vector3.One, border.Scale);
+            Assert.Equal(0, border.Rotation);
+            Assert.Null(border.OpacityTransition);
+            Assert.Null(border.ScaleTransition);
+            Assert.Null(border.TranslationTransition);
+            Assert.Null(border.RotationTransition);
+        });
+    }
+
+    [Fact]
+    public void TranscriptReflow_OnlyMovesRowsThatWereAlreadyRealized()
+    {
+        (double Now, double? Was)[] rows = [(100, 160), (-20, 40), (240, null), (-90, null)];
+        Assert.Equal(new float?[] { 60, 60, null, null }, ChatTranscriptReflow.PlanOffsets(rows));
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_ReaderInputStopsAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow();
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                reflow.CancelForReaderInput();
+                Assert.Equal(System.Numerics.Vector3.Zero, row.Translation);
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_ExpiredCaptureDoesNotResetAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            long now = 0;
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow(() => now);
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                now = 601;
+                ChatTranscriptReflow.CaptureAll();
+                Assert.NotEqual(System.Numerics.Vector3.Zero, row.Translation);
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+        });
+    }
+
+    [Fact]
+    public async Task TranscriptReflow_DisablingAnimationsStopsAnInFlightGlide()
+    {
+        await _ui.ResetContainerAsync();
+        using var motion = new ChatMotionScope(enabled: true);
+        await _ui.RunOnUIAsync(async () =>
+        {
+            var panel = new StackPanel();
+            var row = new ChatMotionHost { Content = new Border { Height = 40 } };
+            panel.Children.Add(new Border { Child = row });
+            var root = new Grid { Height = 400 };
+            root.Children.Add(panel);
+            _ui.Container.Children.Add(root);
+            var reflow = new ChatTranscriptReflow();
+            try
+            {
+                await WaitForRenderedConditionAsync(() => row.IsLoaded, "the row loads");
+                root.UpdateLayout();
+                reflow.Attach(root);
+                reflow.Track(row, "row");
+                ChatTranscriptReflow.CaptureAll();
+                panel.Children.Insert(0, new Border { Height = 100 });
+                root.UpdateLayout();
+
+                await WaitForRenderedConditionAsync(() => Math.Abs(row.Translation.Y) > 10, "the reader reflow starts");
+                ChatMotion.AnimationsOverride = false;
+                await WaitForRenderedConditionAsync(
+                    () => row.Translation == System.Numerics.Vector3.Zero,
+                    "the disabled animation resets the row");
+            }
+            finally
+            {
+                reflow.Detach();
+                _ui.Container.Children.Remove(root);
+            }
+            Assert.Null(row.TranslationTransition);
+        });
+    }
+
+    [Fact]
     public async Task CompletedWork_ReusesNativeDisclosureAndToolDetailsWithoutHidingAnswer()
     {
         await _ui.ResetContainerAsync();
@@ -398,18 +1057,38 @@ public sealed class ReactorToolActivityProofTests
                 Assert.Contains("Worked", AutomationProperties.GetName(disclosure));
                 Assert.Empty(FindLogical<RichTextBlock>(root!));
                 var header = Assert.IsAssignableFrom<DependencyObject>(disclosure.Header);
-                Assert.Contains(FindLogical<TextBlock>(header),
-                    text => text.Text == ListGlyph);
-                Assert.Contains(FindLogical<TextBlock>(header), text => text.Text == "Worked");
+                // Like the web work group: no leading glyph, the label first, and a line under the header.
+                // The trailing chevron keeps its slot while hidden, so showing it never re-trims the label.
+                var restTexts = FindLogical<TextBlock>(header).ToList();
+                Assert.Equal(["Worked", ChevronRightGlyph], restTexts.Select(text => text.Text));
+                var chevron = restTexts[1];
+                Assert.Equal(0, chevron.Opacity);
+                Assert.Equal(0, Microsoft.UI.Xaml.Controls.Grid.GetColumn(restTexts[0]));
+                Assert.Equal(1, Microsoft.UI.Xaml.Controls.Grid.GetColumn(chevron));
+                AssertWorkDividerOutsideCard(root!);
+                var hovered = ToolCallCardRenderer.BuildActivityCore(timeline, work, false, _ => { },
+                    entry => TextBlock(entry.Text), showChevron: true);
+                root = host.Reconciler.Reconcile(element, hovered, root!, static () => { });
+                element = hovered;
+                host.Content = root;
+                Assert.Same(disclosure, Assert.Single(FindLogical<Expander>(root!)));
+                var hoverTexts = FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)).ToList();
+                Assert.Equal(["Worked", ChevronRightGlyph], hoverTexts.Select(text => text.Text));
+                Assert.Same(chevron, hoverTexts[1]);
+                Assert.Equal(1, chevron.Opacity);
                 var expanded = ToolCallCardRenderer.BuildActivityCore(timeline, work, true, _ => { },
-                    entry => TextBlock(entry.Text));
+                    entry => TextBlock(entry.Text), showChevron: true);
                 root = host.Reconciler.Reconcile(element, expanded, root!, static () => { });
                 element = expanded;
                 host.Content = root;
                 Assert.Contains(disclosure, FindLogical<Expander>(root!));
                 Assert.True(disclosure.IsExpanded);
-                Assert.Contains(FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)),
-                    text => text.Text == "Worked · 1 tool call");
+                Assert.Equal(["Worked · 1 tool call", ChevronDownGlyph],
+                    FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)).Select(text => text.Text));
+                // The body's separator replaces the header line, so the open disclosure still shows one line.
+                Assert.Equal(1, WorkDividerCount(root!));
+                Assert.DoesNotContain(FindLogical<Border>(root!).Single(border => border.Height == 1),
+                    Assert.IsType<StackPanel>(root).Children);
                 Assert.Contains(FindLogical<TextBlock>(root!), text => text.Text == "Checking");
                 // A lone tool keeps its own step row, as the web Worked body renders single-call groups.
                 // Its output is built only once the row opens.
@@ -418,6 +1097,19 @@ public sealed class ReactorToolActivityProofTests
                 Assert.Equal("ChatToolCall_read", AutomationProperties.GetAutomationId(row));
                 Assert.Empty(FindLogical<RichTextBlock>(root!));
                 Assert.DoesNotContain(FindLogical<TextBlock>(root!), text => text.Text == "Preserved answer");
+
+                // Closing again reuses the same disclosure, so its keyboard focus survives, and the header line returns.
+                var collapsed = ToolCallCardRenderer.BuildActivityCore(timeline, work, false, _ => { },
+                    entry => TextBlock(entry.Text));
+                root = host.Reconciler.Reconcile(element, collapsed, root!, static () => { });
+                element = collapsed;
+                host.Content = root;
+                Assert.Same(disclosure, Assert.Single(FindLogical<Expander>(root!)));
+                Assert.False(disclosure.IsExpanded);
+                Assert.Same(chevron, FindLogical<TextBlock>(Assert.IsAssignableFrom<DependencyObject>(disclosure.Header)).Last());
+                Assert.Equal(ChevronRightGlyph, chevron.Text);
+                Assert.Equal(0, chevron.Opacity);
+                AssertWorkDividerOutsideCard(root!);
             }
             finally
             {
@@ -534,9 +1226,10 @@ public sealed class ReactorToolActivityProofTests
                     AutomationProperties.GetName(expander) == "Tool input"));
                 Assert.Equal(hasOwnDetails, FindLogical<Button>(root!).Any(button =>
                     AutomationProperties.GetAutomationId(button) == "ChatToolDetails_wrapper"));
-                if (truncated)
-                    Assert.Contains(FindLogical<TextBlock>(root!), text =>
-                        AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
+                Assert.DoesNotContain(FindLogical<TextBlock>(root!), text =>
+                    AutomationProperties.GetAutomationId(text) == "ChatToolOutputRecoveryStatus");
+                Assert.DoesNotContain(FindLogical<Button>(root!), button =>
+                    AutomationProperties.GetAutomationId(button) == "ChatToolOutputLoad");
                 if (input)
                     Assert.Contains(FindLogical<RichTextBlock>(root!), text => CollectText(text) == "Inspect the file");
                 if (output.Length > 0)

@@ -645,6 +645,61 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     [Theory]
     [InlineData(320)]
     [InlineData(800)]
+    public async Task LocalDraft_ShowsDefaultLocationAndCreatesOnlyOnSend(int width)
+    {
+        var gateway = new PlacementProofGateway();
+        var draft = ChatDraft.Create("main");
+        await WithChatAsync(width, async (surface, _, session, provider) =>
+        {
+            await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession(draft.Key)));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is { } environment &&
+                    AutomationProperties.GetName(environment).Contains("Gateway machine", StringComparison.Ordinal) &&
+                    FindControlOrNull<Button>(surface, "ChatWorkspacePicker") is { } workspace &&
+                    AutomationProperties.GetName(workspace).Contains("workspace", StringComparison.Ordinal),
+                "new session location defaults"));
+            Assert.Empty(provider.SentMessages);
+            Assert.Equal(0, gateway.Preparations);
+            await CaptureAsync(surface, $"ChatNewSessionDefaults-{width}");
+            await ui.RunOnUIAsync(async () => Assert.True(await session.Controller.SendAsync()));
+            Assert.Equal(1, gateway.Preparations);
+            Assert.Equal("local:gateway", gateway.Selection?.Environment.Id);
+            Assert.Equal("/gateway/workspace", gateway.Selection?.Workspace.Path);
+            Assert.Equal((draft.Key, Draft), Assert.Single(provider.SentMessages));
+        }, "empty", placementGateway: gateway,
+            onMounted: host => host.RegisterDraft(draft));
+    }
+
+    [Fact]
+    public async Task DraftSendStatus_IsRenderedAsPoliteLiveRegion()
+    {
+        const string message = "The Gateway send status is unknown.";
+        var draft = ChatDraft.Create("main");
+        await WithChatAsync(800, async (surface, _, session, _) =>
+        {
+            await ui.RunOnUIAsync(() => Assert.True(session.Controller.TrySelectSession(draft.Key)));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControlOrNull<Button>(surface, "ChatEnvironmentPicker") is not null,
+                "draft location row"));
+            await ui.RunOnUIAsync(() => session.Placement!.ReportDraftSendStatus(draft.Key, message));
+
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => FindControlOrNull<TextBlock>(surface, "ChatDraftSendStatus")?.Text == message,
+                "visible draft send status",
+                () => FindControlOrNull<TextBlock>(surface, "ChatDraftSendStatus")?.Text ?? "absent"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var status = FindControl<TextBlock>(surface, "ChatDraftSendStatus");
+                Assert.Equal(message, status.Text);
+                Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(status));
+            });
+        }, "empty", placementGateway: new PlacementProofGateway(),
+            onMounted: host => host.RegisterDraft(draft));
+    }
+
+    [Theory]
+    [InlineData(320)]
+    [InlineData(800)]
     public async Task PlacementPickers_SearchSelectAndPrepareOnlyOnSend(int width)
     {
         var gateway = new PlacementProofGateway();
@@ -726,9 +781,12 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     [Fact]
     public async Task PlacementInterruptedNavigation_RestoresChoiceAndVisibleUncertainty()
     {
+        // A confirmed preparation is committed; only a lost acknowledgment leaves the location uncertain.
         var gateway = new PlacementProofGateway
         {
-            PrepareCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously)
+            PrepareCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            PrepareFailure = new ChatPlacementOutcomeUncertainException(
+                new TimeoutException("The Gateway acknowledgment was lost."))
         };
         await WithChatAsync(800, async (surface, _, session, provider) =>
         {
@@ -1702,6 +1760,67 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Theory]
+    [InlineData(320, "do you have GitHub now", 14)]
+    [InlineData(800, "First line\nSecond line", 14)]
+    [InlineData(320, "\u00c1\u00e9 gyp \u6f22\u5b57 \ud83d\ude00", 14)]
+    [InlineData(800, "First gyp line\nSecond \u00c1\u00e9 line", 28)]
+    public async Task UserBubble_KeepsBalancedInsetsWithoutTrailingLineLeading(int width, string message, double fontSize)
+    {
+        await WithChatAsync(width, async (surface, host, _, provider) =>
+        {
+            var snapshot = await provider.LoadAsync();
+            await ui.RunOnUIAsync(() => provider.Publish(snapshot with
+            {
+                Timelines = new Dictionary<string, ChatTimelineState>
+                {
+                    ["proof"] = ChatTimelineState.Initial() with
+                    {
+                        Entries = ImmutableList.Create(new ChatTimelineItem("user", ChatTimelineItemKind.User, message)),
+                    },
+                },
+            }));
+            TextBlock? text = null;
+            Rect? previous = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                text = FindDescendants<TextBlock>(host).SingleOrDefault(block => block.Text == message);
+                if (text is not { ActualHeight: > 0 }) return false;
+                var bounds = Bounds(text, surface);
+                var stable = previous == bounds;
+                previous = bounds;
+                return stable;
+            }, "user bubble text reaches stable layout"));
+            await ui.RunOnUIAsync(() => text!.FontSize = fontSize);
+            previous = null;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+            {
+                var bounds = Bounds(text!, surface);
+                var stable = previous == bounds;
+                previous = bounds;
+                return stable;
+            }, "user bubble accommodates enlarged native font metrics"));
+            await ui.RunOnUIAsync(() =>
+            {
+                var bubble = Ancestors(text!).OfType<Border>().First();
+                var bounds = Bounds(text!, bubble);
+                Assert.InRange(Math.Abs(bounds.Left - (bubble.ActualWidth - bounds.Right)), 0, 1);
+                Assert.InRange(Math.Abs(bounds.Top - (bubble.ActualHeight - bounds.Bottom)), 0, 1);
+                Assert.InRange(bounds.Left, 15, 17);
+                Assert.InRange(bounds.Top, 11, 13);
+                // Native auto-height includes accents, descenders and fallback fonts, without extra line leading.
+                var native = new TextBlock { Text = message, FontSize = fontSize,
+                    FontFamily = new FontFamily("Segoe UI Variable Text") };
+                native.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var expected = native.DesiredSize.Height;
+                Assert.InRange(text!.ActualHeight, expected - 1, expected + 1);
+                Assert.True(text.IsTextSelectionEnabled);
+                Assert.Equal(message, text.Text);
+            });
+            await CaptureAsync(surface, $"UserBubble-{width}-{fontSize}-font");
+        }, "empty");
+    }
+
+    [Theory]
     [InlineData(320)]
     [InlineData(480)]
     [InlineData(560)]
@@ -1718,7 +1837,20 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             {
                 AssertComposerBounds(surface);
                 var attach = FindControl<Button>(surface, "ChatComposerAttach");
-                var attachGlyph = Assert.Single(FindDescendants<TextBlock>(attach));
+                var attachGlyphs = FindDescendants<TextBlock>(attach).ToArray();
+                if (attachGlyphs.Length != 1)
+                {
+                    var content = attach.Content as FrameworkElement;
+                    Console.Error.WriteLine(
+                        $"Attach glyph diagnostics: loaded={attach.IsLoaded}; enabled={attach.IsEnabled}; " +
+                        $"visibility={attach.Visibility}; size={attach.ActualWidth}x{attach.ActualHeight}; " +
+                        $"template={attach.Template?.GetType().FullName ?? "null"}; " +
+                        $"content={attach.Content?.GetType().FullName ?? "null"}; " +
+                        $"contentLoaded={content?.IsLoaded}; " +
+                        $"contentParent={(content is null ? "null" : VisualTreeHelper.GetParent(content)?.GetType().FullName ?? "null")}; " +
+                        $"visualDescendants={string.Join(", ", FindDescendants<DependencyObject>(attach).Select(element => element.GetType().FullName))}");
+                }
+                var attachGlyph = Assert.Single(attachGlyphs);
                 Assert.Equal(FluentIconCatalog.ChatAttach, attachGlyph.Text);
                 Assert.Equal(ChatVisuals.ComposerAttachGlyphSize, attachGlyph.FontSize);
                 var send = FindControl<Button>(surface, "ChatComposerPrimaryAction");
@@ -1766,11 +1898,11 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
 
                 var assistantText = FindDescendants<RichTextBlock>(host)
                     .First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                Assert.False(assistantText.IsTextSelectionEnabled);
+                Assert.True(assistantText.IsTextSelectionEnabled);
                 Assert.Equal(14, assistantText.FontSize);
                 Assert.Equal("Segoe UI Variable Text", assistantText.FontFamily.Source);
                 Assert.Equal(TextWrapping.Wrap, assistantText.TextWrapping);
-                var assistantSurface = AssistantMessageSurface(assistantText);
+                var assistantSurface = Ancestors(assistantText).OfType<Border>().First();
                 Assert.Null(assistantSurface.Background);
                 Assert.Equal(new Thickness(0), assistantSurface.BorderThickness);
                 Assert.Equal(new Thickness(0), assistantSurface.Padding);
@@ -1799,7 +1931,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
+                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
             });
 
             // Resize and rerender the same mounted tree. Do not recreate the footer
@@ -1817,7 +1949,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 AssertComposerBounds(surface);
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
+                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
                 Assert.Same(originalInput, FindControl<TextBox>(surface, "ChatComposerInput"));
                 Assert.Contains("A second line.", originalInput.Text, StringComparison.Ordinal);
             });
@@ -1999,7 +2131,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 var input = FindControl<TextBox>(surface, "ChatComposerInput");
                 var composer = FindControl<Border>(surface, "ChatWritingSurface");
                 var paragraph = FindDescendants<RichTextBlock>(host).First(text => CollectText(text).Contains("Start with one outcome", StringComparison.Ordinal));
-                AssertCentered(surface, composer, AssistantMessageSurface(paragraph));
+                AssertCentered(surface, composer, Ancestors(paragraph).OfType<Border>().First());
             });
             await CaptureAsync(surface, $"ReleasedParity-{width}-viewport");
         }, "parity");
@@ -2829,6 +2961,93 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task TranscriptNotices_CenterRestartAndFailure_AndShowCompactionSavings()
+    {
+        const string subtitle = "Gateway restarted. The conversation has been restored.";
+        const string summary = "The model provider is overloaded.\nHTTP 529 overloaded_error";
+        const string failureTitle = "Couldn’t finish this reply";
+        var copied = new List<string>();
+        await WithChatAsync(1000, async (surface, host, _, _) =>
+        {
+            await ui.RunOnUIAsync(async () =>
+            {
+                var restart = new ChatTimelineItem("restart", ChatTimelineItemKind.Status, subtitle)
+                {
+                    Presentation = new(SourceRole: "user", ProvenanceKind: "internal_system",
+                        SourceTool: "restart-sentinel"),
+                };
+                var failureEntry = new ChatTimelineItem("failure", ChatTimelineItemKind.Status, summary)
+                {
+                    Presentation = new(RunFailure: new("failed-run", summary)),
+                };
+                var compaction = new ChatTimelineItem("compaction", ChatTimelineItemKind.Status, "Compaction");
+                var context = new ChatTimelinePresentationContext("notices", [restart, failureEntry, compaction],
+                    false, null, EntryMetadata: new Dictionary<string, ChatEntryMetadata>
+                    {
+                        [compaction.Id] = new(null, null, OpenClawKind: "compaction",
+                            CompactionTokensBefore: 182340, CompactionTokensAfter: 24110),
+                    });
+                host.Mount(_ => Component<ReactorChatTimeline, ReactorChatTimelineProps>(
+                    new(ReactorChatTimelineMode.Timeline, context, TryCopyText: text => { copied.Add(text); return true; })));
+
+                foreach (var width in new[] { 1000, 480 })
+                {
+                    surface.Width = width;
+                    Expander? failure = null;
+                    RichTextBlock? restartText = null;
+                    Rect[]? previous = null;
+                    await WaitForRenderedConditionAsync(() =>
+                    {
+                        failure = FindDescendants<Expander>(host).FirstOrDefault(element =>
+                            AutomationProperties.GetAutomationId(element) == "ChatRunFailure_failure");
+                        restartText = FindDescendants<RichTextBlock>(host).FirstOrDefault(element =>
+                            CollectText(element) == subtitle);
+                        if (failure?.Header is not FrameworkElement header || restartText is null
+                            || !FindDescendants<TextBlock>(host).Any(text => text.Text == "saved 158.2k tokens (86.8%)"))
+                            return false;
+                        var current = new[] { Bounds(failure, surface), Bounds(restartText, surface) }
+                            .Concat(FindDescendants<TextBlock>(header).Select(text => Bounds(text, surface))).ToArray();
+                        var stable = current.All(rect => rect.Width > 0 && rect.Height > 0)
+                            && previous is not null && previous.SequenceEqual(current);
+                        previous = current;
+                        return stable;
+                    }, "restart subtitle and failure header have stable rendered bounds");
+
+                    var row = Bounds(failure!, surface);
+                    var center = row.X + row.Width / 2;
+                    var body = Bounds(restartText!, surface);
+                    Assert.InRange(Math.Abs(body.X + body.Width / 2 - center), 0, 1);
+                    var headerText = FindDescendants<TextBlock>((FrameworkElement)failure!.Header)
+                        .Select(text => Bounds(text, surface)).ToArray();
+                    var headerCenter = (headerText.Min(rect => rect.Left) + headerText.Max(rect => rect.Right)) / 2;
+                    Assert.InRange(Math.Abs(headerCenter - center), 0, 1);
+                    Assert.All(headerText, rect => Assert.True(rect.Left >= row.Left - 1 && rect.Right <= row.Right + 1));
+                    Assert.Equal(failureTitle, AutomationProperties.GetName(failure));
+                    Assert.False(failure.IsExpanded);
+                    Assert.DoesNotContain(FindDescendants<Button>(host), button =>
+                        AutomationProperties.GetName(button) == "Open checkpoints");
+                    Assert.DoesNotContain(FindDescendants<TextBlock>(host), text =>
+                        text.Text.Contains("preserved as a checkpoint", StringComparison.Ordinal));
+
+                    var peer = FrameworkElementAutomationPeer.CreatePeerForElement(failure);
+                    var expandCollapse = Assert.IsAssignableFrom<IExpandCollapseProvider>(
+                        peer.GetPattern(PatternInterface.ExpandCollapse));
+                    expandCollapse.Expand();
+                    Button? copy = null;
+                    await WaitForRenderedConditionAsync(() =>
+                        failure.IsExpanded && (copy = FindDescendants<Button>(failure).FirstOrDefault(button =>
+                            AutomationProperties.GetName(button) == "Copy error")) is not null,
+                        "centered failure disclosure opens its copyable details");
+                    Invoke(copy!);
+                    Assert.Equal(summary, copied[^1]);
+                    expandCollapse.Collapse();
+                    await WaitForRenderedConditionAsync(() => !failure.IsExpanded, "failure details collapse");
+                }
+            });
+        });
+    }
+
+    [Fact]
     public async Task LocalImageAttachment_FitsCompactReadingColumn()
     {
         await WithChatAsync(320, async (surface, host, _, _) =>
@@ -3262,6 +3481,49 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     }
 
     [Fact]
+    public async Task SessionOptionControls_RemainUsableDuringAnActiveResponse()
+    {
+        await WithChatAsync(480, async (surface, _, session, provider) =>
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(session.ViewModel.Inputs!.TurnActive);
+                Assert.True(FindControl<Button>(surface, "ChatComposerModelPicker").IsEnabled);
+                Assert.True(FindControl<Button>(surface, "ChatComposerAttach").IsEnabled);
+                Assert.True(FindControl<Button>(surface, "ChatComposerVoice").IsEnabled);
+                Assert.Equal("Stop", AutomationProperties.GetName(
+                    FindControl<Button>(surface, "ChatComposerPrimaryAction")));
+            });
+            await OpenReasoningAsync(surface);
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.True(FindControl<Button>(ReasoningPopup(surface), "ChatReasoningPicker").IsEnabled);
+                Invoke(ReasoningMenu(surface).Items[4]);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => provider.SelectedThinkingLevel == "high",
+                "reasoning selection reaches the provider during an active response"));
+            await ChangeModelFlyoutAsync(surface, open: false);
+            await ChangeModelFlyoutAsync(surface, open: true);
+            await ChangeModelFlyoutAsync(surface, open: false, () =>
+                Invoke(FindControl<ListViewItem>(ModelPopup(surface), "ChatModelChoice_second/shared-model")));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => provider.SelectedModel == "second/shared-model",
+                "model selection reaches the provider during an active response"));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Equal("second/shared-model", provider.SelectedModel);
+                Assert.True(session.ViewModel.Inputs!.TurnActive);
+                Assert.Equal(Draft, FindControl<TextBox>(surface, "ChatComposerInput").Text);
+                Assert.Equal("Stop", AutomationProperties.GetName(
+                    FindControl<Button>(surface, "ChatComposerPrimaryAction")));
+                Assert.Empty(provider.SentMessages);
+            });
+            await CaptureAsync(surface, "Composer-options-during-active-response");
+        }, "streaming");
+    }
+
+    [Fact]
     public async Task SessionOptionControls_AreDisabledOffline()
     {
         await WithChatAsync(480, async (surface, _, session, provider) =>
@@ -3303,7 +3565,7 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
             string? previousLayout = null;
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
             {
-                // Selection wrappers add a layout layer; measure gaps only once block bounds stop moving.
+                // Measure gaps only once block bounds stop moving.
                 var matches = FindDescendants<StackPanel>(host).Where(panel =>
                     panel.Children.Count == 4 && panel.Spacing == ChatVisuals.MessageBlockGap).Take(2).ToArray();
                 stack = matches.Length == 1 ? matches[0] : null;
@@ -3840,6 +4102,28 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     private static T FindControl<T>(DependencyObject root, string id) where T : FrameworkElement =>
         Assert.Single(FindDescendants<T>(root), control => AutomationProperties.GetAutomationId(control) == id);
 
+    // Tool and thinking disclosures render their details below a header-only Expander in one
+    // panel, so that panel is the disclosure. Any other Expander holds its own details.
+    private static DependencyObject Disclosure(Expander header) =>
+        header.Content is null && VisualTreeHelper.GetParent(header) is StackPanel panel &&
+            panel.Children.Count > 0 && ReferenceEquals(panel.Children[0], header)
+            ? panel : header;
+
+    // The disclosure an element belongs to: its nearest Expander, or the header-only Expander
+    // whose panel holds it below the header.
+    private static Expander? DisclosureOwner(DependencyObject element)
+    {
+        for (DependencyObject child = element; VisualTreeHelper.GetParent(child) is { } parent; child = parent)
+        {
+            if (parent is Expander expander)
+                return expander;
+            if (parent is StackPanel { Children.Count: > 0 } panel && panel.Children[0] is Expander header &&
+                !ReferenceEquals(header, child) && ReferenceEquals(Disclosure(header), panel))
+                return header;
+        }
+        return null;
+    }
+
     private static T? FindControlOrNull<T>(DependencyObject root, string id) where T : FrameworkElement =>
         FindDescendants<T>(root).SingleOrDefault(control => AutomationProperties.GetAutomationId(control) == id);
 
@@ -3894,6 +4178,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 $"Copy target {Bounds(button, surface)} overlaps navigation {railBounds}");
     }
 
+    private const double ComposerGapTolerance = 0.01;
+
     private static void AssertComposerBounds(Border surface)
     {
         var controls = FindDescendants<Button>(surface)
@@ -3909,7 +4195,8 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         Assert.DoesNotContain(controls, button => AutomationProperties.GetAutomationId(button) == "ChatComposerReasoningPicker");
         var attachBounds = Bounds(FindControl<Button>(surface, "ChatComposerAttach"), surface);
         var sandboxBounds = Bounds(FindControl<Button>(surface, "ChatComposerSandbox"), surface);
-        Assert.InRange(sandboxBounds.Left - attachBounds.Right, 0, 4);
+        // At fractional DPI the transformed edges carry float error (4.00003 for a 4-pixel gap).
+        Assert.InRange(sandboxBounds.Left - attachBounds.Right, -ComposerGapTolerance, 4 + ComposerGapTolerance);
         foreach (var control in controls)
         {
             var bounds = Bounds(control, surface);
@@ -3945,17 +4232,6 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
         }
         var input = FindControl<TextBox>(surface, "ChatComposerInput");
         Assert.True(Bounds(input, surface).Bottom <= controls.Min(control => Bounds(control, surface).Top));
-    }
-
-    private static Border AssistantMessageSurface(RichTextBlock paragraph)
-    {
-        // The unpadded styling Border around Reactor's blocks is the message's prose surface;
-        // it sits inside the message's Markdown selection host.
-        var surface = Ancestors(paragraph).OfType<Border>().First();
-        Assert.Contains(Ancestors(surface).OfType<Control>(), control =>
-            FrameworkElementAutomationPeer.CreatePeerForElement(control)
-                ?.GetPattern(PatternInterface.Text) is ITextProvider);
-        return surface;
     }
 
     private static IEnumerable<DependencyObject> Ancestors(DependencyObject element)
@@ -4113,9 +4389,9 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
                 await beforeMutation(cancellationToken);
             Preparations++;
             Selection = selection;
+            await (PrepareCompletion?.Task ?? Task.CompletedTask);
             if (PrepareFailure is { } failure)
                 throw failure;
-            await (PrepareCompletion?.Task ?? Task.CompletedTask);
         }
     }
 

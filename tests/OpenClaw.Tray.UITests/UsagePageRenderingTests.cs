@@ -1003,10 +1003,14 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 await ui.RunOnUIAsync(() => Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= observeExportFrame);
             }
             // The restored label is button content, which Reactor presents on a later layout pass;
-            // measure the mast only once its children stop moving. Two mechanisms are needed:
+            // measure the mast only once its children stop moving. Three mechanisms are needed:
             // - each reading first completes pending layout, so it never sees a half-updated grid (an Auto
             //   actions column still sized for older content);
-            // - readings are compared only across rendered frames, so queued UI work runs between them.
+            // - readings are compared only across rendered frames, so queued UI work runs between them;
+            // - a reading counts only when each child's reported origin is its arranged offset. UsageActionSettled
+            //   reads composition opacity, which gives the actions' ancestors hand-off visuals, and TransformToVisual
+            //   then reports the composited offset. A late compositor update can move that back to the previous
+            //   frame's offset (the narrower "Exporting" placement) after layout, for two readings in a row.
             // The mast is asserted in the same callback as the reading proven stable.
             string? previousMast = null;
             long mastFrame = 0;
@@ -1021,9 +1025,11 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                     host.UpdateLayout();
                     var mast = Get<Grid>(host, "UsageMastGrid");
                     var layout = string.Join("|", mast.Children.OfType<FrameworkElement>().Select(child =>
-                        $"{child.Visibility}:{child.TransformToVisual(mast).TransformBounds(new Windows.Foundation.Rect(0, 0, child.ActualWidth, child.ActualHeight))}"))
+                        $"{child.Visibility}:{child.TransformToVisual(mast).TransformBounds(new Windows.Foundation.Rect(0, 0, child.ActualWidth, child.ActualHeight))}" +
+                        $"@{child.ActualOffset.X:0.##},{child.ActualOffset.Y:0.##}"))
                         + $"|{mast.ActualWidth}";
-                    var stable = layout == previousMast && UsageActionSettled(host, "UsageExport");
+                    var stable = layout == previousMast && OriginsMatchArrangedOffsets(mast) &&
+                        UsageActionSettled(host, "UsageExport");
                     previousMast = layout;
                     previousMastFrame = mastFrame;
                     if (stable) AssertSeparatedChildren(mast);
@@ -1351,6 +1357,14 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
             string.Join("; ", new[] { "UsagePresets", "UsageCustomDates", "UsageFilterOptions", "UsageQuery" }.Select(Place)) +
             $"; renderError={Find<TextBlock>(host, "UsageRenderError")?.Text ?? "none"}";
     }
+
+    // TransformToVisual follows a hand-off visual's composited offset, which can trail layout by a frame or more.
+    private static bool OriginsMatchArrangedOffsets(Panel panel) =>
+        panel.Children.OfType<FrameworkElement>().Where(child => child.Visibility == Visibility.Visible).All(child =>
+        {
+            var origin = child.TransformToVisual(panel).TransformPoint(new());
+            return Math.Abs(origin.X - child.ActualOffset.X) < 0.5 && Math.Abs(origin.Y - child.ActualOffset.Y) < 0.5;
+        });
 
     private static void AssertSeparatedChildren(Grid grid)
     {
@@ -1864,23 +1878,31 @@ public sealed class UsagePageRenderingTests(UIThreadFixture ui, ITestOutputHelpe
                 Assert.IsAssignableFrom<IToggleProvider>(peer.GetPattern(PatternInterface.Toggle)).Toggle();
                 flyout.Hide();
             });
+            // A time-zone change clears the report, so the page shows its loading card until the UTC read applies.
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => gateway.Controller.State.Filters.TimeZone == UsageTimeZoneMode.Utc, "UTC day boundaries"));
+                () => gateway.Controller.State is { Phase: UsageLoadPhase.Loaded, Dashboard: not null } state
+                    && state.Filters.TimeZone == UsageTimeZoneMode.Utc
+                    && Find<FrameworkElement>(host, "UsageLoading") is null
+                    && Find<SelectorBar>(host, "UsageChartView") is { ActualHeight: > 0 },
+                "UTC day boundaries and the reloaded chart",
+                () => $"phase={gateway.Controller.State.Phase}; zone={gateway.Controller.State.Filters.TimeZone}; " +
+                    (Find<TextBlock>(host, "UsageRenderError")?.Text ?? "No render error.")));
             await ui.RunOnUIAsync(() =>
             {
                 var view = Get<SelectorBar>(host, "UsageChartView");
                 view.SelectedItem = view.Items[1];
             });
             await WaitForAsync(host, "UsageDailyTable");
+            await WaitForAsync(host, "UsageInspectProvider_anthropic");
             await ui.RunOnUIAsync(() =>
             {
                 Assert.Null(Find<FrameworkElement>(host, "UsageDailyChart"));
                 Invoke(Get<Button>(host, "UsageInspectProvider_anthropic"));
             });
             await WaitForAsync(host, "UsageContributor_Provider_anthropic");
+            await WaitForAsync(host, "UsageContributorSession_agent:research:discord:42");
             await ui.RunOnUIAsync(() =>
             {
-                Assert.NotNull(Find<FrameworkElement>(host, "UsageContributorSession_agent:research:discord:42"));
                 var kinds = Get<SelectorBar>(host, "UsageContributorsKind");
                 kinds.SelectedItem = kinds.Items[0];
             });

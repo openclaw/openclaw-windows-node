@@ -71,7 +71,9 @@ public sealed partial class ReactorChatLayoutProofTests
     private static ImmutableList<ChatTimelineItem> ExpandedWorkEntries()
     {
         var command = "dotnet test " + string.Join(" ", Enumerable.Repeat("Synthetic.Project.Tests.csproj", 8));
-        var longOutput = string.Join("\n", Enumerable.Range(1, 40).Select(line => $"Synthetic output line {line:00}"));
+        // Wrapped lines keep the twelve-line inline preview taller than its scroll cap at both widths.
+        var longOutput = string.Join("\n", Enumerable.Range(1, 40)
+            .Select(line => $"Synthetic output line {line:00}: {new string('x', 160)}"));
         var longPath = @"C:\Synthetic\Workspace\Projects\Alignment\Source\Components\Presentation\Nested\Folders\Deliberately\Long\ToolInputPath.cs";
         return ImmutableList.Create(
             new ChatTimelineItem("user", ChatTimelineItemKind.User, "Inspect the synthetic project."),
@@ -468,7 +470,7 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() =>
             {
                 var worked = Assert.Single(FindDescendants<Expander>(surface),
-                    row => !Ancestors(row).OfType<Expander>().Any());
+                    row => DisclosureOwner(row) is null);
                 Assert.True(Assert.Single(OwnWorkDescendants<ToggleButton>(worked)).Focus(FocusState.Keyboard));
             });
             await SettleAsync();
@@ -491,8 +493,12 @@ public sealed partial class ReactorChatLayoutProofTests
                 surface.Height = 1300;
             });
             await AwaitWorkRowsAsync(surface, "the collapsed Worked row", rows => rows.Count == 1 && !rows[0].IsExpanded);
-            var worked = await ui.RunOnUIAsync(() => Task.FromResult(
-                WorkLabel(Assert.Single(RealizedTimelineElements<Expander>(surface)))));
+            var worked = await ui.RunOnUIAsync(() =>
+            {
+                var row = Assert.Single(RealizedTimelineElements<Expander>(surface));
+                Assert.True(IsCompletedWorkRow(row), $"{WorkLabel(row)} is not recognized as the completed-work row.");
+                return Task.FromResult(WorkLabel(row));
+            });
             const string activity = "ChatToolActivity_execTool";
             string[] leaves =
                 ["ChatToolCall_execTool", "ChatToolCall_readTool", "ChatToolCall_editTool", "ChatToolCall_grepTool"];
@@ -687,17 +693,29 @@ public sealed partial class ReactorChatLayoutProofTests
         return id.Length > 0 ? id : AutomationProperties.GetName(row);
     }
 
+    // The completed-work rollup is identified by its sanitized "thread:…|generation:…|work:…" key, not by its
+    // localized "Worked" label.
+    private static bool IsCompletedWorkRow(Expander row) =>
+        System.Text.RegularExpressions.Regex.IsMatch(AutomationProperties.GetAutomationId(row),
+            "^ChatToolActivity_thread_.+_generation_[0-9]+_work_");
+
     private static Expander WorkRow(Border surface, string label) =>
         Assert.Single(RealizedTimelineElements<Expander>(surface), row => WorkLabel(row) == label);
 
-    // Descendants whose nearest Expander is the owner, so a row never inherits its nested rows' elements.
+    // Descendants whose disclosure is the owner, so a row never inherits its nested rows' elements.
     private static IEnumerable<T> OwnWorkDescendants<T>(Expander owner) where T : DependencyObject =>
-        FindDescendants<T>(owner).Where(element =>
-            ReferenceEquals(Ancestors(element).OfType<Expander>().FirstOrDefault(), owner));
+        FindDescendants<T>(Disclosure(owner)).Where(element => ReferenceEquals(DisclosureOwner(element), owner));
 
     // Collapsed rows keep their content in the tree with stale geometry, so only measure rows every ancestor shows.
-    private static bool IsWorkRowShown(Expander row) =>
-        Ancestors(row).OfType<Expander>().All(owner => owner.IsExpanded);
+    private static bool IsWorkRowShown(Expander row)
+    {
+        for (var owner = DisclosureOwner(row); owner is not null; owner = DisclosureOwner(owner))
+        {
+            if (!owner.IsExpanded)
+                return false;
+        }
+        return true;
+    }
 
     private static bool IsWorkGuide(Border border) =>
         border.Width == 1 && AutomationProperties.GetAccessibilityView(border) == AccessibilityView.Raw;
@@ -816,7 +834,8 @@ public sealed partial class ReactorChatLayoutProofTests
         foreach (var row in RealizedTimelineElements<Expander>(surface).Where(IsWorkRowShown).ToList())
         {
             var label = WorkLabel(row);
-            var bounds = Bounds(row, surface);
+            // A row spans its header and the details rendered below it.
+            var bounds = Bounds((FrameworkElement)Disclosure(row), surface);
             AssertWorkRowEdges(surface, row, bounds, column, label);
             AssertWorkHeader(surface, row, bounds, label);
             var hasGuide = row.IsExpanded && AssertWorkGuide(surface, row, bounds, label);
@@ -829,7 +848,7 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private static void AssertWorkRowEdges(Border surface, Expander row, Rect bounds, Rect column, string label)
     {
-        if (Ancestors(row).OfType<Expander>().FirstOrDefault() is { } owner)
+        if (DisclosureOwner(row) is { } owner)
         {
             var ownerBounds = Bounds(owner, surface);
             var guide = OwnWorkDescendants<Border>(owner).SingleOrDefault(IsWorkGuide);
@@ -862,6 +881,30 @@ public sealed partial class ReactorChatLayoutProofTests
         AssertWorkAligned($"{label} header right", headerBounds.Right, rowBounds.Right, WorkEdgeTolerance);
 
         var texts = WorkHeaderTexts(surface, row);
+        // The completed-work header follows the web work group: its label starts the row with no leading glyph,
+        // and a trailing chevron keeps its slot, shown only while the header is hovered or focused.
+        if (IsCompletedWorkRow(row))
+        {
+            Assert.True(texts.Count == 2, $"{label}: expected the label and its chevron, found {texts.Count} text blocks.");
+            var (workTitle, chevron) = (texts[0], texts[1]);
+            AssertWorkAligned($"{label} title left", Bounds(workTitle, surface).Left, rowBounds.Left, WorkEdgeTolerance);
+            AssertWorkAligned($"{label} title font size", workTitle.FontSize, WorkActivityTitleSize, 0.1);
+            Assert.True(FluentIconCatalog.IsPuaGlyph(chevron.Text), $"{label}: the trailing header text is not an icon glyph.");
+            Assert.True(chevron.Text is FluentIconCatalog.ChevronR or FluentIconCatalog.ChevronDown,
+                $"{label}: only a disclosure chevron may follow the Worked label.");
+            Assert.False(chevron.IsTextScaleFactorEnabled, $"{label}: the chevron must not scale with the text size.");
+            AssertWorkAligned($"{label} chevron font size", chevron.FontSize, WorkDisclosureGlyphSize, 0.1);
+            Assert.True(Bounds(chevron, surface).Left >= Bounds(workTitle, surface).Right - WorkEdgeTolerance,
+                $"{label}: the chevron must follow the label.");
+            var workCenter = headerBounds.Top + headerBounds.Height / 2;
+            foreach (var text in texts)
+            {
+                var bounds = Bounds(text, surface);
+                AssertWorkAligned($"{label} header text vertical centre", bounds.Top + bounds.Height / 2,
+                    workCenter, WorkCenterTolerance);
+            }
+            return;
+        }
         Assert.True(texts.Count is >= 2 and <= 4,
             $"{label}: expected an icon, a title, an optional detail and an optional status, found {texts.Count} text blocks.");
         var icon = texts[0];
@@ -977,13 +1020,32 @@ public sealed partial class ReactorChatLayoutProofTests
             WorkEdgeTolerance);
         AssertWorkAligned($"{label} input/output divider right", sectionDivider.Right, Bounds(sections[0], surface).Right,
             WorkEdgeTolerance);
+        var last = Bounds(sections[^1], surface);
+        var outcomeTop = last.Bottom;
+        var remaining = panel.Children.OfType<TextBlock>().Where(text =>
+            AutomationProperties.GetAutomationId(text).StartsWith("ChatToolMoreLines_", StringComparison.Ordinal)).ToList();
+        if (label == "ChatToolCall_execTool")
+        {
+            var more = Assert.Single(remaining);
+            Assert.Equal("+28 more lines", more.Text);
+            Assert.Equal(new Thickness(12, 0, 12, 8), more.Margin);
+            Assert.Equal(12, more.FontSize);
+            var moreBounds = Bounds(more, surface);
+            AssertWorkAligned($"{label} remaining lines top", moreBounds.Top, last.Bottom, WorkEdgeTolerance);
+            AssertWorkAligned($"{label} remaining lines left", moreBounds.Left, last.Left + WorkDetailInsetX,
+                WorkEdgeTolerance);
+            Assert.True(moreBounds.Right <= last.Right - WorkDetailInsetX + WorkEdgeTolerance,
+                $"{label}: remaining-lines text extends into the card's right inset.");
+            outcomeTop = moreBounds.Bottom + WorkDetailInsetY;
+        }
+        else
+            Assert.Empty(remaining);
         if (footers.Count == 0)
             return new WorkCardSummary(null, scrolls);
 
-        var last = Bounds(sections[^1], surface);
         var divider = Bounds(dividers[^1], surface);
         var footer = Bounds(footers[0], surface);
-        AssertWorkAligned($"{label} divider top", divider.Top, last.Bottom, WorkEdgeTolerance);
+        AssertWorkAligned($"{label} divider top", divider.Top, outcomeTop, WorkEdgeTolerance);
         AssertWorkAligned($"{label} divider left", divider.Left, last.Left, WorkEdgeTolerance);
         AssertWorkAligned($"{label} divider right", divider.Right, last.Right, WorkEdgeTolerance);
         AssertWorkAligned($"{label} footer top", footer.Top, divider.Bottom + WorkStatusGap, WorkEdgeTolerance);

@@ -13,13 +13,16 @@ MSIX version reservation, and install/upgrade acceptance remain separate gates.
 
 ## Required administrator cutover
 
-Complete the central publisher setup before merging or using this request-only
-workflow. These are administrator changes, not effects of merging this PR:
+Verify the central [administrator cutover](https://github.com/openclaw/releases/blob/main/docs/windows-store-publishing.md#administrator-cutover)
+before using this request-only workflow. Merged code does not establish that
+live settings or publication have been qualified:
 
 1. Configure the central `microsoft-store-companion` environment to allow only
-   `main`, require `@openclaw/release-managers-openclaw` approval, prevent
-   self-review, and disallow administrator deployment bypass. Central release
-   code and its identity policy also need enforced release-manager review.
+   `main`, require `@openclaw/release-managers-openclaw` approval, and disallow
+   administrator deployment bypass. Verify the team's deployment-review access.
+   The central templates allow an initiating release manager to approve;
+   prevent self-review only if a separate initiator and approver is desired.
+   An App-dispatched request does not itself prove two distinct upstream humans.
 2. Move the dedicated Companion Store application's Entra federation to the
    approved central environment. Remove the old native-repository federated
    credential and every other publishing writer. Removing the old workflow from
@@ -32,12 +35,15 @@ workflow. These are administrator changes, not effects of merging this PR:
    to request workflows in `openclaw/releases`. The minted installation token
    selects only `releases` and requests only Actions write permission. It has no
    Store authority. Verify the installation grant; do not assume the existing
-   key alone grants access. No new PAT is required.
-4. Enforce main's required release-manager code-owner review for the paths in
-   [CODEOWNERS](../.github/CODEOWNERS), including CODEOWNERS itself. Dismiss stale
-   approvals, require approval of the latest reviewable push, and prevent direct
-   push or actor bypass for protected automation changes. The file alone does
-   not turn on GitHub enforcement.
+   key alone grants access. The token restriction does not constrain the private
+   key itself: audit the App's installation grants and key availability
+   separately. No new PAT is required.
+4. Leave existing branch rules, [CODEOWNERS](../.github/CODEOWNERS), and
+   required-CI settings unchanged. The cutover does not require PR-only `main`
+   or release-manager code review. Repository writers remain trusted to change
+   publisher code; environment approval gates the credential-bearing job, not
+   changes to its implementation. Migrating central release-evidence workflows
+   to PRs is not a Store-publishing prerequisite.
 5. Leave repository Actions variable `MSSTORE_ENABLED` unset or `false` until a
    manual central request, the protected approval path, and required Store
    install/upgrade acceptance have been verified. Do not re-enable the retired
@@ -94,8 +100,8 @@ serialization or approval.
 ## Development flight
 
 Companion alphas use the same central publisher, not a native Store identity.
-Land central Companion Development support before using this path; a central
-publisher that only supports Gateway flights will reject the request safely.
+The central publisher owns Companion Development source authorization and flight
+selection; the native adapter only requests publication.
 Select a published alpha's successful **Build and Test** run and request:
 
 ```powershell

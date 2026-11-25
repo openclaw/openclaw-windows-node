@@ -140,7 +140,7 @@ public sealed class SuggestedTaskReplacementTests
                 await Assert.ThrowsAnyAsync<Exception>(async () => await read);
                 Console.WriteLine($"Identity send expired: tokenCancelled={send.Token.IsCancellationRequested}; sendCompleted={send.Completion.Task.IsCompleted}");
                 Assert.True(send.Token.IsCancellationRequested);
-                Assert.False(await send.Completion.Task.WaitAsync(Deadline));
+                Assert.Equal("NotSent", await send.Completion.Task.WaitAsync(Deadline));
                 Console.WriteLine($"Identity queue attempt={attempt}; configuredDeadlineMs={configuredMs}; pendingMethods={string.Join(',', PendingMethods())}");
                 Assert.Equal(pendingBefore, Pending());
                 Assert.Equal(before, server.Requests.Count(request => request.Method == "users.self"));
@@ -168,21 +168,21 @@ public sealed class SuggestedTaskReplacementTests
     {
         internal sealed record IdentitySend(CancellationToken Token)
         {
-            internal TaskCompletionSource<bool> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            internal TaskCompletionSource<string> Completion { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         }
         internal System.Collections.Concurrent.ConcurrentQueue<IdentitySend> IdentitySends { get; } = new();
-        protected override async Task<bool> SendRawAsync(string message, long generation, CancellationToken token)
+        protected override async Task<GenerationBoundSendOutcome> SendRawWithOutcomeAsync(string message, long generation, CancellationToken token)
         {
             using var frame = System.Text.Json.JsonDocument.Parse(message);
             if (!frame.RootElement.TryGetProperty("method", out var method) || method.GetString() != "users.self")
-                return await base.SendRawAsync(message, generation, token);
+                return await base.SendRawWithOutcomeAsync(message, generation, token);
             var observed = new IdentitySend(token);
             IdentitySends.Enqueue(observed);
             Console.WriteLine("Identity send caller=" + string.Join(" > ", new System.Diagnostics.StackTrace().GetFrames().Take(10).Select(frame => frame.GetMethod()?.DeclaringType?.Name + "." + frame.GetMethod()?.Name)));
             try
             {
-                var sent = await base.SendRawAsync(message, generation, token);
-                observed.Completion.TrySetResult(sent);
+                var sent = await base.SendRawWithOutcomeAsync(message, generation, token);
+                observed.Completion.TrySetResult(sent.ToString());
                 return sent;
             }
             catch (Exception ex) { observed.Completion.TrySetException(ex); throw; }

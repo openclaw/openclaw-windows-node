@@ -36,6 +36,105 @@ public class DashboardProtocolTests
     }
 
     [Fact]
+    public void ProgressCardParams_SendAgentOnlyForKeysThatDoNotNameOne()
+    {
+        var scoped = DashboardProtocol.BuildProgressCardParams(new ProgressCardTarget("agent:research:main", null, "agent:research:main"));
+        var global = DashboardProtocol.BuildProgressCardParams(new ProgressCardTarget("global", "main", "agent:main:global"));
+
+        Assert.Equal("agent:research:main", scoped["sessionKey"]);
+        Assert.False(scoped.ContainsKey("agentId"));
+        Assert.Equal("global", global["sessionKey"]);
+        Assert.Equal("main", global["agentId"]);
+    }
+
+    private static readonly BoardSessionDefaults s_workMainDefaults = new("main", "work", "agent:main:work");
+
+    [Theory]
+    [InlineData("main", null, "agent:main:work", null, "agent:main:work")]
+    [InlineData("Agent:Main:Main", null, "agent:main:work", null, "agent:main:work")]
+    [InlineData("main", "ops", "agent:ops:work", null, "agent:ops:work")]
+    [InlineData("agent:research:dashboard:ops", "main", "agent:research:dashboard:ops", null, "agent:research:dashboard:ops")]
+    [InlineData("dashboard:ops", null, "agent:main:dashboard:ops", null, "agent:main:dashboard:ops")]
+    [InlineData("GLOBAL", null, "global", "main", "agent:main:global")]
+    [InlineData("unknown", "ops", "unknown", "ops", "agent:ops:unknown")]
+    public void ProgressCardTarget_ResolvesAliasesToTheGatewayScopeKey(
+        string sessionKey, string? agentId, string expectedKey, string? expectedAgentId, string expectedWireKey)
+    {
+        var target = ProgressCardSessionIdentity.Resolve(new BoardSessionTarget(sessionKey, agentId), s_workMainDefaults);
+
+        Assert.Equal(new ProgressCardTarget(expectedKey, expectedAgentId, expectedWireKey), target);
+    }
+
+    [Fact]
+    public void ProgressCardTarget_IgnoresAdvertisedMainKeyForAnotherAgent()
+    {
+        var target = ProgressCardSessionIdentity.Resolve(
+            new BoardSessionTarget("main", "ops"), new BoardSessionDefaults("main", "main", "agent:main:main"));
+
+        Assert.Equal("agent:ops:main", target.WireKey);
+    }
+
+    [Fact]
+    public void ProgressCardTarget_ReadsSessionDefaultsFromHello()
+    {
+        using var hello = JsonDocument.Parse("""
+            {"snapshot":{"sessionDefaults":{"defaultAgentId":"main","mainKey":"work","mainSessionKey":"agent:main:work"}}}
+            """);
+
+        Assert.Equal(s_workMainDefaults, BoardSessionDefaults.FromHello(hello.RootElement));
+    }
+
+    [Theory]
+    [InlineData("AGENT:Main:Dashboard:Ops", "agent:main:dashboard:ops", true)]
+    [InlineData("agent:main:matrix:channel:!RoomA", "agent:main:matrix:channel:!rooma", false)]
+    [InlineData("agent:main:main", "agent:ops:main", false)]
+    public void ProgressCardSessions_CompareLikeTheGateway(string left, string right, bool expected)
+    {
+        Assert.Equal(expected, ProgressCardSessionIdentity.SameSession(left, right));
+    }
+
+    [Fact]
+    public void ProgressCard_ParsesBoundedContentAndRejectsMismatchedSession()
+    {
+        using var document = JsonDocument.Parse("""
+            {
+              "card": {
+                "sessionKey": "agent:main:main",
+                "revision": 7,
+                "updatedAt": 1700000000000,
+                "markdown": "Current work",
+                "steps": [
+                  { "step": "Read the source", "status": "completed" },
+                  { "step": "Render the card", "status": "in_progress" },
+                  { "step": "Add tests", "status": "pending" }
+                ]
+              }
+            }
+            """);
+
+        var card = DashboardProtocol.ParseProgressCard(document.RootElement, "agent:main:main");
+
+        Assert.NotNull(card);
+        Assert.Equal(7, card.Revision);
+        Assert.Equal("Current work", card.Markdown);
+        Assert.Equal(BoardProgressStepStatus.Completed, card.Steps[0].Status);
+        Assert.Equal(BoardProgressStepStatus.InProgress, card.Steps[1].Status);
+        Assert.Throws<InvalidOperationException>(() =>
+            DashboardProtocol.ParseProgressCard(document.RootElement, "agent:research:main"));
+    }
+
+    [Fact]
+    public void ProgressCardChanged_ParsesInvalidationRevision()
+    {
+        using var document = JsonDocument.Parse("""{"sessionKey":"agent:main:main","revision":8}""");
+        using var quoted = JsonDocument.Parse("""{"sessionKey":"agent:main:main","revision":"8"}""");
+
+        Assert.Equal(new BoardProgressChangedEvent("agent:main:main", 8),
+            DashboardProtocol.ParseProgressCardChanged(document.RootElement));
+        Assert.Null(DashboardProtocol.ParseProgressCardChanged(quoted.RootElement));
+    }
+
+    [Fact]
     public void SessionPage_ReadsDashboardFactsAndSkipsMalformedRows()
     {
         using var document = JsonDocument.Parse("""
