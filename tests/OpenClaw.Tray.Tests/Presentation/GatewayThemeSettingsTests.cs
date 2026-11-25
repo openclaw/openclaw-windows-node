@@ -264,7 +264,7 @@ public sealed class GatewayThemeSettingsTests
 
         lock (gets)
             Assert.Equal(4, gets.Count);
-        Assert.Empty(catalog.Options.Where(option => option.Id.StartsWith("acme/", StringComparison.Ordinal)));
+        Assert.DoesNotContain(catalog.Options, option => option.Id.StartsWith("acme/", StringComparison.Ordinal));
     });
 
     [Fact]
