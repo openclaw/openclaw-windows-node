@@ -1381,6 +1381,29 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         menu.Items.Add(pasteItem);
         menu.Items.Add(selectAllSeparator);
         menu.Items.Add(selectAllItem);
+        // The editor owns shortcuts outside the flyout. Inside the open menu,
+        // scope them to its native presenter so its advertised shortcuts work
+        // without leaving another editing route active after dismissal.
+        menu.Opened += (_, _) =>
+        {
+            DependencyObject? presenter = pasteItem;
+            while (presenter is not null && presenter is not MenuFlyoutPresenter)
+                presenter = VisualTreeHelper.GetParent(presenter);
+            SetMenuAccelerators(presenter);
+        };
+        menu.Closed += (_, _) => SetMenuAccelerators(null);
+
+        void SetMenuAccelerators(DependencyObject? scopeOwner)
+        {
+            foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+            foreach (var accelerator in ((Microsoft.UI.Xaml.Input.StandardUICommand)item.Command).KeyboardAccelerators)
+            {
+                if (scopeOwner is not null)
+                    accelerator.ScopeOwner = scopeOwner;
+                accelerator.IsEnabled = scopeOwner is not null;
+            }
+        }
+
         menu.Opening += (_, _) =>
         {
             var state = ChatComposerContextMenuState.Project(
@@ -1409,6 +1432,10 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Action execute)
     {
         var command = new Microsoft.UI.Xaml.Input.StandardUICommand(kind);
+        // Keep native shortcut hints, but do not enable menu shortcuts until
+        // the opened flyout can bind them to its own native presenter.
+        foreach (var accelerator in command.KeyboardAccelerators)
+            accelerator.IsEnabled = false;
         command.CanExecuteRequested += (_, args) => args.CanExecute = true;
         command.ExecuteRequested += (_, _) => execute();
         return new MenuFlyoutItem

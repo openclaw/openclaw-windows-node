@@ -1078,11 +1078,12 @@ count-pill `Border` needs resource-backed background precedence. The mounted
 assert the actual Light/Dark dialog theme; the count-pill regression below
 checks the native brush. These are dependency regression requirements, not
 evidence that the newly merged package combination has passed native proof.
-`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-packages`.
+`NuGet.Config` maps Reactor exclusively to `artifacts/reactor-nuget-packages`.
 Run `.\scripts\Initialize-ReactorPackages.ps1` before direct WinUI restore,
 build or run commands; `build.ps1` and building through `run-app-local.ps1`
-already do this. The initializer verifies the official preview.18 release
-digests without changing global NuGet configuration or clearing its cache.
+already do this. The initializer verifies the preview.18 NuGet.org package
+digests. See [Reactor compatibility proof](WINDOWS_NODE_TESTING.md#reactor-compatibility-proof)
+for restore instructions if an earlier build cached the unsigned packages.
 A successful build alone is not dark-dialog proof.
 The count-pill contrast regression also checks the actual native brush after
 pooled reuse. A pooled Border must release a local null background when its

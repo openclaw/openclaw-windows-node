@@ -125,7 +125,7 @@ public sealed class ReleaseCandidateE2EWorkflowTests
         Assert.Contains("if: inputs.windows_node_source == 'main'", step);
         Assert.Contains("working-directory: app-under-test", step);
         Assert.Contains("$ErrorActionPreference = 'Stop'", step);
-        const string initialize = "& ./scripts/Initialize-ReactorPackages.ps1 -DestinationDirectory (Join-Path (Get-Location) 'artifacts/reactor-packages')";
+        const string initialize = "& ./scripts/Initialize-ReactorPackages.ps1";
         const string restore = "dotnet restore src/OpenClaw.Tray.WinUI -r win-x64";
         var initializeIndex = step.IndexOf(initialize, StringComparison.Ordinal);
         var restoreIndex = step.IndexOf(restore, StringComparison.Ordinal);
