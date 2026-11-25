@@ -62,19 +62,23 @@ public sealed class GatewayThemeBackgroundTests(UIThreadFixture ui)
                         bitmap.UriSource.AbsolutePath.EndsWith($"/manuscript-{switchedVariant}.png", StringComparison.Ordinal),
                     "Artwork switched to the new element theme");
                 var switchedImage = conversation.Child;
-                ui.Container.Children.Remove(frame);
-                await TestSupport.WaitForRenderedConditionAsync(() => !conversation.IsLoaded, "Artwork detached");
+                var unloaded = false;
                 var reloaded = false;
+                void OnUnloaded(object sender, RoutedEventArgs args) => unloaded = true;
                 void OnReloaded(object sender, RoutedEventArgs args) => reloaded = true;
-                conversation.Loaded += OnReloaded;
+                conversation.Unloaded += OnUnloaded;
                 try
                 {
+                    ui.Container.Children.Remove(frame);
+                    await TestSupport.WaitForRenderedConditionAsync(() => unloaded, "Artwork Unloaded notification delivered");
+                    conversation.Loaded += OnReloaded;
                     ui.Container.Children.Add(frame);
                     await TestSupport.WaitForRenderedConditionAsync(() => reloaded, "Artwork Loaded notification delivered");
                     Assert.Same(switchedImage, conversation.Child);
                 }
                 finally
                 {
+                    conversation.Unloaded -= OnUnloaded;
                     conversation.Loaded -= OnReloaded;
                 }
 
