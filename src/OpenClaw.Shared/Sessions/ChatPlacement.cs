@@ -54,6 +54,10 @@ public sealed record ChatPlacementSelection(ChatEnvironment Environment, ChatWor
 public sealed class ChatPlacementOutcomeUncertainException(Exception innerException)
     : InvalidOperationException("The chat location may have changed before preparation failed.", innerException);
 
+/// <summary>Preparation was canceled before any Gateway mutation could be sent.</summary>
+public sealed class ChatPlacementNotMutatedException(OperationCanceledException innerException)
+    : OperationCanceledException("Chat location preparation was canceled before any Gateway mutation was sent.", innerException);
+
 /// <summary>Gateway-scoped discovery and first-turn location preparation. No host filesystem access.</summary>
 public interface IChatPlacementGateway
 {
@@ -117,39 +121,41 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
         if (!selection.Environment.IsSelectable)
             throw new InvalidOperationException("The selected environment is unavailable.");
 
-        // Refresh eligibility before allocating or changing a workspace. Selection never falls back.
-        var agents = await RequestAsync("agents.list", new { }, connectionEpoch, cancellationToken).ConfigureAwait(false);
-        var runtime = ReadRuntime(agents, agentId);
-        var inventory = await RequestAsync("environments.list", EnvironmentParameters(runtime), connectionEpoch, cancellationToken)
-            .ConfigureAwait(false);
-        var environment = ParseEnvironments(inventory, runtime)
-            .SingleOrDefault(item => item.Id == selection.Environment.Id);
-        if (environment?.IsSelectable != true)
-            throw new InvalidOperationException("The selected environment is no longer available. Choose an environment again.");
-
-        var described = await RequestAsync("sessions.describe", new { key = sessionKey, agentId },
-            connectionEpoch, cancellationToken).ConfigureAwait(false);
-        if (!described.TryGetProperty("session", out var session) ||
-            session.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null))
-            throw new InvalidOperationException("The Gateway did not describe the selected session. No location was changed.");
-        if (session.ValueKind == JsonValueKind.Object &&
-            session.TryGetProperty("placement", out var placement) &&
-            placement.ValueKind == JsonValueKind.Object &&
-            OptionalString(placement, "state") != "local")
-        {
-            throw new InvalidOperationException(
-                "This session already has an environment placement. Review it in the Gateway before changing location or retrying.");
-        }
-
-        var mutationAdmitted = false;
+        var mutationAttempted = false;
+        var mutationApplied = false;
         try
         {
+            // Refresh eligibility before allocating or changing a workspace. Selection never falls back.
+            var agents = await RequestAsync("agents.list", new { }, connectionEpoch, cancellationToken).ConfigureAwait(false);
+            var runtime = ReadRuntime(agents, agentId);
+            var inventory = await RequestAsync("environments.list", EnvironmentParameters(runtime), connectionEpoch, cancellationToken)
+                .ConfigureAwait(false);
+            var environment = ParseEnvironments(inventory, runtime)
+                .SingleOrDefault(item => item.Id == selection.Environment.Id);
+            if (environment?.IsSelectable != true)
+                throw new InvalidOperationException("The selected environment is no longer available. Choose an environment again.");
+
+            var described = await RequestAsync("sessions.describe", new { key = sessionKey, agentId },
+                connectionEpoch, cancellationToken).ConfigureAwait(false);
+            if (!described.TryGetProperty("session", out var session) ||
+                session.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null))
+                throw new InvalidOperationException("The Gateway did not describe the selected session. No location was changed.");
+            if (session.ValueKind == JsonValueKind.Object &&
+                session.TryGetProperty("placement", out var placement) &&
+                placement.ValueKind == JsonValueKind.Object &&
+                OptionalString(placement, "state") != "local")
+            {
+                throw new InvalidOperationException(
+                    "This session already has an environment placement. Review it in the Gateway before changing location or retrying.");
+            }
+
             var workspace = selection.Workspace;
             if (workspace.GitUrl is { } gitUrl)
             {
                 var project = await RequestAsync("projects.add", new { gitUrl }, connectionEpoch,
-                    cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true,
+                    cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAttempted = true,
                     beforeAdmitted: beforeMutation).ConfigureAwait(false);
+                mutationApplied = true;
                 workspace = new("project:" + RequiredString(project, "id"),
                     RequiredString(project, "displayName"), OptionalString(project, "repoRoot"),
                     RequiredString(project, "id"));
@@ -175,16 +181,18 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
 
             // sessions.create can adopt an existing empty session's cwd without resetting its transcript.
             var created = await RequestAsync("sessions.create", parameters, connectionEpoch,
-                cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true,
+                cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAttempted = true,
                 beforeAdmitted: beforeMutation).ConfigureAwait(false);
+            mutationApplied = true;
             RequireSessionResult(created, sessionKey);
             if (environment.IsLocal)
                 return;
 
             var dispatched = await RequestAsync("sessions.dispatch",
                 new { key = sessionKey, agentId, deviceId = environment.Id["node:".Length..] },
-                connectionEpoch, cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAdmitted = true,
+                connectionEpoch, cancellationToken, timeoutMs: 120_000, onAdmitted: () => mutationAttempted = true,
                 beforeAdmitted: beforeMutation).ConfigureAwait(false);
+            mutationApplied = true;
             RequireSessionResult(dispatched, sessionKey);
             if (!dispatched.TryGetProperty("placement", out var active) ||
                 OptionalString(active, "state") != "active")
@@ -193,7 +201,19 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
                     "The Gateway has not confirmed the selected environment is ready. No message was sent.");
             }
         }
-        catch (Exception ex) when (mutationAdmitted && ex is not (OperationCanceledException or ChatPlacementOutcomeUncertainException))
+        catch (ChatPlacementOutcomeUncertainException)
+        {
+            throw;
+        }
+        catch (GatewayRequestNotSentException) when (!mutationApplied)
+        {
+            throw;
+        }
+        catch (OperationCanceledException ex) when (!mutationApplied && !mutationAttempted)
+        {
+            throw new ChatPlacementNotMutatedException(ex);
+        }
+        catch (Exception ex) when (mutationApplied || mutationAttempted)
         {
             throw new ChatPlacementOutcomeUncertainException(ex);
         }
@@ -210,11 +230,7 @@ public sealed class GatewayChatPlacementClient : IChatPlacementGateway
             throw new InvalidOperationException("The Gateway connection changed. Refresh the location choices.");
         // Drain an admitted mutation even when the view closes; do not imply that cancellation rolled it back.
         onAdmitted?.Invoke();
-        var result = await _request(method, parameters, timeoutMs, epoch).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        if (ConnectionEpoch != epoch)
-            throw new InvalidOperationException("The Gateway connection changed. Refresh the location choices.");
-        return result;
+        return await _request(method, parameters, timeoutMs, epoch).ConfigureAwait(false);
     }
 
     internal static ChatPlacementCatalog ParseCatalog(long epoch, string agentId,

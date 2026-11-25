@@ -16,6 +16,7 @@ internal sealed record ChatHistoryAnchor(int RowIndex, string Key, string Sender
 internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHistoryAnchor> navigate) : IDisposable
 {
     private AnnotatedScrollBar? _bar;
+    private Grid? _labelsGrid;
     private IReadOnlyList<ChatHistoryAnchor> _anchors = [];
     private IReadOnlyList<ChatHistoryAnchor> _ticks = [];
     private int _navigationVersion;
@@ -70,6 +71,7 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
             _bar.Labels.Clear();
         }
         _bar = bar;
+        _labelsGrid = null;
         _presenterCount = -1;
         _firstPresenter = null;
         _hoveredKey = null;
@@ -218,6 +220,7 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
     private void OnUnloaded(object sender, RoutedEventArgs args)
     {
         CancelVisualUpdate();
+        _labelsGrid = null;
         _presenterCount = -1;
         _firstPresenter = null;
     }
@@ -229,7 +232,7 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
             || (_bar?.XamlRoot?.RasterizationScale ?? 1) != _scale)
             Refresh();
         else if (labels is not null && (labels.Children.Count != _presenterCount
-            || !ReferenceEquals(labels.Children.FirstOrDefault(), _firstPresenter)))
+            || (_presenterCount > 0 && !ReferenceEquals(labels.Children[0], _firstPresenter))))
             QueueVisualUpdate();
     }
 
@@ -254,7 +257,8 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
         _visualUpdateQueued = false;
     }
 
-    private Grid? GetLabelsGrid() => GetTemplatePart<Grid>("PART_LabelsGrid");
+    private Grid? GetLabelsGrid() => _labelsGrid is { IsLoaded: true } labels
+        ? labels : _labelsGrid = GetTemplatePart<Grid>("PART_LabelsGrid");
 
     private T? GetTemplatePart<T>(string name) where T : FrameworkElement =>
         _bar is not null && VisualTreeHelper.GetChildrenCount(_bar) > 0
@@ -266,7 +270,12 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
         _visibleRows.Clear();
         if (itemsView.ScrollView is not { Content: ItemsRepeater repeater } scroll)
             return;
-        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(repeater); index++)
+        // The repeater is the scroller's content and each realized container is its
+        // direct child. Reuse its scroll-space transform for all row layout positions.
+        var transform = repeater.TransformToVisual(scroll);
+        var viewportHeight = scroll.ViewportHeight;
+        var count = VisualTreeHelper.GetChildrenCount(repeater);
+        for (var index = 0; index < count; index++)
         {
             if (VisualTreeHelper.GetChild(repeater, index) is not FrameworkElement
                 { IsLoaded: true, ActualHeight: > 0 } element)
@@ -274,9 +283,10 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
             var rowIndex = repeater.GetElementIndex(element);
             if (rowIndex < 0)
                 continue;
-            var bounds = element.TransformToVisual(scroll).TransformBounds(
-                new global::Windows.Foundation.Rect(0, 0, element.ActualWidth, element.ActualHeight));
-            if (bounds.Bottom > 0 && bounds.Top < scroll.ViewportHeight)
+            var offset = element.ActualOffset;
+            var bounds = transform.TransformBounds(
+                new global::Windows.Foundation.Rect(offset.X, offset.Y, element.ActualWidth, element.ActualHeight));
+            if (bounds.Bottom > 0 && bounds.Top < viewportHeight)
                 _visibleRows.Add(rowIndex);
         }
     }
@@ -327,7 +337,7 @@ internal sealed class ChatHistoryNavigation(ItemsView itemsView, Action<ChatHist
                 distance == 0 ? "Highlighted" : _visibleRows.Contains(anchor.RowIndex) ? "Visible" : "Quiet", false);
         }
         _presenterCount = ready ? labels.Children.Count : -1;
-        _firstPresenter = ready ? labels.Children.FirstOrDefault() : null;
+        _firstPresenter = ready && _presenterCount > 0 ? labels.Children[0] : null;
     }
 
     private void OnScrolling(AnnotatedScrollBar sender, AnnotatedScrollBarScrollingEventArgs args)

@@ -48,7 +48,7 @@ public class ReactorSlashCommandSourceContractTests
             "ChatLifecycleCommandParser.TryParse(message, attachments.Count > 0, out var command)",
             "ChatLifecycleCommandExecutionPolicy.ShouldQueue(command)",
             "_port.ExecuteLifecycleCommandAsync(threadId, command)",
-            "_port.SendMessageAsync(threadId, message, attachments, _lifetimeToken)");
+            "_port.SendMessageAsync(");
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Animation;
 using Microsoft.Win32;
 using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared.Themes;
@@ -48,6 +49,11 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private string? _notificationGatewayId;
     private (int Width, int Height, double Dpi, double MascotSize, bool Modal)? _regionLayout;
     private bool _closed, _positioning, _dragged, _bubbleHovered, _closeRequested, _nudge, _applyingTheme;
+    private bool _shown, _hidden = true;
+    private const int VisibilityTransitionMilliseconds = 180;
+    private readonly TranslateTransform _visibilityTransform = new();
+    private readonly UISettings _uiSettings = new();
+    private Storyboard? _visibilityTransition;
 
     public event EventHandler? HideRequested;
 
@@ -69,8 +75,9 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _frameMonitor = DesktopCompanionNative.CreateFrameMonitor(_hwnd);
         _bubbleTimer.Tick += OnBubbleTimeout;
         _host.Loaded += OnLoaded;
-        _host.LayoutUpdated += OnHostLayoutUpdated;
         _host.KeyDown += OnKeyDown;
+        _host.RenderTransform = _visibilityTransform;
+        _uiSettings.AnimationsEnabledChanged += OnAnimationsEnabledChanged;
         _bubbleHost.KeyDown += OnBubbleKeyDown;
         _bubbleHost.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnBubblePressed), true);
         _bubbleHost.SizeChanged += OnBubbleSizeChanged;
@@ -92,19 +99,95 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _bubblePopup.Child = _bubbleHost;
         _bubblePopup.SystemBackdrop = _bubbleAcrylic;
         _presentation.Changed += OnPresentationChanged;
-        _bubbleHost.ActualThemeChanged += OnBubbleThemeChanged;
-        BackdropPolicy.Configured += OnAppearanceConfigured;
         ApplyBubbleSurface();
         Content = _host;
         DesktopCompanionNative.ConfigureOverlay(_hwnd);
         Closed += OnClosed;
+        _bubbleHost.ActualThemeChanged += OnBubbleThemeChanged;
+        BackdropPolicy.Configured += OnAppearanceConfigured;
     }
 
     void IDesktopCompanionView.Show()
     {
-        PositionInWorkArea(initial: true);
+        if (_closed || !_hidden) return;
+        var wasVisible = AppWindow.IsVisible;
+        _hidden = false;
+        PositionInWorkArea(initial: !_shown);
         UpdateRegion();
+        if (!wasVisible) _visibilityTransform.Y = _presentation.MascotSize;
         AppWindow.Show(activateWindow: false);
+        _shown = true;
+        AnimateVisibility();
+    }
+
+    void IDesktopCompanionView.Hide()
+    {
+        if (_closed || _hidden) return;
+        _hidden = true;
+        _bubbleTimer.Stop();
+        _bubbleHovered = false;
+        _chat.Hide();
+        _presentation.ShowChat(false);
+        _bubblePopup.IsOpen = false;
+        AnimateVisibility();
+    }
+
+    private void AnimateVisibility()
+    {
+        var from = _visibilityTransform.Y;
+        _visibilityTransition?.Stop();
+        _visibilityTransition = null;
+        _host.IsHitTestVisible = !_hidden;
+        if (!_uiSettings.AnimationsEnabled)
+        {
+            CompleteVisibility();
+            return;
+        }
+        if (!_host.IsLoaded)
+        {
+            if (_hidden) CompleteVisibility();
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = from,
+            To = _hidden ? _presentation.MascotSize : 0,
+            Duration = TimeSpan.FromMilliseconds(VisibilityTransitionMilliseconds),
+            EasingFunction = new CubicEase { EasingMode = _hidden ? EasingMode.EaseIn : EasingMode.EaseOut },
+        };
+        Storyboard.SetTarget(animation, _visibilityTransform);
+        Storyboard.SetTargetProperty(animation, nameof(TranslateTransform.Y));
+        var transition = new Storyboard();
+        transition.Children.Add(animation);
+        transition.Completed += (_, _) =>
+        {
+            // A restore can reverse a pending exit. Only the current transition may hide the HWND.
+            if (!ReferenceEquals(_visibilityTransition, transition) || _closed) return;
+            _visibilityTransition = null;
+            transition.Stop();
+            CompleteVisibility();
+        };
+        _visibilityTransition = transition;
+        transition.Begin();
+    }
+
+    private void CompleteVisibility()
+    {
+        _visibilityTransform.Y = _hidden ? _presentation.MascotSize : 0;
+        if (_hidden) AppWindow.Hide();
+    }
+
+    private void OnAnimationsEnabledChanged(UISettings sender, object args)
+    {
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_closed || _uiSettings.AnimationsEnabled) return;
+            _visibilityTransition?.Stop();
+            _visibilityTransition = null;
+            CompleteVisibility();
+        }))
+            Logger.Warn("Desktop lobster could not refresh its animation preference.");
     }
 
     public void ApplyTheme(string theme, bool refreshThemeResources = false)
@@ -203,6 +286,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 
     private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
     {
+        if (args.DidSizeChange) UpdateRegion();
         if (args.DidPositionChange || args.DidSizeChange) RefreshBubblePlacement();
     }
 
@@ -234,6 +318,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         PositionInWorkArea();
+        if (!_hidden) AnimateVisibility();
     }
 
     private void OnXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) => PositionInWorkArea();
@@ -298,7 +383,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private void UpdateBubblePopup()
     {
         if (_closed || _xamlRoot is null) return;
-        var visible = (_presentation.IsChatOpen || _presentation.Notification is not null) && !_presentation.IsModal;
+        var visible = !_hidden && (_presentation.IsChatOpen || _presentation.Notification is not null) && !_presentation.IsModal;
         if (!visible)
         {
             _bubblePopup.IsOpen = false;
@@ -325,7 +410,6 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         _bubblePopup.HorizontalOffset = _nudge ? 4.01 : 4;
     }
 
-    private void OnHostLayoutUpdated(object? sender, object args) => UpdateRegion();
     private void OnBubbleSizeChanged(object sender, SizeChangedEventArgs args) => UpdateBubblePopup();
     private void OnBubbleTimeout(object? sender, object args) => Present(null);
     private void OnBubbleEntered(object sender, PointerRoutedEventArgs args)
@@ -519,6 +603,9 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     {
         if (_closed) return;
         _closed = true;
+        _uiSettings.AnimationsEnabledChanged -= OnAnimationsEnabledChanged;
+        _visibilityTransition?.Stop();
+        _visibilityTransition = null;
         AppWindow.Changed -= OnAppWindowChanged;
         AppWindow.Closing -= OnAppWindowClosing;
         _bubbleTimer.Stop();
@@ -528,7 +615,6 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _host.Loaded -= OnLoaded;
-        _host.LayoutUpdated -= OnHostLayoutUpdated;
         _host.KeyDown -= OnKeyDown;
         _bubbleHost.KeyDown -= OnBubbleKeyDown;
         _bubbleHost.RemoveHandler(UIElement.PointerPressedEvent, new PointerEventHandler(OnBubblePressed));

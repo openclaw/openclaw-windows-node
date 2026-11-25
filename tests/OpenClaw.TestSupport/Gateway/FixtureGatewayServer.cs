@@ -823,6 +823,19 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         PublishEventAsync(new { type = "event", @event = "chat.metadata.changed",
             payload = new { modelCatalogChanged = false, authChanged = false } }, cancellationToken);
 
+    public Task NotifyProgressCardChangedAsync(string sessionKey, int revision, CancellationToken cancellationToken = default)
+    {
+        var boards = _scenario.Boards
+            ?? throw new InvalidOperationException("The fixture server has no dashboard scenario.");
+        boards.SetProgressCard(sessionKey, revision, $"Fixture progress revision {revision}.");
+        return PublishEventAsync(new
+        {
+            type = "event",
+            @event = "progressCard.changed",
+            payload = new { sessionKey, revision },
+        }, cancellationToken);
+    }
+
     private async Task PublishEventAsync(object message, CancellationToken cancellationToken)
     {
         var targets = AcquireConnections(onlyOpen: true);

@@ -365,7 +365,7 @@ public sealed class ChatConversationStateTests
         var context = new ChatProjectionContext("main", HasHandshakeSnapshot: true);
         state.Load([new SessionInfo { Key = "main", IsMain = true }], context);
         state.ResetThread("main", context);
-        var admission = state.AdmitMessage(
+        var admission = Assert.IsType<ChatQueuedAdmission>(state.AdmitMessage(
             "main",
             text: string.Empty,
             displayText: "\u200B📎 proof.txt",
@@ -382,7 +382,7 @@ public sealed class ChatConversationStateTests
                 },
             ],
             DateTimeOffset.UtcNow,
-            context);
+            context));
         Assert.NotNull(admission.Dispatch);
         var commit = state.CommitSendResult(
             admission.Dispatch!,
@@ -1090,6 +1090,50 @@ public sealed class ChatSendQueuePolicyTests
                 turnActive,
                 hasPendingMessages));
     }
+
+    [Theory]
+    [InlineData("ok", null, false, null, "Accepted")]
+    [InlineData("timeout", "accepted-run", false, "run timed out", "Accepted")]
+    [InlineData("failed", null, true, "cached failure", "Rejected")]
+    [InlineData("aborted", "accepted-run", false, null, "Canceled")]
+    [InlineData("timeout", null, false, "not accepted", "Rejected")]
+    public void ClassifyAdmission_PreservesGatewayAcceptanceEvidence(
+        string status,
+        string? runId,
+        bool cached,
+        string? error,
+        string expected)
+    {
+        var result = new ChatSendResult
+        {
+            Status = status,
+            RunId = runId,
+            Cached = cached,
+            Error = error
+        };
+
+        Assert.Equal(expected, ChatSendQueuePolicy.ClassifyAdmission(result).ToString());
+    }
+
+    [Theory]
+    [InlineData("failed", null, true, "Rejected")]
+    [InlineData("failed", "accepted-run", true, "Accepted")]
+    [InlineData("aborted", "accepted-run", true, "Canceled")]
+    public void ClassifyDraftAdmission_DistinguishesTerminalOutcomeFromAcceptance(
+        string status,
+        string? runId,
+        bool cached,
+        string expected)
+    {
+        var result = new ChatSendResult
+        {
+            Status = status,
+            RunId = runId,
+            Cached = cached,
+        };
+
+        Assert.Equal(expected, ChatSendQueuePolicy.ClassifyDraftAdmission(result).ToString());
+    }
 }
 
 public sealed class ChatEventMapperTests
@@ -1404,7 +1448,7 @@ public sealed class ChatRuntimeOwnershipContractTests
             "internal ChatDataSnapshot? SnapshotIfHistoryTokenCurrent(");
         var queue = Slice(
             state,
-            "internal ChatQueuedAdmission AdmitMessage(",
+            "internal ChatQueuedAdmission? AdmitMessage(",
             "internal ChatDataSnapshot EnqueueCompact(");
         var agentEvent = Slice(
             state,
