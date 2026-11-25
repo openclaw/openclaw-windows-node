@@ -296,9 +296,9 @@ public sealed class GatewayThemeTypographyTests(UIThreadFixture ui)
                 Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(border) == "powershell");
             var table = borders.FirstOrDefault(border =>
                 border.Child is Grid { ColumnDefinitions.Count: 2, RowDefinitions.Count: 2 } grid &&
-                grid.Children.OfType<Border>().Any(child => Grid.GetColumnSpan(child) == 2));
+                grid.Children.OfType<Border>().Any(child => Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(child) == 2));
             var header = (table?.Child as Grid)?.Children.OfType<Border>()
-                .FirstOrDefault(child => Grid.GetColumnSpan(child) == 2);
+                .FirstOrDefault(child => Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(child) == 2);
             return code?.CornerRadius == new CornerRadius(codeRadius) &&
                 table?.CornerRadius == new CornerRadius(tableRadius) &&
                 header?.CornerRadius == new CornerRadius(headerRadius, headerRadius, 0, 0);
