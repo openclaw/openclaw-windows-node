@@ -104,6 +104,26 @@ public class GatewayThemeTests
         Assert.False(GatewayThemeProtocol.TryParseGet(json.RootElement, out _, out _));
     }
 
+    [Theory]
+    [InlineData("""{ "\ud800":1, "id":"bad", "name":"Bad", "source":"builtin", "modes":["dark"] }""")]
+    [InlineData("""{ "id":"bad", "name":"Bad", "source":"builtin", "modes":["dark"], "\ud800":1 }""")]
+    public void UnreadablePropertyNameRejectsOnlyItsDescriptor(string bad)
+    {
+        using var reply = JsonDocument.Parse($$"""
+            { "themes": [
+                { "id":"claw", "name":"Claw", "source":"builtin", "modes":["dark"] },
+                {{bad}},
+                { "id":"tide", "name":"Tide", "source":"builtin", "modes":["dark"] }
+              ], "theme": {{bad}} }
+            """);
+
+        var list = GatewayThemeProtocol.ParseList(reply.RootElement);
+
+        Assert.Equal(new[] { "claw", "tide" }, list.Themes.Select(theme => theme.Id));
+        Assert.Null(list.Current);
+        Assert.False(GatewayThemeProtocol.TryParseGet(reply.RootElement, out _, out _));
+    }
+
     [Fact]
     public void DefinitionAcceptsSingleModeIgnoresBrandingAndRoundTrips()
     {
