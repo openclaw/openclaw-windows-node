@@ -4568,6 +4568,9 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
     <value>Arte do tema atrás de novos chats e conversas. Ao seguir o tema do Gateway, sua escolha no painel é usada.</value>
   </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Padrão do painel</value>
+  </data>
   <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
     <value>Nenhuma</value>
   </data>

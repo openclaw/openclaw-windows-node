@@ -60,6 +60,20 @@ public sealed record BackgroundPreference(
     /// </summary>
     public static bool TryParse(JsonElement value, out BackgroundPreference preference)
     {
+        try
+        {
+            return TryParseCore(value, out preference);
+        }
+        catch (InvalidOperationException ex) when (ex is not ObjectDisposedException)
+        {
+            // Even TryGetProperty decodes escaped property names and can reject an unpaired surrogate.
+            preference = Default;
+            return false;
+        }
+    }
+
+    private static bool TryParseCore(JsonElement value, out BackgroundPreference preference)
+    {
         preference = Default;
         if (value.ValueKind != JsonValueKind.Object ||
             !value.TryGetProperty("source", out var source) || source.ValueKind != JsonValueKind.Object ||
@@ -67,7 +81,7 @@ public sealed record BackgroundPreference(
             return false;
         BackgroundSourceKind sourceKind;
         string? assetId = null;
-        switch (GatewayThemeProtocol.ReadString(kind))
+        switch (kind.GetString())
         {
             case "none":
                 sourceKind = BackgroundSourceKind.None;
@@ -76,7 +90,7 @@ public sealed record BackgroundPreference(
                 sourceKind = BackgroundSourceKind.Theme;
                 break;
             case "custom" when source.TryGetProperty("assetId", out var asset) && asset.ValueKind == JsonValueKind.String &&
-                GatewayThemeProtocol.ReadString(asset) is { } id && s_assetId.IsMatch(id):
+                asset.GetString() is { } id && s_assetId.IsMatch(id):
                 sourceKind = BackgroundSourceKind.Custom;
                 assetId = id;
                 break;
@@ -86,7 +100,7 @@ public sealed record BackgroundPreference(
         var presentation = BackgroundPresentation.Faded;
         if (value.TryGetProperty("presentation", out var style))
         {
-            switch (style.ValueKind == JsonValueKind.String ? GatewayThemeProtocol.ReadString(style) : null)
+            switch (style.ValueKind == JsonValueKind.String ? style.GetString() : null)
             {
                 case "faded":
                     break;

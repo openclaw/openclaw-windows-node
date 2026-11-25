@@ -4550,6 +4550,9 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
     <value>Thema-illustratie achter nieuwe chats en gesprekken. Wanneer je het Gateway-thema volgt, wordt je keuze uit het dashboard gebruikt.</value>
   </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Dashboardstandaard</value>
+  </data>
   <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
     <value>Geen</value>
   </data>

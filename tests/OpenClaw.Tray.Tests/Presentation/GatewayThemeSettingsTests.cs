@@ -643,6 +643,8 @@ public sealed class GatewayThemeSettingsTests
         vm.FollowGatewayTheme = true;
         Assert.True(settings.Appearance.FollowGatewayTheme);
         Assert.False(vm.IsManualThemeEnabled);
+        Assert.Equal(-1, vm.BackgroundStyleIndex);
+        Assert.Equal(100, vm.BackgroundVisibility);
         // Nothing followed yet, so the manual choice is what the Companion shows.
         Assert.Equal("tide", vm.SelectedThemeKey);
 

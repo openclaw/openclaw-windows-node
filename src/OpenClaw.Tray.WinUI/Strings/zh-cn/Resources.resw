@@ -4549,6 +4549,9 @@
   <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
     <value>在新聊天和对话后面显示主题图案。跟随 Gateway 主题时，将使用你在仪表板中的选择。</value>
   </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>仪表板默认设置</value>
+  </data>
   <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
     <value>无</value>
   </data>

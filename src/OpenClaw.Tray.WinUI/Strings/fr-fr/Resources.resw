@@ -4549,6 +4549,9 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
     <value>Illustration du thème derrière les nouvelles discussions et les conversations. Lorsque vous suivez le thème Gateway, votre choix du tableau de bord est utilisé.</value>
   </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Valeur par défaut du tableau de bord</value>
+  </data>
   <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
     <value>Aucune</value>
   </data>

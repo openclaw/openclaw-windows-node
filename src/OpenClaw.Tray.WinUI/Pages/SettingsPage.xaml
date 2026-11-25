@@ -177,6 +177,7 @@
                                        TextWrapping="Wrap"/>
                         </StackPanel>
                         <ComboBox Grid.Column="1" x:Name="BackgroundStyleComboBox" MinWidth="160" VerticalAlignment="Center"
+                                  x:Uid="SettingsPage_BackgroundStyle" PlaceholderText="Dashboard default"
                                   SelectedIndex="{Binding BackgroundStyleIndex, Mode=TwoWay}"
                                   IsEnabled="{Binding IsBackgroundEnabled}"
                                   AutomationProperties.AutomationId="SettingsPageBackgroundStyle"

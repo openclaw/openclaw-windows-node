@@ -4599,6 +4599,9 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
     <value>Theme artwork behind new chats and conversations. While following the Gateway theme, your dashboard choice is used.</value>
   </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Dashboard default</value>
+  </data>
   <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
     <value>None</value>
   </data>

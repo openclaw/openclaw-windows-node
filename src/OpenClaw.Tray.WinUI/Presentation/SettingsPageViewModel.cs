@@ -256,10 +256,10 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     public bool IsManualThemeEnabled => !_followGatewayTheme;
 
-    /// <summary>Background artwork style: 0 none, 1 faded, 2 full bleed. While following, the dashboard's choice applies.</summary>
+    /// <summary>Background artwork style: -1 dashboard default, 0 none, 1 faded, 2 full bleed.</summary>
     public int BackgroundStyleIndex
     {
-        get => Background.Source != OpenClaw.Shared.Themes.BackgroundSourceKind.Theme ? 0
+        get => IsDashboardBackgroundUnset ? -1 : Background.Source != OpenClaw.Shared.Themes.BackgroundSourceKind.Theme ? 0
             : Background.Presentation == OpenClaw.Shared.Themes.BackgroundPresentation.FullBleed ? 2 : 1;
         set
         {
@@ -281,7 +281,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     /// <summary>Background artwork strength, 0 to 100.</summary>
     public double BackgroundVisibility
     {
-        get => Math.Round(Background.Visibility * 100);
+        get => IsDashboardBackgroundUnset ? 100 : Math.Round(Background.Visibility * 100);
         set
         {
             var visibility = Math.Clamp(value, 0, 100) / 100;
@@ -295,6 +295,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     public bool IsBackgroundEnabled => !_followGatewayTheme;
 
     public bool IsBackgroundVisibilityEnabled => !_followGatewayTheme && BackgroundStyleIndex != 0;
+
+    private bool IsDashboardBackgroundUnset => _appearance.FollowGatewayTheme && _appearance.FollowedBackground is null;
 
     private OpenClaw.Shared.Themes.BackgroundPreference Background =>
         OpenClaw.Shared.Themes.AppearanceResolver.ActiveBackground(_appearance) ?? OpenClaw.Shared.Themes.BackgroundPreference.Default;
