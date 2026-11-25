@@ -24,6 +24,8 @@
   <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>開啟通知</value></data>
   <data name="DesktopCompanion_Open" xml:space="preserve"><value>開啟 OpenClaw</value></data>
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>龍蝦大小</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>僅在其他 OpenClaw 視窗最小化時顯示</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>設定或聊天/儀表板視窗可見時隱藏。</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>調整龍蝦大小，不改變聊天或通知文字的大小。</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龍蝦設定</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>無法顯示桌面龍蝦。請在設定中關閉再開啟「桌面龍蝦」以重試。你仍然可以在 OpenClaw 中查看通知。</value></data>
@@ -2830,16 +2832,85 @@
     <value>完成</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>已壓縮的歷程記錄</value>
+    <value>上下文已壓縮</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} 個權杖 · 節省 {2}</value>
+    <value>節省了 {0} 個權杖（{1}%）</value>
   </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>壓縮後的對話記錄會保留為檢查點。開啟工作階段檢查點，以便從該壓縮檢視建立分支或還原。</value>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>系統</value>
   </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>開啟檢查點</value>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>自動化</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>系統 · 自動化復原</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>自動化失敗。</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>系統 · 閘道已重新啟動</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>系統 · 注入的內容</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>系統 · 背景工作</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>模型備援：{0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>已返回所選模型：{0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>原因：{0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>無法完成此回覆</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} 未接受已儲存的認證</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} 回報帳單問題</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} 次</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>複製錯誤</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>錯誤詳細資料</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>已建立</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>已更新</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>已封存</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>已還原</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>已學習</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>復原</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>正在復原…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>已復原</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>無法復原技能變更。請再試一次。</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>新工作階段</value>
@@ -3244,6 +3315,12 @@
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>閘道接受此訊息前連線已中斷。</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>無法確認訊息是否已送出。請先檢查對話，再重試。</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>目前對話正忙。草稿仍保留在這裡，請稍後再試。</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>中止失敗</value>
   </data>
@@ -3254,7 +3331,7 @@
     <value>助理已回覆</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>連線已中斷: 回覆已中斷。</value>
+    <value>等待回覆時連線已中斷。請先檢查對話，再重新傳送訊息。</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>已捨棄閘道時間軸事件</value>
@@ -6307,7 +6384,6 @@
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 則佇列訊息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已複製</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>複製失敗</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>訊息文字</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理強度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
@@ -7274,6 +7350,19 @@
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>此工作階段已不再為空，因此已取消待定的位置選擇。請檢查工作階段並重新傳送，以在目前位置繼續。</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>Gateway 未確認所選的模型或推理選項。請檢查這些選項，然後再試一次。</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>Gateway 無法建立新的聊天。請檢查連線，然後再試一次。</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>Gateway 可能已建立此聊天，但未確認回應，因此無法傳送此草稿。如果工作階段清單中出現該聊天，請從中開啟；否則請開始新的聊天。</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>位置選項無法使用。此聊天將使用 Gateway 的預設位置。</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>請先傳送訊息以建立此聊天，再使用對話生命週期命令。</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>重新整理問題</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>問題已回答</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>問題已取消</value></data>
@@ -7758,6 +7847,9 @@
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>無法載入完整輸出。</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>載入完整輸出需要已儲存的結果識別碼及已驗證的目前帳戶。</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>顯示完整輸出</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>還有更多輸出</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>還有 {0} 行</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>還有 {0} 行</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>重試</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>有新訊息。跳至最新訊息</value></data>
@@ -8987,6 +9079,54 @@
   </data>
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>{0} 小工具尚無法在 Windows 上使用。</value>
+  </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>工作階段進度</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>您已無權檢視此工作階段的進度。</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>尚無進度</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>工作階段回報進度後，詳細資料會顯示在這裡。</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>無法重新整理進度。</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>正在載入進度</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>正在顯示最後收到的進度。最近一次重新整理失敗。</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>已完成</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>進行中</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>待處理</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>{0}：{1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>已完成 {0}/{1} 個步驟</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>進度無法使用</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>此連線無法從 Gateway 讀取進度卡片資料。</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>更新時間：{0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>更新時間無法使用</value>
   </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>此報告包含無效資料。</value>

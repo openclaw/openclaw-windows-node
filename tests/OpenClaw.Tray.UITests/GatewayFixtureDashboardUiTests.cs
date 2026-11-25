@@ -307,7 +307,7 @@ public sealed partial class GatewayFixtureUiTests
                 SetForeground(window);
                 Invoke(FindById(run, buttonId)!);
                 await WaitUiAsync(run, () => FindById(run, inputId) is not null, $"{inputId} opened");
-                var input = SearchEdit(run, inputId);
+                var input = await SearchEditAsync(run, inputId);
                 ((ValuePattern)input.GetCurrentPattern(ValuePattern.Pattern)).SetValue(query);
                 await WaitUiAsync(run, () => FindById(run, "SearchResult_0") is { Current.IsOffscreen: false } result
                     && result.Current.Name.StartsWith("Channels.", StringComparison.Ordinal)
@@ -317,7 +317,8 @@ public sealed partial class GatewayFixtureUiTests
                     input.FindFirst(TreeScope.Descendants,
                         new PropertyCondition(AutomationElement.HasKeyboardFocusProperty, true)) is not null,
                     $"{inputId} focused");
-                OwnedWindowCapture.Save(run, window, $"{inputId}-channels-dashboard.png", FindById(run, "SearchResult_0")!);
+                OwnedWindowCapture.Save(run, window, $"{inputId}-channels-dashboard.png",
+                    await WaitForElementByIdAsync(run, "SearchResult_0", $"Channels Dashboard row for {inputId} capture"));
                 Assert.True(ForegroundBelongsTo(run.AppProcessId),
                     "The fixture lost foreground before search activation; no keys were sent.");
                 Assert.NotNull(FindById(run, inputId));

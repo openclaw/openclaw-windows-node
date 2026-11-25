@@ -101,27 +101,26 @@ public sealed class PlaybackMuteStateTests
     {
         using var state = new PlaybackMuteState();
         using var playback = state.Acquire();
-        using var entered = new ManualResetEventSlim();
-        using var proceed = new ManualResetEventSlim();
-        var muted = false;
-        var registration = Task.Run(() => state.RegisterCapture(value =>
+        using var releaseStarted = new ManualResetEventSlim();
+        var writes = new List<bool>();
+        var release = Task.CompletedTask;
+        using var capture = state.RegisterCapture(value =>
         {
-            muted = value;
-            if (value)
+            writes.Add(value);
+            if (writes.Count != 1)
+                return;
+
+            release = Task.Factory.StartNew(() =>
             {
-                entered.Set();
-                Assert.True(proceed.Wait(TimeSpan.FromSeconds(5)));
-            }
-        }));
-        try
-        {
-            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-            var release = Task.Run(playback.Dispose);
-            proceed.Set();
-            using var capture = await registration;
-            await release;
-            Assert.False(muted);
-        }
-        finally { proceed.Set(); }
+                releaseStarted.Set();
+                playback.Dispose();
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+            // Keep registration in flight until the dedicated release worker starts.
+            releaseStarted.Wait();
+        });
+
+        await release;
+        Assert.Equal(new[] { true, false }, writes);
     }
 }

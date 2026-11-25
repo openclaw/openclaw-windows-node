@@ -71,6 +71,7 @@ public interface ISettingsEditor
     bool UseLegacyWebChat { set; }
     bool ShowNotifications { set; }
     bool ShowDesktopCompanion { set; }
+    bool DesktopCompanionOnlyWhenMinimized { set; }
     int DesktopCompanionScalePercent { set; }
     string NotificationSound { set; }
     string AppTheme { set; }
@@ -130,6 +131,7 @@ public sealed record SettingsSnapshot
         UseLegacyWebChat = data.UseLegacyWebChat,
         ShowNotifications = data.ShowNotifications,
         ShowDesktopCompanion = data.ShowDesktopCompanion,
+        DesktopCompanionOnlyWhenMinimized = data.DesktopCompanionOnlyWhenMinimized,
         DesktopCompanionScalePercent = OpenClaw.Shared.DesktopCompanionScale.Normalize(data.DesktopCompanionScalePercent),
         NotificationSound = data.NotificationSound ?? "Default",
         AppTheme = SettingsManager.NormalizeAppTheme(data.AppTheme),
@@ -177,6 +179,7 @@ public sealed record SettingsSnapshot
     public bool UseLegacyWebChat { get; init; }
     public bool ShowNotifications { get; init; }
     public bool ShowDesktopCompanion { get; init; }
+    public bool DesktopCompanionOnlyWhenMinimized { get; init; } = true;
     public int DesktopCompanionScalePercent { get; init; } = OpenClaw.Shared.DesktopCompanionScale.DefaultPercent;
     public string NotificationSound { get; init; } = "Default";
     public string AppTheme { get; init; } = "System";

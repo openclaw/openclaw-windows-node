@@ -2,8 +2,6 @@
 // Run with --filter FullyQualifiedName~ReactorMarkdownWebParityProofTests.
 using Microsoft.UI.Reactor.Hosting;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Automation.Peers;
-using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
@@ -99,9 +97,7 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 Assert.Same(Application.Current.Resources["ChatProseRichTextStyle"], prose.Style);
                 var heading = Assert.Single(rich, text => Text(text) == "The design");
                 Assert.Same(Application.Current.Resources["ChatRichTextStyle"], heading.Style);
-                // Message selection wraps each block and carries the block's margin on the wrapper.
-                var headingBlock = Assert.IsAssignableFrom<UserControl>(VisualTreeHelper.GetParent(heading));
-                Assert.Equal(ChatVisuals.HeadingTopInset, headingBlock.Margin.Top);
+                Assert.Equal(ChatVisuals.HeadingTopInset, heading.Margin.Top);
                 var tightItem = Assert.Single(rich, text => Text(text) == "Backslashes are fine");
                 Assert.Same(Application.Current.Resources["ChatProseRichTextStyle"], tightItem.Style);
 
@@ -125,8 +121,7 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 Assert.Empty(diagram.TextHighlighters);
 
                 var code = Assert.Single(rich, text => Text(text) == TypeScript);
-                // The message's selection provider replaces native per-block selection.
-                Assert.False(code.IsTextSelectionEnabled);
+                Assert.True(code.IsTextSelectionEnabled);
                 Assert.Equal(ChatVisuals.CodeSize, code.FontSize);
                 Assert.Single(Runs(code));
                 Assert.Equal(dark ? 0xFFFF8A80u : 0xFFB81B27u, Ink(code, "type"));
@@ -150,23 +145,13 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
                 // Re-rendering unchanged Markdown keeps Reactor's code paragraph, the user's
                 // selection and the syntax colors.
                 var paragraph = code.Blocks[0];
-                var selection = Assert.Single(Ancestors(code).OfType<Control>(), control =>
-                    FrameworkElementAutomationPeer.CreatePeerForElement(control)
-                        ?.GetPattern(PatternInterface.Text) is ITextProvider);
-                ITextProvider TextProvider() => (ITextProvider)FrameworkElementAutomationPeer
-                    .CreatePeerForElement(selection)!.GetPattern(PatternInterface.Text);
-                // A range inside one block is harder to keep than the whole document: it must
-                // survive re-render at the same text offsets.
-                var codeRange = TextProvider().DocumentRange.FindText(TypeScript, false, false);
-                Assert.NotNull(codeRange);
-                codeRange.Select();
-                var selected = Assert.Single(TextProvider().GetSelection()).GetText(-1);
-                Assert.Equal(TypeScript, selected);
+                code.SelectAll();
+                Assert.Equal(TypeScript, code.SelectedText);
                 var next = ReactorChatTimeline.BuildSafeMarkdown(Markdown);
                 host!.Reconciler.Reconcile(element, next, root, static () => { });
                 element = next;
                 Assert.Same(paragraph, code.Blocks[0]);
-                Assert.Equal(selected, Assert.Single(TextProvider().GetSelection()).GetText(-1));
+                Assert.Equal(TypeScript, code.SelectedText);
                 Assert.Equal(dark ? 0xFFFF8A80u : 0xFFB81B27u, Ink(code, "type"));
 
                 // Switching theme re-resolves the syntax palette.
@@ -305,7 +290,7 @@ public sealed class ReactorMarkdownWebParityProofTests(UIThreadFixture ui)
     }
 
     [Fact]
-    public async Task SelectableListMarker_RestylesWhenItsRowUpdatesInPlace()
+    public async Task ListMarker_RestylesWhenItsRowUpdatesInPlace()
     {
         await ui.ResetContainerAsync();
         ReactorHostControl? host = null;

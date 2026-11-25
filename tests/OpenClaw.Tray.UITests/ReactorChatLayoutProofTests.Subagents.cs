@@ -83,7 +83,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     new ScrollingScrollOptions(ScrollingAnimationMode.Disabled, ScrollingSnapPointsMode.Ignore));
             });
             await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
-                () => scroll!.VerticalOffset <= 1 && FindControl<Button>(surface, "ChatJumpLatest").Opacity == 1,
+                () => scroll!.VerticalOffset <= 1 && FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal").Opacity == 1,
                 "parent reading its earlier messages"));
             await ui.RunOnUIAsync(() => Invoke(FindControl<Button>(surface, "ChatSubagentsPill")));
             var subagentsIndex = tabs == DetailsThenSubagents ? 1 : 0;
@@ -124,7 +124,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 // Widening the transcript reflows text above the reader by a few pixels; the regression is a
                 // jump of many rows back to ItemsView's last current item.
                 Assert.InRange(scroll.VerticalOffset, 0, CloseReflowTolerance);
-                Assert.Equal(1, FindControl<Button>(surface, "ChatJumpLatest").Opacity);
+                Assert.Equal(1, FindControl<FrameworkElement>(surface, "ChatJumpLatestReveal").Opacity);
                 if (tabs != SubagentsOnly)
                 {
                     var view = FindControl<TabView>(surface, "ConversationPanelTabs");
@@ -196,6 +196,9 @@ public sealed partial class ReactorChatLayoutProofTests
                     FindOptional<Border>(surface, "ChatSubagentsPane") is { } pane &&
                     FindDescendants<ProgressRing>(pane).Any(ring => ring.IsLoaded),
                 "Subagents list with its running spinner");
+            // The panel slides in from its trailing edge; layout is asserted once that render-only motion settles.
+            await UntilAsync(() => Math.Abs(Bounds(FindControl<Border>(surface, "ChatSubagentsPane"), surface).Right - width) <= 1,
+                "Subagents panel settled at the trailing edge");
             await ui.RunOnUIAsync(() =>
             {
                 // Selecting the tab keeps the pill's neutral border.

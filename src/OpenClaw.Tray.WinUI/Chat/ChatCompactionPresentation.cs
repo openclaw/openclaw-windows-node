@@ -5,8 +5,7 @@ namespace OpenClawTray.Chat;
 
 internal sealed record ChatCompactionPresentation(
     string Title,
-    string Detail,
-    string ActionLabel,
+    string? Detail,
     string AutomationName);
 
 internal static class ChatCompactionPresenter
@@ -15,8 +14,7 @@ internal static class ChatCompactionPresenter
         ChatTimelineItem entry,
         IReadOnlyDictionary<string, ChatEntryMetadata>? entryMetadata,
         string? title = null,
-        string? detail = null,
-        string? actionLabel = null)
+        string? metricsFormat = null)
     {
         if (entry.Kind != ChatTimelineItemKind.Status
             || entryMetadata?.TryGetValue(entry.Id, out var metadata) != true
@@ -26,51 +24,35 @@ internal static class ChatCompactionPresenter
             return null;
         }
 
-        title ??= "COMPACTED HISTORY";
-        detail ??= "The compacted transcript is preserved as a checkpoint. " +
-            "Open session checkpoints to branch or restore from that compacted view.";
-        actionLabel ??= "Open checkpoints";
+        title ??= "Context compacted";
+        var detail = BuildDetail(metadata.CompactionTokensBefore, metadata.CompactionTokensAfter, metricsFormat);
         return new ChatCompactionPresentation(
             title,
             detail,
-            actionLabel,
-            $"{title}. {detail}");
+            detail is null ? title : $"{title}, {detail}");
     }
 
-    public static ChatCompactionPresentation Create(
+    private static string? BuildDetail(
         long? tokensBefore,
         long? tokensAfter,
-        string? title = null,
-        string? metricsFormat = null,
-        string? fallbackDetail = null,
-        string? actionLabel = null)
+        string? metricsFormat)
     {
-        title ??= "Context compacted";
-        var detail = BuildDetail(tokensBefore, tokensAfter, metricsFormat, fallbackDetail);
-        actionLabel ??= "Open checkpoints";
-        return new ChatCompactionPresentation(title, detail, actionLabel, $"{title}. {detail}");
-    }
+        // Missing or inconsistent measurements cannot establish token savings.
+        if (tokensBefore is not > 0 || tokensAfter is not >= 0 || tokensAfter > tokensBefore)
+            return null;
 
-    private static string BuildDetail(
-        long? tokensBefore,
-        long? tokensAfter,
-        string? metricsFormat,
-        string? fallbackDetail)
-    {
-        if (tokensBefore is >= 0 && tokensAfter is >= 0)
-        {
-            var saved = Math.Max(0, tokensBefore.Value - tokensAfter.Value);
-            return string.Format(
-                CultureInfo.CurrentCulture,
-                metricsFormat ?? "{0} → {1} tokens · {2} saved",
-                Format(tokensBefore.Value),
-                Format(tokensAfter.Value),
-                Format(saved));
-        }
-
-        return fallbackDetail ?? "Earlier context was summarized into a checkpoint.";
+        var saved = tokensBefore.Value - tokensAfter.Value;
+        var percent = saved / (double)tokensBefore.Value * 100;
+        return string.Format(
+            CultureInfo.CurrentCulture,
+            metricsFormat ?? "saved {0} tokens ({1}%)",
+            Format(saved),
+            percent.ToString("0.#", CultureInfo.CurrentCulture));
     }
 
     private static string Format(long value) =>
-        value.ToString("N0", CultureInfo.CurrentCulture);
+        value >= 1_000_000_000 ? (value / 1_000_000_000d).ToString("0.#", CultureInfo.CurrentCulture) + "B" :
+        value >= 1_000_000 ? (value / 1_000_000d).ToString("0.#", CultureInfo.CurrentCulture) + "M" :
+        value >= 1_000 ? (value / 1_000d).ToString("0.#", CultureInfo.CurrentCulture) + "k" :
+        value.ToString(CultureInfo.CurrentCulture);
 }

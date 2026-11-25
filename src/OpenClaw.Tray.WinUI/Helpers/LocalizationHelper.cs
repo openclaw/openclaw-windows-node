@@ -11,43 +11,56 @@ public static class LocalizationHelper
         _languageOverride ?? System.Globalization.CultureInfo.CurrentUICulture.Name;
 
     private static ResourceManager? _resourceManager;
-    private static ResourceContext? _overrideContext;
+    private static ResourceContext? _context;
     private static string? _languageOverride;
+    private static readonly object s_resourceLock = new();
+    private static readonly Dictionary<string, string> s_strings = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, byte> s_loggedLookupFailures = new();
     private const int MaxLoggedLookupFailures = 1024;
     private static int s_lookupFailureLimitLogged;
 
     /// <summary>
     /// Force a specific language for testing (e.g. "zh-CN").
-    /// Must be called before any GetString calls.
+    /// Invalidates cached strings and resource qualifiers.
     /// </summary>
     public static void SetLanguageOverride(string language)
     {
-        _languageOverride = language;
-        _resourceManager = null;
-        _overrideContext = null;
+        lock (s_resourceLock)
+        {
+            _languageOverride = language;
+            _resourceManager = null;
+            _context = null;
+            s_strings.Clear();
+        }
     }
 
     private static ResourceManager Manager => _resourceManager ??= new ResourceManager();
 
     private static ResourceContext GetContext()
     {
-        if (_overrideContext != null) return _overrideContext;
+        if (_context != null) return _context;
+        _context = Manager.CreateResourceContext();
         if (_languageOverride != null)
-        {
-            _overrideContext = Manager.CreateResourceContext();
-            _overrideContext.QualifierValues["Language"] = _languageOverride;
-            return _overrideContext;
-        }
-        return Manager.CreateResourceContext();
+            _context.QualifierValues["Language"] = _languageOverride;
+        return _context;
     }
 
     public static string GetString(string resourceKey)
     {
+        lock (s_resourceLock)
+        {
+            if (s_strings.TryGetValue(resourceKey, out var cached))
+                return cached;
+            return LookupString(resourceKey);
+        }
+    }
+
+    private static string LookupString(string resourceKey)
+    {
         var found = TryGetValueAsString(resourceKey, out var value, out var lookupFailure);
         if (found && !string.IsNullOrEmpty(value))
         {
-            return value;
+            return s_strings[resourceKey] = value;
         }
 
         if (TryGetXamlPropertyResourcePath(resourceKey, out var propertyResourcePath))
@@ -55,7 +68,7 @@ public static class LocalizationHelper
             var propertyFound = TryGetValueAsString(propertyResourcePath, out value, out var propertyLookupFailure);
             if (propertyFound && !string.IsNullOrEmpty(value))
             {
-                return value;
+                return s_strings[resourceKey] = value;
             }
 
             if (!found)

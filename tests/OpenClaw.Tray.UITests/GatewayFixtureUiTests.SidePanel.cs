@@ -49,6 +49,10 @@ public sealed partial class GatewayFixtureUiTests
                 }, description);
                 return tab!;
             }
+            bool ClearsSessionTitle(System.Windows.Rect bounds) =>
+                FindById(run, "WorkspaceSessionTitle") is { Current.IsOffscreen: false } title &&
+                title.Current.BoundingRectangle.Width > 0 &&
+                bounds.Left >= title.Current.BoundingRectangle.Right - 1;
 
             var toggle = await VisibleAsync("WorkspaceToggleSidePanel", "side panel toggle in the title bar");
             // The toggle sits flush against the caption buttons and shares their row.
@@ -59,12 +63,13 @@ public sealed partial class GatewayFixtureUiTests
 
             await ClickOwnedElementAsync(run, window, toggle);
             await ClickOwnedElementAsync(run, window, await VisibleAsync("ConversationPanelLauncherSubagents", "panel launcher"));
-            await TabAsync(bounds => bounds.Top < minimize.Bottom, "Subagents tab joins the caption row");
+            await TabAsync(bounds => bounds.Top < minimize.Bottom && ClearsSessionTitle(bounds),
+                "Subagents tab joins the caption row beside the session title");
             await Task.Delay(SidePanelTabEntranceCaptureDelay); // test-timing-exception: capture-only; the TabView item fade is a composition animation with no observable completion
             await CaptureIfRequestedAsync(run, $"side-panel-{theme}-{(maximized ? "max" : "normal")}-split.png");
 
             // An operation banner above chat must stay visible and dismissable: the panel leaves the caption row.
-            Invoke(await VisibleAsync("WorkspaceSessionsAdd", "new conversation action"));
+            await TriggerReadOnlySessionErrorAsync(run);
             var banner = await VisibleAsync("WorkspaceOperationFeedback", "rejected-operation banner above chat");
             var bannerBottom = banner.Current.BoundingRectangle.Bottom;
             await TabAsync(bounds => bounds.Top >= bannerBottom - 1, "panel leaves the caption row while the banner shows");
@@ -81,15 +86,16 @@ public sealed partial class GatewayFixtureUiTests
             // collapsed sidebar is too uniform for the capture's blank-content guard.
             await ClickOwnedElementAsync(run, window, await VisibleAsync("WorkspaceExpandSidePanel", "expand button"));
             await WaitUiAsync(run, () => FindById(run, "WorkspaceExpandSidePanel")?.Current.Name == "Restore split", "expanded");
-            await TabAsync(bounds => bounds.Top < minimize.Bottom, "expanded tab stays in the caption row");
+            await TabAsync(bounds => bounds.Top < minimize.Bottom && ClearsSessionTitle(bounds),
+                "expanded tab stays beside the session title in the caption row");
             await Task.Delay(SidePanelTabEntranceCaptureDelay); // test-timing-exception: capture-only; the TabView item fade is a composition animation with no observable completion
             await CaptureIfRequestedAsync(run, $"side-panel-{theme}-{(maximized ? "max" : "normal")}-expanded.png");
 
             // With the sidebar collapsed, the expanded tab starts after the reopen-sidebar button.
             await ClickOwnedElementAsync(run, window, await VisibleAsync("WorkspaceTogglePane", "sidebar toggle"));
             var reopenRight = (await VisibleAsync("WorkspaceReopenPane", "sidebar collapsed")).Current.BoundingRectangle.Right;
-            var tab = await TabAsync(bounds => bounds.Left >= reopenRight && bounds.Top < minimize.Bottom,
-                "tab clears the reopen-sidebar button");
+            var tab = await TabAsync(bounds => bounds.Left >= reopenRight && bounds.Top < minimize.Bottom &&
+                ClearsSessionTitle(bounds), "tab clears the session title and reopen-sidebar button");
 
             // The tab's Close button lies in the caption row; a pass-through miss would drag the window instead.
             AutomationElement? close = null;
