@@ -787,7 +787,7 @@ internal sealed class ChatConversationState
             maxHistorySequence,
             requestStartedAt);
 
-    internal ChatQueuedAdmission AdmitMessage(
+    internal ChatQueuedAdmission? AdmitMessage(
         string threadId,
         string text,
         string displayText,
@@ -797,11 +797,99 @@ internal sealed class ChatConversationState
         ChatProjectionContext context,
         string? timelineText = null,
         IReadOnlyList<ChatAttachmentPresentation>? attachmentPresentations = null,
-        string attachmentCorrelationSignature = "")
+        string attachmentCorrelationSignature = "",
+        string? gatewayIdempotencyKey = null,
+        bool requireImmediateDispatch = false,
+        string? expectedSessionId = null,
+        bool validateSessionIdentity = false)
     {
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            var currentSessionId = _history.ResolveSessionId(threadId);
+            foreach (var staleRequest in _queue.FindUncertainDirectRequests(threadId))
+            {
+                if (staleRequest.AdmissionUncertainSessionId is { } uncertainSessionId &&
+                    currentSessionId is { } resolvedSessionId &&
+                    !string.Equals(
+                        uncertainSessionId,
+                        resolvedSessionId,
+                        StringComparison.Ordinal))
+                {
+                    RemoveStaleUncertainRequestLocked(threadId, staleRequest.Id);
+                }
+            }
+
+            if (validateSessionIdentity &&
+                !string.Equals(
+                    currentSessionId,
+                    expectedSessionId,
+                    StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var uncertainRequest = _queue.FindUncertainDirectRequest(
+                threadId,
+                gatewayIdempotencyKey);
+            if (uncertainRequest is not null)
+            {
+                if (!requireImmediateDispatch ||
+                    !MatchesUncertainDraftPayload(uncertainRequest, text, attachments) ||
+                    !string.Equals(
+                        uncertainRequest.GatewayIdempotencyKey,
+                        gatewayIdempotencyKey,
+                        StringComparison.Ordinal))
+                {
+                    return null;
+                }
+
+                if (string.IsNullOrWhiteSpace(
+                        uncertainRequest.AdmissionUncertainSessionId) ||
+                    string.IsNullOrWhiteSpace(currentSessionId))
+                {
+                    return null;
+                }
+
+                var timeline = GetOrCreateTimelineLocked(threadId);
+                var retryTurnGeneration = uncertainRequest.AdmissionUncertainTurnGeneration
+                    ?? timeline.TurnGeneration;
+                if (!timeline.TurnActive)
+                {
+                    timeline = ChatTimelineReducer.BeginLocalUserTurn(
+                        timeline,
+                        DateTimeOffset.UtcNow);
+                    _timelines[threadId] = timeline;
+                    retryTurnGeneration = timeline.TurnGeneration;
+                }
+
+                var retryRequest = uncertainRequest with
+                {
+                    AdmissionUncertainTurnGeneration = retryTurnGeneration,
+                };
+                _queue.AddRequest(retryRequest);
+                var retry = _queue.StartDirect(
+                    retryRequest,
+                    _history.ResolveSessionId(threadId),
+                    _history.ConnectionGeneration,
+                    GetResetVersionLocked(threadId),
+                    _reset.LifecycleStartSequence,
+                    _lifecycle.LifecycleStartSequence) with
+                {
+                    StartedTurnGeneration = retryTurnGeneration,
+                };
+                RegisterResetSubmissionLocked(retry);
+                return new(
+                    uncertainRequest.Id,
+                    Queued: false,
+                    retry,
+                    BuildSnapshotLocked(context),
+                    CurrentRuntimeGenerationLocked(threadId));
+            }
+
+            if (requireImmediateDispatch && !CanSendDirectlyLocked(threadId))
+                return null;
+
             var messageId = _queue.NextMessageId();
             if (CanClearAssistantFallbackPromotionLocked(threadId))
                 _queue.ClearAssistantFallbackPromotion(threadId);
@@ -818,7 +906,8 @@ internal sealed class ChatConversationState
                 attachments?.ToArray(),
                 TimelineText: timelineText ?? displayText,
                 AttachmentPresentations: attachmentPresentations,
-                AttachmentCorrelationSignature: attachmentCorrelationSignature);
+                AttachmentCorrelationSignature: attachmentCorrelationSignature,
+                GatewayIdempotencyKey: gatewayIdempotencyKey);
 
             var sendDirectly = CanSendDirectlyLocked(threadId);
             ChatQueuedSendDispatch? dispatch;
@@ -940,20 +1029,88 @@ internal sealed class ChatConversationState
     {
         lock (_gate)
         {
-            if (!IsDispatchGenerationCurrentLocked(dispatch) ||
-                !dispatch.StartedDirectly &&
-                _queue.FindRequest(
-                    dispatch.Request.ThreadId,
-                    dispatch.Request.Id) is null)
+            if (!IsDispatchResetCurrentLocked(dispatch))
             {
                 return new(
                     false,
                     CleanupStaleDispatchTurnLocked(dispatch, context));
             }
+            if (_history.ConnectionGeneration != dispatch.ConnectionGeneration)
+            {
+                var mayHaveBeenAccepted =
+                    dispatch.Request.AdmissionOutcomeUncertain ||
+                    dispatch.Request.DeferredAdmissionRetryCount > 0;
+                var connectionError = mayHaveBeenAccepted
+                    ? ChatQueueState.SendOutcomeUnknownError
+                    : ChatQueueState.ConnectionDroppedBeforeAcceptError;
+                if (mayHaveBeenAccepted)
+                {
+                    if (dispatch.StartedDirectly &&
+                        dispatch.Request.GatewayIdempotencyKey is not null)
+                    {
+                        _queue.AddRequest(dispatch.Request with
+                        {
+                            AdmissionOutcomeUncertain = true,
+                            AdmissionUncertainSessionId =
+                                dispatch.SessionId ??
+                                dispatch.Request.AdmissionUncertainSessionId,
+                            AdmissionUncertainTurnGeneration =
+                                dispatch.Request.AdmissionUncertainTurnGeneration ??
+                                dispatch.StartedTurnGeneration,
+                        });
+                    }
+                    else
+                    {
+                        _queue.MarkFailed(
+                            dispatch.Request.ThreadId,
+                            dispatch.Request.Id,
+                            connectionError);
+                    }
+                }
+                else
+                {
+                    _queue.RemovePendingLocalEcho(
+                        dispatch.Request.ThreadId,
+                        dispatch.Request.Id);
+                    _queue.MarkDefinitelyNotSent(dispatch.Request, connectionError);
+                    _queue.RemoveRequest(
+                        dispatch.Request.ThreadId,
+                        dispatch.Request.Id);
+                    _queue.RemoveRunMappingByMessageId(
+                        dispatch.Request.ThreadId,
+                        dispatch.Request.Id);
+                }
+                return new(
+                    false,
+                    (mayHaveBeenAccepted &&
+                     dispatch.StartedDirectly &&
+                     dispatch.Request.GatewayIdempotencyKey is not null
+                    ? EndUnconfirmedDirectTurnLocked(dispatch, context)
+                    : CleanupStaleDispatchTurnLocked(dispatch, context))
+                    ?? BuildSnapshotLocked(context));
+            }
+            if (!dispatch.StartedDirectly &&
+                _queue.FindRequest(
+                    dispatch.Request.ThreadId,
+                    dispatch.Request.Id) is null)
+            {
+                return new(false, CleanupStaleDispatchTurnLocked(dispatch, context));
+            }
             _queue.TrackRun(
                 dispatch.Request.ThreadId,
                 dispatch.Request.SendRunId,
                 dispatch.Request.Id);
+            if (dispatch.Request.GatewayIdempotencyKey is { Length: > 0 } idempotencyKey &&
+                !string.Equals(
+                    idempotencyKey,
+                    dispatch.Request.SendRunId,
+                    StringComparison.Ordinal))
+            {
+                _queue.TrackRun(
+                    dispatch.Request.ThreadId,
+                    idempotencyKey,
+                    dispatch.Request.Id);
+            }
             return new(true, null);
         }
     }
@@ -961,7 +1118,8 @@ internal sealed class ChatConversationState
     internal ChatSendCommit CommitSendResult(
         ChatQueuedSendDispatch dispatch,
         ChatSendResult sendResult,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        string? acceptedTerminalFailureText = null)
     {
         var request = dispatch.Request;
         var threadId = request.ThreadId;
@@ -970,7 +1128,7 @@ internal sealed class ChatConversationState
             : sendResult.RunId;
         lock (_gate)
         {
-            if (!IsDispatchGenerationCurrentLocked(dispatch))
+            if (!IsDispatchResetCurrentLocked(dispatch))
             {
                 _reset.RemovePendingLocalSubmission(
                     threadId,
@@ -980,6 +1138,7 @@ internal sealed class ChatConversationState
                 _reset.AddIgnoredRun(threadId, staleRunId);
                 return new(
                     IsCurrent: false,
+                    IsResetCurrent: false,
                     AcceptedSnapshot:
                         CleanupStaleDispatchTurnLocked(dispatch, context),
                     RequeuedSnapshot: null,
@@ -992,6 +1151,127 @@ internal sealed class ChatConversationState
                     CurrentRuntimeGenerationLocked(threadId));
             }
 
+            if (!IsDispatchGenerationCurrentLocked(dispatch))
+            {
+                _reset.RemovePendingLocalSubmission(
+                    threadId,
+                    request.Id,
+                    dispatch.ResetVersion);
+                if (ChatSendQueuePolicy.IsDeferredAdmission(sendResult))
+                {
+                    return new(
+                        IsCurrent: false,
+                        IsResetCurrent: true,
+                        AcceptedSnapshot: CleanupStaleDispatchTurnLocked(dispatch, context),
+                        RequeuedSnapshot: null,
+                        StaleRunIdToAbort: null,
+                        BindAcceptedRun: false,
+                        RequeueRequired: false,
+                        ScheduleQueueDrain: false,
+                        DeferredRetryDelay: ChatSendQueuePolicy.DrainDelay,
+                        OpenedLifecycle: null,
+                        CurrentRuntimeGenerationLocked(threadId));
+                }
+
+                // This acknowledgment belongs to an older connection generation.
+                // Let the next history snapshot reconcile it instead of inserting a
+                // local turn boundary into the current conversation.
+                _queue.RemoveMessage(threadId, request.Id);
+                var acceptedDraftAdmission =
+                    request.GatewayIdempotencyKey is not null &&
+                    ChatSendQueuePolicy.ClassifyDraftAdmission(sendResult) ==
+                    ChatAdmissionOutcome.Accepted;
+                if (acceptedDraftAdmission)
+                {
+                    _queue.MarkLocallyInitiated(threadId);
+                    _queue.RestorePendingLocalEcho(request);
+                    if (request.AdmissionOutcomeUncertain)
+                        _queue.RemoveRequest(threadId, request.Id);
+                    _queue.RemoveRunMappingByMessageId(threadId, request.Id);
+                }
+                else
+                {
+                    _queue.RemovePendingLocalEcho(threadId, request.Id);
+                }
+                var hasActiveRun = _lifecycle.HasActiveRun(threadId);
+                var hasNewerTurn = IsNewerTurnActiveLocked(threadId, dispatch);
+                if (acceptedDraftAdmission && !hasActiveRun && !hasNewerTurn)
+                {
+                    var timeline = GetOrCreateTimelineLocked(threadId);
+                    if (!timeline.TurnActive)
+                    {
+                        _timelines[threadId] = ChatTimelineReducer.BeginLocalUserTurn(
+                            timeline,
+                            DateTimeOffset.UtcNow);
+                    }
+                    _queue.MarkLocallyInitiated(threadId);
+                }
+                if (!acceptedDraftAdmission &&
+                    !hasActiveRun && !hasNewerTurn &&
+                    !_queue.IsLocallyInitiated(threadId))
+                {
+                    if (_timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive)
+                    {
+                        _timelines[threadId] = ChatTimelineReducer.Apply(
+                            timeline,
+                            new ChatTurnEndEvent(),
+                            DateTimeOffset.UtcNow);
+                    }
+                }
+                var staleScheduleQueueDrain = !hasActiveRun && !hasNewerTurn
+                    && !_queue.IsLocallyInitiated(threadId)
+                    && _queue.HasPendingMessages(threadId);
+                return new(
+                    IsCurrent: false,
+                    IsResetCurrent: true,
+                    AcceptedSnapshot: BuildSnapshotLocked(context),
+                    RequeuedSnapshot: null,
+                    StaleRunIdToAbort: null,
+                    BindAcceptedRun: false,
+                    RequeueRequired: false,
+                    ScheduleQueueDrain: staleScheduleQueueDrain,
+                    DeferredRetryDelay: ChatSendQueuePolicy.DrainDelay,
+                    OpenedLifecycle: null,
+                    CurrentRuntimeGenerationLocked(threadId));
+            }
+
+            var cachedTerminalSuccess = sendResult.Cached &&
+                string.Equals(sendResult.Status, "ok", StringComparison.OrdinalIgnoreCase) &&
+                acceptedRunId is not null;
+            if (cachedTerminalSuccess && acceptedRunId is not null)
+            {
+                var differentRunIsActive =
+                    IsDifferentRunActiveLocked(threadId, acceptedRunId) ||
+                    IsNewerTurnActiveLocked(threadId, dispatch);
+                if (_lifecycle.TryGetActiveRun(threadId, out var activeRunId) &&
+                    string.Equals(activeRunId, acceptedRunId, StringComparison.Ordinal))
+                {
+                    _lifecycle.CompleteChatTerminal(threadId, acceptedRunId, "end");
+                }
+                else
+                {
+                    _lifecycle.RecordLifecycleOutcome(threadId, acceptedRunId, "end");
+                }
+                if (!differentRunIsActive)
+                    ApplyEventLocked(threadId, new ChatTurnEndEvent(), metadata: null);
+            }
+
+            if (sendResult.IsTerminalFailure && acceptedRunId is not null)
+            {
+                    var terminalState = ChatSendQueuePolicy.IsCanceledAdmissionStatus(sendResult.Status)
+                        ? "aborted"
+                        : "error";
+                    if (_lifecycle.TryGetActiveRun(threadId, out var activeRunId) &&
+                        string.Equals(activeRunId, acceptedRunId, StringComparison.Ordinal))
+                    {
+                        _lifecycle.CompleteChatTerminal(threadId, acceptedRunId, terminalState);
+                    }
+                    else
+                    {
+                        _lifecycle.RecordLifecycleOutcome(threadId, acceptedRunId, terminalState);
+                    }
+            }
+
             ChatDataSnapshot? acceptedSnapshot = null;
             ChatDataSnapshot? requeuedSnapshot = null;
             ChatOpenedLifecycleTransition? openedLifecycle = null;
@@ -999,7 +1279,7 @@ internal sealed class ChatConversationState
             var requeueRequired = false;
             var scheduleQueueDrain = false;
             var deferredRetryDelay = ChatSendQueuePolicy.DrainDelay;
-            if (ChatSendQueuePolicy.IsDeferredAdmissionStatus(sendResult.Status))
+            if (ChatSendQueuePolicy.IsDeferredAdmission(sendResult))
             {
                 _reset.RemovePendingLocalSubmission(
                     threadId,
@@ -1100,8 +1380,40 @@ internal sealed class ChatConversationState
                 acceptedSnapshot = BuildSnapshotLocked(context);
             }
 
+            if (sendResult.IsTerminalFailure)
+            {
+                var differentRunIsActive =
+                    IsDifferentRunActiveLocked(threadId, acceptedRunId) ||
+                    IsNewerTurnActiveLocked(threadId, dispatch);
+                if (!string.IsNullOrWhiteSpace(acceptedTerminalFailureText))
+                {
+                    ApplyEventLocked(
+                        threadId,
+                        differentRunIsActive
+                            ? new ChatStatusEvent(acceptedTerminalFailureText, ChatTone.Error)
+                            : new ChatErrorEvent(acceptedTerminalFailureText),
+                        metadata: null);
+                }
+                else if (!differentRunIsActive)
+                {
+                    ApplyEventLocked(threadId, new ChatTurnEndEvent(), metadata: null);
+                }
+
+                if (acceptedRunId is not null)
+                    _queue.RemoveRunMappingByMessageId(threadId, request.Id);
+                ClearLocallyInitiatedIfIdleLocked(threadId);
+                scheduleQueueDrain |= !differentRunIsActive;
+                acceptedSnapshot = BuildSnapshotLocked(context);
+            }
+
+            if (cachedTerminalSuccess && acceptedSnapshot is null)
+                acceptedSnapshot = BuildSnapshotLocked(context);
+            if (request.AdmissionOutcomeUncertain)
+                _queue.RemoveRequest(threadId, request.Id);
+
             return new(
                 IsCurrent: true,
+                IsResetCurrent: true,
                 acceptedSnapshot,
                 requeuedSnapshot,
                 StaleRunIdToAbort: null,
@@ -1118,7 +1430,10 @@ internal sealed class ChatConversationState
         ChatQueuedSendDispatch dispatch,
         string queueError,
         string timelineError,
-        ChatProjectionContext context)
+        ChatProjectionContext context,
+        bool outcomeDefinitelyNotSent = false,
+        bool outcomeMayHaveBeenAccepted = false,
+        bool preserveTurnActiveForGatewayRun = false)
     {
         var request = dispatch.Request;
         lock (_gate)
@@ -1127,17 +1442,65 @@ internal sealed class ChatConversationState
                 request.ThreadId,
                 request.Id,
                 dispatch.ResetVersion);
-            if (!IsDispatchGenerationCurrentLocked(dispatch))
+            if (!IsDispatchResetCurrentLocked(dispatch))
             {
                 return new(
                     false,
                     CleanupStaleDispatchTurnLocked(dispatch, context));
             }
 
+            if (outcomeMayHaveBeenAccepted)
+            {
+                if (dispatch.StartedDirectly &&
+                    request.GatewayIdempotencyKey is not null)
+                {
+                    _queue.AddRequest(request with
+                    {
+                        AdmissionOutcomeUncertain = true,
+                        AdmissionUncertainSessionId =
+                            dispatch.SessionId ?? request.AdmissionUncertainSessionId,
+                        AdmissionUncertainTurnGeneration =
+                            request.AdmissionUncertainTurnGeneration ??
+                            dispatch.StartedTurnGeneration,
+                    });
+                }
+                _queue.MarkFailed(request.ThreadId, request.Id, queueError);
+                return new(
+                    false,
+                    (dispatch.StartedDirectly &&
+                     request.GatewayIdempotencyKey is not null &&
+                     !preserveTurnActiveForGatewayRun
+                        ? EndUnconfirmedDirectTurnLocked(dispatch, context)
+                        : null)
+                    ?? BuildSnapshotLocked(context));
+            }
+
+            if (!IsDispatchGenerationCurrentLocked(dispatch))
+            {
+                if (outcomeDefinitelyNotSent)
+                {
+                    _queue.RemovePendingLocalEcho(request.ThreadId, request.Id);
+                    _queue.MarkDefinitelyNotSent(request, queueError);
+                    _queue.RemoveRequest(request.ThreadId, request.Id);
+                    _queue.RemoveRunMappingByMessageId(request.ThreadId, request.Id);
+                    return new(
+                        false,
+                        CleanupStaleDispatchTurnLocked(dispatch, context)
+                        ?? BuildSnapshotLocked(context));
+                }
+                return new(false, CleanupStaleDispatchTurnLocked(dispatch, context));
+            }
+
             _queue.RemovePendingLocalEcho(request.ThreadId, request.Id);
             _queue.MarkFailed(request.ThreadId, request.Id, queueError);
             _queue.RemoveRequest(request.ThreadId, request.Id);
             _queue.RemoveRunMappingByMessageId(request.ThreadId, request.Id);
+            if (outcomeDefinitelyNotSent &&
+                request.AdmissionOutcomeUncertain &&
+                request.GatewayIdempotencyKey is not null)
+            {
+                RemoveLocalQueuedBubbleLocked(request.ThreadId, request.Id);
+            }
             if (!_queue.HasSendingMessages(request.ThreadId))
                 _queue.ClearLocallyInitiated(request.ThreadId);
             ApplyEventLocked(
@@ -1199,6 +1562,11 @@ internal sealed class ChatConversationState
         ChatQueuedSendDispatch dispatch) =>
         !_disposed &&
         _history.ConnectionGeneration == dispatch.ConnectionGeneration &&
+        IsDispatchResetCurrentLocked(dispatch);
+
+    private bool IsDispatchResetCurrentLocked(
+        ChatQueuedSendDispatch dispatch) =>
+        !_disposed &&
         GetResetVersionLocked(dispatch.Request.ThreadId) == dispatch.ResetVersion;
 
     private ChatDataSnapshot? CleanupStaleDispatchTurnLocked(
@@ -1225,6 +1593,67 @@ internal sealed class ChatConversationState
             threadId,
             _lifecycle.HasActiveRun(threadId),
             _timelines.TryGetValue(threadId, out var timeline) && timeline.TurnActive);
+
+    internal bool HasUncertainDirectAdmission(
+        string threadId,
+        string? gatewayIdempotencyKey)
+    {
+        lock (_gate)
+            return _queue.FindUncertainDirectRequest(
+                threadId,
+                gatewayIdempotencyKey) is not null;
+    }
+
+    private ChatDataSnapshot? EndUnconfirmedDirectTurnLocked(
+        ChatQueuedSendDispatch dispatch,
+        ChatProjectionContext context)
+    {
+        var threadId = dispatch.Request.ThreadId;
+        if (_lifecycle.HasActiveRun(threadId) ||
+            IsNewerTurnActiveLocked(threadId, dispatch) ||
+            !_timelines.TryGetValue(threadId, out var timeline) ||
+            !timeline.TurnActive)
+        {
+            return null;
+        }
+
+        _timelines[threadId] = ChatTimelineReducer.Apply(
+            timeline,
+            new ChatTurnEndEvent(),
+            DateTimeOffset.UtcNow);
+        ClearLocallyInitiatedIfIdleLocked(threadId);
+        return BuildSnapshotLocked(context);
+    }
+
+    private static bool MatchesUncertainDraftPayload(
+        ChatQueuedSendRequest request,
+        string text,
+        IReadOnlyList<ChatAttachment>? attachments)
+    {
+        if (!string.Equals(request.Text, text, StringComparison.Ordinal))
+            return false;
+        var existingAttachments = request.Attachments ?? [];
+        var currentAttachments = attachments ?? [];
+        if (existingAttachments.Count != currentAttachments.Count)
+            return false;
+        for (var index = 0; index < currentAttachments.Count; index++)
+        {
+            if (!ReferenceEquals(existingAttachments[index], currentAttachments[index]))
+                return false;
+        }
+        return true;
+    }
+
+    private bool IsDifferentRunActiveLocked(string threadId, string? acceptedRunId) =>
+        _lifecycle.TryGetActiveRun(threadId, out var activeRunId) &&
+        !string.Equals(activeRunId, acceptedRunId, StringComparison.Ordinal);
+
+    private bool IsNewerTurnActiveLocked(
+        string threadId,
+        ChatQueuedSendDispatch dispatch) =>
+        _timelines.TryGetValue(threadId, out var timeline) &&
+        timeline.TurnActive &&
+        timeline.TurnGeneration != dispatch.StartedTurnGeneration;
 
     private bool CanClearAssistantFallbackPromotionLocked(string threadId) =>
         _queue.CanClearAssistantFallback(
@@ -1257,6 +1686,7 @@ internal sealed class ChatConversationState
             resetVersion,
             _reset.LifecycleStartSequence,
             _lifecycle.LifecycleStartSequence);
+        dispatch = dispatch with { StartedTurnGeneration = _timelines[threadId].TurnGeneration };
         RegisterResetSubmissionLocked(dispatch);
         return dispatch;
     }
@@ -1285,6 +1715,10 @@ internal sealed class ChatConversationState
             RegisterResetSubmissionLocked(dispatch);
             _timelines[threadId] = ChatTimelineReducer.BeginLocalUserTurn(
                 GetOrCreateTimelineLocked(threadId), DateTimeOffset.UtcNow);
+            dispatch = dispatch with
+            {
+                StartedTurnGeneration = _timelines[threadId].TurnGeneration,
+            };
         }
         return dispatch;
     }
@@ -1331,6 +1765,32 @@ internal sealed class ChatConversationState
             return false;
 
         var current = GetOrCreateTimelineLocked(threadId);
+        var metadata = GetOrCreateThreadMetaLocked(threadId);
+        var existingEntry = current.Entries.FirstOrDefault(entry =>
+            entry.Kind == ChatTimelineItemKind.User &&
+            metadata.TryGetValue(entry.Id, out var existingMeta) &&
+            string.Equals(
+                existingMeta.LocalQueuedMessageId,
+                messageId,
+                StringComparison.Ordinal));
+        if (existingEntry is not null)
+        {
+            var existingMeta = metadata[existingEntry.Id];
+            metadata[existingEntry.Id] =
+                confirmedMeta is not null && HasGatewayIdentity(confirmedMeta)
+                    ? confirmedMeta with
+                    {
+                        IsLocalQueuedSend = false,
+                        LocalQueuedMessageId = messageId,
+                        Attachments = request?.AttachmentPresentations ?? existingMeta.Attachments,
+                    }
+                    : existingMeta with
+                    {
+                        Attachments = request?.AttachmentPresentations ?? existingMeta.Attachments,
+                    };
+            return true;
+        }
+
         var entryId = $"e{current.NextId}";
         var promoted = ChatTimelineReducer.AddLocalUser(
             current,
@@ -1340,7 +1800,6 @@ internal sealed class ChatConversationState
         if (completedRunId is not null)
         {
             var index = current.Entries.Count;
-            var metadata = GetOrCreateThreadMetaLocked(threadId);
             for (var i = 0; i < current.Entries.Count; i++)
             {
                 var entry = current.Entries[i];
@@ -1376,6 +1835,55 @@ internal sealed class ChatConversationState
         return true;
     }
 
+    private void RemoveStaleUncertainRequestLocked(string threadId, string messageId)
+    {
+        var staleRequest = _queue.FindRequest(threadId, messageId);
+        _queue.RemoveMessage(threadId, messageId);
+        _queue.RemoveRequest(threadId, messageId);
+        _queue.RemoveRunMappingByMessageId(threadId, messageId);
+        _queue.RemovePendingLocalEcho(threadId, messageId);
+
+        RemoveLocalQueuedBubbleLocked(threadId, messageId);
+        if (staleRequest?.AdmissionUncertainTurnGeneration is { } turnGeneration &&
+            _timelines.TryGetValue(threadId, out var timeline) &&
+            timeline.TurnActive &&
+            timeline.TurnGeneration == turnGeneration &&
+            !_lifecycle.HasActiveRun(threadId))
+        {
+            _timelines[threadId] = ChatTimelineReducer.Apply(
+                timeline,
+                new ChatTurnEndEvent(),
+                DateTimeOffset.UtcNow);
+            ClearLocallyInitiatedIfIdleLocked(threadId);
+        }
+    }
+
+    private void RemoveLocalQueuedBubbleLocked(string threadId, string messageId)
+    {
+        if (!_timelines.TryGetValue(threadId, out var timeline) ||
+            !_entryMeta.TryGetValue(threadId, out var metadata))
+        {
+            return;
+        }
+
+        var staleEntryIds = metadata
+            .Where(pair => string.Equals(
+                pair.Value.LocalQueuedMessageId,
+                messageId,
+                StringComparison.Ordinal))
+            .Select(pair => pair.Key)
+            .ToHashSet(StringComparer.Ordinal);
+        if (staleEntryIds.Count == 0)
+            return;
+
+        _timelines[threadId] = timeline with
+        {
+            Entries = timeline.Entries.RemoveAll(entry => staleEntryIds.Contains(entry.Id)),
+        };
+        foreach (var entryId in staleEntryIds)
+            metadata.Remove(entryId);
+    }
+
     private void ClearLocallyInitiatedIfIdleLocked(string threadId)
     {
         _queue.ClearLocallyInitiatedIfIdle(
@@ -1403,6 +1911,72 @@ internal sealed class ChatConversationState
                 metadata);
             return BuildSnapshotLocked(context);
         }
+    }
+
+    /// <summary>
+    /// Adds one typed Gateway notice as a status row, at most once per Gateway identity or notice fact.
+    /// A run-failure notice supersedes the live error row that the same run's chat terminal produced.
+    /// Returns null when the notice is already present.
+    /// </summary>
+    internal ChatDataSnapshot? ApplyNotice(
+        ChatMessageInfo message,
+        ChatNoticeKind kind,
+        ChatProjectionContext context)
+    {
+        var threadId = message.SessionKey!;
+        lock (_gate)
+        {
+            var metadata = BuildLiveMetaLocked(
+                threadId,
+                message.Ts,
+                message.OpenClawId,
+                message.OpenClawSeq) with { Presentation = message.Presentation };
+            var timeline = GetOrCreateTimelineLocked(threadId);
+            var threadMeta = GetOrCreateThreadMetaLocked(threadId);
+            foreach (var entry in timeline.Entries)
+            {
+                if (ChatNoticePresentation.KindOf(entry, threadMeta) != ChatNoticeKind.None &&
+                    threadMeta.TryGetValue(entry.Id, out var existing) &&
+                    (HasMatchingGatewayIdentity(existing, metadata) || SameNoticeFact(existing.Presentation, message.Presentation)))
+                    return null;
+            }
+            if (message.Presentation.RunFailure is { } failure)
+                timeline = RemoveRunErrorRow(timeline, threadMeta, failure.RunId);
+            _timelines[threadId] = timeline;
+            ApplyEventLocked(
+                threadId,
+                new ChatStatusEvent(
+                    ChatContentFormatting.TruncateForChatEntry(
+                        ChatNoticePresentation.EntryText(kind, message.Presentation, message.Text)),
+                    ChatTone.Dim,
+                    StartsTurn: ChatNoticePresentation.StartsTurn(message.Presentation)),
+                metadata);
+            return BuildSnapshotLocked(context);
+        }
+    }
+
+    private static bool SameNoticeFact(ChatMessagePresentation? existing, ChatMessagePresentation incoming) =>
+        existing is not null &&
+        (incoming.RunFailure is not null && Equals(existing.RunFailure, incoming.RunFailure) ||
+         incoming.SkillChanges is not null && Equals(existing.SkillChanges, incoming.SkillChanges) ||
+         incoming.ModelFallback is not null && Equals(existing.ModelFallback, incoming.ModelFallback));
+
+    private static ChatTimelineState RemoveRunErrorRow(
+        ChatTimelineState timeline,
+        Dictionary<string, ChatEntryMetadata> threadMeta,
+        string runId)
+    {
+        for (var index = timeline.Entries.Count - 1; index >= 0; index--)
+        {
+            var entry = timeline.Entries[index];
+            if (entry is { Kind: ChatTimelineItemKind.Status, Tone: ChatTone.Error } &&
+                threadMeta.TryGetValue(entry.Id, out var metadata) && metadata.LiveRunId == runId)
+            {
+                threadMeta.Remove(entry.Id);
+                return timeline with { Entries = timeline.Entries.RemoveAt(index) };
+            }
+        }
+        return timeline;
     }
 
     internal ChatDataSnapshot ClearPendingPermission(
@@ -2100,9 +2674,14 @@ internal sealed class ChatConversationState
                 if (hasContent || !message.IsFinal || message.HasDisplayContentOverride)
                     _timelines[threadId] = _timelines[threadId] with { ReconcilableAssistantId = null };
                 if (string.Equals(message.State, "error", StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(message.ErrorMessage))
+                    !string.IsNullOrWhiteSpace(message.ErrorMessage) &&
+                    !_timelines[threadId].Entries.Any(entry =>
+                        entry.Kind == ChatTimelineItemKind.Status &&
+                        GetOrCreateThreadMetaLocked(threadId).GetValueOrDefault(entry.Id)?
+                            .Presentation?.RunFailure?.RunId == message.RunId))
                     ApplyEventLocked(threadId, new ChatErrorEvent(
-                        NativeToolProjector.SanitizeToolDisplayValue(message.ErrorMessage) ?? ""), null);
+                        NativeToolProjector.SanitizeToolDisplayValue(message.ErrorMessage) ?? ""),
+                        BuildLiveMetaLocked(threadId, message.Ts) with { LiveRunId = message.RunId });
             }
             return new(true, !hasContent || !message.IsFinal || message.Yielded ||
                 message.IsTranscriptSnapshot && !isTerminal,

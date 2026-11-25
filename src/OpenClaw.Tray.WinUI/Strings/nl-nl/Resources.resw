@@ -24,6 +24,8 @@
   <data name="DesktopCompanion_Notifications" xml:space="preserve"><value>Meldingen openen</value></data>
   <data name="DesktopCompanion_Open" xml:space="preserve"><value>OpenClaw openen</value></data>
   <data name="DesktopCompanion_Scale.Text" xml:space="preserve"><value>Grootte van de kreeft</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Header" xml:space="preserve"><value>Alleen tonen als andere OpenClaw-vensters zijn geminimaliseerd</value></data>
+  <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>Verbergen als de installatie of het chat-/dashboardvenster zichtbaar is.</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Pas de grootte van de kreeft aan zonder de chat- of meldingstekst te wijzigen.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Instellingen voor bureaubladkreeft</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>De bureaubladkreeft kon niet worden weergegeven. Schakel Bureaubladkreeft uit en weer in via Instellingen om het opnieuw te proberen. Je meldingen blijven beschikbaar in OpenClaw.</value></data>
@@ -2831,16 +2833,85 @@ Gebruik een van deze opties:
     <value>Voltooid</value>
   </data>
   <data name="Chat_Compaction_Title" xml:space="preserve">
-    <value>GECOMPRIMEERDE GESCHIEDENIS</value>
+    <value>Context gecomprimeerd</value>
   </data>
   <data name="Chat_Compaction_MetricsFormat" xml:space="preserve">
-    <value>{0} → {1} tokens · {2} bespaard</value>
+    <value>{0} tokens bespaard ({1}%)</value>
   </data>
-  <data name="Chat_Compaction_FallbackDetail" xml:space="preserve">
-    <value>Het gecomprimeerde transcript wordt bewaard als controlepunt. Open de sessiecontrolepunten om vanaf die gecomprimeerde weergave een vertakking te maken of deze te herstellen.</value>
+  <data name="Chat_Notice_System" xml:space="preserve">
+    <value>Systeem</value>
   </data>
-  <data name="Chat_Compaction_OpenCheckpoints" xml:space="preserve">
-    <value>Controlepunten openen</value>
+  <data name="Chat_Notice_Automation" xml:space="preserve">
+    <value>Automatisering</value>
+  </data>
+  <data name="Chat_Notice_AutomationRecovery" xml:space="preserve">
+    <value>Systeem · herstel van automatisering</value>
+  </data>
+  <data name="Chat_Notice_AutomationFailed" xml:space="preserve">
+    <value>Automatisering mislukt.</value>
+  </data>
+  <data name="Chat_Notice_GatewayRestarted" xml:space="preserve">
+    <value>Systeem · Gateway opnieuw gestart</value>
+  </data>
+  <data name="Chat_Notice_InjectedContext" xml:space="preserve">
+    <value>Systeem · geïnjecteerde context</value>
+  </data>
+  <data name="Chat_Notice_BackgroundTask" xml:space="preserve">
+    <value>Systeem · achtergrondtaak</value>
+  </data>
+  <data name="Chat_ModelFallback_Event" xml:space="preserve">
+    <value>Terugvalmodel: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Restored" xml:space="preserve">
+    <value>Terug naar geselecteerd model: {0} → {1}</value>
+  </data>
+  <data name="Chat_ModelFallback_Reason" xml:space="preserve">
+    <value>Reden: {0}</value>
+  </data>
+  <data name="Chat_RunFailure_Title" xml:space="preserve">
+    <value>Dit antwoord kon niet worden voltooid</value>
+  </data>
+  <data name="Chat_RunFailure_CredentialsRejected" xml:space="preserve">
+    <value>{0} heeft de opgeslagen referenties niet geaccepteerd</value>
+  </data>
+  <data name="Chat_RunFailure_BillingProblem" xml:space="preserve">
+    <value>{0} meldt een factureringsprobleem</value>
+  </data>
+  <data name="Chat_RunFailure_RepeatCount" xml:space="preserve">
+    <value>{0} keer</value>
+  </data>
+  <data name="Chat_RunFailure_CopyError" xml:space="preserve">
+    <value>Fout kopiëren</value>
+  </data>
+  <data name="Chat_RunFailure_ErrorDetails" xml:space="preserve">
+    <value>Foutdetails</value>
+  </data>
+  <data name="Chat_SkillLearned_Created" xml:space="preserve">
+    <value>Gemaakt</value>
+  </data>
+  <data name="Chat_SkillLearned_Updated" xml:space="preserve">
+    <value>Bijgewerkt</value>
+  </data>
+  <data name="Chat_SkillLearned_Archived" xml:space="preserve">
+    <value>Gearchiveerd</value>
+  </data>
+  <data name="Chat_SkillLearned_Restored" xml:space="preserve">
+    <value>Hersteld</value>
+  </data>
+  <data name="Chat_SkillLearned_Label" xml:space="preserve">
+    <value>Geleerd</value>
+  </data>
+  <data name="Chat_SkillLearned_Undo" xml:space="preserve">
+    <value>Ongedaan maken</value>
+  </data>
+  <data name="Chat_SkillLearned_Undoing" xml:space="preserve">
+    <value>Bezig met ongedaan maken…</value>
+  </data>
+  <data name="Chat_SkillLearned_Undone" xml:space="preserve">
+    <value>Ongedaan gemaakt</value>
+  </data>
+  <data name="Chat_SkillLearned_UndoError" xml:space="preserve">
+    <value>De skillwijziging kon niet ongedaan worden gemaakt. Probeer het opnieuw.</value>
   </data>
   <data name="Chat_PendingNewSessionTitle" xml:space="preserve">
     <value>Nieuwe sessie</value>
@@ -3245,6 +3316,12 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="Chat_Error_ConnectionDroppedBeforeGatewayAcceptedMessage" xml:space="preserve">
     <value>De verbinding werd verbroken voordat de gateway dit bericht accepteerde.</value>
   </data>
+  <data name="Chat_Error_SendOutcomeUnknown" xml:space="preserve">
+    <value>Kan niet bevestigen of het bericht is verzonden. Controleer het gesprek voordat u het opnieuw probeert.</value>
+  </data>
+  <data name="Chat_Error_SendDeferred" xml:space="preserve">
+    <value>Dit gesprek is bezig. Uw concept staat hier nog; probeer het opnieuw zodra het weer beschikbaar is.</value>
+  </data>
   <data name="Chat_Notification_AbortFailed" xml:space="preserve">
     <value>Afbreken mislukt</value>
   </data>
@@ -3255,7 +3332,7 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
     <value>Assistent heeft geantwoord</value>
   </data>
   <data name="Chat_Notification_ConnectionInterrupted" xml:space="preserve">
-    <value>Verbinding verbroken: antwoord onderbroken.</value>
+    <value>Verbinding verbroken tijdens het wachten op het antwoord. Controleer het gesprek voordat u het bericht opnieuw verstuurt.</value>
   </data>
   <data name="Chat_Notification_KeylessEventDropped" xml:space="preserve">
     <value>Gateway-tijdlijngebeurtenis genegeerd</value>
@@ -6317,7 +6394,6 @@ Open Kanalen in het webdashboard.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 bericht in wachtrij</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Gekopieerd</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Kopiëren mislukt</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Berichttekst</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Denkinspanning</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Sneller</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Grondiger</value></data>
@@ -7284,6 +7360,19 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Placement_Error_NoLongerEmpty" xml:space="preserve">
     <value>Deze sessie is niet meer leeg, dus de wachtende locatiekeuze is geannuleerd. Controleer de sessie en verzend opnieuw om op de huidige locatie door te gaan.</value>
   </data>
+  <data name="Chat_Placement_Error_DraftOptionsFailed" xml:space="preserve">
+    <value>De Gateway heeft het gekozen model of de redeneeropties niet bevestigd. Controleer ze en probeer het opnieuw.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationFailed" xml:space="preserve">
+    <value>De Gateway kon de nieuwe chat niet maken. Controleer de verbinding en probeer het opnieuw.</value>
+  </data>
+  <data name="Chat_Placement_Error_DraftCreationUncertain" xml:space="preserve">
+    <value>De Gateway heeft deze chat mogelijk gemaakt, maar de reactie is niet bevestigd. Dit concept kan daarom niet worden verzonden. Open de chat vanuit de sessielijst als deze daar verschijnt, of start een nieuwe chat.</value>
+  </data>
+  <data name="Chat_Placement_Error_GatewayDefaultOnly" xml:space="preserve">
+    <value>Locatiekeuze is niet beschikbaar. Deze chat gebruikt de standaardlocatie van de Gateway.</value>
+  </data>
+  <data name="Chat_Draft_LifecycleCommandUnavailable" xml:space="preserve"><value>Stuur een bericht om deze chat te maken voordat u levenscyclusopdrachten gebruikt.</value></data>
   <data name="Chat_Questions_Refresh" xml:space="preserve"><value>Vragen vernieuwen</value></data>
   <data name="Chat_Questions_Answered" xml:space="preserve"><value>Vraag beantwoord</value></data>
   <data name="Chat_Questions_Cancelled" xml:space="preserve"><value>Vraag geannuleerd</value></data>
@@ -7768,6 +7857,9 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_ToolRecovery_Error" xml:space="preserve"><value>De volledige uitvoer kon niet worden geladen.</value></data>
   <data name="Chat_ToolRecovery_Missing" xml:space="preserve"><value>Volledige uitvoer vereist de opgeslagen resultaatidentiteit en een geverifieerd huidig account.</value></data>
   <data name="Chat_ToolRecovery_Load" xml:space="preserve"><value>Volledige uitvoer tonen</value></data>
+  <data name="Chat_Tool_MoreOutput" xml:space="preserve"><value>Meer uitvoer beschikbaar</value></data>
+  <data name="Chat_Tool_MoreLinesFormat" xml:space="preserve"><value>+{0} extra regels</value></data>
+  <data name="Chat_Tool_MoreLineFormat" xml:space="preserve"><value>+{0} extra regel</value></data>
   <data name="Chat_ToolRecovery_Retry" xml:space="preserve"><value>Opnieuw proberen</value></data>
   <data name="Chat_ToolRecovery_Cancel" xml:space="preserve"><value>Annuleren</value></data>
   <data name="Chat_NewMessages" xml:space="preserve"><value>Nieuwe berichten. Naar nieuwste gaan</value></data>
@@ -8997,6 +9089,54 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   </data>
   <data name="Dashboards_Widget_UnsupportedFormat" xml:space="preserve">
     <value>{0}-widgets zijn nog niet beschikbaar in Windows.</value>
+  </data>
+  <data name="Dashboards_Progress_AccessibleName" xml:space="preserve">
+    <value>Sessievoortgang</value>
+  </data>
+  <data name="Dashboards_Progress_DeniedDetail" xml:space="preserve">
+    <value>Geen toegang meer tot de voortgang van deze sessie.</value>
+  </data>
+  <data name="Dashboards_Progress_Empty" xml:space="preserve">
+    <value>Nog geen voortgang</value>
+  </data>
+  <data name="Dashboards_Progress_EmptyDetail" xml:space="preserve">
+    <value>Voortgangsdetails verschijnen hier zodra de sessie deze meldt.</value>
+  </data>
+  <data name="Dashboards_Progress_Error" xml:space="preserve">
+    <value>De voortgang kon niet worden vernieuwd.</value>
+  </data>
+  <data name="Dashboards_Progress_Loading" xml:space="preserve">
+    <value>Voortgang laden</value>
+  </data>
+  <data name="Dashboards_Progress_Stale" xml:space="preserve">
+    <value>De laatst ontvangen voortgang wordt weergegeven. De laatste vernieuwing is mislukt.</value>
+  </data>
+  <data name="Dashboards_Progress_StatusCompleted" xml:space="preserve">
+    <value>Voltooid</value>
+  </data>
+  <data name="Dashboards_Progress_StatusInProgress" xml:space="preserve">
+    <value>Bezig</value>
+  </data>
+  <data name="Dashboards_Progress_StatusPending" xml:space="preserve">
+    <value>In afwachting</value>
+  </data>
+  <data name="Dashboards_Progress_StepAccessibleFormat" xml:space="preserve">
+    <value>Stap {0}: {1}</value>
+  </data>
+  <data name="Dashboards_Progress_StepCountFormat" xml:space="preserve">
+    <value>{0} van {1} stappen voltooid</value>
+  </data>
+  <data name="Dashboards_Progress_Unavailable" xml:space="preserve">
+    <value>Voortgang niet beschikbaar</value>
+  </data>
+  <data name="Dashboards_Progress_UnavailableDetail" xml:space="preserve">
+    <value>Deze verbinding kan geen voortgangsgegevens van de Gateway lezen.</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedFormat" xml:space="preserve">
+    <value>Bijgewerkt op {0}</value>
+  </data>
+  <data name="Dashboards_Progress_UpdatedUnknown" xml:space="preserve">
+    <value>Tijdstip van bijwerken niet beschikbaar</value>
   </data>
   <data name="Dashboards_Widget_ReportInvalid" xml:space="preserve">
     <value>Dit rapport bevat ongeldige gegevens.</value>

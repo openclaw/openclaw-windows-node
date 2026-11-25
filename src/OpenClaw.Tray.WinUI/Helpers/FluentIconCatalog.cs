@@ -92,6 +92,10 @@ static class FluentIconCatalog
     public const string ChatJumpLatest = "\uE74B"; // Down, returns to the latest chat content
     public const string ChatAttach = "\uE710";     // Add (plus), opens the attachment picker like the web composer's plus menu
     public const string Check = "\uE73E";          // CheckMark
+    public const string Lightbulb = "\uEA80";      // Lightbulb, the chat's learned-skill notice
+    public const string Undo = "\uE7A7";           // Undo, reverts a learned-skill change
+    public const string Compass = "\uE812";        // MapCompassTop, plugin steering notices
+    public const string Cpu = "\uEEA1";            // CPU, internal system notices; Segoe Fluent Icons only
 
     // ── Diagnostics page glyphs ────────────────────────────────────
     // Added 2026-05 for the Diagnostics surface

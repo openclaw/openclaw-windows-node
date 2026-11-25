@@ -12,6 +12,7 @@ namespace OpenClaw.Shared;
 public partial class OpenClawGatewayClient : IBoardGatewayClient
 {
     private ImmutableArray<PluginWidgetKind> _pluginWidgetKinds = [];
+    private BoardSessionDefaults? _sessionDefaults;
 
     /// <summary>Raised for <c>board.changed</c>: a board revision changed; refetch it.</summary>
     public event EventHandler<BoardChangedEvent>? BoardChanged;
@@ -19,17 +20,29 @@ public partial class OpenClawGatewayClient : IBoardGatewayClient
     /// <summary>Raised for <c>board.command</c> (<c>focus_tab</c>, <c>set_chat_dock</c>).</summary>
     public event EventHandler<BoardCommandEvent>? BoardCommandReceived;
 
+    /// <summary>Raised when a progress card changes; consumers refetch the authorized snapshot.</summary>
+    public event EventHandler<BoardProgressChangedEvent>? ProgressCardChanged;
+
     /// <summary>Trusted core plugin widget kinds from the current hello (<c>controlUiWidgetKinds</c>).</summary>
     public ImmutableArray<PluginWidgetKind> PluginWidgetKinds => _pluginWidgetKinds;
 
     /// <summary>HTTP(S) origin of the connected Gateway, used for ticketed widget documents.</summary>
     public Uri? GatewayHttpOrigin => BoardWidgetUrlPolicy.TryGetGatewayHttpOrigin(_currentGatewayUrl);
 
-    private void CaptureBoardHelloFacts(JsonElement hello) =>
-        ImmutableInterlocked.InterlockedExchange(ref _pluginWidgetKinds, DashboardProtocol.ParsePluginWidgetKinds(hello));
+    /// <summary>Session routing defaults from the current hello (<c>snapshot.sessionDefaults</c>).</summary>
+    public BoardSessionDefaults? SessionDefaults => Volatile.Read(ref _sessionDefaults);
 
-    private void ResetBoardHelloFacts() =>
+    private void CaptureBoardHelloFacts(JsonElement hello)
+    {
+        ImmutableInterlocked.InterlockedExchange(ref _pluginWidgetKinds, DashboardProtocol.ParsePluginWidgetKinds(hello));
+        Volatile.Write(ref _sessionDefaults, BoardSessionDefaults.FromHello(hello));
+    }
+
+    private void ResetBoardHelloFacts()
+    {
         ImmutableInterlocked.InterlockedExchange(ref _pluginWidgetKinds, []);
+        Volatile.Write(ref _sessionDefaults, null);
+    }
 
     // ── sessions.list (dashboard gallery) ──
 
@@ -66,6 +79,13 @@ public partial class OpenClawGatewayClient : IBoardGatewayClient
         DashboardProtocol.ParseBoardSnapshot(await SendResponseRequestAsync(
             "board.get", DashboardProtocol.BuildBoardParams(target), timeoutMs).ConfigureAwait(false));
 
+    public async Task<BoardProgressCard?> GetProgressCardAsync(ProgressCardTarget target, int timeoutMs = 15000)
+    {
+        var payload = await SendResponseRequestAsync(
+            "progressCard.get", DashboardProtocol.BuildProgressCardParams(target), timeoutMs).ConfigureAwait(false);
+        return DashboardProtocol.ParseProgressCard(payload, target.WireKey);
+    }
+
     private void HandleBoardEvent(string eventType, JsonElement root)
     {
         if (!root.TryGetProperty("payload", out var payload))
@@ -79,6 +99,10 @@ public partial class OpenClawGatewayClient : IBoardGatewayClient
             case "board.command":
                 if (DashboardProtocol.ParseBoardCommand(payload) is { } command)
                     BoardCommandReceived?.Invoke(this, command);
+                break;
+            case "progressCard.changed":
+                if (DashboardProtocol.ParseProgressCardChanged(payload) is { } progressChanged)
+                    ProgressCardChanged?.Invoke(this, progressChanged);
                 break;
         }
     }

@@ -1,5 +1,16 @@
 namespace OpenClaw.Shared;
 
+/// <summary>
+/// Indicates that the Gateway transport confirmed a request was not written.
+/// </summary>
+public sealed class GatewayRequestNotSentException : InvalidOperationException
+{
+    public GatewayRequestNotSentException(string message)
+        : base(message)
+    {
+    }
+}
+
 public sealed class GatewayConnectionLostException : OperationCanceledException
 {
     public GatewayConnectionLostException(

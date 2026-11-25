@@ -53,6 +53,8 @@ internal sealed record ChatComposerInputs(
     internal bool PlacementTargetIsEmpty { get; init; }
     internal bool PlacementHistoryReady { get; init; }
     internal bool PlacementTargetIsNew { get; init; }
+    internal bool PlacementRequiresCreation { get; init; }
+    internal ChatDraft? PlacementDraft { get; init; }
     /// <summary>Gateway-resolved identity for the thread's agent; the welcome header combines it with the roster.</summary>
     internal ChatAgentIdentity? AgentIdentity { get; init; }
     internal ChatAgentPresentation? AgentRosterPresentation { get; init; }
@@ -78,6 +80,8 @@ internal sealed record ChatComposerInputs(
         && PlacementTargetIsEmpty == other.PlacementTargetIsEmpty
         && PlacementHistoryReady == other.PlacementHistoryReady
         && PlacementTargetIsNew == other.PlacementTargetIsNew
+        && PlacementRequiresCreation == other.PlacementRequiresCreation
+        && ReferenceEquals(PlacementDraft, other.PlacementDraft)
         && Equals(AgentIdentity, other.AgentIdentity)
         && Equals(AgentRosterPresentation, other.AgentRosterPresentation)
         && Equals(ContextUsage, other.ContextUsage);

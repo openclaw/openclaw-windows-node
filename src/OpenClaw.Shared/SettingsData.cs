@@ -32,6 +32,8 @@ public record class SettingsData
     public bool ShowNotifications { get; set; } = true;
     /// <summary>Desktop mascot, enabled by default. Notification text is visible outside the app when enabled.</summary>
     public bool ShowDesktopCompanion { get; set; } = true;
+    /// <summary>Show the lobster only while all owned workspace and setup windows are minimized or closed.</summary>
+    public bool DesktopCompanionOnlyWhenMinimized { get; set; } = true;
     public int DesktopCompanionScalePercent { get; set; } = DesktopCompanionScale.DefaultPercent;
     public string? NotificationSound { get; set; }
     public bool NotifyHealth { get; set; } = true;

@@ -36,7 +36,8 @@ internal sealed class ReactorChatSubagents : Component<ReactorChatSubagentsProps
         }), panels);
         var summary = ChatSubagentPresentation.Project(Props.Children, DateTimeOffset.UtcNow);
         // The tab body stays mounted behind other tabs; only refresh while it is the selected tab.
-        var ticking = summary.Running.Count > 0 && panels.Selected == ChatConversationPanelState.SubagentsSlot;
+        var ticking = panels.Presented && panels.Selected == ChatConversationPanelState.SubagentsSlot
+            && summary.Running.Any(row => row.Status != ChatSubagentStatus.Queued && row.Thread.CreatedAt.HasValue);
         UseEffect((Func<Action>)(() =>
         {
             if (!ticking) return static () => { };
