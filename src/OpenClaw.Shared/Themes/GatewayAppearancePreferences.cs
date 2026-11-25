@@ -81,6 +81,7 @@ public static class ThemeAccent
         return palette with
         {
             Accent = color,
+            HasPersonalAccent = true,
             Ring = color,
             Primary = color,
             AccentForeground = ink,
@@ -89,5 +90,4 @@ public static class ThemeAccent
             AccentSubtle = color.WithAlpha(0.16),
         };
     }
-
 }

@@ -105,6 +105,8 @@ public sealed record ResolvedThemePalette
     public required ThemeColor BorderStrong { get; init; }
     /// <summary>Accent used for text, links and indicators (<c>--accent</c>).</summary>
     public required ThemeColor Accent { get; init; }
+    /// <summary>True when the accent is a person's arbitrary color rather than the theme's authored choice.</summary>
+    public bool HasPersonalAccent { get; init; }
     public required ThemeColor AccentHover { get; init; }
     public required ThemeColor AccentForeground { get; init; }
     /// <summary>Filled primary buttons (<c>--primary</c>).</summary>

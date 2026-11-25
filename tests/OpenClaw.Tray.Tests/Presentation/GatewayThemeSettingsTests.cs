@@ -266,6 +266,27 @@ public sealed class GatewayThemeSettingsTests
     });
 
     [Fact]
+    public Task ReconnectedPreferencesWinWhileCatalogIsStalled() => Task.Run(() =>
+    {
+        var (client, proxy) = Gateway();
+        proxy.Methods = ["themes.list", "users.prefs.get"];
+        var list = new TaskCompletionSource<JsonElement>();
+        var stale = new TaskCompletionSource<JsonElement>();
+        proxy.ReplyAsync = (method, _) => method == "themes.list" ? list.Task : stale.Task;
+        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+        catalog.SetConnection(client, "gw-1");
+
+        proxy.Epoch++;
+        proxy.ReplyAsync = (method, _) => method == "themes.list" ? list.Task :
+            Task.FromResult(Json("""{ "status": "ok", "entries": { "ui.accent": "#3a9b9b" } }"""));
+        catalog.SetConnection(client, "gw-1");
+        Assert.Equal("#3a9b9b", catalog.GatewayPreferences?.Accent);
+        stale.SetResult(Json("""{ "status": "ok", "entries": {} }"""));
+        Assert.Equal("#3a9b9b", catalog.GatewayPreferences?.Accent);
+        list.SetResult(Json("""{ "themes": [] }"""));
+    });
+
+    [Fact]
     public void InvalidationAtFinalCatalogNotificationStartsANewListAndKeepsItsSelection()
     {
         var (client, proxy) = Gateway();
@@ -402,8 +423,10 @@ public sealed class GatewayThemeSettingsTests
 
     // The dashboard accent follows live through users.prefs.changed, survives a read that can't see the person's
     // profile, and gives way to the theme's own accent when the person picks it again. Nothing is written back.
-    [Fact]
-    public Task FollowingTracksTheDashboardAccentLiveAndKeepsItWhenPreferencesAreUnknown() => Task.Run(() =>
+    [Theory]
+    [InlineData("""{ "ui.accent": "theme" }""")]
+    [InlineData("{}")]
+    public Task FollowingTracksTheDashboardAccentLiveAndKeepsItWhenPreferencesAreUnknown(string resetEntries) => Task.Run(() =>
     {
         var (client, proxy) = Gateway();
         proxy.Methods = ["themes.list", "themes.get", "users.prefs.get"];
@@ -439,7 +462,7 @@ public sealed class GatewayThemeSettingsTests
         proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
         Assert.Equal("#3a9b9b", appearance.FollowedAccent);
 
-        preferences = """{ "status": "ok", "entries": { "ui.accent": "theme" } }""";
+        preferences = $$"""{ "status": "ok", "entries": {{resetEntries}} }""";
         proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
         Assert.Null(appearance.FollowedAccent);
         Assert.Equal(manuscript.Dark.Accent, AppearanceResolver.ResolveTheme(appearance)!.Dark!.Accent);
@@ -447,6 +470,22 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(appliedOnConnect + 1, applied);
         Assert.All(proxy.Calls, call => Assert.Matches("^(themes\\.list|users\\.prefs\\.get):", call));
     });
+
+    [Theory]
+    [InlineData(ThemeColorMode.Dark, "#211e18")]
+    [InlineData(ThemeColorMode.Light, "#ffd700")]
+    public void LowContrastPersonalAccentsStayOnFillsButNotOnLabelsOrFocus(ThemeColorMode mode, string hex)
+    {
+        Assert.True(BuiltinGatewayThemes.TryGet("manuscript", out var theme));
+        var accent = ThemeColor.FromHex(hex);
+        var palette = ThemeAccent.Apply(theme, accent).PaletteFor(mode);
+        var brushes = ThemeResourceProjection.Project(palette).Brushes;
+
+        Assert.Equal(accent, brushes["AccentFillColorDefaultBrush"]);
+        var canvas = brushes["SolidBackgroundFillColorBaseBrush"];
+        Assert.True(ThemeLegibility.Contrast(brushes["AccentTextFillColorPrimaryBrush"].Over(canvas), canvas) >= 4.5);
+        Assert.True(ThemeLegibility.Contrast(brushes["FocusStrokeColorOuterBrush"].Over(canvas), canvas) >= 3);
+    }
 
     private sealed class StaticCatalog : IGatewayThemeCatalog
     {
