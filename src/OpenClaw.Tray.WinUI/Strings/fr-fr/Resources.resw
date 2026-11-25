@@ -4630,11 +4630,23 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>Ouvrir l'intégration</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Nettoyage automatique indisponible</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Avant de désinstaller OpenClaw, supprimez la passerelle WSL dans Paramètres &gt; Passerelle locale. Supprimez une passerelle du Store dans Paramètres Windows &gt; Applications uniquement si aucune autre variante de Companion ne l’utilise.</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Nettoyage de la passerelle du Store indisponible</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Avant de désinstaller OpenClaw, supprimez la passerelle du Store dans Paramètres Windows &gt; Applications, uniquement si aucune autre variante de Companion ne l’utilise.</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Nettoyage de la passerelle</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>La désinstallation d’OpenClaw dans les paramètres Windows supprime automatiquement les passerelles gérées. Utilisez Supprimer la passerelle locale ci-dessous pour supprimer une passerelle tout en conservant l’application.</value>
+    <value>Lorsque la stratégie l’autorise, la désinstallation d’OpenClaw dans les paramètres Windows supprime automatiquement les passerelles gérées. Si la stratégie PowerShell bloque le nettoyage, supprimez la passerelle WSL ici ou la passerelle du Store dans Paramètres Windows &gt; Applications uniquement si aucune autre variante Companion installée ne l’utilise, avant la désinstallation ; sinon, une passerelle peut rester.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Supprime la distribution WSL (OpenClawGateway), son image disque, l'entrée de démarrage automatique et efface les identifiants de la passerelle. Votre jeton MCP est conservé. L'intégration sera réinitialisée.</value>
@@ -6384,7 +6396,6 @@ Ouvrir Canaux dans le tableau de bord web.</value>
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 message en attente</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>Copié</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>Échec de la copie</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>Texte du message</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>Niveau d'effort</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>Plus rapide</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>Plus approfondi</value></data>

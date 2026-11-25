@@ -58,8 +58,8 @@ public sealed partial class SetupStepTimeline : UserControl
             row.PointerExited += Row_PointerExited;
             row.PointerCanceled += Row_PointerExited;
             row.PointerCaptureLost += Row_PointerExited;
+            row.SizeChanged += (_, _) => PositionConnectors();
         }
-        Rows.LayoutUpdated += (_, _) => PositionConnectors();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }

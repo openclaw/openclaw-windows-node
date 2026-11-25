@@ -660,8 +660,8 @@ if ($coreJobIndex -lt 0) {
 $nonCoreWorkflow = $workflow.Remove($coreJobIndex, $coreJob.Length)
 foreach ($token in @(
         "path: ~/.nuget/packages",
-        'key: nuget-${{ runner.os }}-${{ hashFiles(''**/*.csproj'', ''**/Directory.Packages.props'') }}',
-        'restore-keys: nuget-${{ runner.os }}-'
+        'key: nuget-${{ runner.os }}-${{ hashFiles(''scripts/Initialize-ReactorPackages.ps1'') }}-${{ hashFiles(''**/*.csproj'', ''**/Directory.Packages.props'') }}',
+        'restore-keys: nuget-${{ runner.os }}-${{ hashFiles(''scripts/Initialize-ReactorPackages.ps1'') }}-'
     )) {
     $count = ([regex]::Matches($nonCoreWorkflow, [regex]::Escape($token))).Count
     if ($count -ne 12) {
@@ -1766,8 +1766,8 @@ foreach ($token in @(
         "needs: change-classification",
         "fetch-depth: 0",
         "outputs.x64_release == 'true' || needs.change-classification.outputs.arm64_release == 'true'",
-        "gittools/actions/gitversion/setup@v4",
-        "gittools/actions/gitversion/execute@v4",
+        "gittools/actions/gitversion/setup@389fe43e6b0189b98c40c43553070ac029304635",
+        "gittools/actions/gitversion/execute@389fe43e6b0189b98c40c43553070ac029304635",
         "semVer: `${{ steps.release_version.outputs.semVer }}",
         "majorMinorPatch: `${{ steps.release_version.outputs.majorMinorPatch }}",
         "isPrerelease: `${{ steps.release_version.outputs.isPrerelease }}",

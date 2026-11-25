@@ -301,7 +301,7 @@ public sealed partial class GatewayFixtureUiTests
                     await TriggerReadOnlySessionErrorAsync(run);
                     await WaitUiAsync(run, () => FindById(run, "WorkspaceEmbeddedOperationFeedback") is { Current.IsOffscreen: false },
                         "explicit read-only operation error on pinned Usage");
-                    Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Current.Name);
+                    Assert.Contains("Fixture Gateway is read-only", FindText(run, "Fixture Gateway is read-only")!.Cached.Name);
                 }
                 // Use an explicit mutation: New Chat now creates only a local draft.
                 await TriggerError();

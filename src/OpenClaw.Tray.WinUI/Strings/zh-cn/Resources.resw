@@ -4630,11 +4630,23 @@
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>打开引导</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>自动清理不可用</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>卸载 OpenClaw 前，请在“设置 &gt; 本地网关”中移除 WSL 网关。只有在没有其他 Companion 版本使用 Store 网关时，才在 Windows“设置 &gt; 应用”中将其移除。</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Store 网关清理不可用</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>卸载 OpenClaw 前，请在 Windows“设置 &gt; 应用”中移除 Store 网关，但仅在没有其他 Companion 版本使用它时执行。</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>网关清理</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>在 Windows 设置中卸载 OpenClaw 会自动移除托管网关。使用下方的“移除本地网关”可移除网关并保留应用。</value>
+    <value>如果策略允许，在 Windows 设置中卸载 OpenClaw 会自动移除托管网关。如果 PowerShell 策略阻止清理，请在此移除 WSL 网关；只有在没有其他已安装的 Companion 版本使用 Store 网关时，才在卸载前通过 Windows 设置 &gt; 应用将其移除；否则网关可能会保留。</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>删除 WSL 发行版 (OpenClawGateway)、其磁盘映像、自动启动项,并清除网关凭据。您的 MCP 令牌将被保留。引导将重置。</value>
@@ -6384,7 +6396,6 @@
   <data name="Chat_Composer_QueuedCountSingle" xml:space="preserve"><value>1 条排队消息</value></data>
   <data name="Chat_Copy_Copied" xml:space="preserve"><value>已复制</value></data>
   <data name="Chat_Copy_Failed" xml:space="preserve"><value>复制失败</value></data>
-  <data name="Chat_Markdown_SelectionName" xml:space="preserve"><value>消息文本</value></data>
   <data name="Chat_Composer_Effort_Title" xml:space="preserve"><value>推理强度</value></data>
   <data name="Chat_Composer_Effort_Faster" xml:space="preserve"><value>更快</value></data>
   <data name="Chat_Composer_Effort_Smarter" xml:space="preserve"><value>更深入</value></data>
