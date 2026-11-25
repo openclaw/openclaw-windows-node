@@ -55,6 +55,7 @@ internal sealed class GatewayBuiltinThemeResolver : IGatewayBuiltinThemes, IDisp
     private string? _gatewayId;
     private long? _epoch;
     private int _generation;
+    private int _reconcileSequence;
     private CancellationTokenSource? _running;
     // The probe behind Current, kept for rebuilding with newer descriptors; null while Current came from another session.
     private ServedThemeCacheEntry? _entry;
@@ -133,13 +134,13 @@ internal sealed class GatewayBuiltinThemeResolver : IGatewayBuiltinThemes, IDisp
         // Superseded work is cancelled, not disposed: it may still be linking to the token.
         cancel?.Cancel();
         if (next is not null)
-            Pending = ResolveAsync(next, generation, RequestedIds(), token);
+            Pending = ResolveAsync(next, generation, RequestedIds(_catalog.GatewayBuiltins), token);
     }
 
     private static IReadOnlyList<string> TableIds => [.. BuiltinGatewayThemes.All.Select(theme => theme.Id)];
 
-    private IReadOnlyList<string> RequestedIds() =>
-        [.. TableIds.Concat(_catalog.GatewayBuiltins?.Select(descriptor => descriptor.Id) ?? []).Distinct(StringComparer.Ordinal)];
+    private static IReadOnlyList<string> RequestedIds(IReadOnlyList<GatewayThemeDescriptor>? descriptors) =>
+        [.. TableIds.Concat(descriptors?.Select(descriptor => descriptor.Id) ?? []).Distinct(StringComparer.Ordinal)];
 
     private async Task ResolveAsync(IOperatorGatewayClient client, int generation, IReadOnlyList<string> ids, CancellationToken connection)
     {
@@ -205,12 +206,12 @@ internal sealed class GatewayBuiltinThemeResolver : IGatewayBuiltinThemes, IDisp
     private ImmutableArray<GatewayThemeDescriptor>? Descriptors() =>
         _catalog.GatewayBuiltins is { } builtins ? [.. builtins] : null;
 
-    private bool Publish(int generation, ServedThemeCacheEntry? entry, string outcome)
+    private bool Publish(int generation, ServedThemeCacheEntry? entry, string outcome, int? reconcileSequence = null)
     {
         var set = entry?.ToSet();
         lock (_gate)
         {
-            if (generation != _generation)
+            if (generation != _generation || (reconcileSequence.HasValue && reconcileSequence != _reconcileSequence))
                 return false;
             _entry = entry;
             _current = set;
@@ -235,7 +236,7 @@ internal sealed class GatewayBuiltinThemeResolver : IGatewayBuiltinThemes, IDisp
     {
         IOperatorGatewayClient? client;
         ServedThemeCacheEntry? entry;
-        int generation;
+        int generation, sequence;
         lock (_gate)
         {
             client = _client;
@@ -243,15 +244,18 @@ internal sealed class GatewayBuiltinThemeResolver : IGatewayBuiltinThemes, IDisp
             generation = _generation;
             if (client is null || !_resolvedThisConnection || entry is null)
                 return;
+            // The post-probe worker and UI catalog notifications can reconcile the same connection concurrently.
+            sequence = ++_reconcileSequence;
         }
         // Every attempted id, styled or not, is in the result, so this re-probes once per newly listed built-in.
-        var ids = RequestedIds();
+        var descriptors = Descriptors();
+        var ids = RequestedIds(descriptors);
         if (!ids.All(id => entry.AttemptedIds.Contains(id, StringComparer.Ordinal)))
         {
             CancellationToken token;
             lock (_gate)
             {
-                if (generation != _generation || _running is null || !_resolvedThisConnection)
+                if (generation != _generation || sequence != _reconcileSequence || _running is null || !_resolvedThisConnection)
                     return;
                 _resolvedThisConnection = false;
                 token = _running.Token;
@@ -259,10 +263,9 @@ internal sealed class GatewayBuiltinThemeResolver : IGatewayBuiltinThemes, IDisp
             Pending = ResolveAsync(client, generation, ids, token);
             return;
         }
-        var descriptors = Descriptors();
         if (descriptors is null || SameDescriptors(descriptors.Value, entry.Descriptors))
             return;
-        Publish(generation, entry with { Descriptors = descriptors }, "names and branding from the Gateway catalog");
+        Publish(generation, entry with { Descriptors = descriptors }, "names and branding from the Gateway catalog", sequence);
     }
 
     private static bool SameDescriptors(
