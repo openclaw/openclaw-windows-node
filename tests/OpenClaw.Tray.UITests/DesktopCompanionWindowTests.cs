@@ -634,6 +634,13 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             var action = Control<HyperlinkButton>(root, "DesktopCompanionNotifications");
             await TestSupport.WaitForRenderedConditionAsync(() => action.ActualHeight > 0, "native action");
             var nativeForeground = ColorOf(action.Foreground);
+            var content = Assert.Single(TestSupport.FindDescendants<ContentPresenter>(action));
+            var nativeStates = new[]
+            {
+                (State: "PointerOver", Color: ColorOf(Assert.IsAssignableFrom<Brush>(action.Resources["HyperlinkButtonForegroundPointerOver"]))),
+                (State: "Pressed", Color: ColorOf(Assert.IsAssignableFrom<Brush>(action.Resources["HyperlinkButtonForegroundPressed"]))),
+                (State: "Normal", Color: nativeForeground),
+            };
             try
             {
                 applicator.Apply(imported);
@@ -645,7 +652,6 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                     await WaitForFillAsync(frame, Rgb(0x80, 0x80, 0x80), "theme popover");
                     await TestSupport.WaitForRenderedConditionAsync(
                         () => ColorOf(action.Foreground) == Rgb(0, 0, 0), "readable local action foreground");
-                    var content = Assert.Single(TestSupport.FindDescendants<ContentPresenter>(action));
                     foreach (var state in new[] { "PointerOver", "Pressed", "Normal" })
                     {
                         Assert.True(VisualStateManager.GoToState(action, state, false));
@@ -655,17 +661,23 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                 }
                 else
                 {
-                    Assert.False(action.Resources.ContainsKey("HyperlinkButtonForeground"));
+                    Assert.DoesNotContain("HyperlinkButtonForeground", action.Resources.Keys.OfType<string>());
                 }
 
                 applicator.Apply(null);
                 BackdropPolicy.Configure(true, null);
                 window.ApplyTheme("Light", refreshThemeResources: true);
                 await TestSupport.WaitForRenderedConditionAsync(
-                    () => !action.Resources.ContainsKey("HyperlinkButtonForeground") &&
+                    () => !action.Resources.Keys.OfType<string>().Contains("HyperlinkButtonForeground") &&
                         ColorOf(action.Foreground) == nativeForeground, "restored native action");
-                Assert.False(action.Resources.ContainsKey("HyperlinkButtonForegroundPointerOver"));
-                Assert.False(action.Resources.ContainsKey("HyperlinkButtonForegroundPressed"));
+                Assert.DoesNotContain("HyperlinkButtonForegroundPointerOver", action.Resources.Keys.OfType<string>());
+                Assert.DoesNotContain("HyperlinkButtonForegroundPressed", action.Resources.Keys.OfType<string>());
+                foreach (var (state, expected) in nativeStates)
+                {
+                    Assert.True(VisualStateManager.GoToState(action, state, false));
+                    await TestSupport.WaitForRenderedConditionAsync(
+                        () => ColorOf(content.Foreground) == expected, $"restored native {state} action");
+                }
             }
             finally
             {
