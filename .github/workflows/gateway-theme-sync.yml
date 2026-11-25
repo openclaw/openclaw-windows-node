@@ -3,14 +3,14 @@ name: Gateway theme table sync
 # Keeps the Companion's built-in Gateway theme table (src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs) on the
 # openclaw commit that the latest stable packaged Gateway ships, read from the release's verified payload. When that
 # commit moves, it regenerates the table, runs the theme tests and opens or updates one pull request from a fixed bot
-# branch. A theme that names a font the
-# Companion does not bundle fails the theme tests; adding a font and its license stays a human step
+# branch. A theme that names a font the Companion does not bundle fails the theme tests; adding a font and its license stays a human step
 # (scripts/Update-ThemeFonts.ps1).
 #
 # Maintainer setup: create a GitHub App with Contents and Pull requests read/write on this repository, then set the
 # repository variable GATEWAY_THEME_SYNC_APP_ID, the secret GATEWAY_THEME_SYNC_APP_PRIVATE_KEY and the variable
 # GATEWAY_THEME_SYNC_ENABLED=true. Until it is enabled, runs still regenerate and test a stale table but publish nothing.
-# The App token is required because pull requests opened with GITHUB_TOKEN do not start CI.
+# These are repository permissions, not branch-scoped grants. Reserve automation/gateway-theme-sync for the App
+# and use branch rulesets for server-enforced protections. App-created pull requests can trigger normal CI.
 
 on:
   schedule:
@@ -31,10 +31,13 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: read
+    outputs:
+      up_to_date: ${{ steps.upstream.outputs.up_to_date }}
+      upstream_ref: ${{ steps.upstream.outputs.upstream_ref }}
+      packaging_release: ${{ steps.upstream.outputs.packaging_release }}
+      gateway_version: ${{ steps.upstream.outputs.gateway_version }}
     env:
       OPENCLAW_REPO_ROOT: ${{ github.workspace }}
-      SYNC_BRANCH: automation/gateway-theme-sync
-      THEME_TABLE: src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs
     steps:
       - uses: actions/checkout@v7
         with:
@@ -56,9 +59,12 @@ jobs:
           $verdict = if ($state.upToDate) { 'is current' } else { "needs $($state.upstreamRef)" }
           "Packaging $($state.packagingRelease) ships openclaw $($state.gatewayVersion) ($($state.upstreamRef)). The theme table ($($state.currentRef)) $verdict." |
             Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+          if ($state.upToDate) {
+            ./scripts/Update-GatewayThemeTable.ps1 -UpstreamRef $state.upstreamRef -VerifyCatalog
+          }
 
       - name: Regenerate the built-in theme table
-        if: ${{ steps.upstream.outputs.up_to_date != 'true' }}
+        if: ${{ steps.upstream.outputs.up_to_date == 'false' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,13 +72,13 @@ jobs:
         run: ./scripts/Update-GatewayThemeTable.ps1 -UpstreamRef $env:UPSTREAM_REF
 
       - name: Setup .NET 10
-        if: ${{ steps.upstream.outputs.up_to_date != 'true' }}
+        if: ${{ steps.upstream.outputs.up_to_date == 'false' }}
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
       - name: Build and run the theme tests
-        if: ${{ steps.upstream.outputs.up_to_date != 'true' }}
+        if: ${{ steps.upstream.outputs.up_to_date == 'false' }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -93,10 +99,49 @@ jobs:
             'add it with scripts/Update-ThemeFonts.ps1 (including its license notice), then rerun this workflow.'
           ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
+      - name: Record dry run
+        if: ${{ steps.upstream.outputs.up_to_date == 'false' && vars.GATEWAY_THEME_SYNC_ENABLED != 'true' }}
+        shell: pwsh
+        run: |
+          'The stale table was regenerated and tested. Publication is disabled.' >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Keep only the tested theme table for the publisher
+        if: ${{ steps.upstream.outputs.up_to_date == 'false' && vars.GATEWAY_THEME_SYNC_ENABLED == 'true' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: gateway-theme-table
+          path: src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: sync
+    if: ${{ github.repository == 'openclaw/openclaw-windows-node' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.sync.outputs.up_to_date == 'false' && vars.GATEWAY_THEME_SYNC_ENABLED == 'true' }}
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    env:
+      SYNC_BRANCH: automation/gateway-theme-sync
+      THEME_TABLE: src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: gateway-theme-table
+          path: ${{ runner.temp }}/gateway-theme-table
+
+      - name: Copy the tested file into the clean checkout
+        shell: pwsh
+        run: Copy-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'gateway-theme-table/BuiltinGatewayThemes.g.cs') -Destination $env:THEME_TABLE
+
       - name: Create the sync App token
         id: app-token
-        if: ${{ steps.upstream.outputs.up_to_date != 'true' && vars.GATEWAY_THEME_SYNC_ENABLED == 'true' }}
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
         with:
           app-id: ${{ vars.GATEWAY_THEME_SYNC_APP_ID }}
           private-key: ${{ secrets.GATEWAY_THEME_SYNC_APP_PRIVATE_KEY }}
@@ -104,12 +149,11 @@ jobs:
           permission-pull-requests: write
 
       - name: Open or update the sync pull request
-        if: ${{ steps.app-token.outcome == 'success' }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          PACKAGING_RELEASE: ${{ steps.upstream.outputs.packaging_release }}
-          GATEWAY_VERSION: ${{ steps.upstream.outputs.gateway_version }}
-          UPSTREAM_REF: ${{ steps.upstream.outputs.upstream_ref }}
+          PACKAGING_RELEASE: ${{ needs.sync.outputs.packaging_release }}
+          GATEWAY_VERSION: ${{ needs.sync.outputs.gateway_version }}
+          UPSTREAM_REF: ${{ needs.sync.outputs.upstream_ref }}
         run: ./scripts/Publish-GatewayThemeSync.ps1

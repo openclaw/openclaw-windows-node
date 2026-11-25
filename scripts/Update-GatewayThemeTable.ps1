@@ -10,6 +10,7 @@ token the Companion uses (colors, the --font-body, --font-chat and --mono stacks
 Microsoft Edge for each theme and mode, and writes src/OpenClaw.Shared/Themes/BuiltinGatewayThemes.g.cs.
 Each theme's mascot, brand icon and working indicator come from BUILTIN_THEMES, resolved with upstream's
 resolveThemeBranding defaults. The script fails when any token does not resolve or a branding value is unknown.
+With -VerifyCatalog it checks the existing table's ordered descriptors and branding against that ref without running Edge.
 
 It needs gh (authenticated for github.com) and Microsoft Edge. It writes only the output file and a
 temporary directory it deletes afterwards.
@@ -23,7 +24,8 @@ param(
     [ValidatePattern('^[0-9a-f]{40}$')]
     [string]$UpstreamRef,
 
-    [string]$OutputPath = (Join-Path $PSScriptRoot '..\src\OpenClaw.Shared\Themes\BuiltinGatewayThemes.g.cs')
+    [string]$OutputPath = (Join-Path $PSScriptRoot '..\src\OpenClaw.Shared\Themes\BuiltinGatewayThemes.g.cs'),
+    [switch]$VerifyCatalog
 )
 
 $ErrorActionPreference = 'Stop'
@@ -96,6 +98,26 @@ $builtinIds = @([regex]::Matches($idBlock, '"([a-z0-9-]+)"') | ForEach-Object { 
 $descriptorIds = @($themes | ForEach-Object Id)
 if (($builtinIds -join ',') -ne ($descriptorIds -join ',')) {
     throw "BUILTIN_THEME_IDS ($($builtinIds -join ',')) and BUILTIN_THEMES ($($descriptorIds -join ',')) disagree."
+}
+
+function Get-CatalogLines($theme) {
+    "        new($(ConvertTo-CSharpString $theme.Id), $(ConvertTo-CSharpString $theme.Name),"
+    "            $(ConvertTo-CSharpString $theme.Description),"
+    $branding = $theme.Branding
+    "            Mascot: $(ConvertTo-CSharpString $branding.Mascot), BrandIcon: $(ConvertTo-CSharpString $branding.BrandIcon), WorkingIndicator: $(ConvertTo-CSharpString $branding.WorkingIndicator),"
+}
+
+if ($VerifyCatalog) {
+    $lines = Get-Content -LiteralPath $OutputPath
+    $actual = @(for ($i = 0; $i -lt $lines.Length; $i++) {
+        if ($lines[$i] -cmatch '^        new\(') { $lines[$i..($i + 2)] }
+    })
+    $expected = @(foreach ($theme in $themes) { Get-CatalogLines $theme })
+    if (($actual -join "`n") -cne ($expected -join "`n")) {
+        throw "Theme table inventory or branding differs from upstream $UpstreamRef. Regenerate the table."
+    }
+    Write-Host "Verified $($themes.Count) built-in theme descriptors at $UpstreamRef."
+    return
 }
 
 # Theme ids map to data-theme aliases exactly as ui/src/app/theme.ts resolveTheme() does.
@@ -237,10 +259,7 @@ $out = [System.Text.StringBuilder]::new()
 [void]$out.AppendLine('    private static readonly BuiltinTheme[] Data =')
 [void]$out.AppendLine('    [')
 foreach ($theme in $themes) {
-    [void]$out.AppendLine("        new($(ConvertTo-CSharpString $theme.Id), $(ConvertTo-CSharpString $theme.Name),")
-    [void]$out.AppendLine("            $(ConvertTo-CSharpString $theme.Description),")
-    $branding = $theme.Branding
-    [void]$out.AppendLine("            Mascot: $(ConvertTo-CSharpString $branding.Mascot), BrandIcon: $(ConvertTo-CSharpString $branding.BrandIcon), WorkingIndicator: $(ConvertTo-CSharpString $branding.WorkingIndicator),")
+    foreach ($line in Get-CatalogLines $theme) { [void]$out.AppendLine($line) }
     foreach ($mode in @('light', 'dark')) {
         $palette = $parsed.result.($theme.Id).$mode
         $label = if ($mode -eq 'light') { 'Light' } else { 'Dark' }

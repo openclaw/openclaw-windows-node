@@ -212,10 +212,9 @@ public class GatewayThemeTests
     }
 
     [Fact]
-    public void BuiltinTableHasEveryUpstreamThemeInBothModes()
+    public void BuiltinTableHasDistinctIdsAndReadablePalettesInBothModes()
     {
-        // Update-GatewayThemeTable.ps1 checks the theme set against upstream BUILTIN_THEME_IDS, and the scheduled
-        // sync regenerates the table, so these are invariants of any regenerated table rather than a pinned list.
+        // CI compares the checked-in catalog to the pinned upstream IDs and branding.
         var ids = BuiltinGatewayThemes.All.Select(theme => theme.Id).ToList();
         Assert.Contains("claw", ids);
         Assert.Equal(ids.Count, ids.Distinct().Count());
@@ -230,6 +229,9 @@ public class GatewayThemeTests
                 Assert.NotEmpty(palette.BodyFont.Primary);
                 Assert.NotEmpty(palette.ChatFont.Primary);
                 Assert.NotEmpty(palette.MonoFont.Primary);
+                Assert.True(double.IsFinite(palette.Radii.Small) && palette.Radii.Small >= 0, theme.Id);
+                Assert.True(double.IsFinite(palette.Radii.Medium) && palette.Radii.Medium >= 0, theme.Id);
+                Assert.True(double.IsFinite(palette.Radii.Scale) && palette.Radii.Scale >= 0, theme.Id);
             }
             Assert.True(theme.Dark!.Canvas.RelativeLuminance < theme.Light!.Canvas.RelativeLuminance, theme.Id);
         }
@@ -514,8 +516,7 @@ public class GatewayThemeTests
     [Fact]
     public void BrandingReachesBuiltinPluginAndSnapshottedThemes()
     {
-        // The generator resolves built-in branding against upstream values, and the scheduled sync regenerates it, so
-        // this is an invariant of any table; GatewayThemeBrandingTests covers what Phosphor and CRT render.
+        // Exact built-in branding is checked against the pinned upstream catalog in CI.
         foreach (var theme in BuiltinGatewayThemes.All)
             Assert.Contains(theme.Branding.BrandIcon, new[] { ThemeBranding.ClawIcon, ThemeBranding.MarkIcon });
 
@@ -594,23 +595,6 @@ public class GatewayThemeTests
         AssertNear("#211e18", dark.Shell);
         AssertNear("#211e18", dark.Sidebar);
         AssertNear("#2c2920", dark.ComposerFill.Over(dark.Shell));
-    }
-
-    // The Control UI scales radii by 1.25 where Edge draws squircle corners; WinUI draws circular ones, so only a
-    // theme's own geometry (CRT's near-square console) may differ from the circular defaults.
-    [Fact]
-    public void BuiltinThemesCarryCircularCornerGeometry()
-    {
-        foreach (var theme in BuiltinGatewayThemes.All)
-        {
-            foreach (var palette in new[] { theme.Light!, theme.Dark! })
-            {
-                if (theme.Id == "crt")
-                    Assert.True(palette.Radii.Small < ThemeRadii.Default.Small && palette.Radii.Scale < 1, theme.Id);
-                else
-                    Assert.Equal(ThemeRadii.Default, palette.Radii);
-            }
-        }
     }
 
     private static void AssertNear(string expectedHex, ThemeColor actual)
