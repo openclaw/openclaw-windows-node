@@ -637,6 +637,17 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
             var nativeForeground = ColorOf(action.Foreground);
             var label = LocalizationHelper.GetString("DesktopCompanion_Notifications");
 
+            async Task WaitForContentAsync(bool native)
+            {
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => native ? Equals(action.Content, label) : action.Content is TextBlock text && text.IsLoaded && text.Text == label,
+                    native ? "native link content" : "contrast-safe link content",
+                    () => $"Content={action.Content?.GetType().Name}; theme={action.ActualTheme}");
+                var peer = FrameworkElementAutomationPeer.CreatePeerForElement(action);
+                Assert.Equal(label, peer.GetName());
+                Assert.IsAssignableFrom<IInvokeProvider>(peer.GetPattern(PatternInterface.Invoke));
+            }
+
             async Task<global::Windows.UI.Color> ReadInkAsync(string state, global::Windows.UI.Color? expected = null)
             {
                 Assert.Same(action, Control<HyperlinkButton>(root, "DesktopCompanionNotifications"));
@@ -657,14 +668,17 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                     ink = (text?.Foreground as SolidColorBrush)?.Color;
                     return current?.Name == state && (current.Storyboard is not { } storyboard ||
                         storyboard.GetCurrentState() == Microsoft.UI.Xaml.Media.Animation.ClockState.Filling) &&
-                        ink.HasValue && (expected is null || ink == expected);
+                        ink.HasValue && (action.Content is not string || ink == presenterInk) &&
+                        (expected is null || ink == expected);
                 }, $"rendered {state} action ink", () =>
                     $"Requested={state}; actual={current?.Name}; clock={current?.Storyboard?.GetCurrentState()}; " +
                     $"expected={expected?.ToString() ?? "native ink"}; text={ink}; presenter={presenterInk}; " +
-                    $"button={(action.Foreground as SolidColorBrush)?.Color}; theme={action.ActualTheme}; focus={action.FocusState}");
+                    $"button={(action.Foreground as SolidColorBrush)?.Color}; content={action.Content?.GetType().Name}; " +
+                    $"theme={action.ActualTheme}; focus={action.FocusState}");
                 return ink!.Value;
             }
             var nativeStates = new Dictionary<string, global::Windows.UI.Color>();
+            await WaitForContentAsync(native: true);
             foreach (var state in new[] { "PointerOver", "Pressed", "Normal" })
                 nativeStates[state] = await ReadInkAsync(state);
             try
@@ -677,12 +691,14 @@ public sealed class DesktopCompanionWindowTests(UIThreadFixture ui)
                     await WaitForFillAsync(frame, Rgb(0x80, 0x80, 0x80), "theme popover");
                 else
                     Assert.DoesNotContain("HyperlinkButtonForeground", action.Resources.Keys.OfType<string>());
+                await WaitForContentAsync(native: highContrast);
                 foreach (var (state, nativeInk) in nativeStates)
                     await ReadInkAsync(state, highContrast ? nativeInk : Rgb(0, 0, 0));
 
                 applicator.Apply(null);
                 BackdropPolicy.Configure(true, null);
                 window.ApplyTheme("Light", refreshThemeResources: true);
+                await WaitForContentAsync(native: true);
                 await TestSupport.WaitForRenderedConditionAsync(
                     () => !action.Resources.Keys.OfType<string>().Contains("HyperlinkButtonForeground") &&
                         ColorOf(action.Foreground) == nativeForeground, "restored native action");
