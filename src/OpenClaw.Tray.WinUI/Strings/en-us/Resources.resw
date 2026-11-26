@@ -4659,11 +4659,23 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsPage_OpenOnboardWizard.Content" xml:space="preserve">
     <value>Open onboarding</value>
   </data>
+  <data name="Onboarding_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Automatic cleanup unavailable</value>
+  </data>
+  <data name="Onboarding_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Before uninstalling OpenClaw, remove the WSL Gateway in Settings &gt; Local Gateway. Remove a Store Gateway in Windows Settings &gt; Apps only if no other Companion variant uses it.</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Title" xml:space="preserve">
+    <value>Store Gateway cleanup unavailable</value>
+  </data>
+  <data name="Onboarding_Native_GatewayCleanupWarning.Message" xml:space="preserve">
+    <value>Before uninstalling OpenClaw, remove the Store Gateway in Windows Settings &gt; Apps only if no other Companion variant uses it.</value>
+  </data>
   <data name="SettingsPage_MSIXInstallationDetected.Title" xml:space="preserve">
     <value>Gateway cleanup</value>
   </data>
   <data name="SettingsPage_MSIXInstallationDetected.Message" xml:space="preserve">
-    <value>Uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. Use Remove Local Gateway below to remove a Gateway while keeping the app.</value>
+    <value>When policy allows it, uninstalling OpenClaw in Windows Settings automatically removes managed Gateways. If PowerShell policy blocks cleanup, remove the WSL Gateway here or remove the Store Gateway in Windows Settings &gt; Apps only if no other installed Companion variant uses it before uninstalling; otherwise a Gateway may remain.</value>
   </data>
   <data name="SettingsPage_RemovesTheWSLDistro.Text" xml:space="preserve">
     <value>Removes the WSL distro (OpenClawGateway), its disk image, autostart entry, and clears gateway credentials. Your MCP token is preserved. Onboarding will reset.</value>

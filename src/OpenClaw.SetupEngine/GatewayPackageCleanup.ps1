@@ -28,6 +28,7 @@ if ($Family -notmatch '^[A-Za-z0-9._-]+$' -or ($DistroName -and $DistroName -not
 }
 $root = Join-Path $env:USERPROFILE ".openclaw-companion\cleanup\$Family"
 $recordPath = Join-Path $root 'owned.json'
+$preservationPendingPath = Join-Path $root 'gateway-preservation.pending'
 $taskName = "OpenClaw Gateway cleanup - $([Security.Principal.WindowsIdentity]::GetCurrent().User.Value) - $Family"
 $sentinel = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) "Packages\$Family\LocalState\gateway-cleanup-owner.txt"
 if (-not $Register -and -not $Preserve -and -not (Test-Path $recordPath)) { exit 0 }
@@ -92,6 +93,10 @@ while (-not $lock) {
     }
 }
 try {
+    if (-not $Register -and -not $Preserve -and -not (Test-Path $recordPath)) { exit 0 }
+    # Keep the worker fail-closed while Companion finalizes an explicit preservation choice.
+    if (-not $Register -and -not $Preserve -and
+        (Test-Path -LiteralPath $preservationPendingPath)) { exit 0 }
     Assert-ValidRemovalReceipt
     $record = if (Test-Path $recordPath) { Get-Content $recordPath -Raw | ConvertFrom-Json } else {
         [pscustomobject]@{ DistroName = $null; InstallPath = $null; OwnNativePackage = $false; InstallationId = $null; RegisteredUtc = $null }
@@ -132,8 +137,15 @@ try {
             $record.NativeInstallationId | Set-Content $nativeMarker
             $record.OwnNativePackage = $true
         }
+        foreach ($pendingPath in @($preservationPendingPath, (Join-Path $root 'cleanup-task-removal.pending'))) {
+            if (Test-Path -LiteralPath $pendingPath) { Remove-Item -LiteralPath $pendingPath -Force -ErrorAction Stop }
+        }
         $record | ConvertTo-Json | Set-Content $recordPath -Encoding UTF8
-        Register-CleanupTask
+        try { Register-CleanupTask }
+        catch {
+            [Console]::Error.WriteLine("OPENCLAW_CLEANUP_TASK_UNAVAILABLE: " + $_.Exception.Message)
+            exit 12
+        }
         exit 0
     } else {
     $missingPath = Join-Path $root 'package-missing.txt'
