@@ -267,6 +267,110 @@ public class GatewayThemeTests
         Assert.Equal(tide.Dark!.Accent, AppearanceResolver.ResolveTheme(settings.Appearance)!.Dark!.Accent);
     }
 
+    // Upstream background-preferences.test.ts accepts these shapes and rejects the rest as a whole.
+    [Theory]
+    [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": true, "showInSessions": false, "visibility": 0.3 }""", true)]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "a_1-b" }, "presentation": "full-bleed", "showOnNewSession": false, "showInSessions": true, "visibility": 1 }""", true)]
+    [InlineData("""{ "source": { "kind": "none" }, "presentation": "faded", "showOnNewSession": true, "showInSessions": true, "visibility": 0 }""", true)]
+    [InlineData("""{ "source": { "kind": "theme" }, "presentation": "fullBleed", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "../x" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "a_1-b\n" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "\uD800" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "theme" }, "presentation": "\uDC00", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": "yes", "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": true, "showInSessions": true, "visibility": 1.5 }""", false)]
+    [InlineData("""{ "source": "theme", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    public void BackgroundPreferenceReadsOnlyTheUpstreamShape(string json, bool valid)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(valid, BackgroundPreference.TryParse(document.RootElement, out var preference));
+        if (!valid)
+            return;
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+            preference.WriteTo(writer);
+        using var written = JsonDocument.Parse(stream.ToArray());
+        Assert.True(BackgroundPreference.TryParse(written.RootElement, out var reread));
+        Assert.Equal(preference, reread);
+    }
+
+    [Theory]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "\uD800" }, "showOnNewSession": true, "showInSessions": true, "visibility": 1 }""")]
+    [InlineData("""{ "source": { "kind": "theme", "\uD800": 1 }, "showOnNewSession": true, "showInSessions": true, "visibility": 1 }""")]
+    public void MalformedBackgroundDoesNotDiscardTheValidAccentOrLocalSettings(string invalidBackground)
+    {
+        using var invalidArtwork = JsonDocument.Parse($$"""{ "status": "ok", "entries": { "ui.accent": "#3A9B9B", "ui.background": {{invalidBackground}} } }""");
+        Assert.True(GatewayAppearancePreferences.TryParse(invalidArtwork.RootElement, out var preferences));
+        Assert.Equal("#3a9b9b", preferences.Accent);
+        Assert.Null(preferences.Background);
+
+        var settings = SettingsData.FromJson($$"""{ "AppTheme": "Dark", "Appearance": { "UseMica": false, "Background": {{invalidBackground}} } }""");
+        Assert.Equal("Dark", settings?.AppTheme);
+        Assert.False(settings!.Appearance!.UseMica);
+        Assert.Null(settings.Appearance.Background);
+    }
+
+    [Fact]
+    public void MalformedAccentDoesNotDiscardTheValidBackground()
+    {
+        using var invalidAccent = JsonDocument.Parse("""
+            { "status": "ok", "entries": { "ui.accent": "\uD800", "ui.background": {
+              "source": { "kind": "none" }, "showOnNewSession": false, "showInSessions": true, "visibility": 1 } } }
+            """);
+        Assert.True(GatewayAppearancePreferences.TryParse(invalidAccent.RootElement, out var preferences));
+        Assert.Null(preferences.Accent);
+        Assert.Equal(BackgroundSourceKind.None, preferences.Background?.Source);
+    }
+
+    // The dashboard's strengths (session-background.tsx): faded scales visibility against the 50% default up to full,
+    // full bleed caps at 70%, and a person who never chose shows theme artwork everywhere.
+    [Fact]
+    public void BackgroundOpacityMatchesTheDashboard()
+    {
+        var faded = BackgroundPreference.Default;
+        Assert.Equal(1, ThemeBackgrounds.Opacity(null, ThemeBackgroundSurface.Conversation));
+        Assert.False(ThemeBackgrounds.Fades(null, ThemeBackgroundSurface.NewSession));
+        Assert.Equal(1, ThemeBackgrounds.Opacity(faded, ThemeBackgroundSurface.NewSession));
+        Assert.True(ThemeBackgrounds.Fades(faded, ThemeBackgroundSurface.NewSession));
+        Assert.False(ThemeBackgrounds.Fades(faded, ThemeBackgroundSurface.Conversation));
+        Assert.Equal(0.5, ThemeBackgrounds.Opacity(faded with { Visibility = 0.25 }, ThemeBackgroundSurface.Conversation), 6);
+        var fullBleed = faded with { Presentation = BackgroundPresentation.FullBleed };
+        Assert.Equal(0.35, ThemeBackgrounds.Opacity(fullBleed, ThemeBackgroundSurface.Conversation), 6);
+        Assert.Equal(0.7, ThemeBackgrounds.Opacity(fullBleed with { Visibility = 1 }, ThemeBackgroundSurface.NewSession), 6);
+        Assert.Equal(0, ThemeBackgrounds.Opacity(faded with { ShowInSessions = false }, ThemeBackgroundSurface.Conversation));
+        Assert.Equal(0, ThemeBackgrounds.Opacity(faded with { Source = BackgroundSourceKind.None }, ThemeBackgroundSurface.NewSession));
+        Assert.Equal(0, ThemeBackgrounds.Opacity(
+            faded with { Source = BackgroundSourceKind.Custom, AssetId = "a" }, ThemeBackgroundSurface.Conversation));
+
+        Assert.True(BuiltinGatewayThemes.TryGet("manuscript", out var manuscript));
+        Assert.Equal("manuscript", ThemeBackgrounds.ArtworkFamily(manuscript));
+        Assert.Equal("custom", ThemeBackgrounds.ArtworkFamily(manuscript with { Id = "acme/ink", Source = GatewayThemeSource.Plugin }));
+        Assert.Null(ThemeBackgrounds.ArtworkFamily(null));
+    }
+
+    // Following uses the person's dashboard choice (unset means the dashboard's artwork everywhere); otherwise the
+    // Companion's own choice, defaulting to the dashboard default. Unknown preferences keep the last followed choice.
+    [Fact]
+    public void FollowingUsesTheDashboardBackgroundAndKeepsItWhenUnknown()
+    {
+        var local = BackgroundPreference.Default with { Presentation = BackgroundPresentation.FullBleed };
+        var appearance = new AppearanceSettings { Background = local };
+        Assert.Equal(local, AppearanceResolver.ActiveBackground(appearance));
+        Assert.Equal(BackgroundPreference.Default, AppearanceResolver.ActiveBackground(new AppearanceSettings()));
+
+        var dashboard = BackgroundPreference.Default with { ShowInSessions = false };
+        var following = AppearanceResolver.FollowPreferences(appearance with { FollowGatewayTheme = true },
+            new GatewayAppearancePreferences(null, dashboard));
+        Assert.Equal(dashboard, AppearanceResolver.ActiveBackground(following));
+        Assert.Same(following, AppearanceResolver.FollowPreferences(following, null));
+        var unset = AppearanceResolver.FollowPreferences(following, new GatewayAppearancePreferences(null));
+        Assert.Null(AppearanceResolver.ActiveBackground(unset));
+        Assert.Equal(local, AppearanceResolver.ActiveBackground(unset with { FollowGatewayTheme = false }));
+
+        var reloaded = SettingsData.FromJson(new SettingsData { Appearance = following }.ToJson())!;
+        Assert.Equal(following, reloaded.Appearance);
+    }
+
     [Theory]
     [InlineData("Id", "\\uD800")]
     [InlineData("Name", "\\uDC00")]

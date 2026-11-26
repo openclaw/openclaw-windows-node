@@ -4593,6 +4593,27 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>With the Windows default theme, let the desktop show through window backgrounds. Gateway themes always use solid colors.</value>
   </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>Background artwork</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>Theme artwork behind new chats and conversations. While following the Gateway theme, your dashboard choice is used.</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Dashboard default</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>None</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>Faded</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>Full bleed</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>Artwork strength</value>
+  </data>
   <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
     <value>Follow Gateway theme</value>
   </data>

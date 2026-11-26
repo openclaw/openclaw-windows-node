@@ -156,7 +156,44 @@
                                       AutomationProperties.LabeledBy="{Binding ElementName=UseMicaLabel}"/>
                     </Grid>
                 </Border>
-
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14" RowSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="BackgroundArtworkLabel" x:Uid="SettingsRow_BackgroundArtwork_Header" Text="Background artwork" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_BackgroundArtwork_Description"
+                                       Text="Theme artwork behind new chats and conversations. While following the Gateway theme, your dashboard choice is used."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="BackgroundStyleComboBox" MinWidth="160" VerticalAlignment="Center"
+                                  x:Uid="SettingsPage_BackgroundStyle" PlaceholderText="Dashboard default"
+                                  SelectedIndex="{Binding BackgroundStyleIndex, Mode=TwoWay}"
+                                  IsEnabled="{Binding IsBackgroundEnabled}"
+                                  AutomationProperties.AutomationId="SettingsPageBackgroundStyle"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=BackgroundArtworkLabel}">
+                            <ComboBoxItem x:Uid="SettingsPage_BackgroundStyle_None" Content="None"/>
+                            <ComboBoxItem x:Uid="SettingsPage_BackgroundStyle_Faded" Content="Faded"/>
+                            <ComboBoxItem x:Uid="SettingsPage_BackgroundStyle_FullBleed" Content="Full bleed"/>
+                        </ComboBox>
+                        <Slider Grid.Row="1" Grid.ColumnSpan="2" x:Name="BackgroundVisibilitySlider"
+                                x:Uid="SettingsPage_BackgroundVisibility" Header="Artwork strength"
+                                Minimum="0" Maximum="100" StepFrequency="5"
+                                Value="{Binding BackgroundVisibility, Mode=TwoWay}"
+                                IsEnabled="{Binding IsBackgroundVisibilityEnabled}"
+                                AutomationProperties.AutomationId="SettingsPageBackgroundVisibility"/>
+                    </Grid>
+                </Border>
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">

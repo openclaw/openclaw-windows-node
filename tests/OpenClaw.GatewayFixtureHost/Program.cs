@@ -141,7 +141,7 @@ internal static class Program
             else if (scenario.Themes is { } themes)
             {
                 await run.InvokeAsync("app.navigate", new { page = "settings" });
-                Console.WriteLine("Synthetic theme catalog. Enter 'select <id>' or 'accent <#hex|theme|none>' to change the dashboard choice, or 'reveal' to add a plugin theme. 'stop' ends this run.");
+                Console.WriteLine("Synthetic theme catalog. Enter 'select <id>', 'accent <#hex|theme|none>' or 'background <faded|full-bleed|none|clear> [strength]' to change the dashboard choice, or 'reveal' to add a plugin theme. 'stop' ends this run.");
                 controls = Task.Run(() => ReadThemeControlsAsync(run, themes, stop));
             }
             if (durationSeconds is { } seconds)
@@ -264,6 +264,13 @@ internal static class Program
                     Console.WriteLine($"Set the dashboard accent to {accent} and published users.prefs.changed.");
                     continue;
                 }
+                if (command.StartsWith("background ", StringComparison.Ordinal) && BackgroundJson(command[11..]) is var (valid, json) && valid)
+                {
+                    themes.SetBackground(json);
+                    await run.Gateway.PublishUserPrefsChangedAsync();
+                    Console.WriteLine($"Set the dashboard background to {json ?? "none saved"} and published users.prefs.changed.");
+                    continue;
+                }
                 if (command != "reveal")
                 {
                     Console.WriteLine("Unknown fixture control. No state changed.");
@@ -275,6 +282,35 @@ internal static class Program
             }
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+    }
+
+    // 'faded 0.8', 'full-bleed', 'none' or 'clear' as the Control UI's ui.background value; clear means none saved.
+    private static (bool Valid, string? Json) BackgroundJson(string arguments)
+    {
+        var parts = arguments.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length is 0 or > 2)
+            return (false, null);
+        if (parts[0] == "clear")
+            return (parts.Length == 1, null);
+        var strength = 0.5;
+        if (parts.Length == 2 && !double.TryParse(parts[1], System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out strength) || !double.IsFinite(strength) || strength is < 0 or > 1)
+            return (false, null);
+        var (kind, presentation) = parts[0] switch
+        {
+            "none" => ("none", "faded"),
+            "faded" => ("theme", "faded"),
+            "full-bleed" => ("theme", "full-bleed"),
+            _ => (null, null),
+        };
+        return kind is null ? (false, null) : (true, System.Text.Json.JsonSerializer.Serialize(new
+        {
+            source = new { kind },
+            presentation,
+            showOnNewSession = true,
+            showInSessions = true,
+            visibility = strength,
+        }));
     }
 
     private static async Task ReadUsageAnalyticsControlsAsync(UsageAnalyticsFixture usage, CancellationTokenSource stop)

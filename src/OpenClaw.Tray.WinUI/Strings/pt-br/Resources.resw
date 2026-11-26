@@ -4562,6 +4562,27 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>Com o tema padrão do Windows, deixe a área de trabalho aparecer através do fundo das janelas. Os temas do Gateway sempre usam cores sólidas.</value>
   </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>Arte de fundo</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>Arte do tema atrás de novos chats e conversas. Ao seguir o tema do Gateway, sua escolha no painel é usada.</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Padrão do painel</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>Nenhuma</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>Esmaecida</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>Tela cheia</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>Intensidade da arte</value>
+  </data>
   <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
     <value>Seguir o tema do Gateway</value>
   </data>

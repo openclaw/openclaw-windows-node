@@ -4543,6 +4543,27 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>Avec le thème Windows par défaut, laissez le bureau transparaître derrière les fenêtres. Les thèmes Gateway utilisent toujours des couleurs opaques.</value>
   </data>
+  <data name="SettingsRow_BackgroundArtwork_Header.Text" xml:space="preserve">
+    <value>Illustration d’arrière-plan</value>
+  </data>
+  <data name="SettingsRow_BackgroundArtwork_Description.Text" xml:space="preserve">
+    <value>Illustration du thème derrière les nouvelles discussions et les conversations. Lorsque vous suivez le thème Gateway, votre choix du tableau de bord est utilisé.</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle.PlaceholderText" xml:space="preserve">
+    <value>Valeur par défaut du tableau de bord</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_None.Content" xml:space="preserve">
+    <value>Aucune</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_Faded.Content" xml:space="preserve">
+    <value>Estompée</value>
+  </data>
+  <data name="SettingsPage_BackgroundStyle_FullBleed.Content" xml:space="preserve">
+    <value>Pleine page</value>
+  </data>
+  <data name="SettingsPage_BackgroundVisibility.Header" xml:space="preserve">
+    <value>Intensité de l’illustration</value>
+  </data>
   <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
     <value>Suivre le thème de la passerelle</value>
   </data>

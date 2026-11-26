@@ -7,7 +7,8 @@ namespace OpenClaw.TestSupport.Gateway;
 /// fixture Gateway: built-ins without definitions, two plugin themes (dark-only and light/dark) and one
 /// imported <c>user/*</c> theme (light-only). <see cref="RevealPluginTheme"/> adds a third plugin theme so a
 /// following <c>plugins.changed</c> event proves push-driven refresh. <c>users.prefs.get</c> reports the
-/// dashboard accent <see cref="SetAccent"/> chose. The catalog is read-only: <c>themes.set</c>,
+/// dashboard accent and background <see cref="SetAccent"/> and <see cref="SetBackground"/> chose. The catalog is
+/// read-only: <c>themes.set</c>,
 /// <c>themes.import</c> and <c>users.prefs.set</c> are not advertised.
 /// <example><code>
 /// var scenario = GatewayScenario.CreateThemes();
@@ -79,6 +80,7 @@ public sealed class ThemesFixture
     private int _revealed;
     private string _selectedId = "claw";
     private string? _accent;
+    private string? _background;
 
     /// <summary>Adds <see cref="RevealedThemeId"/> to later reads. Publish <c>plugins.changed</c> to announce it.</summary>
     public void RevealPluginTheme() => Interlocked.Exchange(ref _revealed, 1);
@@ -95,15 +97,29 @@ public sealed class ThemesFixture
     /// </summary>
     public void SetAccent(string? accent) => Volatile.Write(ref _accent, accent);
 
+    /// <summary>
+    /// Changes the background choice (<c>ui.background</c>, the Control UI's JSON shape) later <c>users.prefs.get</c>
+    /// reads report; null for none saved. Publish <c>users.prefs.changed</c> to announce it.
+    /// </summary>
+    public void SetBackground(string? json) => Volatile.Write(ref _background, json);
+
     public bool Handles(string method) => Methods.Contains(method, StringComparer.Ordinal);
 
     public object Respond(string method, JsonElement parameters)
     {
         if (method == "users.prefs.get")
         {
+            JsonElement keys = default;
+            if (parameters.ValueKind == JsonValueKind.Object && parameters.TryGetProperty("keys", out keys) &&
+                keys.ValueKind != JsonValueKind.Array)
+                throw new FixtureRequestException("INVALID_PARAMS", "Preference keys must be an array.");
+            bool Requested(string key) => keys.ValueKind == JsonValueKind.Undefined ||
+                keys.EnumerateArray().Any(item => item.ValueKind == JsonValueKind.String && item.ValueEquals(key));
             var entries = new Dictionary<string, object>(StringComparer.Ordinal);
-            if (Volatile.Read(ref _accent) is { } accent)
+            if (Requested("ui.accent") && Volatile.Read(ref _accent) is { } accent)
                 entries["ui.accent"] = accent;
+            if (Requested("ui.background") && Volatile.Read(ref _background) is { } background)
+                entries["ui.background"] = JsonSerializer.Deserialize<JsonElement>(background);
             return new { status = "ok", entries };
         }
         Theme[] themes = Volatile.Read(ref _revealed) == 1 ? [.. Catalog, Revealed] : Catalog;

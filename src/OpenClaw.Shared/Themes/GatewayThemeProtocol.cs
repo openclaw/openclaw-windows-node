@@ -324,7 +324,7 @@ public static class GatewayThemeProtocol
 
     // GetString throws on an escaped unpaired surrogate. Gateway replies are untrusted, so such a value is invalid
     // rather than a failure of the whole reply.
-    private static string? ReadString(JsonElement element)
+    internal static string? ReadString(JsonElement element)
     {
         try
         {

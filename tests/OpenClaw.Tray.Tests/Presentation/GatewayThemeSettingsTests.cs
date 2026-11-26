@@ -421,16 +421,20 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(0, applied);
     }
 
-    // The dashboard accent follows live through users.prefs.changed, survives a read that can't see the person's
-    // profile, and gives way to the theme's own accent when the person picks it again. Nothing is written back.
+    // The dashboard accent and background follow live through users.prefs.changed, survive a read that can't see the
+    // person's profile, and give way to the theme's own accent and the dashboard's default artwork when the person
+    // clears them. Nothing is written back.
     [Theory]
     [InlineData("""{ "ui.accent": "theme" }""")]
     [InlineData("{}")]
-    public Task FollowingTracksTheDashboardAccentLiveAndKeepsItWhenPreferencesAreUnknown(string resetEntries) => Task.Run(() =>
+    public Task FollowingTracksTheDashboardAccentAndBackgroundLiveAndKeepsThemWhenPreferencesAreUnknown(string resetEntries) => Task.Run(() =>
     {
         var (client, proxy) = Gateway();
         proxy.Methods = ["themes.list", "themes.get", "users.prefs.get"];
-        var preferences = """{ "status": "ok", "entries": { "ui.accent": "#3A9B9B" } }""";
+        var preferences = """
+            { "status": "ok", "entries": { "ui.accent": "#3A9B9B", "ui.background": {
+              "source": { "kind": "theme" }, "presentation": "full-bleed", "showOnNewSession": true, "showInSessions": false, "visibility": 0.8 } } }
+            """;
         proxy.Reply = (method, _) => method switch
         {
             "themes.list" => Json("""
@@ -454,6 +458,10 @@ public sealed class GatewayThemeSettingsTests
         Assert.Equal(dashboardAccent, followed.Dark!.Accent);
         Assert.Equal(dashboardAccent.WithAlpha(0.16), followed.Dark.AccentSubtle);
         Assert.Equal(manuscript.Dark!.Canvas, followed.Dark.Canvas);
+        var background = AppearanceResolver.ActiveBackground(appearance)!;
+        Assert.Equal(BackgroundPresentation.FullBleed, background.Presentation);
+        Assert.Equal(0, ThemeBackgrounds.Opacity(background, ThemeBackgroundSurface.Conversation));
+        Assert.Equal(0.56, ThemeBackgrounds.Opacity(background, ThemeBackgroundSurface.NewSession), 6);
         // Turning following off shows the manual choice with its own accent.
         var manual = appearance with { FollowGatewayTheme = false, Theme = new ThemeSelection { Id = "manuscript" } };
         Assert.Equal(manuscript.Dark.Accent, AppearanceResolver.ResolveTheme(manual)!.Dark!.Accent);
@@ -461,10 +469,12 @@ public sealed class GatewayThemeSettingsTests
         preferences = """{ "status": "no_durable_identity" }""";
         proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
         Assert.Equal("#3a9b9b", appearance.FollowedAccent);
+        Assert.Equal(background, appearance.FollowedBackground);
 
         preferences = $$"""{ "status": "ok", "entries": {{resetEntries}} }""";
         proxy.ThemeCatalogInvalidated!.Invoke(client, "users.prefs.changed");
         Assert.Null(appearance.FollowedAccent);
+        Assert.Equal(1, ThemeBackgrounds.Opacity(AppearanceResolver.ActiveBackground(appearance), ThemeBackgroundSurface.Conversation));
         Assert.Equal(manuscript.Dark.Accent, AppearanceResolver.ResolveTheme(appearance)!.Dark!.Accent);
         // Unknown preferences applied nothing; returning to the theme's accent applied once.
         Assert.Equal(appliedOnConnect + 1, applied);
@@ -627,10 +637,14 @@ public sealed class GatewayThemeSettingsTests
         var vm = new SettingsPageViewModel(store, new FakeAppCommands());
         vm.Activate(null);
         vm.SelectedThemeKey = "tide";
+        vm.BackgroundStyleIndex = 2;
+        vm.BackgroundVisibility = 75;
 
         vm.FollowGatewayTheme = true;
         Assert.True(settings.Appearance.FollowGatewayTheme);
         Assert.False(vm.IsManualThemeEnabled);
+        Assert.Equal(-1, vm.BackgroundStyleIndex);
+        Assert.Equal(100, vm.BackgroundVisibility);
         // Nothing followed yet, so the manual choice is what the Companion shows.
         Assert.Equal("tide", vm.SelectedThemeKey);
 
@@ -638,8 +652,14 @@ public sealed class GatewayThemeSettingsTests
         store.Update(null, edit => edit.Appearance = settings.Appearance with
         {
             FollowedTheme = new ThemeSelection { Id = "crt", Name = "CRT" },
+            FollowedBackground = BackgroundPreference.Default with { Source = BackgroundSourceKind.None, Visibility = 0.25 },
         });
         Assert.Equal("crt", vm.SelectedThemeKey);
+        Assert.Equal(0, vm.BackgroundStyleIndex);
+        Assert.Equal(25, vm.BackgroundVisibility);
+        Assert.False(vm.IsBackgroundEnabled);
+        vm.BackgroundStyleIndex = 1;
+        vm.BackgroundVisibility = 10;
         vm.SelectedThemeKey = "rose";
         vm.UseMica = false;
         Assert.Equal("crt", settings.Appearance.FollowedTheme?.Id);
@@ -649,6 +669,8 @@ public sealed class GatewayThemeSettingsTests
         vm.FollowGatewayTheme = false;
         Assert.True(vm.IsManualThemeEnabled);
         Assert.Equal("tide", vm.SelectedThemeKey);
+        Assert.Equal(2, vm.BackgroundStyleIndex);
+        Assert.Equal(75, vm.BackgroundVisibility);
         Assert.Equal("tide", AppearanceResolver.ResolveTheme(new SettingsManager(temp.Path).Appearance)?.Id);
     }
 
