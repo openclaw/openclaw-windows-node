@@ -17,6 +17,8 @@ internal interface IGatewayThemeCatalog
     IReadOnlyList<GatewayThemeOption> Options { get; }
     /// <summary>The theme the connected Gateway has selected for this connection, or null when unknown.</summary>
     GatewayThemeOption? GatewayCurrent { get; }
+    /// <summary>The person's saved dashboard appearance, or null when unknown (no profile, older Gateway, failed read).</summary>
+    GatewayAppearancePreferences? GatewayPreferences { get; }
     event EventHandler? Changed;
     Task RefreshAsync();
 }
@@ -26,7 +28,8 @@ internal interface IGatewayThemeCatalog
 /// <c>themes.get</c>, operator.read, Gateway 2026.9+). The Companion's built-in table is always offered;
 /// plugin and imported themes from the connected Gateway are appended while connected, and
 /// <see cref="GatewayCurrent"/> reports the theme the Gateway has selected (<c>themes.list</c>'s
-/// <c>theme</c>). It never calls <c>themes.set</c> or <c>themes.import</c>.
+/// <c>theme</c>), and <see cref="GatewayPreferences"/> the person's saved accent (<c>users.prefs.get</c>).
+/// It never calls <c>themes.set</c>, <c>themes.import</c> or <c>users.prefs.set</c>.
 /// <example><code>
 /// var catalog = new GatewayThemeCatalog(dispatcher);
 /// catalog.SetConnection(client, gatewayId); // on every operator connection change
@@ -46,12 +49,28 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     private int _generation;
     private int _refreshSequence;
     private int _appliedSequence;
-    private bool _refreshPending;
-    private TaskCompletionSource? _refreshCompletion;
+    private RefreshSlot _catalogRefresh = new();
+    private RefreshSlot _preferencesRefresh = new();
     private IReadOnlyList<GatewayThemeOption> _gatewayOptions = [];
     private GatewayThemeOption? _gatewayCurrent;
+    private GatewayAppearancePreferences? _gatewayPreferences;
+
+    private sealed class RefreshSlot
+    {
+        public bool Pending;
+        public TaskCompletionSource? Completion;
+    }
 
     public event EventHandler? Changed;
+
+    public GatewayAppearancePreferences? GatewayPreferences
+    {
+        get
+        {
+            lock (_gate)
+                return _gatewayPreferences;
+        }
+    }
 
     public IReadOnlyList<GatewayThemeOption> Options
     {
@@ -100,13 +119,14 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             _epoch = epoch;
             // Older reads, including ones from the previous epoch, can no longer apply.
             _generation++;
-            _refreshCompletion = null;
-            _refreshPending = false;
+            _catalogRefresh = new();
+            _preferencesRefresh = new();
             if (!sameBinding)
             {
-                changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null;
+                changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null || _gatewayPreferences is not null;
                 _gatewayOptions = [];
                 _gatewayCurrent = null;
+                _gatewayPreferences = null;
             }
         }
         if (!ReferenceEquals(previous, next))
@@ -134,42 +154,56 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     }
 
     /// <summary>
-    /// Reads the catalog. One read runs at a time for a connection: requests that arrive meanwhile (push events,
-    /// Settings opening) are merged into a single further read, and the returned task completes after it.
+    /// Refreshes the catalog and preferences independently. Each merges requests that arrive during a read into
+    /// one further read; a slow preference reply never delays a new selection, or vice versa.
     /// </summary>
     public Task RefreshAsync()
     {
-        TaskCompletionSource completion;
         int generation;
+        RefreshSlot catalog, preferences;
         lock (_gate)
         {
-            if (_refreshCompletion is { } active)
+            generation = _generation;
+            catalog = _catalogRefresh;
+            preferences = _preferencesRefresh;
+        }
+        return Task.WhenAll(
+            QueueRefresh(generation, preferences, RefreshPreferencesAsync),
+            QueueRefresh(generation, catalog, RefreshOnceAsync));
+    }
+
+    private Task QueueRefresh(int generation, RefreshSlot slot, Func<int, Task<bool>> read)
+    {
+        TaskCompletionSource completion;
+        lock (_gate)
+        {
+            if (generation != _generation)
+                return Task.CompletedTask;
+            if (slot.Completion is { } active)
             {
-                _refreshPending = true;
+                slot.Pending = true;
                 return active.Task;
             }
-            generation = _generation;
-            completion = _refreshCompletion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            completion = slot.Completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
-        _ = RunRefreshesAsync(generation, completion);
+        _ = RunRefreshesAsync(generation, slot, completion, read);
         return completion.Task;
     }
 
-    private async Task RunRefreshesAsync(int generation, TaskCompletionSource completion)
+    private async Task RunRefreshesAsync(int generation, RefreshSlot slot, TaskCompletionSource completion, Func<int, Task<bool>> read)
     {
         try
         {
             while (true)
             {
-                var changed = await RefreshOnceAsync(generation).ConfigureAwait(false);
+                var changed = await read(generation).ConfigureAwait(false);
                 bool rerun;
                 lock (_gate)
                 {
-                    rerun = _refreshCompletion == completion && _refreshPending;
-                    if (rerun)
-                        _refreshPending = false;
-                    else if (_refreshCompletion == completion)
-                        _refreshCompletion = null;
+                    rerun = generation == _generation && slot.Pending;
+                    slot.Pending = false;
+                    if (!rerun)
+                        slot.Completion = null;
                 }
                 // The last read has released its slot before notifying observers. An invalidation now starts
                 // a new read rather than joining a worker that has already decided to stop.
@@ -184,10 +218,10 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
         {
             lock (_gate)
             {
-                if (_refreshCompletion == completion)
+                if (slot.Completion == completion)
                 {
-                    _refreshCompletion = null;
-                    _refreshPending = false;
+                    slot.Completion = null;
+                    slot.Pending = false;
                 }
             }
             completion.SetException(ex);
@@ -254,6 +288,45 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             _gatewayCurrent = current;
         }
         return true;
+    }
+
+    private async Task<bool> RefreshPreferencesAsync(int generation)
+    {
+        IOperatorGatewayClient? client;
+        lock (_gate)
+            client = generation == _generation ? _client : null;
+        if (client is not { IsConnectedToGateway: true } || !Supports(client))
+            return false;
+
+        var preferences = await ReadPreferencesAsync(client).ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (generation != _generation || Equals(preferences, _gatewayPreferences))
+                return false;
+            _gatewayPreferences = preferences;
+            return true;
+        }
+    }
+
+    // Unknown (null) when the Gateway predates the method, the connection has no durable profile, or the read fails:
+    // following keeps the last accent it saw rather than dropping it.
+    private static async Task<GatewayAppearancePreferences?> ReadPreferencesAsync(IOperatorGatewayClient client)
+    {
+        if (!client.AdvertisedServerMethods.Contains(GatewayAppearancePreferences.Method, StringComparer.Ordinal))
+            return null;
+        try
+        {
+            var result = await client.SendWizardRequestAsync(
+                GatewayAppearancePreferences.Method, GatewayAppearancePreferences.Request, TimeoutMs()).ConfigureAwait(false);
+            if (GatewayAppearancePreferences.TryParse(result, out var preferences))
+                return preferences;
+            Services.Logger.Info("[Themes] The Gateway has no profile preferences for this connection.");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Services.Logger.Warn($"[Themes] Gateway appearance preferences unavailable ({ex.GetType().Name}).");
+        }
+        return null;
     }
 
     internal static bool Supports(IOperatorGatewayClient client) =>

@@ -1,10 +1,12 @@
 // Proves plugin and imported Gateway themes reach the Companion's theme catalog through the real
-// authenticated fixture socket, and that plugins.changed and users.prefs.changed re-read it.
+// authenticated fixture socket, and that plugins.changed and users.prefs.changed re-read it, including the dashboard
+// accent a following Companion takes from users.prefs.get.
 // Run with dotnet test --filter FullyQualifiedName~GatewayThemeCatalogWireTests.
 using OpenClaw.Shared;
 using OpenClaw.Shared.Themes;
 using OpenClaw.TestSupport;
 using OpenClaw.TestSupport.Gateway;
+using OpenClawTray.Presentation;
 using OpenClawTray.Services;
 using OpenClawTray.Theming;
 
@@ -24,7 +26,7 @@ public sealed class GatewayThemeCatalogWireTests
         using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
             identityPath: identity.Path, ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
         await ConnectAsync(client);
-        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+        var catalog = new GatewayThemeCatalog(new SerialUiDispatcher());
         try
         {
             catalog.SetConnection(client, "fixture-gw");
@@ -74,7 +76,7 @@ public sealed class GatewayThemeCatalogWireTests
         using var client = new OpenClawGatewayClient(server.Endpoint.AbsoluteUri, token, NullLogger.Instance,
             identityPath: identity.Path, ignoreStoredDeviceToken: true, persistHandshakeDeviceTokens: false);
         await ConnectAsync(client);
-        var catalog = new GatewayThemeCatalog(new RecordingUiDispatcher());
+        var catalog = new GatewayThemeCatalog(new SerialUiDispatcher());
         var appearance = new AppearanceSettings { Theme = new ThemeSelection { Id = "tide" }, FollowGatewayTheme = true };
         var applied = 0;
         using var follower = new GatewayThemeFollower(catalog, () => appearance, next => appearance = next, () => applied++);
@@ -92,11 +94,18 @@ public sealed class GatewayThemeCatalogWireTests
             Assert.Equal("fixture-gw", appearance.FollowedTheme!.OriginGatewayId);
             Assert.Equal(2, applied);
 
+            // The dashboard accent (users.prefs.get ui.accent) replaces the followed theme's own.
+            scenario.Themes.SetAccent("#3A9B9B");
+            await server.PublishUserPrefsChangedAsync();
+            await WaitForAsync(catalog, () => appearance.FollowedAccent == "#3a9b9b");
+            Assert.Equal(ThemeColor.FromHex("#3a9b9b"), AppearanceResolver.ResolveTheme(appearance)!.Dark!.Accent);
+            Assert.Equal(3, applied);
+
             scenario.Themes.SelectTheme("nebula");
             await server.PublishUserPrefsChangedAsync();
             await WaitForAsync(catalog, () => catalog.GatewayCurrent?.Id == "nebula");
             Assert.Equal(ThemesFixture.NeonThemeId, AppearanceResolver.ResolveTheme(appearance)?.Id);
-            Assert.Equal(2, applied);
+            Assert.Equal(3, applied);
 
             Assert.DoesNotContain(server.Requests, request => request.Method is "themes.set" or "themes.import" or "users.prefs.set");
             Assert.Empty(server.UnexpectedRequests);
@@ -108,6 +117,20 @@ public sealed class GatewayThemeCatalogWireTests
         }
     }
 
+    // Socket replies complete on several threads; like the real UI thread, this runs the catalog's events one at a
+    // time, which the follower relies on.
+    private sealed class SerialUiDispatcher : IUiDispatcher
+    {
+        private readonly object _gate = new();
+        public bool HasThreadAccess => false;
+
+        public bool TryEnqueue(Action action)
+        {
+            lock (_gate)
+                action();
+            return true;
+        }
+    }
     private static async Task ConnectAsync(OpenClawGatewayClient client)
     {
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

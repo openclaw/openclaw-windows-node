@@ -27,6 +27,12 @@ public sealed record AppearanceSettings
     /// </summary>
     public ThemeSelection? FollowedTheme { get; init; }
 
+    /// <summary>
+    /// The person's dashboard accent (<c>#rrggbb</c>) last read while following, applied over the followed theme's
+    /// accent; null uses the theme's own accent. Kept so an offline start still shows it.
+    /// </summary>
+    public string? FollowedAccent { get; init; }
+
     public static AppearanceSettings Default { get; } = new();
 }
 
@@ -81,7 +87,11 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         var followed = root.TryGetProperty(nameof(AppearanceSettings.FollowedTheme), out var followedValue)
             ? ReadSelection(followedValue)
             : null;
-        return new AppearanceSettings { Theme = theme, UseMica = useMica, FollowGatewayTheme = follow, FollowedTheme = followed };
+        var accent = GatewayAppearancePreferences.NormalizeHex(Text(root, nameof(AppearanceSettings.FollowedAccent)));
+        return new AppearanceSettings
+        {
+            Theme = theme, UseMica = useMica, FollowGatewayTheme = follow, FollowedTheme = followed, FollowedAccent = accent,
+        };
     }
 
     public override void Write(Utf8JsonWriter writer, AppearanceSettings value, JsonSerializerOptions options)
@@ -91,6 +101,7 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         writer.WriteBoolean(nameof(AppearanceSettings.UseMica), value.UseMica);
         writer.WriteBoolean(nameof(AppearanceSettings.FollowGatewayTheme), value.FollowGatewayTheme);
         WriteSelection(writer, nameof(AppearanceSettings.FollowedTheme), value.FollowedTheme);
+        WriteOptional(writer, nameof(AppearanceSettings.FollowedAccent), value.FollowedAccent);
         writer.WriteEndObject();
     }
 
@@ -161,8 +172,28 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
 /// </summary>
 public static class AppearanceResolver
 {
-    public static ResolvedTheme? ResolveTheme(AppearanceSettings? appearance) =>
-        appearance is null ? null : Resolve(ActiveSelection(appearance));
+    public static ResolvedTheme? ResolveTheme(AppearanceSettings? appearance)
+    {
+        if (appearance is null || Resolve(ActiveSelection(appearance)) is not { } theme)
+            return null;
+        // While following, the person's dashboard accent is drawn over the theme's, as the dashboard does.
+        return appearance.FollowGatewayTheme &&
+            new GatewayAppearancePreferences(appearance.FollowedAccent).AccentColor is { } accent
+                ? ThemeAccent.Apply(theme, accent)
+                : theme;
+    }
+
+    /// <summary>
+    /// Records the person's dashboard accent while following. Unknown preferences (no profile, an older Gateway, a
+    /// failed read) leave the last followed accent in place; a <c>theme</c> or unset accent clears it.
+    /// </summary>
+    public static AppearanceSettings FollowAccent(AppearanceSettings appearance, GatewayAppearancePreferences? preferences)
+    {
+        if (!appearance.FollowGatewayTheme || preferences is null)
+            return appearance;
+        var accent = GatewayAppearancePreferences.NormalizeHex(preferences.Accent);
+        return accent == appearance.FollowedAccent ? appearance : appearance with { FollowedAccent = accent };
+    }
 
     /// <summary>The selection in effect: the followed Gateway theme when following and renderable, else the manual choice.</summary>
     public static ThemeSelection? ActiveSelection(AppearanceSettings appearance) =>

@@ -67,6 +67,23 @@ internal static class ThemeResourceProjection
 
     public static ThemeProjection Project(ResolvedThemePalette p)
     {
+        // A personal fill can be the same color as the page. Keep it on buttons and bubbles,
+        // but prefer the theme's body text for native labels and outlines when it reads better.
+        ThemeColor OnSurface(ThemeColor color, double minimumContrast)
+        {
+            if (!p.HasPersonalAccent)
+                return color;
+            var canvas = p.WindowCanvas;
+            var shell = p.Shell.Over(canvas);
+            double Minimum(ThemeColor ink)
+            {
+                double On(ThemeColor surface) => ThemeLegibility.Contrast(ink.Over(surface), surface);
+                return Math.Min(Math.Min(On(canvas), On(shell)), Math.Min(On(p.Card.Over(canvas)), On(p.Card.Over(shell))));
+            }
+            var contrast = Minimum(color);
+            return contrast < minimumContrast && Minimum(p.Text) > contrast ? p.Text : color;
+        }
+        var accentText = OnSurface(p.Accent, 4.5);
         var brushes = new Dictionary<string, ThemeColor>(StringComparer.Ordinal)
         {
             // The window canvas shows through the transparent navigation pane, so it takes the dashboard's
@@ -89,9 +106,9 @@ internal static class ThemeResourceProjection
             ["AccentFillColorDefaultBrush"] = p.Primary,
             ["AccentFillColorSecondaryBrush"] = p.Primary.WithAlpha(0.9),
             ["AccentFillColorTertiaryBrush"] = p.Primary.WithAlpha(0.8),
-            ["AccentTextFillColorPrimaryBrush"] = p.Accent,
-            ["AccentTextFillColorSecondaryBrush"] = p.Accent,
-            ["AccentTextFillColorTertiaryBrush"] = p.AccentHover,
+            ["AccentTextFillColorPrimaryBrush"] = accentText,
+            ["AccentTextFillColorSecondaryBrush"] = accentText,
+            ["AccentTextFillColorTertiaryBrush"] = OnSurface(p.AccentHover, 4.5),
             ["TextOnAccentFillColorPrimaryBrush"] = p.PrimaryForeground,
             ["TextOnAccentFillColorSecondaryBrush"] = p.PrimaryForeground.WithAlpha(0.7),
             // Voice's badge and transcript bubble sit on VoiceAccentBrush, which takes the primary color.
@@ -102,7 +119,7 @@ internal static class ThemeResourceProjection
             ["ControlStrokeColorSecondaryBrush"] = p.BorderStrong,
             ["DividerStrokeColorDefaultBrush"] = p.Border,
             ["SurfaceStrokeColorDefaultBrush"] = p.BorderStrong,
-            ["FocusStrokeColorOuterBrush"] = p.Ring,
+            ["FocusStrokeColorOuterBrush"] = OnSurface(p.Ring, ThemeLegibility.MinimumContrast),
 
             ["SystemFillColorSuccessBrush"] = p.Ok,
             ["SystemFillColorCautionBrush"] = p.Warn,
@@ -120,12 +137,12 @@ internal static class ThemeResourceProjection
             ["ChatProseTextBrush"] = p.Text,
             ["ChatMutedTextBrush"] = p.Muted.WithAlpha(0.8),
             ["ChatSyntaxCommentBrush"] = p.Muted,
-            ["ChatSandboxOnBrush"] = p.Accent,
-            ["ChatClawBrush"] = p.Accent,
+            ["ChatSandboxOnBrush"] = accentText,
+            ["ChatClawBrush"] = accentText,
             // Keeps its XAML Opacity (a 12% tint); only the color changes.
             ["ChatQuestionSelectedBrush"] = p.Accent,
             ["ChatUserBrush"] = p.UserBubble,
-            ["ChatQuestionSelectedStrokeBrush"] = p.Accent,
+            ["ChatQuestionSelectedStrokeBrush"] = OnSurface(p.Accent, ThemeLegibility.MinimumContrast),
             ["ChatQuestionCardStrokeBrush"] = p.Border,
             ["ChatUserTextBrush"] = p.Text,
             ["ChatCopySuccessBrush"] = p.Ok,

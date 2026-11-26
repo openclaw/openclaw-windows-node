@@ -836,9 +836,22 @@ publish `plugins.changed`; the picker refreshes without reconnecting. Enter
 dashboard theme change would) and publish `users.prefs.changed`; with **Follow
 Gateway theme** on, the Companion switches to it. An id the catalog doesn't list
 is reported as a built-in newer than the Companion's table, which the Companion
-doesn't follow. `GatewayThemeCatalogWireTests` proves the same catalog,
+doesn't follow. With `select manuscript` and **Follow Gateway theme** on, capture
+a dark chat's user bubble, enter `accent #3a9b9b`, and capture the same bubble
+with its teal wash. Enter `accent theme` to restore the theme's own accent;
+`accent none` represents an unset preference. This uses a synthetic profile,
+not a live dashboard. `GatewayThemeCatalogWireTests` proves the same catalog,
 definitions, event refreshes and following through the real authenticated
 client.
+
+The connected catalog reads `ui.accent` on refresh when the Gateway advertises
+`users.prefs.get` and grants a read-capable operator scope. Follow controls
+whether the Companion saves and applies that value, not whether the catalog
+reads it. An unknown preference keeps the last followed accent; an explicit
+`theme` or successful empty result clears it. The HTTP dashboard seam color is
+not read. For a low-contrast personal color, buttons keep the selected fill
+while native accent text and focus outlines can use the theme's more legible
+body text color.
 
 ## Targeted context-usage proof
 

@@ -252,6 +252,22 @@ public class GatewayThemeTests
     }
 
     [Theory]
+    [InlineData("42")]
+    [InlineData("\"red\"")]
+    [InlineData("\"#3a9b9\"")]
+    [InlineData("\"#3a9b9b\\n\"")]
+    [InlineData("\"\\uD800\"")]
+    public void MalformedFollowedAccentKeepsTheThemeAccent(string accent)
+    {
+        var settings = SettingsData.FromJson(
+            $$"""{ "Appearance": { "Theme": { "Id": "tide" }, "FollowGatewayTheme": true, "FollowedAccent": {{accent}} } }""")!;
+
+        Assert.Null(settings.Appearance!.FollowedAccent);
+        Assert.True(BuiltinGatewayThemes.TryGet("tide", out var tide));
+        Assert.Equal(tide.Dark!.Accent, AppearanceResolver.ResolveTheme(settings.Appearance)!.Dark!.Accent);
+    }
+
+    [Theory]
     [InlineData("Id", "\\uD800")]
     [InlineData("Name", "\\uDC00")]
     [InlineData("Source", "\\uD800")]
@@ -299,6 +315,7 @@ public class GatewayThemeTests
                 Theme = new ThemeSelection { Id = "tide", Name = "Tide" },
                 FollowGatewayTheme = true,
                 FollowedTheme = AppearanceResolver.Select(descriptor, definition, "gw-1"),
+                FollowedAccent = "#3a9b9b",
             },
         };
 

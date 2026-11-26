@@ -6,8 +6,9 @@ namespace OpenClaw.TestSupport.Gateway;
 /// Synthetic Gateway theme catalog (<c>themes.list</c> / <c>themes.get</c>, Gateway 2026.9+) for the
 /// fixture Gateway: built-ins without definitions, two plugin themes (dark-only and light/dark) and one
 /// imported <c>user/*</c> theme (light-only). <see cref="RevealPluginTheme"/> adds a third plugin theme so a
-/// following <c>plugins.changed</c> event proves push-driven refresh. The catalog is read-only:
-/// <c>themes.set</c> and <c>themes.import</c> are not advertised.
+/// following <c>plugins.changed</c> event proves push-driven refresh. <c>users.prefs.get</c> reports the
+/// dashboard accent <see cref="SetAccent"/> chose. The catalog is read-only: <c>themes.set</c>,
+/// <c>themes.import</c> and <c>users.prefs.set</c> are not advertised.
 /// <example><code>
 /// var scenario = GatewayScenario.CreateThemes();
 /// scenario.Themes!.RevealPluginTheme();
@@ -23,7 +24,7 @@ public sealed class ThemesFixture
     public const string UserThemeId = "user/fixture-sunset";
     public const string RevealedThemeId = "fixture-themes/aurora";
 
-    public static readonly string[] Methods = ["themes.list", "themes.get"];
+    public static readonly string[] Methods = ["themes.list", "themes.get", "users.prefs.get"];
 
     public static readonly string[] Events = ["plugins.changed", "users.prefs.changed"];
 
@@ -77,6 +78,7 @@ public sealed class ThemesFixture
 
     private int _revealed;
     private string _selectedId = "claw";
+    private string? _accent;
 
     /// <summary>Adds <see cref="RevealedThemeId"/> to later reads. Publish <c>plugins.changed</c> to announce it.</summary>
     public void RevealPluginTheme() => Interlocked.Exchange(ref _revealed, 1);
@@ -87,10 +89,23 @@ public sealed class ThemesFixture
     /// </summary>
     public void SelectTheme(string id) => Volatile.Write(ref _selectedId, id);
 
+    /// <summary>
+    /// Changes the dashboard accent (<c>ui.accent</c>) later <c>users.prefs.get</c> reads report: a hex color,
+    /// <c>theme</c> for the theme's own accent, or null for none saved. Publish <c>users.prefs.changed</c> to announce it.
+    /// </summary>
+    public void SetAccent(string? accent) => Volatile.Write(ref _accent, accent);
+
     public bool Handles(string method) => Methods.Contains(method, StringComparer.Ordinal);
 
     public object Respond(string method, JsonElement parameters)
     {
+        if (method == "users.prefs.get")
+        {
+            var entries = new Dictionary<string, object>(StringComparer.Ordinal);
+            if (Volatile.Read(ref _accent) is { } accent)
+                entries["ui.accent"] = accent;
+            return new { status = "ok", entries };
+        }
         Theme[] themes = Volatile.Read(ref _revealed) == 1 ? [.. Catalog, Revealed] : Catalog;
         var selectedId = Volatile.Read(ref _selectedId);
         var current = new { id = selectedId, mode = "system", scope = "profile" };
