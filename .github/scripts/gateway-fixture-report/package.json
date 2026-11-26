@@ -4,6 +4,6 @@
   "type": "module",
   "dependencies": {
     "@actions/artifact": "6.3.1",
-    "fast-xml-parser": "5.11.2"
+    "fast-xml-parser": "5.12.1"
   }
 }
