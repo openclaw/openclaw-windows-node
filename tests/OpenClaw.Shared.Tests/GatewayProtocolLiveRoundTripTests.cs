@@ -191,6 +191,7 @@ public sealed class GatewayProtocolLiveRoundTripTests : IDisposable
         server.OnMethod("environments.list", _ => new { profiles = new[] { new { id = "valid-profile" } } });
         using var client = new OpenClawGatewayClient(server.WebSocketUrl, "test-token", identityPath: _identityDir);
         await ConnectAndWaitAsync(client, server, configureHandshake: false);
+        Assert.Equal(advertise, client.SupportsTaskSuggestionCloud);
         var epoch = client.SessionMutationConnectionEpoch!.Value;
         if (advertise)
             await Assert.ThrowsAsync<GatewayTaskCloudProfileException>(() => client.AcceptTaskSuggestionAsync(new("task_1", "cloud", "typo"), epoch));

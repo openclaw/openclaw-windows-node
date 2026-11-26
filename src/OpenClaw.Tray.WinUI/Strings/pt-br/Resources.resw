@@ -10355,16 +10355,16 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
     <value>Iniciar em uma nova sessão</value>
   </data>
   <data name="Chat_Tasks_Options" xml:space="preserve">
-    <value>Opções de início</value>
+    <value>Escolher onde iniciar a tarefa</value>
   </data>
   <data name="Chat_Tasks_Session" xml:space="preserve">
-    <value>Iniciar nesta conversa</value>
+    <value>Iniciar nesta sessão</value>
   </data>
   <data name="Chat_Tasks_Repository" xml:space="preserve">
     <value>Caminho do repositório no Gateway</value>
   </data>
   <data name="Chat_Tasks_Worktree" xml:space="preserve">
-    <value>Iniciar em nova árvore de trabalho</value>
+    <value>Iniciar em uma nova árvore de trabalho</value>
   </data>
   <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
     <value>ID do perfil de nuvem configurado</value>
@@ -10390,4 +10390,11 @@ Após a inscrição, volte para Configurações &gt; Windows Update e verifique 
   <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>É necessário acesso de administrador ao Gateway para iniciar tarefas sugeridas.</value></data>
   <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>Não foi possível dispensar a tarefa. Tente novamente.</value></data>
   <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>As tarefas sugeridas precisam de uma identidade de operador verificada pelo Gateway. Verifique seu acesso ao Gateway e tente novamente.</value></data>
+  <data name="Chat_Tasks_Eyebrow" xml:space="preserve"><value>Tarefa sugerida · em {0}</value></data>
+  <data name="Chat_Tasks_DismissTitle" xml:space="preserve"><value>Dispensar {0}</value></data>
+  <data name="Chat_Tasks_Previous" xml:space="preserve"><value>Tarefa sugerida anterior</value></data>
+  <data name="Chat_Tasks_Next" xml:space="preserve"><value>Próxima tarefa sugerida</value></data>
+  <data name="Chat_Tasks_ChooseRepository" xml:space="preserve"><value>Escolher repositório</value></data>
+  <data name="Chat_Tasks_Cancel" xml:space="preserve"><value>Cancelar</value></data>
+  <data name="Chat_Tasks_Summary" xml:space="preserve"><value>Resumo da tarefa sugerida</value></data>
 </root>

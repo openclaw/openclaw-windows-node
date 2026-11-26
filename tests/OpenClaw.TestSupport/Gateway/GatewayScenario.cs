@@ -133,6 +133,7 @@ public sealed partial class GatewayScenario
             .Concat(allowSessionMutations ? ["sessions.create", "sessions.patch", "sessions.delete"] : [])
             .Concat(hubMethods ?? [])
             .Concat(taskSuggestions is null ? [] : FixtureTaskSuggestions.Methods)
+            .Concat(taskSuggestions is not null && allowChatSend ? ["chat.send", "chat.abort"] : [])
             .Concat(boards is null ? [] : FixtureBoards.Methods)
             .Concat(systems is null ? [] : SystemsFixture.Methods)
             .Distinct(StringComparer.Ordinal)

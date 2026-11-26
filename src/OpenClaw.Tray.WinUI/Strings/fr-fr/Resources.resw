@@ -10302,10 +10302,10 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
     <value>Démarrer dans une nouvelle session</value>
   </data>
   <data name="Chat_Tasks_Options" xml:space="preserve">
-    <value>Options de lancement</value>
+    <value>Choisir où démarrer la tâche</value>
   </data>
   <data name="Chat_Tasks_Session" xml:space="preserve">
-    <value>Démarrer dans cette conversation</value>
+    <value>Démarrer dans cette session</value>
   </data>
   <data name="Chat_Tasks_Repository" xml:space="preserve">
     <value>Chemin du dépôt sur la passerelle</value>
@@ -10337,4 +10337,11 @@ Après votre inscription, revenez dans Paramètres &gt; Windows Update et recher
   <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>Un accès administrateur à la passerelle est requis pour démarrer les tâches suggérées.</value></data>
   <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>La tâche n’a pas pu être ignorée. Réessayez.</value></data>
   <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>Les tâches suggérées nécessitent une identité d’opérateur vérifiée par la passerelle. Vérifiez votre accès à la passerelle, puis réessayez.</value></data>
+  <data name="Chat_Tasks_Eyebrow" xml:space="preserve"><value>Tâche suggérée · dans {0}</value></data>
+  <data name="Chat_Tasks_DismissTitle" xml:space="preserve"><value>Ignorer {0}</value></data>
+  <data name="Chat_Tasks_Previous" xml:space="preserve"><value>Tâche suggérée précédente</value></data>
+  <data name="Chat_Tasks_Next" xml:space="preserve"><value>Tâche suggérée suivante</value></data>
+  <data name="Chat_Tasks_ChooseRepository" xml:space="preserve"><value>Choisir un dépôt</value></data>
+  <data name="Chat_Tasks_Cancel" xml:space="preserve"><value>Annuler</value></data>
+  <data name="Chat_Tasks_Summary" xml:space="preserve"><value>Résumé de la tâche suggérée</value></data>
 </root>

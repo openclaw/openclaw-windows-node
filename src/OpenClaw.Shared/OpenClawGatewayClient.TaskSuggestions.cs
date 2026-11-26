@@ -16,6 +16,9 @@ public partial class OpenClawGatewayClient
         AdvertisedServerMethods.Contains("taskSuggestions.list", StringComparer.Ordinal) && HasTaskScope("operator.read");
     public bool SupportsTaskSuggestionModes =>
         AdvertisedServerCapabilities.Contains("taskSuggestions.acceptModes", StringComparer.Ordinal);
+    /// <summary>Whether the launch menu can offer the existing cloud-profile preflight path.</summary>
+    public bool SupportsTaskSuggestionCloud => SupportsTaskSuggestionModes
+        && AdvertisedServerMethods.Contains("environments.list", StringComparer.Ordinal);
     public bool CanAcceptTaskSuggestions =>
         AdvertisedServerMethods.Contains("taskSuggestions.accept", StringComparer.Ordinal) && !TaskSuggestionAdministratorRequired;
     public bool CanDismissTaskSuggestions =>

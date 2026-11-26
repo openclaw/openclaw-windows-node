@@ -303,6 +303,7 @@ public sealed class GatewayClientChatBridge : IChatGatewayBridge, IChatQuestionG
     public event EventHandler? TaskOperatorIdentityInvalidated;
     public long? TaskConnectionEpoch => _client.SessionMutationConnectionEpoch;
     public bool TaskSuggestionsSupported => _client.SupportsTaskSuggestions;
+    public bool TaskCloudSupported => _client.SupportsTaskSuggestionCloud;
     public bool TaskAcceptanceSupported => _client.CanAcceptTaskSuggestions && _client.SupportsTaskSuggestionModes;
     public bool TaskAdministratorRequired => _client.TaskSuggestionAdministratorRequired;
     public async Task<string?> ReadTaskOperatorIdentityAsync(long epoch)

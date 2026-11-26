@@ -26,6 +26,7 @@ public sealed partial class ReactorChatLayoutProofTests
 
     [NativeKeyboardTheory]
     [InlineData(480, "local", false)]
+    [InlineData(480, "real-root-short", false)]
     [InlineData(480, "local", true)]
     [InlineData(480, "dismiss", true)]
     [InlineData(1100, "local", false)]
@@ -71,6 +72,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 {
                 await ui.RunOnUIAsync(() =>
                 {
+                    if (mode == "real-root-short") surface.Height = 360;
                     var scale = surface.XamlRoot.RasterizationScale;
                     _captureWindow!.AppWindow.ResizeClient(new((int)Math.Ceiling(width * scale), (int)Math.Ceiling(surface.Height * scale)));
                     handle = WinRT.Interop.WindowNative.GetWindowHandle(_captureWindow);
@@ -94,10 +96,31 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.True(prompt.IsTextSelectionEnabled);
                     Assert.Contains("<instructions> and **literal text**", prompt.Text);
                 });
+                if (compact || mode == "real-root-short")
+                {
+                    await ui.RunOnUIAsync(() => OnboardingNativeProof.NextCompositionAsync());
+                    await ui.RunOnUIAsync(() =>
+                    {
+                        var card = Bounds(FindControl<FrameworkElement>(surface, "ChatTaskSuggestions"), surface);
+                        var composer = Bounds(FindControl<FrameworkElement>(surface, "ChatComposerArea"), surface);
+                        var send = Bounds(FindControl<Button>(surface, "ChatComposerPrimaryAction"), surface);
+                        Assert.True(card.Bottom <= composer.Top + 1, $"Real task card cannot overlap composer: card={card}; composer={composer}");
+                        Assert.True(composer.Bottom <= surface.ActualHeight + 1, $"Real composer row must fit: composer={composer}; surface={surface.ActualHeight}");
+                        Assert.True(send.Top >= 0 && send.Bottom <= surface.ActualHeight + 1, $"Send action must be fully visible: send={send}; surface={surface.ActualHeight}");
+                        AssertReviewActionInCard(surface, "Start in a new session");
+                        AssertReviewActionInCard(surface, "Choose where to start the task");
+                    });
+                }
+                if (compact || mode == "real-root-short")
+                {
+                    await ReachWelcomeActionAsync(surface, handle, "Start in a new session", activate: false);
+                    await ReachWelcomeActionAsync(surface, handle, "Choose where to start the task", activate: false);
+                }
                 await TaskCaptureAsync(surface, handle, $"tasks-{width}-{captureMode}-instructions");
+                if (mode == "real-root-short") return;
                 await TaskButtonAsync(surface, "Copy instructions", handle, VirtualKey.Space);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                    FindDescendants<Button>(TaskCard(surface)).Any(button => Equals(button.Content, "Instructions copied")), "copy feedback"));
+                    FindDescendants<Button>(TaskCard(surface)).Any(button => TaskActionName(button) == "Instructions copied"), "copy feedback"));
                 await ui.RunOnUIAsync(async () => Assert.Equal(FixtureTaskSuggestions.Prompt, await Clipboard.GetContent().GetTextAsync()));
                 await TaskButtonAsync(surface, "Hide instructions", handle, VirtualKey.Enter);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
@@ -105,7 +128,7 @@ public sealed partial class ReactorChatLayoutProofTests
                     "instructions collapsed before the next action"));
                 if (mode == "dismiss")
                 {
-                    await TaskButtonAsync(surface, "Dismiss task", handle, VirtualKey.Enter);
+                    await TaskButtonAsync(surface, "Dismiss " + FixtureTaskSuggestions.Title, handle, VirtualKey.Enter);
                     await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                         FindOptional<Border>(surface, "ChatTaskSuggestion_" + FixtureTaskSuggestions.TaskId) is null, "dismissed card removed by authoritative refresh"));
                     Assert.Equal(1, tasks.Dismissals);
@@ -116,22 +139,17 @@ public sealed partial class ReactorChatLayoutProofTests
                     var launch = "Start in a new session";
                     if (mode != "local")
                     {
-                        await TaskButtonAsync(surface, "Launch options", handle, VirtualKey.Enter);
-                        launch = mode == "session" ? "Start in this conversation" : mode == "worktree" ? "Start in new worktree" : "Start in cloud";
-                        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                            FindDescendants<TextBox>(TaskCard(surface)).Any(input => AutomationProperties.GetName(input) == "Configured cloud profile ID" && input is { IsLoaded: true, ActualWidth: > 0, ActualHeight: > 0 }),
-                            "launch fields mounted"));
-                        await ui.RunOnUIAsync(() =>
+                        await TaskButtonAsync(surface, "Choose where to start the task", handle, VirtualKey.Enter);
+                        launch = mode == "session" ? "Start in this session" : mode == "worktree" ? "Start in a new worktree" : "Start in cloud";
+                        await ui.RunOnUIAsync(() => Assert.DoesNotContain(FindDescendants<TextBox>(TaskCard(surface)), input =>
+                            input.Visibility == Visibility.Visible && AutomationProperties.GetName(input) == "Repository path on Gateway"));
+                        if (mode == "cloud")
                         {
-                            var card = TaskCard(surface);
-                            var repository = Assert.Single(FindDescendants<TextBox>(card), input => AutomationProperties.GetName(input) == "Repository path on Gateway");
-                            Assert.Equal(Visibility.Collapsed, repository.Visibility);
-                            Assert.Equal("", repository.Text);
-                            if (mode == "cloud")
-                                Assert.Single(FindDescendants<TextBox>(card), input => AutomationProperties.GetName(input) == "Configured cloud profile ID").Text = "fixture-cloud";
-                        });
-                        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                            FindDescendants<Button>(TaskCard(surface)).Any(button => Equals(button.Content, launch) && button.IsEnabled), "selected launch enabled"));
+                            await TaskButtonAsync(surface, launch, handle, VirtualKey.Enter);
+                            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+                                FindDescendants<TextBox>(TaskCard(surface)).Any(input => AutomationProperties.GetName(input) == "Configured cloud profile ID" && input.IsLoaded), "cloud profile input mounted"));
+                            await ui.RunOnUIAsync(() => Assert.Single(FindDescendants<TextBox>(TaskCard(surface)), input => AutomationProperties.GetName(input) == "Configured cloud profile ID").Text = "fixture-cloud");
+                        }
                         await TaskCaptureAsync(surface, handle, $"tasks-{width}-{captureMode}-options");
                     }
                     var listsBefore = server.Requests.Count(request => request.Method == "sessions.list");
@@ -152,7 +170,9 @@ public sealed partial class ReactorChatLayoutProofTests
                     Assert.Equal(mode == "cloud", request.TryGetProperty("cloudProfileId", out _));
                     if (mode == "cloud") Assert.Equal("fixture-cloud", request.GetProperty("cloudProfileId").GetString());
                     await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                        FindDescendants<TextBlock>(TaskCard(surface)).Any(text => text.Text == "Task started. Find it in Sessions."), "native start feedback"));
+                        FindOptional<Border>(surface, "ChatTaskSuggestion_" + FixtureTaskSuggestions.TaskId) is { IsLoaded: true } settled
+                        && FindDescendants<TextBlock>(settled).Any(text => text.Text == "Task started. Find it in Sessions."),
+                        "native settled-owner start feedback after editable presentation is retired"));
                 }
                 await ui.RunOnUIAsync(() =>
                 {
@@ -258,14 +278,14 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(() => OnboardingNativeProof.NextCompositionAsync());
             if (contract == "unrelated-refresh")
             {
-                await ui.RunOnUIAsync(() => Assert.Null(FindOptional<ScrollViewer>(surface!, "ChatTaskSuggestions")));
+                await ui.RunOnUIAsync(() => Assert.Null(FindOptional<FrameworkElement>(surface!, "ChatTaskSuggestions")));
                 return;
             }
             if (contract == "identity-unavailable")
             {
                 await ui.RunOnUIAsync(() =>
                 {
-                    Assert.NotNull(FindOptional<ScrollViewer>(surface!, "ChatTaskSuggestions"));
+                    Assert.NotNull(FindOptional<FrameworkElement>(surface!, "ChatTaskSuggestions"));
                     Assert.Contains(FindDescendants<TextBlock>(surface!), text => text.Text == "Suggested tasks need a verified Gateway operator identity. Check your Gateway access, then retry.");
                     Assert.Null(FindOptional<Border>(surface!, "ChatTaskSuggestion_" + FixtureTaskSuggestions.TaskId));
                 });
@@ -276,23 +296,24 @@ public sealed partial class ReactorChatLayoutProofTests
                 return;
             }
             // Assert the observable card rather than waiting on a missing-control timeout.
-            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => FindOptional<ScrollViewer>(surface!, "ChatTaskSuggestions") is not null ||
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => FindOptional<FrameworkElement>(surface!, "ChatTaskSuggestions") is not null ||
                 contract == "agent-null", "task panel published"));
             await ui.RunOnUIAsync(() => Assert.NotNull(FindOptional<Border>(surface!, "ChatTaskSuggestion_" + FixtureTaskSuggestions.TaskId)));
             if (contract == "worktree-default")
             {
-                await TaskButtonAsync(surface!, "Launch options", handle, VirtualKey.Enter);
+                await TaskButtonAsync(surface!, "Choose where to start the task", handle, VirtualKey.Enter);
                 await ui.RunOnUIAsync(() => Assert.DoesNotContain(FindDescendants<TextBox>(TaskCard(surface!)), input => input.Visibility == Visibility.Visible && AutomationProperties.GetName(input) == "Repository path on Gateway"));
-                await TaskButtonAsync(surface!, "Start in new worktree", handle, VirtualKey.Enter);
+                await TaskButtonAsync(surface!, "Start in a new worktree", handle, VirtualKey.Enter);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => gateway.Accepts.Count == 1, "default worktree dispatch observed"));
                 Assert.Null(Assert.Single(gateway.Accepts).Cwd);
                 return;
             }
             if (contract == "relative-path")
             {
-                await TaskButtonAsync(surface!, "Launch options", handle, VirtualKey.Enter);
+                await TaskButtonAsync(surface!, "Choose repository", handle, VirtualKey.Enter);
+                await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => FindDescendants<TextBox>(TaskCard(surface!)).Any(input => AutomationProperties.GetName(input) == "Repository path on Gateway" && input.IsLoaded), "repository correction editor published"));
                 await ui.RunOnUIAsync(() => Assert.Single(FindDescendants<TextBox>(TaskCard(surface!)), input => AutomationProperties.GetName(input) == "Repository path on Gateway").Text = "relative-repository");
-                await TaskButtonAsync(surface!, "Start in new worktree", handle, VirtualKey.Enter);
+                await TaskButtonAsync(surface!, "Start in a new worktree", handle, VirtualKey.Enter);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => Assert.Single(owner.Snapshot().Cards).RepositoryRequired, "local relative path refusal"));
             }
             if (contract is "relative-path" or "dismiss-failed")
@@ -311,7 +332,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 if (contract == "relative-path")
                 {
                     await ui.RunOnUIAsync(() => Assert.Single(FindDescendants<TextBox>(TaskCard(surface!)), input => AutomationProperties.GetName(input) == "Repository path on Gateway").Text = "/valid-repository");
-                    await TaskButtonAsync(surface!, "Start in new worktree", handle, VirtualKey.Enter);
+                    await TaskButtonAsync(surface!, "Start in a new worktree", handle, VirtualKey.Enter);
                     await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => gateway.Accepts.Count == 2, "corrected absolute path dispatched"));
                     Assert.Equal("/valid-repository", gateway.Accepts.Last().Cwd);
                 }
@@ -320,11 +341,11 @@ public sealed partial class ReactorChatLayoutProofTests
                 await ui.RunOnUIAsync(() =>
                 {
                     Assert.Contains(FindDescendants<TextBlock>(surface!), text => text.Text == "Administrator access to the Gateway is required to start suggested tasks.");
-                    Assert.False(Assert.Single(FindDescendants<Button>(surface!), button => Equals(button.Content, "Start in a new session")).IsEnabled);
-                    Assert.True(Assert.Single(FindDescendants<Button>(surface!), button => Equals(button.Content, "Dismiss task")).IsEnabled);
+                    Assert.False(Assert.Single(FindDescendants<Button>(surface!), button => TaskActionName(button) == "Start in a new session").IsEnabled);
+                    Assert.True(Assert.Single(FindDescendants<Button>(surface!), button => TaskActionName(button) == "Dismiss " + FixtureTaskSuggestions.Title).IsEnabled);
                 });
             if (contract == "new-session-label")
-                await ui.RunOnUIAsync(() => Assert.Contains(FindDescendants<Button>(surface!), button => Equals(button.Content, "Start in a new session")));
+                await ui.RunOnUIAsync(() => Assert.Contains(FindDescendants<Button>(surface!), button => TaskActionName(button) == "Start in a new session"));
             if (contract is "agent-null" or "admin-required" or "new-session-label")
                 await TaskCaptureAsync(surface!, handle, $"contracts-{width}-{contract}");
             if (contract == "disclosure")
@@ -346,7 +367,7 @@ public sealed partial class ReactorChatLayoutProofTests
             }
             if (contract.StartsWith("hide-", StringComparison.Ordinal))
             {
-                await ui.RunOnUIAsync(() => Assert.Contains(FindDescendants<Button>(surface!), button => Equals(button.Content, "Hide locally")));
+                await ui.RunOnUIAsync(() => Assert.Contains(FindDescendants<Button>(surface!), button => TaskActionName(button) == "Hide locally"));
                 var listsBefore = gateway.Lists;
                 await TaskButtonAsync(surface!, "Hide locally", handle, VirtualKey.Space);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() => FindOptional<Border>(surface!, "ChatTaskSuggestion_" + FixtureTaskSuggestions.TaskId) is null, "local hidden receipt removed"));
@@ -380,33 +401,43 @@ public sealed partial class ReactorChatLayoutProofTests
     {
         public long? TaskConnectionEpoch { get; private set; } = 1;
         public bool TaskSuggestionsSupported => true;
+        public bool CloudSupported = true;
+        public bool TaskCloudSupported => CloudSupported;
         public bool AdministratorRequired;
         public bool TaskAcceptanceSupported => !AdministratorRequired;
         public bool TaskAdministratorRequired => AdministratorRequired;
         public bool TaskDismissalSupported => true;
         public event EventHandler? TaskSuggestionsInvalidated { add { } remove { } }
         public event EventHandler<ConnectionStatus>? StatusChanged;
+        public event EventHandler? TaskOperatorIdentityInvalidated;
+        public void InvalidateOperator() => TaskOperatorIdentityInvalidated?.Invoke(this, EventArgs.Empty);
         public GatewayTaskSuggestion[] Rows = [new(FixtureTaskSuggestions.TaskId, FixtureTaskSuggestions.Title,
             FixtureTaskSuggestions.Prompt, "Synthetic task", FixtureTaskSuggestions.Cwd, GatewayScenario.MainSessionKey, "main", 17)];
         public List<GatewayTaskAcceptance> Accepts = [];
         public int Lists;
         public int Dismissals;
+        public TaskCompletionSource<string>? HeldAccept;
         public bool RequireRepository;
         public bool IdentityAvailable = true;
-        public Task<string?> ReadTaskOperatorIdentityAsync(long epoch) => Task.FromResult(IdentityAvailable ? "verified-fixture-operator" : null);
+        public string OperatorIdentity = "verified-fixture-operator";
+        public TaskCompletionSource<string?>? HeldIdentity;
+        public bool RemoveOnDismiss;
+        public Task<string?> ReadTaskOperatorIdentityAsync(long epoch) => HeldIdentity?.Task ?? Task.FromResult(IdentityAvailable ? OperatorIdentity : null);
         public bool FailRead;
         public bool FailDismiss;
+        public TaskCompletionSource<bool>? HeldDismiss;
         public Task<GatewayTaskSuggestionList> ListTaskSuggestionsAsync(long epoch)
         { Lists++; return FailRead ? Task.FromException<GatewayTaskSuggestionList>(new TimeoutException()) : Task.FromResult(new GatewayTaskSuggestionList(true, Rows)); }
         public Task<string> AcceptTaskSuggestionAsync(GatewayTaskAcceptance request, long epoch)
         {
             Accepts.Add(request);
+            if (HeldAccept is not null) return HeldAccept.Task;
             return RequireRepository && request.Mode == "worktree" && request.Cwd is null
                 ? Task.FromException<string>(GatewayRequestErrors.Create("synthetic", "INVALID_REQUEST", GatewayRequestErrors.TaskWorktreeSourceRequired))
                 : Task.FromException<string>(new TimeoutException());
         }
         public Task<bool> DismissTaskSuggestionAsync(string id, long epoch)
-        { Dismissals++; return FailDismiss ? Task.FromException<bool>(new TimeoutException()) : Task.FromResult(false); }
+        { Dismissals++; if (RemoveOnDismiss) Rows = Rows.Where(row => row.Id != id).ToArray(); if (HeldDismiss is not null) return HeldDismiss.Task; return FailDismiss ? Task.FromException<bool>(new TimeoutException()) : Task.FromResult(false); }
         public Task RequestSessionsAsync() => Task.CompletedTask;
         public void Connect(long epoch) { TaskConnectionEpoch = epoch; StatusChanged?.Invoke(this, ConnectionStatus.Connected); }
     }
@@ -418,11 +449,14 @@ public sealed partial class ReactorChatLayoutProofTests
 
     private async Task TaskButtonAsync(Border surface, string label, nint handle, VirtualKey key)
     {
+        if (await TaskMenuItemAsync(surface, label, handle, key)) return;
         ButtonBase? target = null;
         await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
         {
-            target = FindDescendants<ButtonBase>(label == "Refresh tasks" ? surface : TaskCard(surface)).SingleOrDefault(button =>
-                (button is Button && Equals(button.Content, label)) || (button is ToggleButton && AutomationProperties.GetName(button) == label));
+            var container = label == "Refresh tasks" ? (DependencyObject)surface
+                : FindOptional<Border>(surface, "ChatTaskSuggestion_" + FixtureTaskSuggestions.TaskId);
+            if (container is null) return false; // A budget transition may temporarily unmount the complete card.
+            target = FindDescendants<ButtonBase>(container).SingleOrDefault(button => TaskActionName(button) == label);
             return target is { IsLoaded: true, IsEnabled: true, IsTabStop: true, ActualWidth: > 0 }
                 && target.Focus(FocusState.Keyboard);
         }, label + " ready and focusable"));
@@ -438,7 +472,7 @@ public sealed partial class ReactorChatLayoutProofTests
         await AssertTaskGeometryAsync(surface);
         await ui.RunOnUIAsync(() =>
         {
-            var panel = Bounds(FindControl<ScrollViewer>(surface, "ChatTaskSuggestions"), surface);
+            var panel = Bounds(FindControl<FrameworkElement>(surface, "ChatTaskSuggestions"), surface);
             var bounds = Bounds(target!, surface);
             Assert.True(bounds.Top >= panel.Top - 1 && bounds.Bottom <= panel.Bottom + 1,
                 $"Focused task action {label} must be fully visible. Action {bounds}; viewport {panel}.");
@@ -457,13 +491,43 @@ public sealed partial class ReactorChatLayoutProofTests
         await ui.RunOnUIAsync(() => NativeKeyboardProof.Press(handle, key));
     }
 
+    private static string TaskActionName(ButtonBase button) => AutomationProperties.GetName(button) is { Length: > 0 } name
+        ? name : button.Content as string ?? "";
+
+    private async Task<bool> TaskMenuItemAsync(Border surface, string label, nint handle, VirtualKey key)
+    {
+        MenuFlyoutItem? target = null;
+        var found = await ui.RunOnUIAsync(() => Task.FromResult(
+            !FindDescendants<ButtonBase>(surface).Any(button => TaskActionName(button) == label && button.Visibility == Visibility.Visible)
+            && FindDescendants<Button>(surface).Any(button => button.Flyout is MenuFlyout menu &&
+                menu.Items.OfType<MenuFlyoutItem>().Any(item => item.Text == label && item.Visibility == Visibility.Visible))));
+        if (!found) return false;
+        await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
+        {
+            target = FindDescendants<Button>(surface).Where(button => button.Flyout is MenuFlyout)
+                .SelectMany(button => ((MenuFlyout)button.Flyout).Items.OfType<MenuFlyoutItem>())
+                .SingleOrDefault(item => item.Text == label && item.Visibility == Visibility.Visible);
+            return Microsoft.UI.Xaml.Media.VisualTreeHelper.GetOpenPopupsForXamlRoot(surface.XamlRoot).Any(popup => popup.IsOpen)
+                && target is { IsLoaded: true, IsEnabled: true, ActualWidth: > 0, ActualHeight: > 0 }
+                && target.Focus(FocusState.Keyboard);
+        }, "native task menu item ready"));
+        await ui.RunOnUIAsync(() =>
+        {
+            Assert.Equal(label, new MenuFlyoutItemAutomationPeer(target!).GetName());
+            Assert.Equal(FocusState.Keyboard, target!.FocusState);
+            foreach (var text in FindDescendants<TextBlock>(target)) Assert.False(text.IsTextTrimmed);
+            NativeKeyboardProof.Press(handle, key);
+        });
+        return true;
+    }
+
     private async Task AssertTaskGeometryAsync(Border surface)
     {
         string? previous = null;
         var stable = 0;
         await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
         {
-            var panel = FindControl<ScrollViewer>(surface, "ChatTaskSuggestions");
+            var panel = FindControl<FrameworkElement>(surface, "ChatTaskSuggestions");
             var sample = string.Join(";", FindDescendants<Button>(panel).Select(button => Bounds(button, surface).ToString()));
             stable = sample == previous ? stable + 1 : 0;
             previous = sample;
@@ -471,7 +535,7 @@ public sealed partial class ReactorChatLayoutProofTests
         }, "task geometry stable"));
         await ui.RunOnUIAsync(() =>
         {
-            var panel = FindControl<ScrollViewer>(surface, "ChatTaskSuggestions");
+            var panel = FindControl<FrameworkElement>(surface, "ChatTaskSuggestions");
             Assert.InRange(panel.ActualHeight, 1, 320);
             foreach (var button in FindDescendants<Button>(panel).Where(button => button.Visibility == Visibility.Visible && button.ActualWidth > 0))
             {
@@ -488,7 +552,7 @@ public sealed partial class ReactorChatLayoutProofTests
         if (panelExpected)
             await AssertTaskGeometryAsync(surface);
         else
-            await ui.RunOnUIAsync(() => Assert.Null(FindOptional<ScrollViewer>(surface, "ChatTaskSuggestions")));
+            await ui.RunOnUIAsync(() => Assert.Null(FindOptional<FrameworkElement>(surface, "ChatTaskSuggestions")));
         if (Environment.GetEnvironmentVariable("OPENCLAW_TASK_PROOF_ARTIFACTS") is { Length: > 0 } directory)
             await SaveTaskWindowAsync(handle, directory, name);
     }

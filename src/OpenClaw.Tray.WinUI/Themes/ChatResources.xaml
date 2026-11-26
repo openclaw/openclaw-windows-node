@@ -8,6 +8,9 @@
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatTaskCardBrush" Color="{ThemeResource SolidBackgroundFillColorTertiary}" />
+            <SolidColorBrush x:Key="ChatTaskPathBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatTaskPromptBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
@@ -81,6 +84,9 @@
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="Transparent" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource CardBackgroundFillColorDefault}" />
+            <SolidColorBrush x:Key="ChatTaskCardBrush" Color="{ThemeResource SolidBackgroundFillColorTertiary}" />
+            <SolidColorBrush x:Key="ChatTaskPathBrush" Color="{ThemeResource SubtleFillColorSecondary}" />
+            <SolidColorBrush x:Key="ChatTaskPromptBrush" Color="{ThemeResource SolidBackgroundFillColorBase}" />
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource ControlStrokeColorDefault}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
             <SolidColorBrush x:Key="ChatStrongTextBrush" Color="{ThemeResource TextFillColorPrimary}" />
@@ -152,6 +158,9 @@
             <SolidColorBrush x:Key="ChatCanvasBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatComposerBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatTaskCardBrush" Color="{ThemeResource SystemColorWindowColor}" />
+            <SolidColorBrush x:Key="ChatTaskPathBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+            <SolidColorBrush x:Key="ChatTaskPromptBrush" Color="{ThemeResource SystemColorWindowColor}" />
             <SolidColorBrush x:Key="ChatStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
             <SolidColorBrush x:Key="ChatSecondaryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -680,4 +689,48 @@
     <Style x:Key="ChatPickerMenuStyle" TargetType="MenuFlyoutPresenter" BasedOn="{StaticResource DefaultMenuFlyoutPresenterStyle}">
         <Setter Property="Background" Value="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}" />
     </Style>
+    <!-- Floating task-card presentation. The body scrolls; header actions and launch stay in their own rows. -->
+    <Style x:Key="ChatTaskCardStyle" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource ChatTaskCardBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ChatStrokeBrush}" />
+    </Style>
+    <Style x:Key="ChatTaskEyebrowStyle" TargetType="TextBlock" BasedOn="{StaticResource CaptionTextBlockStyle}">
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="Bold" />
+    </Style>
+    <Style x:Key="ChatTaskSummaryStyle" TargetType="TextBlock" BasedOn="{StaticResource ChatSecondaryTextStyle}">
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+    <ControlTemplate x:Key="ChatTaskDisclosureTemplate" TargetType="ToggleButton">
+        <Grid>
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal" />
+                    <VisualState x:Name="PointerOver">
+                        <VisualState.Setters><Setter Target="TaskDisclosureSurface.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" /></VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                        <VisualState.Setters><Setter Target="TaskDisclosureSurface.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" /></VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled">
+                        <VisualState.Setters><Setter Target="TaskDisclosureContent.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" /></VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+            <Border x:Name="TaskDisclosureSurface" Background="Transparent" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                <ContentPresenter x:Name="TaskDisclosureContent" Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}" FontSize="{TemplateBinding FontSize}" VerticalContentAlignment="Center" />
+            </Border>
+        </Grid>
+    </ControlTemplate>
+    <Style x:Key="ChatTaskDisclosureStyle" TargetType="ToggleButton">
+        <Setter Property="Template" Value="{StaticResource ChatTaskDisclosureTemplate}" />
+        <Setter Property="Foreground" Value="{ThemeResource ChatSecondaryTextBrush}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="MinHeight" Value="32" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="6,0" />
+        <Setter Property="UseSystemFocusVisuals" Value="True" />
+    </Style>
+
 </ResourceDictionary>

@@ -10302,16 +10302,16 @@
     <value>在新会话中启动</value>
   </data>
   <data name="Chat_Tasks_Options" xml:space="preserve">
-    <value>启动选项</value>
+    <value>选择任务启动位置</value>
   </data>
   <data name="Chat_Tasks_Session" xml:space="preserve">
-    <value>在此对话中启动</value>
+    <value>在此会话中启动</value>
   </data>
   <data name="Chat_Tasks_Repository" xml:space="preserve">
     <value>网关上的仓库路径</value>
   </data>
   <data name="Chat_Tasks_Worktree" xml:space="preserve">
-    <value>在新工作树中启动</value>
+    <value>在新的工作树中启动</value>
   </data>
   <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
     <value>已配置的云配置文件 ID</value>
@@ -10337,4 +10337,11 @@
   <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>需要 Gateway 管理员权限才能启动建议的任务。</value></data>
   <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>无法忽略此任务。请重试。</value></data>
   <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>建议任务需要经过验证的 Gateway 操作员身份。请检查您的 Gateway 访问权限，然后重试。</value></data>
+  <data name="Chat_Tasks_Eyebrow" xml:space="preserve"><value>建议任务 · 在 {0} 中</value></data>
+  <data name="Chat_Tasks_DismissTitle" xml:space="preserve"><value>忽略 {0}</value></data>
+  <data name="Chat_Tasks_Previous" xml:space="preserve"><value>上一个建议任务</value></data>
+  <data name="Chat_Tasks_Next" xml:space="preserve"><value>下一个建议任务</value></data>
+  <data name="Chat_Tasks_ChooseRepository" xml:space="preserve"><value>选择仓库</value></data>
+  <data name="Chat_Tasks_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Chat_Tasks_Summary" xml:space="preserve"><value>建议任务摘要</value></data>
 </root>

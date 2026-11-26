@@ -213,12 +213,130 @@ use the card fill above that content layer.
 
 ## Controls and states
 
-Suggested tasks appear above the retained composer in a bounded, reading-width
-native card dock. Titles, summaries, Gateway paths and expandable instructions
-remain plain text. The instruction toggle exposes checked state and Show/Hide
-instructions names. Copy works without a connection. Start in a new session is primary;
-launch options expose the source conversation, a new worktree using the Gateway
-producer’s default repository resolution, and a configured cloud profile ID.
+Suggested tasks use one floating native card, right-aligned in the chat gutter
+immediately above the retained composer, at most 450 DIPs wide with 16-DIP
+corners, a subtle native frame and ThemeShadow elevation. The card uses
+`ChatTaskCardBrush`, a native elevated layer, not the web accent palette.
+The non-interactive elevation silhouette and backing layer are stable siblings
+outside the whole-card clipping viewport. An eight-DIP bottom decoration allowance
+is reserved inside the total task budget (and subtracted from the content budget),
+so comfortable-mode stack/shadow decoration is not lost to viewport clipping.
+Multiple proposals show only the active card, with an offset backing layer,
+a quiet `1 / N` position pill and previous/next header buttons. Navigation is
+presentation-only and never launches a task or changes the conversation.
+There is no separate Suggested tasks heading or persistent Refresh button.
+Identity and known-card refresh failures retain compact, explicit retry guidance.
+
+The header pairs a visually uppercase muted 11-DIP suggested-task/repository eyebrow
+with 32-DIP icon-only Copy, navigation and allowed Dismiss actions. Repository
+casing is preserved in the natural-case accessible name and original Gateway-path
+tooltip; visible text uses the app's effective UI-language uppercase (including a resource
+language override) to match web CSS text-transform, independent of regional format.
+Its repository name is the final path segment. Explicit previous/
+next navigation restores keyboard focus once on the target card; later refreshes,
+card removal and conversation changes never replay that focus request.
+Copy has a check confirmation glyph and the accessible Instructions copied name.
+Title and summary remain plain native text; the title is anchored and bounded to
+two lines with its full accessible name and title tooltip, without a fixed DIP
+height that can clip a scaled second line. The secondary 13-DIP summary has its own
+selectable vertical-scroll viewport, capped to a fraction of the card height and
+snapped to one through five whole measured native-font line boxes. The summary
+scroll region has a localized accessible name, native keyboard scrolling and an
+automatic vertical scrollbar with hover/focus affordance. Its mounted owner
+remeasures on native text-scale changes and updates overflow Tab eligibility
+on content/geometry/extent changes; those subscriptions are removed on unmount.
+Runtime OS text-scale interaction remains a separate proof lane, not a claim
+made by the short-pane fixtures.
+Neither long summaries nor text scaling may consume the disclosure or actions.
+Show/Hide instructions occupies an anchored row with a quiet native chevron toggle.
+Expanded instructions join a horizontally scrollable monospace path strip to a
+selectable, pre-wrapped 11-DIP prompt block, capped at 144 DIPs. A bounded inner
+body scroll keeps the header, disclosure and trailing action row visible in short
+panes. The production root reserves the intrinsic writing/send surface, including its
+bottom inset and welcome top margin, never the
+welcome-mode Star allocation. Introductory welcome/placement content
+and secondary choices remain in the composer scroller rather than becoming a
+self-referential reservation. Task arrival or a task viewport resize brings the
+retained writing/send surface into view without changing focus. Loaded positive measurements replace the initial
+fallback; later zero-height reversals retract collapsed auxiliary rows. Question,
+pending, provider-review and pill rows and the task panel's 20-DIP vertical
+margins are reserved separately. The task budget is clamped to the conversation
+layout slot and its enclosing viewport, never an Auto-row overflow's enlarged
+ActualHeight. The 260-DIP comfortable card budget applies
+only when it fits; the overall viewport remains capped at 320 DIPs.
+
+The welcome Auto-content block remains vertically centered when it fits, including
+with no suggested task. Its intrinsic writing/send reservation does not use the
+Star filler. Composer visibility uses a stable ref-backed callback, not a fresh
+panel prop on every timeline render.
+
+The native outer ScrollViewer and inner body ScrollViewer are always present,
+with the same card ancestry. A shortage changes scrolling/height and Auto/Star
+layout properties only; it does not replace the card or editing controls. The
+initial thresholds are 80 DIPs of outer task budget usable and 260 DIPs
+comfortable, including the eight-DIP decoration allowance. Four-DIP
+hysteresis keeps a usable card until below 76 and restores it at 84; shortage
+starts below 256 and returns to comfortable mode at 260. The viewport never
+exceeds the actual remaining budget and has no unconditional minimum height.
+
+The complete card is vertically scrollable during usable shortage. GotFocus and
+viewport SizeChanged reveal the focused descendant; window-wide LayoutUpdated
+must not snap intentional wheel/manual scrolling back to an old focus target.
+Below the usable floor no task controls are mounted. Before removing a focused
+card, keyboard focus prefers the visible composer input, even if a nearer dock
+ancestor contains a collapsed or result-only question panel. The search walks to
+the ancestor owning that composer, remembering the nearer question panel. Only
+when the composer cannot receive focus does it try an actionable question control,
+then a retained composer/chat host fallback. The coordinator subscription and bounded task-ID-keyed unsent
+presentation state remain mounted: repository path, cloud profile, open forms,
+disclosure and copy feedback survive below-floor disappearance and recovery.
+No unsent state is persisted to disk or adopted by a different session/gateway.
+The presentation cache is pruned to all-session authoritative snapshot IDs on
+accepted renders and notifications. Read-only coordinator metadata fences its
+ownership: a presentation revision advances under the coordinator lock on every
+profile-identity invalidation and changed-operator restore; each Snapshot read
+gets a strictly increasing observation revision under that same lock. The panel
+admits, retires state and publishes a notification atomically. Older or duplicate
+observation revisions cannot replace or prune the newer presentation, including
+when an older hook value reaches Render. No intermediate empty-frame delivery is
+required to retire an old operator's same-ID private form.
+
+This is deliberately fail-closed: **any profile-identity invalidation discards
+unsent suggested-card input**, including a same-operator name/avatar edit. The
+main chat composer draft is not discarded. Unchanged-membership refresh without
+an identity revision change and below-floor hiding retain card input. Connection
+or presentation revisions clear both unsent drafts and settled mount tokens.
+Absent IDs and confirmed starts also retire editable state, with no independent
+eviction history or Dictionary-slot ordering. Fresh owners have fresh native
+component keys, resetting hooks and cached fields. Settled cards retain only an
+opaque owner-scoped mount key, not editable drafts. These UI-observation lifetimes
+never change acceptance, dismissal, refresh, frozen attempt/options, retry
+identity, protocol payloads or custody semantics.
+Real pending-cap proof pins a present whole-card scroller; expanded-question
+proof pins task absence and checks the focus handoff and subsequent Tab.
+When a fitting summary loses its overflow Tab stop while focused, focus moves
+to the disclosure; the next Tab reaches the primary launch action.
+
+The accent-filled primary Start in a new session button is joined to a chevron
+button opening a Windows-owned menu: Start in a new session, Start in a new
+worktree and Start in this session. Start in cloud is shown only when the existing
+accept-modes capability and environment-profile read path are advertised; it
+reveals a configured-profile field before dispatch. While any acceptance is pending,
+localized accessible Starting feedback replaces launch/edit controls; the frozen
+attempt cannot be edited or dispatched again. Enabled launch buttons have no empty
+tooltip; disabled launch buttons retain their explicit reason. Non-admin launch controls
+stay disabled with an explicit native tooltip and explanation. Unknown starts
+replace launch choices with a same-task Retry and local Hide, preserving frozen
+identity and options. A safe structured repository-required error shows Choose
+repository, an editable path, Start in a new worktree and Cancel, not a new
+acceptance identity. Dismiss and copy failures use an inline danger notice.
+Native Tab order is header actions, summary (when overflowing), disclosure,
+primary action, menu trigger;
+Enter/Space activation, menu arrow keys, Escape dismissal and in-bounds native
+focus outlines are retained. All surfaces bind native theme resources in Light,
+Dark and High Contrast. A successful launch refreshes Sessions without selecting
+the launched session or replacing the draft.
+
 No cwd override is sent for an initial worktree launch. Only the producer’s
 structured TASK_WORKTREE_SOURCE_REQUIRED reply reveals an editable repository
 correction, so a displayed path is not automatically reinterpreted on another OS. A successful launch

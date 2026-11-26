@@ -113,7 +113,7 @@ public sealed partial class ReactorChatLayoutProofTests
                 {
                     var rendered = FindControl<Border>(surface, "ChatTaskSuggestion_" + taskId);
                     Assert.Contains(FindDescendants<TextBlock>(rendered), text => text.Text == title && text.Visibility == Visibility.Visible);
-                    Assert.Contains(FindDescendants<Button>(rendered), button => Equals(button.Content, "Start in a new session") && button.IsEnabled);
+                    Assert.Contains(FindDescendants<Button>(rendered), button => TaskActionName(button) == "Start in a new session" && button.IsEnabled);
                 });
                 await CombinedTaskButtonAsync(surface, taskId!, "Show instructions", handle, VirtualKey.Enter);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
@@ -123,13 +123,13 @@ public sealed partial class ReactorChatLayoutProofTests
                     await SaveTaskWindowAsync(handle, captures, "combined-native-instructions");
                 await CombinedTaskButtonAsync(surface, taskId!, "Copy instructions", handle, VirtualKey.Space);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
-                    FindDescendants<Button>(surface).Any(button => Equals(button.Content, "Instructions copied")), "real instruction copy acknowledged"));
+                    FindDescendants<Button>(surface).Any(button => TaskActionName(button) == "Instructions copied"), "real instruction copy acknowledged"));
                 await ui.RunOnUIAsync(async () => Assert.Equal(prompt, await Clipboard.GetContent().GetTextAsync()));
                 await CombinedTaskButtonAsync(surface, taskId!, "Hide instructions", handle, VirtualKey.Enter);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                     FindDescendants<TextBlock>(FindControl<Border>(surface, "ChatTaskSuggestion_" + taskId))
                         .Any(text => text.Text == prompt && text.Visibility == Visibility.Collapsed), "instructions collapsed before dismissal focus"));
-                await CombinedTaskButtonAsync(surface, taskId!, "Dismiss task", handle, VirtualKey.Enter);
+                await CombinedTaskButtonAsync(surface, taskId!, "Dismiss " + title, handle, VirtualKey.Enter);
                 await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(() =>
                     FindOptional<Border>(surface, "ChatTaskSuggestion_" + taskId) is null, "real dismissed card removed", timeout: TaskProofStepTimeout));
                 var pending = await client.ListTaskSuggestionsAsync(client.SessionMutationConnectionEpoch!.Value);
@@ -158,8 +158,7 @@ public sealed partial class ReactorChatLayoutProofTests
             var card = FindOptional<Border>(surface, "ChatTaskSuggestion_" + taskId);
             if (card is null) return false;
             target = FindDescendants<ButtonBase>(card).SingleOrDefault(button =>
-                (button is Button && Equals(button.Content, label)) ||
-                (button is ToggleButton && AutomationProperties.GetName(button) == label));
+                TaskActionName(button) == label);
             return target is { IsLoaded: true, IsEnabled: true, IsTabStop: true, ActualWidth: > 0 } && target.Focus(FocusState.Keyboard);
         }, label + " real Gateway action focusable"));
         await ui.RunOnUIAsync(() => target!.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }));
@@ -168,7 +167,7 @@ public sealed partial class ReactorChatLayoutProofTests
         await AssertTaskGeometryAsync(surface);
         await ui.RunOnUIAsync(() =>
         {
-            var panel = Bounds(FindControl<ScrollViewer>(surface, "ChatTaskSuggestions"), surface);
+            var panel = Bounds(FindControl<FrameworkElement>(surface, "ChatTaskSuggestions"), surface);
             var bounds = Bounds(target!, surface);
             Assert.True(bounds.Top >= panel.Top - 1 && bounds.Bottom <= panel.Bottom + 1);
             Assert.Same(target, Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(surface.XamlRoot));

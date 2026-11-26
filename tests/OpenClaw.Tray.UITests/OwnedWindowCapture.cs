@@ -147,9 +147,44 @@ internal static class OwnedWindowCapture
             qualifiedGeometry: qualifiedGeometry);
     }
 
+    // WinUI flyouts can have a separate compositor HWND. Capture that owned popup explicitly,
+    // rather than claiming the owner's PrintWindow frame contains an open native menu.
+    internal static void SaveCurrentProcessPopup(nint owner, global::System.Windows.Rect menuBounds,
+        string runId, string artifactsDirectory, string name)
+    {
+        Assert.Equal(owner, GetForegroundWindow());
+        GetWindowThreadProcessId(owner, out var ownerPid);
+        Assert.Equal((uint)Environment.ProcessId, ownerPid);
+        // WinUI AutomationPeer bounds can be logical under PMv2. Query the public UIA provider
+        // for independent physical screen bounds instead of interpreting them as desktop pixels.
+        var ownerElement = AutomationElement.FromHandle(owner);
+        var item = ownerElement.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem))
+            .Cast<AutomationElement>().FirstOrDefault(element => !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0);
+        Assert.NotNull(item);
+        var physical = item.Current.BoundingRectangle;
+        Console.WriteLine($"Native menu peer bounds={menuBounds}; UIA physical bounds={physical}; owner bounds={ownerElement.Current.BoundingRectangle}");
+        var point = new global::System.Drawing.Point((int)(physical.Left + physical.Width / 2),
+            (int)(physical.Top + physical.Height / 2));
+        var popup = GetAncestor(WindowFromPoint(point), 2); // GA_ROOT, not a foreign owner window.
+        Assert.NotEqual(nint.Zero, popup);
+        Assert.NotEqual(owner, popup);
+        GetWindowThreadProcessId(popup, out var popupPid);
+        Assert.Equal(ownerPid, popupPid);
+        var popupElement = AutomationElement.FromHandle(popup);
+        var visibleItems = popupElement.FindAll(TreeScope.Descendants,
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.MenuItem))
+            .Cast<AutomationElement>().Where(element => !element.Current.IsOffscreen && element.Current.BoundingRectangle.Width > 0).ToArray();
+        Assert.True(visibleItems.Length >= 3, "Capture requires the actual native launch menu, not an empty popup.");
+        SaveCore(Environment.ProcessId, runId, artifactsDirectory, popupElement, name, visibleItems, popupContent: true);
+    }
+
+    [DllImport("user32.dll")] private static extern nint WindowFromPoint(global::System.Drawing.Point point);
+    [DllImport("user32.dll")] private static extern nint GetAncestor(nint window, uint flags);
+
     private static void SaveCore(int appProcessId, string runId, string artifactsDirectory, AutomationElement window,
         string name, AutomationElement[] assertedElements, CancellationToken cancellationToken = default,
-        WindowGeometry? qualifiedGeometry = null)
+        WindowGeometry? qualifiedGeometry = null, bool popupContent = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var handle = new IntPtr(window.Current.NativeWindowHandle);
@@ -162,17 +197,33 @@ internal static class OwnedWindowCapture
         {
             Assert.True(GetWindowRect(handle, out var rect));
             var bounds = Rectangle.FromLTRB(rect.Left, rect.Top, rect.Right, rect.Bottom);
-            AssertCaptureGeometry(bounds, qualifiedGeometry,
-                qualifiedGeometry is null ? null : ReadCurrentProcessGeometry(handle));
+            if (popupContent)
+                Assert.True(bounds.Width > 0 && bounds.Height > 0 && assertedElements.Length >= 3,
+                    "A popup uses its exact live menu geometry, not the main-window size floor.");
+            else
+                AssertCaptureGeometry(bounds, qualifiedGeometry,
+                    qualifiedGeometry is null ? null : ReadCurrentProcessGeometry(handle));
             var assertions = assertedElements.Select(element =>
             {
-                var evidence = NativeUiOwnership.Classify(window, element, appProcessId);
-                Assert.True(evidence != NativeUiOwnership.Evidence.Foreign,
-                    "Asserted control must belong to the captured native window and process.");
-                // A re-rendered peer proves nothing yet. Polling callers observe again; others fail as unavailable.
-                if (evidence != NativeUiOwnership.Evidence.Owned)
-                    throw new ElementNotAvailableException(
-                        "Asserted control ownership is not observable yet; the control was detached or re-rendered.");
+                if (popupContent)
+                {
+                    // WinUI menu providers can retain the owner's UIA ancestor while painting in
+                    // a separate popup HWND. Bind every live item to that HWND in physical pixels.
+                    Assert.Equal(appProcessId, element.Current.ProcessId);
+                    var live = element.Current.BoundingRectangle;
+                    var center = new global::System.Drawing.Point((int)(live.Left + live.Width / 2), (int)(live.Top + live.Height / 2));
+                    Assert.Equal(handle, GetAncestor(WindowFromPoint(center), 2));
+                }
+                else
+                {
+                    var evidence = NativeUiOwnership.Classify(window, element, appProcessId);
+                    Assert.True(evidence != NativeUiOwnership.Evidence.Foreign,
+                        "Asserted control must belong to the captured native window and process.");
+                    // A re-rendered peer proves nothing yet. Polling callers observe again; others fail as unavailable.
+                    if (evidence != NativeUiOwnership.Evidence.Owned)
+                        throw new ElementNotAvailableException(
+                            "Asserted control ownership is not observable yet; the control was detached or re-rendered.");
+                }
                 Assert.False(element.Current.IsOffscreen);
                 var area = element.Current.BoundingRectangle;
                 Assert.True(area.Width > 0 && area.Height > 0);
@@ -195,8 +246,8 @@ internal static class OwnedWindowCapture
                 AssertCaptureGeometry(bounds, qualifiedGeometry, ReadCurrentProcessGeometry(handle));
             // Exclude the title bar and native border: a rendered caption around blank content is not proof.
             var colors = new HashSet<int>();
-            for (var y = 70; y < image.Height - 20; y += Math.Max(1, image.Height / 100))
-                for (var x = 20; x < image.Width - 20; x += Math.Max(1, image.Width / 100))
+            for (var y = popupContent ? 8 : 70; y < image.Height - (popupContent ? 8 : 20); y += Math.Max(1, image.Height / 100))
+                for (var x = popupContent ? 8 : 20; x < image.Width - (popupContent ? 8 : 20); x += Math.Max(1, image.Width / 100))
                     colors.Add(image.GetPixel(x, y).ToArgb());
             Assert.True(colors.Count >= 16, $"Rejected blank native content ({colors.Count} sampled colors).");
             // Do not publish an image that returns after owned termination.
@@ -206,7 +257,7 @@ internal static class OwnedWindowCapture
             File.WriteAllText(Path.ChangeExtension(path, ".json"), JsonSerializer.Serialize(new
             {
                 RunId = runId, AppProcessId = appProcessId, hwnd = $"0x{handle:X}",
-                capturedAtUtc = DateTimeOffset.UtcNow, bounds, qualifiedGeometry, sampledContentColors = colors.Count,
+                capturedAtUtc = DateTimeOffset.UtcNow, bounds, qualifiedGeometry, popupContent, sampledContentColors = colors.Count,
                 sha256 = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))),
                 assertions, method = "PrintWindow(PW_RENDERFULLCONTENT); owned HWND only; synthetic Gateway"
             }, new JsonSerializerOptions { WriteIndented = true }));

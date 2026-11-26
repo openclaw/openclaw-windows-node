@@ -9,6 +9,7 @@ internal interface IChatTaskSuggestionGateway
     bool TaskSuggestionsSupported { get; }
     bool TaskAcceptanceSupported { get; }
     bool TaskAdministratorRequired { get; }
+    bool TaskCloudSupported => false;
     bool TaskDismissalSupported { get; }
     event EventHandler? TaskSuggestionsInvalidated;
     event EventHandler? TaskOperatorIdentityInvalidated { add { } remove { } }
@@ -25,7 +26,8 @@ internal sealed record ChatTaskCard(GatewayTaskSuggestion Suggestion, bool Busy 
     string? StartedKey = null, bool RepositoryRequired = false, bool CloudProfileRequired = false, bool DismissFailed = false, bool CanRetry = true);
 internal sealed record ChatTaskSnapshot(IReadOnlyList<ChatTaskCard> Cards, bool Connected,
     bool CanAccept, bool CanDismiss, bool RefreshFailed, long? ConnectionEpoch,
-    bool AdministratorRequired, bool CanHideLocally, bool IdentityUnavailable = false, string? IdentityNoticeSession = null);
+    bool AdministratorRequired, bool CanHideLocally, bool IdentityUnavailable = false, string? IdentityNoticeSession = null, bool CloudSupported = false,
+    long PresentationRevision = 0, long SnapshotRevision = 0);
 
 /// <summary>
 /// Events only invalidate. Authoritative lists recover dropped events, including other clients' removals.
@@ -47,6 +49,9 @@ internal sealed class ChatTaskSuggestionCoordinator(IChatTaskSuggestionGateway g
     private ITimer? _poll;
     private Task? _refresh;
     private long _generation;
+    // Observation-only metadata. Never participates in dispatch/retry/custody.
+    private long _presentationRevision;
+    private long _snapshotRevision;
     private ITimer? _eventRefresh;
     private bool _refreshFailed;
     private bool _identityUnavailable;
@@ -65,7 +70,8 @@ internal sealed class ChatTaskSuggestionCoordinator(IChatTaskSuggestionGateway g
                 gateway.TaskConnectionEpoch.HasValue, gateway.TaskAcceptanceSupported,
                 gateway.TaskDismissalSupported, _refreshFailed, gateway.TaskConnectionEpoch,
                 gateway.TaskAdministratorRequired, _locallyHidden.Count < MaximumCards,
-                _identityUnavailable && gateway.TaskSuggestionsSupported && gateway.TaskConnectionEpoch.HasValue, _identityNoticeSession);
+                _identityUnavailable && gateway.TaskSuggestionsSupported && gateway.TaskConnectionEpoch.HasValue, _identityNoticeSession, gateway.TaskCloudSupported,
+                _presentationRevision, ++_snapshotRevision);
     }
 
     /// <summary>Scope a connection prerequisite notice once to the first presented chat; never expose private receipt targets.</summary>
@@ -120,6 +126,7 @@ internal sealed class ChatTaskSuggestionCoordinator(IChatTaskSuggestionGateway g
         {
             if (_disposed) return;
             _generation++;
+            _presentationRevision++;
             _verifiedIdentityEpoch = null;
             _identityUnavailable = false;
             _refresh = null;
@@ -185,6 +192,7 @@ internal sealed class ChatTaskSuggestionCoordinator(IChatTaskSuggestionGateway g
                     if (identity is null) { _verifiedIdentityEpoch = null; _identityUnavailable = true; return; } // Unknown operator cannot see or replay retained data.
                     if (_operatorIdentity != identity)
                     {
+                        _presentationRevision++;
                         var restored = custody.Restore(gatewayId, identity);
                         _cards = restored.Cards.ToDictionary(card => card.Suggestion.Id, StringComparer.Ordinal);
                         _locallyHidden.Clear();

@@ -82,6 +82,8 @@ static class FluentIconCatalog
     public const string Channels = "\uEC05";       // CellularData/Tower — N/M channels chip
 
     // ── Affordances ────────────────────────────────────────────────
+    public const string TaskPrevious = "\uE76B";    // ChevronLeft - previous suggested card
+    public const string TaskStart = "\uE768";       // Play - explicit task launch
     public const string ChevronR = "\uE76C";       // ChevronRight
     public const string Subagent = "\uE99A";       // Robot — chat subagents pill and rows
     public const string ChevronDown = "\uE70D";    // ChevronDown

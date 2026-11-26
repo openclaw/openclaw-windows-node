@@ -10373,16 +10373,16 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
     <value>Start in a new session</value>
   </data>
   <data name="Chat_Tasks_Options" xml:space="preserve">
-    <value>Launch options</value>
+    <value>Choose where to start the task</value>
   </data>
   <data name="Chat_Tasks_Session" xml:space="preserve">
-    <value>Start in this conversation</value>
+    <value>Start in this session</value>
   </data>
   <data name="Chat_Tasks_Repository" xml:space="preserve">
     <value>Repository path on Gateway</value>
   </data>
   <data name="Chat_Tasks_Worktree" xml:space="preserve">
-    <value>Start in new worktree</value>
+    <value>Start in a new worktree</value>
   </data>
   <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
     <value>Configured cloud profile ID</value>
@@ -10408,4 +10408,11 @@ After enrolling, return to Settings &gt; Windows Update and check for updates. I
   <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>Administrator access to the Gateway is required to start suggested tasks.</value></data>
   <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>The task could not be dismissed. Try again.</value></data>
   <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>Suggested tasks need a verified Gateway operator identity. Check your Gateway access, then retry.</value></data>
+  <data name="Chat_Tasks_Eyebrow" xml:space="preserve"><value>Suggested task · in {0}</value></data>
+  <data name="Chat_Tasks_DismissTitle" xml:space="preserve"><value>Dismiss {0}</value></data>
+  <data name="Chat_Tasks_Previous" xml:space="preserve"><value>Previous suggested task</value></data>
+  <data name="Chat_Tasks_Next" xml:space="preserve"><value>Next suggested task</value></data>
+  <data name="Chat_Tasks_ChooseRepository" xml:space="preserve"><value>Choose repository</value></data>
+  <data name="Chat_Tasks_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Chat_Tasks_Summary" xml:space="preserve"><value>Suggested task summary</value></data>
 </root>

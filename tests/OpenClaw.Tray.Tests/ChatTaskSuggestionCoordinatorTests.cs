@@ -494,6 +494,48 @@ public sealed class ChatTaskSuggestionCoordinatorTests
         Assert.Null(fresh.Attempt);
     }
 
+    [Fact]
+    public async Task PresentationObservationRevisionsAdvanceOnInvalidationAndRestoreWithoutDispatch()
+    {
+        var custody = new ChatTaskSuggestionCustody(); custody.SelectGateway("gateway");
+        var gateway = new Gateway();
+        using var owner = new ChatTaskSuggestionCoordinator(gateway, custody: custody, gatewayId: "gateway");
+        var initial = owner.Snapshot();
+        owner.Start(); await owner.RefreshAsync();
+        var first = owner.Snapshot();
+        Assert.True(first.PresentationRevision > initial.PresentationRevision);
+        Assert.True(first.SnapshotRevision > initial.SnapshotRevision);
+        var held = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        gateway.Identity = () => held.Task;
+        gateway.InvalidateIdentity();
+        var invalidated = owner.Snapshot();
+        Assert.Empty(invalidated.Cards);
+        Assert.True(invalidated.PresentationRevision > first.PresentationRevision);
+        held.SetResult("verified-different-operator");
+        await owner.RefreshAsync();
+        var restored = owner.Snapshot();
+        Assert.Single(restored.Cards);
+        Assert.True(restored.PresentationRevision > invalidated.PresentationRevision);
+        Assert.True(restored.SnapshotRevision > invalidated.SnapshotRevision);
+        gateway.Identity = () => Task.FromResult<string?>("verified-different-operator");
+        gateway.InvalidateIdentity(); // Name/avatar edits may keep the operator identity.
+        await owner.RefreshAsync();
+        var sameOperator = owner.Snapshot();
+        Assert.True(sameOperator.PresentationRevision > restored.PresentationRevision);
+        await owner.RefreshAsync();
+        var unchanged = owner.Snapshot();
+        Assert.Equal(sameOperator.PresentationRevision, unchanged.PresentationRevision);
+        var concurrent = await Task.WhenAll(Enumerable.Range(0, 32).Select(_ => Task.Run(owner.Snapshot)));
+        Assert.Equal(32, concurrent.Select(snapshot => snapshot.SnapshotRevision).Distinct().Count());
+        Assert.All(concurrent, snapshot =>
+        {
+            Assert.True(snapshot.SnapshotRevision > unchanged.SnapshotRevision);
+            Assert.Equal(unchanged.PresentationRevision, snapshot.PresentationRevision);
+        });
+        Assert.True(owner.Snapshot().SnapshotRevision > concurrent.Max(snapshot => snapshot.SnapshotRevision));
+        Assert.Empty(gateway.Accepts); Assert.Equal(0, gateway.Dismissals);
+    }
+
     private sealed class Gateway : IChatTaskSuggestionGateway
     {
         public long? TaskConnectionEpoch { get; private set; } = 1;

@@ -10303,16 +10303,16 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
     <value>Starten in een nieuwe sessie</value>
   </data>
   <data name="Chat_Tasks_Options" xml:space="preserve">
-    <value>Startopties</value>
+    <value>Kiezen waar de taak wordt gestart</value>
   </data>
   <data name="Chat_Tasks_Session" xml:space="preserve">
-    <value>Starten in dit gesprek</value>
+    <value>Starten in deze sessie</value>
   </data>
   <data name="Chat_Tasks_Repository" xml:space="preserve">
     <value>Pad naar opslagplaats op Gateway</value>
   </data>
   <data name="Chat_Tasks_Worktree" xml:space="preserve">
-    <value>Starten in nieuwe werkboom</value>
+    <value>Starten in een nieuwe werkboom</value>
   </data>
   <data name="Chat_Tasks_CloudProfile" xml:space="preserve">
     <value>ID van ingesteld cloudprofiel</value>
@@ -10338,4 +10338,11 @@ Ga na inschrijving terug naar Instellingen &gt; Windows Update en controleer op 
   <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>Beheerderstoegang tot de Gateway is vereist om voorgestelde taken te starten.</value></data>
   <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>De taak kon niet worden afgewezen. Probeer het opnieuw.</value></data>
   <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>Voorgestelde taken vereisen een geverifieerde Gateway-operatoridentiteit. Controleer uw Gateway-toegang en probeer het opnieuw.</value></data>
+  <data name="Chat_Tasks_Eyebrow" xml:space="preserve"><value>Voorgestelde taak · in {0}</value></data>
+  <data name="Chat_Tasks_DismissTitle" xml:space="preserve"><value>{0} verbergen</value></data>
+  <data name="Chat_Tasks_Previous" xml:space="preserve"><value>Vorige voorgestelde taak</value></data>
+  <data name="Chat_Tasks_Next" xml:space="preserve"><value>Volgende voorgestelde taak</value></data>
+  <data name="Chat_Tasks_ChooseRepository" xml:space="preserve"><value>Repository kiezen</value></data>
+  <data name="Chat_Tasks_Cancel" xml:space="preserve"><value>Annuleren</value></data>
+  <data name="Chat_Tasks_Summary" xml:space="preserve"><value>Samenvatting van voorgestelde taak</value></data>
 </root>

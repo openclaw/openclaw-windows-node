@@ -801,6 +801,14 @@ public sealed class FixtureGatewayServer : IAsyncDisposable
         }
     }
 
+    /// <summary>Definite synthetic resolution for task-card/question-row layout proof.</summary>
+    public Task PublishTaskProofQuestionResolvedAsync(string id)
+    {
+        if (_scenario.TaskSuggestions is null) throw new InvalidOperationException("Task layout fixture required.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        return BroadcastAsync("question.resolved", new { id, status = "answered" });
+    }
+
     public Task NotifySessionsChangedAsync(CancellationToken cancellationToken = default) =>
         PublishEventAsync(new { type = "event", @event = "sessions.changed", payload = new { } }, cancellationToken);
 

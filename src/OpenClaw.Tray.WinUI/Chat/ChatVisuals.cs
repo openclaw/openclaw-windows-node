@@ -291,6 +291,10 @@ internal static class ChatVisuals
     internal const double DetailHorizontalInset = 12;
     internal const double DetailVerticalInset = 8;
     internal const double ActionIconSize = 14;
+    // Web task card geometry, ported with native theme surfaces and Windows-owned menu/focus.
+    internal const double TaskCardWidth = 450;
+    internal const double TaskCardMaximumHeight = 320;
+    internal const double TaskCardRadius = 16;
     internal const double ToolRowMinHeight = 32;
 
     /// <summary>

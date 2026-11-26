@@ -10302,10 +10302,10 @@
     <value>在新工作階段中啟動</value>
   </data>
   <data name="Chat_Tasks_Options" xml:space="preserve">
-    <value>啟動選項</value>
+    <value>選擇工作的啟動位置</value>
   </data>
   <data name="Chat_Tasks_Session" xml:space="preserve">
-    <value>在此對話中啟動</value>
+    <value>在此工作階段中啟動</value>
   </data>
   <data name="Chat_Tasks_Repository" xml:space="preserve">
     <value>閘道上的存放庫路徑</value>
@@ -10337,4 +10337,11 @@
   <data name="Chat_Tasks_AdministratorRequired" xml:space="preserve"><value>需要 Gateway 系統管理員權限才能啟動建議的工作。</value></data>
   <data name="Chat_Tasks_DismissFailed" xml:space="preserve"><value>無法關閉此工作。請再試一次。</value></data>
   <data name="Chat_Tasks_IdentityUnavailable" xml:space="preserve"><value>建議工作需要經過驗證的 Gateway 操作員身分。請檢查您的 Gateway 存取權限，然後再試一次。</value></data>
+  <data name="Chat_Tasks_Eyebrow" xml:space="preserve"><value>建議工作 · 在 {0} 中</value></data>
+  <data name="Chat_Tasks_DismissTitle" xml:space="preserve"><value>忽略 {0}</value></data>
+  <data name="Chat_Tasks_Previous" xml:space="preserve"><value>上一個建議工作</value></data>
+  <data name="Chat_Tasks_Next" xml:space="preserve"><value>下一個建議工作</value></data>
+  <data name="Chat_Tasks_ChooseRepository" xml:space="preserve"><value>選擇儲存庫</value></data>
+  <data name="Chat_Tasks_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Chat_Tasks_Summary" xml:space="preserve"><value>建議工作摘要</value></data>
 </root>

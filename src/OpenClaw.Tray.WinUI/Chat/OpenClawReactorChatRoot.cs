@@ -129,6 +129,11 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         }), (object?)dashboardBinding ?? this);
         var (viewportWidth, setViewportWidth) = UseState(800d);
         var (viewportHeight, setViewportHeight) = UseState(620d);
+        var (taskComposerHeight, setTaskComposerHeight) = UseState(ChatVisuals.ComposerMinHeight + ChatVisuals.ComposerBottomInset);
+        var (taskQuestionHeight, setTaskQuestionHeight) = UseState(0d);
+        var (taskPendingHeight, setTaskPendingHeight) = UseState(0d);
+        var (taskReviewHeight, setTaskReviewHeight) = UseState(0d);
+        var (taskPillHeight, setTaskPillHeight) = UseState(0d);
         var (collapsedQuestionId, setCollapsedQuestionId) = UseState<string?>(null);
         var questionsOwner = (props.Provider as OpenClawChatDataProvider)?.Questions;
         var (questionSnapshot, setQuestionSnapshot) = UseState(questionsOwner?.Snapshot(), threadSafe: true);
@@ -641,17 +646,31 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                     new(questionCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight,
                         collapsed => setCollapsedQuestionId(collapsed ? pendingQuestion?.Request.Id : null), questionCollapsed))
                 : Empty();
+        var composerAreaRef = this.UseElementRef<ChatMotionHost>();
+        var showWelcome = !props.Compact && mode == ReactorChatTimelineMode.Empty;
+        var taskWelcomeMode = UseRef(showWelcome);
+        taskWelcomeMode.Current = showWelcome;
+        var ensureTaskComposerVisible = UseMemo<Action>(() => () =>
+        {
+            if (taskWelcomeMode.Current && composerAreaRef.Current is { } area)
+                area.DispatcherQueue.TryEnqueue(() =>
+                {
+                    if (area.IsLoaded && taskWelcomeMode.Current
+                        && ChatMotion.FindByAutomationId(area, "ChatWritingSurface") is FrameworkElement writing)
+                        writing.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
+                });
+        }, Array.Empty<object>());
         var taskSuggestions = props.Provider is OpenClawChatDataProvider { TaskSuggestions: { } taskCoordinator }
             && effectiveThread is not null
                 ? Component<ReactorTaskSuggestionPanel, ReactorTaskSuggestionPanelProps>(
-                    new(taskCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight))
+                    new(taskCoordinator, effectiveThread.Id, effectiveThread.AgentId, viewportWidth, viewportHeight,
+                        taskComposerHeight + (showWelcome ? 24 : 0) + taskQuestionHeight + taskPendingHeight + taskReviewHeight + taskPillHeight,
+                        ensureTaskComposerVisible))
                 : Empty();
-        var showWelcome = !props.Compact && mode == ReactorChatTimelineMode.Empty;
         // The first send moves the composer from the centered welcome block to the bottom.
         // Measure its input box (the same control in both layouts, unlike the welcome block
         // around it) where it is now; after layout it slides from there, without moving focus.
         var composerContentRef = this.UseElementRef<Grid>();
-        var composerAreaRef = this.UseElementRef<ChatMotionHost>();
         var composerWasWelcome = UseRef(false);
         if (composerWasWelcome.Current && !showWelcome
             && composerContentRef.Current is { } composerContent && composerAreaRef.Current is { } composerScroller
@@ -662,7 +681,10 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
         // the control into a different parent would lose focus, caret and flyouts.
         var composerArea = ChatMotion.Host(ScrollViewer(
             Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto],
-                composerElement.WithKey("chat-composer").Grid(row: 0),
+                Border(composerElement.WithKey("chat-composer"))
+                    .OnMount(control => ObserveTaskReservedRow(control, setTaskComposerHeight, writingSurfaceOnly: true))
+                    .OnUnmount(StopObservingTaskReservedRow)
+                    .WithKey("chat-composer-intrinsic").Grid(row: 0),
                 showWelcome
                     ? ReactorChatWelcome.Secondary(
                             ChatWelcomePresentation.RecentChats(snapshot.Threads, effectiveThread?.Id, effectiveThread?.AgentId),
@@ -695,12 +717,15 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 : props.Compact
                     ? Border(timelineElement).Grid(row: 0)
                     : timelineElement.Grid(row: 0),
-            Border(VStack(0, taskSuggestions, questions)).WithKey("chat-question-area").Grid(row: 1),
+            Border(VStack(0, taskSuggestions, Border(questions)
+                .OnMount(control => ObserveTaskReservedRow(control, setTaskQuestionHeight)).OnUnmount(StopObservingTaskReservedRow))).WithKey("chat-question-area").Grid(row: 1),
             // A stable wrapper keeps the panel's own mount and unmount (and its fade) inside this slot.
             Border(ReactorChatPendingMessages.Render(timelineProps, viewportWidth, viewportHeight))
+                .OnMount(control => ObserveTaskReservedRow(control, setTaskPendingHeight)).OnUnmount(StopObservingTaskReservedRow)
                 .WithKey("chat-pending-messages").Grid(row: 2),
-            Component<ReactorChatProviderReview, ReactorChatProviderReviewProps>(
-                    new(isGatewayConnected ? effectiveThread?.ProviderReview : null, viewportWidth))
+            Border(Component<ReactorChatProviderReview, ReactorChatProviderReviewProps>(
+                    new(isGatewayConnected ? effectiveThread?.ProviderReview : null, viewportWidth)))
+                .OnMount(control => ObserveTaskReservedRow(control, setTaskReviewHeight)).OnUnmount(StopObservingTaskReservedRow)
                 .WithKey("chat-provider-review").Grid(row: 3),
             // Panel pills share one reading-width row; each pill hides itself when it has nothing to open.
             Border(HStack(6,
@@ -712,6 +737,7 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 .MaxWidth(ChatVisuals.ReadingWidth)
                 .Margin(ChatVisuals.Gutter(viewportWidth), 0, ChatVisuals.Gutter(viewportWidth), 0)
                 .HAlign(HorizontalAlignment.Stretch)
+                .OnMount(control => ObserveTaskReservedRow(control, setTaskPillHeight)).OnUnmount(StopObservingTaskReservedRow)
                 .WithKey("chat-panel-pills").Grid(row: 4),
             composerArea.Grid(row: 5))
             .Background(Theme.Ref("ChatCanvasBrush"))
@@ -722,8 +748,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             })
             .HAlign(HorizontalAlignment.Stretch)
             .VAlign(VerticalAlignment.Stretch)
-            .OnMount(control => ChatVisuals.Observe(control, setViewportWidth, setViewportHeight))
-            .OnUnmount(ChatVisuals.StopObserving);
+            .OnMount(control => ObserveConversationViewport(control, setViewportWidth, setViewportHeight))
+            .OnUnmount(StopObservingConversationViewport);
         var subagents = Component<ReactorChatSubagents, ReactorChatSubagentsProps>(new(subagentChildren, _panels));
         var files = Component<ReactorChatFiles, ReactorChatFilesProps>(
             new(_files, _files.Version, timelineProps.OnOpenWorkspaceFile));
@@ -733,6 +759,102 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
             new(conversation, _panels, props.ComposerSession.SetConversationVisible, timelineProps, subagents,
                 dashboardView, files,
                 nativeProvider is null ? null : nativeProvider.LoadWorkspaceFileAsync, launcher));
+    }
+
+    private sealed record ConversationViewportHandlers(SizeChangedEventHandler Size, RoutedEventHandler Loaded, EventHandler<object> Layout, Action Deactivate);
+    private static readonly ConditionalWeakTable<FrameworkElement, ConversationViewportHandlers> ConversationViewports = new();
+    private static void ObserveConversationViewport(FrameworkElement element, Action<double> widthChanged, Action<double> heightChanged)
+    {
+        var active = true;
+        var queued = false;
+        var previousWidth = double.NaN;
+        var previousHeight = double.NaN;
+        void Publish()
+        {
+            queued = false;
+            if (!active || !element.IsLoaded || element.ActualHeight <= 0) return;
+            var height = element.ActualHeight;
+            var slot = Microsoft.UI.Xaml.Controls.Primitives.LayoutInformation.GetLayoutSlot(element);
+            if (slot.Height > 0) height = Math.Min(height, slot.Height);
+            for (var parent = VisualTreeHelper.GetParent(element); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+                if (parent is FrameworkElement ancestor && ancestor.ActualHeight > 0) height = Math.Min(height, ancestor.ActualHeight);
+            if (element.XamlRoot is { } root) height = Math.Min(height, root.Size.Height);
+            // Auto rows can overflow their Star allocation. Their enlarged ActualHeight
+            // is not extra room for tasks and must never feed the reservation loop.
+            if (Math.Abs(element.ActualWidth - previousWidth) >= .25 || double.IsNaN(previousWidth))
+            { previousWidth = element.ActualWidth; widthChanged(previousWidth); }
+            if (Math.Abs(height - previousHeight) >= .25 || double.IsNaN(previousHeight))
+            { previousHeight = height; heightChanged(height); }
+        }
+        void Queue()
+        {
+            if (!active || queued) return;
+            queued = true;
+            if (!element.DispatcherQueue.TryEnqueue(Publish)) queued = false;
+        }
+        SizeChangedEventHandler size = (_, _) => Queue();
+        RoutedEventHandler loaded = (_, _) => Queue();
+        EventHandler<object> layout = (_, _) => Queue();
+        ConversationViewports.Add(element, new(size, loaded, layout, () => active = false));
+        element.SizeChanged += size; element.Loaded += loaded; element.LayoutUpdated += layout;
+        Queue();
+    }
+    private static void StopObservingConversationViewport(FrameworkElement element)
+    {
+        if (!ConversationViewports.TryGetValue(element, out var handlers)) return;
+        handlers.Deactivate();
+        element.SizeChanged -= handlers.Size; element.Loaded -= handlers.Loaded; element.LayoutUpdated -= handlers.Layout;
+        ConversationViewports.Remove(element);
+    }
+
+    private sealed record TaskReservedRowHandlers(SizeChangedEventHandler Size, RoutedEventHandler Loaded, Action Deactivate);
+    private static readonly ConditionalWeakTable<FrameworkElement, TaskReservedRowHandlers> TaskReservedRows = new();
+    private static void ObserveTaskReservedRow(FrameworkElement row, Action<double> changed, bool writingSurfaceOnly = false)
+    {
+        var previous = double.NaN;
+        var active = true;
+        var queued = false;
+        void Publish()
+        {
+            // Do not replace the intrinsic fallback with a mount-time zero. Later zeros
+            // still retract a previously visible auxiliary row after it collapses.
+            if (!active || !row.IsLoaded || (row.ActualHeight <= 0 && double.IsNaN(previous))) return;
+            var writing = writingSurfaceOnly ? ChatMotion.FindByAutomationId(row, "ChatWritingSurface") as FrameworkElement : null;
+            if (writingSurfaceOnly && row.ActualHeight <= 0 && !double.IsNaN(previous))
+            {
+                if (previous != 0) { previous = 0; changed(0); }
+                return;
+            }
+            if (writingSurfaceOnly && writing is not { ActualHeight: > 0 }) return;
+            var height = writingSurfaceOnly
+                ? writing!.ActualHeight + ChatVisuals.ComposerBottomInset + ChatVisuals.TurnGap
+                : row.ActualHeight + row.Margin.Top + row.Margin.Bottom;
+            if (Math.Abs(height - previous) < .25) return;
+            previous = height;
+            changed(height);
+        }
+        void QueuePublish()
+        {
+            if (!active || queued) return;
+            queued = true;
+            if (!row.DispatcherQueue.TryEnqueue(() => { queued = false; Publish(); })) queued = false;
+        }
+        // WinUI may raise the event before IsLoaded and final Auto-row geometry are
+        // visible. Publish on its dispatcher after that layout turn, not a pre-load zero.
+        SizeChangedEventHandler handler = (_, _) => QueuePublish();
+        RoutedEventHandler loaded = (_, _) => QueuePublish();
+        TaskReservedRows.Add(row, new(handler, loaded, () => active = false));
+        row.SizeChanged += handler;
+        row.Loaded += loaded;
+        QueuePublish();
+    }
+    private static void StopObservingTaskReservedRow(FrameworkElement row)
+    {
+        if (!TaskReservedRows.TryGetValue(row, out var handler)) return;
+        handler.Deactivate();
+        row.SizeChanged -= handler.Size;
+        row.Loaded -= handler.Loaded;
+        TaskReservedRows.Remove(row);
     }
 
     private static Element RenderLoading() =>
