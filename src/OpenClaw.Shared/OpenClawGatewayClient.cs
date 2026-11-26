@@ -149,6 +149,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     private readonly HandshakeChallengeGate _handshakeChallengeGate = new();
     private bool _protocolMismatch;
     private readonly bool _tokenIsBootstrapToken;
+    private readonly bool _proxyBearerOnly;
     private readonly bool _bootstrapPairAsNode;
     private readonly bool _ignoreStoredDeviceToken;
     private readonly bool _persistHandshakeDeviceTokens;
@@ -462,6 +463,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public Func<CancellationToken, Task<ReconnectAuthorizationResult>>?
         HandshakeAuthorizationAsync { get; set; }
 
+    protected override Task<ReconnectAuthorizationResult> AuthorizeProxyUpgradeAsync(
+        CancellationToken cancellationToken) =>
+        HandshakeAuthorizationAsync?.Invoke(cancellationToken)
+        ?? base.AuthorizeProxyUpgradeAsync(cancellationToken);
+
     // New events for agent events, pairing, and models
     public event EventHandler<AgentEventInfo>? AgentEventReceived;
     public event EventHandler<PairingListInfo>? NodePairListUpdated;
@@ -600,10 +606,12 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         HttpMessageHandler? assistantMediaHandler = null,
         DeviceTokenReceivedEventArgs? ephemeralOperatorCredential = null,
         bool useBoundedBootstrapScopes = false,
-        bool requireExistingIdentity = false)
-        : base(gatewayUrl, token, logger)
+        bool requireExistingIdentity = false,
+        bool proxyBearerOnly = false)
+        : base(gatewayUrl, token, logger, allowEmptyGatewayToken: proxyBearerOnly)
     {
         _tokenIsBootstrapToken = tokenIsBootstrapToken;
+        _proxyBearerOnly = proxyBearerOnly;
         _bootstrapPairAsNode = bootstrapPairAsNode;
         _ignoreStoredDeviceToken = ignoreStoredDeviceToken;
         _persistHandshakeDeviceTokens = persistHandshakeDeviceTokens;
@@ -2812,6 +2820,9 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             // as an explicit gateway token and therefore suppresses bootstrap pairing.
             return new BootstrapTokenConnectCredential(_token);
         }
+
+        if (_proxyBearerOnly && string.IsNullOrEmpty(_connectAuthToken))
+            return new ProxyAuthenticatedConnectCredential();
 
         return new TokenConnectCredential(_connectAuthToken);
     }
