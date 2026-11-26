@@ -7,7 +7,19 @@
     IsHitTestVisible="False"
     IsTabStop="False">
 
-    <Image x:Name="MarkImage"
-           Stretch="Uniform"
-           AutomationProperties.AccessibilityView="Raw"/>
+    <Grid>
+        <Image x:Name="MarkImage"
+               Stretch="Uniform"
+               AutomationProperties.AccessibilityView="Raw"/>
+        <!-- The dashboard's neutral mark (upstream neutral-mark-geometry.ts): a rounded square in the theme's
+             primary color with a prompt glyph, shown when the theme's brand icon is not the claw. -->
+        <Viewbox x:Name="ThemeMark" Stretch="Uniform" Visibility="Collapsed">
+            <Grid Width="120" Height="120">
+                <Border Margin="8" CornerRadius="28" Background="{ThemeResource AccentFillColorDefaultBrush}"/>
+                <Path Data="M40 42L62 60L40 78M68 80H88" StrokeThickness="11"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                      Stroke="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+            </Grid>
+        </Viewbox>
+    </Grid>
 </UserControl>
