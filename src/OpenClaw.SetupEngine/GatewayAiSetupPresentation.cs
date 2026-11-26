@@ -65,6 +65,7 @@ public static class GatewayAiSetupPresentation
         "claude-cli" or "claude-code" or "claude" or "anthropic" => "claude",
         "codex-cli" or "codex" or "openai" or "chatgpt" => "codex",
         "gemini-cli" or "gemini" or "googlegemini" or "google" => "gemini",
+        "llama-app" => "llama-app",
         "ollama" => "ollama",
         "lmstudio" or "lm-studio" => "lmstudio",
         "pi" => "pi",
