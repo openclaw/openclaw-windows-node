@@ -9,6 +9,7 @@
 
 using OpenClaw.Connection;
 using OpenClaw.Connection.LocalAi;
+using OpenClaw.Shared;
 using OpenClaw.Shared.Inference;
 using OpenClaw.Shared.Inference.Catalog;
 using OpenClawTray.Services;
@@ -151,7 +152,10 @@ internal sealed class LocalAiPageViewModel : INavigationAware, IDisposable, INot
         _ => "LocalAiPage_Gateway_Disconnected",
     };
 
-    public string? GatewayDetail => _gatewaySnapshot.GatewayName ?? _gatewaySnapshot.GatewayUrl;
+    public string? GatewayDetail => _gatewaySnapshot.GatewayName
+        ?? (_gatewaySnapshot.GatewayUrl is null
+            ? null
+            : GatewayUrlHelper.SanitizeForDisplay(_gatewaySnapshot.GatewayUrl));
     public string? ActionError => _actionError;
     /// <summary>
     /// A runtime action or model switch is running. Includes a switch started by another

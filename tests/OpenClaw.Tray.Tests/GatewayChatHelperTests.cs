@@ -119,6 +119,35 @@ public class GatewayChatHelperTests
 
     #region TryBuildChatUrl — error cases
 
+    [Theory]
+    [InlineData("ftp://user:synthetic-password@gateway.example:18789/proxy/chat?token=synthetic-query#synthetic-fragment", "Invalid gateway URL: ftp://gateway.example:18789/proxy/chat")]
+    [InlineData("wss://user:synthetic-password@bad host/proxy/chat?token=synthetic-query#synthetic-fragment", "Invalid gateway URL: wss://bad host/proxy/chat")]
+    [InlineData("not-a-url?token=synthetic-query#synthetic-fragment", "Invalid gateway URL: not-a-url")]
+    public void TryBuildChatUrl_InvalidUrlErrorHidesSecretsAndKeepsDiagnosticPath(string gatewayUrl, string expectedError)
+    {
+        var ok = GatewayChatUrlBuilder.TryBuildChatUrl(
+            gatewayUrl, "synthetic-chat-token", out var url, out var error);
+
+        Assert.False(ok);
+        Assert.Empty(url);
+        Assert.Equal(expectedError, error);
+    }
+
+    [Fact]
+    public void TryBuildChatUrl_DisplaySanitizationDoesNotChangeNavigationOrCredentials()
+    {
+        const string gatewayUrl = "wss://user:synthetic-password@gateway.example:18789/proxy/chat?token=synthetic-query#synthetic-fragment";
+
+        var ok = GatewayChatUrlBuilder.TryBuildChatUrl(
+            gatewayUrl, "synthetic token&value", out var url, out var error, "agent:main:main");
+
+        Assert.True(ok);
+        Assert.Empty(error);
+        Assert.Equal(
+            "https://gateway.example:18789/chat?token=synthetic%20token%26value&session=agent%3Amain%3Amain",
+            url);
+    }
+
     [Fact]
     public void TryBuildChatUrl_InvalidUrl_ReturnsFalse()
     {
