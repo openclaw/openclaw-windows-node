@@ -28,7 +28,11 @@
         <ScrollViewer Grid.Row="1" Margin="{StaticResource SetupBodyMargin}" IsTabStop="False"
                       HorizontalScrollBarVisibility="Disabled">
             <StackPanel Spacing="16" Margin="{StaticResource SetupGutterMargin}">
-                <StackPanel x:Name="StepsPanel" BorderThickness="0,1,0,0" BorderBrush="{ThemeResource SetupHairlineBrush}" />
+                <InfoBar x:Name="GatewayCleanupWarningBar" x:Uid="Onboarding_Native_GatewayCleanupWarning"
+                         IsOpen="False" IsClosable="False" Severity="Warning"
+                         AutomationProperties.LiveSetting="Assertive" />
+                <StackPanel x:Name="StepsPanel" Spacing="8" BorderThickness="0,1,0,0"
+                            BorderBrush="{ThemeResource SetupHairlineBrush}" />
                 <TextBlock x:Name="StatusText" TextWrapping="Wrap" IsTextSelectionEnabled="True"
                            Style="{StaticResource BodyTextBlockStyle}"
                            AutomationProperties.AutomationId="NativeGatewaySetupStatus"

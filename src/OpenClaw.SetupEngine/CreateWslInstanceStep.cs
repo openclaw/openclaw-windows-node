@@ -34,6 +34,7 @@ public sealed class CreateWslInstanceStep : SetupStep
     }
 
     private readonly IWslRegistrationInspector _registrationInspector;
+    private readonly Func<ICommandRunner, string, string, CancellationToken, Task<bool>> _registerCleanup;
     private bool _createdRegistrationThisAttempt;
     private bool _preserveRegistrationOnRollback;
 
@@ -42,13 +43,19 @@ public sealed class CreateWslInstanceStep : SetupStep
     public override bool CanRetry => false;
 
     public CreateWslInstanceStep()
-        : this(new WindowsWslRegistrationInspector())
+        : this(new WindowsWslRegistrationInspector(),
+            (commands, distro, installPath, ct) =>
+                GatewayPackageCleanup.RegisterAsync(commands, distro, installPath, ct: ct))
     {
     }
 
-    internal CreateWslInstanceStep(IWslRegistrationInspector registrationInspector)
+    internal CreateWslInstanceStep(
+        IWslRegistrationInspector registrationInspector,
+        Func<ICommandRunner, string, string, CancellationToken, Task<bool>>? registerCleanup = null)
     {
         _registrationInspector = registrationInspector ?? throw new ArgumentNullException(nameof(registrationInspector));
+        _registerCleanup = registerCleanup ?? ((commands, distro, installPath, ct) =>
+            GatewayPackageCleanup.RegisterAsync(commands, distro, installPath, ct: ct));
     }
 
     public override async Task<StepResult> ExecuteAsync(SetupContext ctx, CancellationToken ct)
@@ -117,7 +124,11 @@ public sealed class CreateWslInstanceStep : SetupStep
                 $"Fresh WSL install failed for '{distro}' from '{baseDistro}' (exit {install.ExitCode}): {FirstNonEmpty(install.Stderr, install.Stdout)}{cleanupError}");
         }
 
-        await GatewayPackageCleanup.RegisterAsync(ctx.Commands, distro, installPath, ct: ct);
+        if (!await _registerCleanup(ctx.Commands, distro, installPath, ct))
+        {
+            ctx.Logger.Warn(GatewayPackageCleanup.CleanupUnavailableWarning);
+            ctx.ShowGatewayCleanupUnavailableWarning?.Invoke();
+        }
 
         var verify = await VerifyFreshDistro(ctx, distro, installPath, ct);
         if (!verify.Result.IsSuccess)

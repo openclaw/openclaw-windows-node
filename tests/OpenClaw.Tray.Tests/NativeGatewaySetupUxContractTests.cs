@@ -147,6 +147,46 @@ public sealed class NativeGatewaySetupUxContractTests
     }
 
     [Fact]
+    public void CleanupRegistrationWarning_IsVisibleInBothSetupRoutesAndLocalized()
+    {
+        var root = TestRepositoryPaths.GetRepositoryRoot();
+        var pages = Path.Combine(root, "src", "OpenClaw.SetupEngine.UI", "Pages");
+        var progressSource = File.ReadAllText(Path.Combine(pages, "ProgressPage.xaml.cs"));
+        var nativeSource = File.ReadAllText(Path.Combine(pages, "NativeGatewaySetupPage.xaml.cs"));
+        Assert.Contains("ctx.ShowGatewayCleanupUnavailableWarning = ShowGatewayCleanupUnavailableWarning", progressSource);
+        Assert.Contains("GatewayCleanupWarningBar.IsOpen = true", progressSource);
+        Assert.Contains("GatewayCleanupWarningBar.IsOpen = true", nativeSource);
+
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        foreach (var (file, uid) in new[]
+                 {
+                     ("ProgressPage.xaml", "Onboarding_GatewayCleanupWarning"),
+                     ("NativeGatewaySetupPage.xaml", "Onboarding_Native_GatewayCleanupWarning"),
+                 })
+        {
+            var document = XDocument.Load(Path.Combine(pages, file));
+            Assert.Contains(document.Descendants(), element =>
+                (string?)element.Attribute(xaml + "Name") == "GatewayCleanupWarningBar" &&
+                (string?)element.Attribute(xaml + "Uid") == uid &&
+                (string?)element.Attribute("Severity") == "Warning");
+        }
+
+        var strings = Path.Combine(root, "src", "OpenClaw.Tray.WinUI", "Strings");
+        var warningKeys = new[] { "Onboarding_GatewayCleanupWarning", "Onboarding_Native_GatewayCleanupWarning" };
+        foreach (var path in Directory.GetFiles(strings, "Resources.resw", SearchOption.AllDirectories))
+        {
+            var resources = XDocument.Load(path).Descendants("data")
+                .ToDictionary(element => (string)element.Attribute("name")!,
+                    element => element.Element("value")?.Value);
+            foreach (var key in warningKeys)
+            {
+                Assert.False(string.IsNullOrWhiteSpace(resources[key + ".Title"]));
+                Assert.False(string.IsNullOrWhiteSpace(resources[key + ".Message"]));
+            }
+        }
+    }
+
+    [Fact]
     public void HttpSurfaces_UseSharedNativeAwareAuthorizerInsteadOfWslOnlyGate()
     {
         var root = TestRepositoryPaths.GetRepositoryRoot();
