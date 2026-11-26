@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- CI: normalize each job's checkout for GitVersion once before building, so parallel project builds no longer fail reading `.git/config` or `.git/HEAD` while GitVersion 7 rewrites them.
 - Build: migrate GitVersion tooling, configuration, and CLI calls together to 7.0.1, retaining the tagged-release and alpha version checks and opting out of build-tool telemetry.
 - CI: batch main CodeQL scans every six hours while preserving PR, master, tag, and manual scans; include attribute-only changes in PR and master scanning, and restore fork PR scans by retiring the completed setup-migration gate.
 - Change the Local AI model directly on the Local AI page instead of rerunning setup: pick a catalog model that fits this PC or paste a public Hugging Face GGUF (`owner/repo`, `owner/repo:Q4_K_M`, a file path including a repository subfolder, or a link). Custom models are pinned to a commit and SHA-256, sized from their GGUF header, and confirmed before switching when they may not fit. A nested GGUF installs into the same subfolder as the hub cache. A failed start restores the previous model. Settings gains a Model section with a new Default model page for choosing the Gateway's default model, including Local AI. The page shows the model new chats actually use, and choosing one also replaces the model Gateway setup saved for the default agent, so new chats follow it.

@@ -232,6 +232,17 @@ MSBuild properties to keep the selected checkout and avoid fetching. Branch,
 PR merge-ref, and merge-queue builds keep normalization enabled. Promotion
 source selection and checkout-only stable tags are unchanged.
 
+GitVersion.MsBuild runs GitVersion once per project, and parallel project builds
+would otherwise each normalize the checkout. GitVersion 7 normalizes with one
+`git` process per branch and configuration change, which rewrites `.git/config`
+and `.git/HEAD` for minutes while sibling builds read them. Windows rejects those
+reads ("being used by another process"). Before their first build, CI and CodeQL
+jobs therefore run `scripts\Initialize-GitVersionCheckout.ps1`. It normalizes
+once with the pinned GitVersion tool, then sets `GitVersion_NoNormalizeEnabled`
+and `GitVersion_NoFetchEnabled` for the remaining steps, so project builds only
+read the prepared checkout. It does nothing when normalization is already
+disabled, so tagged builds and promotions keep their selected source.
+
 `scripts\test-release-branch-versioning.ps1` exercises the real pinned
 GitVersion.MsBuild package and metadata tool in disposable repositories. It
 checks retries with a release tag and annotated MSIX reservation at the same

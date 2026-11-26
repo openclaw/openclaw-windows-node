@@ -553,6 +553,15 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - &normalize-gitversion-checkout
+      name: Normalize checkout for GitVersion once
+      # GitVersion 7 normalizes with one git process per ref and rewrites .git/config and
+      # .git/HEAD while parallel project builds read them. Normalize once, before any build.
+      # Tag and promotion runs keep their selected source; promotion sources may predate the script.
+      if: env.GitVersion_NoNormalizeEnabled != 'true'
+      shell: pwsh
+      run: ./scripts/Initialize-GitVersionCheckout.ps1
+
     - name: Configure core NuGet cache
       # Keep the core graph out of the repository-wide NuGet cache used by every other lane.
       shell: pwsh
@@ -675,6 +684,8 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - *normalize-gitversion-checkout
+
     # Reactor can have different package bytes under the same version.
     # Include its bootstrap in both cache keys so fallback cannot restore the old source.
     - name: Cache NuGet packages
@@ -778,6 +789,8 @@ jobs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 10.0.x
+
+    - *normalize-gitversion-checkout
 
     - name: Cache NuGet packages
       continue-on-error: true
@@ -1036,6 +1049,8 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - *normalize-gitversion-checkout
+
     - name: Cache NuGet packages
       continue-on-error: true
       uses: actions/cache/restore@v6
@@ -1154,6 +1169,8 @@ jobs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 10.0.x
+
+    - *normalize-gitversion-checkout
 
     - name: Cache NuGet packages
       continue-on-error: true
@@ -1376,6 +1393,8 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - *normalize-gitversion-checkout
+
     - name: Cache NuGet packages
       continue-on-error: true
       uses: actions/cache/restore@v6
@@ -1502,6 +1521,12 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - name: Normalize checkout for GitVersion once
+      # Same as the shared normalize-gitversion-checkout step, but only when tests were selected.
+      if: ${{ steps.select.outputs.has_tests == 'true' && env.GitVersion_NoNormalizeEnabled != 'true' }}
+      shell: pwsh
+      run: ./scripts/Initialize-GitVersionCheckout.ps1
+
     - name: Cache NuGet packages
       if: ${{ steps.select.outputs.has_tests == 'true' }}
       continue-on-error: true
@@ -1609,6 +1634,8 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - *normalize-gitversion-checkout
+
     - name: Cache NuGet packages
       continue-on-error: true
       uses: actions/cache/restore@v6
@@ -1688,6 +1715,8 @@ jobs:
       uses: actions/setup-dotnet@v6
       with:
         dotnet-version: 10.0.x
+
+    - *normalize-gitversion-checkout
 
     - name: Cache NuGet packages
       continue-on-error: true
@@ -1769,6 +1798,8 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - *normalize-gitversion-checkout
+
     - name: Cache NuGet packages
       continue-on-error: true
       uses: actions/cache/restore@v6
@@ -1833,6 +1864,8 @@ jobs:
     - uses: actions/setup-dotnet@v6
       with:
         global-json-file: global.json
+
+    - *normalize-gitversion-checkout
 
     - name: Build AnyCPU cleanup host
       run: dotnet build src/OpenClaw.GatewayCleanupHost -c Release -o signing-cleanup-host
@@ -1938,6 +1971,8 @@ jobs:
       with:
         dotnet-version: 10.0.x
 
+    - *normalize-gitversion-checkout
+
     - name: Cache NuGet packages
       continue-on-error: true
       uses: actions/cache/restore@v6
@@ -2034,6 +2069,8 @@ jobs:
         DOTNET_GCgen0size: '4000000'
       with:
         dotnet-version: 10.0.x
+
+    - *normalize-gitversion-checkout
 
     - name: Cache NuGet packages
       continue-on-error: true
@@ -2141,6 +2178,8 @@ jobs:
         DOTNET_GCgen0size: '4000000'
       with:
         global-json-file: global.json
+
+    - *normalize-gitversion-checkout
 
     - name: Cache NuGet packages
       continue-on-error: true
