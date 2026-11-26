@@ -440,6 +440,104 @@ public sealed class GatewayThemeRestoreTests(UIThreadFixture ui)
         return (SolidColorBrush)fluent[key];
     }
 
+    // Controls take the corner radii of the theme in effect at startup, before the first control exists, and keep them
+    // for the session: WinUI resolves a control style's radius once, so a later switch would reshape some control types
+    // and not others. High Contrast at startup keeps Fluent's geometry.
+    [Fact]
+    public async Task ControlsKeepTheCornerRadiiDecidedAtStartup()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(() =>
+        {
+            var previous = Application.Current.Resources;
+            var highContrast = ChatThemeChanges.IsHighContrast;
+            var crt = BuiltinGatewayThemes.All.Single(theme => theme.Id == "crt");
+            try
+            {
+                Application.Current.Resources = FreshProductionResources();
+                var fluent = ((CornerRadius)Application.Current.Resources["ControlCornerRadius"]).TopLeft;
+                ChatThemeChanges.IsHighContrast = static () => true;
+                new AppThemeApplicator().DecideControlGeometry(crt, ThemeColorMode.Light);
+                Assert.Equal(fluent, RenderedButtonRadius());
+
+                Application.Current.Resources = FreshProductionResources();
+                ChatThemeChanges.IsHighContrast = static () => false;
+                var applicator = new AppThemeApplicator();
+                applicator.DecideControlGeometry(crt, ThemeColorMode.Light);
+                Assert.Equal(crt.Light!.Radii.Small, RenderedButtonRadius());
+                Assert.Equal(crt.Light.Radii.Medium, ((CornerRadius)Application.Current.Resources["OverlayCornerRadius"]).TopLeft);
+
+                applicator.DecideControlGeometry(null, ThemeColorMode.Light);
+                // A later theme with other radii changes neither the session's keys nor a control type created after it.
+                var claw = BuiltinGatewayThemes.All.Single(theme => theme.Id == "claw");
+                Assert.NotEqual(crt.Light.Radii.Small, claw.Light!.Radii.Small);
+                Assert.True(applicator.Apply(claw));
+                Assert.Equal(crt.Light.Radii.Small, ((CornerRadius)Application.Current.Resources["ControlCornerRadius"]).TopLeft);
+                Assert.Equal(crt.Light.Radii.Medium, ((CornerRadius)Application.Current.Resources["OverlayCornerRadius"]).TopLeft);
+                var combo = new ComboBox();
+                ui.Container.Children.Add(new Border { RequestedTheme = AppMode().Theme, Child = combo });
+                combo.UpdateLayout();
+                Assert.Equal(crt.Light.Radii.Small, combo.CornerRadius.TopLeft);
+                Assert.True(applicator.Apply(null));
+                Assert.Equal(crt.Light.Radii.Small, ((CornerRadius)Application.Current.Resources["ControlCornerRadius"]).TopLeft);
+                Assert.Equal(crt.Light.Radii.Small, RenderedButtonRadius());
+            }
+            finally
+            {
+                ChatThemeChanges.IsHighContrast = highContrast;
+                Application.Current.Resources = previous;
+                ui.Container.Children.Clear();
+            }
+        });
+    }
+
+    // Writing the other mode's WinUI theme dictionary before that mode renders binds its brush aliases to the app mode's
+    // brushes (a dark Hub on light Windows showed light buttons, combo boxes and Settings background), so controls of
+    // that mode keep Fluent's radii and their own colors.
+    [Fact]
+    public async Task ControlsInTheOtherModeKeepFluentRadiiAndTheirOwnColors()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(() =>
+        {
+            var previous = Application.Current.Resources;
+            var highContrast = ChatThemeChanges.IsHighContrast;
+            try
+            {
+                Application.Current.Resources = FreshProductionResources();
+                ChatThemeChanges.IsHighContrast = static () => false;
+                var (appTheme, appMode) = AppMode();
+                var otherTheme = appTheme == ElementTheme.Light ? ElementTheme.Dark : ElementTheme.Light;
+                var fluent = ((CornerRadius)Application.Current.Resources["ControlCornerRadius"]).TopLeft;
+                var crt = BuiltinGatewayThemes.All.Single(theme => theme.Id == "crt");
+                Assert.NotEqual(fluent, crt.PaletteFor(appMode).Radii.Small);
+
+                new AppThemeApplicator().DecideControlGeometry(crt, appMode);
+
+                Assert.Equal(crt.PaletteFor(appMode).Radii.Small, RenderedButtonRadius(appTheme));
+                Assert.Equal(fluent, RenderedButtonRadius(otherTheme));
+                Assert.Same(RenderedBrush(otherTheme, "LayerFillColorDefaultBrush"), RenderedBrush(otherTheme, "NavigationViewContentBackground"));
+                Assert.Equal(FunctionalTheme.ResolveColor("ControlFillColorDefault", otherTheme), Rendered(otherTheme, "ButtonBackground"));
+            }
+            finally
+            {
+                ChatThemeChanges.IsHighContrast = highContrast;
+                Application.Current.Resources = previous;
+                ui.Container.Children.Clear();
+            }
+        });
+    }
+
+    // Without a theme the probe renders in the app's own mode, whichever mode an earlier test left the container in.
+    private double RenderedButtonRadius(ElementTheme? theme = null)
+    {
+        var button = new Button { Content = "Radius probe" };
+        ui.Container.Children.Add(new Border { RequestedTheme = theme ?? AppMode().Theme, Child = button });
+        button.ApplyTemplate();
+        button.UpdateLayout();
+        return button.CornerRadius.TopLeft;
+    }
+
     private static ResourceDictionary FreshProductionResources() =>
         (ResourceDictionary)Microsoft.UI.Xaml.Markup.XamlReader.Load(
             TestAppResourceLoader.LoadProductionMarkup(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT")).ToString());

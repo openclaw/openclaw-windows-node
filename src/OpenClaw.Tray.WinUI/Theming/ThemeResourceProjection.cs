@@ -28,6 +28,18 @@ internal sealed record ThemeProjection(
 internal static class ThemeResourceProjection
 {
     /// <summary>
+    /// WinUI corner-radius keys for a theme's geometry: controls take the Control UI's small radius and flyouts,
+    /// menus and dialogs its medium one. The Control UI's 10px control radius is not used for WinUI controls, where
+    /// it would turn a 20px CheckBox into a circle.
+    /// </summary>
+    public static IReadOnlyDictionary<string, double> CornerRadii(ThemeRadii radii) =>
+        new Dictionary<string, double>(StringComparer.Ordinal)
+        {
+            ["ControlCornerRadius"] = radii.Small,
+            ["OverlayCornerRadius"] = radii.Medium,
+        };
+
+    /// <summary>
     /// App theme-dictionary brushes whose color or gradient stops are a {ThemeResource SystemAccentColor*} shade.
     /// Only these follow the theme's accent ramp and the Windows accent after the theme is cleared; a fixed brush
     /// that merely equals an accent shade keeps its own color. Must match the XAML (GatewayThemeSettingsTests).

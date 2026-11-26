@@ -225,6 +225,86 @@ public sealed class GatewayThemeTypographyTests(UIThreadFixture ui)
         });
     }
 
+    // Native controls can outlive their managed wrappers. Reacquire the code, table and header after collection
+    // so the assertions do not keep the corner registrations alive themselves.
+    [Fact]
+    public async Task MountedChatCornersFollowEveryThemeSwitch()
+    {
+        await ui.ResetContainerAsync();
+        await ui.RunOnUIAsync(async () =>
+        {
+            using var resources = new ChatThemeProofScope("Dark");
+            var applicator = new AppThemeApplicator();
+            var highContrast = ChatThemeChanges.IsHighContrast;
+            ReactorHostControl? host = null;
+            try
+            {
+                ChatThemeChanges.IsHighContrast = static () => false;
+                ChatVisuals.SetCornerScale(1);
+                var entry = new ChatTimelineItem("corner-proof", ChatTimelineItemKind.Assistant,
+                    "```powershell\nnpm test\n```\n\n| a | b |\n|---|---|\n| 1 | 2 |");
+                host = new ReactorHostControl();
+                host.Mount(_ => Component<ReactorChatTimeline, ReactorChatTimelineProps>(new(ReactorChatTimelineMode.Timeline,
+                    new ChatTimelinePresentationContext("corner-proof", [entry], false, null))));
+                ui.Container.Children.Add(new Border { Child = host, Width = 480, Height = 320 });
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => HasCorners(host, 10, 8, 7),
+                    "Code block and table rendered with Fluent radii");
+                CollectWrappers();
+
+                var crt = BuiltinGatewayThemes.All.Single(theme => theme.Id == "crt");
+                Assert.True(applicator.Apply(crt));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => HasCorners(host, 2.5, 2, 1),
+                    "Mounted code block and table take CRT's corner scale");
+                CollectWrappers();
+
+                ChatThemeChanges.IsHighContrast = static () => true;
+                Assert.True(applicator.Apply(crt));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => HasCorners(host, 10, 8, 7),
+                    "High Contrast keeps Fluent's radii");
+
+                ChatThemeChanges.IsHighContrast = static () => false;
+                Assert.True(applicator.Apply(crt));
+                Assert.True(applicator.Apply(null));
+                await TestSupport.WaitForRenderedConditionAsync(
+                    () => HasCorners(host, 10, 8, 7),
+                    "Windows default gives Fluent's radii back");
+            }
+            finally
+            {
+                ChatThemeChanges.IsHighContrast = highContrast;
+                applicator.Apply(null);
+                host?.Dispose();
+                ui.Container.Children.Clear();
+            }
+        });
+
+        static void CollectWrappers()
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        static bool HasCorners(DependencyObject root, double codeRadius, double tableRadius, double headerRadius)
+        {
+            var borders = TestSupport.FindDescendants<Border>(root);
+            var code = borders.FirstOrDefault(border =>
+                Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(border) == "powershell");
+            var table = borders.FirstOrDefault(border =>
+                border.Child is Grid { ColumnDefinitions.Count: 2, RowDefinitions.Count: 2 } grid &&
+                grid.Children.OfType<Border>().Any(child => Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(child) == 2));
+            var header = (table?.Child as Grid)?.Children.OfType<Border>()
+                .FirstOrDefault(child => Microsoft.UI.Xaml.Controls.Grid.GetColumnSpan(child) == 2);
+            return code?.CornerRadius == new CornerRadius(codeRadius) &&
+                table?.CornerRadius == new CornerRadius(tableRadius) &&
+                header?.CornerRadius == new CornerRadius(headerRadius, headerRadius, 0, 0);
+        }
+    }
+
     // File content, tool details and notice names set the code font outside the Markdown restyle pass, and a theme
     // switch does not re-render them, so before they kept the previous theme's font while they stayed mounted.
     [Fact]

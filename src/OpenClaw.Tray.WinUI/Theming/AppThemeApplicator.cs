@@ -52,6 +52,8 @@ internal sealed class AppThemeApplicator
     private static readonly UISettings s_uiSettings = new();
     private bool _appliedInHighContrast;
     private (string Body, string Chat, string Mono) _fonts;
+    private ThemeRadii? _radii;
+    private bool _controlGeometryDecided;
     private int _readOnlyBrushes;
 
     /// <summary>Whether a brush's color can be set; tests substitute it to simulate a read-only framework brush.</summary>
@@ -63,6 +65,47 @@ internal sealed class AppThemeApplicator
     public ResolvedTheme? Current { get; private set; }
 
     /// <summary>
+    /// Gives WinUI controls the theme's corner radii (ControlCornerRadius, OverlayCornerRadius) for the rest of the
+    /// session. Only the first call has an effect: a Fluent control style resolves its radius when the first control of
+    /// that type is created and keeps it, so a later change would reshape some control types and not others. Call it
+    /// once at startup, before any window exists. Windows default and High Contrast keep Fluent's geometry, and so do
+    /// windows whose App theme differs from Windows' mode (see <see cref="Replace"/> for why the other mode's dictionary
+    /// is never written); chat surfaces follow every switch through <see cref="Apply"/>.
+    /// </summary>
+    public void DecideControlGeometry(ResolvedTheme? theme, ThemeColorMode mode)
+    {
+        if (_controlGeometryDecided)
+            return;
+        _controlGeometryDecided = true;
+        if (theme is null || ChatThemeChanges.IsHighContrast())
+        {
+            Logger.Info("[Themes] Controls keep Fluent's corner radii this session.");
+            return;
+        }
+        var resources = Application.Current.Resources;
+        // A Fluent control style resolves its radius in XamlControlsResources' own theme dictionaries, so that's where
+        // the value has to go; an application-root key doesn't reach those styles. Only the app mode's dictionary is
+        // written: writing the other mode's binds its brush aliases to the app mode's brushes.
+        List<ResourceDictionary> targets = FluentThemeDictionary(resources, AppModeThemeKey()) is { } fluent ? [fluent] : [resources];
+        foreach (var (key, radius) in ThemeResourceProjection.CornerRadii(theme.PaletteFor(mode).Radii))
+        {
+            foreach (var target in targets)
+            {
+                try
+                {
+                    target[key] = new CornerRadius(radius);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warn($"[Themes] Setting {key} failed: {ex.GetType().Name} 0x{ex.HResult:X8} {ex.Message}");
+                }
+            }
+        }
+        Logger.Info($"[Themes] Controls take theme {theme.Id}'s corner radii this session in windows of the app's " +
+            $"{Application.Current.RequestedTheme} mode; windows of the other mode keep Fluent's.");
+    }
+
+    /// <summary>
     /// Applies <paramref name="theme"/> (null restores Fluent). Returns false when nothing changed.
     /// Call again when Windows colors or the effective light/dark mode change so High Contrast, accent and
     /// the mode's fonts are honoured. Fonts are application-wide, so they come from <paramref name="fontMode"/>'s palette.
@@ -71,7 +114,9 @@ internal sealed class AppThemeApplicator
     {
         var highContrast = ChatThemeChanges.IsHighContrast();
         var fonts = theme is null ? default : FontsFor(theme, fontMode);
-        if (Equals(theme, Current) && (theme is null || (highContrast == _appliedInHighContrast && fonts == _fonts)))
+        // Chat geometry is application-wide like fonts; High Contrast keeps the Windows geometry.
+        var radii = theme is null || highContrast ? null : theme.PaletteFor(fontMode).Radii;
+        if (Equals(theme, Current) && (theme is null || (highContrast == _appliedInHighContrast && fonts == _fonts && radii == _radii)))
         {
             if (theme is null)
                 FollowWindowsAccent();
@@ -81,6 +126,8 @@ internal sealed class AppThemeApplicator
         Current = theme;
         _appliedInHighContrast = highContrast;
         _fonts = fonts;
+        _radii = radii;
+        ChatVisuals.SetCornerScale(radii?.Scale ?? 1);
         if (theme is null)
         {
             ChatVisuals.SetThemeFonts(null, null);

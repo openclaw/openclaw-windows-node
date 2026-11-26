@@ -90,7 +90,7 @@ internal static class ChatAssistantMediaRenderer
             .Center();
         var glyphBackground = Border(glyph)
             .Size(36, 36)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .Background(Theme.Ref("SubtleFillColorSecondaryBrush"));
         var title = TextBlock(displayName)
             .FontSize(13)
@@ -122,7 +122,7 @@ internal static class ChatAssistantMediaRenderer
 
         return Border(body)
             .Padding(10, 8)
-            .CornerRadius(10)
+            .ThemedCorner(10)
             .Background(Theme.Ref("SubtleFillColorTertiaryBrush"))
             .BorderBrush(Theme.Ref("ControlStrokeColorDefaultBrush"))
             .BorderThickness(1)
@@ -374,7 +374,7 @@ internal sealed class ChatAssistantImageCard : Component<ChatAssistantImageCardP
                 Stretch = Stretch.Uniform,
             })
             .Size(pixelWidth * scale, pixelHeight * scale)
-            .CornerRadius(10)
+            .ThemedCorner(10)
             .AutomationName(media.Alt ?? ChatAssistantMediaRenderer.DisplayName(media));
         return Button(preview, openViewer)
             .Padding(0)
