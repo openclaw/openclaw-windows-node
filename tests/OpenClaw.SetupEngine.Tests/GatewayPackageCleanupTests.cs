@@ -532,6 +532,172 @@ public sealed class GatewayPackageCleanupTests
             Assert.Contains("registration could not be confirmed", output.RootElement.GetProperty("Failure").GetString());
     }
 
+    [Theory]
+    [InlineData("removed", true, true)]
+    [InlineData("not-configured", true, true)]
+    [InlineData("failed", true, false)]
+    [InlineData("nonzero", true, false)]
+    [InlineData("malformed", true, false)]
+    [InlineData("string-ok", true, false)]
+    [InlineData("wrong-command", true, false)]
+    [InlineData("wrong-gateway-state", true, false)]
+    [InlineData("wrong-session-state", true, false)]
+    [InlineData("timeout", true, false)]
+    [InlineData("missing-cli", false, false)]
+    [InlineData("foreign-publisher", false, false)]
+    [InlineData("foreign-family", false, false)]
+    [InlineData("shared", false, false)]
+    [InlineData("replaced-marker", false, false)]
+    [InlineData("replaced-during-teardown", true, false)]
+    [InlineData("shared-during-teardown", true, false)]
+    [InlineData("remove-failed", true, false)]
+    public async Task Worker_RemovesOwnedPackageOnlyAfterConfirmedTeardown(
+        string scenario, bool teardownInvoked, bool removed)
+    {
+        Assert.True(OperatingSystem.IsWindows(), "Worker contract proof requires Windows PowerShell 5.1.");
+        using var temp = new TempDirectory();
+        using var source = typeof(GatewayPackageCleanup).Assembly.GetManifestResourceStream(
+            "OpenClaw.SetupEngine.GatewayPackageCleanup.ps1");
+        Assert.NotNull(source);
+        using (var reader = new StreamReader(source))
+            File.WriteAllText(temp.Combine("worker.ps1"), await reader.ReadToEndAsync());
+        File.WriteAllText(temp.Combine("scenario.txt"), scenario);
+        var owned = JsonSerializer.Serialize(new
+        {
+            OwnNativePackage = true, NativeFamily = "fixture.native", NativeInstallationId = "owned",
+            InstallationId = "removed-companion", RegisteredUtc = "2026-11-01T00:00:00Z"
+        });
+        File.WriteAllText(temp.Combine("owned.json"), owned);
+        var harness = temp.Combine("native-cleanup-test.ps1");
+        File.WriteAllText(harness, """
+            $ErrorActionPreference = 'Stop'
+            $root = $PSScriptRoot
+            $recordPath = Join-Path $root 'owned.json'
+            $scenario = Get-Content (Join-Path $root 'scenario.txt') -Raw
+            $Family = 'fixture.companion'
+            $sentinel = Join-Path $root 'absent-companion-marker'
+            $taskName = 'fixture-cleanup-task'
+            $Register = $false; $Preserve = $false
+            $lock = [IO.MemoryStream]::new()
+            $events = [Collections.Generic.List[string]]::new()
+            $tokens = $null; $errors = $null
+            $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+                (Join-Path $root 'worker.ps1'), [ref]$tokens, [ref]$errors)
+            if ($errors.Count) { throw 'Worker parsing failed.' }
+            # Execute the real worker's cleanup/error/finalization flow, not a copied ordering.
+            foreach ($name in @('Assert-ValidRemovalReceipt', 'Record-Removal', 'Invoke-NativeGatewayTeardown')) {
+                $function = $ast.Find({ param($n)
+                    $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name
+                }, $true)
+                if ($function) { . ([scriptblock]::Create($function.Extent.Text)) }
+            }
+            $worker = @($ast.EndBlock.Statements | Where-Object {
+                $_ -is [System.Management.Automation.Language.TryStatementAst]
+            })
+            if ($worker.Count -ne 1) { throw 'Expected one worker cleanup boundary.' }
+            function Test-PackageRemovedSince { return $true }
+            function Test-Path {
+                param([Alias('LiteralPath')][string]$Path, [string]$PathType)
+                if ($Path.EndsWith('companion-cleanup-owner.txt')) { return $true }
+                if ($Path.EndsWith('clawctl.exe')) { return $scenario -ne 'missing-cli' }
+                Microsoft.PowerShell.Management\Test-Path -LiteralPath $Path
+            }
+            function Get-Content {
+                param([Alias('LiteralPath')][string]$Path, [switch]$Raw)
+                if ($Path.EndsWith('companion-cleanup-owner.txt')) {
+                    if ($scenario -eq 'replaced-marker') { return 'replacement' }
+                    return 'owned'
+                }
+                Microsoft.PowerShell.Management\Get-Content -LiteralPath $Path -Raw
+            }
+            function Get-AppxPackage {
+                param([string]$Name, [string]$PackageTypeFilter)
+                $afterTeardown = $events.Contains('teardown')
+                [pscustomobject]@{
+                    Name = 'OpenClawFoundation.OpenClawGateway'
+                    Publisher = $(if ($scenario -eq 'foreign-publisher') { 'other' } else { 'CN=4BA40A7A-B719-4C40-BF91-84AF4F1136FC' })
+                    PackageFamilyName = $(if ($scenario -eq 'foreign-family') { 'other.family' } else { 'fixture.native' })
+                    PackageFullName = $(if ($scenario -eq 'replaced-during-teardown' -and $afterTeardown) { 'replacement-package' } else { 'owned-package' })
+                }
+                if (-not $Name -and ($scenario -eq 'shared' -or ($scenario -eq 'shared-during-teardown' -and $afterTeardown))) {
+                    [pscustomobject]@{ Name = 'OpenClawFoundation.OpenClaw.Dev'; PackageFamilyName = 'other.companion' }
+                }
+            }
+            function Invoke-NativeTeardownCommand([string]$alias) {
+                $expected = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Microsoft\WindowsApps\fixture.native\clawctl.exe'
+                if ($alias -ne $expected) { throw 'Teardown was not package-qualified.' }
+                $events.Add('teardown')
+                if ($scenario -eq 'timeout') { throw 'Native Gateway teardown timed out; its outcome is unconfirmed. Cleanup remains pending.' }
+                $result = @{ ok = $true; command = 'teardown'; gateway = @{ state = 'records-removed' }; session = @{ state = 'removed' } }
+                switch ($scenario) {
+                    'not-configured' { $result.session.state = 'not-configured' }
+                    'failed' { $result.ok = $false }
+                    'string-ok' { $result.ok = 'true' }
+                    'wrong-command' { $result.command = 'status' }
+                    'wrong-gateway-state' { $result.gateway.state = 'running' }
+                    'wrong-session-state' { $result.session.state = 'ready' }
+                }
+                [pscustomobject]@{
+                    ExitCode = $(if ($scenario -eq 'nonzero') { 1 } else { 0 })
+                    Stdout = $(if ($scenario -eq 'malformed') { '{' } else { ConvertTo-Json $result -Depth 4 })
+                }
+            }
+            function Remove-AppxPackage {
+                param([Parameter(ValueFromPipeline)]$Package)
+                process {
+                    $events.Add('remove')
+                    if ($scenario -eq 'remove-failed') { throw 'Fixture removal failed.' }
+                }
+            }
+            function Get-ScheduledTask { param($TaskName, $ErrorAction); return $true }
+            function Unregister-ScheduledTask { param($TaskName, [switch]$Confirm); $events.Add('unregister-cleanup') }
+            $failure = $null
+            try { . ([scriptblock]::Create($worker[0].Extent.Text)) }
+            catch { $failure = $_.Exception.Message }
+            finally {
+                [pscustomobject]@{ Events = @($events.ToArray()); Failure = $failure } |
+                    ConvertTo-Json | Set-Content (Join-Path $root 'observed.json') -Encoding UTF8
+            }
+            """);
+        using var logger = new SetupLogger(filePath: null);
+        var result = await new CommandRunner(logger).RunAsync(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "WindowsPowerShell", "v1.0", "powershell.exe"),
+            ["-NoProfile", "-NonInteractive", "-File", harness], WorkerTimeout);
+        Assert.False(result.TimedOut);
+        Assert.True(result.ExitCode == 0, result.Stderr);
+        using var output = JsonDocument.Parse(File.ReadAllText(temp.Combine("observed.json")));
+        var events = output.RootElement.GetProperty("Events").EnumerateArray().Select(value => value.GetString()).ToArray();
+        Assert.Equal(teardownInvoked, events.Contains("teardown"));
+        if (removed)
+        {
+            Assert.Equal(["teardown", "remove", "unregister-cleanup"], events);
+            Assert.Null(output.RootElement.GetProperty("Failure").GetString());
+            Assert.False(File.Exists(temp.Combine("owned.json")));
+            using var receipt = JsonDocument.Parse(File.ReadAllText(temp.Combine("cleanup-result.json")));
+            Assert.Equal("fixture.native", Assert.Single(receipt.RootElement.EnumerateArray()).GetProperty("NativeFamily").GetString());
+            Assert.Equal("complete", File.ReadAllText(temp.Combine("cleanup-result.txt")).Trim());
+        }
+        else
+        {
+            Assert.Equal(scenario == "remove-failed", events.Contains("remove"));
+            Assert.False(File.Exists(temp.Combine("cleanup-result.json")));
+            if (scenario == "replaced-marker")
+            {
+                // Existing ownership policy retires this cleanup claim without touching the replacement.
+                Assert.False(File.Exists(temp.Combine("owned.json")));
+            }
+            else
+            {
+                Assert.DoesNotContain("unregister-cleanup", events);
+                Assert.Equal(owned, File.ReadAllText(temp.Combine("owned.json")));
+                Assert.False(File.Exists(temp.Combine("cleanup-result.txt")));
+                if (scenario is not ("shared" or "shared-during-teardown"))
+                    Assert.True(File.Exists(temp.Combine("cleanup-error.txt")));
+            }
+        }
+    }
+
     private sealed class CleanupFixture : IDisposable
     {
         private readonly TempDirectory _temp = new();
