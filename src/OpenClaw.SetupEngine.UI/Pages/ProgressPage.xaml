@@ -33,6 +33,9 @@
                     <controls:SetupPhaseStatus x:Name="InstallStatus" x:Uid="Onboarding_V4_PhaseInstall" Header="Install the Gateway" />
                     <controls:SetupPhaseStatus x:Name="ConnectStatus" x:Uid="Onboarding_V4_PhaseConnect" Header="Start and check connection" />
                 </StackPanel>
+                <InfoBar x:Name="GatewayCleanupWarningBar" x:Uid="Onboarding_GatewayCleanupWarning"
+                         IsOpen="False" IsClosable="False" Severity="Warning"
+                         AutomationProperties.LiveSetting="Assertive" />
                 <StackPanel Spacing="4">
                     <TextBlock x:Name="DownloadActivity" Style="{StaticResource BodyTextBlockStyle}"
                                TextWrapping="Wrap" Visibility="Collapsed" />

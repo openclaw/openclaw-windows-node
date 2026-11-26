@@ -268,7 +268,7 @@
       <!-- CI allocates the package base independently of the application's GitVersion. -->
       <_AppxBaseVersion Condition="'$(MsixPackageBaseVersion)' != ''">$(MsixPackageBaseVersion)</_AppxBaseVersion>
       <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(MsixRevision)' != ''">$(MsixRevision)</_AppxRevision>
-      <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == '' and '$(GitVersion_CommitsSinceVersionSource)' != ''">$(GitVersion_CommitsSinceVersionSource)</_AppxRevision>
+      <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == '' and '$(GitVersion_VersionSourceDistance)' != ''">$(GitVersion_VersionSourceDistance)</_AppxRevision>
       <_AppxRevision Condition="'$(DevBuild)' == 'true' and '$(_AppxRevision)' == ''">1</_AppxRevision>
       <_AppxRevision Condition="'$(DevBuild)' != 'true'">0</_AppxRevision>
       <_AppxManifestVersion>$(_AppxBaseVersion).$(_AppxRevision)</_AppxManifestVersion>
