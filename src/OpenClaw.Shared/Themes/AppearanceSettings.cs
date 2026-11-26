@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 namespace OpenClaw.Shared.Themes;
 
 /// <summary>
-/// Persisted Companion appearance. A missing object (legacy settings) means the Windows Fluent look.
+/// Persisted Companion appearance. A missing object (legacy settings) means the Windows Fluent look with Mica.
 /// The selection is global today; a per-Gateway map can be added beside <see cref="Theme"/>
 /// later without migrating it. Reading is field-by-field tolerant: SettingsData.FromJson discards the
 /// whole settings file on any JsonException, so a malformed appearance value falls back to its default.
@@ -14,6 +14,9 @@ public sealed record AppearanceSettings
 {
     /// <summary>The selected Gateway theme, or null for the Windows default look.</summary>
     public ThemeSelection? Theme { get; init; }
+
+    /// <summary>Show the Mica backdrop under the Windows default look; off paints the opaque Fluent canvas.</summary>
+    public bool UseMica { get; init; } = true;
 
     public static AppearanceSettings Default { get; } = new();
 }
@@ -60,14 +63,17 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object)
             return AppearanceSettings.Default;
+        var useMica = !root.TryGetProperty(nameof(AppearanceSettings.UseMica), out var mica) ||
+            mica.ValueKind != JsonValueKind.False;
         var theme = root.TryGetProperty(nameof(AppearanceSettings.Theme), out var value) ? ReadSelection(value) : null;
-        return new AppearanceSettings { Theme = theme };
+        return new AppearanceSettings { Theme = theme, UseMica = useMica };
     }
 
     public override void Write(Utf8JsonWriter writer, AppearanceSettings value, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
         WriteSelection(writer, nameof(AppearanceSettings.Theme), value.Theme);
+        writer.WriteBoolean(nameof(AppearanceSettings.UseMica), value.UseMica);
         writer.WriteEndObject();
     }
 

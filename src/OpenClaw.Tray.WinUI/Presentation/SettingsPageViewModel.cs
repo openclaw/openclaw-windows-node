@@ -43,6 +43,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private IReadOnlyList<ThemeChoice> _themeChoices = [];
     private string _selectedThemeKey = "";
     private string _defaultThemeLabel = "Windows default";
+    private bool _useMica = true;
 
     private bool _autoStart;
     private bool _globalHotkeyEnabled;
@@ -220,6 +221,17 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             if (selection == _appearance.Theme)
                 return;
             PersistAppearance(appearance => appearance with { Theme = selection });
+        }
+    }
+
+    public bool UseMica
+    {
+        get => _useMica;
+        set
+        {
+            if (!SetField(ref _useMica, value) || _loading)
+                return;
+            PersistAppearance(appearance => appearance with { UseMica = value });
         }
     }
 
@@ -452,6 +464,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _notificationSound, NormalizeTag(s.NotificationSound, SoundTags, DefaultNotificationSound), nameof(NotificationSound));
             SetField(ref _appTheme, NormalizeTag(s.AppTheme, ThemeTags, DefaultAppTheme), nameof(AppTheme));
             _appearance = s.Appearance;
+            SetField(ref _useMica, s.Appearance.UseMica, nameof(UseMica));
             // A saved theme that can no longer be applied (for example one now below the contrast floor) shows the
             // Windows default it falls back to.
             SetField(ref _selectedThemeKey,

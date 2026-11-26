@@ -4556,6 +4556,12 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
     <value>Padrão do Windows</value>
   </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Plano de fundo Mica</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>Com o tema padrão do Windows, deixe a área de trabalho aparecer através do fundo das janelas. Os temas do Gateway sempre usam cores sólidas.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Sistema</value>
   </data>

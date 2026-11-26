@@ -235,6 +235,8 @@ public sealed partial class CanvasWindow : WindowEx
     public CanvasWindow()
     {
         this.InitializeComponent();
+        // The node opens canvases outside WindowManager; the policy keeps their Mica choice in step with Settings.
+        Theming.BackdropPolicy.Apply(this);
         Title = AppIdentity.DecorateWindowTitle("OpenClaw Canvas");
         AutomationProperties.SetName(
             CanvasTitlebarReloadButton,

@@ -4537,6 +4537,12 @@
   <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
     <value>Windows 默认</value>
   </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Mica 背景</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>使用 Windows 默认主题时，让桌面透过窗口背景显示。Gateway 主题始终使用纯色。</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>系统</value>
   </data>

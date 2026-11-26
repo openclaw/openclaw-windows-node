@@ -4537,6 +4537,12 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
     <value>Valeur par défaut de Windows</value>
   </data>
+  <data name="SettingsRow_UseMica_Header.Text" xml:space="preserve">
+    <value>Arrière-plan Mica</value>
+  </data>
+  <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
+    <value>Avec le thème Windows par défaut, laissez le bureau transparaître derrière les fenêtres. Les thèmes Gateway utilisent toujours des couleurs opaques.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Système</value>
   </data>
