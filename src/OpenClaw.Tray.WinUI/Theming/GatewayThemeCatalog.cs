@@ -19,6 +19,11 @@ internal interface IGatewayThemeCatalog
     GatewayThemeOption? GatewayCurrent { get; }
     /// <summary>The person's saved dashboard appearance, or null when unknown (no profile, older Gateway, failed read).</summary>
     GatewayAppearancePreferences? GatewayPreferences { get; }
+    /// <summary>
+    /// The connected Gateway's built-in descriptors from its latest <c>themes.list</c> (names and branding), or null
+    /// before the first read and for Gateways without themes.
+    /// </summary>
+    IReadOnlyList<GatewayThemeDescriptor>? GatewayBuiltins => null;
     event EventHandler? Changed;
     Task RefreshAsync();
 }
@@ -54,6 +59,7 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     private IReadOnlyList<GatewayThemeOption> _gatewayOptions = [];
     private GatewayThemeOption? _gatewayCurrent;
     private GatewayAppearancePreferences? _gatewayPreferences;
+    private IReadOnlyList<GatewayThemeDescriptor>? _gatewayBuiltins;
 
     private sealed class RefreshSlot
     {
@@ -62,6 +68,15 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
     }
 
     public event EventHandler? Changed;
+
+    public IReadOnlyList<GatewayThemeDescriptor>? GatewayBuiltins
+    {
+        get
+        {
+            lock (_gate)
+                return _gatewayBuiltins;
+        }
+    }
 
     public GatewayAppearancePreferences? GatewayPreferences
     {
@@ -123,10 +138,12 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             _preferencesRefresh = new();
             if (!sameBinding)
             {
-                changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null || _gatewayPreferences is not null;
+                changed = _gatewayOptions.Count > 0 || _gatewayCurrent is not null || _gatewayPreferences is not null ||
+                    _gatewayBuiltins is not null;
                 _gatewayOptions = [];
                 _gatewayCurrent = null;
                 _gatewayPreferences = null;
+                _gatewayBuiltins = null;
             }
         }
         if (!ReferenceEquals(previous, next))
@@ -261,7 +278,7 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             IReadOnlyList<GatewayThemeOption> known;
             lock (_gate)
                 known = _gatewayOptions;
-            if (!TryApply(generation, sequence, null, CurrentOption(list, gatewayId, known)))
+            if (!TryApply(generation, sequence, null, CurrentOption(list, gatewayId, known), BuiltinDescriptors(list)))
                 return false;
             RaiseChanged();
             options = await ReadDefinitionsAsync(client, list, gatewayId, generation).ConfigureAwait(false);
@@ -272,11 +289,15 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             Services.Logger.Warn($"[Themes] Gateway theme catalog unavailable ({ex.GetType().Name}).");
             return false;
         }
-        return TryApply(generation, sequence, options, CurrentOption(list, gatewayId, options));
+        return TryApply(generation, sequence, options, CurrentOption(list, gatewayId, options), BuiltinDescriptors(list));
     }
 
+    private static IReadOnlyList<GatewayThemeDescriptor> BuiltinDescriptors(GatewayThemeList list) =>
+        [.. list.Themes.Where(descriptor => descriptor.Source == GatewayThemeSource.Builtin)];
+
     // A newer connection or a newer read (for example after a push event) wins over this one.
-    private bool TryApply(int generation, int sequence, IReadOnlyList<GatewayThemeOption>? options, GatewayThemeOption? current)
+    private bool TryApply(int generation, int sequence, IReadOnlyList<GatewayThemeOption>? options, GatewayThemeOption? current,
+        IReadOnlyList<GatewayThemeDescriptor> builtins)
     {
         lock (_gate)
         {
@@ -286,6 +307,7 @@ internal sealed class GatewayThemeCatalog(IUiDispatcher dispatcher) : IGatewayTh
             if (options is not null)
                 _gatewayOptions = options;
             _gatewayCurrent = current;
+            _gatewayBuiltins = builtins;
         }
         return true;
     }

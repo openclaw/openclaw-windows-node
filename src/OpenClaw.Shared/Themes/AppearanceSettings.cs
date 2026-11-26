@@ -46,7 +46,8 @@ public sealed record AppearanceSettings
 }
 
 /// <summary>
-/// A Companion-owned theme choice. Built-ins resolve from <see cref="BuiltinGatewayThemes"/>; plugin and
+/// A Companion-owned theme choice. Built-ins resolve by id from an <see cref="IBuiltinThemeSource"/> (the connected
+/// Gateway's palettes, then <see cref="BuiltinGatewayThemes"/>); plugin and
 /// imported themes keep a validated <see cref="Definition"/> snapshot so they still render when the
 /// Gateway that supplied them is offline or no longer lists them.
 /// </summary>
@@ -62,7 +63,7 @@ public sealed record ThemeSelection
     /// <summary>Upstream-shaped <c>ThemeDefinition</c> snapshot for non-built-in themes.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public JsonElement? Definition { get; init; }
-    /// <summary>Wire branding values of a non-built-in theme's descriptor (built-ins use the generated table).</summary>
+    /// <summary>Wire branding values of a non-built-in theme's descriptor (built-ins take branding from their source).</summary>
     public string? Mascot { get; init; }
     public string? BrandIcon { get; init; }
     public string? WorkingIndicator { get; init; }
@@ -207,9 +208,9 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
 /// </summary>
 public static class AppearanceResolver
 {
-    public static ResolvedTheme? ResolveTheme(AppearanceSettings? appearance)
+    public static ResolvedTheme? ResolveTheme(AppearanceSettings? appearance, IBuiltinThemeSource? builtins = null)
     {
-        if (appearance is null || Resolve(ActiveSelection(appearance)) is not { } theme)
+        if (appearance is null || Resolve(ActiveSelection(appearance, builtins), builtins) is not { } theme)
             return null;
         // While following, the person's dashboard accent is drawn over the theme's, as the dashboard does.
         return appearance.FollowGatewayTheme &&
@@ -240,25 +241,27 @@ public static class AppearanceResolver
     }
 
     /// <summary>The selection in effect: the followed Gateway theme when following and renderable, else the manual choice.</summary>
-    public static ThemeSelection? ActiveSelection(AppearanceSettings appearance) =>
-        appearance.FollowGatewayTheme && Resolve(appearance.FollowedTheme) is not null
+    public static ThemeSelection? ActiveSelection(AppearanceSettings appearance, IBuiltinThemeSource? builtins = null) =>
+        appearance.FollowGatewayTheme && Resolve(appearance.FollowedTheme, builtins) is not null
             ? appearance.FollowedTheme
             : appearance.Theme;
 
     /// <summary>
     /// Records the Gateway's selected theme while following. Returns <paramref name="appearance"/> unchanged when
-    /// following is off, nothing is known, or the theme can't be rendered (for example a built-in newer than the
-    /// Companion's table), so the last followed theme or the manual choice stays in effect.
+    /// following is off, nothing is known, or the theme can't be rendered (for example a built-in that neither the
+    /// connected Gateway's stylesheets nor the Companion's table style), so the last followed theme or the manual
+    /// choice stays in effect.
     /// </summary>
     public static AppearanceSettings Follow(
-        AppearanceSettings appearance, GatewayThemeDescriptor? gatewayTheme, GatewayThemeDefinition? definition, string? gatewayId)
+        AppearanceSettings appearance, GatewayThemeDescriptor? gatewayTheme, GatewayThemeDefinition? definition, string? gatewayId,
+        IBuiltinThemeSource? builtins = null)
     {
         if (!appearance.FollowGatewayTheme || gatewayTheme is null)
             return appearance;
         ThemeSelection selection;
         if (gatewayTheme.Source == GatewayThemeSource.Builtin)
         {
-            if (!BuiltinGatewayThemes.TryGet(gatewayTheme.Id, out var builtin))
+            if (!(builtins ?? BuiltinGatewayThemes.Table).TryGet(gatewayTheme.Id, out var builtin))
                 return appearance;
             selection = new ThemeSelection { Id = builtin.Id, Name = builtin.Name };
         }
@@ -267,18 +270,19 @@ public static class AppearanceResolver
             if (definition is null)
                 return appearance;
             selection = Select(gatewayTheme, definition, gatewayId);
-            if (Resolve(selection) is null)
+            if (Resolve(selection, builtins) is null)
                 return appearance;
         }
         return selection == appearance.FollowedTheme ? appearance : appearance with { FollowedTheme = selection };
     }
 
-    public static ResolvedTheme? Resolve(ThemeSelection? selection)
+    /// <param name="builtins">Where built-in palettes come from; the bundled table when null.</param>
+    public static ResolvedTheme? Resolve(ThemeSelection? selection, IBuiltinThemeSource? builtins = null)
     {
         if (selection is null || ParseSource(selection.Source) is not { } source)
             return null;
         if (source == GatewayThemeSource.Builtin)
-            return BuiltinGatewayThemes.TryGet(selection.Id, out var builtin) ? builtin : null;
+            return (builtins ?? BuiltinGatewayThemes.Table).TryGet(selection.Id, out var builtin) ? builtin : null;
         if (selection.Definition is not { } raw ||
             !GatewayThemeProtocol.IsThemeId(selection.Id) ||
             !GatewayThemeProtocol.TryParseDefinition(raw, out var definition, out _))

@@ -94,6 +94,12 @@ public static class GatewayThemeProtocol
     public static bool IsThemeId(string? id) =>
         id is { Length: > 0 and <= MaxIdLength } && s_themeId.IsMatch(id);
 
+    /// <summary>
+    /// True for a CSS font-family list of family names only, the shape upstream requires of theme fonts. Rejects
+    /// paths, URLs and other text a font source would otherwise treat as a file to load.
+    /// </summary>
+    public static bool IsFontFamilyList(string? value) => value is { Length: > 0 } && s_fontFamilyList.IsMatch(value);
+
     public static GatewayThemeList ParseList(JsonElement result)
     {
         if (!HasReadablePropertyNames(result))

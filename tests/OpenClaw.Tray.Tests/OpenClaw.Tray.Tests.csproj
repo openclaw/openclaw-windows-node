@@ -297,6 +297,7 @@
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\SettingsPageViewModel.cs" Link="Presentation\SettingsPageViewModel.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayThemeCatalog.cs" Link="Theming\GatewayThemeCatalog.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayThemeFollower.cs" Link="Theming\GatewayThemeFollower.cs" />
+    <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\GatewayBuiltinThemeResolver.cs" Link="Theming\GatewayBuiltinThemeResolver.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\ThemeResourceProjection.cs" Link="Theming\ThemeResourceProjection.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Theming\PopoverSurfacePolicy.cs" Link="Theming\PopoverSurfacePolicy.cs" />
     <Compile Include="..\..\src\OpenClaw.Tray.WinUI\Presentation\PermissionsPagePresentationTypes.cs" Link="Presentation\PermissionsPagePresentationTypes.cs" />

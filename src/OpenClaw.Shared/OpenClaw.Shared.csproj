@@ -19,6 +19,11 @@
     <PackageReference Include="Microsoft.Mxc.Sdk" Version="1.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Also read directly by scripts/Update-GatewayThemeTable.ps1, so build time and runtime share one resolver. -->
+    <EmbeddedResource Include="Themes\ThemeProbe.js" LogicalName="OpenClaw.Shared.Themes.ThemeProbe.js" />
+  </ItemGroup>
+
   <!-- Audio / Speech-to-Text (platform-agnostic components) -->
   <ItemGroup>
     <PackageReference Include="Whisper.net" Version="1.9.0" />

@@ -35,6 +35,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private readonly IAppCommands _appCommands;
     private readonly SettingsWriteOrigin _origin;
     private readonly Theming.IGatewayThemeCatalog? _themes;
+    private readonly Theming.IGatewayBuiltinThemes? _builtins;
 
     private bool _loading;
     private bool _subscribed;
@@ -68,11 +69,13 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _showChatToolCalls;
     private bool _showChatThinking = true;
 
-    public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands, Theming.IGatewayThemeCatalog? themes = null)
+    public SettingsPageViewModel(ISettingsStore store, IAppCommands appCommands, Theming.IGatewayThemeCatalog? themes = null,
+        Theming.IGatewayBuiltinThemes? builtins = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _appCommands = appCommands ?? throw new ArgumentNullException(nameof(appCommands));
         _themes = themes;
+        _builtins = builtins;
         _origin = _store.CreateOrigin();
     }
 
@@ -211,7 +214,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     public string SelectedThemeKey
     {
         get => _followGatewayTheme
-            ? OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_appearance)?.Id ?? ""
+            ? OpenClaw.Shared.Themes.AppearanceResolver.ResolveTheme(_appearance, _builtins)?.Id ?? ""
             : _selectedThemeKey;
         set
         {
@@ -330,6 +333,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             return null;
         if (_themes?.Options.FirstOrDefault(option => option.Id == key) is { } option)
             return OpenClaw.Shared.Themes.AppearanceResolver.Select(option.Descriptor, option.Definition, option.GatewayId);
+        if (_builtins is not null && _builtins.TryGet(key, out var served))
+            return new OpenClaw.Shared.Themes.ThemeSelection { Id = served.Id, Name = served.Name };
         if (OpenClaw.Shared.Themes.BuiltinGatewayThemes.TryGet(key, out var builtin))
             return new OpenClaw.Shared.Themes.ThemeSelection { Id = builtin.Id, Name = builtin.Name };
         // An offline imported or followed theme stays selectable from its saved snapshot.
@@ -341,14 +346,19 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private void RebuildThemeChoices()
     {
         var choices = new List<ThemeChoice> { new("", _defaultThemeLabel) };
-        if (_themes is null)
-            choices.AddRange(OpenClaw.Shared.Themes.BuiltinGatewayThemes.All.Select(theme => new ThemeChoice(theme.Id, theme.Name)));
-        else
-            choices.AddRange(_themes.Options.Select(option => new ThemeChoice(option.Id, option.Name)));
+        // Built-ins follow the connected Gateway's list and names when its palettes were resolved.
+        var builtins = _builtins?.Available ?? OpenClaw.Shared.Themes.BuiltinGatewayThemes.All;
+        choices.AddRange(builtins.Select(theme => new ThemeChoice(theme.Id, theme.Name)));
+        if (_themes is not null)
+        {
+            choices.AddRange(_themes.Options
+                .Where(option => option.Descriptor.Source != OpenClaw.Shared.Themes.GatewayThemeSource.Builtin)
+                .Select(option => new ThemeChoice(option.Id, option.Name)));
+        }
         // Offline plugin or imported themes stay listed from their saved snapshots, if they can still be applied.
         foreach (var saved in new[] { _appearance.Theme, _appearance.FollowedTheme })
         {
-            if (saved is not null && OpenClaw.Shared.Themes.AppearanceResolver.Resolve(saved) is not null &&
+            if (saved is not null && OpenClaw.Shared.Themes.AppearanceResolver.Resolve(saved, _builtins) is not null &&
                 choices.All(choice => choice.Key != saved.Id))
                 choices.Add(new ThemeChoice(saved.Id, saved.Name ?? saved.Id));
         }
@@ -373,9 +383,16 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
 
     private void OnThemesChanged(object? sender, EventArgs e)
     {
-        if (IsActive)
-            RebuildThemeChoices();
+        if (!IsActive)
+            return;
+        // A saved built-in only the Gateway styles becomes applicable once its palettes arrive, so the picker
+        // shows what App now applies. RebuildThemeChoices raises SelectedThemeKey for the picker to reselect.
+        _selectedThemeKey = AppliedManualThemeKey();
+        RebuildThemeChoices();
     }
+
+    private string AppliedManualThemeKey() =>
+        OpenClaw.Shared.Themes.AppearanceResolver.Resolve(_appearance.Theme, _builtins) is null ? "" : _appearance.Theme!.Id;
 
     /// <summary>Bound to the diagnostics toggle: reads the effective value, writes the override.</summary>
     public bool ShowDiagnostics
@@ -472,6 +489,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             _store.Changed += OnStoreChanged;
             if (_themes is not null)
                 _themes.Changed += OnThemesChanged;
+            if (_builtins is not null)
+                _builtins.Changed += OnThemesChanged;
             _subscribed = true;
         }
 
@@ -487,6 +506,8 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             _store.Changed -= OnStoreChanged;
             if (_themes is not null)
                 _themes.Changed -= OnThemesChanged;
+            if (_builtins is not null)
+                _builtins.Changed -= OnThemesChanged;
             _subscribed = false;
         }
     }
@@ -570,9 +591,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             SetField(ref _followGatewayTheme, s.Appearance.FollowGatewayTheme, nameof(FollowGatewayTheme));
             // A saved theme that can no longer be applied (for example one now below the contrast floor) shows the
             // Windows default it falls back to.
-            SetField(ref _selectedThemeKey,
-                OpenClaw.Shared.Themes.AppearanceResolver.Resolve(s.Appearance.Theme) is null ? "" : s.Appearance.Theme!.Id,
-                nameof(SelectedThemeKey));
+            SetField(ref _selectedThemeKey, AppliedManualThemeKey(), nameof(SelectedThemeKey));
             SetField(ref _showDiagnostics, s.ShowDiagnosticsEffective, nameof(ShowDiagnostics));
             SetField(ref _notifyHealth, s.NotifyHealth, nameof(NotifyHealth));
             SetField(ref _notifyUrgent, s.NotifyUrgent, nameof(NotifyUrgent));
