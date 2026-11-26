@@ -1125,6 +1125,7 @@ public sealed class ReactorToolActivityProofTests
             // COM-aware WeakReference can rehydrate a wrapper while its native object lives.
             // This sentinel observes managed collection without reacquiring the native target.
             Console.WriteLine($"Shimmer original wrapper collected: {collection!.WasCollected}");
+            Assert.True(collection.WasCollected, "The finalizer sentinel must observe original-wrapper collection before this regression is credited.");
             await _ui.RunOnUIAsync(() =>
             {
                 using var theme = new ChatThemeProofScope("Light");
