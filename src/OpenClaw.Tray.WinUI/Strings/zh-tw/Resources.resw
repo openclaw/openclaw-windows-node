@@ -6255,6 +6255,8 @@
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>由 OpenClaw 管理</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>未安裝</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>未安裝</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>本機 AI 需要由此應用程式安裝的 Gateway</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>本機 AI 僅適用於此應用程式在這台電腦上安裝的 Gateway。目前作用中的 Gateway 不是由此應用程式安裝的，因此本機 AI 設定無法使用它。若要使用本機 AI，請從「連線」安裝本機 Gateway。</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>未知</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>已下載並驗證</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>已載入 GPU</value></data>

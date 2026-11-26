@@ -6327,6 +6327,8 @@ Open Channels in the web dashboard.</value>
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Managed by OpenClaw</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Not installed</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Not installed</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>Local AI needs a Gateway from this app</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>Local AI only works with a Gateway that this app installs on this PC. The active Gateway was not installed by this app, so Local AI setup can't use it. To use Local AI, install a local Gateway from Connection.</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Unknown</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Downloaded and verified</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Loaded on GPU</value></data>

@@ -6256,6 +6256,8 @@ Open Kanalen in het webdashboard.</value>
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Beheerd door OpenClaw</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Niet geïnstalleerd</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Niet geïnstalleerd</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>Lokale AI heeft een Gateway van deze app nodig</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>Lokale AI werkt alleen met een Gateway die deze app op deze pc installeert. De actieve Gateway is niet door deze app geïnstalleerd, dus de installatie van lokale AI kan deze niet gebruiken. Installeer via Verbinding een lokale Gateway om lokale AI te gebruiken.</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Onbekend</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Gedownload en geverifieerd</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Op GPU geladen</value></data>
