@@ -820,7 +820,12 @@ internal sealed class ChatConversationState
                 }
             }
 
+            // A null expectation means the caller captured the thread before its Gateway identity
+            // was observed (or after a reset cleared it). A just-materialized session gets that
+            // identity from a sessions.list that can land before admission; only a known identity
+            // that changed means the target moved.
             if (validateSessionIdentity &&
+                expectedSessionId is not null &&
                 !string.Equals(
                     currentSessionId,
                     expectedSessionId,
