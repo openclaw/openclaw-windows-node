@@ -226,7 +226,7 @@ public sealed class MsixDevelopmentSigningTests
         Assert.Contains("DependsOnTargets=\"GetVersion\"", project);
         Assert.Contains("<UpdateVersionProperties>true</UpdateVersionProperties>",
             File.ReadAllText(Path.Combine(root, "src", "Directory.Build.props")));
-        Assert.Contains("$(GitVersion_CommitsSinceVersionSource)", project);
+        Assert.Contains("$(GitVersion_VersionSourceDistance)", project);
         Assert.Contains("Publisher=\"$(OpenClawDevMsixPublisher)\"", project);
         Assert.Contains("ToastActivatorClsid=\"C536D4AD-19BE-4F7A-B227-AB97629BF299\"", project);
         Assert.Contains("toastClsidRegex.Replace", project);
