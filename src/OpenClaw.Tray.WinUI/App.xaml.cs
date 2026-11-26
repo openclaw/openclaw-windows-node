@@ -788,7 +788,8 @@ public partial class App : Application, OpenClawTray.Services.IAppCommands, IPer
                 if (!await OpenClaw.SetupEngine.GatewayPackageCleanup.InitializeAsync(
                     new OpenClaw.SetupEngine.CommandRunner(cleanupLogger),
                     AppIdentity.ResolveRoamingDataDirectory(), AppIdentity.ResolveSetupLocalDataDirectory(),
-                    preserve: error => NativeRestartAdmission.PromptPreserveGateways(error, AppIdentity.DisplayName)))
+                    preserve: error => NativeRestartAdmission.PromptPreserveGateways(error, AppIdentity.DisplayName),
+                    warning: message => Logger.Warn(message)))
                 {
                     Exit();
                     return;
