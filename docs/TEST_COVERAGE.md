@@ -566,6 +566,12 @@ channel selection, source/Store overrides, exact pins, archive integrity and
 provenance without network access or changing installed packages.
 `scripts\test-gateway-packaged-release.ps1` covers release/tag resolution, embedded
 payload identity, asset digest, extraction safety and inventory-verified cache reuse.
+`scripts\test-gateway-theme-upstream.ps1` covers how the daily `gateway-theme-sync.yml`
+workflow selects the Gateway commit in the digest-matched x64 package. Local source fixtures
+also exercise the headless Edge generator's corner geometry and its pinned inventory/branding check.
+`scripts\test-gateway-theme-sync-publish.ps1` mocks Git and GitHub to cover leased branch updates,
+declines at the closed PR's head, and recovery without overwriting human commits or PR descriptions.
+Neither test publishes or needs credentials. Live publication requires a separately configured GitHub App.
 
 The `change-classification` job emits explicit booleans for `core_tests`,
 `tray_tests`, `ui_tests`, `setup_e2e`, `revocation_e2e`, `network_e2e`,

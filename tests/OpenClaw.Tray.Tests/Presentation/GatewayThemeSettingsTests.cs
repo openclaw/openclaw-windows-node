@@ -532,9 +532,13 @@ public sealed class GatewayThemeSettingsTests
         bool useMica, bool highContrast, bool acrylicSupported, ThemeColorMode mode,
         bool acrylic, string? fill, string? stroke)
     {
-        var rose = BuiltinGatewayThemes.All.First(theme => theme.Id == "rose");
-
-        var surface = PopoverSurfacePolicy.Choose(useMica, rose, highContrast, acrylicSupported, mode);
+        var seed = BuiltinGatewayThemes.All[0];
+        var fixture = seed with
+        {
+            Dark = seed.Dark! with { Popover = ThemeColor.FromHex("#26233a"), Border = ThemeColor.FromHex("#29263c"), Text = ThemeColor.White, Muted = ThemeColor.White },
+            Light = seed.Light! with { Popover = ThemeColor.FromHex("#fffaf3"), Border = ThemeColor.FromHex("#e3d9cb"), Text = ThemeColor.Black, Muted = ThemeColor.Black },
+        };
+        var surface = PopoverSurfacePolicy.Choose(useMica, fixture, highContrast, acrylicSupported, mode);
 
         Assert.Equal(acrylic, surface.Acrylic);
         Assert.Equal(fill, surface.Fill?.ToHex());
