@@ -827,7 +827,14 @@ public sealed class ReactorChatTimeline : Component<ReactorChatTimelineProps>
                 // Natural font metrics scale with accessibility text size and add no trailing leading.
                 .LineHeight(0)
                 .Set(block => block.LineStackingStrategy = LineStackingStrategy.MaxHeight)
-                .IsTextSelectionEnabled(true));
+                .IsTextSelectionEnabled(true)
+                // The bubble is outside the Markdown restyle pass, so it follows a theme switch while mounted.
+                .OnMountAdd(control => ChatThemeChanges.Watch(control, () => ChatVisuals.ApplyBodyFont(control)))
+                .OnUnmountAdd(control =>
+                {
+                    ChatThemeChanges.Unwatch(control);
+                    ChatVisuals.ClearFontRole(control);
+                }));
         }
 
         var bubble = Border(VStack(8, content.ToArray()))

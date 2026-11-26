@@ -87,6 +87,32 @@
                 <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="GatewayThemeLabel" x:Uid="SettingsRow_GatewayTheme_Header" Text="Gateway theme" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_GatewayTheme_Description"
+                                       Text="Use the colors and fonts of an OpenClaw dashboard theme. Windows High Contrast always takes priority."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ComboBox Grid.Column="1" x:Name="GatewayThemeComboBox" MinWidth="160"
+                                  ItemsSource="{Binding ThemeChoices}"
+                                  DisplayMemberPath="Name"
+                                  SelectedValuePath="Key"
+                                  SelectedValue="{Binding SelectedThemeKey, Mode=TwoWay}"
+                                  AutomationProperties.AutomationId="SettingsPageGatewayTheme"
+                                  AutomationProperties.LabeledBy="{Binding ElementName=GatewayThemeLabel}"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
                     <Grid ColumnSpacing="14">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>

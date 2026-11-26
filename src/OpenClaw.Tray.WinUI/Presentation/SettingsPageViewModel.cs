@@ -39,6 +39,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
     private bool _subscribed;
     private long _lastAppliedSettingsVersion = -1;
 
+    private OpenClaw.Shared.Themes.AppearanceSettings _appearance = OpenClaw.Shared.Themes.AppearanceSettings.Default;
+    private IReadOnlyList<ThemeChoice> _themeChoices = [];
+    private string _selectedThemeKey = "";
+    private string _defaultThemeLabel = "Windows default";
+
     private bool _autoStart;
     private bool _globalHotkeyEnabled;
     private bool _useLegacyWebChat;
@@ -177,6 +182,89 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         {
             var normalized = string.IsNullOrEmpty(value) ? DefaultAppTheme : value;
             if (SetField(ref _appTheme, normalized) && !_loading) Persist(e => e.AppTheme = normalized);
+        }
+    }
+
+    /// <summary>Theme picker items: the Windows default first, then the built-in Gateway themes.</summary>
+    public IReadOnlyList<ThemeChoice> ThemeChoices
+    {
+        get => _themeChoices;
+        private set => SetField(ref _themeChoices, value);
+    }
+
+    /// <summary>Localized label of the Windows default choice, set by the page.</summary>
+    public string DefaultThemeLabel
+    {
+        get => _defaultThemeLabel;
+        set
+        {
+            if (SetField(ref _defaultThemeLabel, string.IsNullOrWhiteSpace(value) ? _defaultThemeLabel : value))
+                RebuildThemeChoices();
+        }
+    }
+
+    /// <summary>Selected theme id, or empty for the Windows default.</summary>
+    public string SelectedThemeKey
+    {
+        get => _selectedThemeKey;
+        set
+        {
+            // The ComboBox writes null when ThemeChoices is replaced and can when the saved theme is not listed (a
+            // Gateway theme). Every choice has a key, so null is never a user choice and must not clear the theme.
+            if (_loading || value is null)
+                return;
+            var key = value;
+            if (!SetField(ref _selectedThemeKey, key))
+                return;
+            var selection = SelectionFor(key);
+            if (selection == _appearance.Theme)
+                return;
+            PersistAppearance(appearance => appearance with { Theme = selection });
+        }
+    }
+
+    // Edits the stored appearance rather than this page's copy, so a stale copy never overwrites a newer change.
+    private void PersistAppearance(Func<OpenClaw.Shared.Themes.AppearanceSettings, OpenClaw.Shared.Themes.AppearanceSettings> change)
+    {
+        var next = change(_store.Current.Appearance);
+        _appearance = next;
+        Persist(e => e.Appearance = next);
+    }
+
+    private void RaiseThemePickerState()
+    {
+        RebuildThemeChoices();
+    }
+
+    private OpenClaw.Shared.Themes.ThemeSelection? SelectionFor(string key)
+    {
+        if (key.Length == 0)
+            return null;
+        return OpenClaw.Shared.Themes.BuiltinGatewayThemes.TryGet(key, out var builtin)
+            ? new OpenClaw.Shared.Themes.ThemeSelection { Id = builtin.Id, Name = builtin.Name }
+            : null;
+    }
+
+    private void RebuildThemeChoices()
+    {
+        var choices = new List<ThemeChoice> { new("", _defaultThemeLabel) };
+        choices.AddRange(OpenClaw.Shared.Themes.BuiltinGatewayThemes.All.Select(theme => new ThemeChoice(theme.Id, theme.Name)));
+        // Replacing the items closes an open picker, so an unchanged list keeps them.
+        if (choices.SequenceEqual(_themeChoices))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedThemeKey)));
+            return;
+        }
+        _loading = true;
+        try
+        {
+            ThemeChoices = choices;
+            // Re-raise so the picker reselects after its items were replaced.
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedThemeKey)));
+        }
+        finally
+        {
+            _loading = false;
         }
     }
 
@@ -363,6 +451,12 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
             // default item instead of rendering a blank combo (matching the old tag lookup).
             SetField(ref _notificationSound, NormalizeTag(s.NotificationSound, SoundTags, DefaultNotificationSound), nameof(NotificationSound));
             SetField(ref _appTheme, NormalizeTag(s.AppTheme, ThemeTags, DefaultAppTheme), nameof(AppTheme));
+            _appearance = s.Appearance;
+            // A saved theme that can no longer be applied (for example one now below the contrast floor) shows the
+            // Windows default it falls back to.
+            SetField(ref _selectedThemeKey,
+                OpenClaw.Shared.Themes.AppearanceResolver.Resolve(s.Appearance.Theme) is null ? "" : s.Appearance.Theme!.Id,
+                nameof(SelectedThemeKey));
             SetField(ref _showDiagnostics, s.ShowDiagnosticsEffective, nameof(ShowDiagnostics));
             SetField(ref _notifyHealth, s.NotifyHealth, nameof(NotifyHealth));
             SetField(ref _notifyUrgent, s.NotifyUrgent, nameof(NotifyUrgent));
@@ -379,6 +473,7 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         {
             _loading = false;
         }
+        RaiseThemePickerState();
     }
 
     private void Persist(Action<ISettingsEditor> edit)
@@ -420,4 +515,11 @@ internal sealed class SettingsPageViewModel : INavigationAware, IDisposable, INo
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
     }
+}
+
+/// <summary>One theme picker item; an empty <see cref="Key"/> is the Windows default look.</summary>
+public sealed record ThemeChoice(string Key, string Name)
+{
+    // ComboBox item automation peers fall back to ToString for their accessible name.
+    public override string ToString() => Name;
 }

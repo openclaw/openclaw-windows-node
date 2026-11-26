@@ -99,7 +99,7 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
             Source = Text(value, nameof(ThemeSelection.Source)) ?? "builtin",
             OriginGatewayId = Text(value, nameof(ThemeSelection.OriginGatewayId)),
             Definition = value.TryGetProperty(nameof(ThemeSelection.Definition), out var definition) &&
-                definition.ValueKind == JsonValueKind.Object
+                GatewayThemeProtocol.CanStoreDefinition(definition, out _)
                     ? definition.Clone()
                     : null,
         };

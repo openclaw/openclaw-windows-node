@@ -225,6 +225,26 @@ public sealed class DesktopCompanionTests
         Assert.Single(harness.Views);
     }
 
+    // A one-palette Gateway theme pins the window mode over the App theme setting, and switching Gateway themes
+    // recolors resources without a settings change the companion would otherwise see.
+    [Fact]
+    public void Controller_FollowsTheEffectiveThemeAndRefreshesResourcesOnRequest()
+    {
+        var preference = "Light";
+        using var harness = new Harness(() => preference);
+        harness.Store.Update(null, edit => { edit.ShowDesktopCompanion = true; edit.AppTheme = "Dark"; });
+        harness.Controller.Start();
+        var view = Assert.Single(harness.Views);
+        Assert.Equal("Light", view.Theme);
+        Assert.False(view.RefreshedResources);
+
+        preference = "Dark";
+        harness.Controller.RefreshTheme();
+        Assert.Equal("Dark", view.Theme);
+        Assert.True(view.RefreshedResources);
+        Assert.Single(harness.Views);
+    }
+
     [Fact]
     public void Controller_DisposalFencesAlreadyQueuedWork()
     {
@@ -359,10 +379,15 @@ public sealed class DesktopCompanionTests
         public int ShowCount { get; private set; }
         public int HideCount { get; private set; }
         public string? Theme { get; private set; }
+        public bool RefreshedResources { get; private set; }
         public int ScalePercent { get; private set; }
         public void Show() => ShowCount++;
         public void Hide() => HideCount++;
-        public void ApplyTheme(string theme) => Theme = theme;
+        public void ApplyTheme(string theme, bool refreshThemeResources = false)
+        {
+            Theme = theme;
+            RefreshedResources = refreshThemeResources;
+        }
         public void ApplyScale(int percent) => ScalePercent = percent;
         public void Present(AppNotification? notification) => Presented.Add(notification);
         public void Close() => Closed = true;
@@ -380,7 +405,7 @@ public sealed class DesktopCompanionTests
         public List<Exception> Failures { get; } = [];
         public bool FailCreation { get; set; }
 
-        public Harness()
+        public Harness(Func<string>? themePreference = null)
         {
             Store = new(new SettingsManager(_temp.Path), Dispatcher);
             Controller = new(Store, Notifications, Dispatcher, () =>
@@ -389,7 +414,7 @@ public sealed class DesktopCompanionTests
                 var view = new View();
                 Views.Add(view);
                 return view;
-            }, Failures.Add);
+            }, Failures.Add, themePreference);
         }
 
         public void Dispose()

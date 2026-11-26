@@ -1,5 +1,7 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.Win32;
 using OpenClawTray.Services;
 using Windows.UI;
@@ -39,11 +41,18 @@ public static class ThemeHelper
             _ => ElementTheme.Default
         };
 
-    public static void ApplyTheme(Window? window, string? preference)
+    /// <summary>
+    /// Applies the requested theme. <paramref name="refreshThemeResources"/> briefly flips the root theme so
+    /// existing {ThemeResource} references re-resolve after application resources were replaced.
+    /// </summary>
+    public static void ApplyTheme(Window? window, string? preference, bool refreshThemeResources = false)
     {
         if (window?.Content is FrameworkElement rootElement)
         {
-            rootElement.RequestedTheme = GetRequestedTheme(preference);
+            var requested = GetRequestedTheme(preference);
+            if (refreshThemeResources)
+                rootElement.RequestedTheme = rootElement.ActualTheme == ElementTheme.Dark ? ElementTheme.Light : ElementTheme.Dark;
+            rootElement.RequestedTheme = requested;
             // Native caption buttons do not inherit the XAML root theme.
             window.AppWindow.TitleBar.PreferredTheme = rootElement.RequestedTheme switch
             {
@@ -51,7 +60,56 @@ public static class ThemeHelper
                 ElementTheme.Dark => TitleBarTheme.Dark,
                 _ => TitleBarTheme.UseDefaultAppMode
             };
+            ApplyWindowFont(rootElement);
         }
+    }
+
+    /// <summary>
+    /// Window content roots are panels, which cannot carry FontFamily, so unstyled text in a window
+    /// otherwise falls back to the system font instead of the theme's UI font. Pins the current
+    /// ContentControlThemeFontFamily on the framework host above the content; called again on every
+    /// theme change because a value set from code does not track resource replacement.
+    /// </summary>
+    internal static void ApplyWindowFont(FrameworkElement root)
+    {
+        if (FindFontHost(root) is not { } host)
+        {
+            if (!root.IsLoaded)
+            {
+                RoutedEventHandler? onLoaded = null;
+                onLoaded = (_, _) =>
+                {
+                    root.Loaded -= onLoaded;
+                    if (FindFontHost(root) is { } loadedHost)
+                        SetThemeFont(loadedHost);
+                };
+                root.Loaded += onLoaded;
+            }
+            return;
+        }
+        SetThemeFont(host);
+    }
+
+    private static DependencyObject? FindFontHost(FrameworkElement root)
+    {
+        if (root is Control or ContentPresenter)
+            return root;
+        for (var parent = VisualTreeHelper.GetParent(root); parent is not null; parent = VisualTreeHelper.GetParent(parent))
+        {
+            if (parent is Control or ContentPresenter)
+                return parent;
+        }
+        return null;
+    }
+
+    private static void SetThemeFont(DependencyObject host)
+    {
+        if (!Application.Current.Resources.TryGetValue("ContentControlThemeFontFamily", out var value) || value is not FontFamily font)
+            return;
+        if (host is Control control)
+            control.FontFamily = font;
+        else if (host is ContentPresenter presenter)
+            presenter.FontFamily = font;
     }
 
     public static Color GetAccentColor()

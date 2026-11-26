@@ -126,7 +126,8 @@ internal static class ReactorChatNotices
                             .TextWrapping(TextWrapping.Wrap)
                             .Foreground(Theme.Ref("TextFillColorPrimaryBrush"))
                             .IsTextSelectionEnabled(true)
-                            .Set(text => text.FlowDirection = FlowDirection.LeftToRight))
+                            .Set(text => text.FlowDirection = FlowDirection.LeftToRight)
+                            .FollowCodeFont())
                         .MaxHeight(ErrorDetailsMaxHeight)
                         .IsTabStop(true)
                         .Set(scroll => scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled)
@@ -416,6 +417,7 @@ internal sealed class ReactorSkillLearnedNotice : Component<ReactorSkillLearnedN
                     .MaxWidth(ReactorChatNotices.NameMaxWidth)
                     .VAlign(VerticalAlignment.Center)
                     .ToolTip(ChatNoticePresentation.SkillToolTip(skill) ?? skill.Name)
-                    .AccessibilityView(AccessibilityView.Raw))
+                    .AccessibilityView(AccessibilityView.Raw)
+                    .FollowCodeFont())
             .AutomationName(ChatNoticePresentation.SkillAccessibleName(skill, ReactorChatNotices.L));
 }

@@ -502,7 +502,8 @@ internal static class ToolCallCardRenderer
                 text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
                 text.IsTextSelectionEnabled = true;
                 ChatToolInputSyntax.Apply(text, content, input);
-            });
+            })
+            .FollowCodeFont();
 
         return Border(panel ? body.AutomationName(label) : ScrollViewer(body)
                 .AutomationName(label)

@@ -4529,6 +4529,15 @@ MXC kon niet worden geverifieerd. Opdrachten worden geblokkeerd. Herstel de inst
   <data name="SettingsRow_AppTheme_Description.Text" xml:space="preserve">
     <value>Kies licht, donker of gebruik uw Windows-instelling.</value>
   </data>
+  <data name="SettingsRow_GatewayTheme_Header.Text" xml:space="preserve">
+    <value>Gateway-thema</value>
+  </data>
+  <data name="SettingsRow_GatewayTheme_Description.Text" xml:space="preserve">
+    <value>Gebruik de kleuren en lettertypen van een OpenClaw-dashboardthema. Hoog contrast van Windows heeft altijd voorrang.</value>
+  </data>
+  <data name="SettingsPage_GatewayTheme_Default" xml:space="preserve">
+    <value>Windows-standaard</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Systeem</value>
   </data>

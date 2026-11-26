@@ -235,6 +235,22 @@ public class GatewayThemeTests
     }
 
     [Fact]
+    public void MalformedSavedDefinitionCanStillResolveAndSaveOtherSettings()
+    {
+        var settings = SettingsData.FromJson("""
+            { "AppTheme": "Dark", "NotifyEmail": false,
+              "Appearance": { "Theme": { "Id": "user/ink", "Source": "user", "Definition": { "name": "\uD800" } } } }
+            """);
+
+        Assert.NotNull(settings);
+        Assert.Null(AppearanceResolver.ResolveTheme(settings.Appearance));
+        var reloaded = SettingsData.FromJson(settings.ToJson());
+        Assert.NotNull(reloaded);
+        Assert.Equal("Dark", reloaded.AppTheme);
+        Assert.False(reloaded.NotifyEmail);
+    }
+
+    [Fact]
     public void SelectedGatewayThemeSurvivesSettingsRoundTrip()
     {
         Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: Palette("#000000")), out var definition, out _));
