@@ -38,7 +38,10 @@ try {
     Copy-Item (Join-Path $root 'GitVersion.yml') $fixture
     $projectXml = @'
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework></PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <GitVersion_CommandLineArguments>--telemetry-opt-out</GitVersion_CommandLineArguments>
+  </PropertyGroup>
   <ItemGroup><PackageReference Include="GitVersion.MsBuild" Version="__VERSION__" PrivateAssets="all" /></ItemGroup>
   <Target Name="RecordVersionProperties" AfterTargets="Build">
     <WriteLinesToFile File="$(MSBuildProjectDirectory)/version-properties.txt" Lines="$(GitVersion_SemVer);$(GitVersion_Sha);$(Version)" Overwrite="true" />

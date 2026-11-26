@@ -39,11 +39,13 @@ from the same tag history.
 
 The repository-local tool manifest (`.config\dotnet-tools.json`) and MSBuild
 package reference (`src\Directory.Build.props`) are the authoritative local
-tool/package pins and currently target GitVersion 6.8.2. The CI workflow's
-`gittools/actions/gitversion/setup` step tracks the matching `6.8.x` line for
-workflow output computation. Keep the workflow action on the same major/minor
-line as the repository pins so the value injected into product metadata is
-computed by the same GitVersion release.
+tool/package pins and target GitVersion 7.0.1. Both workflow setup steps select
+that exact version through GitTools Actions v5. Keep the CLI, MSBuild package, and workflow pins
+aligned so product metadata and workflow outputs use the same release.
+
+`GitVersion.yml` uses the v7 `calculation` and `output` sections. Direct
+CLI callers use POSIX options such as `--output json`; no legacy
+configuration or argument-parser compatibility switch is required.
 
 ## Tagged and untagged builds
 
@@ -162,7 +164,7 @@ Actions schedules use UTC, so the workflow registers both possible UTC hours
 and runs only the one matching the current Pacific UTC offset. It compares the
 default-branch head with all published GitHub Releases and does nothing when
 one already points at that commit. It defers while an unpublished non-alpha tag
-points at the head. When changes exist, it uses the same GitVersion 6.8.x line
+points at the head. When changes exist, it uses the same GitVersion 7.0.1 release
 and compares that alpha with the canonical latest stable `openclaw/openclaw`
 release. A newer Gateway line starts at `vX.Y.Z-alpha.1`; otherwise the
 GitVersion alpha is kept. The workflow refuses to create a tag that is not
@@ -210,6 +212,13 @@ be published as latest.
 Release build jobs must check out full git history (`fetch-depth: 0`) so
 GitVersion can see tags.
 
+Repository-owned version calculations opt out of [GitVersion 7 telemetry](https://github.com/GitTools/GitVersion/blob/7.0.1/docs/input/docs/usage/cli/telemetry-policy.md).
+`Directory.Build.props` appends `--telemetry-opt-out` to existing
+`GitVersion_CommandLineArguments`; direct CLI calls and isolated MSBuild
+fixtures pass the same option. The two GitTools execute steps set
+`GITVERSION_TELEMETRY_OPTOUT=1` for that step only. These settings do not change
+machine-wide environment variables or version calculation.
+
 For tag-driven CI, the workflow verifies that both the checked-out `HEAD` and
 the peeled release tag match `OPENCLAW_RELEASE_SOURCE_SHA`, then creates a
 checkout-only `release/<tag>` branch at that commit. This uses the existing
@@ -218,18 +227,20 @@ pushes the branch or moves a release or MSIX reservation tag.
 
 Tagged builds and alpha promotions disable GitVersion normalization and fetching
 through `GitVersion_NoNormalizeEnabled` and `GitVersion_NoFetchEnabled`; the
-metadata action also disables normalization. GitVersion 6.8.2 supports these
-MSBuild properties as `-nonormalize` and `-nofetch`. Otherwise a retry can fail
-remote-tip inference when the release tag and annotated `msix-package/...`
-reservation point at the same commit. Branch, PR merge-ref, and merge-queue
-builds keep normalization enabled. Promotion source selection and checkout-only
-stable tags are unchanged.
+metadata action also disables normalization. GitVersion 7.0.1 supports these
+MSBuild properties to keep the selected checkout and avoid fetching. Branch,
+PR merge-ref, and merge-queue builds keep normalization enabled. Promotion
+source selection and checkout-only stable tags are unchanged.
 
 `scripts\test-release-branch-versioning.ps1` exercises the real pinned
 GitVersion.MsBuild package and metadata tool in disposable repositories. It
-reproduces the two-tag failure, executes the workflow's source-binding step,
-checks source/tag mismatch rejection, and verifies exact alpha/stable assembly
-versions on retry with newer main and feature refs present.
+checks retries with a release tag and annotated MSIX reservation at the same
+commit. Its alpha normalization negative control requires a successful build
+with unchanged source and refs but a different version, demonstrating why
+release retries disable normalization. The stable normalized retry still
+requires the exact release version. Pinned retries execute the workflow's
+source-binding step, check source/tag mismatch rejection, and verify exact
+alpha/stable assembly versions with newer main and feature refs present.
 
 Tagged CI runs verify that `github.ref_name` and the resolved release version
 match before build artifacts are published. For stable and alpha tags, the

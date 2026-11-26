@@ -169,7 +169,7 @@
     "tests/OpenClaw.SetupEngine.Tests/WslPlatformInstallDiagnosticsTests.cs": 1,
     "tests/OpenClaw.Shared.Tests/AsyncEventHandlerGuardTests.cs": 9,
     "tests/OpenClaw.Shared.Tests/BoundedProcessWaitTests.cs": 7,
-    "tests/OpenClaw.Shared.Tests/CapabilityTests.cs": 3,
+    "tests/OpenClaw.Shared.Tests/CapabilityTests.cs": 2,
     "tests/OpenClaw.Shared.Tests/DeviceIdentityFailClosedTests.cs": 1,
     "tests/OpenClaw.Shared.Tests/ExecApprovalsCoordinatorTests.cs": 5,
     "tests/OpenClaw.Shared.Tests/FileTransfer/FileFrameChannelTests.cs": 4,
