@@ -101,7 +101,7 @@ GATEWAY_PACKAGE_NAMES = frozenset((
     "openclawfoundation.openclawgateway",  # Store
     "openclaw.gateway",  # retained development identity
 ))
-DEV_PATCH = re.compile(r"\A[a-z0-9](?:[a-z0-9-]{0,13}[a-z0-9])?\z")  # mirrors -Patch in Deploy-LocalPackage.ps1
+DEV_PATCH = re.compile(r"\A[a-z0-9](?:[a-z0-9-]{0,13}[a-z0-9])?\Z")  # mirrors -Patch in Deploy-LocalPackage.ps1
 GATEWAY_PACKAGE_PREFIX = "openclawfoundation.openclawgateway"  # Store name or Store-<dev patch>
 LXSS_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Lxss"  # per-user WSL distro registrations (name + BasePath)
 NATIVE_SESSION = Path("LocalState", "OpenClawGatewayMSIX", "session.json")
@@ -739,11 +739,36 @@ def find_paths() -> list[Path]:
     return sorted((p for p in found.values() if not is_excluded(p)), key=lambda p: str(p).lower())
 
 
+def _is_mount_point(path: Path) -> bool:
+    """Directory junction test for interpreters without Path.is_junction (before 3.12).
+
+    os.lstat already returns the reparse tag. A missing path is not a junction.
+    Any other inspection failure aborts the inventory.
+    """
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise InventoryError(f"could not tell whether {path} is a junction: {exc}") from exc
+    return getattr(info, "st_reparse_tag", 0) == stat.IO_REPARSE_TAG_MOUNT_POINT
+
+
+def is_junction(path: Path) -> bool:
+    """True for a directory junction. A missing path is false. An unreadable reparse point aborts."""
+    native = getattr(type(path), "is_junction", None)
+    if native is not None:
+        return bool(native(path))
+    if os.name != "nt":
+        return False
+    return _is_mount_point(path)
+
+
 def models_in(path: Path) -> list[Path]:
     """*.gguf files remove_path would keep (symlinks are removed: they are not the model)."""
     if path.suffix.lower() == MODEL_SUFFIX and not path.is_symlink():
         return [path]
-    if path.is_dir() and not path.is_symlink() and not path.is_junction():
+    if path.is_dir() and not path.is_symlink() and not is_junction(path):
         return [p for p in path.rglob(f"*{MODEL_SUFFIX}")
                 if p.is_file() and not p.is_symlink() and not is_excluded(p)]
     return []
@@ -797,7 +822,7 @@ def remove_path(path: Path, kept: list[Path]) -> None:
     if is_excluded(path):
         kept.append(path)
         return
-    if path.is_junction() or (path.is_symlink() and path.is_dir()):
+    if is_junction(path) or (path.is_symlink() and path.is_dir()):
         os.rmdir(path)  # removes the link only, never the target's contents
     elif path.is_symlink():
         path.unlink()
