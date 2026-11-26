@@ -188,6 +188,7 @@ public class SettingsManager
     public bool ShowChatToolCalls { get => _data.ShowChatToolCalls; set => _data = _data with { ShowChatToolCalls = value }; }
     /// <summary>Show supplied assistant reasoning in the chat timeline.</summary>
     public bool ShowChatThinking { get => _data.ShowChatThinking; set => _data = _data with { ShowChatThinking = value }; }
+    public bool ShowLobsterVisits { get => _data.ShowLobsterVisits; set => _data = _data with { ShowLobsterVisits = value }; }
     /// <summary>Play audio feedback chimes on listen start/stop.</summary>
     public bool VoiceAudioFeedback { get => _data.VoiceAudioFeedback; set => _data = _data with { VoiceAudioFeedback = value }; }
     public bool NodeTtsEnabled { get => _data.NodeTtsEnabled; set => _data = _data with { NodeTtsEnabled = value }; }

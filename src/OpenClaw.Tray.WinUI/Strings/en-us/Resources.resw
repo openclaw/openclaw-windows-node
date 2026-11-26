@@ -4605,6 +4605,14 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
     <value>Show the assistant's supplied reasoning in the conversation.</value>
   </data>
+  <data name="SettingsRow_ShowLobsterVisits_Header.Text" xml:space="preserve">
+    <value>Lobster visits</value>
+  </data>
+  <data name="SettingsRow_ShowLobsterVisits_Description.Text" xml:space="preserve">
+    <value>A lobster sometimes drops by when you start a new session. Right-click it to dismiss it.</value>
+  </data>
+  <data name="ChatLobster_Dismiss" xml:space="preserve"><value>Dismiss</value></data>
+  <data name="ChatLobster_DismissForever" xml:space="preserve"><value>Dismiss and don't show again</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacy</value>
   </data>

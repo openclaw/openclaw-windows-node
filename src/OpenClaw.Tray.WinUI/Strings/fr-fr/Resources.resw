@@ -4555,6 +4555,14 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsRow_ShowThinking_Description.Text" xml:space="preserve">
     <value>Afficher le raisonnement fourni par l’assistant dans la conversation.</value>
   </data>
+  <data name="SettingsRow_ShowLobsterVisits_Header.Text" xml:space="preserve">
+    <value>Visites de homards</value>
+  </data>
+  <data name="SettingsRow_ShowLobsterVisits_Description.Text" xml:space="preserve">
+    <value>Un homard passe parfois quand vous démarrez une nouvelle session. Cliquez dessus avec le bouton droit pour le renvoyer.</value>
+  </data>
+  <data name="ChatLobster_Dismiss" xml:space="preserve"><value>Ignorer</value></data>
+  <data name="ChatLobster_DismissForever" xml:space="preserve"><value>Fermer et ne plus afficher</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Confidentialité</value>
   </data>

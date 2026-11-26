@@ -213,6 +213,23 @@ public sealed class SettingsPageViewModelTests
     }
 
     [Fact]
+    public void ShowLobsterVisits_DefaultsOn_PersistsOffAndNotifies()
+    {
+        var vm = NewVm(out var settings, out var appCommands, out _, out var temp);
+        using (temp)
+        {
+            vm.Activate(null);
+
+            Assert.True(vm.ShowLobsterVisits);
+            vm.ShowLobsterVisits = false;
+
+            Assert.False(settings.ShowLobsterVisits);
+            Assert.False(settings.CapturePresentationSnapshot().ShowLobsterVisits);
+            Assert.Equal(1, appCommands.NotifySettingsSavedCount);
+        }
+    }
+
+    [Fact]
     public void ShowChatThinking_Persists_AndNotifies()
     {
         var vm = NewVm(out var settings, out var appCommands, out _, out var temp);

@@ -35,6 +35,35 @@ public sealed class ChatComposerSessionTests
             false);
 
     [Fact]
+    public void DontShowAgain_AnOlderQueuedSettingsNotificationCannotTurnVisitsBackOn()
+    {
+        var dispatcher = new RecordingUiDispatcher();
+        using var temp = new TempDirectory();
+        var settings = new SettingsManager(temp.Path);
+        using var store = new SettingsStore(settings, dispatcher);
+        using var session = new ChatComposerFactory(dispatcher, store, new SandboxStatusStore()).Create(
+            new FakeChatDataProviderForComposerTests(),
+            new ChatComposerHostActions(null, null, null, null),
+            initialSpeakerMuted: false);
+
+        // A background save of an unrelated setting queues its notification, which still has visits on...
+        dispatcher.HasThreadAccess = false;
+        dispatcher.RunEnqueuedImmediately = false;
+        settings.NotifyBuild = false;
+        settings.Save();
+
+        // ...then "Dismiss and don't show again" turns visits off on the UI thread, so the newer snapshot lands first.
+        dispatcher.HasThreadAccess = true;
+        session.DisableLobsterVisits();
+        Assert.False(session.ViewModel.LobsterVisitsEnabled);
+
+        dispatcher.FlushPending();
+
+        Assert.False(store.Current.ShowLobsterVisits);
+        Assert.False(session.ViewModel.LobsterVisitsEnabled);
+    }
+
+    [Fact]
     public void Dispose_DisposesViewModelAndControllerExactlyOnce()
     {
         var dispatcher = new RecordingUiDispatcher();

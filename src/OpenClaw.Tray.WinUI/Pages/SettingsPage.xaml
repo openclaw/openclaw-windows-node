@@ -346,6 +346,30 @@
                     </Grid>
                 </Border>
 
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="ShowLobsterVisitsLabel" x:Uid="SettingsRow_ShowLobsterVisits_Header"
+                                       Text="Lobster visits" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_ShowLobsterVisits_Description"
+                                       Text="A lobster sometimes drops by when you start a new session. Right-click it to dismiss it."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="ShowLobsterVisitsToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding ShowLobsterVisits, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="SettingsPageShowLobsterVisits"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=ShowLobsterVisitsLabel}"/>
+                    </Grid>
+                </Border>
+
                 <!-- ═════════ Local Gateway ═════════ -->
                 <TextBlock x:Uid="SettingsPage_LocalGateway" x:Name="LocalGatewaySectionHeader" Text="Local Gateway"
                            Style="{StaticResource BodyStrongTextBlockStyle}"
