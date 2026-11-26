@@ -18,7 +18,6 @@ public sealed class DesktopCompanionTests
         var window = File.ReadAllText(Path.Combine(root, "DesktopCompanionWindow.cs"));
         Assert.Contains("Component<DesktopCompanionSurface, DesktopCompanionSurfaceProps>", window);
         Assert.Contains("Component<DesktopCompanionBubble, DesktopCompanionBubbleProps>", window);
-        Assert.Contains("new DesktopAcrylicBackdrop()", window);
         Assert.Contains("_host.Dispose()", window);
         Assert.Contains("_bubbleHost.Dispose()", window);
         Assert.DoesNotContain(".Text =", window);

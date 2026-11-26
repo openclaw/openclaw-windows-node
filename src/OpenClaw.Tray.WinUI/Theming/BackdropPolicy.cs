@@ -48,6 +48,18 @@ internal static class BackdropPolicy
     private static string? s_windowTheme;
     private static bool s_refreshResources;
 
+    /// <summary>The Mica checkbox from the last <see cref="Configure"/>.</summary>
+    internal static bool UseMica => s_useMica;
+
+    /// <summary>The Gateway theme from the last <see cref="Configure"/>, or null for the Windows look.</summary>
+    internal static ResolvedTheme? Theme => s_theme;
+
+    /// <summary>
+    /// Raised after every <see cref="Configure"/>, so surfaces this policy does not own (the desktop lobster's
+    /// windowed popup) follow the Mica checkbox, theme and High Contrast. Subscribers unsubscribe when they close.
+    /// </summary>
+    internal static event EventHandler? Configured;
+
     /// <summary>Records the appearance and re-applies it to every tracked open window.</summary>
     public static void Configure(bool useMica, ResolvedTheme? theme)
     {
@@ -55,6 +67,7 @@ internal static class BackdropPolicy
         s_theme = theme;
         foreach (var (window, _) in s_states.ToList())
             Apply(window);
+        Configured?.Invoke(null, EventArgs.Empty);
     }
 
     /// <summary>
