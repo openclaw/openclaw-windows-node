@@ -830,6 +830,29 @@ public sealed partial class GatewayFixtureUiTests(ITestOutputHelper output)
 
     [GatewayFixtureUiFact]
     [Trait("Category", "GatewayFixture")]
+    public async Task PinnedPages_CustomizeWhilePickerClosesReopensPicker()
+    {
+        await WithAppAsync(async run =>
+        {
+            await run.InvokeAsync("app.navigate", new { page = "chat" });
+            // Reuse the live button so the reopen reaches the app before choosing a page has finished closing the picker.
+            var customize = await WaitForElementByIdAsync(run, "WorkspacePagesCustomize", "customization button");
+            Invoke(customize);
+            var firstConnection = await WaitForElementByIdAsync(run, "WorkspacePagesToggle:connection", "Connection pin toggle");
+            var firstConnectionId = firstConnection.GetRuntimeId();
+            Invoke(firstConnection);
+            Invoke(customize);
+            await WaitForElementByIdAsync(run, "WorkspacePagesToggle:sessions", "picker reopened after its previous close");
+            // Opening rebuilds the picker items, so a new element proves a reopen rather than the first picker.
+            var connection = await WaitForElementByIdAsync(run, "WorkspacePagesToggle:connection", "reopened Connection toggle");
+            Assert.NotEqual(firstConnectionId, connection.GetRuntimeId());
+            Assert.Equal(ToggleState.On, ((TogglePattern)connection.GetCurrentPattern(TogglePattern.Pattern)).Current.ToggleState);
+            Assert.NotNull(FindById(run, "WorkspacePinnedPage:connection"));
+        });
+    }
+
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
     public async Task PinnedPages_SelectionCallbacksDoNotReinvokeNavigation()
     {
         await WithAppAsync(async run =>
