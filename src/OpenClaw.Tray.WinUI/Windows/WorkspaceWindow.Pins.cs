@@ -22,6 +22,8 @@ public sealed partial class WorkspaceWindow
     private readonly PinnedPageRows _pinRows = new();
     private string? _pickerScope;
     private bool _pinsWired;
+    private FlyoutShowRequest? _pagesShow;
+    private string? _deferredPickerScope;
 
     private static string CurrentPinScope() => PinnedPages.ScopeKey(CurrentApp.Registry?.ActiveGatewayId);
 
@@ -31,6 +33,7 @@ public sealed partial class WorkspaceWindow
         _pinsWired = true;
         NavView.ItemInvoked += OnPinItemInvoked;
         ToolTipService.SetToolTip(PagesCustomizeButton, AutomationProperties.GetName(PagesCustomizeButton));
+        _pagesShow = new FlyoutShowRequest(PagesFlyout, ReopenPagesPicker);
         if (CurrentApp.SettingsStore is { } store) store.Changed += OnPinStoreChanged;
         if (CurrentApp.Registry is { } registry) registry.Changed += OnPinRegistryChanged;
         RebuildPins();
@@ -40,6 +43,7 @@ public sealed partial class WorkspaceWindow
     {
         if (!_pinsWired) return;
         _pinsWired = false;
+        _pagesShow?.Cancel();
         NavView.ItemInvoked -= OnPinItemInvoked;
         if (CurrentApp.SettingsStore is { } store) store.Changed -= OnPinStoreChanged;
         if (CurrentApp.Registry is { } registry) registry.Changed -= OnPinRegistryChanged;
@@ -198,6 +202,21 @@ public sealed partial class WorkspaceWindow
     }
 
     private void OnPagesFlyoutClosed(object sender, object e) => _pickerScope = null;
+
+    private void OnPagesCustomizeClick(object sender, RoutedEventArgs e)
+    {
+        // Button.Flyout handles ordinary opens, but WinUI drops them while choosing a page still closes the picker.
+        if (_pagesShow?.DeferUntilClosed() == true) _deferredPickerScope = CurrentPinScope();
+    }
+
+    private void ReopenPagesPicker()
+    {
+        // A Gateway switch during the close cancels the reopen, like it dismisses an open picker.
+        if (_deferredPickerScope == CurrentPinScope() &&
+            _pinsWired && PagesCustomizeButton.IsLoaded && PagesCustomizeButton.IsEnabled)
+            _pagesShow?.ShowAt(PagesCustomizeButton);
+        _deferredPickerScope = null;
+    }
 
     private void OnPagePinToggled(object sender, RoutedEventArgs e)
     {

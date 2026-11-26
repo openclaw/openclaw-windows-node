@@ -164,7 +164,7 @@
                                        AutomationProperties.AccessibilityView="Raw"/>
                         </Grid>
                         <TextBlock x:Name="HomeLabel" Grid.Column="1" VerticalAlignment="Center"/>
-                        <Button x:Name="PagesCustomizeButton" x:Uid="WorkspaceShell_PagesCustomize" Grid.Column="2"
+                        <Button x:Name="PagesCustomizeButton" x:Uid="WorkspaceShell_PagesCustomize" Grid.Column="2" Click="OnPagesCustomizeClick"
                                 Width="40" Height="{ThemeResource NavigationViewItemOnLeftMinHeight}"
                                 Padding="0"
                                 CornerRadius="{ThemeResource ControlCornerRadius}"
