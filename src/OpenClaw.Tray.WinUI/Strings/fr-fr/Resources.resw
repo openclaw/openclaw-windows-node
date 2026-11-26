@@ -6255,6 +6255,8 @@ Ouvrir Canaux dans le tableau de bord web.</value>
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Géré par OpenClaw</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Non installé</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Non installé</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>L'IA locale nécessite un Gateway de cette application</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>L'IA locale fonctionne uniquement avec un Gateway que cette application installe sur ce PC. Le Gateway actif n'a pas été installé par cette application, donc la configuration de l'IA locale ne peut pas l'utiliser. Pour utiliser l'IA locale, installez un Gateway local depuis Connexion.</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Inconnu</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Téléchargé et vérifié</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Chargé sur le GPU</value></data>

@@ -6292,6 +6292,8 @@ Abrir Canais no painel web.</value>
   <data name="LocalAiPage_Engine_Managed" xml:space="preserve"><value>Gerenciado pelo OpenClaw</value></data>
   <data name="LocalAiPage_Engine_NotInstalled" xml:space="preserve"><value>Não instalado</value></data>
   <data name="LocalAiPage_Model_NotInstalled" xml:space="preserve"><value>Não instalado</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Title" xml:space="preserve"><value>A IA local precisa de um Gateway deste aplicativo</value></data>
+  <data name="LocalAiPage_UnmanagedGateway_Message" xml:space="preserve"><value>A IA local só funciona com um Gateway que este aplicativo instala neste PC. O Gateway ativo não foi instalado por este aplicativo, então a configuração da IA local não pode usá-lo. Para usar a IA local, instale um Gateway local em Conexão.</value></data>
   <data name="LocalAiPage_Model_Unknown" xml:space="preserve"><value>Desconhecido</value></data>
   <data name="LocalAiPage_Model_Verified" xml:space="preserve"><value>Baixado e verificado</value></data>
   <data name="LocalAiPage_Model_Loaded" xml:space="preserve"><value>Carregado na GPU</value></data>
