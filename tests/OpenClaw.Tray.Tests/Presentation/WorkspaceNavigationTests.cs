@@ -739,6 +739,8 @@ public sealed class WorkspaceNavigationTests
         Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceTranscript(text)", chat);
         Assert.Contains("if (IsCurrentCapture()) host?.SetVoiceAudioLevel(level)", chat);
         Assert.Contains("e.Key == global::Windows.System.VirtualKey.E ||", workspace);
+        // AltGr is Ctrl+Alt; search must not swallow AltGr text input (#2312).
+        Assert.Contains("else if (ctrl && !alt && (e.Key == global::Windows.System.VirtualKey.K ||", workspace);
         Assert.Contains("(IsSettingsVisible && e.Key == global::Windows.System.VirtualKey.F)", workspace);
     }
 
