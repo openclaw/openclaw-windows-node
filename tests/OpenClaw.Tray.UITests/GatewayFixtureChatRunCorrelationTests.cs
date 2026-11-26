@@ -312,6 +312,55 @@ public sealed partial class GatewayFixtureUiTests
         }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
     }
 
+    // 160x96 orange PNG with a teal diagonal band, so captures show a real decoded picture.
+    private const string InlineImagePngBase64 =
+        "iVBORw0KGgoAAAANSUhEUgAAAKAAAABgCAIAAAAVRe7OAAABeUlEQVR42u3bQQrCUBQEwX9uz+CdFcETZGGwpyCC61f0rJJzns8Lz+txPH/xnGvAmCeAMU8AM+4DY54AxjwBzLgPjHkCGPMEMOM+MOY7gT+/Xxljvgf4+49xG1jKfWDME8AWewJYyn1gzBPAFnsCWMp9YMwTwBZ7AljKfWDME8AWewJYyn1gzBPAFnsCWMp9YMwTwBZ7AljKfWDME8AWewJYyn1gzBPAFnsCWMp9YMwTwBZ7AljKfWDME8AWewJYyn1gzBPAFnsCWMp9YMwTwBZ7AljKfWDME8AWewJYyn1gzBPAFnsCWMp9YMxLbydNGo+9gbaX8uSbpEvMw6/8bxhvf9YxkLLPs+LMgOOLjTaeMtc4M9H4YrOMpwwyzowwvtjw4imTizMziy82rXjKqOLMkOKLjSeeMps4M5X4YvOIpwwjzowhvtgA4im7fpzZ3eOL7eLxlJ27zuzQcWYnjhu7b5zZZePMbho3dtA4s1PGmR0xbuyCbeY3ESaX3SzCCWEAAAAASUVORK5CYII=";
+    private const double InlineImageAspectRatio = 160.0 / 96.0;
+    private const string InlineImageButtonName = "Open image Image";
+
+    // The Gateway sends inline images as input_image blocks carrying a data URL; native chat must
+    // decode them locally and show the picture rather than drop the block or show an unavailable card.
+    [GatewayFixtureUiFact]
+    [Trait("Category", "GatewayFixture")]
+    public async Task ChatInlineInputImageRendersVisibleNativeImage()
+    {
+        await WithAppAsync(async run =>
+        {
+            await OpenCorrelationChatAsync(run);
+            await SendCorrelationPromptAsync(run, "Fixture image question.");
+            await PublishLifecycleAsync(run, "fixture-chat-1", "start");
+            object[] content =
+            [
+                new { type = "text", text = "Fixture inline image answer." },
+                new { type = "input_image", image_url = $"data:image/png;base64,{InlineImagePngBase64}" },
+            ];
+            await run.Gateway.PublishChatContentAsync(GatewayScenario.MainSessionKey, "fixture-chat-1", content, isFinal: false);
+            await WaitUiAsync(run, () => IsVisibleInTimeline(run, "Fixture inline image answer.")
+                && FindVisibleTimelineButton(run, InlineImageButtonName) is not null, "streamed inline image");
+
+            await run.Gateway.PublishChatContentAsync(GatewayScenario.MainSessionKey, "fixture-chat-1", content, isFinal: true);
+            await WaitPrimaryActionAsync(run, "Send");
+            AutomationElement? image = null;
+            await WaitUiAsync(run, () => (image = FindVisibleTimelineButton(run, InlineImageButtonName)) is not null,
+                "final inline image");
+            var bounds = image!.Cached.BoundingRectangle;
+            Assert.InRange(bounds.Width / bounds.Height, InlineImageAspectRatio - 0.08, InlineImageAspectRatio + 0.08);
+            Assert.Null(FindText(run, "Media unavailable"));
+            Assert.Null(FindText(run, "Preparing media"));
+            await CaptureIfRequestedAsync(run, "inline-input-image.png");
+        }, scenario: GatewayScenario.CreateBrowse(allowChatSend: true));
+    }
+
+    private static AutomationElement? FindVisibleTimelineButton(GatewayFixtureRun run, string name) => ObserveComplete(() =>
+    {
+        var (timeline, timelineComplete) = ObserveTimeline(run);
+        if (timeline is null) return (null, timelineComplete);
+        var (buttons, buttonsComplete) = ReadSnapshot(timeline, TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+            new PropertyCondition(AutomationElement.NameProperty, name)));
+        return (buttons.FirstOrDefault(button => IsVisibleInTimeline(timeline, button)), buttonsComplete);
+    }, button => button is not null);
+
     private static async Task OpenCorrelationChatAsync(GatewayFixtureRun run)
     {
         await run.InvokeAsync("app.navigate", new { page = "chat" });
