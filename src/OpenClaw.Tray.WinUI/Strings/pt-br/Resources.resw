@@ -28,6 +28,7 @@
   <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>Ocultar enquanto a configuração ou a janela de chat/painel estiver visível.</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>Redimensione a lagosta sem alterar o texto do chat ou das notificações.</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>Configurações da lagosta na área de trabalho</value></data>
+  <data name="DesktopCompanion_CloseCompanion" xml:space="preserve"><value>Fechar Companion</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>Não foi possível exibir a lagosta. Desative e reative Lagosta na área de trabalho em Configurações para tentar novamente. Suas notificações continuam disponíveis no OpenClaw.</value></data>
   <!-- ==================== SettingsWindow.xaml ==================== -->
   <!-- Section headers -->

@@ -28,6 +28,7 @@
   <data name="DesktopCompanion_OnlyWhenMinimized.Description" xml:space="preserve"><value>设置或聊天/仪表板窗口可见时隐藏。</value></data>
   <data name="DesktopCompanion_ScaleDescription.Text" xml:space="preserve"><value>调整龙虾大小，不改变聊天或通知文字的大小。</value></data>
   <data name="DesktopCompanion_Settings" xml:space="preserve"><value>桌面龙虾设置</value></data>
+  <data name="DesktopCompanion_CloseCompanion" xml:space="preserve"><value>退出 Companion</value></data>
   <data name="DesktopCompanion_Failed" xml:space="preserve"><value>无法显示桌面龙虾。请在设置中关闭再打开“桌面龙虾”以重试。你仍然可以在 OpenClaw 中查看通知。</value></data>
   <data name="SettingsConnectionHeader.Text" xml:space="preserve">
     <value>连接</value>

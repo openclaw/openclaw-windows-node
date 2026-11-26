@@ -27,6 +27,7 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
     private readonly Action _openNotifications;
     private readonly Action _openChat;
     private readonly Action _openSettings;
+    private readonly Action _closeCompanion;
     private int _scalePercent = OpenClaw.Shared.DesktopCompanionScale.DefaultPercent;
     private readonly DispatcherTimer _bubbleTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private readonly DesktopCompanionPresentation _presentation = new();
@@ -57,11 +58,13 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
 
     public event EventHandler? HideRequested;
 
-    internal DesktopCompanionWindow(Action openNotifications, Action openChat, Action openSettings)
+    internal DesktopCompanionWindow(Action openNotifications, Action openChat, Action openSettings,
+        Action closeCompanion)
     {
         _openNotifications = openNotifications;
         _openChat = openChat;
         _openSettings = openSettings;
+        _closeCompanion = closeCompanion;
         _chat = new DesktopCompanionChatHost(this, _presentation);
         Title = LocalizationHelper.GetString("DesktopCompanion_Name");
         SystemBackdrop = new TransparentTintBackdrop();
@@ -567,6 +570,8 @@ public sealed class DesktopCompanionWindow : WindowEx, IDesktopCompanionView
         AddMenuItem(menu, "DesktopCompanion_Notifications", _openNotifications);
         menu.Items.Add(new MenuFlyoutSeparator());
         AddMenuItem(menu, "DesktopCompanion_Settings", _openSettings);
+        menu.Items.Add(new MenuFlyoutSeparator());
+        AddMenuItem(menu, "DesktopCompanion_CloseCompanion", _closeCompanion);
         if (position is { } point) menu.ShowAt(_mascotTarget, point);
         else menu.ShowAt(_mascotTarget);
     }
