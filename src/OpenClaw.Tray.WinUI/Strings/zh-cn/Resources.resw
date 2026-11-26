@@ -4563,6 +4563,13 @@
   </data>
   <data name="ChatLobster_Dismiss" xml:space="preserve"><value>关闭</value></data>
   <data name="ChatLobster_DismissForever" xml:space="preserve"><value>关闭且不再显示</value></data>
+  <data name="SettingsLobsterdex.Header" xml:space="preserve"><value>龙虾图鉴</value></data>
+  <data name="SettingsLobsterdexIntro.Text" xml:space="preserve"><value>曾经到访此 Hub 配置文件的龙虾。</value></data>
+  <data name="Lobsterdex_Loading" xml:space="preserve"><value>正在加载龙虾图鉴…</value></data>
+  <data name="Lobsterdex_Empty" xml:space="preserve"><value>还没有龙虾的到访记录。开始新会话时，留意来访的龙虾。</value></data>
+  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>无法读取龙虾图鉴。请折叠图鉴，再重新展开以重试。如果问题仍然存在，请先联系支持人员，再修改收藏文件。</value></data>
+  <data name="Lobsterdex_FirstSeen" xml:space="preserve"><value>首次到访：{0:D}</value></data>
+  <data name="Lobsterdex_ShinySeen" xml:space="preserve"><value>闪光龙虾首次到访：{0:D}</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>隐私</value>
   </data>

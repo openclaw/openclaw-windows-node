@@ -45,6 +45,17 @@ internal sealed class LobsterArtworkCanvas
     internal FrameworkElement? Element(LobsterArtRole role) =>
         role == LobsterArtRole.Root ? Svg : _roles.GetValueOrDefault(role);
 
+    internal static (string Accent, string AccentHover) ReadAccentColors()
+    {
+        var resources = Application.Current.Resources;
+        return (Read("SystemAccentColor", "#7f77dd"), Read("SystemAccentColorLight1", "#9a93e8"));
+
+        string Read(string key, string fallback) =>
+            resources.TryGetValue(key, out var value) && value is global::Windows.UI.Color c
+                ? $"#{c.R:x2}{c.G:x2}{c.B:x2}"
+                : fallback;
+    }
+
     /// <summary>Builds the WinUI tree for <paramref name="artwork"/>. Call on the UI thread.</summary>
     internal static LobsterArtworkCanvas Build(LobsterArtwork artwork)
     {

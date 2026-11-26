@@ -1,5 +1,6 @@
 using Microsoft.Toolkit.Uwp.Notifications;
 using OpenClaw.Shared;
+using OpenClawTray.Chat.LobsterVisits;
 using OpenClawTray.Services;
 using System;
 using System.Collections.Generic;
@@ -237,6 +238,9 @@ public partial class App
                 await windowManager.CloseForShutdownAsync();
             }));
         }
+
+        steps.Add(new AppShutdownStep("Lobsterdex", async () =>
+            await LobsterdexFile.DrainProfileAsync(AppIdentity.ResolveLocalDataDirectory())));
 
         steps.Add(new AppShutdownStep("tray menu window", () =>
         {

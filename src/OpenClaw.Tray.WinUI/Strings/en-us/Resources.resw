@@ -4613,6 +4613,13 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   </data>
   <data name="ChatLobster_Dismiss" xml:space="preserve"><value>Dismiss</value></data>
   <data name="ChatLobster_DismissForever" xml:space="preserve"><value>Dismiss and don't show again</value></data>
+  <data name="SettingsLobsterdex.Header" xml:space="preserve"><value>Lobsterdex</value></data>
+  <data name="SettingsLobsterdexIntro.Text" xml:space="preserve"><value>Lobsters that have visited this Hub profile.</value></data>
+  <data name="Lobsterdex_Loading" xml:space="preserve"><value>Loading Lobsterdex…</value></data>
+  <data name="Lobsterdex_Empty" xml:space="preserve"><value>No lobsters recorded yet. Look for visitors when you start a new session.</value></data>
+  <data name="Lobsterdex_Unavailable" xml:space="preserve"><value>The Lobsterdex couldn’t be read. Collapse and reopen it to retry. If it still won’t open, contact support before changing the collection file.</value></data>
+  <data name="Lobsterdex_FirstSeen" xml:space="preserve"><value>First seen {0:D}</value></data>
+  <data name="Lobsterdex_ShinySeen" xml:space="preserve"><value>First shiny sighting: {0:D}</value></data>
   <data name="SettingsPage_Privacy.Text" xml:space="preserve">
     <value>Privacy</value>
   </data>
