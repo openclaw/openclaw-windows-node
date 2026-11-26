@@ -1449,62 +1449,15 @@ public class BrowserProxyCapabilityTests
     {
         var testHost = FindBrowserProxyTestHost();
         using var directory = new TempDirectory();
-        using var proxy = new TcpListener(IPAddress.Loopback, 0);
-        using var control = new TcpListener(IPAddress.Loopback, 0);
-        proxy.Start();
-        control.Start();
-        int proxyPort = ((IPEndPoint)proxy.LocalEndpoint).Port;
-        int controlPort = ((IPEndPoint)control.LocalEndpoint).Port;
+        var body = boardDocument ? "<!doctype html><p>synthetic board</p>" : "{\"ok\":true}";
+        using var proxy = new LoopbackHttpResponder(
+            "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray());
+        using var control = new LoopbackHttpResponder(Encoding.UTF8.GetBytes(
+            $"HTTP/1.1 200 OK\r\nContent-Type: {(boardDocument ? "text/html" : "application/json")}\r\n" +
+            $"Content-Length: {Encoding.UTF8.GetByteCount(body)}\r\nConnection: close\r\n\r\n{body}"));
+        int proxyPort = proxy.Port;
+        int controlPort = control.Port;
         int gatewayPort = controlPort - 2;
-        int proxyConnections = 0;
-        int controlConnections = 0;
-        string? proxyRequest = null;
-        string? controlRequest = null;
-        using var stop = new CancellationTokenSource();
-        Task proxyAccepts = Task.Run(async () =>
-        {
-            try
-            {
-                while (!stop.IsCancellationRequested)
-                {
-                    using TcpClient accepted = await proxy.AcceptTcpClientAsync(stop.Token);
-                    Interlocked.Increment(ref proxyConnections);
-                    await using NetworkStream stream = accepted.GetStream();
-                    var buffer = new byte[4096];
-                    var read = await stream.ReadAsync(buffer, stop.Token);
-                    proxyRequest = Encoding.UTF8.GetString(buffer, 0, read);
-                    await stream.WriteAsync(
-                        "HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray(),
-                        stop.Token);
-                }
-            }
-            catch (OperationCanceledException) when (stop.IsCancellationRequested)
-            {
-            }
-            catch (ObjectDisposedException) when (stop.IsCancellationRequested)
-            {
-            }
-        });
-        Task controlAccept = Task.Run(async () =>
-        {
-            try
-            {
-                using TcpClient accepted = await control.AcceptTcpClientAsync(stop.Token);
-                Interlocked.Increment(ref controlConnections);
-                await using NetworkStream stream = accepted.GetStream();
-                var buffer = new byte[4096];
-                var read = await stream.ReadAsync(buffer, stop.Token);
-                controlRequest = Encoding.UTF8.GetString(buffer, 0, read);
-                var body = boardDocument ? "<!doctype html><p>synthetic board</p>" : "{\"ok\":true}";
-                byte[] response = Encoding.UTF8.GetBytes(
-                    $"HTTP/1.1 200 OK\r\nContent-Type: {(boardDocument ? "text/html" : "application/json")}\r\n" +
-                    $"Content-Length: {Encoding.UTF8.GetByteCount(body)}\r\nConnection: close\r\n\r\n{body}");
-                await stream.WriteAsync(response, stop.Token);
-            }
-            catch (OperationCanceledException) when (stop.IsCancellationRequested)
-            {
-            }
-        });
 
         var start = new ProcessStartInfo("dotnet")
         {
@@ -1534,22 +1487,25 @@ public class BrowserProxyCapabilityTests
                 $"proxy-fixture pid={child.Id} start={child.StartTime.ToUniversalTime():O} " +
                 $"exe={start.FileName} args={string.Join(" ", start.ArgumentList)} " +
                 $"controlPort={controlPort} proxyPort={proxyPort} dataRoot={directory.Path}");
-            var standardOutput = child.StandardOutput.ReadToEndAsync();
-            var standardError = child.StandardError.ReadToEndAsync();
+            var standardOutput = ReadToEndOnDedicatedThread(child.StandardOutput);
+            var standardError = ReadToEndOnDedicatedThread(child.StandardError);
             await child.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
             var output = await standardOutput;
             var error = await standardError;
             Assert.True(child.ExitCode == (useDefaultHandler ? 1 : 0),
-                $"Proxy fixture exited {child.ExitCode}: {error}\n{output}");
-            Assert.Equal(useDefaultHandler ? 1 : 0, Volatile.Read(ref proxyConnections));
-            Assert.Equal(useDefaultHandler ? 0 : 1, Volatile.Read(ref controlConnections));
+                $"Proxy fixture exited {child.ExitCode}: {error}\n{output}\n" +
+                $"proxy responder fault: {proxy.Fault}\ncontrol responder fault: {control.Fault}");
+            Assert.Null(proxy.Fault);
+            Assert.Null(control.Fault);
+            Assert.Equal(useDefaultHandler ? 1 : 0, proxy.Connections);
+            Assert.Equal(useDefaultHandler ? 0 : 1, control.Connections);
             if (boardDocument)
             {
                 Assert.Contains("/__openclaw__/board/k/w/index.html?bt=synthetic-view-ticket",
-                    useDefaultHandler ? proxyRequest : controlRequest);
+                    useDefaultHandler ? proxy.LastRequest : control.LastRequest);
                 if (!useDefaultHandler)
                 {
-                    Assert.Null(proxyRequest);
+                    Assert.Null(proxy.LastRequest);
                     Assert.Contains("<!doctype html><p>synthetic board</p>", output);
                 }
             }
@@ -1567,17 +1523,81 @@ public class BrowserProxyCapabilityTests
             finally
             {
                 child?.Dispose();
-                stop.Cancel();
-                try
+            }
+        }
+    }
+
+    // Redirected process pipes are synchronous on Windows, so ReadToEndAsync would hold a pool
+    // worker for the child's whole lifetime.
+    private static Task<string> ReadToEndOnDedicatedThread(StreamReader reader) =>
+        Task.Factory.StartNew(
+            reader.ReadToEnd,
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+    /// <summary>
+    /// Serves one canned HTTP response per loopback connection on a dedicated thread. The
+    /// out-of-process client enforces its own deadline, so the responder must not depend on
+    /// this test process's thread pool, which parallel tests can starve.
+    /// </summary>
+    private sealed class LoopbackHttpResponder : IDisposable
+    {
+        private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
+        private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+        private readonly byte[] _response;
+        private readonly Thread _thread;
+        private TcpClient? _current;
+        private int _connections;
+        private string? _lastRequest;
+        private Exception? _fault;
+        private volatile bool _stopping;
+
+        public LoopbackHttpResponder(byte[] response)
+        {
+            _response = response;
+            _listener.Start();
+            Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+            _thread = new Thread(Serve) { IsBackground = true, Name = $"loopback-http-{Port}" };
+            _thread.Start();
+        }
+
+        public int Port { get; }
+        public int Connections => Volatile.Read(ref _connections);
+        public string? LastRequest => Volatile.Read(ref _lastRequest);
+        public Exception? Fault => Volatile.Read(ref _fault);
+
+        private void Serve()
+        {
+            try
+            {
+                while (true)
                 {
-                    await Task.WhenAll(proxyAccepts, controlAccept).WaitAsync(TimeSpan.FromSeconds(5));
-                }
-                finally
-                {
-                    proxy.Stop();
-                    control.Stop();
+                    using TcpClient accepted = _listener.AcceptTcpClient();
+                    Volatile.Write(ref _current, accepted);
+                    Interlocked.Increment(ref _connections);
+                    using NetworkStream stream = accepted.GetStream();
+                    var buffer = new byte[4096];
+                    var read = stream.Read(buffer);
+                    Volatile.Write(ref _lastRequest, Encoding.UTF8.GetString(buffer, 0, read));
+                    stream.Write(_response);
                 }
             }
+            catch (Exception) when (_stopping)
+            {
+            }
+            catch (Exception ex)
+            {
+                Volatile.Write(ref _fault, ex);
+            }
+        }
+
+        public void Dispose()
+        {
+            _stopping = true;
+            _listener.Stop();
+            Volatile.Read(ref _current)?.Dispose();
+            _thread.Join(StopTimeout);
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using OpenClaw.Connection;
 using OpenClaw.Shared;
@@ -12,6 +13,152 @@ public sealed class GatewayPackageCleanupTests
     private static readonly TimeSpan WorkerTimeout =
         int.TryParse(Environment.GetEnvironmentVariable(WorkerTimeoutEnvironmentVariable), out var seconds) && seconds > 0
             ? TimeSpan.FromSeconds(seconds) : TimeSpan.FromSeconds(120);
+
+    [Theory]
+    [InlineData("AllSigned", "Undefined", false)]
+    [InlineData("Undefined", "AllSigned", false)]
+    [InlineData("RemoteSigned", "AllSigned", true)]
+    [InlineData("Restricted", "Undefined", false)]
+    [InlineData("Undefined", "RemoteSigned", true)]
+    [InlineData("", "Undefined", false)]
+    [InlineData("Undefined", null, false)]
+    [InlineData("Unrecognized", "Undefined", false)]
+    public void CleanupPolicy_RequiresKnownValuesAndUsesEffectiveGroupPolicy(
+        string? machinePolicy, string? userPolicy, bool allowed) =>
+        Assert.Equal(allowed, GatewayPackageCleanup.IsCleanupScriptAllowedByPolicy(machinePolicy, userPolicy));
+
+    [Theory]
+    [InlineData("AllSigned|Undefined", 0, false, false)]
+    [InlineData("Undefined|RemoteSigned", 0, false, true)]
+    [InlineData("AllSigned|Undefined", 1, false, false)]
+    [InlineData("Undefined|RemoteSigned", 0, true, false)]
+    [InlineData("Unrecognized|Undefined", 0, false, false)]
+    public async Task CleanupPolicyProbe_FailsClosedOnBlockedOrInvalidResults(
+        string output, int exitCode, bool timedOut, bool expected)
+    {
+        var commands = new PolicyProbeCommandRunner(output, exitCode, timedOut);
+
+        Assert.Equal(expected, await GatewayPackageCleanup.CanRunCleanupScriptAsync(
+            commands, CancellationToken.None));
+        var call = Assert.Single(commands.Calls);
+        Assert.StartsWith("-NoProfile", call.Arguments[0]);
+        Assert.Contains("-Command", call.Arguments);
+    }
+
+    [Fact]
+    public async Task CleanupTaskRemovalFailure_IsLoggedAndRetried()
+    {
+        using var fixture = new CleanupFixture();
+        var warnings = new List<string>();
+        var failedCommands = new PolicyProbeCommandRunner("", 1, false, "access denied");
+
+        Assert.False(await GatewayPackageCleanup.DisarmCleanupTaskAsync(
+            failedCommands, fixture.Cleanup, CancellationToken.None, warnings.Add));
+        Assert.True(File.Exists(Path.Combine(fixture.Cleanup, "cleanup-task-removal.pending")));
+        Assert.Contains("access denied", Assert.Single(warnings));
+
+        var successfulCommands = new PolicyProbeCommandRunner("", 0, false);
+        Assert.True(await GatewayPackageCleanup.DisarmCleanupTaskAsync(
+            successfulCommands, fixture.Cleanup, CancellationToken.None, warnings.Add));
+        Assert.False(File.Exists(Path.Combine(fixture.Cleanup, "cleanup-task-removal.pending")));
+
+        var call = Assert.Single(successfulCommands.Calls);
+        Assert.Contains("-Command", call.Arguments);
+        Assert.Contains("Unregister-ScheduledTask", call.Arguments[^1]);
+        Assert.DoesNotContain("-ExecutionPolicy", call.Arguments);
+    }
+
+    [Fact]
+    public async Task CleanupTaskDisarm_DoesNotRemoveTaskWhileOwnershipExists()
+    {
+        using var fixture = new CleanupFixture();
+        File.WriteAllText(fixture.OwnedPath, "{}");
+        var commands = new PolicyProbeCommandRunner("", 0, false);
+
+        Assert.False(await GatewayPackageCleanup.DisarmCleanupTaskAsync(
+            commands, fixture.Cleanup, CancellationToken.None));
+
+        Assert.Empty(commands.Calls);
+        Assert.False(File.Exists(Path.Combine(fixture.Cleanup, "cleanup-task-removal.pending")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PreserveReceipt_AppendsGatewayRemovalAndDisownsOwner(bool windowsPowerShell)
+    {
+        using var fixture = new CleanupFixture();
+        var fingerprint = Convert.ToHexString(SHA256.HashData(await fixture.WriteOwnedRecordAsync(windowsPowerShell)));
+        File.WriteAllText(fixture.ReceiptPath, "[]");
+
+        await GatewayPackageCleanup.AppendPreservedRemovalAsync(fixture.Cleanup, CancellationToken.None);
+
+        using var pending = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(fixture.Cleanup, "gateway-preservation.pending")));
+        Assert.Equal(fingerprint, pending.RootElement.GetProperty("OwnedRecordSha256").GetString());
+        using var receipt = JsonDocument.Parse(File.ReadAllText(fixture.ReceiptPath));
+        Assert.Equal(1, receipt.RootElement.GetArrayLength());
+        Assert.Equal("OpenClawGateway", receipt.RootElement[0].GetProperty("DistroName").GetString());
+        Assert.Equal(Path.Combine("C:\\", "OpenClawGateway"),
+            receipt.RootElement[0].GetProperty("InstallPath").GetString());
+        Assert.Equal(JsonValueKind.Null, receipt.RootElement[0].GetProperty("NativeFamily").ValueKind);
+        Assert.False(File.Exists(fixture.OwnedPath));
+
+        Assert.True(await fixture.InitializeAsync());
+
+        Assert.Equal([(false, false)], fixture.Calls);
+    }
+
+    [Fact]
+    public async Task PreserveReceiptWriteFailure_LeavesWorkerGatedForRetry()
+    {
+        using var fixture = new CleanupFixture();
+        File.WriteAllText(fixture.OwnedPath, """{"DistroName":"OpenClawGateway"}""");
+        Directory.CreateDirectory(fixture.ReceiptPath);
+
+        await Assert.ThrowsAnyAsync<UnauthorizedAccessException>(() =>
+            GatewayPackageCleanup.AppendPreservedRemovalAsync(fixture.Cleanup, CancellationToken.None));
+
+        Assert.True(File.Exists(fixture.OwnedPath));
+        Assert.True(File.Exists(Path.Combine(fixture.Cleanup, "gateway-preservation.pending")));
+    }
+
+    [Fact]
+    public async Task PendingPreservation_DoesNotDisownAChangedOwner()
+    {
+        using var fixture = new CleanupFixture();
+        var originalOwner = """{"DistroName":"OpenClawGateway","RegistrationId":"original"}""";
+        File.WriteAllText(fixture.OwnedPath, originalOwner);
+        var fingerprint = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(fixture.OwnedPath)));
+        File.WriteAllText(Path.Combine(fixture.Cleanup, "gateway-preservation.pending"),
+            JsonSerializer.Serialize(new { OwnedRecordSha256 = fingerprint }));
+        var newOwner = """{"DistroName":"OpenClawGateway","RegistrationId":"new"}""";
+        File.WriteAllText(fixture.OwnedPath, newOwner);
+
+        Assert.False(await GatewayPackageCleanup.CompletePendingPreservationAsync(
+            fixture.Cleanup, CancellationToken.None));
+
+        Assert.Equal(newOwner, File.ReadAllText(fixture.OwnedPath));
+        Assert.False(File.Exists(fixture.ReceiptPath));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PendingPreservation_CompletesForTheOriginalOwner(bool windowsPowerShell)
+    {
+        using var fixture = new CleanupFixture();
+        var fingerprint = Convert.ToHexString(SHA256.HashData(await fixture.WriteOwnedRecordAsync(windowsPowerShell)));
+        File.WriteAllText(Path.Combine(fixture.Cleanup, "gateway-preservation.pending"),
+            JsonSerializer.Serialize(new { OwnedRecordSha256 = fingerprint }));
+
+        Assert.True(await GatewayPackageCleanup.CompletePendingPreservationAsync(
+            fixture.Cleanup, CancellationToken.None));
+
+        Assert.False(File.Exists(fixture.OwnedPath));
+        using var receipt = JsonDocument.Parse(File.ReadAllText(fixture.ReceiptPath));
+        Assert.Equal("OpenClawGateway", receipt.RootElement[0].GetProperty("DistroName").GetString());
+    }
 
     [Fact]
     public async Task Startup_PreservesUnboundLegacyDistroWithoutRegisteringCleanup()
@@ -271,6 +418,42 @@ public sealed class GatewayPackageCleanupTests
         Assert.False(File.Exists(resultPath + ".tmp"));
     }
 
+    [Fact]
+    public async Task Worker_PendingPreserveMarkerPreventsCleanupWhileOwnershipRemains()
+    {
+        Assert.True(OperatingSystem.IsWindows(), "Worker contract proof requires Windows PowerShell 5.1.");
+        using var temp = new TempDirectory();
+        using var source = typeof(GatewayPackageCleanup).Assembly.GetManifestResourceStream(
+            "OpenClaw.SetupEngine.GatewayPackageCleanup.ps1");
+        Assert.NotNull(source);
+        var workerPath = temp.Combine("worker.ps1");
+        using (var reader = new StreamReader(source))
+            File.WriteAllText(workerPath, await reader.ReadToEndAsync());
+
+        var profile = Directory.CreateDirectory(temp.Combine("profile")).FullName;
+        var cleanup = Directory.CreateDirectory(Path.Combine(
+            profile, ".openclaw-companion", "cleanup", "Fixture_123")).FullName;
+        var ownedPath = Path.Combine(cleanup, "owned.json");
+        File.WriteAllText(ownedPath, """{"DistroName":"OpenClawGateway"}""");
+        File.WriteAllText(Path.Combine(cleanup, "gateway-preservation.pending"), string.Empty);
+        var harnessPath = temp.Combine("worker-test.ps1");
+        File.WriteAllText(harnessPath, """
+            $env:USERPROFILE = Join-Path $PSScriptRoot 'profile'
+            & (Join-Path $PSScriptRoot 'worker.ps1') -Family 'Fixture_123'
+            """);
+
+        using var logger = new SetupLogger(filePath: null);
+        var result = await new CommandRunner(logger).RunAsync(
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                "WindowsPowerShell", "v1.0", "powershell.exe"),
+            ["-NoProfile", "-NonInteractive", "-File", harnessPath], WorkerTimeout);
+
+        Assert.False(result.TimedOut);
+        Assert.True(result.ExitCode == 0, result.Stderr);
+        Assert.True(File.Exists(ownedPath));
+        Assert.False(File.Exists(Path.Combine(cleanup, "cleanup-result.txt")));
+    }
+
     [Theory]
     [InlineData(null, null, false, false)]
     [InlineData("OpenClawGateway", null, false, false)]
@@ -367,6 +550,30 @@ public sealed class GatewayPackageCleanupTests
             Cleanup = Directory.CreateDirectory(_temp.Combine("cleanup")).FullName;
         }
 
+        public async Task<byte[]> WriteOwnedRecordAsync(bool windowsPowerShell)
+        {
+            const string json = """{"DistroName":"OpenClawGateway","InstallPath":"C:\\OpenClawGateway","NativeFamily":null}""";
+            if (!windowsPowerShell)
+            {
+                File.WriteAllText(OwnedPath, json);
+                return File.ReadAllBytes(OwnedPath);
+            }
+
+            using var logger = new SetupLogger(filePath: null);
+            var result = await new CommandRunner(logger).RunAsync(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+                    "WindowsPowerShell", "v1.0", "powershell.exe"),
+                ["-NoProfile", "-NonInteractive", "-Command", $$"""
+                    $record = '{{json}}' | ConvertFrom-Json
+                    $record | ConvertTo-Json | Set-Content 'owned.json' -Encoding UTF8
+                    """], WorkerTimeout, workingDirectory: Cleanup);
+            Assert.False(result.TimedOut);
+            Assert.True(result.ExitCode == 0, result.Stderr);
+            var bytes = File.ReadAllBytes(OwnedPath);
+            Assert.True(bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]));
+            return bytes;
+        }
+
         public Task<bool> InitializeAsync(Func<string, bool>? preserve = null) =>
             GatewayPackageCleanup.InitializeAsync((register, keep) =>
             {
@@ -375,5 +582,24 @@ public sealed class GatewayPackageCleanupTests
             }, Data, Local, preserve: preserve);
 
         public void Dispose() => _temp.Dispose();
+    }
+
+    private sealed class PolicyProbeCommandRunner(
+        string output, int exitCode, bool timedOut, string error = "") : ICommandRunner
+    {
+        public List<(string Executable, string[] Arguments)> Calls { get; } = [];
+
+        public Task<CommandResult> RunAsync(string executable, string[] arguments, TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? environment = null, string? workingDirectory = null,
+            string? stdinInput = null, CancellationToken ct = default, Stream? stdinStream = null)
+        {
+            Calls.Add((executable, arguments));
+            return Task.FromResult(new CommandResult(exitCode, output, error, TimeSpan.Zero, timedOut));
+        }
+
+        public Task<CommandResult> RunInWslAsync(string distroName, string command, TimeSpan timeout,
+            IReadOnlyDictionary<string, string>? environment = null, CancellationToken ct = default,
+            string? user = null, bool inputViaStdin = false) =>
+            throw new NotSupportedException();
     }
 }
