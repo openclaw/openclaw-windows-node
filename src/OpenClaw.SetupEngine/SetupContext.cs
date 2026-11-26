@@ -605,6 +605,8 @@ public sealed class SetupContext
     public GatewayRegistrySnapshot? ExpectedGatewayRegistry { get; set; }
     [JsonIgnore]
     public Action<TraySettingsConfig>? PersistTraySettings { get; set; }
+    [JsonIgnore]
+    public Action? ShowGatewayCleanupUnavailableWarning { get; set; }
 
     /// <summary>Checks the prior operation-owned state before a pipeline registry mutation.</summary>
     public GatewayRegistry LoadSetupRegistry()

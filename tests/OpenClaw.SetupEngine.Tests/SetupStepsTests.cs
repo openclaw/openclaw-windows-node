@@ -3471,6 +3471,7 @@ public class SetupStepsTests : IDisposable
     public async Task CreateWslInstance_UsesDirectFreshInstallAndDoesNotExportBaseDistro()
     {
         var installed = false;
+        var cleanupRegistrationCalls = 0;
         var commands = new FakeCommandRunner(args =>
         {
             if (args.SequenceEqual(["--list", "--quiet"]))
@@ -3488,10 +3489,21 @@ public class SetupStepsTests : IDisposable
             return Fail($"unexpected args: {string.Join(' ', args)}");
         });
         var ctx = CreateContext(commands: commands);
+        var cleanupWarningShown = false;
+        ctx.ShowGatewayCleanupUnavailableWarning = () => cleanupWarningShown = true;
 
-        var result = await new CreateWslInstanceStep().ExecuteAsync(ctx, CancellationToken.None);
+        var step = new CreateWslInstanceStep(
+            FakeWslRegistrationInspector.Found(Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway")),
+            (_, _, _, _) =>
+            {
+                cleanupRegistrationCalls++;
+                return Task.FromResult(false);
+            });
+        var result = await step.ExecuteAsync(ctx, CancellationToken.None);
 
         Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(1, cleanupRegistrationCalls);
+        Assert.True(cleanupWarningShown);
         Assert.DoesNotContain(commands.Calls, c => c.Arguments.Contains("--export"));
         Assert.DoesNotContain(commands.Calls, c =>
             c.Arguments is ["--terminate", "Ubuntu-24.04"] or ["--unregister", "Ubuntu-24.04"]);
@@ -3508,6 +3520,42 @@ public class SetupStepsTests : IDisposable
             _tempDir,
             _localTempDir,
             "OpenClawGateway"));
+    }
+
+    [Fact]
+    public async Task CreateWslInstance_CleanupRegistrationFailureFailsSetupWithoutWarning()
+    {
+        var installed = false;
+        var commands = new FakeCommandRunner(args =>
+        {
+            if (args.SequenceEqual(["--list", "--quiet"]))
+                return Ok(installed ? "OpenClawGateway\n" : "");
+            if (args.Contains("--install"))
+            {
+                installed = true;
+                return Ok("Installing Ubuntu-24.04\n");
+            }
+            if (args.SequenceEqual(["--list", "--verbose"]))
+                return Ok("  NAME              STATE           VERSION\n* OpenClawGateway   Stopped         2\n");
+            if (args.SequenceEqual(["-d", "OpenClawGateway", "-u", "root", "--", "sh", "-lc", "id -u && test -d / && echo OPENCLAW_FRESH_WSL_READY"]))
+                return Ok("0\nOPENCLAW_FRESH_WSL_READY\n");
+
+            return Fail($"unexpected args: {string.Join(' ', args)}");
+        });
+        var ctx = CreateContext(commands: commands);
+        var cleanupWarningShown = false;
+        ctx.ShowGatewayCleanupUnavailableWarning = () => cleanupWarningShown = true;
+        var step = new CreateWslInstanceStep(
+            FakeWslRegistrationInspector.Found(Path.Combine(ctx.LocalDataDir, "wsl", "OpenClawGateway")),
+            (_, _, _, _) => Task.FromException<bool>(
+                new InvalidOperationException("Cleanup ownership could not be verified.")));
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            step.ExecuteAsync(ctx, CancellationToken.None));
+
+        Assert.Contains("ownership could not be verified", error.Message);
+        Assert.False(cleanupWarningShown);
+        Assert.DoesNotContain(commands.Calls, call => call.Arguments.SequenceEqual(["--list", "--verbose"]));
     }
 
     [Fact]

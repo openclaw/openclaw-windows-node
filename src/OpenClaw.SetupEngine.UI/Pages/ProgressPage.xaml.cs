@@ -153,6 +153,7 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
                 cts.Token,
                 _dataDir,
                 _localDataDir);
+            ctx.ShowGatewayCleanupUnavailableWarning = ShowGatewayCleanupUnavailableWarning;
             ctx.ExternalAuthorizationPresenter = new ProgressAuthorizationPresenter(DispatcherQueue, ShowTailscaleAuthorization);
             ctx.DetailProgress = new DirectProgress<SetupDetailProgressEvent>(OnDetailProgress);
 
@@ -384,6 +385,16 @@ public sealed partial class ProgressPage : Page, IAsyncDisposable
             // Auto-scroll
             LogScroller.ChangeView(null, LogScroller.ScrollableHeight, null);
         });
+    }
+
+    private void ShowGatewayCleanupUnavailableWarning()
+    {
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_closed)
+                GatewayCleanupWarningBar.IsOpen = true;
+        }))
+            Trace.TraceWarning("The Gateway cleanup warning could not be dispatched.");
     }
 
     private void OpenLog_Click(object sender, RoutedEventArgs e)
