@@ -4543,6 +4543,12 @@ MXC n'a pas pu être vérifié. Les commandes sont bloquées. Réparez l'install
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>Avec le thème Windows par défaut, laissez le bureau transparaître derrière les fenêtres. Les thèmes Gateway utilisent toujours des couleurs opaques.</value>
   </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Suivre le thème de la passerelle</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Utilisez le thème sélectionné dans le tableau de bord OpenClaw et mettez-le à jour lorsqu’il y change.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Système</value>
   </data>

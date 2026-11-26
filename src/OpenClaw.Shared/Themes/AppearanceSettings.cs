@@ -18,6 +18,15 @@ public sealed record AppearanceSettings
     /// <summary>Show the Mica backdrop under the Windows default look; off paints the opaque Fluent canvas.</summary>
     public bool UseMica { get; init; } = true;
 
+    /// <summary>Show the connected Gateway's selected dashboard theme instead of <see cref="Theme"/>.</summary>
+    public bool FollowGatewayTheme { get; init; }
+
+    /// <summary>
+    /// The last Gateway theme the Companion could render while following, kept so an offline start or a
+    /// Gateway theme the Companion can't render still shows it. <see cref="Theme"/> stays the manual choice.
+    /// </summary>
+    public ThemeSelection? FollowedTheme { get; init; }
+
     public static AppearanceSettings Default { get; } = new();
 }
 
@@ -65,8 +74,14 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
             return AppearanceSettings.Default;
         var useMica = !root.TryGetProperty(nameof(AppearanceSettings.UseMica), out var mica) ||
             mica.ValueKind != JsonValueKind.False;
+        // Only a literal true enables following, so a malformed value keeps the manual choice in effect.
+        var follow = root.TryGetProperty(nameof(AppearanceSettings.FollowGatewayTheme), out var followValue) &&
+            followValue.ValueKind == JsonValueKind.True;
         var theme = root.TryGetProperty(nameof(AppearanceSettings.Theme), out var value) ? ReadSelection(value) : null;
-        return new AppearanceSettings { Theme = theme, UseMica = useMica };
+        var followed = root.TryGetProperty(nameof(AppearanceSettings.FollowedTheme), out var followedValue)
+            ? ReadSelection(followedValue)
+            : null;
+        return new AppearanceSettings { Theme = theme, UseMica = useMica, FollowGatewayTheme = follow, FollowedTheme = followed };
     }
 
     public override void Write(Utf8JsonWriter writer, AppearanceSettings value, JsonSerializerOptions options)
@@ -74,6 +89,8 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
         writer.WriteStartObject();
         WriteSelection(writer, nameof(AppearanceSettings.Theme), value.Theme);
         writer.WriteBoolean(nameof(AppearanceSettings.UseMica), value.UseMica);
+        writer.WriteBoolean(nameof(AppearanceSettings.FollowGatewayTheme), value.FollowGatewayTheme);
+        WriteSelection(writer, nameof(AppearanceSettings.FollowedTheme), value.FollowedTheme);
         writer.WriteEndObject();
     }
 
@@ -135,15 +152,51 @@ internal sealed class AppearanceSettingsJsonConverter : JsonConverter<Appearance
 
 /// <summary>
 /// Resolves persisted appearance into the theme to apply. Unknown built-ins and invalid snapshots
-/// fall back to the Windows default rather than failing.
+/// fall back to the Windows default rather than failing. While following the Gateway, the last followed
+/// theme wins and the manual choice is the fallback.
 /// <example><code>
 /// var theme = AppearanceResolver.ResolveTheme(settings.Appearance); // null = Windows default
+/// var next = AppearanceResolver.Follow(settings.Appearance, gatewayCurrent, definition, gatewayId);
 /// </code></example>
 /// </summary>
 public static class AppearanceResolver
 {
     public static ResolvedTheme? ResolveTheme(AppearanceSettings? appearance) =>
-        appearance is null ? null : Resolve(appearance.Theme);
+        appearance is null ? null : Resolve(ActiveSelection(appearance));
+
+    /// <summary>The selection in effect: the followed Gateway theme when following and renderable, else the manual choice.</summary>
+    public static ThemeSelection? ActiveSelection(AppearanceSettings appearance) =>
+        appearance.FollowGatewayTheme && Resolve(appearance.FollowedTheme) is not null
+            ? appearance.FollowedTheme
+            : appearance.Theme;
+
+    /// <summary>
+    /// Records the Gateway's selected theme while following. Returns <paramref name="appearance"/> unchanged when
+    /// following is off, nothing is known, or the theme can't be rendered (for example a built-in newer than the
+    /// Companion's table), so the last followed theme or the manual choice stays in effect.
+    /// </summary>
+    public static AppearanceSettings Follow(
+        AppearanceSettings appearance, GatewayThemeDescriptor? gatewayTheme, GatewayThemeDefinition? definition, string? gatewayId)
+    {
+        if (!appearance.FollowGatewayTheme || gatewayTheme is null)
+            return appearance;
+        ThemeSelection selection;
+        if (gatewayTheme.Source == GatewayThemeSource.Builtin)
+        {
+            if (!BuiltinGatewayThemes.TryGet(gatewayTheme.Id, out var builtin))
+                return appearance;
+            selection = new ThemeSelection { Id = builtin.Id, Name = builtin.Name };
+        }
+        else
+        {
+            if (definition is null)
+                return appearance;
+            selection = Select(gatewayTheme, definition, gatewayId);
+            if (Resolve(selection) is null)
+                return appearance;
+        }
+        return selection == appearance.FollowedTheme ? appearance : appearance with { FollowedTheme = selection };
+    }
 
     public static ResolvedTheme? Resolve(ThemeSelection? selection)
     {

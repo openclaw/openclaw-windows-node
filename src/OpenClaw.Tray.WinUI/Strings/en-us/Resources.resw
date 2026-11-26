@@ -4593,6 +4593,12 @@ MXC could not be verified. Commands are blocked. Repair the installation or retr
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>With the Windows default theme, let the desktop show through window backgrounds. Gateway themes always use solid colors.</value>
   </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Follow Gateway theme</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use the theme selected in the OpenClaw dashboard and update when it changes there.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>System</value>
   </data>

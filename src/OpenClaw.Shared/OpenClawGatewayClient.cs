@@ -448,6 +448,8 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     public event EventHandler? ConfigurationChanged;
     /// <summary>Machine inventory may have changed (presence, pairing, runner inventory or config). Argument is the event name.</summary>
     public event EventHandler<string>? SystemsInventoryChanged;
+    /// <summary>The Gateway pushed <c>plugins.changed</c> or <c>users.prefs.changed</c>. Argument is the event name.</summary>
+    public event EventHandler<string>? ThemeCatalogInvalidated;
     /// <summary>A node published new host statistics (<c>node.hostStats</c>).</summary>
     public event EventHandler<Systems.NodeHostStatsEvent>? NodeHostStatsReceived;
     public event EventHandler<JsonElement>? ConfigSchemaUpdated;
@@ -4125,6 +4127,11 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             case "agent.identity.changed":
                 // Event is an invalidation hint; agents.list plus agent.identity.get are authoritative.
                 ScheduleAgentRosterRefresh(sourceConnectionGeneration);
+                break;
+            case "plugins.changed":
+            case "users.prefs.changed":
+                // Plugin themes and the profile's imported themes may have changed.
+                ThemeCatalogInvalidated?.Invoke(this, eventType!);
                 break;
             case "board.changed":
             case "board.command":

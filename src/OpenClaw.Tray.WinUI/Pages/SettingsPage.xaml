@@ -105,8 +105,32 @@
                                   DisplayMemberPath="Name"
                                   SelectedValuePath="Key"
                                   SelectedValue="{Binding SelectedThemeKey, Mode=TwoWay}"
+                                  IsEnabled="{Binding IsManualThemeEnabled}"
                                   AutomationProperties.AutomationId="SettingsPageGatewayTheme"
                                   AutomationProperties.LabeledBy="{Binding ElementName=GatewayThemeLabel}"/>
+                    </Grid>
+                </Border>
+
+                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1" CornerRadius="8" Padding="{StaticResource SettingsRowPadding}">
+                    <Grid ColumnSpacing="14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock x:Name="FollowGatewayThemeLabel" x:Uid="SettingsRow_FollowGatewayTheme_Header" Text="Follow Gateway theme" Style="{StaticResource BodyTextBlockStyle}"/>
+                            <TextBlock x:Uid="SettingsRow_FollowGatewayTheme_Description"
+                                       Text="Use the theme selected in the OpenClaw dashboard and update when it changes there."
+                                       Style="{StaticResource CaptionTextBlockStyle}"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" x:Name="FollowGatewayThemeToggle" MinWidth="0" OnContent="" OffContent=""
+                                      IsOn="{Binding FollowGatewayTheme, Mode=TwoWay}"
+                                      AutomationProperties.AutomationId="SettingsPageFollowGatewayTheme"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=FollowGatewayThemeLabel}"/>
                     </Grid>
                 </Border>
 

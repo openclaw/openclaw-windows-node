@@ -4562,6 +4562,12 @@ Não foi possível verificar o MXC. Os comandos são bloqueados. Repare a instal
   <data name="SettingsRow_UseMica_Description.Text" xml:space="preserve">
     <value>Com o tema padrão do Windows, deixe a área de trabalho aparecer através do fundo das janelas. Os temas do Gateway sempre usam cores sólidas.</value>
   </data>
+  <data name="SettingsRow_FollowGatewayTheme_Header.Text" xml:space="preserve">
+    <value>Seguir o tema do Gateway</value>
+  </data>
+  <data name="SettingsRow_FollowGatewayTheme_Description.Text" xml:space="preserve">
+    <value>Use o tema selecionado no painel do OpenClaw e atualize quando ele mudar lá.</value>
+  </data>
   <data name="SettingsPage_AppTheme_System.Content" xml:space="preserve">
     <value>Sistema</value>
   </data>
