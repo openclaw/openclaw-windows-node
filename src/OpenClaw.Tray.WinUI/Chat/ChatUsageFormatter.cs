@@ -40,6 +40,24 @@ public static class ChatUsageFormatter
         ChatThread? thread)
         => (ResolveLatest(entries, metadata) ?? Resolve(thread)) is { ContextTokens: > 0 } usage ? usage : null;
 
+    /// <summary>
+    /// One-line model throughput for the composer context popover: the current rate (a live
+    /// estimate prefixed with <c>~</c> while a turn streams, otherwise the last completed sample),
+    /// the mean (<c>μ</c>) and the 95th percentile (<c>p95</c>) over recent model calls.
+    /// </summary>
+    internal static string FormatThroughput(ChatThroughputStats stats, bool turnActive)
+    {
+        var current = turnActive && stats.LiveTokensPerSecond is { } live
+            ? "~" + Rate(live)
+            : stats.LatestTokensPerSecond is { } latest ? Rate(latest) : "—";
+        return $"{current} tps · μ {RateOrDash(stats.MeanTokensPerSecond)} · p95 {RateOrDash(stats.P95TokensPerSecond)}";
+    }
+
+    private static string Rate(double value)
+        => value.ToString(value >= 100 ? "0" : "0.0", CultureInfo.InvariantCulture);
+
+    private static string RateOrDash(double? value) => value is { } v ? Rate(v) : "—";
+
     internal static string FormatCompact(long value) => FormatCount(value);
 
     private static ChatContextUsage? Resolve(ChatThread? thread)

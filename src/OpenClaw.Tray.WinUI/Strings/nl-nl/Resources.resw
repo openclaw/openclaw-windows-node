@@ -3020,6 +3020,12 @@ Gebruik een van deze opties:
   <data name="Chat_ContextUsage_Title" xml:space="preserve">
     <value>Details van contextgebruik</value>
   </data>
+  <data name="Chat_ContextUsage_Throughput" xml:space="preserve">
+    <value>Tokens per seconde</value>
+  </data>
+  <data name="Chat_Throughput_Tooltip" xml:space="preserve">
+    <value>Tokens per seconde: laatste modelantwoord, gemiddelde (μ) en 95e percentiel (p95) van recente modelaanroepen in deze sessie. ~ geeft een live schatting tijdens het streamen aan.</value>
+  </data>
   <data name="Chat_Composer_InputHelp" xml:space="preserve">
     <value>Enter om te verzenden, Shift+Enter voor een nieuwe regel.</value>
   </data>

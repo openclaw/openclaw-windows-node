@@ -4409,8 +4409,18 @@ public sealed partial class ReactorChatLayoutProofTests(UIThreadFixture ui)
     private sealed class ProofProvider(string scenario = "standard", string? thinkingLevel = null,
         IChatPlacementGateway? placementGateway = null,
         Func<string, Task<ChatAgentIdentity?>>? identityLoader = null) :
-        IChatDataProvider, IChatAgentIdentitySource
+        IChatDataProvider, IChatAgentIdentitySource, IChatThroughputSource
     {
+        private readonly Dictionary<string, ChatThroughputStats> _throughput = new(StringComparer.Ordinal);
+        public event Action<string>? ThroughputChanged;
+        public ChatThroughputStats GetThroughput(string threadId) =>
+            _throughput.TryGetValue(threadId, out var stats) ? stats : ChatThroughputStats.Empty;
+        public void PublishThroughput(string threadId, ChatThroughputStats stats)
+        {
+            _throughput[threadId] = stats;
+            ThroughputChanged?.Invoke(threadId);
+        }
+
         public IChatPlacementGateway? PlacementGateway => placementGateway;
         private ChatDataSnapshot? _snapshot;
         private int _queuedMessageSequence;

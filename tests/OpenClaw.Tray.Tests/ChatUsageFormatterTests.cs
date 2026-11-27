@@ -189,4 +189,27 @@ public class ChatUsageFormatterTests
         Assert.Equal(200, context.InputTokens);
         Assert.Equal(0, context.OutputTokens);
     }
+
+    [Fact]
+    public void FormatThroughput_ShowsDashesBeforeFirstSample()
+        => Assert.Equal("— tps · μ — · p95 —", ChatUsageFormatter.FormatThroughput(ChatThroughputStats.Empty, turnActive: false));
+
+    [Fact]
+    public void FormatThroughput_PrefersLiveEstimateOnlyWhileTurnActive()
+    {
+        var stats = new ChatThroughputStats(42.26, 61.04, 38.5, 51.0, 3);
+
+        Assert.Equal("~61.0 tps · μ 38.5 · p95 51.0", ChatUsageFormatter.FormatThroughput(stats, turnActive: true));
+        Assert.Equal("42.3 tps · μ 38.5 · p95 51.0", ChatUsageFormatter.FormatThroughput(stats, turnActive: false));
+    }
+
+    [Fact]
+    public void FormatThroughput_DropsDecimalAtOneHundredAndAbove()
+        => Assert.Equal("150 tps · μ 150 · p95 150",
+            ChatUsageFormatter.FormatThroughput(new ChatThroughputStats(150.4, null, 150.4, 150.4, 1), turnActive: false));
+
+    [Fact]
+    public void FormatThroughput_FallsBackToLatestWhenLiveEstimateIsMissing()
+        => Assert.Equal("42.3 tps · μ — · p95 —",
+            ChatUsageFormatter.FormatThroughput(new ChatThroughputStats(42.26, null, null, null, 1), turnActive: true));
 }

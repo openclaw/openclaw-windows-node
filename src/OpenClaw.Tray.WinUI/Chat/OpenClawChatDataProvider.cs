@@ -109,7 +109,7 @@ public sealed record ChatAgentIdentity(
 /// subsequent <see cref="SendMessageAsync"/> calls.
 /// </para>
 /// </remarks>
-public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIdentitySource
+public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIdentitySource, IChatThroughputSource
 {
     internal const int MaxEntryTextBytes = 256 * 1024;
     private readonly IChatGatewayBridge _bridge;
@@ -1454,6 +1454,16 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
     /// changed. Thinking and usage events change throughput without publishing a snapshot.
     /// </summary>
     internal event Action<string>? ThroughputChanged
+    {
+        add => _throughput.Changed += value;
+        remove => _throughput.Changed -= value;
+    }
+
+    // The composer popover reads throughput through IChatThroughputSource; the internal members
+    // above stay the in-assembly surface for tests and existing callers.
+    ChatThroughputStats IChatThroughputSource.GetThroughput(string threadId) => _throughput.Get(threadId);
+
+    event Action<string>? IChatThroughputSource.ThroughputChanged
     {
         add => _throughput.Changed += value;
         remove => _throughput.Changed -= value;

@@ -33,7 +33,8 @@ internal sealed record ReactorChatComposerViewProps(
     ChatComposerInputs Inputs,
     ChatDataSnapshot InputSnapshot,
     Action OnSendRequested,
-    bool Compact = false);
+    bool Compact = false,
+    IChatThroughputSource? Throughput = null);
 
 /// <summary>
 /// Declarative Reactor view for the composer. It owns control construction, popup/
@@ -824,7 +825,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
 
         Element leading = HStack(4, attachButton, sandboxButton).VAlign(VerticalAlignment.Center);
         var contextRing = Component<ChatContextUsageIndicator, ChatContextUsageIndicatorProps>(
-            new(inputs.ContextUsage, viewportWidth));
+            new(inputs.ContextUsage, viewportWidth, props.Throughput, inputs.CurrentThread.Id, inputs.TurnActive));
         var pickers = Grid(
             [GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],

@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using OpenClawTray.Helpers;
+using System;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using static Microsoft.UI.Reactor.Factories;
@@ -13,16 +14,23 @@ using ShapePath = Microsoft.UI.Xaml.Shapes.Path;
 
 namespace OpenClawTray.Chat;
 
-internal sealed record ChatContextUsageIndicatorProps(ChatContextUsage? Usage, double ViewportWidth);
+internal sealed record ChatContextUsageIndicatorProps(
+    ChatContextUsage? Usage,
+    double ViewportWidth,
+    IChatThroughputSource? Throughput = null,
+    string ThreadId = "",
+    bool TurnActive = false);
 
 /// <summary>
 /// Composer context-window indicator, ported from the web composer's <c>ContextNotice</c>:
 /// a small progress ring in the composer toolbar that opens a popover with the context
-/// window total and the latest run's input/output tokens.
+/// window total, the latest run's input/output tokens, and this session's model throughput
+/// (current, mean and p95 tokens per second).
 /// </summary>
 /// <example>
 /// <code>
-/// var ring = Component&lt;ChatContextUsageIndicator, ChatContextUsageIndicatorProps&gt;(new(contextUsage, viewportWidth));
+/// var ring = Component&lt;ChatContextUsageIndicator, ChatContextUsageIndicatorProps&gt;(
+///     new(contextUsage, viewportWidth, throughputSource, threadId, turnActive));
 /// </code>
 /// </example>
 /// <remarks>
@@ -50,6 +58,29 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
     /// <summary>Returns the toolbar ring, or an empty element when the window size is unknown.</summary>
     public override Element Render()
     {
+        // Throughput changes without a chat snapshot while a run streams, so the popover
+        // subscribes to the provider and re-renders itself instead of the whole transcript.
+        var (_, setRenderVersion) = UseState(0, threadSafe: true);
+        var renderVersion = UseRef(0);
+        UseEffect((Func<Action>)(() =>
+        {
+            if (Props.Throughput is not { } source)
+                return () => { };
+
+            Action<string> onChanged = changedThreadId =>
+            {
+                if (!string.Equals(changedThreadId, Props.ThreadId, StringComparison.Ordinal))
+                    return;
+                lock (renderVersion)
+                {
+                    renderVersion.Current++;
+                    setRenderVersion(renderVersion.Current);
+                }
+            };
+            source.ThroughputChanged += onChanged;
+            return () => source.ThroughputChanged -= onChanged;
+        }), Props.Throughput ?? (object)string.Empty, Props.ThreadId);
+
         if (Props.Usage is not { ContextTokens: > 0 } context)
             return Empty();
 
@@ -71,7 +102,11 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
             .AutomationName(summary)
             .ToolTip(open);
 
-        return Flyout(trigger, Popover(percent, used, limit, context.InputTokens, context.OutputTokens, Props.ViewportWidth))
+        var throughput = Props.Throughput?.GetThroughput(Props.ThreadId) ?? ChatThroughputStats.Empty;
+
+        return Flyout(trigger, Popover(
+                percent, used, limit, context.InputTokens, context.OutputTokens,
+                throughput, Props.TurnActive, Props.ViewportWidth))
             .Set(ChatVisuals.StylePicker)
             .VAlign(VerticalAlignment.Center);
     }
@@ -142,7 +177,7 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
     }
 
     private static Element Popover(int percent, string used, string limit, long? inputTokens, long? outputTokens,
-        double viewportWidth)
+        ChatThroughputStats throughput, bool turnActive, double viewportWidth)
     {
         var barFill = percent >= CriticalPercent ? "SystemFillColorCriticalBrush"
             : percent >= WarningPercent ? "SystemFillColorCautionBrush"
@@ -181,7 +216,17 @@ internal sealed class ChatContextUsageIndicator : Component<ChatContextUsageIndi
                         Stat(Localized("Chat_ContextUsage_Input", "Input"), inputTokens).Margin(0, 0, 4, 0).Grid(column: 0),
                         Stat(Localized("Chat_ContextUsage_Output", "Output"), outputTokens).Grid(column: 1))
                     .Margin(0, 8, 0, 0)
-                    .AutomationId("ChatContextUsageLatestRun"))
+                    .AutomationId("ChatContextUsageLatestRun"),
+                Border(Empty()).Height(1).Background(Theme.Ref("ChatStrokeBrush")),
+                SectionLabel(Localized("Chat_ContextUsage_Throughput", "Tokens per second"))
+                    .Margin(0, 14, 0, 0),
+                TextBlock(ChatUsageFormatter.FormatThroughput(throughput, turnActive))
+                    .FontSize(12).TextWrapping(TextWrapping.Wrap)
+                    .Foreground(Theme.Ref("ChatTextBrush"))
+                    .Margin(0, 8, 0, 0)
+                    .ToolTip(Localized("Chat_Throughput_Tooltip",
+                        "Tokens per second: latest model response, mean (μ), and 95th percentile (p95) over recent model calls in this session. ~ marks a live estimate while streaming."))
+                    .AutomationId("ChatContextUsageThroughput"))
             .Padding(PopoverPadding)
             .Width(popoverWidth)
             .AutomationId("ChatContextUsagePopup")

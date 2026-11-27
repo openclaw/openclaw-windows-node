@@ -15,6 +15,19 @@ internal sealed record ChatThroughputStats(
 }
 
 /// <summary>
+/// Read-only throughput surface for the composer context popover. Implemented by
+/// <see cref="OpenClawChatDataProvider"/>; the popover subscribes so a streamed run's live
+/// estimate refreshes without re-rendering the transcript.
+/// </summary>
+internal interface IChatThroughputSource
+{
+    ChatThroughputStats GetThroughput(string threadId);
+
+    /// <summary>Raised with the thread id after any change that can alter <see cref="GetThroughput"/>.</summary>
+    event Action<string>? ThroughputChanged;
+}
+
+/// <summary>
 /// Per-session model output throughput. Live deltas carry no token counts, so the live value is a
 /// characters-per-token estimate over streamed reasoning and assistant text. Exact samples are
 /// output tokens over the streaming window of one model call: from its first streamed text to the

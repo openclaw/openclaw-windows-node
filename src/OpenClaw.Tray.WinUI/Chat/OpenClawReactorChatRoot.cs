@@ -640,7 +640,8 @@ public sealed class OpenClawReactorChatRoot : Component<OpenClawReactorChatRootP
                 composerInputs,
                 snapshot,
                 () => setScrollToBottomToken(scrollToBottomToken + 1),
-                Compact: props.Compact));
+                Compact: props.Compact,
+                Throughput: props.Provider as IChatThroughputSource));
         }
 
         var questions = props.Provider is OpenClawChatDataProvider { Questions: { } questionCoordinator }

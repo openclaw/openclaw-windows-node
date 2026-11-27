@@ -152,7 +152,7 @@ implemented or revalidated exhaustively by this patch.
 | [x] | Lifecycle waiting approval / approval resolved | No progress label | `waiting-approval` and `approval-resolved` map to progress; existing approval authorization remains unchanged |
 | [x] | Fallback model and operational notice | Omitted | Safe status rows for fallback/restoration and notices |
 | [x] | Latest-run output tokens and terminal token recap | Session/entry usage only | `usage.outputTokens` maps to the observed run, with sequence fences, downward corrections, late final counts and zero; new turns clear the counter. Session totals are never substituted |
-| [ ] | Authoritative run timing and throughput | Session/entry usage exists | Elapsed time remains locally observed; no provider-time or tokens-per-second claim |
+| [ ] | Authoritative run timing and throughput | Session/entry usage exists | Elapsed time and tokens per second remain locally observed estimates: `ChatThroughputTracker` derives rate from streamed text and `usage` events, and the composer context popover shows the current, mean and p95 values; no provider-reported rate is claimed |
 | [ ] | Tool `input_delta`, provider `review`, Guardian-specific structured activity | Partial tool/presentation support | Rich argument/diff preview and provider-specific review surfaces remain gaps |
 | [ ] | Waiting for subagents, swarm/child activity headlines | Some generic tool activity | No equivalent child attention/progress panel |
 
