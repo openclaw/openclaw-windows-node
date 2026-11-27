@@ -1426,6 +1426,93 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
     }
 
     [Theory]
+    [InlineData("settled")]
+    [InlineData("newer-prompt")]
+    [InlineData("pending-input")]
+    [InlineData("wrong-session")]
+    [InlineData("wrong-run")]
+    public async Task ExternalDmWithoutChatFinal_RecoversOnlyAfterMatchingIdleHistory(string outcome)
+    {
+        using var identity = new OpenClaw.TestSupport.TempDirectory();
+        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
+        var session = MainSession();
+        session.SessionId = "physical-session";
+        var (bridge, provider, snapshots, _) = CreateProvider([session]);
+        await using var lifetime = provider;
+        await provider.LoadAsync();
+        bridge.IsConnected = true;
+        bridge.RaiseStatus(ConnectionStatus.Connected);
+        bridge.RaiseSessions([session]);
+        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
+        var processMessage = typeof(OpenClawGatewayClient).GetMethod(
+            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var user = new { role = "user", content = "External prompt", timestamp = 1714600000000L,
+            __openclaw = new { id = "prompt", seq = 1 } };
+        var hasPendingInput = outcome == "pending-input";
+        var nextUser = new { role = "user", content = "New external prompt", timestamp = 1714600002000L,
+            __openclaw = new { id = "prompt-2", seq = hasPendingInput ? 2 : 3 } };
+        var assistant = new { role = "assistant", content = "Delivered reply", timestamp = 1714600005000L,
+            __openclaw = new { id = "reply", seq = hasPendingInput ? 3 : 2, runId = "external-run" } };
+        void Transcript(object message, string status, string? runId) => processMessage.Invoke(client,
+            [JsonSerializer.Serialize(new { type = "event", @event = "session.message", payload = new
+            {
+                sessionKey = "main", sessionId = "physical-session", status, hasActiveRun = true, runId, message,
+            } })]);
+
+        Transcript(user, "queued", null);
+        Transcript(user, "running", null);
+        if (hasPendingInput)
+            Transcript(nextUser, "queued", null);
+        Transcript(assistant, "running", "external-run");
+        ChatTimelineState Timeline() => snapshots[^1].Timelines["main"];
+        var progress = Assert.IsType<ChatRunProgressPresentation>(ChatRunProgressProjection.Project(Timeline()));
+        Assert.Equal("Responding", progress.Label);
+        Assert.True(ChatRunProgressProjection.NeedsClock(progress, DateTimeOffset.UtcNow));
+
+        var running = true;
+        var reads = 0;
+        bridge.HistoryBehavior = _ =>
+        {
+            reads++;
+            if (!running && outcome == "newer-prompt")
+                Transcript(nextUser, "queued", null);
+            var observedSessionId = !running && outcome == "wrong-session" ? "other-session" : "physical-session";
+            var observedRunId = !running && outcome == "wrong-run" ? "other-run" : "external-run";
+            return Task.FromResult(ParseHistoryPayload(JsonSerializer.SerializeToElement(new
+            {
+                sessionId = observedSessionId,
+                messages = hasPendingInput ? new object[] { user, nextUser, assistant } : new object[] { user, assistant },
+                pendingInputs = new { total = hasPendingInput ? 1 : 0,
+                    items = hasPendingInput ? new object[] { new { runId = "next-run" } } : [] },
+                sessionInfo = new { sessionId = observedSessionId, lastRunId = observedRunId,
+                    hasActiveRun = running, status = running ? "running" : "done" },
+            })));
+        };
+        var idle = new SessionInfo { Key = "main", SessionId = "physical-session", Status = "done",
+            HasActiveRun = false, LastRunId = "external-run" };
+        bridge.RaiseSessions([idle], hasAuthoritativeUsage: false);
+        Assert.Equal(0, reads);
+        bridge.RaiseSessions([idle]);
+        Assert.Equal(1, reads);
+        Assert.True(Timeline().TurnActive);
+
+        running = false;
+        bridge.RaiseSessions([idle]);
+        Assert.Equal(2, reads);
+        Assert.Equal("physical-session", provider.GetSessionId("main"));
+        Assert.Equal(outcome != "settled", Timeline().TurnActive);
+        if (outcome == "settled")
+            Assert.Null(ChatRunProgressProjection.Project(Timeline()));
+        string[] transcript = outcome switch
+        {
+            "pending-input" => ["External prompt", "New external prompt", "Delivered reply"],
+            "newer-prompt" => ["External prompt", "Delivered reply", "New external prompt"],
+            _ => ["External prompt", "Delivered reply"],
+        };
+        Assert.Equal(transcript, Timeline().Entries.Select(entry => entry.Text));
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task MessageLessTerminalBeforeAcknowledgment_MustMatchThePendingSend(

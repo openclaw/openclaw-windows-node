@@ -1830,6 +1830,10 @@ public class ChatMessageInfo
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsTranscriptSnapshot { get; set; }
 
+    /// <summary>The physical session of a running transcript snapshot, when explicitly supplied.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? RunningTranscriptSessionId { get; set; }
+
     /// <summary>Set by synchronous chat consumers when this frame must not produce a notification.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public bool IsNotificationSuppressed { get; private set; }
@@ -2204,7 +2208,8 @@ public class ChatHistoryInfo
 }
 
 /// <summary>Explicit same-session idle run observation from a history response, not a cached session row.</summary>
-public sealed record ChatHistoryTerminalRun(string RunId, string State, string? ErrorMessage = null);
+public sealed record ChatHistoryTerminalRun(string RunId, string State, string? ErrorMessage = null,
+    bool HasNoPendingInputs = false);
 
 /// <summary>Gateway cursor or canonical message boundary, fenced to the loaded session instance.</summary>
 public sealed record ChatHistoryPageRequest(string? Cursor, string SessionId, string? MessageId = null);

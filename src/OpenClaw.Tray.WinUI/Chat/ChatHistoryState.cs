@@ -360,6 +360,19 @@ internal sealed class ChatHistoryState
             };
         }
 
+        void PreserveTranscriptRun(ChatTimelineItem historyEntry, ChatEntryMetadata? liveMetadata)
+        {
+            if (historyEntry.Kind == ChatTimelineItemKind.Assistant &&
+                liveMetadata is { RunningTranscriptSessionId: { } sessionId, LiveRunId: { } runId } &&
+                rebuiltMetadata.TryGetValue(historyEntry.Id, out var historyMetadata) &&
+                historyMetadata.Presentation?.RunId == runId)
+                rebuiltMetadata[historyEntry.Id] = historyMetadata with
+                {
+                    RunningTranscriptSessionId = sessionId,
+                    LiveRunId = runId,
+                };
+        }
+
         var existingIds = rebuilt.Entries
             .Select(entry => entry.Id)
             .ToHashSet(StringComparer.Ordinal);
@@ -446,6 +459,7 @@ internal sealed class ChatHistoryState
             {
                 remappedEntryIds[entry.Id] = matchingId.Id;
                 PreserveMatchedUsage(matchingId, entry.Kind, metadata);
+                PreserveTranscriptRun(matchingId, metadata);
                 PreserveToolResultFacts(matchingId, entry);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
@@ -460,6 +474,7 @@ internal sealed class ChatHistoryState
             {
                 remappedEntryIds[entry.Id] = sequenceEntryId.Id;
                 PreserveMatchedUsage(sequenceEntryId, entry.Kind, metadata);
+                PreserveTranscriptRun(sequenceEntryId, metadata);
                 PreserveToolResultFacts(sequenceEntryId, entry);
                 ConsumeAnyTimestamp(
                     contentTimestamps,
