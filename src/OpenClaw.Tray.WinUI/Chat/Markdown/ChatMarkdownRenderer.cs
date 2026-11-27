@@ -575,7 +575,7 @@ public static class ChatMarkdownRenderer
                 .Set(t => { t.TextWrapping = TextWrapping.NoWrap; t.IsTextSelectionEnabled = true; })
         )
         .Background(Theme.CardBackground)
-        .CornerRadius(6)
+        .CornerRadius(ChatVisuals.Corner(6))
         .Padding(10, 8, 10, 8);
 
     private static Element RenderRaw(MdRawTextBlock raw) =>

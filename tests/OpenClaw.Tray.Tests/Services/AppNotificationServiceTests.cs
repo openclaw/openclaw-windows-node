@@ -8,25 +8,31 @@ namespace OpenClaw.Tray.Tests.Services;
 public sealed class AppNotificationServiceTests
 {
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task NavigateAction_DismissesOnlyTheAdmittedReminder(bool admitted)
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public async Task NavigateAction_RetainsCurrentAndQueuedRemindersUntilExplicitDismissal(bool admitted, bool queued)
     {
         var service = new AppNotificationService();
         service.Show(Notification("First", "Open connection") with { Id = "first", ActionRoute = "connection" });
         service.Show(Notification("Second", "Open permissions") with { Id = "second", ActionRoute = "permissions" });
+        var original = service.Snapshot.ActiveNotifications;
+        var id = queued ? "second" : "first";
         (string Route, string? Key, int Count)? observed = null;
 
-        var result = await service.NavigateActionAsync("second", (route, key) =>
+        var result = await service.NavigateActionAsync(id, (route, key) =>
         {
             observed = (route, key, service.Snapshot.ActiveNotifications.Count);
             return Task.FromResult(admitted);
         });
 
-        Assert.Equal(("permissions", (string?)null, 2), observed);
+        Assert.Equal((queued ? "permissions" : "connection", (string?)null, 2), observed);
         Assert.Equal(admitted, result);
-        Assert.Equal(admitted ? ["first"] : ["first", "second"],
-            service.Snapshot.ActiveNotifications.Select(item => item.Id).ToArray());
+        Assert.Equal(original, service.Snapshot.ActiveNotifications);
+
+        service.Dismiss(id);
+        Assert.Equal(queued ? "first" : "second", Assert.Single(service.Snapshot.ActiveNotifications).Id);
     }
 
     [Fact]
@@ -41,8 +47,10 @@ public sealed class AppNotificationServiceTests
         Assert.Equal("reminder", Assert.Single(service.Snapshot.ActiveNotifications).Id);
     }
 
-    [Fact]
-    public async Task NavigateAction_ChatKeyIsPassedExactlyAndRefusalDoesNotConsumeReminder()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task NavigateAction_ChatKeyIsPassedExactlyWithoutConsumingReminder(bool admitted)
     {
         const string key = "agent:Mixed Case:thread/a?x=1&literal=%2F";
         var service = new AppNotificationService();
@@ -53,10 +61,10 @@ public sealed class AppNotificationServiceTests
         });
         (string Route, string? Key)? observed = null;
 
-        Assert.False(await service.NavigateActionAsync("chat-reminder", (route, session) =>
+        Assert.Equal(admitted, await service.NavigateActionAsync("chat-reminder", (route, session) =>
         {
             observed = (route, session);
-            return Task.FromResult(false);
+            return Task.FromResult(admitted);
         }));
         Assert.Equal(("chat", key), observed);
         Assert.Equal("chat-reminder", Assert.Single(service.Snapshot.ActiveNotifications).Id);
@@ -110,7 +118,7 @@ public sealed class AppNotificationServiceTests
     [InlineData("channels", false)]
     [InlineData("activity", true)]
     [InlineData("activity", false)]
-    public async Task NavigateAction_DashboardWaitsForBrowserResult(string route, bool opened)
+    public async Task NavigateAction_DashboardWaitsForBrowserResultWithoutConsumingReminder(string route, bool opened)
     {
         var service = new AppNotificationService();
         service.Show(Notification("Channel issue", "Open Channels") with { Id = "channel", ActionRoute = route });
@@ -134,7 +142,7 @@ public sealed class AppNotificationServiceTests
         Assert.Equal("/channels", new Uri(launchedUrl).AbsolutePath.TrimEnd('/'));
         launch.SetResult(opened);
         Assert.Equal(opened, await action);
-        Assert.Equal(opened ? 0 : 1, service.Snapshot.ActiveNotifications.Count);
+        Assert.Equal("channel", Assert.Single(service.Snapshot.ActiveNotifications).Id);
         Assert.Equal(opened ? 0 : 1, failures);
     }
 

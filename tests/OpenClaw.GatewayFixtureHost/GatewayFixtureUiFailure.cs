@@ -78,7 +78,9 @@ internal static class GatewayFixtureUiFailure
 
     private static async Task ObserveAsync(Task worker)
     {
-        try { await worker.ConfigureAwait(false); }
-        catch (Exception) { /* Observed; the first assertion remains the test failure. */ }
+        // Observe without rethrowing: a faulted body holds the original assertion, and re-awaiting it
+        // would append containment frames to that exception's stack before FinishAsync rethrows it.
+        await worker.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        _ = worker.Exception; // Observed; the first assertion remains the test failure.
     }
 }

@@ -290,6 +290,13 @@ foreach ($eventName in @("push", "workflow_dispatch", "schedule", "pull_request_
     Assert-Impact -Scenario "Tooling on non-PR event '$eventName'" -Paths $fastOnlyPaths `
         -EventName $eventName -Classification full -Required $allLanes
 }
+# A merge-queue group is classified from its own diff exactly like a pull request.
+foreach ($case in @($cases | Where-Object { -not $_.ContainsKey("EventName") })) {
+    $required = if ($case.ContainsKey("Required")) { $case.Required } else { @() }
+    Assert-Impact -Scenario "Merge group: $($case.Scenario)" -Paths $case.Paths -Classification $case.Classification `
+        -Required $required -EventName merge_group
+}
+Assert-Impact -Scenario "Tooling in a merge group" -Paths $fastOnlyPaths -EventName merge_group -Classification fast_only
 foreach ($path in @(
         ".github/scripts/other.cjs",
         ".github/scripts/repository-triage.cjs.bak",

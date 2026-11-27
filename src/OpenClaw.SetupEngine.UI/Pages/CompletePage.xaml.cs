@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using OpenClaw.SetupEngine;
 using OpenClaw.SetupEngine.UI;
+using OpenClaw.SetupEngine.UI.Controls;
 using OpenClaw.Shared;
 using Windows.UI;
 
@@ -20,18 +21,24 @@ public sealed partial class CompletePage : Page
     public CompletePage()
     {
         InitializeComponent();
+        StartupLabel.Text = SetupLocalization.GetString("Onboarding_Ready_LaunchAtLogin");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(StartupToggle, StartupLabel.Text);
     }
+
+    /// <summary>True once a successful completion is shown; the step timeline then reaches Start chatting.</summary>
+    internal bool Succeeded { get; private set; }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         if (e.Parameter is CompletePageArgs args)
         {
             _logPath = args.LogPath;
+            Succeeded = args.Success;
+            SetupWindow.Active?.RefreshFlowProgress();
 
             if (args.Success)
             {
-                SuccessIcon.Visibility = Visibility.Visible;
-                FailureIcon.Visibility = Visibility.Collapsed;
+                PresentCompanion("Onboarding_Bubble_Done", OnboardingMascotMood.Celebrating, SetupCompanionBadge.None, OnboardingMascotAccessory.GradCap);
                 StartupToggle.IsOn = args.DefaultAutoStart;
                 StartupRow.Visibility = args.ShowStartupPreference ? Visibility.Visible : Visibility.Collapsed;
                 SetupReviewSummary review = args.ReviewSummary ?? SetupReviewSummaryBuilder.Build(new SetupConfig());
@@ -65,8 +72,6 @@ public sealed partial class CompletePage : Page
                     NativeFeaturesNote.Visibility = Visibility.Visible;
                     NodeModeBanner.Visibility = Visibility.Collapsed;
                     SubtitleText.Text = SetupLocalization.Format("Onboarding_Native_Configured", nativeUrl);
-                    SubtitleText.TextWrapping = TextWrapping.Wrap;
-                    SubtitleText.TextAlignment = TextAlignment.Center;
                     LaunchButton.Content = SetupLocalization.GetString("Onboarding_Native_Open.Content");
                 }
             }
@@ -76,13 +81,9 @@ public sealed partial class CompletePage : Page
 
                 if (args.RequiresRestart)
                 {
-                    SuccessIcon.Visibility = Visibility.Collapsed;
-                    FailureIcon.Visibility = Visibility.Collapsed;
-                    RestartIcon.Visibility = Visibility.Visible;
-                    TitleText.Text = "Restart required";
-                    SubtitleText.Text = "OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?";
-                    SubtitleText.TextWrapping = TextWrapping.Wrap;
-                    SubtitleText.TextAlignment = TextAlignment.Center;
+                    PresentCompanion("Onboarding_Bubble_Restart", OnboardingMascotMood.Thinking, SetupCompanionBadge.Restart);
+                    TitleText.Text = SetupLocalization.GetString("Onboarding_Complete_RestartTitle");
+                    SubtitleText.Text = SetupLocalization.GetString("Onboarding_Complete_RestartPrompt");
                     SubtitleText.Visibility = Visibility.Visible;
                     NodeModeBanner.Visibility = Visibility.Collapsed;
                     StartupRow.Visibility = Visibility.Collapsed;
@@ -102,9 +103,7 @@ public sealed partial class CompletePage : Page
                 // so it must never be scanned for a URL to turn into a clickable help link.
                 var helpUrl = args.Detail is null ? ExtractHelpUrl(errorMessage) : null;
 
-                SuccessIcon.Visibility = Visibility.Collapsed;
-                FailureIcon.Visibility = Visibility.Visible;
-                RestartIcon.Visibility = Visibility.Collapsed;
+                PresentCompanion("Onboarding_Bubble_Failed", OnboardingMascotMood.Sad);
                 TitleText.Text = "Setup failed";
                 SubtitleText.Visibility = Visibility.Collapsed;
                 NodeModeBanner.Visibility = Visibility.Collapsed;
@@ -149,6 +148,15 @@ public sealed partial class CompletePage : Page
                 ShowServerDiagnostics(args.Detail);
             }
         }
+    }
+
+    private static void PresentCompanion(string lineKey, OnboardingMascotMood mood,
+        SetupCompanionBadge badge = SetupCompanionBadge.None,
+        OnboardingMascotAccessory accessory = OnboardingMascotAccessory.None)
+    {
+        if (SetupWindow.Active is not { } window) return;
+        window.PresentCompanion(lineKey, mood, badge);
+        window.CompanionPane.Mascot.Accessory = accessory;
     }
 
     private void ShowServerDiagnostics(LocalAiFailureDetail? detail)
@@ -262,7 +270,7 @@ public sealed partial class CompletePage : Page
         ViewLogLink.Visibility = Visibility.Collapsed;
         RestartNowButton.IsEnabled = true;
         RestartLaterButton.IsEnabled = true;
-        SubtitleText.Text = "OpenClaw needs to restart Windows to continue the installation. Would you like to restart now?";
+        SubtitleText.Text = SetupLocalization.GetString("Onboarding_Complete_RestartPrompt");
     }
 
 }

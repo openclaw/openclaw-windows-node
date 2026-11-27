@@ -422,7 +422,7 @@ public sealed class PinnedPagesTests
     }
 
     [Fact]
-    public void PinPicker_RejectsStaleGatewayBeforePersisting_AndBackgroundUsesLiveThemeResource()
+    public void PinPicker_RejectsStaleGatewayBeforePersisting()
     {
         var pins = ReadSource("Windows", "WorkspaceWindow.Pins.cs");
         var toggle = pins[pins.IndexOf("private void OnPagePinToggled(", StringComparison.Ordinal)..
@@ -434,10 +434,29 @@ public sealed class PinnedPagesTests
         Assert.Contains("PagesFlyout.Hide();", staleBranch);
         Assert.Contains("RebuildPins();", staleBranch);
         Assert.Contains("return;", staleBranch);
-        Assert.Contains("Background=\"{ThemeResource ApplicationPageBackgroundThemeBrush}\"",
-            ReadSource("Windows", "WorkspaceWindow.xaml"));
-        Assert.DoesNotContain("Application.Current.Resources[\"ApplicationPageBackgroundThemeBrush\"]",
-            ReadSource("Windows", "WorkspaceWindow.xaml.cs"));
+    }
+
+    [Fact]
+    public void PinnedPages_ShowTheWorkspaceContentLayerOverMicaWithoutStackingASecond()
+    {
+        var workspaceXaml = ReadSource("Windows", "WorkspaceWindow.xaml");
+        var workspaceCode = ReadSource("Windows", "WorkspaceWindow.xaml.cs");
+        Assert.DoesNotContain("EmbeddedPageBackground", workspaceXaml);
+        Assert.DoesNotContain("EmbeddedPageBackground", workspaceCode);
+        Assert.DoesNotContain("ApplicationPageBackgroundThemeBrush", workspaceXaml);
+
+        var shell = ReadSource("Controls", "SettingsShellView.xaml.cs");
+        var apply = shell[shell.IndexOf("private void ApplyContentSurface()", StringComparison.Ordinal)..];
+        apply = apply[..apply.IndexOf("private Microsoft.UI.Xaml.Data.Binding SurfaceBinding", StringComparison.Ordinal)];
+        Assert.Contains("FindNamedGrid(NavView, \"ContentGrid\")", shell);
+        Assert.Contains("grid.Background = null;", apply);
+        Assert.Contains("grid.BorderBrush = null;", apply);
+        Assert.Contains("Panel.BackgroundProperty", apply);
+        Assert.Contains("Grid.BorderBrushProperty", apply);
+
+        var shellXaml = ReadSource("Controls", "SettingsShellView.xaml");
+        Assert.Contains("Background=\"{ThemeResource NavigationViewContentBackground}\"", shellXaml);
+        Assert.Contains("BorderBrush=\"{ThemeResource NavigationViewContentGridBorderBrush}\"", shellXaml);
     }
 
     [Fact]

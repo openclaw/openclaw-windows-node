@@ -471,20 +471,80 @@ try {
         Assert-Throws { Publish-AlphaPromotion $record $fixture.directory '200' '1' } 'advance'
     }
 
+    function Scheduled-Release([string]$Tag, [string]$Published = '2026-10-02', [bool]$Draft = $false, [bool]$Prerelease = $true) {
+        [pscustomobject]@{ tag_name = $Tag; published_at = $Published; draft = $Draft; prerelease = $Prerelease }
+    }
+    Test-Case 'schedule skips an empty alpha inventory' {
+        Assert-Equal (Get-ScheduledAlphaPromotionTag) $null
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'schedule selects newest publication, not API order or tag sort' {
+        $state.extraReleases = @(
+            (Scheduled-Release 'v2026.9.5-alpha.9' '2026-10-02'),
+            (Scheduled-Release $alpha '2026-10-03'),
+            (Scheduled-Release 'v2026.9.6-alpha.1' '2026-10-01')
+        )
+        Assert-Equal (Get-ScheduledAlphaPromotionTag) $alpha
+        Assert-Equal $state.writes 0
+    }
+    Test-Case 'schedule ignores drafts, stable releases, non-alpha tags, and unpublished releases' {
+        $state.extraReleases = @(
+            (Scheduled-Release $alpha),
+            (Scheduled-Release 'v2026.9.6-alpha.1' '2026-10-04' $true),
+            (Scheduled-Release 'v2026.9.6' '2026-10-04' $false $false),
+            (Scheduled-Release 'v2026.9.6-beta.1' '2026-10-04'),
+            (Scheduled-Release 'v2026.9.6-alpha.2' '')
+        )
+        Assert-Equal (Get-ScheduledAlphaPromotionTag) $alpha
+    }
+    foreach ($stable in @('v2026.9.5', 'v2026.9.5-1', 'v2026.10.1')) {
+        Test-Case "schedule skips already shipped line $stable" {
+            $state.currentTag = $stable
+            $state.extraReleases = @(Scheduled-Release $alpha)
+            Assert-Equal (Get-ScheduledAlphaPromotionTag) $null
+            Assert-Equal $state.writes 0
+        }
+    }
+    Test-Case 'schedule traverses full release inventory' {
+        $state.extraReleases = @(1..100 | ForEach-Object { Scheduled-Release "v2026.9.5-beta.$_" }) + @(Scheduled-Release $alpha)
+        Assert-Equal (Get-ScheduledAlphaPromotionTag) $alpha
+    }
+    Test-Case 'schedule fails closed on incomplete inventory' {
+        $state.extraReleases = @(1..1000 | ForEach-Object { Scheduled-Release "v2026.9.5-beta.$_" })
+        Assert-Throws { Get-ScheduledAlphaPromotionTag } 'pagination exceeded'
+    }
+    Test-Case 'schedule rejects invalid stable baseline' {
+        $state.extraReleases = @(Scheduled-Release $alpha)
+        $state.currentTag = 'v2026.9.4-beta.1'
+        Assert-Throws { Get-ScheduledAlphaPromotionTag } 'canonical stable'
+    }
+    Test-Case 'scheduled candidate still requires full CI and approval protection' {
+        $state.extraReleases = @(Scheduled-Release $alpha)
+        $selected = Get-ScheduledAlphaPromotionTag
+        $state.failedJob = 'CI Gate'
+        Assert-Throws { Get-AlphaPromotion -AlphaTag $selected -PipelineSha $pipelineSha -RequireApproval } 'CI Gate'
+        $state.failedJob = ''
+        $state.approval = $false
+        Assert-Throws { Get-AlphaPromotion -AlphaTag $selected -PipelineSha $pipelineSha -RequireApproval } 'only required reviewer'
+        Assert-Equal $state.writes 0
+    }
+
     $workflow = Get-Content (Join-Path $RepoRoot '.github\workflows\ci.yml') -Raw
     $entry = Get-Content (Join-Path $RepoRoot '.github\workflows\promote-alpha-release.yml') -Raw
-    foreach ($name in @('metadata', 'core-tests', 'tray-tests', 'ui-tests', 'gateway-fixture', 'setup-e2e', 'revocation-e2e',
+    foreach ($name in @('metadata', 'core-tests', 'tray-tests', 'ui-tests', 'tray-ui-shard', 'gateway-fixture', 'gateway-fixture-shard', 'setup-e2e', 'revocation-e2e',
         'network-e2e', 'build-x64', 'build-arm64', 'build-msix')) {
         $job = [regex]::Match($workflow, "(?ms)^  ${name}:\r?`n.*?(?=^  [a-z][a-z-]+:|\z)").Value
         if (-not $job.Contains('ref: ${{ inputs.promotion_source_sha || github.sha }}') -or
             -not $job.Contains('persist-credentials: false') -or
-            -not ($job.Contains('&promotion-version-tag') -or $job.Contains('*promotion-version-tag'))) { throw "Source job $name is not SHA-bound." }
+            -not ($job.Contains('&promotion-version-tag') -or $job.Contains('*promotion-version-tag')) -or
+            -not ($job.Contains('&tag-version-source') -or $job.Contains('*tag-version-source'))) { throw "Source job $name is not SHA-bound." }
     }
     foreach ($text in @('name: stable-release', 'artifact-ids: ${{ needs.release.outputs.promotion_artifact_id }}',
-        "if: inputs.promotion_alpha == ''", 'disableNormalization: ${{ inputs.promotion_alpha != '''' }}',
+        "if: inputs.promotion_alpha == ''", 'disableNormalization: ${{ inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'') }}',
         'group: openclaw-windows-node-release', 'candidate-source\installer.iss',
-        'GitVersion_NoNormalizeEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}',
-        'GitVersion_NoFetchEnabled: ${{ inputs.promotion_alpha != '''' && ''true'' || ''false'' }}')) {
+        'GitVersion_NoNormalizeEnabled: ${{ (inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'')) && ''true'' || ''false'' }}',
+        'GitVersion_NoFetchEnabled: ${{ (inputs.promotion_alpha != '''' || startsWith(github.ref, ''refs/tags/v'')) && ''true'' || ''false'' }}',
+        "if: inputs.promotion_alpha == '' && startsWith(github.ref, 'refs/tags/v')")) {
         if (-not $workflow.Contains($text)) { throw "Missing promotion contract: $text" }
     }
     foreach ($name in @('prepare-release-assets', 'release')) {
@@ -504,6 +564,10 @@ try {
         if (-not $reservation.Contains($text)) { throw "MSIX promotion reservation must retain policy validation: $text" }
     }
     $publication = [regex]::Match($workflow, '(?ms)^  publish-promotion:.*?(?=^  [a-z][a-z0-9-]*:|\z)').Value
+    $publicationCondition = [regex]::Match($publication, '(?m)^    if: (.+)\r?$').Groups[1].Value.Trim()
+    if ($publicationCondition -cne '${{ !cancelled() && inputs.promotion_alpha != '''' && needs.release.result == ''success'' }}') {
+        throw 'Promotion publication must explicitly handle skipped ancestors without allowing cancellation, non-promotion runs, or unsuccessful release preparation.'
+    }
     foreach ($text in @('name: stable-release', 'Publish-AlphaPromotion',
         'contents: write', 'GH_TOKEN: ${{ github.token }}')) {
         if (-not $publication.Contains($text)) { throw "Missing approval-gated workflow token contract: $text" }
@@ -521,6 +585,17 @@ try {
     foreach ($text in @('default: false', '$env:GITHUB_REF -cne ''refs/heads/main''', 'uses: ./.github/workflows/ci.yml',
         'GH_TOKEN: ${{ github.token }}', 'if: inputs.prepare', 'persist-credentials: false')) {
         if (-not $entry.Contains($text)) { throw "Missing entry workflow contract: $text" }
+    }
+    $schedule = Get-Content (Join-Path $RepoRoot '.github/workflows/weekly-stable-promotion.yml') -Raw
+    foreach ($text in @("cron: '0 18 * * 2'", 'Get-ScheduledAlphaPromotionTag',
+        'gh workflow run promote-alpha-release.yml --repo openclaw/openclaw-windows-node --ref main',
+        '-f "alpha_tag=$alphaTag" -f prepare=true', 'if ($LASTEXITCODE -ne 0)',
+        'actions: write', 'contents: read', 'persist-credentials: false',
+        "github.repository == 'openclaw/openclaw-windows-node' && github.ref == 'refs/heads/main'")) {
+        if (-not $schedule.Contains($text)) { throw "Missing weekly dispatch contract: $text" }
+    }
+    if ($schedule.Contains('contents: write') -or $schedule.Contains('secrets:') -or $schedule.Contains('id-token: write')) {
+        throw 'Weekly selection must not gain publishing credentials or permissions.'
     }
     Write-Host "Passed $cases alpha promotion cases and workflow source/publication contracts."
 } finally {

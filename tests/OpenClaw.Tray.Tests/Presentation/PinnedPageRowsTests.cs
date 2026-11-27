@@ -63,6 +63,20 @@ public sealed class PinnedPageRowsTests
     }
 
     [Fact]
+    public void Repinning_ShowsTheOriginalRowInsteadOfANewOne()
+    {
+        var (rows, items, _) = Create();
+        Sync(rows, items, "channels", "usage");
+        var usage = items[3];
+        Sync(rows, items, "channels");
+
+        Sync(rows, items, "channels", "usage");
+
+        Assert.Same(usage, items[3]);
+        Assert.Equal(["channels", "usage"], PinTags(items));
+    }
+
+    [Fact]
     public void Reordering_MovesExistingRowsWithoutRecreatingThem()
     {
         var (rows, items, _) = Create();

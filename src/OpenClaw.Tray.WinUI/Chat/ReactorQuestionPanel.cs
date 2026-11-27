@@ -21,6 +21,10 @@ internal sealed record ReactorQuestionPanelProps(
 /// <summary>The transient question dock replaces the writing surface without replacing its retained draft.</summary>
 internal sealed class ReactorQuestionPanel : Component<ReactorQuestionPanelProps>
 {
+    // Web question-card fade-in is 160 ms; the 6px rise matches the completed-work settle.
+    private const int QuestionEntranceMilliseconds = 160;
+    private const float QuestionEntranceRise = 6;
+
     public override Element Render()
     {
         var props = Props;
@@ -54,11 +58,15 @@ internal sealed class ReactorQuestionPanel : Component<ReactorQuestionPanelProps
         {
             var prompt = pending[index];
             var visible = index == selected;
-            children.Add(Border(Component<ReactorQuestionCard, ReactorQuestionCardProps>(
+            // A newly asked question fades and rises in; paging between questions stays immediate.
+            // The motion sits on an inner Border: a list child carrying mount/unmount actions
+            // would otherwise disturb the result row added when this question is removed.
+            children.Add(Border(ChatMotion.Host(Component<ReactorQuestionCard, ReactorQuestionCardProps>(
                 new(props.Coordinator, prompt, props.SessionKey, props.AgentId, snapshot.Connected,
                     collapsed, Collapse, index + 1, pending.Length,
                     () => setSelectedId(pending[(selected + pending.Length - 1) % pending.Length].Request.Id),
                     () => setSelectedId(pending[(selected + 1) % pending.Length].Request.Id))))
+                    .EnterOnMount(QuestionEntranceRise, QuestionEntranceMilliseconds, fade: true))
                 .WithKey(prompt.Request.Id)
                 .IsVisible(visible));
         }
@@ -331,7 +339,7 @@ internal sealed class ReactorQuestionCard : Component<ReactorQuestionCardProps>
                 .Grid(column: 1)));
         return Border(VStack(12, header,
                 VStack(12, content.ToArray()).IsVisible(!props.Collapsed)))
-            .Padding(14).CornerRadius(20).BorderThickness(1).Set(ChatVisuals.StyleQuestionCard)
+            .Padding(14).ThemedCorner(20).BorderThickness(1).Set(ChatVisuals.StyleQuestionCard)
             .AutomationId("ChatQuestion_" + request.Id)
             .OnPreviewKeyDown((_, args) =>
             {

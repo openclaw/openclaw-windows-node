@@ -10,6 +10,43 @@ public class ChatThroughputTrackerTests
 
     public ChatThroughputTrackerTests() => _tracker = new ChatThroughputTracker(_clock);
 
+    // Setup ops run before the first '|'; each later frame is "run:cumulativeLength", one second apart.
+    [Theory]
+    [InlineData("start|r1:5|r1:11", 11)]
+    [InlineData("start;r1:100;reset|r1:20|r1:40", 40)] // saved text left the live buffer (empty reset unseen)
+    [InlineData("r1:100;start|r1:104|r1:108", 8)] // late lifecycle start does not recount earlier text
+    [InlineData("start;r1:50;reset|r2:10|r2:30", 30)] // another run starts from empty
+    [InlineData("start;r1:5;end;reset|r1:20|r1:30", 10)] // missed start: first frame is only a baseline
+    public void ObserveCumulativeText_CountsOnlyNewCharactersOfTheRun(string script, int expectedCharacters)
+    {
+        var parts = script.Split('|');
+        foreach (var op in parts[0].Split(';'))
+        {
+            switch (op)
+            {
+                case "start": _tracker.StartRun("main"); break;
+                case "end": _tracker.EndRun("main"); break;
+                case "reset": _tracker.ResetSegment("main"); break;
+                default: Observe(op); break;
+            }
+        }
+        for (var i = 1; i < parts.Length; i++)
+        {
+            if (i > 1)
+                _clock.Advance(TimeSpan.FromSeconds(1));
+            Observe(parts[i]);
+        }
+
+        Assert.Equal(expectedCharacters / ChatThroughputTracker.CharactersPerToken / (parts.Length - 2),
+            _tracker.Get("main").LiveTokensPerSecond);
+
+        void Observe(string frame)
+        {
+            var (run, length) = (frame.Split(':')[0], int.Parse(frame.Split(':')[1]));
+            _tracker.ObserveCumulativeText("main", run, length);
+        }
+    }
+
     [Fact]
     public void CompleteAssistant_RecordsOutputTokensOverStreamingWindow()
     {

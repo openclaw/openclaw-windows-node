@@ -161,6 +161,9 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     public static string McpTokenPath =>
         System.IO.Path.Combine(SettingsManager.SettingsDirectoryPath, "mcp-token.txt");
     private volatile bool _enableMcpServer;
+    // Guards _mcpServer/_mcpToolBridge ownership across start and stop. Taken after
+    // _clientLock when both are held; never acquire _clientLock while holding it.
+    private readonly object _mcpLifecycleLock = new();
     private McpHttpServer? _mcpServer;
     private McpToolBridge? _mcpToolBridge;
     private string? _mcpStartupError;
@@ -698,6 +701,14 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     private readonly object _mxcAvailabilityLock = new();
 
     /// <summary>
+    /// True when file commands run inside the Node Sandbox and false when they run uncontained (positively
+    /// unsupported Windows). Null after a probe error: a later probe may still find Windows unsupported, so
+    /// callers must not treat it as enforced. Blocks while probing, so call off the UI thread.
+    /// </summary>
+    public bool? FileCommandsEnforceSandbox() =>
+        GetOrProbeMxcAvailability() is { ProbeErrored: false } availability ? !availability.IsWindowsUnsupported : null;
+
+    /// <summary>
     /// Minimum interval before re-probing after a transient probe error. Bounds the
     /// cost of retrying the native SDK probe while a load/probe error persists,
     /// while still letting a momentary glitch self-heal quickly.
@@ -793,6 +804,15 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
 
     private bool StartMcpServer()
     {
+        // Start is reached from the UI (SetMcpEnabled) and from AttachClient on a
+        // threadpool thread. Serializing it with the stop swap keeps one tracked
+        // listener and lets a disable that wins the lock prevent a later start.
+        lock (_mcpLifecycleLock)
+            return StartMcpServerLocked();
+    }
+
+    private bool StartMcpServerLocked()
+    {
         if (!_enableMcpServer) return true;
         if (_mcpServer != null) return true;
         McpHttpServer? attempt = null;
@@ -855,7 +875,6 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             {
                 _logger.Debug($"[MCP] Cleanup of half-started listener failed: {cleanupEx.Message}");
             }
-            _mcpServer = null;
             return false;
         }
     }
@@ -892,11 +911,16 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
     {
         // Awaited shutdown callers depend on this drain finishing before
         // capability-backing services are torn down.
-        var server = _mcpServer;
-        var bridge = _mcpToolBridge;
-        _mcpServer = null;
-        _mcpToolBridge = null;
-        _mcpStartupError = null;
+        McpHttpServer? server;
+        McpToolBridge? bridge;
+        lock (_mcpLifecycleLock)
+        {
+            server = _mcpServer;
+            bridge = _mcpToolBridge;
+            _mcpServer = null;
+            _mcpToolBridge = null;
+            _mcpStartupError = null;
+        }
 
         if (server == null)
             return;
@@ -977,8 +1001,8 @@ public sealed class NodeService : IDisposable, IAsyncDisposable
             {
                 _logger.Info("[MCP] SetMcpEnabled(false) — stopping MCP server");
                 // Always call StopMcpServer to clear stale startup errors even
-                // if the server isn't running. StopMcpServer is lock-protected
-                // and handles _mcpServer == null safely.
+                // if the server isn't running. The flag is cleared first, so a
+                // start that takes _mcpLifecycleLock after this swap sees it.
                 StopMcpServer();
             }
         }

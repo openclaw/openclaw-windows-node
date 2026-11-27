@@ -25,6 +25,10 @@ internal static class ToolCallCardRenderer
     private const int ToolDetailMaxChars = 4000;
     private const int WorkSettleMilliseconds = 200;
     private const int LiveHeadlineMilliseconds = 160;
+    // Web chat-work-settle-in and chat-activity-headline-enter rise 6px and 3px with their fades.
+    private const float WorkSettleRise = 6;
+    private const float LiveHeadlineRise = 3;
+    private const int LabelFadeMilliseconds = 150;
     private const double ToolDetailsActionSize = 28;
     private const double ToolDetailsCommandActionSize = 40;
     private const double ToolDetailsActionTopInset = 8;
@@ -40,60 +44,100 @@ internal static class ToolCallCardRenderer
         ChatTimelineItem entry,
         bool isNested = false,
         IReadOnlyList<ChatToolCallNode>? children = null) =>
-        Component<ToolResultCard, ToolResultCardProps>(new(props, entry, isNested, children));
+        Component<ToolResultCard, ToolResultCardProps>(new(props, entry, isNested, children))
+            .WithKey($"tool-result:{entry.Id}");
 
     internal static Element BuildStandaloneCore(
         ChatTimelinePresentationContext props, ChatTimelineItem entry, bool isNested,
         ChatToolOutputResult? recovered, Element recovery, Action onCollapse,
         bool showChevron = false, Action<bool>? onHeaderHover = null, Action<bool>? onHeaderFocus = null,
-        Action? onExpansionChanged = null, IReadOnlyList<ChatToolCallNode>? children = null)
+        Action<string, bool>? onExpansionChanged = null, IReadOnlyList<ChatToolCallNode>? children = null,
+        bool revealDetails = false, IReadOnlySet<string>? closingKeys = null, string? toggledKey = null)
     {
-        var details = BuildDetails(entry, recovered, reserveActionSpace: IsCommand(entry));
+        var details = BuildDetails(entry, recovered, reserveActionSpace: IsCommand(entry),
+            preview: props.OnOpenToolDetails is not null && props.SessionId is not null);
         var hasDetails = details.Count > 0 || entry.ToolResultReference?.IsTruncated == true;
         var toolName = string.IsNullOrWhiteSpace(entry.ToolName)
             ? LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool")
-            : entry.ToolName;
+            : ChatToolRowPresentation.DisplayName(entry.ToolName);
         var statusLabel = entry.ToolResult == ChatToolCallStatus.InProgress && entry.ToolInputPreparing
             ? LocalizedOrDefault("Chat_Tool_Preparing", "Preparing input") : StatusLabel(entry.ToolResult);
-        if (entry.ToolResult == ChatToolCallStatus.InProgress && entry.ToolLiveDiff is { } diff)
-            statusLabel += $" (+{diff.Added} / -{diff.Removed})";
         var preview = ToolPreview(entry);
-        var title = string.IsNullOrWhiteSpace(preview) ? toolName : preview;
-        // Web step rows: muted title, a red inline "failed", no trailing "Done".
+        var row = ChatToolRowPresentation.Resolve(entry, props.ChildThreads);
+        var rowText = RowText(row);
+        var title = rowText ?? (string.IsNullOrWhiteSpace(preview) ? toolName : preview);
+        var diffStat = ChatToolDiffStats.Resolve(entry);
+        // Web step rows: muted title, a muted inline "failed", no trailing "Done".
         var inlineStatus = entry.ToolResult switch
         {
-            ChatToolCallStatus.Success => null,
+            ChatToolCallStatus.Success => SubagentStatus(row.Subagent),
             ChatToolCallStatus.Error => TextBlock(LocalizedOrDefault("Chat_Tool_FailedInline", "failed"))
                 .FontSize(ChatVisuals.ToolRowFontSize)
-                .Foreground(Theme.Ref("SystemFillColorCriticalBrush")),
+                .Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
             _ => TextBlock(statusLabel).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
         };
         var expansionKey = ChatToolActivityPresentation.ToolRowKey(props.SessionId, props.TimelineGeneration, entry.Id);
         var isExpanded = props.ToolExpansionState?.IsExpanded(expansionKey, props.ToolCallsCollapseVersion) ?? false;
+        // Like the web ToolRowContent, only read, search and fetch rows show their dimmed detail.
+        var detail = rowText is not null && row.Verb is ChatToolRowVerb.Read or ChatToolRowVerb.Searched
+            or ChatToolRowVerb.Fetched ? row.TargetDetail : null;
+        // Screen readers hear what the row shows: its title and the state beside it. A spawned
+        // subagent whose own state is unknown shows no state, so none is announced.
+        var displayedStatus = entry.ToolResult == ChatToolCallStatus.Success
+            ? row.Subagent is { } subagent ? SubagentStatusText(subagent) : statusLabel
+            : entry.ToolResult == ChatToolCallStatus.Error
+                ? LocalizedOrDefault("Chat_Tool_FailedInline", "failed") : statusLabel;
         var header = BuildRowHeader(
             ToolGlyph(entry),
             showChevron,
             isExpanded,
-            TextBlock(title)
-                .FontSize(ChatVisuals.ToolRowFontSize)
-                .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-                .TextWrapping(TextWrapping.NoWrap)
-                .TextTrimming(TextTrimming.CharacterEllipsis)
-                .WithTextShimmer(entry.ToolResult is null or ChatToolCallStatus.InProgress)
-                .WithKey("preview"),
-            inlineStatus,
-            onHeaderHover);
-        Element body = hasDetails
-            ? Component<ToolDetailsBody, ToolDetailsBodyProps>(new(props, entry, details, recovery))
+            BuildRowTitle(title, detail, entry.ToolResult is null or ChatToolCallStatus.InProgress,
+                ResolveRowLink(props, entry, row), entry.Id),
+            WithDiffStat(diffStat, inlineStatus),
+            onHeaderHover,
+            titleLabel: $"{title}|{detail}",
+            statusLabel: $"{displayedStatus}|{statusLabel}|{diffStat?.Added}|{diffStat?.Removed}");
+        var accessibleTitle = rowText is null ? toolName
+            : string.IsNullOrWhiteSpace(detail) ? rowText : $"{rowText} {detail}";
+        // With an expansion state the Expander carries only the header, and the details render
+        // below it: they grow open and shrink closed with real layout instead of the stock content
+        // slide. A closing row keeps them briefly so they can shrink away.
+        var detailsOutside = props.ToolExpansionState is not null;
+        var closingDetails = detailsOutside && closingKeys?.Contains(expansionKey) == true;
+        var showDetails = isExpanded || closingDetails;
+        // Like a wrapper's nested rows, a row's details are built only once it opens, so long
+        // histories of single calls do not build every hidden output. After the first open they
+        // stay built (hidden while closed), so closing and reopening keeps the same output and
+        // any recovered text.
+        var bodyBuilt = hasDetails && (showDetails || props.ToolExpansionState is not { } detailsState ||
+            detailsState.HasChoice(expansionKey, props.ToolCallsCollapseVersion));
+        Element body = bodyBuilt
+            ? Component<ToolDetailsBody, ToolDetailsBodyProps>(
+                    new(props, entry, details, recovery, revealDetails && !detailsOutside))
                 .Margin(0, 2, 0, 6)
             : Empty();
         // Web wrapper rows list their nested calls first, then their own input behind "Tool input".
         // Nested rows exist only while the wrapper is expanded.
         if (children is { Count: > 0 })
         {
-            body = isExpanded || props.ToolExpansionState is null
-                ? BuildNestedToolBody(props, expansionKey, children, hasDetails ? body : null, onExpansionChanged)
+            bodyBuilt = showDetails || props.ToolExpansionState is null;
+            body = bodyBuilt
+                ? BuildNestedToolBody(props, expansionKey, children,
+                    hasDetails ? body : null, onExpansionChanged, revealDetails, closingKeys,
+                    revealOnMount: !detailsOutside, toggledKey)
                 : Empty();
+        }
+        Element detailsBelow = Empty();
+        if (detailsOutside)
+        {
+            detailsBelow = bodyBuilt
+                ? ChatMotion.Host(body)
+                    .RevealWhenShown(isExpanded, closingDetails, animate: revealDetails,
+                        ChatMotion.DisclosureRevealMilliseconds, ChatMotion.DisclosureCloseMilliseconds)
+                    .IsVisible(showDetails)
+                    .MinWidth(ChatVisuals.DisclosureDetailsMinWidth)
+                : Empty();
+            body = Empty();
         }
         var expander = Expander(
                 $"{toolName} · {statusLabel}",
@@ -104,23 +148,27 @@ internal static class ToolCallCardRenderer
                 {
                     props.ToolExpansionState?.SetExplicit(expansionKey, expanded, props.ToolCallsCollapseVersion);
                     if (!expanded) onCollapse();
-                    onExpansionChanged?.Invoke();
+                    onExpansionChanged?.Invoke(expansionKey, expanded);
                 })
-            .HeaderTemplate(header)
+            .HeaderContent(header)
             .OnUnmount(ChatVisuals.StopToolRowShimmers)
+            .OnUnmountAdd(ChatVisuals.RestoreHeaderOnlyExpander)
             .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
             .Resources(ChatVisuals.ToolRowExpanderResources)
-            .Set(ChatVisuals.FlushToolRowExpander)
+            .Set(detailsOutside ? ChatVisuals.FlushHeaderOnlyExpander : ChatVisuals.FlushToolRowExpander)
             .HAlign(HorizontalAlignment.Stretch)
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .OnGotFocus((sender, args) => { if (IsOwnHeader(sender, args)) onHeaderFocus?.Invoke(true); })
             .OnLostFocus((sender, args) => { if (IsOwnHeader(sender, args)) onHeaderFocus?.Invoke(false); })
             .AutomationId($"ChatToolCall_{SanitizeAutomationId(entry.Id)}")
             .AutomationName(
-                $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {toolName}. {statusLabel}.")
+                (string.IsNullOrEmpty(displayedStatus)
+                    ? $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {accessibleTitle}."
+                    : $"{LocalizedOrDefault("Chat_Tool_CallLabel", "Tool call")} {accessibleTitle}. {displayedStatus}.") +
+                (diffStat is null ? "" : $" {DiffStatDescription(diffStat)}."))
             .HelpText(preview)
             .WithKey($"tool-expander:{entry.Id}:collapse:{props.ToolCallsCollapseVersion}");
 
@@ -152,10 +200,10 @@ internal static class ToolCallCardRenderer
                     .FontSize(12).TextWrapping(TextWrapping.Wrap))
                 .AutomationId("ChatToolReview").WithKey(review.Id);
         }).ToArray();
-        return Border(VStack(4, [expander, .. reviews]))
+        return Border(VStack(4, [VStack(0, expander, detailsBelow.WithKey("tool-details")), .. reviews]))
             .Padding(0)
             .BorderThickness(0)
-            .CornerRadius(ChatVisuals.SurfaceRadius)
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"));
     }
 
@@ -164,7 +212,11 @@ internal static class ToolCallCardRenderer
         string expansionKey,
         IReadOnlyList<ChatToolCallNode> children,
         Element? ownDetails,
-        Action? onExpansionChanged)
+        Action<string, bool>? onExpansionChanged,
+        bool revealDetails,
+        IReadOnlySet<string>? closingKeys,
+        bool revealOnMount,
+        string? toggledKey)
     {
         var rows = children
             .Select(child => BuildStandalone(props, child.Tool, isNested: true, child.Children)
@@ -175,46 +227,63 @@ internal static class ToolCallCardRenderer
             var inputKey = expansionKey + "|input";
             var label = LocalizedOrDefault("Chat_Tool_InputSection", "Tool input");
             var inputExpanded = props.ToolExpansionState?.IsExpanded(inputKey, props.ToolCallsCollapseVersion) ?? false;
-            rows.Add(Expander(
+            // Like the row itself, the input section shows its details below a header-only Expander.
+            var inputOutside = props.ToolExpansionState is not null;
+            var inputClosing = inputOutside && closingKeys?.Contains(inputKey) == true;
+            Element inputDetails = inputOutside && (inputExpanded || inputClosing)
+                ? ChatMotion.Host(ownDetails)
+                    .ExpandOnMount(ChatMotion.DisclosureRevealMilliseconds,
+                        enabled: revealDetails && inputExpanded && toggledKey == inputKey)
+                    .ShrinkWhen(inputClosing && !inputExpanded, ChatMotion.DisclosureCloseMilliseconds)
+                    .MinWidth(ChatVisuals.DisclosureDetailsMinWidth)
+                : Empty();
+            var inputExpander = Expander(
                     label,
-                    ownDetails,
+                    inputOutside ? Empty() : ownDetails,
                     props.ToolExpansionState is null ? default : (Optional<bool>)inputExpanded,
                     expanded =>
                     {
                         props.ToolExpansionState?.SetExplicit(inputKey, expanded, props.ToolCallsCollapseVersion);
-                        onExpansionChanged?.Invoke();
+                        onExpansionChanged?.Invoke(inputKey, expanded);
                     })
-                .HeaderTemplate(BuildRowHeader(
+                .HeaderContent(BuildRowHeader(
                     FluentIconCatalog.ChevronR,
                     showChevron: true,
                     inputExpanded,
                     TextBlock(label).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
                     null,
                     null))
+                .OnUnmountAdd(ChatVisuals.RestoreHeaderOnlyExpander)
                 .FontSize(ChatVisuals.ToolRowFontSize)
                 .MinHeight(ChatVisuals.ToolRowMinHeight)
                 .Padding(0)
                 .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
                 .BorderBrush(Theme.Ref("SubtleFillColorTransparentBrush"))
                 .Resources(ChatVisuals.ToolRowExpanderResources)
-                .Set(ChatVisuals.FlushToolRowExpander)
+                .Set(inputOutside ? ChatVisuals.FlushHeaderOnlyExpander : ChatVisuals.FlushToolRowExpander)
                 .HAlign(HorizontalAlignment.Stretch)
                 .HorizontalContentAlignment(HorizontalAlignment.Stretch)
                 .AutomationName(label)
-                .WithKey("own-input"));
+                .WithKey("own-input-header");
+            // Like every header-only disclosure, the header and its details share one panel.
+            rows.Add(VStack(0, inputExpander, inputDetails.WithKey("own-input-details")).WithKey("own-input"));
         }
         // A thin guide line under the wrapper's icon center marks its nested calls,
         // 16 pixels before their rows, as on the web (.chat-tool-children).
-        return Grid([GridSize.Auto, GridSize.Star()], [GridSize.Star()],
+        Element nested = Grid([GridSize.Auto, GridSize.Star()], [GridSize.Star()],
                 Border(Empty()).Width(1).Margin(7, 0, 16, 0)
                     .Background(Theme.Ref("DividerStrokeColorDefaultBrush"))
                     .VAlign(VerticalAlignment.Stretch).Grid(column: 0)
                     .AccessibilityView(AccessibilityView.Raw).WithKey("nested-guide"),
                 VStack(0, rows.ToArray()).Grid(column: 1));
+        return ChatMotion.Host(nested)
+            .ExpandOnMount(ChatMotion.DisclosureRevealMilliseconds, enabled: revealOnMount && revealDetails);
     }
 
-    internal static Element BuildPanelDetails(ChatTimelinePresentationContext context, ChatTimelineItem entry) =>
-        Component<ToolResultCard, ToolResultCardProps>(new(context, entry, IsNested: false, IsPanel: true));
+    internal static Element BuildPanelDetails(
+        ChatTimelinePresentationContext context, ChatTimelineItem entry, bool isActive = true) =>
+        Component<ToolResultCard, ToolResultCardProps>(
+            new(context, entry, IsNested: false, IsPanel: true, IsActive: isActive));
 
     internal static Element BuildPanelDetailsCore(
         ChatTimelineItem entry, ChatToolOutputResult? recovered, Element recovery) =>
@@ -228,7 +297,8 @@ internal static class ToolCallCardRenderer
             });
 
     private sealed record ToolDetailsBodyProps(
-        ChatTimelinePresentationContext Context, ChatTimelineItem Entry, List<Element> Details, Element Recovery);
+        ChatTimelinePresentationContext Context, ChatTimelineItem Entry, List<Element> Details, Element Recovery,
+        bool Reveal = false);
 
     private sealed class ToolDetailsBody : Component<ToolDetailsBodyProps>
     {
@@ -242,6 +312,12 @@ internal static class ToolCallCardRenderer
             var command = IsCommand(entry);
             var touch = new TouchCapabilities().TouchPresent != 0;
             var canOpen = context.OnOpenToolDetails is not null && context.SessionId is not null;
+            void OpenDetails()
+            {
+                if (context.OnOpenToolDetails is { } open && context.SessionId is { } session)
+                    open(ChatToolDetailRequest.Capture(
+                        session, context.TimelineGeneration, context.HistoryRevision, entry));
+            }
             var label = LocalizationHelper.GetString("Chat_Panel_OpenDetails");
             var size = command || touch ? ToolDetailsCommandActionSize : ToolDetailsActionSize;
             var action = Button(
@@ -250,12 +326,7 @@ internal static class ToolCallCardRenderer
                         .FontSize(ChatVisuals.ActionIconSize)
                         .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                         .Set(text => text.IsTextScaleFactorEnabled = false),
-                    () =>
-                    {
-                        if (context.OnOpenToolDetails is { } open && context.SessionId is { } session)
-                            open(ChatToolDetailRequest.Capture(
-                                session, context.TimelineGeneration, context.HistoryRevision, entry));
-                    })
+                    OpenDetails)
                 .SubtleButton()
                 .Resources(resources =>
                 {
@@ -307,12 +378,16 @@ internal static class ToolCallCardRenderer
                 .OnPointerExited((_, _) => setHovered(false))
                 .OnGotFocus((_, _) => setFocused(true))
                 .OnLostFocus((_, _) => setFocused(false));
-            return VStack(4, card, Props.Recovery.WithKey("recovery"));
+            var body = VStack(4, card, Props.Recovery.WithKey("recovery"));
+            // Only a user-opened row grows its details open; history and re-realized rows appear at rest.
+            return ChatMotion.Host(body)
+                .ExpandOnMount(ChatMotion.DisclosureRevealMilliseconds, enabled: Props.Reveal);
         }
     }
 
     private static List<Element> BuildDetails(
-        ChatTimelineItem entry, ChatToolOutputResult? recovered, bool panel = false, bool reserveActionSpace = false)
+        ChatTimelineItem entry, ChatToolOutputResult? recovered, bool panel = false,
+        bool reserveActionSpace = false, bool preview = true)
     {
         var details = new List<Element>();
         var fullInput = entry.ToolName == "sessions_yield" ? null : entry.ToolInputDetails;
@@ -351,8 +426,26 @@ internal static class ToolCallCardRenderer
                     entry.ToolResult == ChatToolCallStatus.Error
                         ? "Tool error"
                         : "Tool output"),
-                output, panel: panel, commandOutput: IsCommand(entry),
+                panel || !preview ? output : ChatToolRowPresentation.PreviewOutput(output).Text,
+                panel: panel, commandOutput: IsCommand(entry),
                 reserveActionSpace: reserveActionSpace && details.Count == 0).WithKey("output"));
+            var hiddenLines = preview ? ChatToolRowPresentation.PreviewOutput(output).HiddenLines : 0;
+            var truncated = entry.ToolResultReference?.IsTruncated == true;
+            if (!panel && (truncated || hiddenLines > 0))
+            {
+                var label = truncated
+                    ? LocalizationHelper.GetString(preview ? "Chat_Tool_MoreOutput" : "Chat_ToolRecovery_Missing")
+                    : string.Format(System.Globalization.CultureInfo.CurrentCulture,
+                        LocalizationHelper.GetString(hiddenLines == 1
+                            ? "Chat_Tool_MoreLineFormat" : "Chat_Tool_MoreLinesFormat"), hiddenLines);
+                details.Add(TextBlock(label)
+                    .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                    .TextWrapping(TextWrapping.Wrap)
+                    .Margin(ChatVisuals.DetailHorizontalInset, 0,
+                        ChatVisuals.DetailHorizontalInset, ChatVisuals.DetailVerticalInset)
+                    .AutomationId($"ChatToolMoreLines_{SanitizeAutomationId(entry.Id)}")
+                    .WithKey("more-lines"));
+            }
         }
 
         // Inline and panel readers share the sanitized input, literal output and outcome.
@@ -384,7 +477,7 @@ internal static class ToolCallCardRenderer
 
     private static BorderElement BuildDetailsCard(Element content) =>
         Border(content)
-                .CornerRadius(ChatVisuals.SurfaceRadius)
+                .ThemedCorner(() => ChatVisuals.SurfaceRadius)
                 .BorderThickness(1)
                 .BorderBrush(Theme.Ref("ChatStrokeBrush"))
                 .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -411,7 +504,8 @@ internal static class ToolCallCardRenderer
                 text.FontWeight = FontWeights.Normal;
                 text.FontFamily = new FontFamily(ChatVisuals.CodeFontFamily);
                 ChatToolInputSyntax.Apply(text, content, input);
-            });
+            })
+            .FollowCodeFont();
 
         return Border(panel ? body.AutomationName(label) : ScrollViewer(body)
                 .AutomationName(label)
@@ -456,7 +550,8 @@ internal static class ToolCallCardRenderer
         Func<ChatTimelineItem, Element>? buildWorkEntry = null,
         bool animateEntrance = false) =>
         Component<ToolActivityCard, ToolActivityCardProps>(
-            new ToolActivityCardProps(props, activity, expansionState, buildWorkEntry, animateEntrance));
+            new ToolActivityCardProps(props, activity, expansionState, buildWorkEntry, animateEntrance))
+            .WithKey($"tool-activity:{activity.Key}");
 
     internal static Element BuildActivityCore(
         ChatTimelinePresentationContext props,
@@ -468,13 +563,18 @@ internal static class ToolCallCardRenderer
         bool reducedMotion = true,
         bool showChevron = false,
         Action<bool>? onHeaderHover = null,
-        Action<bool>? onHeaderFocus = null)
+        Action<bool>? onHeaderFocus = null,
+        bool revealDetails = false,
+        bool closing = false)
     {
         var summary = activity.Summary
             ?? throw new ArgumentException("An activity row requires a summary.", nameof(activity));
         var formattedSummary = FormatSummary(summary);
         var runningTool = summary.NewestRunningTool;
-        var runningPreview = runningTool is null ? string.Empty : ToolPreview(runningTool);
+        var runningPreview = runningTool is null ? string.Empty
+            : ChatToolRowPresentation.Resolve(runningTool, props.ChildThreads) is var runningRow &&
+                RowText(runningRow) is { } runningText
+                ? runningText : ToolPreview(runningTool);
         var hasRunningTitle = summary.IsRunning && !string.IsNullOrWhiteSpace(runningPreview);
         var summaryText = activity.IsCompletedWork
             ? activity.DurationMs is { } duration
@@ -494,14 +594,15 @@ internal static class ToolCallCardRenderer
                 : LocalizedOrDefault("Chat_Activity_Collapsed", "Collapsed"));
         var collapsedAutomationName = AutomationName(expanded: false);
         var expandedAutomationName = AutomationName(expanded: true);
-        Element details = !isExpanded
+        // A closing group keeps its details briefly so they can shrink away instead of snapping shut.
+        var showDetails = isExpanded || closing;
+        Element details = !showDetails
             ? Empty()
             : activity.Work is { } work
                 ? VStack(
                     0,
                     [
-                        Border(Empty()).Height(1).Margin(0, 2, 0, 4)
-                            .Background(Theme.Ref("DividerStrokeColorDefaultBrush")).WithKey("work-separator"),
+                        WorkDivider("work-separator"),
                         .. ChatToolActivityPresentation.ProjectWork(work, props.SessionId, props.TimelineGeneration)
                             .Select(row => (row.IsActivityGroup
                                     ? BuildActivity(props, row, props.ToolExpansionState ?? new(), buildWorkEntry)
@@ -516,6 +617,11 @@ internal static class ToolCallCardRenderer
                         .Select(root => BuildStandalone(props, root.Tool, isNested: true, root.Children)
                             .WithKey($"activity-entry:{root.Tool.Id}"))
                         .ToArray());
+        if (showDetails)
+            details = ChatMotion.Host(details)
+                .ExpandOnMount(ChatMotion.DisclosureRevealMilliseconds, enabled: revealDetails && isExpanded)
+                .ShrinkWhen(closing && !isExpanded, ChatMotion.DisclosureCloseMilliseconds)
+                .MinWidth(ChatVisuals.DisclosureDetailsMinWidth);
 
         var headlineText = activity.IsCompletedWork && isExpanded && summary.ToolCount > 0
             ? summaryText + " · " + string.Format(
@@ -524,30 +630,36 @@ internal static class ToolCallCardRenderer
                     : LocalizedOrDefault("Chat_Activity_ToolCallsMany", "{0} tool calls"),
                 summary.ToolCount)
             : summaryText;
-        var headline = TextBlock(headlineText)
-            .FontSize(ChatVisuals.ToolRowFontSize)
-            .Foreground(Theme.Ref("TextFillColorSecondaryBrush"))
-            .TextWrapping(TextWrapping.Wrap)
-            .WithTextShimmer(summary.IsRunning)
+        var headline = ChatVisuals.ActivityText(headlineText, summary.IsRunning)
             .WithKey($"activity-headline:{summary.NewestRunningTool?.Id ?? "settled"}");
         if (!reducedMotion && summary.IsRunning)
             headline = headline.Transition(
                 Transition.Enter(Transition.Fade), Curve.Ease(LiveHeadlineMilliseconds, Easing.EaseOut));
+        headline = headline.RiseWithTransition(LiveHeadlineRise, LiveHeadlineMilliseconds,
+            enabled: !reducedMotion && summary.IsRunning);
 
-        var header = BuildRowHeader(
-            FluentIconCatalog.BulletedList,
-            showChevron,
-            isExpanded,
-            headline,
-            runningStatus is null
-                ? null
-                : TextBlock(runningStatus).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
-            onHeaderHover);
+        var titleLabel = summary.IsRunning ? "running" : summaryText;
+        var header = activity.IsCompletedWork
+            ? BuildWorkHeader(showChevron, isExpanded, headline, onHeaderHover, titleLabel)
+            : BuildRowHeader(
+                FluentIconCatalog.BulletedList,
+                showChevron,
+                isExpanded,
+                headline,
+                runningStatus is null
+                    ? null
+                    : TextBlock(runningStatus).FontSize(ChatVisuals.ToolRowFontSize).Foreground(Theme.Ref("TextFillColorSecondaryBrush")),
+                onHeaderHover,
+                titleLabel: titleLabel);
+        // The Expander carries only the header and its expand state. The details render below it,
+        // outside the stock content slide and collapse, so the height reveal alone moves them and
+        // the rows below follow with layout.
         var expander = Expander(
                 summaryText,
-                details)
-            .HeaderTemplate(header)
+                Empty())
+            .HeaderContent(header)
             .OnUnmount(ChatVisuals.StopToolRowShimmers)
+            .OnUnmountAdd(ChatVisuals.RestoreHeaderOnlyExpander)
             .MinHeight(ChatVisuals.ToolRowMinHeight)
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
@@ -560,7 +672,7 @@ internal static class ToolCallCardRenderer
             .AutomationId($"ChatToolActivity_{SanitizeAutomationId(activity.IsCompletedWork ? activity.Key : activity.Tools[0].Id)}")
             .Set(control =>
             {
-                ChatVisuals.FlushToolRowExpander(control);
+                ChatVisuals.FlushHeaderOnlyExpander(control);
                 ApplyActivityExpander(
                     control,
                     onUserExpansionChanged,
@@ -571,18 +683,165 @@ internal static class ToolCallCardRenderer
             .AutomationName(isExpanded ? expandedAutomationName : collapsedAutomationName)
             .WithKey(activity.Key);
 
-        var card = Border(expander)
+        Element card = Border(VStack(0, expander, details.WithKey("activity-details")))
             .Padding(0)
             .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
             .BorderThickness(0)
-            .CornerRadius(ChatVisuals.SurfaceRadius);
-        return activity.IsCompletedWork && animateEntrance && !reducedMotion
+            .ThemedCorner(() => ChatVisuals.SurfaceRadius);
+        // Like the web work group, a line sits under the Worked header. Once open, the body's own
+        // separator takes that place, so the line is never doubled. The line stays outside the rounded
+        // card so its corners do not clip the ends.
+        if (activity.IsCompletedWork)
+            card = VStack(0, card, isExpanded ? Empty() : WorkDivider("work-divider"));
+        var settle = activity.IsCompletedWork && animateEntrance && !reducedMotion;
+        card = card.RiseWithTransition(WorkSettleRise, WorkSettleMilliseconds, enabled: settle);
+        return settle
             ? card.Transition(Transition.Enter(Transition.Fade), Curve.Ease(WorkSettleMilliseconds, Easing.EaseOut))
             : card;
     }
 
     internal static string FormatSummary(ChatToolActivitySummary summary)
         => ChatToolActivityFormatter.Format(summary, CreateFormatTemplates());
+
+    /// <summary>Row text in web order: a subagent's label, a command's purpose or prompt, then verb and target.</summary>
+    internal static string? RowText(ChatToolRowView row)
+    {
+        if (row.Subagent is { } subagent)
+            return subagent.Label;
+        if (row.Title is { } title)
+            return title;
+        if (row.Command is { } command)
+            return "$ " + command;
+        if (row.Verb is not { } verb)
+            return null;
+        var target = row.FileCount > 1
+            ? string.Format(LocalizedOrDefault("Chat_Tool_FilesCount", "{0} files"), row.FileCount)
+            : row.Target;
+        return string.IsNullOrWhiteSpace(target) ? null : $"{VerbLabel(verb)} {target}";
+    }
+
+    private static string VerbLabel(ChatToolRowVerb verb) => verb switch
+    {
+        ChatToolRowVerb.Read => LocalizedOrDefault("Chat_ToolVerb_Read", "Read"),
+        ChatToolRowVerb.Edit => LocalizedOrDefault("Chat_ToolVerb_Edit", "Edit"),
+        ChatToolRowVerb.Editing => LocalizedOrDefault("Chat_ToolVerb_Editing", "Editing"),
+        ChatToolRowVerb.Edited => LocalizedOrDefault("Chat_ToolVerb_Edited", "Edited"),
+        ChatToolRowVerb.Create => LocalizedOrDefault("Chat_ToolVerb_Create", "Create"),
+        ChatToolRowVerb.Creating => LocalizedOrDefault("Chat_ToolVerb_Creating", "Creating"),
+        ChatToolRowVerb.Created => LocalizedOrDefault("Chat_ToolVerb_Created", "Created"),
+        ChatToolRowVerb.Delete => LocalizedOrDefault("Chat_ToolVerb_Delete", "Delete"),
+        ChatToolRowVerb.Deleting => LocalizedOrDefault("Chat_ToolVerb_Deleting", "Deleting"),
+        ChatToolRowVerb.Deleted => LocalizedOrDefault("Chat_ToolVerb_Deleted", "Deleted"),
+        ChatToolRowVerb.Change => LocalizedOrDefault("Chat_ToolVerb_Change", "Change"),
+        ChatToolRowVerb.Changing => LocalizedOrDefault("Chat_ToolVerb_Changing", "Changing"),
+        ChatToolRowVerb.Changed => LocalizedOrDefault("Chat_ToolVerb_Changed", "Changed"),
+        ChatToolRowVerb.Write => LocalizedOrDefault("Chat_ToolVerb_Write", "Write"),
+        ChatToolRowVerb.Writing => LocalizedOrDefault("Chat_ToolVerb_Writing", "Writing"),
+        ChatToolRowVerb.Wrote => LocalizedOrDefault("Chat_ToolVerb_Wrote", "Wrote"),
+        ChatToolRowVerb.Searched => LocalizedOrDefault("Chat_ToolVerb_Searched", "Searched"),
+        _ => LocalizedOrDefault("Chat_ToolVerb_Fetched", "Fetched"),
+    };
+
+    // A dimmed detail (directory or search scope) follows the title. The title takes the star
+    // column so it trims with an ellipsis; the detail is capped and trims on its own.
+    // A row link replaces only the title text; the dimmed detail and the header toggle stay as they are.
+    private static Element BuildRowTitle(string title, string? detail, bool running,
+        RowLink? link = null, string? entryId = null)
+    {
+        Element text = link is not null && entryId is not null
+            ? BuildRowLink(title, link, entryId, running)
+            : ChatVisuals.ActivityText(title, running);
+        if (string.IsNullOrWhiteSpace(detail))
+            return text.WithKey("preview");
+        return Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                text.Grid(column: 0).VAlign(VerticalAlignment.Center),
+                TextBlock(detail)
+                    .FontSize(ChatVisuals.ActivityTextFontSize)
+                    .Foreground(Theme.Ref("TextFillColorTertiaryBrush"))
+                    .TextWrapping(TextWrapping.NoWrap)
+                    .TextTrimming(TextTrimming.CharacterEllipsis)
+                    .MaxWidth(ChatVisuals.ToolRowDetailMaxWidth)
+                    .Margin(6, 0, 0, 0)
+                    .Grid(column: 1)
+                    .VAlign(VerticalAlignment.Center))
+            .WithKey("preview-detail");
+    }
+
+    // A settled launch reports its subagent's own state: running, failed, stopped or elapsed time.
+    // An unknown or stale outcome (Ended) is never presented like a finished run.
+    private static string? SubagentStatusText(ChatSpawnedSubagent? subagent) => subagent?.Status switch
+    {
+        null or ChatSubagentStatus.Ended => null,
+        ChatSubagentStatus.Failed => LocalizedOrDefault("Chat_Tool_FailedInline", "failed"),
+        ChatSubagentStatus.Stopped => LocalizedOrDefault("Chat_Tool_SubagentStopped", "stopped"),
+        ChatSubagentStatus.Done => subagent.Elapsed is { } elapsed
+            ? ChatRunProgressProjection.ElapsedMilliseconds(elapsed.TotalMilliseconds) : null,
+        _ => LocalizedOrDefault("Chat_Tool_SubagentRunning", "running"),
+    };
+
+    private static Element? SubagentStatus(ChatSpawnedSubagent? subagent) =>
+        SubagentStatusText(subagent) is { } label
+            ? TextBlock(label)
+                .FontSize(ChatVisuals.ToolRowFontSize)
+                .Foreground(Theme.Ref(subagent!.Status == ChatSubagentStatus.Failed
+                    ? "SystemFillColorCriticalBrush" : "TextFillColorSecondaryBrush"))
+            : null;
+
+    private sealed record RowLink(Action Open, string AutomationName);
+
+    /// <summary>
+    /// A file row opens its workspace file; a launch row opens its subagent session once that session
+    /// is known. The Expander header keeps its own expand/collapse toggle around the link.
+    /// </summary>
+    private static RowLink? ResolveRowLink(ChatTimelinePresentationContext props, ChatTimelineItem entry, ChatToolRowView row)
+    {
+        if (props.OnOpenWorkspaceFile is { } openFile && ChatToolRowLinks.WorkspaceFilePath(entry) is { } path)
+        {
+            var name = NativeToolProjector.SanitizeToolDisplayValue(ChatWorkspaceFileRequest.FileName(path));
+            return new(() => openFile(path), LocalizationHelper.Format("Chat_Tool_OpenFile", name));
+        }
+        if (props.OnOpenSession is { } openSession &&
+            row.Subagent is { ChildSessionKey: { } key } subagent &&
+            props.CanOpenSession?.Invoke(key) == true)
+            return new(() => openSession(key), LocalizationHelper.Format("Chat_Tool_OpenSubagent", subagent.Label));
+        return null;
+    }
+
+    private static Element BuildRowLink(string title, RowLink link, string entryId, bool running) =>
+        Button(TextBlock(title)
+                .FontSize(ChatVisuals.ActivityTextFontSize)
+                .Foreground(Theme.Ref("AccentTextFillColorPrimaryBrush"))
+                .TextWrapping(TextWrapping.NoWrap)
+                .TextTrimming(TextTrimming.CharacterEllipsis)
+                .WithTextShimmer(running), link.Open)
+            .SubtleButton()
+            .Padding(2, 0)
+            .MinHeight(0)
+            .MinWidth(0)
+            .AutomationName(link.AutomationName)
+            // Row-specific so focus restoration never matches a pooled button reused by another row.
+            .AutomationId($"ChatToolRowLink_{SanitizeAutomationId(entryId)}")
+            .WithKey("row-link");
+
+    /// <summary>Web-style "+N -M" counts before the inline status; zeros stay visible as on the web.</summary>
+    private static Element? WithDiffStat(ChatToolDiffStat? stat, Element? status)
+    {
+        if (stat is null)
+            return status;
+        var culture = System.Globalization.CultureInfo.CurrentCulture;
+        var chips = HStack(4,
+                TextBlock("+" + stat.Added.ToString(culture)).FontSize(ChatVisuals.ToolRowFontSize)
+                    .Foreground(Theme.Ref("SystemFillColorSuccessBrush")),
+                TextBlock("-" + stat.Removed.ToString(culture)).FontSize(ChatVisuals.ToolRowFontSize)
+                    .Foreground(Theme.Ref("SystemFillColorCriticalBrush")))
+            .AutomationName(DiffStatDescription(stat))
+            .AutomationId("ChatToolDiffStat")
+            .WithKey("diff-stat");
+        return status is null ? chips : HStack(6, chips, status);
+    }
+
+    private static string DiffStatDescription(ChatToolDiffStat stat) =>
+        LocalizationHelper.Format("Chat_Tool_DiffStat", stat.Added, stat.Removed);
 
     private static string ToolPreview(ChatTimelineItem entry)
     {
@@ -598,7 +857,7 @@ internal static class ToolCallCardRenderer
 
     // A fixed width keeps the title column the same for the 14pt glyph and the 12pt chevron. No
     // fixed height: a taller box draws the glyph at its top, above the title's centre line.
-    private static Element ToolIcon(string glyph, double fontSize = 14) =>
+    private static TextBlockElement ToolIcon(string glyph, double fontSize = 14) =>
         TextBlock(glyph)
             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
             .FontSize(fontSize)
@@ -618,11 +877,24 @@ internal static class ToolCallCardRenderer
         bool isExpanded,
         Element title,
         Element? status,
-        Action<bool>? onHover)
+        Action<bool>? onHover,
+        string? titleLabel = null,
+        string? statusLabel = null)
     {
-        var icon = showChevron
-            ? ToolIcon(isExpanded ? FluentIconCatalog.ChevronDown : FluentIconCatalog.ChevronR, 12)
-            : ToolIcon(glyph);
+        // One icon control shows the tool glyph or, on hover or focus, the disclosure chevron. It always
+        // tracks its glyph and resets on unmount, so a turn in flight never outlives the chevron.
+        var iconGlyph = showChevron
+            ? isExpanded ? FluentIconCatalog.ChevronDown : FluentIconCatalog.ChevronR
+            : glyph;
+        var icon = ChatMotion.Host(ToolIcon(iconGlyph, showChevron ? 12 : 14))
+            .Set(host => ChatMotion.RotateDisclosure(host, iconGlyph))
+            .OnUnmountAdd(ChatMotion.Reset);
+        // A row whose title or state changes in place (Editing to Edited, Running to failed) fades
+        // the new text in rather than snapping to it.
+        if (titleLabel is not null)
+            title = ChatMotion.Host(title).FadeOnChange(titleLabel, LabelFadeMilliseconds);
+        if (status is not null && statusLabel is not null)
+            status = ChatMotion.Host(status).FadeOnChange(statusLabel, LabelFadeMilliseconds);
         return Border(
                 Grid([GridSize.Auto, GridSize.Star(), GridSize.Auto], [GridSize.Auto],
                     icon.Grid(column: 0).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center),
@@ -634,6 +906,36 @@ internal static class ToolCallCardRenderer
             .OnPointerEntered((_, _) => onHover?.Invoke(true))
             .OnPointerExited((_, _) => onHover?.Invoke(false));
     }
+
+    /// <summary>
+    /// Completed-work header, like the web work-group summary: the label with no leading glyph and a
+    /// trailing chevron shown only while hovered or focused. The chevron keeps its slot while hidden,
+    /// so showing it never moves or re-trims the label.
+    /// </summary>
+    private static Element BuildWorkHeader(
+        bool showChevron, bool isExpanded, Element title, Action<bool>? onHover, string? titleLabel = null)
+    {
+        if (titleLabel is not null)
+            title = ChatMotion.Host(title).FadeOnChange(titleLabel, LabelFadeMilliseconds);
+        return Border(
+                Grid([GridSize.Star(), GridSize.Auto], [GridSize.Auto],
+                    title.Grid(column: 0).VAlign(VerticalAlignment.Center),
+                    ToolIcon(isExpanded ? FluentIconCatalog.ChevronDown : FluentIconCatalog.ChevronR, 12)
+                        .Opacity(showChevron ? 1 : 0)
+                        .Grid(column: 1).Margin(4, 0, 0, 0).VAlign(VerticalAlignment.Center))
+                .HAlign(HorizontalAlignment.Left))
+            .Background(Theme.Ref("SubtleFillColorTransparentBrush"))
+            .OnPointerEntered((_, _) => onHover?.Invoke(true))
+            .OnPointerExited((_, _) => onHover?.Invoke(false));
+    }
+
+    private static Element WorkDivider(string key) =>
+        Border(Empty()).Height(1).Margin(0, 2, 0, 4)
+            .Background(Theme.Ref("DividerStrokeColorDefaultBrush")).WithKey(key);
+
+    /// <summary>A disclosure-only row header (no category icon): an always-visible leading chevron and the title.</summary>
+    internal static Element BuildDisclosureHeader(bool isExpanded, Element title) =>
+        BuildRowHeader(FluentIconCatalog.ChevronR, showChevron: true, isExpanded, title, null, null);
 
     // GotFocus bubbles from nested rows and detail controls; only this Expander's own header counts.
     private static bool IsOwnHeader(object sender, RoutedEventArgs args)
@@ -656,6 +958,7 @@ internal static class ToolCallCardRenderer
         ChatToolActivityCategory.Edit => FluentIconCatalog.Develop,
         ChatToolActivityCategory.Write => FluentIconCatalog.Add,
         ChatToolActivityCategory.Search or ChatToolActivityCategory.Fetch => FluentIconCatalog.Browser,
+        ChatToolActivityCategory.Subagent => FluentIconCatalog.Subagent,
         _ => FluentIconCatalog.Plugins,
     };
 
@@ -675,7 +978,10 @@ internal static class ToolCallCardRenderer
         GenericOne: LocalizedOrDefault("Chat_Activity_GenericOne", "{0} other operation"),
         GenericMany: LocalizedOrDefault("Chat_Activity_GenericMany", "{0} other operations"),
         Running: LocalizedOrDefault("Chat_Activity_RunningFormat", "Running {0}"),
-        ToolFallback: LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool"));
+        ToolFallback: LocalizedOrDefault("Chat_Tool_FooterLabel", "Tool"),
+        SubagentOne: LocalizedOrDefault("Chat_Activity_SubagentOne", "{0} subagent"),
+        SubagentMany: LocalizedOrDefault("Chat_Activity_SubagentMany", "{0} subagents"),
+        FailedCount: LocalizedOrDefault("Chat_Activity_FailedCount", "{0} failed"));
 
     private static void ApplyActivityExpander(
         Expander control,
@@ -773,7 +1079,8 @@ internal sealed record ToolResultCardProps(
     ChatTimelineItem Entry,
     bool IsNested,
     IReadOnlyList<ChatToolCallNode>? Children = null,
-    bool IsPanel = false);
+    bool IsPanel = false,
+    bool IsActive = true);
 
 internal sealed class ToolResultCard : Component<ToolResultCardProps>
 {
@@ -792,7 +1099,8 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
         var entry = Props.Entry;
         var reference = entry.ToolResultReference;
         var currentProfile = timeline.ReadToolDetailsProfileState?.Invoke() ?? default;
-        ChatToolOutputRequest? request = reference is { MessageId: { Length: > 0 }, SessionId: { Length: > 0 }, IsTruncated: true } &&
+        ChatToolOutputRequest? request = Props.IsPanel &&
+            reference is { MessageId: { Length: > 0 }, SessionId: { Length: > 0 }, IsTruncated: true } &&
             currentProfile.IsAvailable && currentProfile == timeline.ToolDetailsProfileState &&
             timeline.SessionId is { } sessionKey && timeline.ToolOutputConnectionEpoch is { } epoch &&
             reference.CallId is { Length: > 0 } callId
@@ -800,11 +1108,21 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
                     entry.Id, entry.ToolRunId, callId, reference.SessionId, reference.MessageId, timeline.ToolDetailsProfileState)
                 : null;
         var loader = timeline.LoadToolOutputAsync;
-        UseEffect(() => operation.SetTarget(request, loader), request, loader, timeline.ToolCallsCollapseVersion);
-        UseEffect(operation.Close, timeline.ToolCallsCollapseVersion);
+        UseEffect(() => operation.SetTarget(request, loader), request, loader);
+        UseEffect(() =>
+        {
+            if (!Props.IsPanel) operation.Close();
+        }, timeline.ToolCallsCollapseVersion);
+        UseEffect(() =>
+        {
+            if (!Props.IsActive)
+                operation.Close();
+            else if (request is not null && loader is not null)
+                _ = operation.LoadAsync(request, loader);
+        }, request, loader, Props.IsActive);
         var (loading, result) = operation.Snapshot(request, loader, currentProfile);
         Element recovery = Empty();
-        if (reference?.IsTruncated == true)
+        if (Props.IsPanel && reference?.IsTruncated == true)
         {
             var status = loading ? "Loading" : result?.Status.ToString() ??
                 (request is null || loader is null ? "Missing" : "Preview");
@@ -830,13 +1148,60 @@ internal sealed class ToolResultCard : Component<ToolResultCardProps>
         var (hovered, setHovered) = UseState(false, threadSafe: true);
         var (focused, setFocused) = UseState(false, threadSafe: true);
         var (_, setExpansionVersion) = UseState(0, threadSafe: true);
-        var expansionVersion = UseRef(0);
+        var revealDetails = UseRef(false);
+        var closeState = UseRef(new ChatToolDetailsCloseState());
+        var closingKeys = UseRef<IReadOnlySet<string>>(closeState.Current.Snapshot());
+        var toggledKey = UseRef<string?>(null);
+        var closeTimers = UseRef(new ChatDisclosureCloseTimerSet());
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
+        var identity = (timeline.SessionId, timeline.TimelineGeneration, entry.Id, Props.IsPanel);
+        var previousIdentity = UseRef(identity);
+        var identityVersion = UseRef(0);
+        if (previousIdentity.Current != identity)
+        {
+            closeTimers.Current.CancelAll();
+            closeState.Current = new ChatToolDetailsCloseState();
+            closingKeys.Current = closeState.Current.Snapshot();
+            revealDetails.Current = false;
+            toggledKey.Current = null;
+            identityVersion.Current++;
+            previousIdentity.Current = identity;
+        }
+        UseEffect((Func<Action>)(() => () => closeTimers.Current.CancelAll()),
+            timeline.SessionId ?? string.Empty, timeline.TimelineGeneration, entry.Id, Props.IsPanel);
         if (Props.IsPanel)
             return ToolCallCardRenderer.BuildPanelDetailsCore(entry, result, recovery);
+
+        void OnExpansionChanged(string key, bool expanded)
+        {
+            revealDetails.Current = true;
+            toggledKey.Current = key;
+            // Closing keeps that disclosure's details mounted while they shrink, then releases them.
+            var shouldClose = !expanded && !reducedMotion && ChatMotion.AnimationsEnabled;
+            closeTimers.Current.Cancel(key);
+            var state = closeState.Current;
+            var version = state.SetClosing(key, shouldClose);
+            var scheduledIdentityVersion = identityVersion.Current;
+            closingKeys.Current = state.Snapshot();
+            if (shouldClose)
+            {
+                closeTimers.Current.Schedule(key, TimeSpan.FromMilliseconds(ChatMotion.DisclosureCloseHoldMilliseconds), () =>
+                {
+                    if (identityVersion.Current != scheduledIdentityVersion ||
+                        !state.CompleteClose(key, version))
+                        return;
+                    closingKeys.Current = state.Snapshot();
+                    setExpansionVersion(state.Revision);
+                });
+            }
+            setExpansionVersion(state.Revision);
+        }
+
         return ToolCallCardRenderer.BuildStandaloneCore(
             timeline, entry, Props.IsNested, result, recovery, operation.Close,
             hovered || focused, value => setHovered(value), value => setFocused(value),
-            () => setExpansionVersion(++expansionVersion.Current), Props.Children);
+            OnExpansionChanged, Props.Children, revealDetails.Current && !reducedMotion,
+            closingKeys.Current, toggledKey.Current);
     }
 }
 
@@ -854,17 +1219,36 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
 {
     public override Element Render()
     {
-        var reducedMotion = UseReducedMotion();
+        var reducedMotion = ChatMotion.IsReducedMotion(UseReducedMotion());
         var (hovered, setHovered) = UseState(false, threadSafe: true);
         var (focused, setFocused) = UseState(false, threadSafe: true);
         var (_, setRenderVersion) = UseState(0, threadSafe: true);
         var renderVersion = UseRef(0);
+        var revealDetails = UseRef(false);
+        var closing = UseRef(false);
+        var closeVersion = UseRef(0);
+        var closeTimers = UseRef(new ChatDisclosureCloseTimerSet());
+        var identity = (Props.Timeline.SessionId, Props.Timeline.TimelineGeneration, Props.Activity.Key);
+        var previousIdentity = UseRef(identity);
+        if (previousIdentity.Current != identity)
+        {
+            closeTimers.Current.CancelAll();
+            closing.Current = false;
+            revealDetails.Current = false;
+            closeVersion.Current++;
+            previousIdentity.Current = identity;
+        }
+        UseEffect((Func<Action>)(() => () => closeTimers.Current.CancelAll()),
+            Props.Timeline.SessionId ?? string.Empty, Props.Timeline.TimelineGeneration, Props.Activity.Key);
         var summary = Props.Activity.Summary
             ?? throw new ArgumentException("An activity row requires a summary.", nameof(Props));
         var isExpanded = Props.ExpansionState.IsExpanded(
             Props.Activity.Key,
-            summary,
-            Props.Timeline.ToolCallsCollapseVersion);
+            Props.Timeline.ToolCallsCollapseVersion,
+            Props.Activity.IsCompletedWork || Props.Activity.Tools.Count == 0
+                ? null
+                : ChatToolActivityPresentation.ToolRowKey(
+                    Props.Timeline.SessionId, Props.Timeline.TimelineGeneration, Props.Activity.Tools[0].Id));
 
         void OnUserExpansionChanged(bool expanded)
         {
@@ -872,8 +1256,24 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
                 Props.Activity.Key,
                 expanded,
                 Props.Timeline.ToolCallsCollapseVersion);
+            revealDetails.Current = true;
             var nextRenderVersion = renderVersion.Current + 1;
             renderVersion.Current = nextRenderVersion;
+            // Closing keeps the details mounted while they shrink, then releases them.
+            var version = ++closeVersion.Current;
+            closing.Current = !expanded && !reducedMotion && ChatMotion.AnimationsEnabled;
+            closeTimers.Current.Cancel("activity");
+            if (closing.Current)
+            {
+                closeTimers.Current.Schedule("activity",
+                    TimeSpan.FromMilliseconds(ChatMotion.DisclosureCloseHoldMilliseconds), () =>
+                {
+                    if (closeVersion.Current != version)
+                        return;
+                    closing.Current = false;
+                    setRenderVersion(++renderVersion.Current);
+                });
+            }
             setRenderVersion(nextRenderVersion);
         }
 
@@ -887,6 +1287,8 @@ internal sealed class ToolActivityCard : Component<ToolActivityCardProps>
             reducedMotion,
             hovered || focused,
             value => setHovered(value),
-            value => setFocused(value));
+            value => setFocused(value),
+            revealDetails.Current && !reducedMotion,
+            closing.Current);
     }
 }

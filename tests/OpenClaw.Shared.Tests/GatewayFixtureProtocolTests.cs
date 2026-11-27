@@ -1171,10 +1171,29 @@ public sealed partial class GatewayFixtureProtocolTests
         Assert.Empty(server.Requests);
     }
 
+    [Fact]
+    public async Task ControlUiReads_AreRefusedLikeADisabledControlUi_WithoutCountingAsUnexpected()
+    {
+        var token = CreateToken();
+        await using var server = await FixtureGatewayServer.StartAsync(GatewayScenario.CreateBrowse(), token);
+        await using (var connected = await ConnectedClient.OpenAsync(server, token))
+        {
+            Assert.Null(await connected.Client.ReadControlUiTextAsync("", "text/html", 1024 * 1024));
+            Assert.Null(await connected.Client.ReadControlUiTextAsync("themes/tide.css", "text/css", 1024 * 1024));
+        }
+        await server.DisposeAsync().AsTask().WaitAsync(Deadline);
+
+        Assert.Equal(["not-served", "not-served"], server.Requests
+            .Where(request => request.Method == FixtureGatewayServer.ControlUiRequestMethod)
+            .Select(request => request.Outcome));
+        Assert.Empty(server.UnexpectedRequests);
+    }
+
     [Theory]
     [InlineData("\r\n\r\n")]
     [InlineData("POST / HTTP/1.1\r\nSec-WebSocket-Key: PRIVATE-UPGRADE-DATA\r\n\r\n")]
     [InlineData("GET / HTTP/1.1\r\n\r\n")]
+    [InlineData("GET /themes/tide.css HTTP/1.1\r\nAccept: text/html\r\n\r\n")]
     public Task Upgrade_MalformedHeadersAreRecordedWithoutPoisoningServerOrShutdown(string headers) =>
         AssertRejectedUpgradeAsync(headers, "error:INVALID_UPGRADE");
 

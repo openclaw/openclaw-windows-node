@@ -112,7 +112,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             var originalSize = window.AppWindow.Size;
             var scroll = PageScroll(page);
             var handle = WinRT.Interop.WindowNative.GetWindowHandle(window);
-            AssertFixedPageChrome(root, page);
+            await AssertFixedPageChromeAsync(root, page);
             var selector = Find<ListView>(page, "ProfileSelector");
             Assert.Equal(3, selector.Items.Count);
             Assert.Equal(ListViewSelectionMode.Single, selector.SelectionMode);
@@ -125,7 +125,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 AssertFullyVisible(row, scroll);
                 await AssertNativeProfileSelectionAsync(handle, AutomationProperties.GetName(selector),
                     AutomationProperties.GetName(row), select: true, requireVisible: true);
-                AssertFixedPageChrome(root, page);
+                await AssertFixedPageChromeAsync(root, page);
             }
             var full = Assert.IsType<ListViewItem>(selector.Items[2]);
             var editor = Find<SettingsExpander>(page, "FineTuneExpander");
@@ -148,15 +148,15 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             await OnboardingNativeProof.NextCompositionAsync();
             root.UpdateLayout();
             Assert.True(Bounds(full, flow).Bottom <= Bounds(editor, flow).Top,
-                $"Full row overlaps Fine-tune: row={Bounds(full, flow)}, editor={Bounds(editor, flow)}.");
+                $"Full row overlaps the individual tools expander: row={Bounds(full, flow)}, editor={Bounds(editor, flow)}.");
             Assert.True(Bounds(label, editor).Top >= 0);
             await BringIntoViewportAsync(page, summary);
             AssertFullyVisible(label, scroll);
             AssertFullyVisible(summary, scroll);
             Assert.False(summary.IsTextTrimmed);
-            AssertFixedPageChrome(root, page);
+            await AssertFixedPageChromeAsync(root, page);
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-custom-{theme}", output,
-                ["PC capabilities", "Custom capabilities", "Back", "Next"], new
+                ["What can your assistant use?", "Custom capabilities", "Back", "Next"], new
                 {
                     selected = selector.SelectedIndex, fullRow = Bounds(full, root),
                     editorLabel = Bounds(label, root), viewport = Bounds(scroll, root), size = originalSize,
@@ -168,17 +168,17 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             {
                 var toggle = Capability(page, capability);
                 var card = Assert.Single(rows.Cast<SettingsCard>(), candidate => ReferenceEquals(candidate.Content, toggle));
-                Assert.False(string.IsNullOrWhiteSpace(card.Header?.ToString()));
+                Assert.False(string.IsNullOrWhiteSpace(Assert.IsType<TextBlock>(card.Header).Text));
                 Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(toggle)));
                 await BringIntoViewportAsync(page, card);
                 AssertFullyVisible(card, scroll);
                 AssertFullyVisible(toggle, scroll);
-                AssertFixedPageChrome(root, page);
+                await AssertFixedPageChromeAsync(root, page);
                 await AssertNativeVisibleToggleAsync(handle, AutomationProperties.GetName(toggle),
                     AutomationProperties.GetAutomationId(toggle), toggle.IsOn, checkBox: false);
             }
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-custom-last-toggle-{theme}", output,
-                ["PC capabilities", "Back", "Next"], new { viewport = Bounds(scroll, root), lastToggle = Bounds(Capability(page, SetupCapability.Stt), root) })) { }
+                ["What can your assistant use?", "Back", "Next"], new { viewport = Bounds(scroll, root), lastToggle = Bounds(Capability(page, SetupCapability.Stt), root) })) { }
             Assert.Equal(originalSize, window.AppWindow.Size);
             OnboardingNativeProof.AssertSourceUnchanged();
         }, nativeProof: true, theme: theme);
@@ -198,27 +198,28 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             var root = Assert.IsType<Grid>(window.Content);
             var originalSize = window.AppWindow.Size;
             var scroll = PageScroll(page);
-            var summary = Find<InfoBar>(page, "ReplacementWarning");
+            var summary = Find<Grid>(page, "ReplacementWarning");
+            var summaryText = Find<TextBlock>(page, "ReplacementWarningText");
             var consent = Find<CheckBox>(page, "ReplacementConsent");
             var options = Find<StackPanel>(page, "ReplacementOptions");
             Assert.Same(options, summary.Parent);
             Assert.Same(options, consent.Parent);
             Assert.True(Bounds(summary, options).Bottom <= Bounds(consent, options).Top);
-            Assert.Equal(window.AccessDraft.ReplacementSummary, summary.Message);
-            Assert.False(string.IsNullOrWhiteSpace(summary.Message));
-            Assert.Equal(Visibility.Collapsed, Find<InfoBar>(page, "ReviewRequired").Visibility);
+            Assert.Equal(window.AccessDraft.ReplacementSummary, summaryText.Text);
+            Assert.False(string.IsNullOrWhiteSpace(summaryText.Text));
+            Assert.Equal(Visibility.Collapsed, Find<Grid>(page, "ReviewRequired").Visibility);
             foreach (var text in TestSupport.FindDescendants<TextBlock>(summary))
                 Assert.False(text.IsTextTrimmed);
-            AssertFixedPageChrome(root, page);
+            await AssertFixedPageChromeAsync(root, page);
             await BringIntoViewportAsync(page, summary);
             AssertFullyVisible(summary, scroll);
-            AssertFixedPageChrome(root, page);
+            await AssertFixedPageChromeAsync(root, page);
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-replacement-summary-{theme}", output,
-                ["WSL Gateway setup", window.AccessDraft.Config.DistroName, "Back", "Install"],
-                new { summary = summary.Message, summaryBounds = Bounds(summary, root), viewport = Bounds(scroll, root), size = originalSize })) { }
+                ["Ready to install", window.AccessDraft.Config.DistroName, "Back", "Install"],
+                new { summary = summaryText.Text, summaryBounds = Bounds(summary, root), viewport = Bounds(scroll, root), size = originalSize })) { }
             await BringIntoViewportAsync(page, consent);
             AssertFullyVisible(consent, scroll);
-            AssertFixedPageChrome(root, page);
+            await AssertFixedPageChromeAsync(root, page);
             var name = Assert.IsType<string>(consent.Content);
             Assert.Equal($"I confirm replacement of the WSL installation '{window.AccessDraft.Config.DistroName}' and understand its data may be permanently deleted.", name);
             Assert.Contains(window.AccessDraft.Config.DistroName, name);
@@ -231,7 +232,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Assert.False(Find<Button>(page, "PrimaryButton").IsEnabled);
             Assert.Empty(VisualTreeHelper.GetOpenPopupsForXamlRoot(root.XamlRoot));
             using (await OnboardingNativeProof.CaptureAsync(window, $"onboarding-viewport-inline-consent-{theme}", output,
-                ["WSL Gateway setup", window.AccessDraft.Config.DistroName, "Back", "Install"],
+                ["Ready to install", window.AccessDraft.Config.DistroName, "Back", "Install"],
                 new { exactAccessibleName = name, consentBounds = Bounds(consent, root), viewport = Bounds(scroll, root) })) { }
             Assert.Same(page, frame.Content);
             Assert.Equal(originalSize, window.AppWindow.Size);
@@ -391,7 +392,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Assert.Equal(8, Find<SettingsExpander>(page, "FineTuneExpander").Items.Count);
             Assert.False(Capability(page, SetupCapability.Browser).IsEnabled);
             Assert.Equal(profile == SetupCapabilityProfile.Full, Capability(page, SetupCapability.Browser).IsOn);
-            AssertProgress(page, stageCount: 7, current: 2);
+            await AssertProgressAsync(page, OnboardingDesignStep.ChooseTools);
             await SavePageProofAsync(window, page, $"onboarding-windows-profile-{profile}");
         });
     }
@@ -476,15 +477,15 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
 
             Assert.Null(capabilities.FindName("WindowsAccess"));
             Assert.Equal(beforePrivacy, JsonSerializer.Serialize(window.AccessDraft.Config));
-            AssertProgress(capabilities, stageCount: 7, current: 2);
+            await AssertProgressAsync(capabilities, OnboardingDesignStep.ChooseTools);
             await SavePageProofAsync(window, capabilities, "onboarding-capabilities-presets");
 
             Invoke(FooterButton(capabilities, next: true));
             var review = await MountedPageAsync<GatewaySetupPage>(window, frame);
-            AssertProgress(review, stageCount: 7, current: 3);
+            await AssertProgressAsync(review, OnboardingDesignStep.ChooseTools);
             AssertReviewReplacement(review);
-            Assert.Equal(Visibility.Collapsed, Find<InfoBar>(review, "ReviewRequired").Visibility);
-            Assert.True(Find<InfoBar>(review, "ReplacementWarning").IsOpen);
+            Assert.Equal(Visibility.Collapsed, Find<Grid>(review, "ReviewRequired").Visibility);
+            Assert.Equal(Visibility.Visible, Find<Grid>(review, "ReplacementWarning").Visibility);
             Assert.Equal(Visibility.Visible, Find<StackPanel>(review, "ReplacementOptions").Visibility);
             Assert.Contains(window.AccessDraft.Config.DistroName, Find<SettingsCard>(review, "DistroCard").Description.ToString());
             Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(review, "ExactCommandsText").Text));
@@ -570,7 +571,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             var consent = Find<CheckBox>(review, "ReplacementConsent");
             Assert.False(consent.IsChecked);
             Assert.Contains(window.AccessDraft.Config.DistroName, consent.Content.ToString());
-            Assert.Equal(window.AccessDraft.ReplacementSummary, Find<InfoBar>(review, "ReplacementWarning").Message);
+            Assert.Equal(window.AccessDraft.ReplacementSummary, Find<TextBlock>(review, "ReplacementWarningText").Text);
             Assert.False(window.AccessDraft.CanInstall());
             Assert.Null(window.AccessDraft.Config.ConfirmedDestructiveDistroName);
             consent.IsChecked = true;
@@ -580,7 +581,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             await SavePageProofAsync(window, review, "onboarding-windows-inline-replacement-consent");
             Assert.True(Find<Button>(review, "PrimaryButton").IsEnabled);
             Assert.Equal("Install", Find<Button>(review, "PrimaryButton").Content);
-            Assert.Equal(Visibility.Collapsed, Find<InfoBar>(review, "ReviewRequired").Visibility);
+            Assert.Equal(Visibility.Collapsed, Find<Grid>(review, "ReviewRequired").Visibility);
             Assert.True(consent.IsChecked);
             consent.IsChecked = false;
             Assert.Same(review, frame.Content);
@@ -624,8 +625,8 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 before = JsonSerializer.Serialize(draft.Config);
                 Invoke(Find<Button>(page, "PrimaryButton"));
             }
-            var blocker = Find<InfoBar>(page, "ReviewRequired");
-            Assert.Equal(title, blocker.Title);
+            var blocker = Find<Grid>(page, "ReviewRequired");
+            Assert.Equal(title, Find<TextBlock>(page, "ReviewRequiredTitle").Text);
             Assert.Equal(action, Find<Button>(page, "PrimaryButton").Content);
             Assert.True(Find<Button>(page, "PrimaryButton").IsEnabled);
             Assert.Equal(Visibility.Visible, blocker.Visibility);
@@ -754,7 +755,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
             Find<ListView>(capabilities, "ProfileSelector").SelectedIndex = (int)SetupCapabilityProfile.ReadOnly;
             await ExpandCapabilitiesAsync(capabilities);
             Find<ToggleSwitch>(capabilities, "StartupPreferenceToggle").IsOn = false;
-            AssertProgress(capabilities, stageCount: 3, current: 2);
+            await AssertProgressAsync(capabilities, OnboardingDesignStep.ChooseTools);
             Assert.False(Capability(capabilities, SetupCapability.Browser).IsEnabled);
             Assert.Null(capabilities.FindName("WindowsAccess"));
             await SavePageProofAsync(window, capabilities, $"onboarding-windows-gateway-free-{route}");
@@ -783,23 +784,25 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     [Theory]
     [InlineData(SetupGatewayRoute.Existing)]
     [InlineData(SetupGatewayRoute.Remote)]
-    public async Task NativeEditor_ProgressAndActionsDoNotOverlapAtNarrowWidth(SetupGatewayRoute route)
+    public async Task NativeEditor_ActionsDoNotOverlapAtNarrowWidth(SetupGatewayRoute route)
     {
         await WithWindowAsync(async (window, frame, _) =>
         {
             typeof(SetupWindow).GetMethod("NavigateToNativeConnection",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.Invoke(window, [route]);
             var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
-            AssertProgress(editor, stageCount: 5, current: 1);
+            await AssertProgressAsync(editor, OnboardingDesignStep.ChooseTools);
             AssertNativeConnectionLabels(editor);
             Find<Button>(editor, "CancelButton").Visibility = Visibility.Visible;
             var scale = editor.XamlRoot.RasterizationScale;
             window.AppWindow.Resize(new((int)(480 * scale), (int)(820 * scale)));
             await ui.YieldToRenderAsync();
             editor.UpdateLayout();
+            var root = Assert.IsType<Grid>(window.Content);
             var footer = Find<Grid>(editor, "NavigationFooter");
-            var dots = Find<SetupProgressIndicator>(editor, "FlowProgress");
-            Assert.True(dots.ActualWidth > 0 && dots.ActualHeight > 0);
+            AssertFullyVisible(footer, root);
+            var steps = (await OnboardingNativeProof.CompanionAsync(editor)).Steps;
+            Assert.True(Bounds(steps, root).Right <= Bounds(editor, root).Left + 0.1);
             var previousRight = 0d;
             foreach (var name in new[] { "BackButton", "CancelButton", "CheckButton", "NextButton" })
             {
@@ -809,7 +812,6 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 Assert.True(bounds.Width > 0 && bounds.Height > 0);
                 Assert.True(bounds.Left >= previousRight - 0.1);
                 Assert.True(bounds.Right <= footer.ActualWidth + 0.1);
-                Assert.True(Bounds(dots, footer).Bottom <= bounds.Top);
                 previousRight = bounds.Right;
             }
         }, new FailingNativeHost());
@@ -830,7 +832,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                 TestSupport.FindDescendants<SettingsCard>(choices).ElementAt(choiceIndex), route + "_Click");
             var editor = await MountedPageAsync<SetupNativeConnectionPage>(window, frame);
             Assert.Equal(route, window.AccessDraft.Route);
-            AssertProgress(editor, stageCount: 5, current: 1);
+            await AssertProgressAsync(editor, OnboardingDesignStep.ChooseTools);
             AssertNativeConnectionLabels(editor);
             Find<TextBox>(editor, "AddressInput").Text = "wss://mounted-flow.invalid";
             Find<PasswordBox>(editor, "TokenInput").Password = "synthetic-unsent-test-token";
@@ -1003,7 +1005,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
                     if (!recovery)
                     {
                         var welcome = await MountedPageAsync<SecurityNoticePage>(window, frame);
-                        AssertProgress(welcome, stageCount: 7, current: 0);
+                        await AssertProgressAsync(welcome, OnboardingDesignStep.ChooseTools);
                         Assert.False(string.IsNullOrWhiteSpace(Find<TextBlock>(welcome, "WelcomeDescription").Text));
                         Assert.DoesNotContain("Onboarding_", Find<TextBlock>(welcome, "WelcomeDescription").Text);
                     }
@@ -1109,19 +1111,19 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     private static void AssertFullyVisible(FrameworkElement element, FrameworkElement viewport) =>
         OnboardingNativeProof.AssertFullyVisible(element, viewport);
 
-    private void AssertFixedPageChrome(Grid root, Page page)
+    private async Task AssertFixedPageChromeAsync(Grid root, Page page)
     {
         var grid = Assert.IsType<Grid>(page.Content);
         var header = Assert.Single(grid.Children.OfType<StackPanel>(), panel => Grid.GetRow(panel) == 0);
-        var footer = Assert.Single(grid.Children.OfType<Grid>(), panel => Grid.GetRow(panel) == 2);
+        var footer = PageFooter(page);
         var scroll = PageScroll(page);
         Assert.Same(grid, header.Parent);
         Assert.Same(grid, footer.Parent);
         Assert.DoesNotContain(header, TestSupport.FindDescendants<StackPanel>(scroll));
-        Assert.DoesNotContain(footer, TestSupport.FindDescendants<Grid>(scroll));
-        var hero = Find<OnboardingMascot>(page, "MascotHero");
-        OnboardingNativeProof.AssertHeroLayout(hero, output);
-        var heading = Assert.Single(header.Children.OfType<TextBlock>());
+        Assert.DoesNotContain(footer, TestSupport.FindDescendants<Panel>(scroll));
+        var hero = (await OnboardingNativeProof.CompanionAsync(page)).Mascot;
+        Assert.True(hero.IsLoaded);
+        var heading = header.Children.OfType<TextBlock>().First();
         Assert.False(string.IsNullOrWhiteSpace(heading.Text));
         Assert.False(heading.IsTextTrimmed);
         foreach (var element in new FrameworkElement[] { header, hero, heading, footer, scroll })
@@ -1183,7 +1185,7 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
     private async Task ExpandCapabilitiesAsync(CapabilitiesPage page)
     {
         var expander = Find<SettingsExpander>(page, "FineTuneExpander");
-        Assert.Equal("Fine-tune", AutomationProperties.GetName(expander));
+        Assert.Equal("Choose tools individually", AutomationProperties.GetName(expander));
         expander.IsExpanded = true;
         page.UpdateLayout();
         await TestSupport.WaitForSettingsExpanderSettledAsync(ui, expander, true);
@@ -1206,9 +1208,9 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         Assert.False(primary.IsEnabled);
         Assert.Equal("Install", primary.Content);
         Assert.False(Find<CheckBox>(page, "ReplacementConsent").IsChecked);
-        Assert.Equal(Visibility.Collapsed, Find<InfoBar>(page, "ReviewRequired").Visibility);
-        Assert.True(Find<InfoBar>(page, "ReplacementWarning").IsOpen);
-        Assert.Equal("This replacement can permanently delete WSL data", Find<InfoBar>(page, "ReplacementWarning").Title);
+        Assert.Equal(Visibility.Collapsed, Find<Grid>(page, "ReviewRequired").Visibility);
+        Assert.Equal(Visibility.Visible, Find<StackPanel>(page, "ReplacementOptions").Visibility);
+        Assert.Equal("This replacement can permanently delete WSL data", Find<TextBlock>(page, "ReplacementWarningTitle").Text);
     }
 
     private static void AssertCapabilities(CapabilitiesPage page, SetupAccessDraft draft, SetupCapability[] enabled)
@@ -1221,21 +1223,32 @@ public sealed class OnboardingWindowsFlowTests(UIThreadFixture ui, ITestOutputHe
         Assert.True(draft.Config.Capabilities.Device);
     }
 
-    private static void AssertProgress(Page page, int stageCount, int current)
+    private static async Task AssertProgressAsync(Page page, OnboardingDesignStep current)
     {
-        var progress = Find<SetupProgressIndicator>(page, "FlowProgress");
-        Assert.Equal(Visibility.Visible, progress.Visibility);
-        Assert.Equal(stageCount, progress.Children.Count);
-        Assert.Equal(20, Assert.IsType<Border>(progress.Children[current]).Width);
-        Assert.Single(progress.Children.Cast<Border>(), dot => dot.Width == 20);
-        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(progress)));
+        var steps = (await OnboardingNativeProof.CompanionAsync(page)).Steps;
+        Assert.Equal(Visibility.Visible, steps.Visibility);
+        var states = Assert.IsAssignableFrom<IReadOnlyList<OnboardingDesignStepState>>(steps.States);
+        Assert.Equal(OnboardingStepPlan.StepCount, states.Count);
+        for (var index = 0; index < states.Count; index++)
+        {
+            var step = (OnboardingDesignStep)index;
+            if (step < current)
+                Assert.Contains(states[index], new[] { OnboardingDesignStepState.Done, OnboardingDesignStepState.Skipped });
+            else
+                Assert.Equal(step == current ? OnboardingDesignStepState.Current : OnboardingDesignStepState.Upcoming, states[index]);
+        }
+        Assert.False(string.IsNullOrWhiteSpace(AutomationProperties.GetName(steps)));
     }
+
+    private static Panel PageFooter(Page page) =>
+        Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Panel>(),
+            panel => Grid.GetRow(panel) == 2 && panel.Children.OfType<Button>().Any());
 
     private static Button FooterButton(Page page, bool next)
     {
-        var footer = Assert.Single(Assert.IsType<Grid>(page.Content).Children.OfType<Grid>(),
-            grid => Grid.GetRow(grid) == 2);
-        return Assert.Single(footer.Children.OfType<Button>(), button => Grid.GetColumn(button) == (next ? 1 : 0));
+        var buttons = PageFooter(page).Children.OfType<Button>().ToArray();
+        Assert.Equal(2, buttons.Length);
+        return buttons[next ? 1 : 0];
     }
 
     private static void Invoke(FrameworkElement element)

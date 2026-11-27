@@ -232,7 +232,7 @@ public class BoardWidgetBodyPolicyTests
     [Theory]
     [InlineData("session:report", BoardWidgetBodyKind.Report)]
     [InlineData("session:website", BoardWidgetBodyKind.Website)]
-    [InlineData("session:progress", BoardWidgetBodyKind.UnsupportedCorePlugin)]
+    [InlineData("session:progress", BoardWidgetBodyKind.Progress)]
     [InlineData("browser:dashboard", BoardWidgetBodyKind.DisabledPlugin)]
     [InlineData("acme:timeline", BoardWidgetBodyKind.DisabledPlugin)]
     public void Plugins_RenderOnlyAdvertisedTrustedKinds(string kind, BoardWidgetBodyKind expected) =>
@@ -320,6 +320,17 @@ public class BoardAccessPolicyTests
         Assert.True(BoardAccessPolicy.CanRead(new FakeAccess([], [])));
         Assert.False(BoardAccessPolicy.CanRead(new FakeAccess(["operator.pairing"], ["board.get"])));
         Assert.False(BoardAccessPolicy.CanRead(new FakeAccess(["operator.read"], ["sessions.list"])));
+    }
+
+    [Fact]
+    public void ProgressRead_RequiresReadScopeAndAdvertisedMethod()
+    {
+        Assert.True(BoardAccessPolicy.CanReadProgress(new FakeAccess(["operator.read"], ["progressCard.get"])));
+        Assert.False(BoardAccessPolicy.CanReadProgress(new FakeAccess([], [])));
+        Assert.False(BoardAccessPolicy.CanReadProgress(new FakeAccess([], ["progressCard.get"])));
+        Assert.False(BoardAccessPolicy.CanReadProgress(new FakeAccess(["operator.read"], [])));
+        Assert.False(BoardAccessPolicy.CanReadProgress(new FakeAccess(["operator.pairing"], ["progressCard.get"])));
+        Assert.False(BoardAccessPolicy.CanReadProgress(new FakeAccess(["operator.read"], ["board.get"])));
     }
 
     private sealed class FakeAccess(string[] scopes, string[] methods) : IBoardGatewayClient

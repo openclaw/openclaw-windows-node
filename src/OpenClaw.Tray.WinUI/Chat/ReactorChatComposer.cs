@@ -32,7 +32,8 @@ internal sealed record ReactorChatComposerViewProps(
     ChatComposerSession Session,
     ChatComposerInputs Inputs,
     ChatDataSnapshot InputSnapshot,
-    Action OnSendRequested);
+    Action OnSendRequested,
+    bool Compact = false);
 
 /// <summary>
 /// Declarative Reactor view for the composer. It owns control construction, popup/
@@ -69,6 +70,22 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var slashPopupContentRef = UseRef<(string Key, FrameworkElement? Content)>((string.Empty, null));
         var controllerRef = UseRef(controller);
         controllerRef.Current = controller;
+        var (attachmentFocus, setAttachmentFocus) = UseState<ChatAttachmentFocusRequest?>(null);
+        var attachmentFocusToken = UseRef(0L);
+        var viewModelRef = UseRef(vm);
+        viewModelRef.Current = vm;
+        // TextBox raises TextChanged after the edit, but Reactor corrects any
+        // TextBox whose text differs from the rendered draft. A composer render
+        // that runs first would overwrite the edit with the old draft and suppress
+        // its TextChanged, so TextChanging commits every native change
+        // synchronously.
+        var nativeTextRef = UseRef<string?>(null);
+        var textChangingHandler = UseRef<global::Windows.Foundation.TypedEventHandler<TextBox, TextBoxTextChangingEventArgs>>(
+            (textBox, _) =>
+            {
+                nativeTextRef.Current = textBox.Text;
+                viewModelRef.Current.SetDraft(textBox.Text);
+            });
         var pasteHandler = UseRef<TextControlPasteEventHandler>(async (_, args) =>
         {
             if (GetBitmapClipboardContent() is not { } clipboardContent)
@@ -122,6 +139,34 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 textBox.SelectionLength = 0;
             });
         }
+
+        void FocusPendingInput()
+        {
+            if (!props.Session.IsInputFocusPending || inputControl.Current is not { } input)
+                return;
+            if (!input.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (props.Session.IsInputFocusPending &&
+                    inputControl.Current is { IsLoaded: true, IsEnabled: true } textBox &&
+                    textBox.Focus(FocusState.Programmatic))
+                    props.Session.CompleteInputFocus();
+            }))
+                OpenClawTray.Services.Logger.Warn("Chat could not dispatch its requested input focus.");
+        }
+        var inputLoadedHandler = UseRef<RoutedEventHandler>((_, _) => FocusPendingInput());
+
+        UseEffect((Func<Action>)(() =>
+        {
+            props.Session.InputFocusRequested += FocusPendingInput;
+            FocusPendingInput();
+            return () => props.Session.InputFocusRequested -= FocusPendingInput;
+        }), props.Session);
+
+        UseEffect((Func<Action>)(() =>
+        {
+            FocusPendingInput();
+            return static () => { };
+        }), inputs.ConnectionState, inputs.IsVisible);
 
         void CommitSlash(string value, ReactorSlashMenuState nextState)
         {
@@ -179,7 +224,9 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var selectedModel = catalogModels.FirstOrDefault(
             model => model.MatchesModel(inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider));
         var thinkingLevels = vm.ThinkingProfile?.Levels?.ToArray() ?? [];
-        var canChangeThinking = inputs.CanChangeSessionOptions
+        var canChangeSessionOptions = inputs.CanChangeSessionOptions
+            && !controller.IsSendInProgress;
+        var canChangeThinking = canChangeSessionOptions
             && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                 and not ChatModelCatalogStatus.Unavailable
             && (thinkingLevels.Length > 0 || !string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel));
@@ -191,7 +238,6 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .Concat(thinkingLevels.Select(option => option.Label))
             .ToArray();
         var thinkingLabel = thinkingIndex < 0 ? inputs.CurrentThread.ThinkingLevel! : thinkingNames[thinkingIndex];
-        var compactEffort = viewportWidth <= ChatVisuals.CompactEffortBreakpoint;
         var actionLabel = inputs.TurnActive
             ? Localized("Chat_Composer_Tooltip_Stop", "Stop")
             : Localized("Chat_Composer_Tooltip_Send", "Send");
@@ -271,6 +317,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                             .Grid(column: 1),
                         TextBlock(FluentIconCatalog.ChevronDown)
                             .Margin(4, 0, 0, 0)
+                            .Translation(0, 2, 0)
                             .VAlign(VerticalAlignment.Center)
                             .AccessibilityView(Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw)
                             .FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
@@ -299,47 +346,72 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                     (FrameworkElement)control));
         }
 
-        Element EffortIconButton()
+        // The row's real width: the composer's prose insets, its 1px border on each side and the
+        // reserved scroll-bar gutter. No floor, so a long pill never overflows a very narrow row.
+        var attachmentChipMaxWidth = Math.Min(ChatVisuals.AttachmentChipMaxWidth,
+            Math.Max(0, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 2 * ChatVisuals.ProseInset
+                - 2 - ChatVisuals.AttachmentRailScrollBarInset));
+        // Images render as tiles on their own row above the file pills, so visual and focus order is
+        // images first, then files, each in attach order.
+        static IReadOnlyList<ChatAttachment> RailOrder(IReadOnlyList<ChatAttachment> attachments) =>
+            attachments.Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is not null)
+                .Concat(attachments.Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is null))
+                .ToArray();
+        void RemoveAttachment(ChatAttachment attachment, FocusState focusState)
         {
-            var effectiveLevel = string.IsNullOrEmpty(inputs.CurrentThread.ThinkingLevel)
-                ? vm.ThinkingProfile?.Default : inputs.CurrentThread.ThinkingLevel;
-            var gaugeIndex = Array.FindIndex(thinkingLevels, option => option.Id == effectiveLevel);
-            // Resource overrides survive Reactor's generated theme-binding style on updates.
-            return Button(HStack(4,
-                    Component<ChatEffortGauge, ChatEffortGaugeProps>(new(gaugeIndex, thinkingLevels.Length, effectiveLevel == "off")),
-                    TextBlock(FluentIconCatalog.ChevronDown).FontFamily(FluentIconCatalog.SymbolThemeFontFamily).FontSize(12)
-                        .VAlign(VerticalAlignment.Center)
-                        .AccessibilityView(AccessibilityView.Raw)
-                        .Set(text => text.IsTextScaleFactorEnabled = false)), () => { })
-                .Resources(ChatVisuals.ToolbarButtonResources)
-                .Width(44).MinWidth(44).Height(44).Padding(4, 0).CornerRadius(controlCornerRadius).BorderThickness(0)
-                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
-                .AutomationId("ChatComposerReasoningPicker")
-                .AutomationName($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
-                .ToolTip($"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}")
-                .IsEnabled(canChangeThinking)
-                .Set(button => ComposerAutomationVisibility.Prepare(button))
-                .OnUnmount(control => ComposerAutomationVisibility.Detach((FrameworkElement)control));
+            // Read the live list: the view model replaces it on every removal, so a list captured
+            // at render time is stale when two removals happen before the next render. Keyed chips
+            // unmount the focused button, so keyboard and pointer focus move on deliberately.
+            var current = RailOrder(vm.PendingAttachments);
+            var index = -1;
+            for (var candidate = 0; candidate < current.Count; candidate++)
+            {
+                if (ReferenceEquals(current[candidate], attachment))
+                {
+                    index = candidate;
+                    break;
+                }
+            }
+            var successor = index < 0 ? null
+                : index + 1 < current.Count ? current[index + 1]
+                : index > 0 ? current[index - 1]
+                : null;
+            controller.RemoveAttachment(attachment);
+            if (focusState == FocusState.Unfocused)
+                return;
+            if (successor is not null)
+                setAttachmentFocus(new(ChatAttachmentChip.KeyFor(successor), ++attachmentFocusToken.Current, focusState));
+            else
+                inputControl.Current?.Focus(focusState);
         }
-
-        var attachmentRows = vm.PendingAttachments
-            .Select(attachment =>
-                (Element)Border(Grid(
-                    [GridSize.Auto, GridSize.Star(), GridSize.Auto],
-                    [GridSize.Auto],
-                    TextBlock(FluentIconCatalog.Document).FontFamily(FluentIconCatalog.SymbolThemeFontFamily)
-                        .FontSize(16).Margin(0, 0, 8, 0).VAlign(VerticalAlignment.Center)
-                        .Set(text => text.IsTextScaleFactorEnabled = false).Grid(column: 0),
-                    TextBlock(attachment.FileName).FontSize(12).TextTrimming(TextTrimming.CharacterEllipsis)
-                        .Foreground(Theme.Ref("ChatTextBrush"))
-                        .ToolTip(attachment.FileName).VAlign(VerticalAlignment.Center).Grid(column: 1),
-                    IconButton(FluentIconCatalog.Exit,
-                        Localized("Chat_Attachment_Remove", "Remove attachment"),
-                        () => controller.RemoveAttachment(attachment)).Grid(column: 2)))
-                    .Padding(8, 4).CornerRadius(8)
-                    .Width(Math.Min(240, Math.Max(128, viewportWidth - 2 * ChatVisuals.Gutter(viewportWidth) - 32)))
-                    .MinHeight(56).Margin(4)
-                    .Background(Theme.Ref("ChatCardBrush")))
+        Element AttachmentChip(ChatAttachment attachment, ImageBrush? thumbnail)
+        {
+            var key = ChatAttachmentChip.KeyFor(attachment);
+            var removeLabel = string.IsNullOrWhiteSpace(attachment.FileName)
+                ? Localized("Chat_Attachment_Remove", "Remove attachment")
+                : string.Format(CultureInfo.CurrentCulture,
+                    Localized("Chat_Attachment_RemoveNamedFormat", "Remove attachment {0}"),
+                    attachment.FileName);
+            return Component<ChatAttachmentChip, ChatAttachmentChipProps>(new(
+                    attachment.FileName,
+                    removeLabel,
+                    focusState => RemoveAttachment(attachment, focusState),
+                    attachmentChipMaxWidth,
+                    attachmentFocus?.Key == key ? attachmentFocus : null,
+                    thumbnail))
+                // Flex rows shrink children by default, which trims names inside a too-narrow pill.
+                .Flex(grow: 0, shrink: 0)
+                .WithKey(key);
+        }
+        var pendingAttachments = vm.PendingAttachments;
+        var imageTiles = pendingAttachments
+            .Select(attachment => (attachment, thumbnail: ChatAttachmentChip.ThumbnailFor(attachment)))
+            .Where(item => item.thumbnail is not null)
+            .Select(item => AttachmentChip(item.attachment, item.thumbnail))
+            .ToArray();
+        var filePills = pendingAttachments
+            .Where(attachment => ChatAttachmentChip.ThumbnailFor(attachment) is null)
+            .Select(attachment => AttachmentChip(attachment, null))
             .ToArray();
         var audioLevel = Math.Clamp(vm.VoiceAudioLevel, 0f, 1f);
         var voiceFeedbackText = string.IsNullOrWhiteSpace(vm.VoiceTranscript)
@@ -448,7 +520,15 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var placeholder = PlaceholderFor(inputs.ConnectionState, agent.Name);
         var input = TextBox(
                 text,
-                vm.SetDraft,
+                // TextChanging already committed the edit. The deferred TextChanged
+                // reads the TextBox later and could restore text that a slash commit
+                // or clear replaced in the meantime, so it only reports text that
+                // TextChanging did not see.
+                value =>
+                {
+                    if (!string.Equals(value, nativeTextRef.Current, StringComparison.Ordinal))
+                        vm.SetDraft(value);
+                },
                 placeholder)
             .AutomationId("ChatComposerInput")
             .AutomationName(placeholder)
@@ -518,14 +598,15 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 Send();
             })
             .TextWrapping(TextWrapping.Wrap)
-            .MinHeight(44)
+            .MinHeight(props.Compact ? 32 : 44)
             .MaxHeight(200)
-            .Padding(0)
+            .Padding(props.Compact ? new Thickness(0, 4, 0, 0) : new Thickness(0))
             .IsEnabled(inputs.ConnectionState == "connected")
             .BorderThickness(0)
             .BorderBrush(transparentInputBrush)
             .Background(transparentInputBrush)
             .AcceptsReturn(true)
+            .FontFamily(ChatVisuals.BodyFontFamily)
             .FontSize(ChatVisuals.ComposerInputSize)
             .Foreground(Theme.Ref("ChatTextBrush"))
             .ItemStatus(renderItemStatus)
@@ -545,6 +626,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .OnMount(control =>
             {
                 var textBox = (TextBox)control;
+                textBox.Loaded += inputLoadedHandler.Current;
+                textBox.TextChanging += textChangingHandler.Current;
                 textBox.Paste += pasteHandler.Current;
                 ChatVisuals.AttachComposerPlaceholder(textBox);
                 textBox.ContextFlyout = CreateComposerContextFlyout(
@@ -554,6 +637,8 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             .OnUnmount(control =>
             {
                 var textBox = (TextBox)control;
+                textBox.Loaded -= inputLoadedHandler.Current;
+                textBox.TextChanging -= textChangingHandler.Current;
                 textBox.Paste -= pasteHandler.Current;
                 ChatVisuals.DetachComposerPlaceholder(textBox);
                 textBox.ContextFlyout = null;
@@ -562,7 +647,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         UseEffect((Func<Action>)(() =>
         {
             if (inputControl.Current is { } anchor)
-                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible);
+                DriveSlashPopup(slashPopup, anchor, slashPopupContent, slashPopupVisible, windowed: props.Compact);
             else
                 CloseSlashPopup(slashPopup);
             return static () => { };
@@ -579,35 +664,24 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
             ChatModelCatalogStatus.Unavailable => Localized("Chat_Composer_Model_Unavailable", "Models unavailable"),
             _ => modelPickerLabel,
         };
+        var reasoningSection = Component<ChatReasoningPicker, ChatReasoningPickerProps>(new(
+            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, canChangeThinking,
+            controller.SetThinkingLevel, vm.ThinkingProfile?.Default));
         var modelPicker = Component<ChatModelPicker, ChatModelPickerProps>(new(
             PickerButton(
                 modelPickerLabel,
-                $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}",
+                $"{Localized("Chat_Composer_Accessibility_Model", "Model")}: {modelPickerLabel}. {Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}",
                 "ChatComposerModelPicker",
-                inputs.CanChangeSessionOptions
+                    canChangeSessionOptions
                     && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                         and not ChatModelCatalogStatus.Unavailable,
-                200)
-                .MinWidth(compactEffort ? 44 : 0)
-                .MinHeight(compactEffort ? 44 : 32)
-                .Padding(compactEffort ? 0 : 8, compactEffort ? 0 : 4),
+                200),
             catalogModels, inputs.CurrentThread.Model, inputs.CurrentThread.ModelProvider,
-            inputs.CanChangeSessionOptions
+                canChangeSessionOptions
                 && modelCatalogStatus is not ChatModelCatalogStatus.Loading
                     and not ChatModelCatalogStatus.Unavailable,
             choice => controller.SetModel(choice.SelectionId),
-            viewportWidth));
-
-        var reasoningPicker = Component<ChatReasoningPicker, ChatReasoningPickerProps>(new(
-            compactEffort ? EffortIconButton() : PickerButton(
-                thinkingLabel,
-                $"{Localized("Chat_Composer_Accessibility_Reasoning", "Reasoning")}: {thinkingLabel}",
-                "ChatComposerReasoningPicker",
-                canChangeThinking,
-                96),
-            thinkingLevels, inputs.CurrentThread.ThinkingLevel, thinkingLabel, canChangeThinking,
-            controller.SetThinkingLevel, controller.ClearThinkingLevel, viewportWidth,
-            vm.ThinkingProfile?.Default));
+            viewportWidth, reasoningSection));
 
         var attachButton = IconButton(
             FluentIconCatalog.ChatAttach,
@@ -683,7 +757,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                         sandboxAnchor.Current?.Flyout?.Hide();
                         props.Session.HostActions.SandboxSettingsNavigation?.Invoke();
                     })
-                    .SubtleButton().MinHeight(36).Padding(12, 8).CornerRadius(8).Margin(4)
+                    .SubtleButton().MinHeight(36).Padding(12, 8).ThemedCorner(8).Margin(4)
                     .AutomationId("ChatSandboxOpenSettings")
                     .AutomationName(sandboxSettingsLabel)
                     .IsEnabled(props.Session.HostActions.SandboxSettingsNavigation is not null)
@@ -752,11 +826,10 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         var contextRing = Component<ChatContextUsageIndicator, ChatContextUsageIndicatorProps>(
             new(inputs.ContextUsage, viewportWidth));
         var pickers = Grid(
-            [GridSize.Auto, GridSize.Star(), GridSize.Auto],
+            [GridSize.Star(), GridSize.Auto],
             [GridSize.Auto],
-            contextRing.Grid(column: 0),
-            Grid([GridSize.Star()], [GridSize.Auto], modelPicker).Grid(column: 1),
-            Grid([GridSize.Star()], [GridSize.Auto], reasoningPicker).Grid(column: 2))
+            modelPicker.Margin(0, 0, 4, 0).Grid(column: 0),
+            contextRing.Grid(column: 1))
             .MaxWidth(360)
             .HAlign(HorizontalAlignment.Right).VAlign(VerticalAlignment.Center);
         var rightToolbar = HStack(4, voiceButton, primaryAction)
@@ -792,31 +865,70 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .FontSize(12).Foreground(Theme.Ref("ChatSecondaryTextBrush"))
                 .AutomationId("ChatPlacementProgress")
                 .LiveRegion(AutomationLiveSetting.Polite));
-        if (attachmentRows.Length > 0)
-            composerChildren.Add(ScrollViewer(HStack(8, attachmentRows))
+        if (placement?.State.DraftStatusMessage is { Length: > 0 } draftStatusMessage)
+            composerChildren.Add(TextBlock(draftStatusMessage)
+                .FontSize(12).TextWrapping(TextWrapping.Wrap)
+                .Foreground(Theme.Ref("ChatSecondaryTextBrush"))
+                .AutomationId("ChatDraftSendStatus")
+                .LiveRegion(AutomationLiveSetting.Polite));
+        if (imageTiles.Length + filePills.Length > 0)
+        {
+            Element WrapRow(Element[] children, string key) => children.Length == 0
+                ? Empty().WithKey(key)
+                : (FlexRow(children) with
+                {
+                    Wrap = Microsoft.UI.Reactor.Layout.FlexWrap.Wrap,
+                    ColumnGap = ChatVisuals.AttachmentChipGap,
+                    RowGap = ChatVisuals.AttachmentChipGap,
+                }).WithKey(key);
+            // Image tiles wrap on their own row above the file pills, and both grow the composer. The
+            // cap allows one row of tiles plus four pill rows before the rail scrolls vertically.
+            var railMaxHeight = ChatVisuals.AttachmentRailMaxHeight + (imageTiles.Length > 0
+                ? ChatVisuals.AttachmentThumbnailCell + (filePills.Length > 0 ? ChatVisuals.AttachmentRailRowGap : 0)
+                : 0);
+            composerChildren.Add(ScrollViewer(Border(VStack(
+                        imageTiles.Length > 0 && filePills.Length > 0 ? ChatVisuals.AttachmentRailRowGap : 0,
+                        WrapRow(imageTiles, "attachment-images"),
+                        WrapRow(filePills, "attachment-files")))
+                    // Vertical room keeps focus visuals inside the clipped scroller. The trailing gutter is
+                    // always reserved: toggling it with overflow could keep its own overflow alive.
+                    .Padding(0, 3, ChatVisuals.AttachmentRailScrollBarInset, 3))
+                .MaxHeight(railMaxHeight)
                 .AutomationId("ChatAttachmentRail")
                 .Set(scroll =>
                 {
-                    scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
-                    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
-                    scroll.HorizontalContentAlignment = HorizontalAlignment.Left;
+                    scroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                    scroll.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
                 }));
+        }
         // Status and attachment rows can be inserted before this stable editor/toolbar tail.
-        composerChildren.Add(input.WithKey("chat-composer-input"));
-        composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        if (props.Compact)
+            composerChildren.Add(Grid(
+                [GridSize.Auto, GridSize.Star(), GridSize.Auto, GridSize.Auto],
+                [GridSize.Auto],
+                attachButton.VAlign(VerticalAlignment.Bottom).Grid(column: 0),
+                input.WithKey("chat-composer-input").Margin(8, 0).Grid(column: 1),
+                voiceButton.VAlign(VerticalAlignment.Bottom).Grid(column: 2),
+                primaryAction.VAlign(VerticalAlignment.Bottom).Margin(4, 0, 0, 0).Grid(column: 3)));
+        else
+        {
+            composerChildren.Add(input.WithKey("chat-composer-input"));
+            composerChildren.Add(toolbar.WithKey("chat-composer-toolbar"));
+        }
 
         var writingSurface = Border(
-            VStack(ChatVisuals.CompactGap, composerChildren.ToArray())
-            .Padding(ChatVisuals.ProseInset, ChatVisuals.DetailVerticalInset))
+            VStack(props.Compact ? ChatVisuals.CompactGap : 8, composerChildren.ToArray())
+            .Padding(props.Compact ? new Thickness(8) : new Thickness(ChatVisuals.ProseInset, 12, ChatVisuals.ProseInset, 8)))
             .BorderThickness(1)
-            .CornerRadius(ChatVisuals.ComposerRadius)
-            .MinHeight(ChatVisuals.ComposerMinHeight)
+            .ThemedCorner(() => ChatVisuals.ComposerRadius)
+            .MinHeight(props.Compact ? 50 : ChatVisuals.ComposerMinHeight)
             .Background(Theme.Ref("ChatComposerBrush"))
             .BorderBrush(Theme.Ref("ChatStrokeBrush"))
             .HAlign(HorizontalAlignment.Stretch)
             .AutomationId("ChatWritingSurface");
         var surfaces = new List<Element>();
-        surfaces.Add(inputs.ShowPlacementPickers
+        if (!props.Compact)
+            surfaces.Add(inputs.ShowPlacementPickers
             ? ReactorChatWelcome.Header(agent, viewportWidth)
             : Empty());
         if (inputs.ShowPlacementPickers && placement is not null)
@@ -844,15 +956,17 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 .MaxWidth(480).HAlign(HorizontalAlignment.Left)
                 .AutomationId("ChatPlacementPickers"));
         }
-        else
+        else if (!props.Compact)
         {
             surfaces.Add(Empty());
         }
         surfaces.Add(writingSurface.WithKey("chat-writing-surface"));
         return Border(VStack(8, surfaces.ToArray())
                 .MaxWidth(ChatVisuals.ReadingWidth)
-                .Margin(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap,
-                    ChatVisuals.Gutter(viewportWidth), ChatVisuals.ComposerBottomInset)
+                .Margin(props.Compact
+                    ? new Thickness(0)
+                    : new Thickness(ChatVisuals.Gutter(viewportWidth), ChatVisuals.TurnGap,
+                        ChatVisuals.Gutter(viewportWidth), ChatVisuals.ComposerBottomInset))
                 .HAlign(HorizontalAlignment.Stretch))
             .OnMount(control => ChatVisuals.Observe(control, setViewportWidth))
             .OnUnmount(ChatVisuals.StopObserving);
@@ -881,15 +995,18 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Ref<Microsoft.UI.Xaml.Controls.Primitives.Popup?> popupRef,
         TextBox anchor,
         FrameworkElement? content,
-        bool visible)
+        bool visible,
+        bool windowed)
     {
         var popup = popupRef.Current;
         if (popup is null)
         {
+            // The desktop lobster's host window is click-through and clipped to the mascot,
+            // so its quick chat needs a windowed popup that can leave those bounds.
             popup = new Microsoft.UI.Xaml.Controls.Primitives.Popup
             {
                 IsLightDismissEnabled = false,
-                ShouldConstrainToRootBounds = true,
+                ShouldConstrainToRootBounds = !windowed,
             };
             popupRef.Current = popup;
         }
@@ -1019,14 +1136,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 () => onPick(choice))
             .Padding(8, 7, 8, 7)
             .HAlign(HorizontalAlignment.Stretch)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .AutomationName($"Choose {label} for {command.DisplayName()}")
             .Resources(resources => resources
                 .Set("ButtonBackground", background)
                 .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
             .HorizontalContentAlignment(HorizontalAlignment.Left)
             .BorderThickness(0)
-            .OnMount(element =>
+            .OnMountAdd(element =>
             {
                 if (selected)
                     element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
@@ -1037,7 +1154,7 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
     {
         return Border(child)
             .Padding(4)
-            .CornerRadius(8)
+            .ThemedCorner(8)
             .Background(Theme.Ref("AcrylicBackgroundFillColorDefaultBrush"))
             .WithBorder(Theme.Ref("SurfaceStrokeColorFlyoutBrush"), 1)
             .Translation(0, 0, 32)
@@ -1112,14 +1229,14 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
                 () => onPick(command))
             .Padding(8, 7, 8, 7)
             .HAlign(HorizontalAlignment.Stretch)
-            .CornerRadius(6)
+            .ThemedCorner(6)
             .AutomationName($"Insert {command.DisplayName()}")
             .Resources(resources => resources
                 .Set("ButtonBackground", background)
                 .Set("ButtonBorderBrush", Theme.Ref("SubtleFillColorTransparentBrush")))
             .HorizontalContentAlignment(HorizontalAlignment.Stretch)
             .BorderThickness(0)
-            .OnMount(element =>
+            .OnMountAdd(element =>
             {
                 if (selected)
                     element.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
@@ -1264,6 +1381,29 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         menu.Items.Add(pasteItem);
         menu.Items.Add(selectAllSeparator);
         menu.Items.Add(selectAllItem);
+        // The editor owns shortcuts outside the flyout. Inside the open menu,
+        // scope them to its native presenter so its advertised shortcuts work
+        // without leaving another editing route active after dismissal.
+        menu.Opened += (_, _) =>
+        {
+            DependencyObject? presenter = pasteItem;
+            while (presenter is not null && presenter is not MenuFlyoutPresenter)
+                presenter = VisualTreeHelper.GetParent(presenter);
+            SetMenuAccelerators(presenter);
+        };
+        menu.Closed += (_, _) => SetMenuAccelerators(null);
+
+        void SetMenuAccelerators(DependencyObject? scopeOwner)
+        {
+            foreach (var item in menu.Items.OfType<MenuFlyoutItem>())
+            foreach (var accelerator in ((Microsoft.UI.Xaml.Input.StandardUICommand)item.Command).KeyboardAccelerators)
+            {
+                if (scopeOwner is not null)
+                    accelerator.ScopeOwner = scopeOwner;
+                accelerator.IsEnabled = scopeOwner is not null;
+            }
+        }
+
         menu.Opening += (_, _) =>
         {
             var state = ChatComposerContextMenuState.Project(
@@ -1292,6 +1432,10 @@ internal sealed class ReactorChatComposer : Component<ReactorChatComposerViewPro
         Action execute)
     {
         var command = new Microsoft.UI.Xaml.Input.StandardUICommand(kind);
+        // Keep native shortcut hints, but do not enable menu shortcuts until
+        // the opened flyout can bind them to its own native presenter.
+        foreach (var accelerator in command.KeyboardAccelerators)
+            accelerator.IsEnabled = false;
         command.CanExecuteRequested += (_, args) => args.CanExecute = true;
         command.ExecuteRequested += (_, _) => execute();
         return new MenuFlyoutItem

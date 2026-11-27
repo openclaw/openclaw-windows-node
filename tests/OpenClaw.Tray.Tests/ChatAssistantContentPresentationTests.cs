@@ -174,6 +174,38 @@ public sealed class ChatAssistantContentPresentationTests
             Assert.Single(merged.Media).Reference.Source);
     }
 
+    [Fact]
+    public void MergeLiveUpdate_ReplacesLegacyReferenceWithInlineImage()
+    {
+        var legacy = ChatAssistantContentProjector.Project(
+        [
+            new ChatMessageContentPartInfo
+            {
+                Kind = ChatMessageContentPartKind.Media,
+                Media = new ChatMediaContentInfo
+                {
+                    Kind = ChatMediaContentKind.Image,
+                    Source = ChatMediaContentSource.LegacyDirective,
+                    FileName = "banner.png",
+                },
+            },
+        ])!;
+        var inline = new ChatMediaContentInfo
+        {
+            Kind = ChatMediaContentKind.Image,
+            Source = ChatMediaContentSource.Structured,
+            InlineDataUrl = "data:image/png;base64,AA==",
+        };
+        var structured = ChatAssistantContentProjector.Project(
+        [
+            new ChatMessageContentPartInfo { Kind = ChatMessageContentPartKind.Media, Media = inline },
+        ])!;
+
+        var merged = ChatAssistantContentProjector.MergeLiveUpdate(legacy, structured);
+
+        Assert.Same(inline, Assert.Single(merged.Media).Reference);
+    }
+
     private static ChatAssistantMediaPresentation Presentation(
         ChatMediaContentKind kind,
         string name) =>

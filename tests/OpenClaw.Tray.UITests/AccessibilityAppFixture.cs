@@ -98,6 +98,7 @@ public sealed class AccessibilityAppFixture : IDisposable
               "GlobalHotkeyEnabled": false,
               "AutoStart": false,
               "EnableNodeMode": false,
+              "ShowDesktopCompanion": false,
               "AppTheme": "THEME"
             }
             """.Replace("THEME", theme, StringComparison.Ordinal));

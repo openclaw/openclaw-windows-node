@@ -18,12 +18,14 @@ internal sealed record BoardViewProps(
     BoardSessionTarget Target,
     int ConnectionRevision,
     double ViewportWidth = 0,
-    double TopInset = 0);
+    double TopInset = 0,
+    bool Embedded = false);
 
 /// <summary>
 /// One open session dashboard: header, tab strip, and the 12-column widget
 /// grid. Widgets of visited tabs stay mounted (hidden) so switching tabs
-/// keeps their live content, like the upstream board view.
+/// keeps their live content, like the upstream board view. Embedded views
+/// (beside chat) replace the page header with a compact action row.
 /// </summary>
 internal sealed class ReactorBoardView : Component<BoardViewProps>
 {
@@ -109,7 +111,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var title = props.State.OpenTitle ?? LocalizationHelper.GetString("Dashboards_BoardLabel");
         var reducedMotion = UseReducedMotion();
         var highContrast = UseHighContrast();
-        var refresh = () => { _ = model.Current?.LoadAsync(); };
+        var refresh = () => { _ = model.Current?.RefreshAsync(); };
         var actions = new List<Element>();
         if (props.State.OpenChat is { } openChat)
         {
@@ -118,7 +120,10 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         actions.Add(DashboardsStates.IconButton(DashboardsGlyphs.Refresh, LocalizationHelper.GetString("Dashboards_Refresh"), refresh, "DashboardRefresh"));
         if (MoreActions(props) is { } more)
             actions.Add(more);
-        var header = BoardHeader(props, title, reducedMotion, actions.ToArray(), width, highContrast);
+        var header = props.Embedded
+            ? HStack(GapInner, actions.ToArray()).HAlign(HorizontalAlignment.Right).Margin(0, 0, 0, 12)
+                .AutomationId("DashboardMastActions")
+            : BoardHeader(props, title, reducedMotion, actions.ToArray(), width, highContrast);
 
         Element body = snapshot.Status switch
         {
@@ -152,7 +157,7 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
         var column = Border(Grid([GridSize.Star()], [GridSize.Auto, GridSize.Auto, GridSize.Auto], children.ToArray()))
             .Width(ContentWidth(width) + 2 * HorizontalPadding(TierFor(width)))
             .MaxWidth(ContentMaxWidth + 2 * HorizontalPadding(TierFor(width)))
-            .Padding(HorizontalPadding(TierFor(width)), 24, HorizontalPadding(TierFor(width)), 0)
+            .Padding(HorizontalPadding(TierFor(width)), props.Embedded ? 12 : PaddingTop, HorizontalPadding(TierFor(width)), props.Embedded ? 0 : PaddingBottom)
             .HAlign(HorizontalAlignment.Center)
             .AutomationName(LocalizationHelper.GetString("Dashboards_BoardLabel"))
             .AutomationId("DashboardView");
@@ -424,7 +429,9 @@ internal sealed class ReactorBoardView : Component<BoardViewProps>
                     props.ConnectionRevision,
                     documentCurrent,
                     () => props.State.Connected && ReferenceEquals(props.State.Client, props.Client) &&
-                        props.State.ConnectionRevision == props.ConnectionRevision))
+                        props.State.ConnectionRevision == props.ConnectionRevision,
+                    snapshot.ProgressCards.TryGetValue(widget.Name, out var progress) ? progress : null,
+                    name => model.Current?.RetryProgress(name)))
                 .MinHeight(allocatedHeight)
                 .VAlign(VerticalAlignment.Stretch)
                 .PositionInSet(index + 1, rects.Length)

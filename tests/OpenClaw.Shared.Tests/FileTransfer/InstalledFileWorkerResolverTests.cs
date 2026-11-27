@@ -16,8 +16,10 @@ namespace OpenClaw.Shared.Tests.FileTransfer;
 public sealed partial class InstalledFileWorkerResolverTests : IDisposable
 {
     private static readonly TimeSpan ActiveCopyTimeout = TimeSpan.FromSeconds(15);
-    private readonly string _root = Path.Combine(Environment.GetEnvironmentVariable("OPENCLAW_REPO_ROOT") ?? Directory.GetCurrentDirectory(),
-        ".file-resolver-test-data", Guid.NewGuid().ToString("N"));
+    // A unique root outside the checkout: a failed run can leave its fixture behind, and paths
+    // there exceed MAX_PATH and break GitVersion. RUNNER_TEMP keeps CI on the repository volume.
+    // The long form keeps 8.3 temp names out of path-prefix comparisons.
+    private readonly string _root = Path.Combine(TestTempRoot(), "ocw-file-resolver-" + Guid.NewGuid().ToString("N"));
     private readonly string _payload;
     private readonly string _product;
     public InstalledFileWorkerResolverTests()
@@ -35,11 +37,13 @@ public sealed partial class InstalledFileWorkerResolverTests : IDisposable
             File.WriteAllBytes(Path.Combine(_payload, name), "abc"u8.ToArray());
     }
 
-    public void Dispose()
+    public void Dispose() => Directory.Delete(_root, true);
+
+    private static string TestTempRoot()
     {
-        Directory.Delete(_root, true);
-        var parent = Path.GetDirectoryName(_root)!;
-        if (!Directory.EnumerateFileSystemEntries(parent).Any()) Directory.Delete(parent);
+        var runnerTemp = Environment.GetEnvironmentVariable("RUNNER_TEMP");
+        var root = Path.GetFullPath(string.IsNullOrWhiteSpace(runnerTemp) ? Path.GetTempPath() : runnerTemp);
+        return OpenClaw.Shared.ExecApprovals.ExecApprovalPathDisplay.ExpandShortPath(root) ?? root;
     }
     private InstalledFileWorkerResolver Resolver => new(typeof(InstalledFileWorkerResolverTests).Assembly, _product);
     private string Cache => Path.Combine(_root, "FileWorkerCache");

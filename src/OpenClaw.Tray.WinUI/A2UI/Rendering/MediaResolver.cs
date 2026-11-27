@@ -28,7 +28,9 @@ public sealed class MediaResolver : IDisposable
     private readonly HashSet<string> _hostAllowlist = new(StringComparer.OrdinalIgnoreCase);
     private readonly HttpClient _http;
     private bool _disposed;
-    private static readonly SemaphoreSlim s_svgDecodeSemaphore = new(3, 3);
+    /// <summary>Maximum concurrent SVG decodes; further SVG loads queue for a slot for up to <see cref="SvgRenderTimeout"/>.</summary>
+    internal const int SvgDecodeConcurrency = 3;
+    private static readonly SemaphoreSlim s_svgDecodeSemaphore = new(SvgDecodeConcurrency, SvgDecodeConcurrency);
     private const long DataUrlMaxBytes = 2L * 1024 * 1024;
     /// <summary>Hard cap on remote image bytes. Sized to dwarf realistic UI imagery while still preventing OOM from a hostile/compromised allowlisted host.</summary>
     internal const long RemoteImageMaxBytes = 8L * 1024 * 1024;

@@ -250,7 +250,8 @@ public class SetupLoggerTests : IDisposable
         var error = await Assert.ThrowsAsync<NativeGatewayStartupTimeoutException>(() => start.WaitAsync(TimeSpan.FromSeconds(5)));
         Assert.Equal(NativeGatewayStartupTimeoutPhase.Readiness, error.Phase);
         Assert.Equal(1, stops);
-        Assert.Contains(entries, e => e.Message == "[WS] Rolling back the Gateway start requested by this attempt.");
+        Assert.Contains(entries, e => e.Message ==
+            "[WS] Rolling back the Gateway start requested by this attempt (NativeGatewayStartupTimeoutException).");
     }
 
     private sealed class FailingWriter(int failAfter) : TextWriter

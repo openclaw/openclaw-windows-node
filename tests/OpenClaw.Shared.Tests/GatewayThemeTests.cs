@@ -1,0 +1,632 @@
+using System.Text.Json;
+using OpenClaw.Shared.Themes;
+using Xunit;
+
+namespace OpenClaw.Shared.Tests;
+
+public class GatewayThemeTests
+{
+    // Reference conversions from CSS Color 4 (sRGB primaries expressed in other spaces).
+    [Theory]
+    [InlineData("#f0a", "#ff00aa")]
+    [InlineData("#11223344", "#11223344")]
+    [InlineData("rgb(255, 0, 0)", "#ff0000")]
+    [InlineData("rgb(100% 50% 0%)", "#ff8000")]
+    [InlineData("rgba(0, 0, 255, 0.4)", "#0000ff66")]
+    [InlineData("hsl(120 100% 25%)", "#008000")]
+    [InlineData("hsla(240, 100%, 50%, 0.4)", "#0000ff66")]
+    [InlineData("hsl(0.5turn 100% 50%)", "#00ffff")]
+    [InlineData("oklch(0.62796 0.25768 29.2339)", "#ff0000")]
+    [InlineData("oklch(62.796% 64.42% 29.2339deg)", "#ff0000")]
+    [InlineData("oklab(1 0 0)", "#ffffff")]
+    [InlineData("lab(54.29 80.82 69.89)", "#ff0000")]
+    [InlineData("lch(54.29 106.84 40.85)", "#ff0000")]
+    [InlineData("color(srgb 0 1 0 / 0.4)", "#00ff0066")]
+    [InlineData("color(srgb-linear 0.2140 0.2140 0.2140)", "#808080")]
+    [InlineData("color(display-p3 1 0 0)", "#ff0000")]
+    [InlineData("color(xyz-d65 0.4124 0.2126 0.0193)", "#ff0000")]
+    [InlineData("BLACK", "#000000")]
+    [InlineData("transparent", "#00000000")]
+    public void CssColorConvertsToSrgb(string css, string expectedHex)
+    {
+        Assert.True(CssColor.TryParse(css, out var actual), css);
+        var expected = ThemeColor.FromHex(expectedHex);
+        Assert.InRange(actual.A, expected.A - 1, expected.A + 1);
+        Assert.InRange(actual.R, expected.R - 1, expected.R + 1);
+        Assert.InRange(actual.G, expected.G - 1, expected.G + 1);
+        Assert.InRange(actual.B, expected.B - 1, expected.B + 1);
+    }
+
+    [Theory]
+    [InlineData("red")]
+    [InlineData("currentcolor")]
+    [InlineData("var(--accent)")]
+    [InlineData("url(https://example.invalid/x.png)")]
+    [InlineData("rgb(1 2)")]
+    [InlineData("rgb(1, 2 3)")]
+    [InlineData("hsl(10, 20, 30)")]
+    [InlineData("rgb(10%, 20, 30)")]
+    [InlineData("color(rec2100 1 0 0)")]
+    [InlineData("#12345")]
+    [InlineData("")]
+    public void CssColorRejectsValuesOutsideTheGatewayGrammar(string css) =>
+        Assert.False(CssColor.TryParse(css, out _));
+
+    [Fact]
+    public void FontStackKeepsQuotedCommasAndGenerics()
+    {
+        var stack = ThemeFontStack.Parse("\"IBM Plex Sans\", 'Weird, Name' ,  -apple-system,sans-serif");
+
+        Assert.Equal(new[] { "IBM Plex Sans", "Weird, Name", "-apple-system", "sans-serif" }, stack.Families);
+        Assert.Equal("IBM Plex Sans", stack.Primary);
+    }
+
+    [Fact]
+    public void ListParsesLiveCatalogShapeAndDropsInvalidEntries()
+    {
+        using var json = JsonDocument.Parse("""
+        {
+          "current": { "id": "claw", "mode": "system", "scope": "gateway", "overrides": {} },
+          "theme": { "id": "claw", "name": "Claw", "description": "d", "source": "builtin", "modes": ["light", "dark"] },
+          "themes": [
+            { "id": "claw", "name": "Claw", "description": "d", "source": "builtin", "modes": ["light", "dark"], "mascot": "claw" },
+            { "id": "acme/neon", "name": "Neon", "description": "", "source": "plugin", "pluginId": "acme", "modes": ["dark"] },
+            { "id": "user/mine", "name": "Mine", "description": "", "source": "user", "modes": ["light"] },
+            { "id": "claw", "name": "Duplicate", "source": "builtin", "modes": ["dark"] },
+            { "id": "../escape", "name": "Bad id", "source": "builtin", "modes": ["dark"] },
+            { "id": "acme/nomodes", "name": "No modes", "source": "plugin", "modes": [] },
+            { "id": "acme/unknown", "name": "Unknown source", "source": "remote", "modes": ["dark"] },
+            { "id": "acme/badname", "name": "\ud800", "source": "plugin", "modes": ["dark"] },
+            { "id": "acme/badmode", "name": "Bad mode", "source": "plugin", "modes": ["\udfff"] },
+            { "id": "acme/after", "name": "After", "source": "plugin", "modes": ["dark"] }
+          ]
+        }
+        """);
+
+        var list = GatewayThemeProtocol.ParseList(json.RootElement);
+
+        Assert.Equal(new[] { "claw", "acme/neon", "user/mine", "acme/after" }, list.Themes.Select(theme => theme.Id));
+        Assert.Equal(GatewayThemeSource.Plugin, list.Themes[1].Source);
+        Assert.Equal("acme", list.Themes[1].PluginId);
+        Assert.Equal(new[] { ThemeColorMode.Dark }, list.Themes[1].Modes);
+        Assert.Equal("claw", list.Current?.Id);
+        Assert.Equal(GatewayThemeSource.Builtin, list.Current!.Source);
+        Assert.Null(list.CurrentDefinition);
+    }
+
+    [Fact]
+    public void GetRejectsAThemeWithAnUnpairedSurrogateInsteadOfThrowing()
+    {
+        using var json = JsonDocument.Parse("""
+            { "theme": { "id": "acme/x", "name": "X\udc00", "source": "plugin", "modes": ["dark"] } }
+            """);
+
+        Assert.False(GatewayThemeProtocol.TryParseGet(json.RootElement, out _, out _));
+    }
+
+    [Theory]
+    [InlineData("""{ "\ud800":1, "id":"bad", "name":"Bad", "source":"builtin", "modes":["dark"] }""")]
+    [InlineData("""{ "id":"bad", "name":"Bad", "source":"builtin", "modes":["dark"], "\ud800":1 }""")]
+    public void UnreadablePropertyNameRejectsOnlyItsDescriptor(string bad)
+    {
+        using var reply = JsonDocument.Parse($$"""
+            { "themes": [
+                { "id":"claw", "name":"Claw", "source":"builtin", "modes":["dark"] },
+                {{bad}},
+                { "id":"tide", "name":"Tide", "source":"builtin", "modes":["dark"] }
+              ], "theme": {{bad}} }
+            """);
+
+        var list = GatewayThemeProtocol.ParseList(reply.RootElement);
+
+        Assert.Equal(new[] { "claw", "tide" }, list.Themes.Select(theme => theme.Id));
+        Assert.Null(list.Current);
+        Assert.False(GatewayThemeProtocol.TryParseGet(reply.RootElement, out _, out _));
+    }
+
+    [Fact]
+    public void DefinitionAcceptsSingleModeIgnoresBrandingAndRoundTrips()
+    {
+        var raw = Definition(light: null, dark: Palette("#000000", font: "\"Fira Code\", monospace"), extra: "\"mascot\": \"none\",");
+
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(raw, out var definition, out var error), error);
+        Assert.Null(definition.Light);
+        Assert.Equal("\"Fira Code\", monospace", definition.Dark!.FontSans);
+
+        var snapshot = GatewayThemeProtocol.ToJson(definition);
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(snapshot, out var reparsed, out _));
+        Assert.Equal(definition, reparsed);
+    }
+
+    [Theory]
+    [InlineData("--brand, sans-serif")]
+    [InlineData("--, monospace")]
+    [InlineData("-apple-system, \"Segoe UI\", sans-serif")]
+    public void DefinitionAcceptsEveryFontIdentifierTheGatewayAccepts(string font)
+    {
+        var palette = Palette("#000000", font: font).Replace("\"ring\": \"#101010\"",
+            $"\"ring\": \"#101010\", \"font-mono\": {JsonSerializer.Serialize(font)}");
+
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: palette), out var definition, out var error), error);
+        Assert.Equal(font, definition.Dark!.FontSans);
+        Assert.Equal(font, definition.Dark.FontMono);
+    }
+
+    [Theory]
+    [InlineData("missing-color")]
+    [InlineData("bad-color")]
+    [InlineData("bad-font")]
+    [InlineData("no-palette")]
+    [InlineData("too-large")]
+    public void DefinitionRejectsInvalidThemes(string defect)
+    {
+        var palette = Palette("#101010");
+        JsonElement raw = defect switch
+        {
+            "missing-color" => Definition(light: null, dark: palette.Replace("\"ring\": \"#101010\",", "")),
+            "bad-color" => Definition(light: null, dark: palette.Replace("\"ring\": \"#101010\"", "\"ring\": \"var(--x)\"")),
+            "bad-font" => Definition(light: null, dark: Palette("#101010", font: "inherit; color: red")),
+            "no-palette" => Definition(light: null, dark: null),
+            _ => Definition(light: null, dark: palette, extra: $"\"description\": \"{new string('x', 9000)}\","),
+        };
+
+        Assert.False(GatewayThemeProtocol.TryParseDefinition(raw, out _, out var error));
+        Assert.NotEmpty(error);
+    }
+
+    [Fact]
+    public void ExpanderFollowsControlUiDerivations()
+    {
+        var raw = Definition(
+            light: Palette("#ffffff", card: "#000000", accent: "#ff0000"),
+            dark: Palette("#000000", card: "#ffffff", accent: "#ff0000"));
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(raw, out var definition, out _));
+
+        var dark = ThemePaletteExpander.Expand(definition.Dark!, ThemeColorMode.Dark);
+        var light = ThemePaletteExpander.Expand(definition.Light!, ThemeColorMode.Light);
+
+        // color-mix(in srgb, var(--bg) 92%, var(--card) 8%) and 88%/12%.
+        Assert.Equal("#141414", dark.Content.ToHex());
+        Assert.Equal("#1f1f1f", dark.Surface.ToHex());
+        // accent-hover mixes 18% white in dark mode and 18% black in light mode.
+        Assert.Equal("#ff2e2e", dark.AccentHover.ToHex());
+        Assert.Equal("#d10000", light.AccentHover.ToHex());
+        Assert.Equal(ThemeColor.FromHex("#22c55e"), dark.Ok);
+        Assert.Equal(ThemeColor.FromHex("#166534"), light.Ok);
+        Assert.Equal("Inter", dark.BodyFont.Primary);
+        Assert.Equal(dark.BodyFont, dark.ChatFont);
+        Assert.Equal("JetBrains Mono", dark.MonoFont.Primary);
+    }
+
+    [Fact]
+    public void ResolvedSingleModeThemeIsPinnedToItsMode()
+    {
+        var raw = Definition(light: Palette("#ffffff"), dark: null);
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(raw, out var definition, out _));
+        var descriptor = new GatewayThemeDescriptor("user/paper", "Paper", "", GatewayThemeSource.User, [ThemeColorMode.Light], null);
+
+        var theme = ThemePaletteExpander.Resolve(descriptor, definition);
+
+        Assert.Equal(ThemeColorMode.Light, theme.PinnedMode);
+        Assert.Same(theme.Light, theme.PaletteFor(ThemeColorMode.Dark));
+    }
+
+    [Fact]
+    public void BuiltinTableHasDistinctIdsAndReadablePalettesInBothModes()
+    {
+        // CI compares the checked-in catalog to the pinned upstream IDs and branding.
+        var ids = BuiltinGatewayThemes.All.Select(theme => theme.Id).ToList();
+        Assert.Contains("claw", ids);
+        Assert.Equal(ids.Count, ids.Distinct().Count());
+        Assert.All(ids, id => Assert.Matches("^[a-z0-9-]+$", id));
+        Assert.Matches("^[0-9a-f]{40}$", BuiltinGatewayThemes.UpstreamRef);
+        foreach (var theme in BuiltinGatewayThemes.All)
+        {
+            Assert.Null(theme.PinnedMode);
+            foreach (var palette in new[] { theme.Light!, theme.Dark! })
+            {
+                Assert.NotEqual(palette.Canvas, palette.Text);
+                Assert.NotEmpty(palette.BodyFont.Primary);
+                Assert.NotEmpty(palette.ChatFont.Primary);
+                Assert.NotEmpty(palette.MonoFont.Primary);
+                Assert.True(double.IsFinite(palette.Radii.Small) && palette.Radii.Small >= 0, theme.Id);
+                Assert.True(double.IsFinite(palette.Radii.Medium) && palette.Radii.Medium >= 0, theme.Id);
+                Assert.True(double.IsFinite(palette.Radii.Scale) && palette.Radii.Scale >= 0, theme.Id);
+            }
+            Assert.True(theme.Dark!.Canvas.RelativeLuminance < theme.Light!.Canvas.RelativeLuminance, theme.Id);
+        }
+    }
+
+    [Theory]
+    [InlineData("""{ "Theme": { "Id": "", "Source": "remote", "Definition": 42 }, "UseMica": false }""", false)]
+    [InlineData("""{ "Theme": { "Id": 7, "Name": ["x"] }, "UseMica": null }""", true)]
+    [InlineData("""{ "Theme": [ "tide" ], "UseMica": "no" }""", true)]
+    [InlineData("""[ 1, 2 ]""", true)]
+    // Only a literal true follows the Gateway, and a malformed followed theme is ignored.
+    [InlineData("""{ "FollowGatewayTheme": "true", "FollowedTheme": { "Id": "crt" } }""", true)]
+    [InlineData("""{ "FollowGatewayTheme": true, "FollowedTheme": [ "crt" ] }""", true)]
+    public void MalformedAppearanceNeitherDiscardsSettingsNorAppliesATheme(string appearance, bool useMica)
+    {
+        var settings = SettingsData.FromJson($$"""{ "AppTheme": "Dark", "Appearance": {{appearance}} }""");
+
+        Assert.NotNull(settings);
+        Assert.Equal("Dark", settings.AppTheme);
+        Assert.Equal(useMica, settings.Appearance!.UseMica);
+        Assert.Null(AppearanceResolver.ResolveTheme(settings.Appearance));
+        Assert.Null(AppearanceResolver.ResolveTheme(SettingsData.FromJson("""{ "AppTheme": "Light" }""")!.Appearance));
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("\"red\"")]
+    [InlineData("\"#3a9b9\"")]
+    [InlineData("\"#3a9b9b\\n\"")]
+    [InlineData("\"\\uD800\"")]
+    public void MalformedFollowedAccentKeepsTheThemeAccent(string accent)
+    {
+        var settings = SettingsData.FromJson(
+            $$"""{ "Appearance": { "Theme": { "Id": "tide" }, "FollowGatewayTheme": true, "FollowedAccent": {{accent}} } }""")!;
+
+        Assert.Null(settings.Appearance!.FollowedAccent);
+        Assert.True(BuiltinGatewayThemes.TryGet("tide", out var tide));
+        Assert.Equal(tide.Dark!.Accent, AppearanceResolver.ResolveTheme(settings.Appearance)!.Dark!.Accent);
+    }
+
+    // Upstream background-preferences.test.ts accepts these shapes and rejects the rest as a whole.
+    [Theory]
+    [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": true, "showInSessions": false, "visibility": 0.3 }""", true)]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "a_1-b" }, "presentation": "full-bleed", "showOnNewSession": false, "showInSessions": true, "visibility": 1 }""", true)]
+    [InlineData("""{ "source": { "kind": "none" }, "presentation": "faded", "showOnNewSession": true, "showInSessions": true, "visibility": 0 }""", true)]
+    [InlineData("""{ "source": { "kind": "theme" }, "presentation": "fullBleed", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "../x" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "a_1-b\n" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "\uD800" }, "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "theme" }, "presentation": "\uDC00", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": "yes", "showInSessions": true, "visibility": 0.5 }""", false)]
+    [InlineData("""{ "source": { "kind": "theme" }, "showOnNewSession": true, "showInSessions": true, "visibility": 1.5 }""", false)]
+    [InlineData("""{ "source": "theme", "showOnNewSession": true, "showInSessions": true, "visibility": 0.5 }""", false)]
+    public void BackgroundPreferenceReadsOnlyTheUpstreamShape(string json, bool valid)
+    {
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal(valid, BackgroundPreference.TryParse(document.RootElement, out var preference));
+        if (!valid)
+            return;
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+            preference.WriteTo(writer);
+        using var written = JsonDocument.Parse(stream.ToArray());
+        Assert.True(BackgroundPreference.TryParse(written.RootElement, out var reread));
+        Assert.Equal(preference, reread);
+    }
+
+    [Theory]
+    [InlineData("""{ "source": { "kind": "custom", "assetId": "\uD800" }, "showOnNewSession": true, "showInSessions": true, "visibility": 1 }""")]
+    [InlineData("""{ "source": { "kind": "theme", "\uD800": 1 }, "showOnNewSession": true, "showInSessions": true, "visibility": 1 }""")]
+    public void MalformedBackgroundDoesNotDiscardTheValidAccentOrLocalSettings(string invalidBackground)
+    {
+        using var invalidArtwork = JsonDocument.Parse($$"""{ "status": "ok", "entries": { "ui.accent": "#3A9B9B", "ui.background": {{invalidBackground}} } }""");
+        Assert.True(GatewayAppearancePreferences.TryParse(invalidArtwork.RootElement, out var preferences));
+        Assert.Equal("#3a9b9b", preferences.Accent);
+        Assert.Null(preferences.Background);
+
+        var settings = SettingsData.FromJson($$"""{ "AppTheme": "Dark", "Appearance": { "UseMica": false, "Background": {{invalidBackground}} } }""");
+        Assert.Equal("Dark", settings?.AppTheme);
+        Assert.False(settings!.Appearance!.UseMica);
+        Assert.Null(settings.Appearance.Background);
+    }
+
+    [Fact]
+    public void MalformedAccentDoesNotDiscardTheValidBackground()
+    {
+        using var invalidAccent = JsonDocument.Parse("""
+            { "status": "ok", "entries": { "ui.accent": "\uD800", "ui.background": {
+              "source": { "kind": "none" }, "showOnNewSession": false, "showInSessions": true, "visibility": 1 } } }
+            """);
+        Assert.True(GatewayAppearancePreferences.TryParse(invalidAccent.RootElement, out var preferences));
+        Assert.Null(preferences.Accent);
+        Assert.Equal(BackgroundSourceKind.None, preferences.Background?.Source);
+    }
+
+    // The dashboard's strengths (session-background.tsx): faded scales visibility against the 50% default up to full,
+    // full bleed caps at 70%, and a person who never chose shows theme artwork everywhere.
+    [Fact]
+    public void BackgroundOpacityMatchesTheDashboard()
+    {
+        var faded = BackgroundPreference.Default;
+        Assert.Equal(1, ThemeBackgrounds.Opacity(null, ThemeBackgroundSurface.Conversation));
+        Assert.False(ThemeBackgrounds.Fades(null, ThemeBackgroundSurface.NewSession));
+        Assert.Equal(1, ThemeBackgrounds.Opacity(faded, ThemeBackgroundSurface.NewSession));
+        Assert.True(ThemeBackgrounds.Fades(faded, ThemeBackgroundSurface.NewSession));
+        Assert.False(ThemeBackgrounds.Fades(faded, ThemeBackgroundSurface.Conversation));
+        Assert.Equal(0.5, ThemeBackgrounds.Opacity(faded with { Visibility = 0.25 }, ThemeBackgroundSurface.Conversation), 6);
+        var fullBleed = faded with { Presentation = BackgroundPresentation.FullBleed };
+        Assert.Equal(0.35, ThemeBackgrounds.Opacity(fullBleed, ThemeBackgroundSurface.Conversation), 6);
+        Assert.Equal(0.7, ThemeBackgrounds.Opacity(fullBleed with { Visibility = 1 }, ThemeBackgroundSurface.NewSession), 6);
+        Assert.Equal(0, ThemeBackgrounds.Opacity(faded with { ShowInSessions = false }, ThemeBackgroundSurface.Conversation));
+        Assert.Equal(0, ThemeBackgrounds.Opacity(faded with { Source = BackgroundSourceKind.None }, ThemeBackgroundSurface.NewSession));
+        Assert.Equal(0, ThemeBackgrounds.Opacity(
+            faded with { Source = BackgroundSourceKind.Custom, AssetId = "a" }, ThemeBackgroundSurface.Conversation));
+
+        Assert.True(BuiltinGatewayThemes.TryGet("manuscript", out var manuscript));
+        Assert.Equal("manuscript", ThemeBackgrounds.ArtworkFamily(manuscript));
+        Assert.Equal("custom", ThemeBackgrounds.ArtworkFamily(manuscript with { Id = "acme/ink", Source = GatewayThemeSource.Plugin }));
+        Assert.Null(ThemeBackgrounds.ArtworkFamily(null));
+    }
+
+    // Following uses the person's dashboard choice (unset means the dashboard's artwork everywhere); otherwise the
+    // Companion's own choice, defaulting to the dashboard default. Unknown preferences keep the last followed choice.
+    [Fact]
+    public void FollowingUsesTheDashboardBackgroundAndKeepsItWhenUnknown()
+    {
+        var local = BackgroundPreference.Default with { Presentation = BackgroundPresentation.FullBleed };
+        var appearance = new AppearanceSettings { Background = local };
+        Assert.Equal(local, AppearanceResolver.ActiveBackground(appearance));
+        Assert.Equal(BackgroundPreference.Default, AppearanceResolver.ActiveBackground(new AppearanceSettings()));
+
+        var dashboard = BackgroundPreference.Default with { ShowInSessions = false };
+        var following = AppearanceResolver.FollowPreferences(appearance with { FollowGatewayTheme = true },
+            new GatewayAppearancePreferences(null, dashboard));
+        Assert.Equal(dashboard, AppearanceResolver.ActiveBackground(following));
+        Assert.Same(following, AppearanceResolver.FollowPreferences(following, null));
+        var unset = AppearanceResolver.FollowPreferences(following, new GatewayAppearancePreferences(null));
+        Assert.Null(AppearanceResolver.ActiveBackground(unset));
+        Assert.Equal(local, AppearanceResolver.ActiveBackground(unset with { FollowGatewayTheme = false }));
+
+        var reloaded = SettingsData.FromJson(new SettingsData { Appearance = following }.ToJson())!;
+        Assert.Equal(following, reloaded.Appearance);
+    }
+
+    [Theory]
+    [InlineData("Id", "\\uD800")]
+    [InlineData("Name", "\\uDC00")]
+    [InlineData("Source", "\\uD800")]
+    [InlineData("OriginGatewayId", "\\uDC00")]
+    public void MalformedAppearanceStringsPreserveOtherSettingsAndDefaultOnlyTheInvalidField(string field, string malformed)
+    {
+        var selection = field == "Id"
+            ? $$"""{ "Id": "{{malformed}}" }"""
+            : $$"""{ "Id": "tide", "{{field}}": "{{malformed}}" }""";
+        var settings = SettingsData.FromJson($$"""
+        { "AppTheme": "Dark", "NotifyEmail": false, "Appearance": { "Theme": {{selection}} } }
+        """);
+
+        Assert.NotNull(settings);
+        Assert.Equal("Dark", settings.AppTheme);
+        Assert.False(settings.NotifyEmail);
+        Assert.Equal(field == "Id" ? null : new ThemeSelection { Id = "tide" }, settings.Appearance?.Theme);
+    }
+
+    [Fact]
+    public void MalformedSavedDefinitionCanStillResolveAndSaveOtherSettings()
+    {
+        var settings = SettingsData.FromJson("""
+            { "AppTheme": "Dark", "NotifyEmail": false,
+              "Appearance": { "Theme": { "Id": "user/ink", "Source": "user", "Definition": { "name": "\uD800" } } } }
+            """);
+
+        Assert.NotNull(settings);
+        Assert.Null(AppearanceResolver.ResolveTheme(settings.Appearance));
+        var reloaded = SettingsData.FromJson(settings.ToJson());
+        Assert.NotNull(reloaded);
+        Assert.Equal("Dark", reloaded.AppTheme);
+        Assert.False(reloaded.NotifyEmail);
+    }
+
+    [Fact]
+    public void SelectedGatewayThemeSurvivesSettingsRoundTrip()
+    {
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: Palette("#000000")), out var definition, out _));
+        var descriptor = new GatewayThemeDescriptor("acme/ink", "Ink", "", GatewayThemeSource.Plugin, [ThemeColorMode.Dark], "acme");
+        var data = new SettingsData
+        {
+            Appearance = new AppearanceSettings
+            {
+                Theme = new ThemeSelection { Id = "tide", Name = "Tide" },
+                FollowGatewayTheme = true,
+                FollowedTheme = AppearanceResolver.Select(descriptor, definition, "gw-1"),
+                FollowedAccent = "#3a9b9b",
+            },
+        };
+
+        var reloaded = SettingsData.FromJson(data.ToJson())!;
+
+        Assert.Equal(data.Appearance, reloaded.Appearance);
+        var theme = AppearanceResolver.ResolveTheme(reloaded.Appearance);
+        Assert.Equal("acme/ink", theme?.Id);
+        Assert.Equal(ThemeColorMode.Dark, theme?.PinnedMode);
+    }
+
+    [Fact]
+    public void FollowingShowsTheGatewayThemeAndKeepsTheLastRenderableOne()
+    {
+        var manual = new AppearanceSettings { Theme = new ThemeSelection { Id = "tide", Name = "Tide" } };
+        var crt = Descriptor("crt", GatewayThemeSource.Builtin);
+        Assert.Same(manual, AppearanceResolver.Follow(manual, crt, null, "gw-1"));
+
+        var following = manual with { FollowGatewayTheme = true };
+        Assert.Equal("tide", AppearanceResolver.ResolveTheme(following)?.Id);
+        following = AppearanceResolver.Follow(following, crt, null, "gw-1");
+        Assert.Equal("crt", AppearanceResolver.ResolveTheme(following)?.Id);
+
+        // A built-in newer than the Companion's table, a plugin theme without a readable definition and a
+        // disconnected Gateway all keep the last followed theme instead of blanking the look.
+        Assert.Same(following, AppearanceResolver.Follow(following, Descriptor("nebula", GatewayThemeSource.Builtin), null, "gw-1"));
+        var neon = Descriptor("acme/neon", GatewayThemeSource.Plugin);
+        Assert.Same(following, AppearanceResolver.Follow(following, neon, null, "gw-1"));
+        Assert.Same(following, AppearanceResolver.Follow(following, null, null, null));
+
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: Palette("#05010a")), out var definition, out _));
+        var plugin = AppearanceResolver.Follow(following, neon, definition, "gw-1");
+        Assert.Equal("acme/neon", AppearanceResolver.ResolveTheme(plugin)?.Id);
+        Assert.Equal("gw-1", plugin.FollowedTheme!.OriginGatewayId);
+
+        // Turning following off restores the manual choice; with neither, the Windows default applies.
+        Assert.Equal("tide", AppearanceResolver.ResolveTheme(plugin with { FollowGatewayTheme = false })?.Id);
+        Assert.Null(AppearanceResolver.ResolveTheme(new AppearanceSettings { FollowGatewayTheme = true }));
+    }
+
+    [Theory]
+    [InlineData(null, null, null, true, "claw", ThemeWorkingIndicator.Claw)]
+    [InlineData("none", null, null, false, "mark", ThemeWorkingIndicator.Dots)]
+    [InlineData("none", "claw", "claw", false, "claw", ThemeWorkingIndicator.Claw)]
+    [InlineData("claw", null, "none", true, "claw", ThemeWorkingIndicator.None)]
+    [InlineData("claw", "acme-icon", "brand", true, "acme-icon", ThemeWorkingIndicator.Brand)]
+    // Unknown or invalid values count as missing, as upstream resolveThemeBranding would see them.
+    [InlineData("penguin", "Not An Id!", "sparkle", true, "claw", ThemeWorkingIndicator.Claw)]
+    [InlineData("none", "", "sparkle", false, "mark", ThemeWorkingIndicator.Dots)]
+    [InlineData("claw", "acme-icon\n", "brand", true, "claw", ThemeWorkingIndicator.Brand)]
+    public void BrandingResolvesLikeTheDashboard(
+        string? mascot, string? brandIcon, string? indicator, bool hasMascot, string icon, ThemeWorkingIndicator working)
+    {
+        var branding = ThemeBranding.Resolve(mascot, brandIcon, indicator);
+
+        Assert.Equal(new ThemeBranding(hasMascot, icon, working), branding);
+        Assert.Equal(icon == ThemeBranding.ClawIcon, branding.ShowsClaw);
+    }
+
+    [Theory]
+    [InlineData("""{ "mascot": "\uD800", "brandIcon": "ink-logo", "workingIndicator": "brand" }""", true, "ink-logo", ThemeWorkingIndicator.Brand)]
+    [InlineData("""{ "mascot": "none", "brandIcon": "\uDC00", "workingIndicator": "brand" }""", false, "mark", ThemeWorkingIndicator.Brand)]
+    [InlineData("""{ "mascot": "none", "brandIcon": "ink-logo", "workingIndicator": "\uD800" }""", false, "ink-logo", ThemeWorkingIndicator.Dots)]
+    public void MalformedBrandingDefaultsOnlyItsFieldAndKeepsTheCatalogAndSelection(
+        string branding, bool mascot, string icon, ThemeWorkingIndicator indicator)
+    {
+        var descriptor = $$"""
+            { "id": "acme/ink", "name": "Ink", "source": "plugin", "modes": ["dark"],
+              {{branding[1..^1]}} }
+            """;
+        using var json = JsonDocument.Parse($$"""
+            { "themes": [
+                {{descriptor}},
+                { "id": "claw", "name": "Claw", "source": "builtin", "modes": ["dark"] }
+              ], "theme": {{descriptor}} }
+            """);
+
+        var list = GatewayThemeProtocol.ParseList(json.RootElement);
+
+        Assert.Equal(new[] { "acme/ink", "claw" }, list.Themes.Select(theme => theme.Id));
+        Assert.Equal(new ThemeBranding(mascot, icon, indicator), list.Themes[0].Branding);
+        Assert.Equal("acme/ink", list.Current?.Id);
+        Assert.Equal(new ThemeBranding(mascot, icon, indicator), list.Current?.Branding);
+        Assert.True(GatewayThemeProtocol.TryParseGet(json.RootElement, out var selected, out _));
+        Assert.Equal("acme/ink", selected.Id);
+        Assert.Equal(new ThemeBranding(mascot, icon, indicator), selected.Branding);
+    }
+
+    [Fact]
+    public void BrandingReachesBuiltinPluginAndSnapshottedThemes()
+    {
+        // Exact built-in branding is checked against the pinned upstream catalog in CI.
+        foreach (var theme in BuiltinGatewayThemes.All)
+            Assert.Contains(theme.Branding.BrandIcon, new[] { ThemeBranding.ClawIcon, ThemeBranding.MarkIcon });
+
+        using var json = JsonDocument.Parse("""
+            { "themes": [ { "id": "acme/ink", "name": "Ink", "source": "plugin", "pluginId": "acme", "modes": ["dark"],
+                            "mascot": "none", "workingIndicator": "brand", "brandIcon": "ink-logo" } ] }
+            """);
+        var descriptor = Assert.Single(GatewayThemeProtocol.ParseList(json.RootElement).Themes);
+        Assert.Equal(new ThemeBranding(false, "ink-logo", ThemeWorkingIndicator.Brand), descriptor.Branding);
+
+        // The snapshot keeps the branding, so an offline restart still shows the theme's indicator.
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: Palette("#000000")), out var definition, out _));
+        var data = new SettingsData { Appearance = new AppearanceSettings { Theme = AppearanceResolver.Select(descriptor, definition, "gw-1") } };
+        var reloaded = SettingsData.FromJson(data.ToJson())!;
+        Assert.Equal(descriptor.Branding, AppearanceResolver.ResolveTheme(reloaded.Appearance)?.Branding);
+    }
+
+    private static GatewayThemeDescriptor Descriptor(string id, GatewayThemeSource source) =>
+        new(id, id, "", source, [ThemeColorMode.Light, ThemeColorMode.Dark], source == GatewayThemeSource.Plugin ? "acme" : null);
+
+    [Theory]
+    [InlineData("\"foreground\": \"#808080\"", "\"foreground\": \"#000000\"")]   // text the color of the background
+    [InlineData("\"foreground\": \"#808080\"", "\"foreground\": \"#00000000\"")] // transparent text
+    [InlineData("\"muted-foreground\": \"#909090\"", "\"muted-foreground\": \"#000000\"")] // approval details vanish
+    [InlineData("\"popover\": \"#000000\"", "\"popover\": \"#808080\"")]          // composer text on its own color
+    [InlineData("\"popover\": \"#000000\"", "\"popover\": \"#ffffff\"")]          // readable only on an opaque composer
+    public void GatewayThemeWithUnreadableTextIsNeverApplied(string token, string unreadable)
+    {
+        var palette = Palette("#000000").Replace(token, unreadable);
+        Assert.NotEqual(Palette("#000000"), palette);
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: palette), out var definition, out _));
+        var descriptor = Descriptor("acme/ghost", GatewayThemeSource.Plugin);
+        var manual = new AppearanceSettings { Theme = AppearanceResolver.Select(descriptor, definition, "gw-1") };
+
+        Assert.Null(AppearanceResolver.ResolveTheme(manual));
+        var following = new AppearanceSettings { Theme = new ThemeSelection { Id = "tide" }, FollowGatewayTheme = true };
+        Assert.Same(following, AppearanceResolver.Follow(following, descriptor, definition, "gw-1"));
+        Assert.All(BuiltinGatewayThemes.All, theme => Assert.True(ThemeLegibility.IsReadable(theme), theme.Id));
+    }
+
+    // Settings cards sit on the page shell, not the bare canvas: a translucent card that reaches 3:1 over the canvas
+    // can fall below it over the shell.
+    [Fact]
+    public void ATranslucentCardIsJudgedOnThePageShellItSitsOn()
+    {
+        var palette = Palette("#000000")
+            .Replace("\"card\": \"#000000\"", "\"card\": \"#ffffff4d\"")
+            .Replace("\"#808080\"", "\"#9b9b9b\"")
+            .Replace("\"muted-foreground\": \"#909090\"", "\"muted-foreground\": \"#9b9b9b\"");
+        Assert.True(GatewayThemeProtocol.TryParseDefinition(Definition(light: null, dark: palette), out var definition, out _));
+        var theme = ThemePaletteExpander.Resolve(Descriptor("acme/frost", GatewayThemeSource.Plugin), definition);
+        var dark = theme.Dark!;
+        var canvas = dark.Canvas.Over(ThemeColor.Black);
+        Assert.True(ThemeLegibility.Contrast(dark.Text, dark.Card.Over(canvas)) >= ThemeLegibility.MinimumContrast);
+        Assert.True(ThemeLegibility.Contrast(dark.Text, dark.Card.Over(dark.Shell.Over(canvas))) < ThemeLegibility.MinimumContrast);
+
+        Assert.False(ThemeLegibility.IsReadable(theme));
+    }
+    // Manuscript dark tokens from Gateway 2026.11.1 (Control UI 4ffdd204), pinned here so a table refresh
+    // can't move them. Expected values are pixels sampled from that Control UI in Edge.
+    [Fact]
+    public void DerivedSurfacesMatchControlUiPixels()
+    {
+        Assert.True(BuiltinGatewayThemes.TryGet("manuscript", out var theme));
+        var dark = theme.Dark! with
+        {
+            Canvas = ThemeColor.FromHex("#211e18"),
+            Content = ThemeColor.FromHex("#211e18"),
+            Surface = ThemeColor.FromHex("#262218"),
+            Popover = ThemeColor.FromHex("#2f2b22"),
+            ComposerSurface = ThemeColor.FromHex("#2f2b22"),
+            Elevated = ThemeColor.FromHex("#2a271f"),
+            Panel = ThemeColor.FromHex("#211e18"),
+        };
+
+        AssertNear("#211e18", dark.Shell);
+        AssertNear("#211e18", dark.Sidebar);
+        AssertNear("#2c2920", dark.ComposerFill.Over(dark.Shell));
+    }
+
+    private static void AssertNear(string expectedHex, ThemeColor actual)
+    {
+        var expected = ThemeColor.FromHex(expectedHex);
+        Assert.True(
+            Math.Abs(expected.R - actual.R) <= 2 && Math.Abs(expected.G - actual.G) <= 2 && Math.Abs(expected.B - actual.B) <= 2,
+            $"expected {expectedHex}, got {actual}");
+    }
+
+    private static string Palette(string background, string? card = null, string? accent = null, string? font = null)
+    {
+        var fontEntry = font is null ? "" : $", \"font-sans\": {JsonSerializer.Serialize(font)}";
+        return $$"""
+        {
+          "background": "{{background}}", "foreground": "#808080", "card": "{{card ?? background}}",
+          "card-foreground": "#808080", "popover": "{{background}}", "popover-foreground": "#808080",
+          "primary": "#336699", "primary-foreground": "#ffffff", "secondary": "#202020",
+          "secondary-foreground": "#ffffff", "muted": "#303030", "muted-foreground": "#909090",
+          "accent": "{{accent ?? "#336699"}}", "accent-foreground": "#ffffff", "destructive": "#cc0000",
+          "destructive-foreground": "#ffffff", "border": "#404040", "input": "#404040",
+          "ring": "#101010",
+          "unknown-future-token": "#123456"{{fontEntry}}
+        }
+        """;
+    }
+
+    private static JsonElement Definition(string? light, string? dark, string extra = "")
+    {
+        var palettes = string.Join(", ", new[] { light is null ? null : $"\"light\": {light}", dark is null ? null : $"\"dark\": {dark}" }
+            .Where(entry => entry is not null));
+        var separator = palettes.Length == 0 ? "" : ", ";
+        return JsonDocument.Parse($"{{ {extra} \"name\": \"Test\"{separator}{palettes} }}").RootElement.Clone();
+    }
+}

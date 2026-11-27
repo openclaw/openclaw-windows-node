@@ -47,6 +47,7 @@ internal sealed partial class SettingsShellView : UserControl
     private TaskCompletionSource<bool> _contentReady = CreateCompletedContentReady();
     private AppNotificationService? _appNotificationService;
     private readonly AppNotificationInfoBarPresenter _appNotificationInfoBarPresenter = new();
+    private readonly KeyedMenuRows _agentNavRows = new();
     private AppNotificationSnapshot? _lastAppNotificationSnapshot;
     private AppNotificationInfoBarPresentation _currentAppNotificationPresentation =
         AppNotificationInfoBarPresentation.Hidden;
@@ -431,16 +432,70 @@ internal sealed partial class SettingsShellView : UserControl
             // Hiding the section list closes the pane and showing it reopens it, so restore the saved choice.
             if (wasContentOnly && !value && CurrentApp.Settings is { } settings)
                 ApplyNavPaneState(settings);
+            ApplyContentSurface();
             UpdatePageAllocation();
         }
     }
 
+    private Grid? _navContentGrid;
+    private bool _contentSurfaceRemoved;
+
+    private void OnNavViewLoaded(object sender, RoutedEventArgs e)
+    {
+        _navContentGrid ??= FindNamedGrid(NavView, "ContentGrid");
+        ApplyContentSurface();
+    }
+
+    /// <summary>
+    /// An embedded (pinned) page sits over the Workspace NavigationView, whose template already paints the
+    /// content layer and leading stroke above Mica. This view's own NavigationView paints the same surface
+    /// through its template's <c>ContentGrid</c>, so ContentOnly removes it instead of stacking a second
+    /// layer. Showing the section list again rebinds both brushes to <c>ContentSurfaceSource</c>, which
+    /// resolves the same theme resources and follows theme changes.
+    /// </summary>
+    private void ApplyContentSurface()
+    {
+        if (_navContentGrid is not { } grid || _contentSurfaceRemoved == ContentOnly)
+            return;
+
+        if (ContentOnly)
+        {
+            grid.Background = null;
+            grid.BorderBrush = null;
+        }
+        else
+        {
+            grid.SetBinding(Panel.BackgroundProperty, SurfaceBinding(nameof(Border.Background)));
+            grid.SetBinding(Grid.BorderBrushProperty, SurfaceBinding(nameof(Border.BorderBrush)));
+        }
+        _contentSurfaceRemoved = ContentOnly;
+    }
+
+    private Microsoft.UI.Xaml.Data.Binding SurfaceBinding(string path) =>
+        new() { Source = ContentSurfaceSource, Path = new PropertyPath(path) };
+
+    private static Grid? FindNamedGrid(DependencyObject parent, string name)
+    {
+        var count = VisualTreeHelper.GetChildrenCount(parent);
+        for (var index = 0; index < count; index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is Grid grid && grid.Name == name)
+                return grid;
+            if (FindNamedGrid(child, name) is { } found)
+                return found;
+        }
+        return null;
+    }
+
     private void UpdatePageAllocation()
     {
-        // Existing pages retain their own padding. Only opted-in pages allocate shell chrome.
-        if (ContentFrame.Content is ISettingsPageContentInset page)
-            page.ApplyTopInset(ContentOnly ? _hostContentTopInset
-                : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen));
+        var inset = ContentOnly ? _hostContentTopInset
+            : WorkspaceSettingsLayout.PageTopInset(false, NavView.IsPaneOpen);
+        AppNotificationOverlay.Margin = new Thickness(0, inset, 0, 0);
+        var page = ContentFrame.Content as ISettingsPageContentInset;
+        ContentFrame.Padding = new Thickness(0, page is null ? inset : 0, 0, 0);
+        page?.ApplyTopInset(inset);
     }
 
     internal void SetHostContentTopInset(double inset)
@@ -543,7 +598,11 @@ internal sealed partial class SettingsShellView : UserControl
             tag = "settings";
 
         var pageType = HubPageRegistry.ResolvePageType(tag);
-        if (pageType == null) return;
+        if (pageType == null)
+        {
+            PublishAccessibilityReadyWhenSettled(_contentReady, CurrentPage?.GetType().Name ?? nameof(SettingsShellView));
+            return;
+        }
 
         // Identity dedupe: navigation identity = (PageType, normalized tag).
         // Page-type-only dedupe would collapse distinct logical destinations
@@ -555,7 +614,7 @@ internal sealed partial class SettingsShellView : UserControl
             if (ContentFrame.Content is DashboardsPage dashboards)
                 dashboards.Initialize(this, tag);
             _contentReady = CreateCompletedContentReady();
-            AccessibilityNavigationSignal.WritePageReady(pageType.Name);
+            PublishAccessibilityReadyWhenSettled(_contentReady, pageType.Name);
             return;
         }
 
@@ -731,22 +790,27 @@ internal sealed partial class SettingsShellView : UserControl
         if (!data.TryGetProperty("agents", out var agentsEl) ||
             agentsEl.ValueKind != System.Text.Json.JsonValueKind.Array) return;
 
-        AgentsNavItem.MenuItems.Clear();
-
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal);
+        var ids = new List<string>();
         foreach (var agent in agentsEl.EnumerateArray())
         {
             var id = agent.TryGetProperty("id", out var idEl) ? idEl.GetString() ?? "" : "";
-            if (string.IsNullOrEmpty(id)) continue;
+            if (string.IsNullOrEmpty(id) || labels.ContainsKey(id)) continue;
             var name = agent.TryGetProperty("name", out var nameEl) ? nameEl.GetString() : null;
+            labels[id] = name ?? id;
+            ids.Add(id);
+        }
 
-            var agentItem = new NavigationViewItem
-            {
-                Content = name ?? id,
-                Tag = $"agent:{id}",
-                Icon = BuildAgentItemIcon()
-            };
-
-            AgentsNavItem.MenuItems.Add(agentItem);
+        // Each agents.list response rebuilds this menu. Replacing its rows lets WinUI call into collected
+        // items when the pane later changes (see KeyedMenuRows), so rows are reused in place.
+        _agentNavRows.Adopt("main", DefaultAgentNavItem);
+        var rows = _agentNavRows.Sync(AgentsNavItem.MenuItems, 0, ids,
+            id => new NavigationViewItem { Tag = $"agent:{id}", Icon = BuildAgentItemIcon() });
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var row = (NavigationViewItem)rows[i];
+            if (!Equals(row.Content, labels[ids[i]]))
+                row.Content = labels[ids[i]];
         }
     }
 
@@ -864,9 +928,85 @@ internal sealed partial class SettingsShellView : UserControl
                 if (ReferenceEquals(_contentReady, ready) &&
                     ready.TrySetResult(true))
                 {
-                    AccessibilityNavigationSignal.WritePageReady(pageName);
+                    PublishAccessibilityReadyWhenSettled(ready, pageName);
                 }
             });
+    }
+
+    // The accessibility acknowledgement promises a page that is safe to scan. An initially expanded
+    // Expander (About's App info) still runs its ExpandDown storyboard after Loaded, sliding clipped
+    // content into place, so publish only once every expand/collapse storyboard has stopped.
+    private static readonly TimeSpan AccessibilityReadyPollInterval = TimeSpan.FromMilliseconds(50);
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _accessibilityReadyTimer;
+    private static readonly TimeSpan AccessibilityReadySettleTimeout =
+        int.TryParse(Environment.GetEnvironmentVariable("OPENCLAW_ACCESSIBILITY_READY_SETTLE_MS"), out var ms) && ms > 0
+            ? TimeSpan.FromMilliseconds(ms)
+            : TimeSpan.FromSeconds(5);
+
+    private void PublishAccessibilityReadyWhenSettled(TaskCompletionSource<bool> ready, string? pageName)
+    {
+        _accessibilityReadyTimer?.Stop();
+        _accessibilityReadyTimer = null;
+        if (!AccessibilityNavigationSignal.IsEnabled)
+            return;
+
+        var content = ContentFrame.Content;
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var deferredPolls = 0;
+        bool TryPublish()
+        {
+            // A newer navigation, deactivation or disposal owns readiness now; never report a page that left.
+            if (_disposed || !_active || !ReferenceEquals(_contentReady, ready) ||
+                !ReferenceEquals(ContentFrame.Content, content))
+                return true;
+            // Templates (and their expand storyboards) exist only after Loaded.
+            if (content is not FrameworkElement { IsLoaded: false } && ExpandTransitionsIdle(content as DependencyObject))
+            {
+                if (deferredPolls > 0)
+                    Logger.Info($"[SettingsShellView] {pageName} accessibility readiness waited {deferredPolls} poll(s) for expand transitions.");
+                AccessibilityNavigationSignal.WritePageReady(pageName);
+                return true;
+            }
+            deferredPolls++;
+            if (started.Elapsed < AccessibilityReadySettleTimeout)
+                return false;
+            // Fail closed: the test reports its own readiness timeout instead of scanning a moving page.
+            Logger.Warn($"[SettingsShellView] {pageName} expand transitions did not settle; accessibility readiness not published.");
+            return true;
+        }
+
+        if (TryPublish())
+            return;
+        var timer = DispatcherQueue.CreateTimer();
+        timer.Interval = AccessibilityReadyPollInterval;
+        timer.Tick += (sender, _) =>
+        {
+            if (!TryPublish())
+                return;
+            sender.Stop();
+            if (ReferenceEquals(_accessibilityReadyTimer, sender))
+                _accessibilityReadyTimer = null;
+        };
+        _accessibilityReadyTimer = timer;
+        timer.Start();
+    }
+
+    private static bool ExpandTransitionsIdle(DependencyObject? element)
+    {
+        if (element is null)
+            return true;
+        if (element is Expander expander && VisualTreeHelper.GetChildrenCount(expander) > 0 &&
+            VisualTreeHelper.GetChild(expander, 0) is FrameworkElement chrome &&
+            VisualStateManager.GetVisualStateGroups(chrome)
+                .FirstOrDefault(states => states.Name == "ExpandStates")?.CurrentState?.Storyboard?.GetCurrentState()
+                == Microsoft.UI.Xaml.Media.Animation.ClockState.Active)
+            return false;
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(element); index++)
+        {
+            if (!ExpandTransitionsIdle(VisualTreeHelper.GetChild(element, index)))
+                return false;
+        }
+        return true;
     }
 
     private void InitializeCurrentPage()

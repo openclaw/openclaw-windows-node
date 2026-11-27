@@ -107,11 +107,20 @@ internal static class GatewayWizardRestartRecoveryPolicy
             RestartIntentRecordingRefusal,
             StringComparison.Ordinal);
 
+    /// <summary>
+    /// Waits for the expected managed gateway to own its endpoint, retrying only transient
+    /// states up to <paramref name="noListenerRetryCount"/> times.
+    /// <paramref name="retryRelayWithoutGuestOwner"/> also waits while a trusted WSL relay
+    /// listens before the restarted guest MainPID binds. Enable it only before a connection
+    /// is opened: after a handshake challenge the open connection may belong to that
+    /// unproven listener, so later endpoint proof would not cover its peer.
+    /// </summary>
     public static async Task<GatewayEndpointProvenance> WaitForExpectedManagedGatewayAsync(
         Func<CancellationToken, Task<GatewayEndpointProvenance>> inspectAsync,
         int noListenerRetryCount,
         TimeSpan retryDelay,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool retryRelayWithoutGuestOwner = false)
     {
         ArgumentNullException.ThrowIfNull(inspectAsync);
         ArgumentOutOfRangeException.ThrowIfNegative(noListenerRetryCount);
@@ -127,6 +136,12 @@ internal static class GatewayWizardRestartRecoveryPolicy
                     Kind: GatewayEndpointProvenanceKind.UnknownListener,
                     FailureReason:
                         GatewayEndpointProvenanceFailureReason.ListenerSnapshotChanged,
+                } ||
+                retryRelayWithoutGuestOwner && result is
+                {
+                    Kind: GatewayEndpointProvenanceKind.UnknownListener,
+                    FailureReason:
+                        GatewayEndpointProvenanceFailureReason.ManagedGatewayOwnerNotListening,
                 };
             if (!retryable ||
                 attempt >= noListenerRetryCount)

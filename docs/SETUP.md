@@ -9,7 +9,7 @@ Before installing, make sure you have:
 - **Windows 10 (20H2 or later)** or **Windows 11**
 - **WebView2 Runtime** - pre-installed on Windows 11 and most up-to-date Windows 10 systems. If missing, download from [Microsoft Edge WebView2](https://developer.microsoft.com/microsoft-edge/webview2/).
 
-You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a dedicated local WSL gateway for you, or you can use **Advanced setup** to connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the install-new-WSL and connect-existing handoff flow.
+You do **not** need a pre-existing local OpenClaw gateway before installing. On first launch, OpenClaw Companion can install a local gateway for you: a native gateway when Windows supports it, or a dedicated WSL gateway otherwise. You can also connect to an existing local, remote, or manually configured gateway. See [Onboarding Wizard](ONBOARDING_WIZARD.md) for the native, install-new-WSL, and connect-existing flows.
 
 New to the OpenClaw roles? Read [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md) for a short glossary of gateway, local WSL gateway, operator, node, pairing, reapproval, and allowlisted node capabilities before starting setup.
 
@@ -50,11 +50,16 @@ The installer also creates a Start Menu group with shortcuts for **OpenClaw Comp
 
 ### 5. Onboarding Wizard
 
-On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The default flow installs and configures a dedicated app-owned local WSL gateway:
+On first launch, Molty opens the onboarding wizard when there is no usable saved gateway connection. The steps below follow the local WSL gateway flow:
 
 1. **Security notice** - Confirms this is a trusted PC before local setup starts.
 
-2. **Welcome** - Choose **Install a local gateway (WSL)** to install the app-owned WSL gateway, or **Connect to an existing gateway** to open the tray app's Connections tab.
+2. **Welcome** - The wizard first checks whether Windows supports the native gateway, then offers three choices:
+   - **Install a local native gateway** is marked **Recommended** when Windows supports it. It installs the OpenClaw Gateway from Microsoft Store and runs it directly on Windows in an isolated session, with no WSL. When native support is unavailable or cannot be verified, the choice stays disabled. The wizard shows guidance for the detected condition, including Windows Update when the required capability is unavailable.
+   - **Install a local Gateway (WSL)** installs the app-owned WSL gateway. It is marked **Recommended** when native is unavailable.
+   - **Connect to an existing Gateway** connects without installing a gateway on this PC.
+
+   **Remote, local MCP or set up later** below the choices opens other connection options.
 
    For the role split behind these choices, see [Operator and node concepts](OPERATOR_NODE_CONCEPTS.md).
 
@@ -188,6 +193,10 @@ OpenClaw Companion checks for updates automatically and shows a notification whe
 ## Uninstalling
 
 Go to **Settings → Apps → Installed apps**, find **OpenClaw Companion**, and click **Uninstall**. Alternatively, use **Add or Remove Programs** in the Control Panel. You'll be asked whether to also remove the local WSL gateway; choose **Yes** to unregister its WSL distro and generated state, or **No** to leave the gateway and that state in place.
+
+For the **Inno installer**, interactive uninstall offers an unchecked Kokoro download-removal choice, independent of Gateway removal. Continue immediately to keep models, or choose **Check downloaded models** to see exact file paths and measured byte counts before enabling removal. The read-only check runs asynchronously, leaving Cancel available. Cancellation waits for the worker result before closing; an unconfirmed result aborts uninstall rather than enabling removal. Keeping models is the default, including silent uninstall. Only the catalog model and voices files whose current contents match their pinned hashes are eligible; other models, partial downloads, unknown files, shared caches, and directories are kept. Redirected paths, hard links, locked files, and unverified contents are not removed. Store migration or uncertain ownership suppresses removal at its final admission check. A custom `OPENCLAW_TRAY_DATA_DIR` disables this cleanup option.
+
+The model summary distinguishes removed bytes, measured retained catalog files, and files that could not be checked. Other app-data sizes are not scanned, so these numbers are not a total of all retained data. Cancelling the model choice stops uninstall before model removal; cleanup failures leave an incomplete summary rather than a claim that everything was removed. This option does not change MSIX uninstall or the separate Gateway cleanup scope.
 
 Your settings file at `%APPDATA%\OpenClawTray\settings.json` is not removed automatically, and device identity files for gateways unrelated to the one you removed (including per-gateway keys at `%APPDATA%\OpenClawTray\gateways\<gateway-id>\device-key-ed25519.json`) are preserved. Choosing **Yes** also removes the removed gateway's own identity directory. Root operator and node tokens are preserved only while an external gateway record remains; otherwise they are cleared, even if another local or loopback gateway record remains. Delete `%APPDATA%\OpenClawTray\` manually if you want a fully clean uninstall.
 

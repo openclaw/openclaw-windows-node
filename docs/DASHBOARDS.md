@@ -65,6 +65,29 @@ An empty section explicitly says that no content was supplied and offers
 Open chat for that section. Tabs display only their supplied widgets; Windows
 does not manufacture category details or subscription records.
 
+## Beside chat
+
+Native chat shows the selected session's board as a **Dashboard** tab in the
+conversation side panel, next to tool **Details** and **Subagents**. The tab uses the same board
+reader without the page hero. It appears in two ways:
+
+- **Automatically** when `board.get` returns tabs or widgets for the selected
+  session, or after `board.changed` for it. This never replaces an open tab,
+  moves focus, or covers a narrow conversation (a **Show panel** button
+  appears instead). Closing the tab stops automatic reveals for that session
+  while chat stays mounted.
+- **Explicitly** from **Open chat** on the Dashboards page, which selects the
+  tab and clears an earlier dismissal. This also works for sessions missing
+  from the chat list, such as archived boards.
+
+When a reconnect or history reload closes the selected Details or Subagents
+tab, the tab that takes its place is shown without moving focus or covering a
+narrow conversation.
+
+Only the split presentation exists. The web's expanded presentation (board as
+the main view, chat as a side tab), stored `preferredFace`/`boardPresentation`
+defaults and the panel launcher are not implemented.
+
 ## Responsive layout
 
 The [design contract](../DESIGN.md#dashboards-expressive-extension) owns
@@ -169,6 +192,30 @@ fixture, not the production data path.
 | `board.get` | `sessionKey`, `agentId?` | board snapshot with minted `frameUrl`, `viewTicket`, `viewTicketTtlMs`, `viewGeneration`, `sandboxUrl`, `sandboxPort`, `sandboxOrigin?` |
 | `board.changed` event | `sessionKey`, `revision`, `widget?` | refetch `board.get` |
 | `board.command` event | `sessionKey`, `command: focus_tab | set_chat_dock` | select tab |
+| `progressCard.get` | `sessionKey`, `agentId?` | bounded read-only progress card with revision, update time, optional Markdown and steps |
+| `progressCard.changed` event | `sessionKey`, `revision?` | invalidation hint; refetch `progressCard.get` |
+
+Progress reads are enabled only when the connected Gateway advertises
+`progressCard.get` and the operator connection has read access. Older Gateways
+continue to render the native widget's unavailable state; Windows does not
+infer a card from board props or treat the change event as card data.
+
+The widget reads `props.sessionKey`, else the board session. Windows resolves
+it the way the Gateway scopes cards: main aliases use hello `sessionDefaults`,
+bare keys belong to the key's agent or else the board's agent, and keys are
+compared case-insensitively except for case-preserving channel peers. Requests
+send `agentId` only for keys that do not name an agent. `props.agentId` is not
+an authority. Widgets that resolve to one card share one read.
+
+| Read outcome | Native state |
+|---|---|
+| Card or no card | Ready or Empty; any revision replaces the card |
+| `FORBIDDEN`, or detail `SESSION_PARTICIPATION_REQUIRED` | Denied; the last card is cleared |
+| `METHOD_NOT_FOUND`, or `FORBIDDEN` with detail `MISSING_SCOPE` | Unavailable |
+| Any other failure | Last card kept with a stale notice and Retry; Error when there is no card |
+
+A `sessions.changed` event with reason `reset` or `delete` clears the matching
+card and rereads it, so a restarted session can return a lower revision.
 
 Widget HTML is fetched over HTTP from the active Gateway origin at
 `/__openclaw__/board/<sessionKey>/<name>/index.html?bt=<ticket>`.
@@ -209,10 +256,14 @@ bridge ports. This is not a real Gateway authorization/revocation trace.
   restarts until Retry. Repeated sandbox failure is reported separately from
   renderer crashes. Granted capabilities remain visible; pending and rejected
   grants are read-only and link to web Dashboards.
-- Native plugins support `session:report` and validated `session:website`
-  browser links. `session:progress`, `browser:dashboard`, third-party UI bundles
-  and MCP app hosting remain web-only. Unsupported/disabled contributions show
-  an explanation rather than executing a plugin bundle.
+- Native plugins support `session:report`, validated `session:website` browser
+  links, and read-only `session:progress` cards. Progress reads require the
+  advertised `progressCard.get` method and operator read access, run only for
+  the active tab, and refresh from authoritative snapshots after invalidation
+  events. The native renderer bounds card Markdown and steps and uses the chat
+  safe-Markdown path. `browser:dashboard`, third-party UI bundles and MCP app
+  hosting remain web-only. Unsupported/disabled contributions show an
+  explanation rather than executing a plugin bundle.
 - The deferred editing and actions in the scope table include all move/resize
   presets, drag/keyboard nudging, auto-height toggles, widget removal, permission
   grants, bridge actions and MCP view leases. Read-only auto-height reports are

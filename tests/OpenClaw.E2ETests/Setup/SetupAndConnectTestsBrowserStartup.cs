@@ -64,6 +64,23 @@ public sealed class SetupAndConnectTestsBrowserStartup
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => discovery.WaitAsync(DiscoveryTimeout));
     }
 
+    [Theory]
+    [InlineData(null, 60)]
+    [InlineData("", 60)]
+    [InlineData("0", 60)]
+    [InlineData("-5", 60)]
+    [InlineData(" 90", 60)]
+    [InlineData("1e2", 60)]
+    [InlineData("90", 90)]
+    [InlineData("3600", 3600)]
+    [InlineData("3601", 60)]
+    [InlineData("2147483647", 60)]
+    public void StartupTimeoutAcceptsOnlyPositiveWholeSecondOverrides(string? configured, int expectedSeconds)
+    {
+        Assert.Equal(TimeSpan.FromSeconds(expectedSeconds),
+            GatewaySearchBrowserProof.ResolveStartupTimeout(configured));
+    }
+
     [E2EFact]
     public async Task OwnedEdgePageSupportsEvaluationAndScreenshotWithoutAGateway()
     {
@@ -75,6 +92,8 @@ public sealed class SetupAndConnectTestsBrowserStartup
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             Assert.Equal("about:blank", (await browser.EvaluateAsync("document.URL", timeout.Token)).GetString());
             Assert.Equal(42, (await browser.EvaluateAsync("6 * 7", timeout.Token)).GetInt32());
+            Assert.Equal($"{GatewaySearchBrowserProof.ViewportWidth}x{GatewaySearchBrowserProof.ViewportHeight}",
+                (await browser.EvaluateAsync("`${innerWidth}x${innerHeight}`", timeout.Token)).GetString());
             Assert.False(browser.Authenticated);
             Assert.Null(browser.PairingRequestId);
             var screenshot = Path.Combine(directory, "blank.png");

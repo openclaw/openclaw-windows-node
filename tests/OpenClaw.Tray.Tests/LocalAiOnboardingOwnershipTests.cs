@@ -202,16 +202,14 @@ public sealed class LocalAiOnboardingOwnershipTests
         {
             var text = Assert.Single(document.Descendants(), element => (string?)element.Attribute(x + "Name") == name);
             Assert.Equal("Wrap", (string?)text.Attribute("TextWrapping"));
-            Assert.Equal("Center", (string?)text.Attribute("TextAlignment"));
             Assert.Contains(text.Ancestors(), element => (string?)element.Attribute(x + "Name") == "AiHeader");
         }
         var header = Assert.Single(document.Descendants(), element => (string?)element.Attribute(x + "Name") == "AiHeader");
         Assert.Equal("StackPanel", header.Name.LocalName);
         Assert.Null(header.Attribute("Height"));
-        var mascot = Assert.Single(header.Descendants(), element => element.Name.LocalName == "OnboardingMascot");
-        Assert.Equal("Center", (string?)mascot.Attribute("HorizontalAlignment"));
-        Assert.Null(mascot.Attribute("Width"));
-        Assert.Null(mascot.Attribute("Height"));
+        Assert.Equal("{StaticResource SetupHeroPanelStyle}", (string?)header.Attribute("Style"));
+        // The setup companion pane, not the page header, shows the mascot.
+        Assert.DoesNotContain(document.Descendants(), element => element.Name.LocalName == "OnboardingMascot");
         foreach (var locale in new[] { "en-us", "fr-fr", "nl-nl", "pt-br", "zh-cn", "zh-tw" })
         {
             var resources = System.Xml.Linq.XDocument.Parse(Read($@"src\OpenClaw.Tray.WinUI\Strings\{locale}\Resources.resw"));

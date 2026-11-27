@@ -2,12 +2,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using OpenClaw.Connection;
 using OpenClaw.GatewayFixtureHost;
 using OpenClaw.TestSupport.Gateway;
 
 namespace OpenClaw.Tray.IntegrationTests;
 
-// Cleanup checks rebind released ephemeral ports before another fixture can claim them.
+// Fixture ports come from the shared dynamic range, so release is proven by listener ownership.
 [Collection("Gateway fixture environment")]
 public sealed class GatewayFixtureStartupTests
 {
@@ -68,11 +69,13 @@ public sealed class GatewayFixtureStartupTests
             CancellationToken.None);
         Process? observedChild = null;
         var controlPort = startup.Gateway.Endpoint.Port + 2;
+        var controlOwner = Environment.ProcessId;
         try
         {
             if (foreign)
             {
                 Assert.NotNull(startup.Foreign);
+                controlOwner = startup.Foreign.Id;
                 observedChild = Process.GetProcessById(startup.Foreign.Id);
                 _ = observedChild.SafeHandle;
                 Assert.False(observedChild.HasExited);
@@ -89,6 +92,7 @@ public sealed class GatewayFixtureStartupTests
             }
             using var occupied = new TcpListener(IPAddress.Loopback, controlPort);
             Assert.Throws<SocketException>(() => occupied.Start());
+            Assert.True(IsListening(controlPort, controlOwner), "The transferred control listener is not owned by its run.");
         }
         finally
         {
@@ -102,8 +106,7 @@ public sealed class GatewayFixtureStartupTests
             }
             finally { observedChild?.Dispose(); }
         }
-        using var released = new TcpListener(IPAddress.Loopback, controlPort);
-        released.Start();
+        Assert.False(IsListening(controlPort, controlOwner), "Disposal left the control listener open.");
     }
 
     [Theory]
@@ -115,6 +118,8 @@ public sealed class GatewayFixtureStartupTests
         Process? observedChild = null;
         string? countFile = null;
         var controlPort = 0;
+        var childId = 0;
+        var reachedForcedFailure = false;
         try
         {
             var startup = GatewayFixtureRun.StartGatewayAsync(
@@ -125,8 +130,20 @@ public sealed class GatewayFixtureStartupTests
                 stop.Token,
                 async (child, path, cancellationToken) =>
                 {
-                    observedChild = Process.GetProcessById(child.Id);
-                    _ = observedChild.SafeHandle;
+                    observedChild?.Dispose();
+                    observedChild = null;
+                    try
+                    {
+                        observedChild = Process.GetProcessById(child.Id);
+                        _ = observedChild.SafeHandle;
+                    }
+                    catch (ArgumentException)
+                    {
+                        if (ExitedOnPortConflict(child))
+                            return false;
+                        throw;
+                    }
+                    childId = child.Id;
                     countFile = path;
                     controlPort = int.Parse(child.StartInfo.ArgumentList[3], CultureInfo.InvariantCulture);
                     Console.WriteLine(
@@ -137,10 +154,14 @@ public sealed class GatewayFixtureStartupTests
                     deadline.CancelAfter(TimeSpan.FromSeconds(15));
                     while (!File.Exists(path))
                     {
-                        Assert.False(child.HasExited, "Foreign listener exited before publishing readiness.");
+                        if (ExitedOnPortConflict(child))
+                            return false;
                         await Task.Delay(20, deadline.Token);
                     }
+                    Assert.True(IsListening(controlPort, child.Id), "The foreign child does not own the control listener.");
+                    Assert.True(IsListening(controlPort - 2, Environment.ProcessId), "This run does not own the gateway listener.");
 
+                    reachedForcedFailure = true;
                     if (cancel)
                     {
                         stop.Cancel();
@@ -154,13 +175,12 @@ public sealed class GatewayFixtureStartupTests
             else
                 await Assert.ThrowsAsync<InvalidDataException>(() => startup);
 
+            Assert.True(reachedForcedFailure, "Startup failed before the injected readiness failure.");
             Assert.NotNull(observedChild);
             Assert.True(observedChild.HasExited, "Startup returned before reaping its child.");
             Assert.False(File.Exists(countFile), "Startup left its readiness file behind.");
-            using var control = new TcpListener(IPAddress.Loopback, controlPort);
-            using var gateway = new TcpListener(IPAddress.Loopback, controlPort - 2);
-            control.Start();
-            gateway.Start();
+            Assert.False(IsListening(controlPort, childId), "Startup left the foreign control listener open.");
+            Assert.False(IsListening(controlPort - 2, Environment.ProcessId), "Startup left the gateway listener open.");
         }
         finally
         {
@@ -180,5 +200,26 @@ public sealed class GatewayFixtureStartupTests
             if (countFile is not null)
                 File.Delete(countFile);
         }
+    }
+
+    // Exit code 1 is the foreign child's bind conflict: another host process took the dynamic control
+    // port first, so startup retries beside a new gateway. Any other early exit is a real failure.
+    private static bool ExitedOnPortConflict(Process child)
+    {
+        if (!child.HasExited)
+            return false;
+        Assert.True(child.ExitCode == 1,
+            $"Foreign listener pid={child.Id} exited with {child.ExitCode} before publishing readiness.");
+        return true;
+    }
+
+    // Another host process may claim a released dynamic port at any time; a foreign exclusive
+    // wildcard bind then fails a rebind with WSAEACCES. Only listeners owned by this run count.
+    private static bool IsListening(int port, int processId)
+    {
+        var snapshot = WindowsTcpListenerSnapshot.Capture();
+        Assert.True(snapshot.Ipv4Complete, "The IPv4 listener table could not be read.");
+        return snapshot.Listeners.Any(listener =>
+            listener.Port == port && listener.ProcessId == processId && IPAddress.IsLoopback(listener.Address));
     }
 }

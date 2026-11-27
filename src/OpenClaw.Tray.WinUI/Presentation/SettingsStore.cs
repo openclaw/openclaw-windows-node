@@ -127,8 +127,12 @@ internal sealed class SettingsStore : ISettingsStore
         public bool GlobalHotkeyEnabled { set => _settings.GlobalHotkeyEnabled = value; }
         public bool UseLegacyWebChat { set => _settings.UseLegacyWebChat = value; }
         public bool ShowNotifications { set => _settings.ShowNotifications = value; }
+        public bool ShowDesktopCompanion { set => _settings.ShowDesktopCompanion = value; }
+        public bool DesktopCompanionOnlyWhenMinimized { set => _settings.DesktopCompanionOnlyWhenMinimized = value; }
+        public int DesktopCompanionScalePercent { set => _settings.DesktopCompanionScalePercent = value; }
         public string NotificationSound { set => _settings.NotificationSound = value; }
         public string AppTheme { set => _settings.AppTheme = value; }
+        public OpenClaw.Shared.Themes.AppearanceSettings Appearance { set => _settings.Appearance = value; }
         public bool? ShowDiagnosticsOverride { set => _settings.ShowDiagnosticsOverride = value; }
         public bool NotifyHealth { set => _settings.NotifyHealth = value; }
         public bool NotifyUrgent { set => _settings.NotifyUrgent = value; }

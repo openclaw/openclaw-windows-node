@@ -14,6 +14,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
 using OpenClaw.Shared;
 using OpenClaw.Shared.Dashboards;
 using OpenClawTray.Dashboards;
@@ -679,6 +680,128 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             capture: "mixed-report-website");
     }
 
+    [Fact]
+    public async Task ProgressWidget_ReadsItsSessionCardAndRefreshesOnInvalidation()
+    {
+        const string sessionKey = "agent:main:main";
+        var progressWidget = Plugin("run-progress", "session:progress", """{"sessionKey":"agent:main:main"}""");
+        var board = new BoardSnapshot(sessionKey, 1, [new BoardTab("main", "Overview", 0, "right")], [progressWidget]);
+        var client = new SnapshotBoardClient(board)
+        {
+            Kinds = [new PluginWidgetKind("session", "session:progress", "Session progress")],
+            ProgressCard = new BoardProgressCard(sessionKey, 1, 1_700_000_000_000,
+                "Initial progress detail.", [new BoardProgressStep("Build the first view", BoardProgressStepStatus.InProgress)]),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+
+        await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
+                new BoardViewProps(state, client, new BoardSessionTarget(sessionKey, "main"), 1, 984)), host =>
+            {
+                Assert.Equal(1, client.ProgressLoads);
+                Assert.Contains(new ProgressCardTarget(sessionKey, null, sessionKey), client.ProgressTargets);
+                var step = Assert.Single(FindDescendants<FrameworkElement>(host),
+                    element => AutomationProperties.GetAutomationId(element) == "BoardProgressStep_run-progress_0");
+                Assert.Equal(LocalizationHelper.Format("Dashboards_Progress_StepAccessibleFormat",
+                    LocalizationHelper.GetString("Dashboards_Progress_StatusInProgress"), "Build the first view"), AutomationProperties.GetName(step));
+                Assert.Contains(FindDescendants<RichTextBlock>(host),
+                    block => CollectMarkdownText(block).Contains("Initial progress detail.", StringComparison.Ordinal));
+                var initialTexts = FindDescendants<TextBlock>(host).Select(text => text.Text).ToArray();
+                Assert.Contains("Build the first view", initialTexts);
+                Assert.Contains(LocalizationHelper.GetString("Dashboards_Progress_StatusInProgress"), initialTexts);
+
+                client.ProgressCard = new BoardProgressCard(sessionKey, 2, 1_700_000_100_000,
+                    "Refreshed progress detail.", [new BoardProgressStep("Build the first view", BoardProgressStepStatus.Completed)]);
+                client.NotifyProgressChanged(new BoardProgressChangedEvent(sessionKey, 2));
+            }, ready: host => FindDescendants<FrameworkElement>(host).Any(element =>
+                AutomationProperties.GetAutomationId(element) == "BoardWidget_run-progress"),
+            width: 984, afterMounted: async host =>
+            {
+                await WaitForMountedStateAsync(host, current => client.ProgressLoads == 2 &&
+                    FindDescendants<RichTextBlock>(current).Any(block =>
+                        CollectMarkdownText(block).Contains("Refreshed progress detail.", StringComparison.Ordinal)) &&
+                    FindDescendants<TextBlock>(current).Any(text =>
+                        text.Text == LocalizationHelper.GetString("Dashboards_Progress_StatusCompleted")) &&
+                    FindDescendants<TextBlock>(current).Any(text =>
+                        text.Text == LocalizationHelper.Format("Dashboards_Progress_StepCountFormat", 1, 1)));
+            });
+    }
+
+    [Fact]
+    public async Task ProgressWidget_NarrowEmbeddedCardKeepsOverflowAndFinalStepReachable()
+    {
+        const string sessionKey = "agent:main:progress-overflow";
+        const string longStep = "Verify that a long progress step wraps cleanly within the native card, with its readable text and accessible status preserved when the board is shown beside chat.";
+        var widget = Plugin("progress", "session:progress", """{"sessionKey":"agent:main:progress-overflow"}""");
+        var client = new SnapshotBoardClient(new BoardSnapshot(sessionKey, 1, [new BoardTab("main", "Overview", 0, "right")], [widget]))
+        {
+            Kinds = [new PluginWidgetKind("session", "session:progress", "Session progress")],
+            ProgressCard = new BoardProgressCard(sessionKey, 1, 1_700_000_000_000,
+                "**Reset recovery verified.** The old card cleared; fresh progress now shows all steps completed.",
+                [
+                    new BoardProgressStep("Connect to the real Gateway", BoardProgressStepStatus.Completed),
+                    new BoardProgressStep(longStep, BoardProgressStepStatus.Completed),
+                    new BoardProgressStep("Complete the live widget check", BoardProgressStepStatus.Completed),
+                ]),
+        };
+        var state = new DashboardsPageState
+        {
+            Post = action => ui.Container.DispatcherQueue.TryEnqueue(() => action()),
+            Schedule = (_, _) => new NoopLease(),
+        };
+        await WithMountedAsync(() => Component<ReactorBoardView, BoardViewProps>(
+                new BoardViewProps(state, client, new BoardSessionTarget(sessionKey, "main"), 1, 440, Embedded: true)),
+            _ => { }, width: 440, theme: "Dark", afterMounted: host => ui.RunOnUIAsync(async () =>
+            {
+                (double Extent, double Viewport, double LongStepHeight, Windows.Foundation.Rect LastStep)? previous = null;
+                await WaitForRenderedConditionAsync(() =>
+                {
+                    var reader = FindDescendants<ScrollViewer>(host).FirstOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "BoardProgress_progress");
+                    var last = FindDescendants<FrameworkElement>(host).FirstOrDefault(element =>
+                        AutomationProperties.GetAutomationId(element) == "BoardProgressStep_progress_2");
+                    var longText = FindDescendants<TextBlock>(host).FirstOrDefault(element => element.Text == longStep);
+                    if (reader is not { IsLoaded: true, ActualHeight: > 0 } ||
+                        last is not { IsLoaded: true, ActualHeight: > 0 } ||
+                        longText is not { IsLoaded: true, ActualHeight: > 0 })
+                        return false;
+                    var current = (reader.ExtentHeight, reader.ViewportHeight, longText.ActualHeight, Bounds(last, reader));
+                    var settled = previous == current;
+                    previous = current;
+                    return settled;
+                }, "embedded progress card layout settles");
+
+                var scroll = ById<ScrollViewer>(host, "BoardProgress_progress");
+                var finalStep = ById<FrameworkElement>(host, "BoardProgressStep_progress_2");
+                var longText = Assert.Single(FindDescendants<TextBlock>(scroll), text => text.Text == longStep);
+                var longStepGroup = ById<FrameworkElement>(host, "BoardProgressStep_progress_1");
+                Assert.Equal(LocalizationHelper.Format("Dashboards_Progress_StepAccessibleFormat",
+                    LocalizationHelper.GetString("Dashboards_Progress_StatusCompleted"), longStep),
+                    AutomationProperties.GetName(longStepGroup));
+                Assert.True(longText.ActualHeight > longText.FontSize * 2, "The long step must wrap in a narrow card.");
+                Assert.True(scroll.ScrollableHeight > 0,
+                    $"Overflow must remain reachable; extent={scroll.ExtentHeight}, viewport={scroll.ViewportHeight}, height={scroll.ActualHeight}.");
+                Assert.True(Bounds(finalStep, scroll).Bottom > scroll.ActualHeight, "The final step must start below the viewport.");
+                Assert.True(scroll.ChangeView(null, scroll.ScrollableHeight, null, disableAnimation: true));
+                Windows.Foundation.Rect? previousFinalBounds = null;
+                await WaitForRenderedConditionAsync(() =>
+                {
+                    var currentBounds = Bounds(finalStep, scroll);
+                    var settled = Math.Abs(scroll.VerticalOffset - scroll.ScrollableHeight) <= 0.5 &&
+                        previousFinalBounds == currentBounds;
+                    previousFinalBounds = currentBounds;
+                    return settled;
+                },
+                    "the last progress step scrolls into view");
+                var finalBounds = Bounds(finalStep, scroll);
+                Assert.InRange(finalBounds.Top, 0, scroll.ActualHeight);
+                Assert.InRange(finalBounds.Bottom, 0, scroll.ActualHeight + 0.5);
+            }));
+    }
+
     private async Task WaitForMountedStateAsync(ReactorHostControl host, Func<ReactorHostControl, bool> ready,
         Func<string>? failureMessage = null)
     {
@@ -766,7 +889,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             },
             ready: host => FindDescendants<Grid>(host).Any(grid =>
                 AutomationProperties.GetAutomationId(grid) == "DashboardsCards" && grid.ColumnDefinitions.Count == columns) &&
-                HeroMatchesColumn(host, "DashboardsHero", "DashboardsGallery"),
+                HeroMatchesColumn(host, "DashboardsHero", "DashboardsGallery", width),
             width: width, onViewportChanged: state.SetViewportWidth);
 
         state.Open(new BoardSessionTarget(target.Key, "main"), target.Session.DisplayName, target);
@@ -784,7 +907,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             },
             ready: host => FindDescendants<Grid>(host).Any(grid =>
                 AutomationProperties.GetAutomationId(grid) == "DashboardTabGrid_tab-0") &&
-                HeroMatchesColumn(host, "DashboardHero", "DashboardView"),
+                HeroMatchesColumn(host, "DashboardHero", "DashboardView", width),
             width: width, onViewportChanged: state.SetViewportWidth);
     }
 
@@ -814,7 +937,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         var scrollId = board ? "DashboardPageScroll" : "DashboardsGalleryScroll";
         await WithMountedAsync(() => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             _ => { },
-            ready: host => HeroMatchesColumn(host, heroId, columnId),
+            ready: host => HeroMatchesColumn(host, heroId, columnId, 900),
             width: 900, onViewportChanged: state.SetViewportWidth,
             afterMounted: async host =>
             {
@@ -906,22 +1029,32 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         var columnBounds = Bounds(column, host);
         Assert.DoesNotContain(FindDescendants<FrameworkElement>(host), element =>
             AutomationProperties.GetAutomationId(element) is "DashboardBackdrop" or "DashboardsBackdrop");
-        var expectedPadding = width < 720 ? 20 : 32;
-        var expectedContent = Math.Min(1200, width - 2 * expectedPadding);
+        var (expectedPadding, expectedContent) = ExpectedColumn(width);
         Assert.InRange(Math.Abs(column.ActualWidth - column.Padding.Left - column.Padding.Right - expectedContent), 0, 0.5);
         Assert.InRange(Math.Abs((columnBounds.Left + columnBounds.Right) / 2 - host.ActualWidth / 2), 0, 0.5);
         Assert.True(hero.ActualHeight > 0);
         Assert.InRange(Math.Abs(heroBounds.Left - columnBounds.Left - column.Padding.Left), 0, 0.5);
         Assert.InRange(Math.Abs(heroBounds.Right - columnBounds.Right + column.Padding.Right), 0, 0.5);
-        Assert.Equal(new Thickness(1), hero.BorderThickness);
+        Assert.Equal(new Thickness(0), hero.BorderThickness);
     }
 
-    private static bool HeroMatchesColumn(ReactorHostControl host, string heroId, string columnId)
+    private static (double Padding, double Content) ExpectedColumn(double width)
+    {
+        var padding = width < 720 ? 20 : 32;
+        return (padding, Math.Min(1200, width - 2 * padding));
+    }
+
+    // Width changes reach the column through a posted re-render, so a layout that still reflects the
+    // previous (or initial minimum-width) render can already align hero and column. Require the column
+    // to be rendered for the target width before layout is measured.
+    private static bool HeroMatchesColumn(ReactorHostControl host, string heroId, string columnId, double width)
     {
         var hero = FindDescendants<Border>(host).FirstOrDefault(element =>
             AutomationProperties.GetAutomationId(element) == heroId);
         var column = FindDescendants<Border>(host).FirstOrDefault(element => AutomationProperties.GetAutomationId(element) == columnId);
+        var (padding, content) = ExpectedColumn(width);
         return hero is not null && column is not null && hero.ActualHeight > 0 &&
+            column.Padding.Left == padding && Math.Abs(column.Width - content - 2 * padding) <= 0.5 &&
             Math.Abs(hero.ActualWidth - column.ActualWidth + column.Padding.Left + column.Padding.Right) <= 0.5;
     }
 
@@ -962,7 +1095,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                 Assert.True(scroll.ScrollableHeight > 120);
             },
             ready: host => HeroMatchesColumn(host, board ? "DashboardHero" : "DashboardsHero",
-                board ? "DashboardView" : "DashboardsGallery"),
+                board ? "DashboardView" : "DashboardsGallery", 900),
             width: 900, onViewportChanged: state.SetViewportWidth,
             afterMounted: async host =>
             {
@@ -1021,7 +1154,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                     board ? "DashboardView" : "DashboardsGallery", 1400);
             },
             ready: host => HeroMatchesColumn(host, board ? "DashboardHero" : "DashboardsHero",
-                board ? "DashboardView" : "DashboardsGallery"),
+                board ? "DashboardView" : "DashboardsGallery", 1400),
             theme: theme, width: 1400, onViewportChanged: state.SetViewportWidth);
     }
 
@@ -1080,14 +1213,13 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
     [InlineData(761)]
     [InlineData(739)]
     [InlineData(937)]
-    public Task HeroWebButton_HasNativeBorderAndAlignsWithTheHeroContent(double width) =>
+    public Task HeroWebButton_IsAnIconCommandThatAlignsWithTheHeroContent(double width) =>
         WithFreshGalleryAsync(width, host =>
         {
             var button = ById<Button>(host, "DashboardsOpenWeb");
-            Assert.Contains(FindDescendants<TextBlock>(button), text => text.Text == "Open in web");
+            Assert.Equal("Open in web", AutomationProperties.GetName(button));
             Assert.Contains(FindDescendants<FontIcon>(button), icon => icon.Glyph == "\uE8A7");
-            Assert.True(button.BorderThickness.Right > 0, "The web command must retain its native button border.");
-            AssertDefaultWebButton(host, button);
+            AssertIconWebButton(host, button);
             var scroller = ById<ScrollViewer>(host, "DashboardsGalleryScroll");
             var scrollPeer = FrameworkElementAutomationPeer.CreatePeerForElement(scroller);
             var scrollProvider = Assert.IsAssignableFrom<IScrollProvider>(scrollPeer!.GetPattern(PatternInterface.Scroll));
@@ -1147,7 +1279,7 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                     var gallery = ById<Border>(host, "DashboardsGallery");
                     Assert.InRange(Math.Abs(column.Left - Bounds(gallery, host).Left - gallery.Padding.Left), 0, 0.5);
                     Assert.InRange(Math.Abs(column.Right - Bounds(gallery, host).Right + gallery.Padding.Right), 0, 0.5);
-                    AssertDefaultWebButton(host, ById<Button>(host, "DashboardsOpenWeb"));
+                    AssertIconWebButton(host, ById<Button>(host, "DashboardsOpenWeb"));
                     AssertHeroActionsRightEdge(host);
                 });
             }
@@ -1185,7 +1317,8 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                 await ui.RunOnUIAsync(() => host.Width = width);
                 await WaitForMountedStateAsync(host, mounted =>
                     Math.Abs(mounted.ActualWidth - width) < 0.5 &&
-                    ById<Grid>(mounted, "DashboardsScopeLine").ColumnDefinitions.Count == (width < 1000 ? 1 : 2));
+                    ById<Grid>(mounted, "DashboardsScopeLine").ColumnDefinitions.Count == (width < 1000 ? 1 : 2) &&
+                    HeroMatchesColumn(mounted, "DashboardsHero", "DashboardsGallery", width));
                 await ui.RunOnUIAsync(() =>
                 {
                     host.UpdateLayout();
@@ -1232,48 +1365,21 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         return WithMountedAsync(
             () => Component<ReactorDashboardsRoot, DashboardsRootProps>(new DashboardsRootProps(state)),
             assert,
+            // Cards already exist in the initial minimum-width (Narrow) render, which shows the hero's More
+            // menu instead of the web button. Wait for the column and hero rendered for the target width.
             ready: host => FindDescendants<Button>(host).Any(button =>
                 AutomationProperties.GetAutomationId(button) == (includeFresh
-                    ? "DashboardCardFresh_agent:main:resize:1" : "DashboardCard_agent:main:resize:1")),
+                    ? "DashboardCardFresh_agent:main:resize:1" : "DashboardCard_agent:main:resize:1")) &&
+                HeroMatchesColumn(host, "DashboardsHero", "DashboardsGallery", width),
             width: width, onViewportChanged: state.SetViewportWidth, afterMounted: afterMounted, viewportHeight: viewportHeight);
     }
 
-    private static void AssertDefaultWebButton(ReactorHostControl host, Button button)
+    private static void AssertIconWebButton(ReactorHostControl host, Button button)
     {
-        var fill = Assert.IsType<Microsoft.UI.Xaml.Media.SolidColorBrush>(button.Background);
-        Assert.True(fill.Color.A > 0 && fill.Opacity > 0);
-        Assert.NotNull(button.BorderBrush);
-        Assert.Null(button.Style);
-        Assert.True(double.IsNaN(button.Height));
-        Assert.True(double.IsNaN(button.Width));
-        var localKeys = button.Resources.Select(entry => entry.Key).ToArray();
-        Assert.DoesNotContain(localKeys, key => key is "ButtonBackground" or "ButtonBorderBrush");
-        var parent = Assert.IsAssignableFrom<Panel>(Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(button));
-        var pristine = new Button { RequestedTheme = button.ActualTheme };
-        parent.Children.Add(pristine);
-        try
-        {
-            var pristineKeys = pristine.Resources.Select(entry => entry.Key).ToArray();
-            Assert.DoesNotContain(pristineKeys, key => key is "ButtonBackground" or "ButtonBorderBrush");
-            Assert.True(pristine.Resources.ContainsKey("ButtonBackground"));
-            pristine.Resources["ButtonBackground"] = pristine.Resources["ButtonBackground"];
-            var injectedKeys = pristine.Resources.Select(entry => entry.Key).ToArray();
-            Assert.Contains("ButtonBackground", injectedKeys);
-        }
-        finally
-        {
-            parent.Children.Remove(pristine);
-        }
-        Assert.True(button.Padding.Left > 0 && button.Padding.Right > 0);
-        var buttonBounds = Bounds(button, host);
-        foreach (var text in FindDescendants<TextBlock>(button))
-        {
-            var textBounds = Bounds(text, host);
-            Assert.True(textBounds.Left - buttonBounds.Left >= 8,
-                $"Button content starts too close to its left border: {text.Text}.");
-            Assert.True(buttonBounds.Right - textBounds.Right >= 8,
-                $"Button content ends too close to its right border: {text.Text}.");
-        }
+        Assert.InRange(button.ActualWidth, 31.5, 32.5);
+        Assert.InRange(button.ActualHeight, 31.5, 32.5);
+        Assert.NotNull(ToolTipService.GetToolTip(button));
+        Assert.DoesNotContain(FindDescendants<TextBlock>(button), text => text.Text == "Open in web");
         var refresh = ById<Button>(host, "DashboardsRefresh");
         Assert.True(Bounds(button, host).Right < Bounds(refresh, host).Left,
             "Open in web must precede Refresh without overlapping.");
@@ -1893,8 +1999,10 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
                     else
                         Invoke(ById<Button>(host, "DashboardsRefresh"));
                 });
+                // An agent switch replaces the gallery body, including its search box, through the
+                // loading skeleton. Wait for the replacement to be laid out, not merely created.
                 await WaitForMountedStateAsync(host, root => FindDescendants<FrameworkElement>(root).Any(element =>
-                    AutomationProperties.GetAutomationId(element) == "DashboardsNoResults"));
+                    AutomationProperties.GetAutomationId(element) == "DashboardsNoResults" && element.ActualHeight > 0));
                 await ui.RunOnUIAsync(() =>
                 {
                     Assert.Equal(switchAgent ? "research" : "main", state.AgentId);
@@ -1935,6 +2043,11 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             Revision = 1,
         };
     }
+
+    private static string CollectMarkdownText(RichTextBlock block) => string.Concat(
+        block.Blocks.OfType<Paragraph>()
+            .SelectMany(paragraph => paragraph.Inlines.OfType<Run>())
+            .Select(run => run.Text));
 
     private static string? ToolTipText(Microsoft.UI.Xaml.DependencyObject element) => ToolTipService.GetToolTip(element) switch
     {
@@ -2155,15 +2268,20 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
         public IReadOnlyList<string> ReadScopes { get; init; } = ["operator.read"];
         public ImmutableArray<PluginWidgetKind> Kinds { get; init; } = [];
         public int BoardLoads { get; private set; }
+        public int ProgressLoads { get; private set; }
+        public List<ProgressCardTarget> ProgressTargets { get; } = [];
+        public BoardProgressCard? ProgressCard { get; set; }
         public Uri? Origin { get; init; }
         public Task<BoardSnapshot>? BoardResponse { get; init; }
         public bool IsConnectedToGateway => true;
+        public BoardSessionDefaults? SessionDefaults => new("main", "main", "agent:main:main");
         public IReadOnlyList<string> GrantedOperatorScopes => ReadScopes;
         public ImmutableArray<PluginWidgetKind> PluginWidgetKinds => Kinds;
         public Uri? GatewayHttpOrigin => Origin ?? new("http://127.0.0.1:18789/");
-        public IReadOnlyList<string> AdvertisedServerMethods => ["board.get"];
+        public IReadOnlyList<string> AdvertisedServerMethods => ["board.get", "progressCard.get"];
         public event EventHandler<BoardChangedEvent>? BoardChanged { add { } remove { } }
         public event EventHandler<BoardCommandEvent>? BoardCommandReceived { add { } remove { } }
+        public event EventHandler<BoardProgressChangedEvent>? ProgressCardChanged;
         public event EventHandler<SessionInfo[]>? SessionsUpdated { add { } remove { } }
         public Task<DashboardSessionPage?> ListDashboardSessionsAsync(string? agentId, int offset = 0, int timeoutMs = 15000) =>
             Failure is not null ? Task.FromException<DashboardSessionPage?>(Failure) :
@@ -2174,5 +2292,13 @@ public sealed partial class DashboardWidgetCellTests(UIThreadFixture ui)
             BoardLoads++;
             return BoardResponse ?? Task.FromResult(board);
         }
+        public Task<BoardProgressCard?> GetProgressCardAsync(ProgressCardTarget target, int timeoutMs = 15000)
+        {
+            ProgressLoads++;
+            ProgressTargets.Add(target);
+            return Task.FromResult(ProgressCard);
+        }
+        public void NotifyProgressChanged(BoardProgressChangedEvent progressChanged) =>
+            ProgressCardChanged?.Invoke(this, progressChanged);
     }
 }

@@ -11,7 +11,10 @@ internal sealed record ChatHistoryLoadResult(
     ChatHistoryCommitToken Token,
     bool PublishSnapshot,
     ChatProviderNotification? Notification = null,
-    ChatInFlightRunInfo? InFlightRun = null);
+    ChatInFlightRunInfo? InFlightRun = null,
+    ChatHistoryRunLease? RunLease = null,
+    string? SessionId = null,
+    ChatHistoryTerminalRun? TerminalRun = null);
 
 /// <summary>
 /// Owns history request lifetime, in-flight coalescing, cancellation, retries,
@@ -371,6 +374,7 @@ internal sealed class ChatHistoryLoader : IDisposable
         var requiresReload = false;
         try
         {
+            var runLease = olderPage is null ? _state.CaptureHistoryRun(threadId) : null;
             request = olderPage is null ? _bridge.RequestChatHistoryAsync(threadId)
                 : _bridge.RequestOlderChatHistoryAsync(threadId, olderPage);
             var history = await request
@@ -407,7 +411,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                 commitToken,
                 plan,
                 requestStartedAt,
-                authoritative);
+                authoritative,
+                runLease);
             if (!committed)
             {
                 outcome = ChatTelemetryOutcome.Canceled;
@@ -420,7 +425,9 @@ internal sealed class ChatHistoryLoader : IDisposable
                 new ChatHistoryLoadResult(
                     commitToken,
                     PublishSnapshot: true,
-                    InFlightRun: olderPage is null ? history.InFlightRun : null));
+                    InFlightRun: olderPage is null ? history.InFlightRun : null,
+                    RunLease: runLease, SessionId: history.SessionId,
+                    TerminalRun: olderPage is null ? history.TerminalRun : null));
         }
         catch (OperationCanceledException)
         {
@@ -558,6 +565,7 @@ internal sealed class ChatHistoryLoader : IDisposable
             new HashSet<string>(StringComparer.Ordinal);
         var syntheticToolCallSequence = 0;
         ChatMessageInfo? suppressedAbortedAssistant = null;
+        ChatMessageInfo? routedNotice = null;
 
         ChatTimelineState Apply(
             ChatTimelineState current,
@@ -672,6 +680,12 @@ internal sealed class ChatHistoryLoader : IDisposable
                     continue;
                 suppressedAbortedAssistant = null;
             }
+            if (routedNotice is not null)
+            {
+                if (ReferenceEquals(routedNotice, message))
+                    continue;
+                routedNotice = null;
+            }
 
             var role = message.Role?.ToLowerInvariant() ?? string.Empty;
             var rawText = replayPart.Text;
@@ -723,6 +737,25 @@ internal sealed class ChatHistoryLoader : IDisposable
                     userProjection?.HasMediaEnvelope == true
                         ? userProjection.ReconciliationText
                         : rawText));
+            // Typed Gateway notices replace the whole message with one status row.
+            var notice = replayPart.IsFirstPart
+                ? ChatNoticePresentation.Classify(message.Presentation, message.Text)
+                : ChatNoticeKind.None;
+            if (notice != ChatNoticeKind.None)
+            {
+                routedNotice = message;
+                if (notice == ChatNoticeKind.Hidden)
+                    continue;
+                timeline = Apply(
+                    timeline,
+                    new ChatStatusEvent(
+                        ChatContentFormatting.TruncateForChatEntry(
+                            ChatNoticePresentation.EntryText(notice, message.Presentation, message.Text)),
+                        ChatTone.Dim,
+                        StartsTurn: ChatNoticePresentation.StartsTurn(message.Presentation)),
+                    entryMetadata with { Presentation = message.Presentation, AssistantContent = null });
+                continue;
+            }
             if (role == "assistant" && replayPart.IsReasoning)
             {
                 timeline = Apply(timeline, new ChatReasoningEvent(text, replayPart.Presentation), entryMetadata);
@@ -1046,7 +1079,8 @@ internal sealed class ChatHistoryLoader : IDisposable
                             resolvedCallId,
                             RunId: resultRunId,
                             HandoffReceipt: hasVerifiedCallId ? toolBlock.HandoffReceipt : null,
-                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId)),
+                            ResultReference: NativeToolProjector.ProjectResultReference(toolBlock, history.SessionId),
+                            DiffFacts: toolBlock.ResultDiffFacts),
                     entryMetadata);
             }
         }

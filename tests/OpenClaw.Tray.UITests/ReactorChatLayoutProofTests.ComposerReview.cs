@@ -119,8 +119,8 @@ public sealed partial class ReactorChatLayoutProofTests
                         : percent >= 85 ? "ChatContextRingWarningStyle" : "ChatContextRingStyle";
                     Assert.Same(Application.Current.Resources[expectedStyle], fill.Style);
                     latestGeometry = fill.Data;
-                    Assert.True(Bounds(ring, surface).Right <= Bounds(
-                        FindControl<Button>(surface, "ChatComposerModelPicker"), surface).Left);
+                    Assert.True(Bounds(FindControl<Button>(surface, "ChatComposerModelPicker"), surface).Right
+                        <= Bounds(ring, surface).Left + 1);
                     Assert.DoesNotContain(FindDescendants<FrameworkElement>(surface),
                         item => AutomationProperties.GetAutomationId(item) == "ChatThroughputStrip");
                     AssertComposerBounds(surface);
@@ -194,6 +194,73 @@ public sealed partial class ReactorChatLayoutProofTests
                     }
                 });
             }
+        });
+    }
+
+    [Fact]
+    public async Task ComposerDraft_NativeEditReachesViewModelBeforeAnyComposerRender()
+    {
+        // TextBox raises TextChanged after the edit (after Normal-priority dispatcher work),
+        // while Reactor rewrites a TextBox whose text differs from the rendered draft. A
+        // composer render in that gap used to erase the edit. The synchronous assertions
+        // after the edit are the regression check: the draft must reach the view model when
+        // the edit happens, even while a background update is waiting to apply.
+        const string draft = "Keep this native draft.";
+        await WithChatAsync(800, async (surface, _, session, _) =>
+        {
+            TextBox? input = null;
+            var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await ui.RunOnUIAsync(() =>
+            {
+                input = FindControl<TextBox>(surface, "ChatComposerInput");
+                var muted = session.ViewModel.IsSpeakerMuted;
+                // Spin rather than block in a pumping wait so the queued update cannot apply first.
+                var background = Task.Run(() => session.ViewModel.SetSpeakerMuted(!muted));
+                Assert.True(SpinWait.SpinUntil(() => background.IsCompleted, TimeSpan.FromSeconds(10)));
+                Assert.Equal(muted, session.ViewModel.IsSpeakerMuted);
+                input.TextChanged += (_, _) => changed.TrySetResult();
+
+                input.Text = draft;
+
+                Assert.Equal(draft, session.ViewModel.Draft);
+                Assert.Equal(!muted, session.ViewModel.IsSpeakerMuted);
+                // Request a composer render before the deferred TextChanged arrives.
+                session.ViewModel.SetSpeakerMuted(muted);
+            });
+            await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await ui.RunOnUIAsync(() =>
+            {
+                Assert.Same(input, FindControl<TextBox>(surface, "ChatComposerInput"));
+                Assert.Equal(draft, input!.Text);
+                Assert.Equal(draft, session.ViewModel.Draft);
+            });
+        });
+    }
+
+    [Fact]
+    public async Task ComposerDraft_LateTextChangedDoesNotRestoreReplacedText()
+    {
+        // A programmatic draft change (slash commit, clear after send) can land before the
+        // deferred TextChanged of an earlier edit. When that event runs before the composer
+        // renders the new draft (the usual order), it reads the old TextBox text and must
+        // not write it back. If the render happens to run first, this test cannot detect it.
+        const string replaced = "Replaced by the composer.";
+        await WithChatAsync(800, async (surface, _, session, _) =>
+        {
+            TextBox? input = null;
+            var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            await ui.RunOnUIAsync(() =>
+            {
+                input = FindControl<TextBox>(surface, "ChatComposerInput");
+                input.TextChanged += (_, _) => changed.TrySetResult();
+                input.Text = "Typed before the replacement.";
+                session.ViewModel.SetDraft(replaced);
+            });
+            await changed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => input!.Text == replaced && session.ViewModel.Draft == replaced,
+                "composer renders the replacement draft",
+                () => $"text='{input!.Text}', draft='{session.ViewModel.Draft}'"));
         });
     }
 
@@ -272,13 +339,19 @@ public sealed partial class ReactorChatLayoutProofTests
             await ui.RunOnUIAsync(async () =>
             {
                 var sprite = Assert.IsType<SpriteVisual>(ElementCompositionPreview.GetElementChildVisual(host!));
-                Assert.Equal(32, sprite.Size.Y);
+                var band = (float)ChatVisuals.TranscriptFadeHeight;
+                Assert.Equal(band, sprite.Size.Y);
                 var mask = Assert.IsType<CompositionMaskBrush>(sprite.Brush);
                 var source = Assert.IsType<CompositionVisualSurface>(Assert.IsType<CompositionSurfaceBrush>(mask.Source).Surface);
-                Assert.Equal(32, source.SourceSize.Y);
-                Assert.InRange(source.SourceOffset.Y, 367.999f, 368.001f);
+                Assert.Equal(band, source.SourceSize.Y);
+                Assert.InRange(source.SourceOffset.Y, 400 - band - .001f, 400 - band + .001f);
+                // The mask eases in, so its top edge does not start with a visible step.
+                var stops = Assert.IsType<CompositionLinearGradientBrush>(mask.Mask).ColorStops;
+                Assert.Equal(255, stops.First().Color.A);
+                Assert.Equal(0, stops.Last().Color.A);
+                Assert.InRange(stops.ElementAt(1).Color.A, 250, 255);
                 Assert.Equal(1, ElementCompositionPreview.GetElementVisual(content!).Opacity);
-                Assert.Equal(32, Assert.IsType<InsetClip>(ElementCompositionPreview.GetElementVisual(clipper!).Clip).BottomInset);
+                Assert.Equal(band, Assert.IsType<InsetClip>(ElementCompositionPreview.GetElementVisual(clipper!).Clip).BottomInset);
                 var bitmap = new RenderTargetBitmap();
                 await bitmap.RenderAsync(host);
                 var pixels = (await bitmap.GetPixelsAsync()).ToArray();
@@ -310,6 +383,69 @@ public sealed partial class ReactorChatLayoutProofTests
                 ui.Container.Children.Clear();
             });
             ChatThemeChanges.IsHighContrast = previousProbe;
+        }
+    }
+
+    [Fact]
+    public async Task TranscriptFade_BringIntoViewLandsTargetsAboveTheBand()
+    {
+        await ui.ResetContainerAsync();
+        Border? host = null;
+        ScrollViewer? scroll = null;
+        Border? target = null;
+        var oldProbe = ChatThemeChanges.IsHighContrast;
+        try
+        {
+            ChatThemeChanges.IsHighContrast = static () => false;
+            await ui.RunOnUIAsync(() =>
+            {
+                var panels = new StackPanel();
+                panels.Children.Add(new Border { Height = 600 });
+                panels.Children.Add(target = new Border { Height = 20, Background = new SolidColorBrush(Colors.Red) });
+                panels.Children.Add(new Border { Height = 600 });
+                scroll = new ScrollViewer
+                {
+                    Content = panels, VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                };
+                host = new Border
+                {
+                    Child = new Border { Child = scroll }, Width = 400, Height = 400,
+                    HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+                };
+                ui.Container.Children.Add(host);
+                ChatTranscriptFade.Attach(host);
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => scroll!.ScrollableHeight > 0, "fade probe scroller laid out"));
+            await ui.RunOnUIAsync(() => target!.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }));
+            // Minimal downward bring would align the target's bottom (620) with the viewport
+            // bottom (offset 220), inside the fade; it must clear the band instead.
+            var clearedOffset = 220 + ChatVisuals.TranscriptFadeHeight;
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(scroll!.VerticalOffset - clearedOffset) <= 1, "bring clears the fade band",
+                () => $"offset={scroll!.VerticalOffset}"));
+
+            await ui.RunOnUIAsync(() =>
+            {
+                ChatTranscriptFade.Detach(host!);
+                Assert.True(scroll!.ChangeView(null, 0, null, disableAnimation: true));
+            });
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => scroll!.VerticalOffset <= 1, "probe returns to the top", () => $"offset={scroll!.VerticalOffset}"));
+            await ui.RunOnUIAsync(() => target!.StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false }));
+            await ui.RunOnUIAsync(() => WaitForRenderedConditionAsync(
+                () => Math.Abs(scroll!.VerticalOffset - 220) <= 1, "detached bring is minimal",
+                () => $"offset={scroll!.VerticalOffset}"));
+        }
+        finally
+        {
+            await ui.RunOnUIAsync(() =>
+            {
+                if (host is not null) ChatTranscriptFade.Detach(host);
+                ui.Container.Children.Clear();
+            });
+            ChatThemeChanges.IsHighContrast = oldProbe;
         }
     }
 
@@ -364,7 +500,8 @@ public sealed partial class ReactorChatLayoutProofTests
                     using var first = new System.Drawing.Bitmap(System.IO.Path.Combine(captureDirectory, "fade-scroll-red.png"));
                     using var second = new System.Drawing.Bitmap(System.IO.Path.Combine(captureDirectory, "fade-scroll-blue.png"));
                     var root = Assert.IsAssignableFrom<FrameworkElement>(ui.TestWindow.Content);
-                    var point = host!.TransformToVisual(root).TransformPoint(new(host.ActualWidth / 2, host.ActualHeight - 16));
+                    var point = host!.TransformToVisual(root).TransformPoint(new(host.ActualWidth / 2,
+                        host.ActualHeight - ChatVisuals.TranscriptFadeHeight / 2));
                     var scale = root.XamlRoot.RasterizationScale;
                     var client = ui.TestWindow.AppWindow.ClientSize;
                     var border = (first.Width - client.Width) / 2d;

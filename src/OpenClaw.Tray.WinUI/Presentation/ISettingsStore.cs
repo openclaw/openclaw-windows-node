@@ -70,8 +70,12 @@ public interface ISettingsEditor
     bool GlobalHotkeyEnabled { set; }
     bool UseLegacyWebChat { set; }
     bool ShowNotifications { set; }
+    bool ShowDesktopCompanion { set; }
+    bool DesktopCompanionOnlyWhenMinimized { set; }
+    int DesktopCompanionScalePercent { set; }
     string NotificationSound { set; }
     string AppTheme { set; }
+    OpenClaw.Shared.Themes.AppearanceSettings Appearance { set; }
 
     /// <summary>Writes the raw diagnostics override (null clears it back to the computed default).</summary>
     bool? ShowDiagnosticsOverride { set; }
@@ -127,8 +131,12 @@ public sealed record SettingsSnapshot
         GlobalHotkeyEnabled = data.GlobalHotkeyEnabled,
         UseLegacyWebChat = data.UseLegacyWebChat,
         ShowNotifications = data.ShowNotifications,
+        ShowDesktopCompanion = data.ShowDesktopCompanion,
+        DesktopCompanionOnlyWhenMinimized = data.DesktopCompanionOnlyWhenMinimized,
+        DesktopCompanionScalePercent = OpenClaw.Shared.DesktopCompanionScale.Normalize(data.DesktopCompanionScalePercent),
         NotificationSound = data.NotificationSound ?? "Default",
         AppTheme = SettingsManager.NormalizeAppTheme(data.AppTheme),
+        Appearance = data.Appearance ?? OpenClaw.Shared.Themes.AppearanceSettings.Default,
         ShowDiagnosticsEffective = data.ShowDiagnostics ?? Helpers.DiagnosticsGate.BuildDefault,
         NotifyHealth = data.NotifyHealth,
         NotifyUrgent = data.NotifyUrgent,
@@ -172,8 +180,12 @@ public sealed record SettingsSnapshot
     public bool GlobalHotkeyEnabled { get; init; }
     public bool UseLegacyWebChat { get; init; }
     public bool ShowNotifications { get; init; }
+    public bool ShowDesktopCompanion { get; init; }
+    public bool DesktopCompanionOnlyWhenMinimized { get; init; } = true;
+    public int DesktopCompanionScalePercent { get; init; } = OpenClaw.Shared.DesktopCompanionScale.DefaultPercent;
     public string NotificationSound { get; init; } = "Default";
     public string AppTheme { get; init; } = "System";
+    public OpenClaw.Shared.Themes.AppearanceSettings Appearance { get; init; } = OpenClaw.Shared.Themes.AppearanceSettings.Default;
 
     /// <summary>The effective diagnostics visibility (override applied over the computed default).</summary>
     public bool ShowDiagnosticsEffective { get; init; }

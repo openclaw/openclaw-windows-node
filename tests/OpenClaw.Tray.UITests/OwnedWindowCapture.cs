@@ -109,8 +109,11 @@ internal static class OwnedWindowCapture
             new PropertyCondition(AutomationElement.AutomationIdProperty, automationId));
         if (element is null)
             return null;
-        Assert.True(NativeUiOwnership.IsOwnedDescendant(window, element, processId),
+        var evidence = NativeUiOwnership.Classify(window, element, processId);
+        Assert.True(evidence != NativeUiOwnership.Evidence.Foreign,
             "Viewport must belong to the capture window, not another window in the process.");
+        if (evidence != NativeUiOwnership.Evidence.Owned)
+            return null;
         var windowBounds = window.Current.BoundingRectangle;
         var bounds = element.Current.BoundingRectangle;
         static bool Usable(global::System.Windows.Rect area) =>
@@ -163,8 +166,13 @@ internal static class OwnedWindowCapture
                 qualifiedGeometry is null ? null : ReadCurrentProcessGeometry(handle));
             var assertions = assertedElements.Select(element =>
             {
-                Assert.True(NativeUiOwnership.IsOwnedDescendant(window, element, appProcessId),
+                var evidence = NativeUiOwnership.Classify(window, element, appProcessId);
+                Assert.True(evidence != NativeUiOwnership.Evidence.Foreign,
                     "Asserted control must belong to the captured native window and process.");
+                // A re-rendered peer proves nothing yet. Polling callers observe again; others fail as unavailable.
+                if (evidence != NativeUiOwnership.Evidence.Owned)
+                    throw new ElementNotAvailableException(
+                        "Asserted control ownership is not observable yet; the control was detached or re-rendered.");
                 Assert.False(element.Current.IsOffscreen);
                 var area = element.Current.BoundingRectangle;
                 Assert.True(area.Width > 0 && area.Height > 0);

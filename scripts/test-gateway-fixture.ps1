@@ -14,6 +14,17 @@ Both the IntegrationTests and UITests projects must have matching canonical outp
 .PARAMETER TestTimeoutSeconds
 Finite deadline for each test-project invocation, from 1 to 1800 seconds.
 Defaults to 900 seconds. A timeout still terminates only the owned process tree.
+.PARAMETER StepTimeoutMinutes
+The calling workflow step's timeout-minutes. When set, reports the share of that budget used
+and warns at 80% or more. Defaults to OPENCLAW_CI_STEP_TIMEOUT_MINUTES, or 0, which skips the report.
+.PARAMETER UiShard
+Which fixture UI scenarios to run. Defaults to OPENCLAW_GATEWAY_FIXTURE_UI_SHARD, or All, which
+runs every scenario as before. CI runs A and B in parallel jobs through that variable: B selects
+the GatewayFixtureUiTests method-name prefixes in $FixtureUiShardBPrefixes; A negates exactly
+that list and also runs the profile/app checks and the optional keyboard lane. Released-profile
+compatibility (StableAppPath) requires All.
+.EXAMPLE
+.\scripts\test-gateway-fixture.ps1 -AppPath .\src\OpenClaw.Tray.WinUI\bin\Debug\net10.0-windows10.0.22621.0\win-x64\OpenClaw.Tray.WinUI.exe -UiShard B -NoBuild
 #>
 [CmdletBinding()]
 param(
@@ -28,9 +39,46 @@ param(
     [switch]$NativeInputProof,
     [switch]$KeyboardProof,
     [ValidateRange(1, 1800)]
-    [int]$TestTimeoutSeconds = 900
+    [int]$TestTimeoutSeconds = 900,
+    [ValidateRange(0, 360)]
+    [int]$StepTimeoutMinutes = 0,
+    [ValidateSet('All', 'A', 'B')]
+    [string]$UiShard = 'All'
 )
+$stepBudget = [Diagnostics.Stopwatch]::StartNew()
+if (-not $PSBoundParameters.ContainsKey('StepTimeoutMinutes')) {
+    # CI passes the budget in the step environment so an older candidate's runner, run by alpha
+    # promotion, never receives a parameter it does not declare.
+    . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+    $StepTimeoutMinutes = Get-CiStepTimeoutMinutes
+}
+if (-not $PSBoundParameters.ContainsKey('UiShard') -and -not [string]::IsNullOrWhiteSpace($env:OPENCLAW_GATEWAY_FIXTURE_UI_SHARD)) {
+    # CI selects the shard in the step environment for the same reason. An older runner ignores it
+    # and runs every scenario, which each fixture step's timeout still covers.
+    $requestedShard = $env:OPENCLAW_GATEWAY_FIXTURE_UI_SHARD.Trim()
+    if ($requestedShard -notin @('All', 'A', 'B')) {
+        throw "OPENCLAW_GATEWAY_FIXTURE_UI_SHARD must be All, A or B, not '$requestedShard'."
+    }
+    $UiShard = $requestedShard
+}
 $ErrorActionPreference = 'Stop'
+if ($StableAppPath -and $UiShard -ne 'All') { throw 'Released-profile compatibility does not run fixture UI shards; use -UiShard All.' }
+
+# One list drives both CI shards: B selects these GatewayFixtureUiTests method-name prefixes and A
+# negates exactly the same list, so the two jobs together run every fixture UI scenario once.
+# scripts\test-ci-workflow-contract.ps1 enforces the partition. To rebalance, move whole prefixes.
+$FixtureUiBaseFilter = 'Category=GatewayFixture&KeyboardProof!=Required'
+$FixtureUiShardBPrefixes = @('Automations', 'Inbox', 'Dashboards', 'Usage', 'MainSearch')
+
+function Get-FixtureUiFilter {
+    param([Parameter(Mandatory)][ValidateSet('All', 'A', 'B')][string]$Shard)
+    $qualified = @($FixtureUiShardBPrefixes | ForEach-Object { "OpenClaw.Tray.UITests.GatewayFixtureUiTests.$_" })
+    switch ($Shard) {
+        'All' { return $FixtureUiBaseFilter }
+        'A' { return $FixtureUiBaseFilter + (($qualified | ForEach-Object { "&FullyQualifiedName!~$_" }) -join '') }
+        'B' { return $FixtureUiBaseFilter + '&(' + (($qualified | ForEach-Object { "FullyQualifiedName~$_" }) -join '|') + ')' }
+    }
+}
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $resolvedApp = (Resolve-Path -LiteralPath $AppPath).Path
 $resolvedStableApp = if ($StableAppPath) { (Resolve-Path -LiteralPath $StableAppPath).Path } else { $null }
@@ -90,13 +138,23 @@ function Invoke-FixtureTests {
     }
 }
 
-if ($resolvedStableApp) {
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'
-} else {
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
-    Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof!=Required' 'fixture-ui' -EnableKeyboardProof:$NativeInputProof
-    if ($KeyboardProof) {
-        Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof
+try {
+    if ($resolvedStableApp) {
+        Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureUpgradeTests' 'fixture-released-profile'
+    } else {
+        if ($UiShard -ne 'B') {
+            Invoke-FixtureTests 'tests\OpenClaw.Tray.IntegrationTests\OpenClaw.Tray.IntegrationTests.csproj' 'FullyQualifiedName~GatewayFixtureProfileTests|FullyQualifiedName~GatewayFixtureRunTests|FullyQualifiedName~GatewayFixtureAppTests' 'fixture-profile-app'
+        }
+        $uiResultName = if ($UiShard -eq 'B') { 'fixture-ui-shard' } else { 'fixture-ui' }
+        Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' (Get-FixtureUiFilter $UiShard) $uiResultName -EnableKeyboardProof:$NativeInputProof
+        if ($KeyboardProof -and $UiShard -ne 'B') {
+            Invoke-FixtureTests 'tests\OpenClaw.Tray.UITests\OpenClaw.Tray.UITests.csproj' 'Category=GatewayFixture&KeyboardProof=Required' 'fixture-keyboard' -EnableKeyboardProof
+        }
+    }
+} finally {
+    if ($StepTimeoutMinutes -gt 0) {
+        . (Join-Path $PSScriptRoot 'CiStepBudget.ps1')
+        Write-CiStepBudget -Elapsed $stepBudget.Elapsed -StepTimeoutMinutes $StepTimeoutMinutes -Label 'Gateway fixture checks'
     }
 }
 Write-Host "Fixture checks passed. Results: $resultsDirectory"

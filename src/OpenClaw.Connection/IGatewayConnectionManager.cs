@@ -27,7 +27,12 @@ public interface IGatewayConnectionManager : IDisposable, IAsyncDisposable
     }
     Task ConnectNodeOnlyAsync(string? gatewayId = null);
     Task DisconnectAsync();
-    Task DisconnectByUserAsync();
+    /// <summary>
+    /// Records user-disconnect intent and tears down the connection. A supplied Gateway id
+    /// pins both intent and teardown to that Gateway, even after its saved record is removed.
+    /// A different live Gateway is left connected. Omit the id for the current active Gateway.
+    /// </summary>
+    Task DisconnectByUserAsync(string? gatewayId = null);
     Task ReconnectAsync();
     Task<bool> ReconnectIfCurrentAsync(string gatewayId, CancellationToken cancellationToken = default);
     Task<bool> RecoverSshTunnelAsync(SshTunnelExit tunnelExit);

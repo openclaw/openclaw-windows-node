@@ -5,18 +5,18 @@ public sealed class OnboardingNativeProofTests
     [Theory]
     [InlineData("Set up your AI", "", "", true)]
     [InlineData("Set up a local model", "", "", true)]
-    [InlineData("Set up OpenClaw", "Set up OpenCIaw", "Set up OpenCIaw", true)]
-    [InlineData("Set up OpenClaw", "OpenClaw Setup Set up OpenCIaw Next", "Set up OpenCIaw Next", true)]
-    [InlineData("Set up OpenClaw", "Set up OpenCIaw", "", false)]
-    [InlineData("Set up OpenClaw", "", "Set up OpenCIaw", false)]
-    [InlineData("Set up OpenClaw", "Set up OpenCIaw", "Set up OpenClaw", false)]
-    [InlineData("Set up OpenClaw", "Set up OpenClaw", "Set up OpenCIaw", false)]
-    [InlineData("Set up OpenClaw", "Set up OpenCIawful", "Set up OpenCIawful", false)]
-    [InlineData("Set up OpenClaw", "Reset up OpenCIaw", "Reset up OpenCIaw", false)]
-    [InlineData("Set up OpenClaw", "Set up Openclaw", "Set up Openclaw", false)]
-    [InlineData("Set up OpenClaw", "Set up OpenClaw", "Set up OpenClaw", false)]
-    [InlineData("Set up OpenCIaw", "Set up OpenCIaw", "Set up OpenCIaw", false)]
-    [InlineData("Back", "Set up OpenCIaw", "Set up OpenCIaw", false)]
+    [InlineData("Where should OpenClaw live?", "Where should OpenCIaw live?", "Where should OpenCIaw live?", true)]
+    [InlineData("Where should OpenClaw live?", "OpenClaw setup Where should OpenCIaw live? Next", "Where should OpenCIaw live? Next", true)]
+    [InlineData("Where should OpenClaw live?", "Where should OpenCIaw live?", "", false)]
+    [InlineData("Where should OpenClaw live?", "", "Where should OpenCIaw live?", false)]
+    [InlineData("Where should OpenClaw live?", "Where should OpenCIaw live?", "Where should OpenClaw live?", false)]
+    [InlineData("Where should OpenClaw live?", "Where should OpenClaw live?", "Where should OpenCIaw live?", false)]
+    [InlineData("Where should OpenClaw live?", "Where should OpenCIawful live?", "Where should OpenCIawful live?", false)]
+    [InlineData("Where should OpenClaw live?", "Nowhere should OpenCIaw live?", "Nowhere should OpenCIaw live?", false)]
+    [InlineData("Where should OpenClaw live?", "Where should Openclaw live?", "Where should Openclaw live?", false)]
+    [InlineData("Where should OpenClaw live?", "Where should OpenClaw live?", "Where should OpenClaw live?", false)]
+    [InlineData("Where should OpenCIaw live?", "Where should OpenCIaw live?", "Where should OpenCIaw live?", false)]
+    [InlineData("Back", "Where should OpenCIaw live?", "Where should OpenCIaw live?", false)]
     public void ManualLabelException_RequiresExactExpectedTitleAndAmbiguityInBothPasses(
         string expected, string original, string scaled, bool allowed)
     {
@@ -29,12 +29,12 @@ public sealed class OnboardingNativeProofTests
     }
 
     [Theory]
-    [InlineData("Set up OpenClaw")]
+    [InlineData("Where should OpenClaw live?")]
     [InlineData("Set up your AI")]
     public void ManualLabelException_RejectsAnyAdditionalUnapprovedMissingLabel(string allowed)
     {
         Assert.ThrowsAny<Xunit.Sdk.XunitException>(() =>
             OnboardingNativeProof.AssertManualLabelExceptions(
-                [allowed, "Next"], "Set up OpenCIaw", "Set up OpenCIaw"));
+                [allowed, "Next"], "Where should OpenCIaw live?", "Where should OpenCIaw live?"));
     }
 }

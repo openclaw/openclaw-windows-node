@@ -12,8 +12,10 @@ $root = Split-Path $PSScriptRoot -Parent
 $fixture = Join-Path ([IO.Path]::GetTempPath()) "openclaw-promotion-version-$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Path $fixture | Out-Null
 $savedEnvironment = @{}
-foreach ($name in @('GITHUB_ACTIONS', 'GITHUB_REF', 'GITHUB_SHA', 'OPENCLAW_RELEASE_TAG', 'OPENCLAW_RELEASE_SOURCE_SHA')) {
+# Start neutral: on a main push runner, GitVersion 7 would version the local main tip instead of the detached candidate.
+foreach ($name in @('GITHUB_ACTIONS', 'GITHUB_REF', 'GITHUB_HEAD_REF', 'GITHUB_SHA', 'OPENCLAW_RELEASE_TAG', 'OPENCLAW_RELEASE_SOURCE_SHA')) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    [Environment]::SetEnvironmentVariable($name, $null)
 }
 
 function Invoke-FixtureGit {
@@ -22,7 +24,7 @@ function Invoke-FixtureGit {
 }
 function Get-FixtureVersion {
     param([string]$Repository = $fixture)
-    $json = & dotnet tool run dotnet-gitversion -- $Repository /output json /nonormalize /nocache
+    $json = & dotnet tool run dotnet-gitversion -- $Repository --output json --telemetry-opt-out --no-normalize --no-cache
     if ($LASTEXITCODE -ne 0) { throw 'GitVersion fixture execution failed. Run dotnet tool restore if the tool is missing.' }
     ($json | ConvertFrom-Json).SemVer
 }
@@ -70,7 +72,7 @@ try {
     if ((Get-FixtureVersion $checkout) -cne '2026.9.5') { throw 'Alpha and stable tags at the same SHA did not resolve to stable.' }
     if ((& git -C $checkout rev-parse HEAD).Trim() -cne $candidate) { throw 'GitVersion replaced the product checkout with the pipeline revision.' }
     foreach ($name in $savedEnvironment.Keys) {
-        [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name])
+        [Environment]::SetEnvironmentVariable($name, $null)
     }
     & git -C $fixture show-ref --verify --quiet refs/tags/v2026.9.5
     if ($LASTEXITCODE -eq 0) { throw 'Preparation leaked a public stable tag.' }

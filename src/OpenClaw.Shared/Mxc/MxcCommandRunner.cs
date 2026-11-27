@@ -100,10 +100,10 @@ public sealed class MxcCommandRunner : ICommandRunner
             io.CloseInput();
             _capture.BindRootExit(io.RootExit, () => (io.RootExit.Result, false));
             var output = io.ExecutionMode == NodeToolExecutionMode.Sandbox
-                ? Task.Run(() => _capture.StandardOutput.Collect(io.StandardOutput))
+                ? StartBlockingReader(() => _capture.StandardOutput.Collect(io.StandardOutput))
                 : _capture.StandardOutput.CollectAsync(io.StandardOutput, stop);
             var error = io.ExecutionMode == NodeToolExecutionMode.Sandbox
-                ? Task.Run(() => _capture.StandardError.Collect(io.StandardError))
+                ? StartBlockingReader(() => _capture.StandardError.Collect(io.StandardError))
                 : _capture.StandardError.CollectAsync(io.StandardError, stop);
             var drains = Task.WhenAll(output, error);
             return new(ReadyAsync(), drains, Interrupt, () => _capture.Snapshot(io.ExecutionMode));
@@ -121,6 +121,12 @@ public sealed class MxcCommandRunner : ICommandRunner
                 _capture.StandardError.Interrupt();
             }
         }
+
+        // SDK native pipes are synchronous and block until the closer runs, possibly for the whole
+        // command. Like FileOperations, give each direction a dedicated worker so capture starts
+        // without waiting for thread-pool injection and a command never pins pool threads.
+        private static Task StartBlockingReader(Action read) =>
+            Task.Factory.StartNew(read, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
         internal override void CaptureDeadline(NodeToolExecutionMode mode) =>
             _deadline = _capture.Snapshot(mode, deadlineExpired: true);

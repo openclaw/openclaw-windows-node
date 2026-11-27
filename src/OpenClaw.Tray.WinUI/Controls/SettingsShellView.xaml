@@ -7,6 +7,13 @@
     HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
 
     <Grid x:Name="RootGrid">
+        <!-- Zero-size theme probe: its brushes re-resolve on theme change and rebind the NavigationView's
+             content surface after ContentOnly mode removes it (see ApplyContentSurface). -->
+        <Border x:Name="ContentSurfaceSource" Width="0" Height="0" IsHitTestVisible="False"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                AutomationProperties.AccessibilityView="Raw"
+                Background="{ThemeResource NavigationViewContentBackground}"
+                BorderBrush="{ThemeResource NavigationViewContentGridBorderBrush}"/>
         <Grid x:Name="NavContentHost" SizeChanged="OnNavContentHostSizeChanged">
             <Grid.Clip>
                 <RectangleGeometry x:Name="NavContentClip"/>
@@ -14,8 +21,14 @@
             <NavigationView x:Uid="HubWindow_MainNavigation" x:Name="NavView"
                             IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
                             IsPaneToggleButtonVisible="False" PaneDisplayMode="Left"
+                            IsTitleBarAutoPaddingEnabled="False"
+                            Loaded="OnNavViewLoaded"
                             SelectionChanged="NavView_SelectionChanged">
                 <NavigationView.Resources>
+                    <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
+                    <CornerRadius x:Key="NavigationViewMinimalContentGridCornerRadius">0</CornerRadius>
+                    <Thickness x:Key="NavigationViewContentGridBorderThickness">1,0,0,0</Thickness>
+                    <Thickness x:Key="NavigationViewMinimalContentGridBorderThickness">1,0,0,0</Thickness>
                     <Thickness x:Key="NavigationViewPaneContentGridMargin">0,56,0,0</Thickness>
                     <Thickness x:Key="NavigationViewBorderThickness">0</Thickness>
                     <x:Double x:Key="NavigationViewItemOnLeftIconBoxHeight">22</x:Double>
@@ -171,12 +184,9 @@
         </Grid>
         </Grid>
 
-        <!-- Floating notification banner: lives in the content row (Row 2) and is
-             declared after NavContentHost so it overlays the top of the content
-             area instead of pushing the title bar / content down. The wrapper grid
-             pins it to the right ~2/5 of the content width so it never reaches into
-             the navigation pane. Multi-line messages grow the banner taller. -->
-        <Grid VerticalAlignment="Top">
+        <!-- Clear the page's chrome band without moving its content. Keep the banner
+             in the trailing two fifths so it does not cover the navigation pane. -->
+        <Grid x:Name="AppNotificationOverlay" VerticalAlignment="Top">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="3*"/>
                 <ColumnDefinition Width="2*"/>

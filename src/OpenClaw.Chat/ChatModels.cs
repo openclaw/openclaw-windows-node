@@ -118,6 +118,7 @@ public record ChatThread
     public bool WaitingForSubagents { get; init; }
     public OpenClaw.Shared.SessionProviderReviewInfo? ProviderReview { get; init; }
     public bool IsBackground { get; init; }
+    public bool IsSubagent { get; init; }
     public bool IsArchived { get; init; }
     public bool IsChannelSession { get; init; }
     public ChatThreadStatus Status { get; init; }
@@ -147,6 +148,8 @@ public record ChatThread
     public string DisplayTitle => Title;
     public string? LastRunId { get; init; }
     public string? RunStatus { get; init; }
+    /// <summary>The latest run was stopped or aborted, even when its recorded status reads as done.</summary>
+    public bool LastRunStopped { get; init; }
     public double? RuntimeMs { get; init; }
     public long? EndedAt { get; init; }
 }
@@ -183,7 +186,9 @@ public record ChatTimelineItem(
     bool ToolInputPreparing = false,
     int ToolFeedbackSequence = 0,
     System.Collections.Immutable.ImmutableList<ChatToolReview>? ToolReviews = null,
-    string? ToolParentCallId = null)
+    string? ToolParentCallId = null,
+    ChatToolResultDiffFacts? ToolResultDiffFacts = null,
+    bool StartsTurn = false)
 {
     public ChatToolHandoffReceipt? ConfirmedHandoff =>
         ToolResult == ChatToolCallStatus.Success && !string.IsNullOrWhiteSpace(ToolCallId) &&
@@ -191,8 +196,12 @@ public record ChatTimelineItem(
             ? HandoffReceipt : null;
 }
 
-/// <summary>Bounded, redacted tool input for disclosure, separate from persisted row summaries.</summary>
-public sealed record ChatToolInputDetails(string Text, string? Command = null, string? Preview = null, bool Unavailable = false);
+/// <summary>
+/// Bounded, redacted tool input for disclosure, separate from persisted row summaries. <paramref name="Lossy"/>
+/// is true when secret redaction or truncation changed the text, so it no longer holds the tool's exact input.
+/// </summary>
+public sealed record ChatToolInputDetails(string Text, string? Command = null, string? Preview = null, bool Unavailable = false,
+    bool Lossy = false);
 
 /// <summary>Supplied live edit counts, not a reconstruction of incomplete arguments.</summary>
 public sealed record ChatToolDiffStat(long Added, long Removed);
@@ -238,7 +247,10 @@ public record ChatTimelineState(
     string? ProgressText = null,
     ChatRunUsage? RunUsage = null,
     ChatReasoningStream? ReasoningStream = null,
-    long? ProgressRetryAtMs = null)
+    long? ProgressRetryAtMs = null,
+    string? ReconcilableAssistantId = null,
+    System.Collections.Immutable.ImmutableDictionary<(string RunId, string ItemId), int>? PreambleSequences = null,
+    long TurnGeneration = 0)
 {
     public static ChatTimelineState Initial() => new(
         System.Collections.Immutable.ImmutableList<ChatTimelineItem>.Empty,
@@ -256,7 +268,8 @@ public sealed record ChatReasoningReceipt(string RunId, string MessageId, bool P
 public sealed record ChatReasoningStreamItem(
     string ItemId, string Text, double StartedAtMs, string? AfterEntryId = null, ChatReasoningReceipt? Receipt = null);
 public sealed record ChatReasoningStream(
-    string RunId, System.Collections.Immutable.ImmutableList<ChatReasoningStreamItem> Items);
+    string RunId, System.Collections.Immutable.ImmutableList<ChatReasoningStreamItem> Items,
+    string? ActiveItemId = null);
 
 public record ChatPendingToolPresentation(
     string ToolName,
@@ -272,7 +285,8 @@ public record ChatPendingToolOutcome(
     long Sequence,
     ChatToolErrorTextQuality ErrorTextQuality = ChatToolErrorTextQuality.Unspecified,
     ChatToolHandoffReceipt? HandoffReceipt = null,
-    ChatToolResultReference? ResultReference = null);
+    ChatToolResultReference? ResultReference = null,
+    ChatToolResultDiffFacts? DiffFacts = null);
 
 public enum ChatQueuedMessageSendState
 {
@@ -313,6 +327,9 @@ public record ChatMessageEvent(string Text, string? ReasoningText = null, bool R
     OpenClaw.Shared.ChatMessagePresentation? Presentation = null, bool IsContentPart = false,
     bool ReplacesStreamText = false, bool ActivatesTurn = true) : ChatEvent;
 public record ChatMessageDeltaEvent(string Text, OpenClaw.Shared.ChatMessagePresentation? Presentation = null) : ChatEvent;
+public record ChatAssistantStreamRetireEvent(string RunId) : ChatEvent;
+/// <summary>Public progress commentary, separate from reasoning and the accumulated answer stream.</summary>
+public record ChatPreambleEvent(string RunId, string? ItemId, string Text, int Sequence, bool Complete) : ChatEvent;
 public record ChatBackgroundFinalEvent(string Text) : ChatEvent;
 public record ChatTurnEndEvent(bool RetainToolCorrelations = true) : ChatEvent;
 public record ChatIntentEvent(string Intent) : ChatEvent;
@@ -343,7 +360,8 @@ public record ChatToolOutputEvent(
     string? ToolCallId = null,
     string? RunId = null,
     ChatToolHandoffReceipt? HandoffReceipt = null,
-    ChatToolResultReference? ResultReference = null) : ChatEvent;
+    ChatToolResultReference? ResultReference = null,
+    ChatToolResultDiffFacts? DiffFacts = null) : ChatEvent;
 public record ChatToolProgressEvent(
     string Text,
     string? ToolCallId,
@@ -358,7 +376,8 @@ public record ChatToolErrorEvent(
     ChatToolResultReference? ResultReference = null) : ChatEvent;
 public record ChatToolReplayResetEvent : ChatEvent;
 public record ChatContextChangedEvent(string? Cwd, string? GitBranch) : ChatEvent;
-public record ChatStatusEvent(string Text, ChatTone Tone) : ChatEvent;
+/// <summary>StartsTurn preserves a system user's turn boundary without admitting a live run.</summary>
+public record ChatStatusEvent(string Text, ChatTone Tone, bool StartsTurn = false) : ChatEvent;
 public record ChatErrorEvent(string Text) : ChatEvent;
 public record ChatRestoredEvent(string Text) : ChatEvent;
 public record ChatPermissionRequestEvent(string RequestId, string PermissionKind, string ToolName, string Detail, IReadOnlyList<string>? Actions = null) : ChatEvent;
@@ -442,10 +461,9 @@ public interface IChatDataProvider : IAsyncDisposable
     event EventHandler<ChatProviderNotificationEventArgs>? NotificationRequested;
 
     Task<ChatDataSnapshot> LoadAsync(CancellationToken cancellationToken = default);
-    // Note: there is intentionally no CreateThreadAsync. The gateway protocol
-    // has no "create new session" RPC; the canonical send target is exposed via
-    // ChatDataSnapshot.ComposeTarget and the first SendMessageAsync against it
-    // implicitly materializes the session on the server.
+    // The canonical send target is exposed via ChatDataSnapshot.ComposeTarget.
+    // Workspace drafts use a fresh local key and the placement gateway prepares
+    // that key on first send; selecting a draft never creates a server session.
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken = default);
     Task SendMessageAsync(string threadId, string message, CancellationToken cancellationToken, IReadOnlyList<OpenClaw.Shared.ChatAttachment>? attachments) =>
         SendMessageAsync(threadId, message, cancellationToken);

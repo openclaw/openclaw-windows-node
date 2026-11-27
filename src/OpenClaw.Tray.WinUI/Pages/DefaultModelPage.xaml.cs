@@ -128,7 +128,8 @@ public sealed partial class DefaultModelPage : Page
         else if (vm.StatusApplied)
         {
             DefaultModelStatusText.Text = LocalizationHelper.GetString("DefaultModelPage_Applied");
-            DefaultModelStatusText.ClearValue(TextBlock.ForegroundProperty);
+            // The status is the card's description line, so success reads as secondary text like its siblings.
+            DefaultModelStatusText.Foreground = (Brush)Application.Current.Resources["TextFillColorSecondaryBrush"];
             DefaultModelStatusText.Visibility = Visibility.Visible;
         }
         else
@@ -198,10 +199,10 @@ public sealed partial class DefaultModelPage : Page
         ProviderLoginSelector.SelectedItem = FindItem(ProviderLoginSelector, p.SelectedLoginOptionId);
         _suppressProviderSelection = false;
 
-        ProviderApiKeyPanel.Visibility = caps.CanSetApiKey && p.SelectedProvider?.ApiKeySupported == true
+        ProviderApiKeyRow.Visibility = caps.CanSetApiKey && p.SelectedProvider?.ApiKeySupported == true
             ? Visibility.Visible : Visibility.Collapsed;
         SaveProviderApiKeyButton.IsEnabled = p.CanSaveApiKey;
-        ProviderSignInPanel.Visibility = p.LoginOptions.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ProviderSignInRow.Visibility = p.LoginOptions.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         StartProviderSignInButton.IsEnabled = p.CanStartLogin;
         AddCustomProviderButton.IsEnabled = p.CanAddCustom;
 
