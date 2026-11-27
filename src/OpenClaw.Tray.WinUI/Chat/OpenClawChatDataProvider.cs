@@ -1045,7 +1045,7 @@ public sealed class OpenClawChatDataProvider : IChatDataProvider, IChatAgentIden
                     (terminal.State == "error" ? LocalizationHelper.GetString("Chat_Status_Error") : null),
             };
             if (_state.ReconcileHistoryRun(result.Token, lease, result.SessionId, message,
-                    ProjectionContext(), terminal.HasNoPendingInputs) is { } transition)
+                    ProjectionContext(), terminal.HasNoQueuedInputs) is { } transition)
                 PublishAssistantTransition(message, transition);
         }
         void Deliver()

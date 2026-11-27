@@ -1275,12 +1275,27 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             "killed" => "aborted",
             _ => null,
         };
-        var hasNoPendingInputs = payload.TryGetProperty("pendingInputs", out var pending) &&
-            pending.ValueKind == JsonValueKind.Object &&
-            pending.TryGetProperty("total", out var total) && total.ValueKind == JsonValueKind.Number &&
-            total.TryGetInt32(out var count) && count == 0 &&
-            pending.TryGetProperty("items", out var items) && items.ValueKind == JsonValueKind.Array && items.GetArrayLength() == 0;
-        return state is null ? null : new(runId, state, ReadFirstString(session, "lastRunError"), hasNoPendingInputs);
+        return state is null ? null : new(runId, state, ReadFirstString(session, "lastRunError"),
+            HasNoQueuedHistoryInputs(payload));
+    }
+
+    private static bool HasNoQueuedHistoryInputs(JsonElement payload)
+    {
+        if (!payload.TryGetProperty("pendingInputs", out var pending) || pending.ValueKind != JsonValueKind.Object ||
+            !pending.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array ||
+            !pending.TryGetProperty("total", out var total) || total.ValueKind != JsonValueKind.Number ||
+            !total.TryGetInt32(out var count) || count != items.GetArrayLength() ||
+            pending.TryGetProperty("nextBefore", out var next) && next.ValueKind != JsonValueKind.Null)
+            return false;
+
+        // The total includes retained cancelled/interrupted inputs, not just live work.
+        if (pending.TryGetProperty("queuedCount", out var queued) &&
+            (queued.ValueKind != JsonValueKind.Number || !queued.TryGetInt32(out var queuedCount) || queuedCount != 0))
+            return false;
+
+        return items.EnumerateArray().All(item => item.ValueKind == JsonValueKind.Object &&
+            ReadFirstString(item, "state") is "cancelled" or "interrupted" &&
+            (!item.TryGetProperty("queued", out var isQueued) || isQueued.ValueKind == JsonValueKind.False));
     }
 
     private static JsonElement ProjectAssistantDisplayContent(JsonElement message)
@@ -4771,10 +4786,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             eventType.ValueKind == JsonValueKind.String &&
             eventType.GetString() == "session.message";
         var eventState = ReadFirstString(payload, "state");
-        var runningTranscriptSessionId = isTranscriptSnapshot &&
-            ReadFirstString(payload, "status") == "running" &&
-            payload.TryGetProperty("hasActiveRun", out var active) && active.ValueKind == JsonValueKind.True
-                ? ReadFirstString(payload, "sessionId") : null;
+        var transcriptSessionId = isTranscriptSnapshot ? ReadFirstString(payload, "sessionId") : null;
         var isTerminal = eventState is "final" or "error" or "aborted";
         var yielded = payload.TryGetProperty("yielded", out var yieldedProperty) &&
             yieldedProperty.ValueKind == JsonValueKind.True;
@@ -4871,7 +4883,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 outputTruncated: ReadChatTruncation(message).Truncated ?? false,
                 truncationReason: ReadChatTruncation(message).Reason,
                 isTranscriptSnapshot: isTranscriptSnapshot,
-                runningTranscriptSessionId: runningTranscriptSessionId,
+                transcriptSessionId: transcriptSessionId,
                 hasDisplayContentOverride: hasDisplayOverride, yielded: yielded, errorMessage: errorMessage);
 
             if (notify && role == "assistant" && string.Equals(state, "final", StringComparison.OrdinalIgnoreCase))
@@ -4921,7 +4933,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                     runId,
                     ReadChatPresentation(payload),
                     isTranscriptSnapshot: isTranscriptSnapshot,
-                    runningTranscriptSessionId: runningTranscriptSessionId,
+                    transcriptSessionId: transcriptSessionId,
                     yielded: yielded, errorMessage: errorMessage);
 
                 if (notify && role == "assistant" &&
@@ -5018,7 +5030,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
         bool hasDisplayContentOverride = false,
         bool yielded = false,
         string? errorMessage = null,
-        string? runningTranscriptSessionId = null)
+        string? transcriptSessionId = null)
     {
         if (ChatMessageInfo.IsSilentAssistantDirective(role, text))
             return false;
@@ -5041,7 +5053,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 Presentation = presentation ?? new(),
                 StopReason = presentation?.StopReason,
                 IsTranscriptSnapshot = isTranscriptSnapshot,
-                RunningTranscriptSessionId = runningTranscriptSessionId,
+                TranscriptSessionId = transcriptSessionId,
                 HasDisplayContentOverride = hasDisplayContentOverride,
                 Yielded = yielded,
                 ErrorMessage = errorMessage,

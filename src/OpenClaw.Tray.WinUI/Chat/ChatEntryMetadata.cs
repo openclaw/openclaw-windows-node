@@ -97,7 +97,7 @@ public sealed record ChatEntryMetadata(
     public string? LiveRunId { get; init; }
 
     [System.Text.Json.Serialization.JsonIgnore]
-    internal string? RunningTranscriptSessionId { get; init; }
+    internal string? TranscriptSessionId { get; init; }
 
     // Gateway timestamps fence delayed usage replies without comparing host clocks.
     [System.Text.Json.Serialization.JsonIgnore]

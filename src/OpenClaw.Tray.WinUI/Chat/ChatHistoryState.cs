@@ -363,12 +363,14 @@ internal sealed class ChatHistoryState
         void PreserveTranscriptRun(ChatTimelineItem historyEntry, ChatEntryMetadata? liveMetadata)
         {
             if (historyEntry.Kind == ChatTimelineItemKind.Assistant &&
-                liveMetadata is { RunningTranscriptSessionId: { } sessionId, LiveRunId: { } runId } &&
+                liveMetadata is { TranscriptSessionId: { } sessionId, LiveRunId: { } runId, OpenClawSeq: { } sequence } &&
+                plan.SessionId == sessionId &&
                 rebuiltMetadata.TryGetValue(historyEntry.Id, out var historyMetadata) &&
-                historyMetadata.Presentation?.RunId == runId)
+                historyMetadata.OpenClawSeq == sequence &&
+                (historyMetadata.Presentation?.RunId is null || historyMetadata.Presentation.RunId == runId))
                 rebuiltMetadata[historyEntry.Id] = historyMetadata with
                 {
-                    RunningTranscriptSessionId = sessionId,
+                    TranscriptSessionId = sessionId,
                     LiveRunId = runId,
                 };
         }

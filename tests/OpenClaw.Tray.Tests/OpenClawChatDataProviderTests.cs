@@ -1425,91 +1425,188 @@ public class OpenClawChatDataProviderTests(ITestOutputHelper output)
         Assert.Equal(!confirmsTerminal, snapshots[^1].Timelines["main"].TurnActive);
     }
 
-    [Theory]
-    [InlineData("settled")]
-    [InlineData("newer-prompt")]
-    [InlineData("pending-input")]
-    [InlineData("wrong-session")]
-    [InlineData("wrong-run")]
-    public async Task ExternalDmWithoutChatFinal_RecoversOnlyAfterMatchingIdleHistory(string outcome)
+    public enum ExternalDmCompletion
     {
-        using var identity = new OpenClaw.TestSupport.TempDirectory();
-        using var client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: identity.Path);
-        var session = MainSession();
-        session.SessionId = "physical-session";
-        var (bridge, provider, snapshots, _) = CreateProvider([session]);
-        await using var lifetime = provider;
-        await provider.LoadAsync();
-        bridge.IsConnected = true;
-        bridge.RaiseStatus(ConnectionStatus.Connected);
-        bridge.RaiseSessions([session]);
-        client.ChatMessageReceived += (_, message) => bridge.RaiseChat(message);
-        var processMessage = typeof(OpenClawGatewayClient).GetMethod(
-            "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var user = new { role = "user", content = "External prompt", timestamp = 1714600000000L,
-            __openclaw = new { id = "prompt", seq = 1 } };
-        var hasPendingInput = outcome == "pending-input";
-        var nextUser = new { role = "user", content = "New external prompt", timestamp = 1714600002000L,
-            __openclaw = new { id = "prompt-2", seq = hasPendingInput ? 2 : 3 } };
-        var assistant = new { role = "assistant", content = "Delivered reply", timestamp = 1714600005000L,
-            __openclaw = new { id = "reply", seq = hasPendingInput ? 3 : 2, runId = "external-run" } };
-        void Transcript(object message, string status, string? runId) => processMessage.Invoke(client,
-            [JsonSerializer.Serialize(new { type = "event", @event = "session.message", payload = new
-            {
-                sessionKey = "main", sessionId = "physical-session", status, hasActiveRun = true, runId, message,
-            } })]);
+        Ordinary,
+        AssistantAlreadyIdle,
+        HistoryArrivesBeforeAssistant,
+        HistoryReplyHasNoRunId,
+        RetainedCancelledInput,
+    }
 
-        Transcript(user, "queued", null);
-        Transcript(user, "running", null);
-        if (hasPendingInput)
-            Transcript(nextUser, "queued", null);
-        Transcript(assistant, "running", "external-run");
-        ChatTimelineState Timeline() => snapshots[^1].Timelines["main"];
-        var progress = Assert.IsType<ChatRunProgressPresentation>(ChatRunProgressProjection.Project(Timeline()));
-        Assert.Equal("Responding", progress.Label);
-        Assert.True(ChatRunProgressProjection.NeedsClock(progress, DateTimeOffset.UtcNow));
-
-        var running = true;
-        var reads = 0;
-        bridge.HistoryBehavior = _ =>
+    [Theory]
+    [InlineData(ExternalDmCompletion.Ordinary)]
+    [InlineData(ExternalDmCompletion.AssistantAlreadyIdle)]
+    [InlineData(ExternalDmCompletion.HistoryArrivesBeforeAssistant)]
+    [InlineData(ExternalDmCompletion.HistoryReplyHasNoRunId)]
+    [InlineData(ExternalDmCompletion.RetainedCancelledInput)]
+    public async Task ExternalDmSavedReply_SettlesFromIdleHistoryWithoutDuplicatingReply(ExternalDmCompletion scenario)
+    {
+        await using var replay = new ExternalDmReplay();
+        await replay.ConnectAsync();
+        replay.EmitFirstPrompt();
+        var omitHistoryRunId = scenario == ExternalDmCompletion.HistoryReplyHasNoRunId;
+        if (scenario == ExternalDmCompletion.HistoryArrivesBeforeAssistant || omitHistoryRunId)
         {
-            reads++;
-            if (!running && outcome == "newer-prompt")
-                Transcript(nextUser, "queued", null);
-            var observedSessionId = !running && outcome == "wrong-session" ? "other-session" : "physical-session";
-            var observedRunId = !running && outcome == "wrong-run" ? "other-run" : "external-run";
-            return Task.FromResult(ParseHistoryPayload(JsonSerializer.SerializeToElement(new
-            {
-                sessionId = observedSessionId,
-                messages = hasPendingInput ? new object[] { user, nextUser, assistant } : new object[] { user, assistant },
-                pendingInputs = new { total = hasPendingInput ? 1 : 0,
-                    items = hasPendingInput ? new object[] { new { runId = "next-run" } } : [] },
-                sessionInfo = new { sessionId = observedSessionId, lastRunId = observedRunId,
-                    hasActiveRun = running, status = running ? "running" : "done" },
-            })));
-        };
-        var idle = new SessionInfo { Key = "main", SessionId = "physical-session", Status = "done",
-            HasActiveRun = false, LastRunId = "external-run" };
-        bridge.RaiseSessions([idle], hasAuthoritativeUsage: false);
-        Assert.Equal(0, reads);
-        bridge.RaiseSessions([idle]);
-        Assert.Equal(1, reads);
-        Assert.True(Timeline().TurnActive);
+            replay.RespondWithHistory(running: true, omitHistoryReplyRunId: omitHistoryRunId);
+            await replay.Provider.LoadHistoryAsync("main", force: true);
+            Assert.Single(replay.Timeline.Entries, row => row.Kind == ChatTimelineItemKind.Assistant);
+        }
+        replay.EmitReply(alreadyIdle: scenario == ExternalDmCompletion.AssistantAlreadyIdle);
+        Assert.True(replay.Timeline.TurnActive);
 
-        running = false;
-        bridge.RaiseSessions([idle]);
-        Assert.Equal(2, reads);
-        Assert.Equal("physical-session", provider.GetSessionId("main"));
-        Assert.Equal(outcome != "settled", Timeline().TurnActive);
-        if (outcome == "settled")
-            Assert.Null(ChatRunProgressProjection.Project(Timeline()));
-        string[] transcript = outcome switch
+        replay.RespondWithHistory(
+            pendingState: scenario == ExternalDmCompletion.RetainedCancelledInput ? "cancelled" : null,
+            omitHistoryReplyRunId: omitHistoryRunId);
+        var reads = replay.HistoryReads;
+        replay.ReportIdle();
+
+        Assert.Equal(reads + 1, replay.HistoryReads);
+        Assert.Null(ChatRunProgressProjection.Project(replay.Timeline));
+        Assert.Equal(["External prompt", "Delivered reply"], replay.Timeline.Entries.Select(row => row.Text));
+    }
+
+    public enum ExternalDmRecoveryGuard
+    {
+        StillRunning,
+        WrongPhysicalSession,
+        WrongRun,
+        NewerPromptDuringRead,
+        QueuedInput,
+        PartialPendingPage,
+    }
+
+    [Theory]
+    [InlineData(ExternalDmRecoveryGuard.StillRunning)]
+    [InlineData(ExternalDmRecoveryGuard.WrongPhysicalSession)]
+    [InlineData(ExternalDmRecoveryGuard.WrongRun)]
+    [InlineData(ExternalDmRecoveryGuard.NewerPromptDuringRead)]
+    [InlineData(ExternalDmRecoveryGuard.QueuedInput)]
+    [InlineData(ExternalDmRecoveryGuard.PartialPendingPage)]
+    public async Task ExternalDmSavedReply_KeepsUnconfirmedOrNewWorkActive(ExternalDmRecoveryGuard guard)
+    {
+        var queued = guard == ExternalDmRecoveryGuard.QueuedInput;
+        await using var replay = new ExternalDmReplay(queued);
+        await replay.ConnectAsync();
+        replay.EmitFirstPrompt();
+        if (queued)
+            replay.EmitNextPrompt();
+        replay.EmitReply();
+        Assert.Equal("Responding", ChatRunProgressProjection.Project(replay.Timeline)?.Label);
+
+        replay.RespondWithHistory(
+            running: guard == ExternalDmRecoveryGuard.StillRunning,
+            historySessionId: guard == ExternalDmRecoveryGuard.WrongPhysicalSession ? "other-session" : "physical-session",
+            historyRunId: guard == ExternalDmRecoveryGuard.WrongRun ? "other-run" : "external-run",
+            pendingState: queued ? "queued" : guard == ExternalDmRecoveryGuard.PartialPendingPage ? "cancelled" : null,
+            pendingTotal: guard == ExternalDmRecoveryGuard.PartialPendingPage ? 2 : null,
+            beforeResponse: guard == ExternalDmRecoveryGuard.NewerPromptDuringRead ? replay.EmitNextPrompt : null);
+        replay.ReportIdle();
+
+        Assert.Equal(1, replay.HistoryReads);
+        Assert.Equal("physical-session", replay.Provider.GetSessionId("main"));
+        Assert.True(replay.Timeline.TurnActive);
+        if (queued || guard == ExternalDmRecoveryGuard.NewerPromptDuringRead)
+            Assert.Equal("Working", ChatRunProgressProjection.Project(replay.Timeline)?.Label);
+        string[] transcript = guard switch
         {
-            "pending-input" => ["External prompt", "New external prompt", "Delivered reply"],
-            "newer-prompt" => ["External prompt", "Delivered reply", "New external prompt"],
+            ExternalDmRecoveryGuard.QueuedInput => ["External prompt", "New external prompt", "Delivered reply"],
+            ExternalDmRecoveryGuard.NewerPromptDuringRead => ["External prompt", "Delivered reply", "New external prompt"],
             _ => ["External prompt", "Delivered reply"],
         };
-        Assert.Equal(transcript, Timeline().Entries.Select(entry => entry.Text));
+        Assert.Equal(transcript, replay.Timeline.Entries.Select(row => row.Text));
+    }
+
+    private sealed class ExternalDmReplay : IAsyncDisposable
+    {
+        private readonly OpenClaw.TestSupport.TempDirectory _identity = new();
+        private readonly OpenClawGatewayClient _client;
+        private readonly FakeBridge _bridge;
+        private readonly SessionInfo _session = new() { Key = "main", IsMain = true, SessionId = "physical-session" };
+        private readonly List<ChatDataSnapshot> _snapshots;
+        private readonly object _prompt = Message("user", "External prompt", "prompt", 1);
+        private readonly object _nextPrompt;
+        private readonly object _reply;
+        private readonly bool _promptBeforeReply;
+
+        internal ExternalDmReplay(bool promptBeforeReply = false)
+        {
+            _promptBeforeReply = promptBeforeReply;
+            _nextPrompt = Message("user", "New external prompt", "prompt-2", promptBeforeReply ? 2 : 3);
+            _reply = Message("assistant", "Delivered reply", "reply", promptBeforeReply ? 3 : 2, "external-run");
+            (_bridge, Provider, _snapshots, _) = CreateProvider([_session]);
+            _client = new OpenClawGatewayClient("ws://127.0.0.1:1", "test-token", identityPath: _identity.Path);
+            _client.ChatMessageReceived += (_, message) => _bridge.RaiseChat(message);
+        }
+
+        internal OpenClawChatDataProvider Provider { get; }
+        internal ChatTimelineState Timeline => _snapshots[^1].Timelines["main"];
+        internal int HistoryReads { get; private set; }
+
+        internal async Task ConnectAsync()
+        {
+            await Provider.LoadAsync();
+            _bridge.IsConnected = true;
+            _bridge.RaiseStatus(ConnectionStatus.Connected);
+            _bridge.RaiseSessions([_session]);
+        }
+
+        internal void EmitFirstPrompt()
+        {
+            EmitTranscript(_prompt, "queued");
+            EmitTranscript(_prompt, "running");
+        }
+
+        internal void EmitNextPrompt() => EmitTranscript(_nextPrompt, "queued");
+
+        internal void EmitReply(bool alreadyIdle = false) =>
+            EmitTranscript(_reply, alreadyIdle ? "done" : "running", "external-run");
+
+        internal void RespondWithHistory(bool running = false, string historySessionId = "physical-session",
+            string historyRunId = "external-run", string? pendingState = null, int? pendingTotal = null,
+            bool omitHistoryReplyRunId = false, Action? beforeResponse = null)
+        {
+            _bridge.HistoryBehavior = _ =>
+            {
+                HistoryReads++;
+                beforeResponse?.Invoke();
+                object[] pending = pendingState is null ? [] : [new { id = "input-2", runId = "next-run", state = pendingState }];
+                var reply = omitHistoryReplyRunId ? Message("assistant", "Delivered reply", "reply", 2) : _reply;
+                return Task.FromResult(ParseHistoryPayload(JsonSerializer.SerializeToElement(new
+                {
+                    sessionId = historySessionId,
+                    messages = _promptBeforeReply ? new[] { _prompt, _nextPrompt, reply } : new[] { _prompt, reply },
+                    pendingInputs = new { total = pendingTotal ?? pending.Length, queuedCount = pendingState == "queued" ? 1 : 0, items = pending },
+                    sessionInfo = new { sessionId = historySessionId, lastRunId = historyRunId,
+                        hasActiveRun = running, status = running ? "running" : "done" },
+                })));
+            };
+        }
+
+        internal void ReportIdle() => _bridge.RaiseSessions([new SessionInfo
+        {
+            Key = "main", SessionId = "physical-session", Status = "done", HasActiveRun = false, LastRunId = "external-run",
+        }]);
+
+        private void EmitTranscript(object message, string status, string? runId = null)
+        {
+            var process = typeof(OpenClawGatewayClient).GetMethod(
+                "ProcessMessage", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            process.Invoke(_client, [JsonSerializer.Serialize(new { type = "event", @event = "session.message", payload = new
+            {
+                sessionKey = "main", sessionId = "physical-session", status, hasActiveRun = status != "done", runId, message,
+            } })]);
+        }
+
+        private static object Message(string role, string content, string id, int seq, string? runId = null) =>
+            new { role, content, timestamp = 1714600000000L + seq * 5000L, __openclaw = new { id, seq, runId } };
+
+        public async ValueTask DisposeAsync()
+        {
+            await Provider.DisposeAsync();
+            _client.Dispose();
+            _identity.Dispose();
+        }
     }
 
     [Theory]

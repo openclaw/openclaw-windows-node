@@ -338,7 +338,7 @@ internal sealed class ChatConversationState
         if (timeline.Entries.LastOrDefault(entry => entry.Kind is ChatTimelineItemKind.User or ChatTimelineItemKind.Assistant
                 || entry.StartsTurn) is not { Kind: ChatTimelineItemKind.Assistant, IsBackgroundFinal: false } reply ||
             metadata.GetValueOrDefault(reply.Id) is not { LiveRunId: { Length: > 0 } runId, OpenClawSeq: { } replySeq } saved ||
-            saved.RunningTranscriptSessionId != sessionId || _lifecycle.IsTerminalRun(threadId, runId) ||
+            saved.TranscriptSessionId != sessionId || _lifecycle.IsTerminalRun(threadId, runId) ||
             timeline.Entries.LastOrDefault(entry => entry.Kind == ChatTimelineItemKind.User || entry.StartsTurn) is not { } boundary ||
             metadata.GetValueOrDefault(boundary.Id)?.OpenClawSeq is not { } userSeq || userSeq >= replySeq)
             return null;
@@ -358,7 +358,7 @@ internal sealed class ChatConversationState
 
     internal ChatAssistantTransition? ReconcileHistoryRun(
         ChatHistoryCommitToken token, ChatHistoryRunLease lease, string? sessionId,
-        ChatMessageInfo terminal, ChatProjectionContext context, bool hasNoPendingInputs = false)
+        ChatMessageInfo terminal, ChatProjectionContext context, bool hasNoQueuedInputs = false)
     {
         lock (_gate)
         {
@@ -369,7 +369,7 @@ internal sealed class ChatConversationState
                 (lease.StartSequence is { } start
                     ? !_lifecycle.TryGetActiveRun(threadId, out var activeRun) || activeRun != lease.RunId ||
                       _lifecycle.HasRunStartedAfter(threadId, lease.RunId, start)
-                    : !hasNoPendingInputs || CaptureHistoryRunLocked(threadId) != lease))
+                    : !hasNoQueuedInputs || CaptureHistoryRunLocked(threadId) != lease))
                 return null;
             return ApplyAssistant(terminal, "", context, CurrentRuntimeGenerationLocked(threadId));
         }
@@ -2614,10 +2614,8 @@ internal sealed class ChatConversationState
                 message.OpenClawSeq is null
                 ? AssistantQueueFrameDisposition.Render
                 : ClassifyAssistantQueueFrameLocked(
-                    threadId,
+                    message,
                     assistantText,
-                    message.OpenClawId,
-                    message.OpenClawSeq,
                     allowSnapshotRefinement: message.IsFinal && IsCurrentSnapshotRefinementLocked(message));
             var ownsTerminal = isTerminal && !string.IsNullOrWhiteSpace(message.RunId) &&
                 (activeRunId == message.RunId || pendingRunIds.Contains(message.RunId, StringComparer.Ordinal));
@@ -2647,8 +2645,8 @@ internal sealed class ChatConversationState
                 {
                     Presentation = message.Presentation,
                     LiveRunId = message.RunId ?? activeRunId,
-                    RunningTranscriptSessionId = !string.IsNullOrWhiteSpace(message.RunId)
-                        ? message.RunningTranscriptSessionId : null,
+                    TranscriptSessionId = !string.IsNullOrWhiteSpace(message.RunId)
+                        ? message.TranscriptSessionId : null,
                 };
             var hasUsage = message.InputTokens is not null ||
                            message.OutputTokens is not null ||
@@ -3569,19 +3567,16 @@ internal sealed class ChatConversationState
     }
 
     private AssistantQueueFrameDisposition ClassifyAssistantQueueFrameLocked(
-        string threadId,
+        ChatMessageInfo message,
         string assistantText,
-        string? gatewayMessageId,
-        int? openClawSeq,
         bool allowSnapshotRefinement = false)
     {
+        var threadId = message.SessionKey;
+        var gatewayMessageId = message.OpenClawId;
+        var openClawSeq = message.OpenClawSeq;
         if (!allowSnapshotRefinement &&
             (!string.IsNullOrEmpty(gatewayMessageId) || openClawSeq is not null) &&
-            IsIdentifiedCompletedAssistantDuplicateLocked(
-                threadId,
-                assistantText,
-                gatewayMessageId,
-                openClawSeq))
+            ReconcileIdentifiedAssistantDuplicateLocked(message, assistantText))
         {
             return AssistantQueueFrameDisposition.Drop;
         }
@@ -3694,12 +3689,11 @@ internal sealed class ChatConversationState
         return false;
     }
 
-    private bool IsIdentifiedCompletedAssistantDuplicateLocked(
-        string threadId,
-        string assistantText,
-        string? gatewayMessageId,
-        int? openClawSeq)
+    private bool ReconcileIdentifiedAssistantDuplicateLocked(ChatMessageInfo message, string assistantText)
     {
+        var threadId = message.SessionKey;
+        var gatewayMessageId = message.OpenClawId;
+        var openClawSeq = message.OpenClawSeq;
         if (!_timelines.TryGetValue(threadId, out var timeline) ||
             !_entryMeta.TryGetValue(threadId, out var metadata))
         {
@@ -3716,29 +3710,24 @@ internal sealed class ChatConversationState
             }
             var bothHaveIds = !string.IsNullOrEmpty(gatewayMessageId) &&
                               !string.IsNullOrEmpty(existing.GatewayMessageId);
-            if (bothHaveIds &&
-                string.Equals(
-                    existing.GatewayMessageId,
-                    gatewayMessageId,
-                    StringComparison.Ordinal))
+            if (bothHaveIds ? existing.GatewayMessageId != gatewayMessageId :
+                openClawSeq is null || existing.OpenClawSeq != openClawSeq || entry.Text != assistantText)
+                continue;
+
+            if (!bothHaveIds && !string.IsNullOrEmpty(gatewayMessageId))
+                existing = existing with { GatewayMessageId = gatewayMessageId };
+
+            // History may have painted the row first. Retain wire provenance without rendering it twice.
+            if (message.IsTranscriptSnapshot && message.TranscriptSessionId is { Length: > 0 } sessionId &&
+                !string.IsNullOrWhiteSpace(message.RunId) && sessionId == _history.ResolveSessionId(threadId) &&
+                openClawSeq is not null && existing.OpenClawSeq == openClawSeq &&
+                (existing.LiveRunId is null || existing.LiveRunId == message.RunId) &&
+                (existing.Presentation?.RunId is null || existing.Presentation.RunId == message.RunId))
             {
-                return true;
+                existing = existing with { LiveRunId = message.RunId, TranscriptSessionId = sessionId };
             }
-            if (!bothHaveIds &&
-                openClawSeq is not null &&
-                existing.OpenClawSeq == openClawSeq &&
-                string.Equals(entry.Text, assistantText, StringComparison.Ordinal))
-            {
-                if (!string.IsNullOrEmpty(gatewayMessageId) &&
-                    string.IsNullOrEmpty(existing.GatewayMessageId))
-                {
-                    metadata[entry.Id] = existing with
-                    {
-                        GatewayMessageId = gatewayMessageId,
-                    };
-                }
-                return true;
-            }
+            metadata[entry.Id] = existing;
+            return true;
         }
         return false;
     }
