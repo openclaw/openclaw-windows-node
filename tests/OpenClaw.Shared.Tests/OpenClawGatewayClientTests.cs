@@ -35,6 +35,25 @@ public class OpenClawGatewayClientTests
             """{"messages":[],"sessionInfo":""" + sessionInfo + "}").TerminalRun);
     }
 
+    [Theory]
+    [InlineData("true")]
+    [InlineData("\"false\"")]
+    public void HistoryTerminalObservation_KeepsRunIdentityWithoutEmptyQueueProof(string observation)
+    {
+        var helper = new GatewayClientTestHelper();
+        using var client = helper.Client;
+        var history = helper.ParseChatHistoryPayload($$"""
+            {"sessionId":"session","messages":[],
+             "sessionInfo":{"hasActiveRun":false,"lastRunId":"r","status":"done"},
+             "pendingInputs":{"items":[{"id":"old","state":"cancelled"}],"total":1,
+                              "queuedCount":0,"hasQueuedInput":{{observation}} } }
+            """);
+        var terminal = Assert.IsType<ChatHistoryTerminalRun>(history.TerminalRun);
+        Assert.Equal("r", terminal.RunId);
+        Assert.False(terminal.HasNoQueuedInputs);
+        Assert.Null(history.RetainedInputs);
+    }
+
     [Fact]
     public void DisplayProjection_PreservesProjectedMediaAndIdentityWithoutRawTools()
     {

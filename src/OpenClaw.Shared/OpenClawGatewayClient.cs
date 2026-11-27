@@ -1126,10 +1126,10 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             info.OlderCursor = cursor.GetString();
             info.HasMore = true;
         }
-        info.RetainedInputs = ParseRetainedInputs(payload);
+        info.RetainedInputs = ParseRetainedInputs(payload, out var hasNoQueuedInputs);
         if (payload.TryGetProperty("sessionInfo", out var sessionInfo) && sessionInfo.ValueKind == JsonValueKind.Object)
             info.ActiveLeafEntryId = ReadFirstString(sessionInfo, "activeLeafEntryId");
-        info.TerminalRun = ParseTerminalHistoryRun(payload, info.SessionId, info.RetainedInputs);
+        info.TerminalRun = ParseTerminalHistoryRun(payload, info.SessionId, hasNoQueuedInputs);
         if (!includeMessages) return info;
         info.InFlightRun = ParseActiveInFlightRun(payload, sessionKey);
 
@@ -1279,7 +1279,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
     }
 
     private static ChatHistoryTerminalRun? ParseTerminalHistoryRun(JsonElement payload, string? sessionId,
-        ChatRetainedInputPage? inputs)
+        bool hasNoQueuedInputs)
     {
         if (string.IsNullOrWhiteSpace(sessionId) ||
             !payload.TryGetProperty("sessionInfo", out var session) || session.ValueKind != JsonValueKind.Object ||
@@ -1296,16 +1296,21 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
             "killed" => "aborted",
             _ => null,
         };
-        return state is null ? null : new(runId, state, ReadFirstString(session, "lastRunError"),
-            inputs is { NextBefore: null } && inputs.Ids.Count == inputs.Total);
+        return state is null ? null : new(runId, state, ReadFirstString(session, "lastRunError"), hasNoQueuedInputs);
     }
 
-    private static ChatRetainedInputPage? ParseRetainedInputs(JsonElement payload)
+    private static ChatRetainedInputPage? ParseRetainedInputs(JsonElement payload, out bool hasNoQueuedInputs)
     {
+        hasNoQueuedInputs = false;
         if (!payload.TryGetProperty("pendingInputs", out var pending) || pending.ValueKind != JsonValueKind.Object ||
             !pending.TryGetProperty("items", out var items) || items.ValueKind != JsonValueKind.Array ||
             !pending.TryGetProperty("total", out var total) || total.ValueKind != JsonValueKind.Number ||
             !total.TryGetInt32(out var count) || count < items.GetArrayLength())
+            return null;
+
+        // Page contents cannot disprove the Gateway's observation of the durable queue.
+        var hasQueueObservation = pending.TryGetProperty("hasQueuedInput", out var queueObservation);
+        if (hasQueueObservation && queueObservation.ValueKind != JsonValueKind.False)
             return null;
 
         // The total includes retained cancelled/interrupted inputs, not just live work.
@@ -1329,6 +1334,7 @@ public partial class OpenClawGatewayClient : WebSocketClientBase, IOperatorGatew
                 item.TryGetProperty("queued", out var isQueued) && isQueued.ValueKind != JsonValueKind.False || !ids.Add(id))
                 return null;
         }
+        hasNoQueuedInputs = hasQueueObservation || (nextBefore is null && ids.Count == count);
         return new(count, ids.ToArray(), nextBefore);
     }
 
